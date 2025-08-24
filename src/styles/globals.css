@@ -2,3 +2,18 @@
 
 @source "./app/**/*.{js,ts,jsx,tsx}";
 @source "./src/**/*.{js,ts,jsx,tsx}";
+
+
+@theme {
+  
+    /* Colores */
+  --color-green: #238781;
+  --color-lime: #04A17f;
+  --color-gray: #D9D9D9;
+  --color-red: #DF2E3F;
+  --color-yellow: #EEBB30;
+  --color-sky-blue: #039CE0;
+  --color-gray-light: #f3f3f3;
+  --color-black: #151516;
+  
+}
