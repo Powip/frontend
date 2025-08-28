@@ -18,7 +18,7 @@ export default function RootLayout({
         <div className="flex min-h-screen">
           <Sidebar />
 
-          <main className="flex-1">
+          <main className="flex-1 bg-gray-light">
             {children}
           </main>
         </div>
