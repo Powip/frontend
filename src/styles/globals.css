@@ -5,6 +5,8 @@
 
 @source "./app/**/*.{js,ts,jsx,tsx}";
 @source "./src/**/*.{js,ts,jsx,tsx}";
+@source "../../../components/**/*.{ts,tsx}";
+@source "../**/*.{ts,tsx}";
 
 
 
