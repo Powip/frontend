@@ -8,11 +8,11 @@ interface ContainerProps {
   className?: string;
 }
 
-export default function Container({ children, className }: ContainerProps) {
+export default function ModalContainer({ children, className }: ContainerProps) {
   return (
     <div
       className={clsx(
-        "w-full my-6 flex flex-col gap-10 content-center justify-center max-w-7xl bg-white p-2.5 rounded-lg shadow-sm",
+        "w-full my-6 flex flex-col gap-10 content-center justify-center max-w-3xl bg-white p-2.5 rounded-lg shadow-sm",
         className
       )}
     >

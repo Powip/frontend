@@ -1,12 +1,17 @@
-import Link from "next/link";
+import { AgregarProducto } from "@/src/ventas/agregar-producto-component";
+import { FichaCliente } from "@/src/ventas/ficha-cliente";
+import { PagoComponent } from "@/src/ventas/pago-component";
+import { ProductosComponent } from "@/src/ventas/productos-component";
+import { Venta } from "@/src/ventas/venta";
 
 export default function Ventas() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-      <h1 className="text-4xl font-bold text-green mb-8">Ventas</h1>
-      <Link href="/" className="text-blue-500 hover:underline text-xl">
-        Volver a Home
-      </Link>
+    <div className="flex flex-col items-center justify-center">
+     <FichaCliente/>
+     <Venta/>
+     <ProductosComponent/>
+     <AgregarProducto/>
+     <PagoComponent/>
     </div>
   );
 }
