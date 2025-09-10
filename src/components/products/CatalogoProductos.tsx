@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
 import {
@@ -26,90 +27,86 @@ import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
 import Label from "../ui/label";
 
-const sampleProducts = [
-  {
-    codigo: 13,
-    descripcion: "Pantalon Palazzo",
-    color: "Blanco",
-    talla: "L - Large",
-    stock: 2,
-    precioVenta: 269,
-    marca: "Aranni",
-    proveedor: "Burgenvilla",
-    subcategoria: "Pantalon",
-    categoria: "Ropa",
-  },
-  {
-    codigo: 4,
-    descripcion: "Pantalon Palazzo",
-    color: "Negro",
-    talla: "M - Medium",
-    stock: 5,
-    precioVenta: 180,
-    marca: "Aranni",
-    proveedor: "Burgenvilla",
-    subcategoria: "Pantalon",
-    categoria: "Ropa",
-  },
-  {
-    codigo: 1,
-    descripcion: "Pantalon Palazzo",
-    color: "Negro",
-    talla: "S - Small",
-    stock: 3,
-    precioVenta: 149,
-    marca: "Aranni",
-    proveedor: "Burgenvilla",
-    subcategoria: "Pantalon",
-    categoria: "Ropa",
-  },
-  {
-    codigo: 23,
-    descripcion: "Pantalón Sastre",
-    color: "Blanco",
-    talla: "L - Large",
-    stock: 2,
-    precioVenta: 180,
-    marca: "Aranni",
-    proveedor: "Burgenvilla",
-    subcategoria: "Pantalon",
-    categoria: "Ropa",
-  },
-  {
-    codigo: 7,
-    descripcion: "Pantalón Sastre",
-    color: "Negro",
-    talla: "M - Medium",
-    stock: 3,
-    precioVenta: 380,
-    marca: "Aranni",
-    proveedor: "Burgenvilla",
-    subcategoria: "Pantalon",
-    categoria: "Ropa",
-  },
-  {
-    codigo: 14,
-    descripcion: "Pantalón Sastre",
-    color: "Negro",
-    talla: "S - Small",
-    stock: 4,
-    precioVenta: 341,
-    marca: "Aranni",
-    proveedor: "Burgenvilla",
-    subcategoria: "Pantalon",
-    categoria: "Ropa",
-  },
-];
+// Fetchers
+import {
+  getCategories,
+  getSubCategories,
+  getBrands,
+  getCompanies,
+  getProducts,
+} from "@/src/api/Productos";
 
-export default function Catalogo() {
+
+interface ICategories{
+  id: string;
+  name: string;
+}
+
+interface ISubCategories{
+  id: string;
+  name: string;
+}
+
+interface IBrand{
+  id: string;
+  name: string;
+}
+
+interface ICompany{
+  id: string;
+  name: string;
+}
+
+interface IProduct {
+  id: string;
+  sku: string;
+  name: string;
+  attribute2: string;
+  size: string;
+  stock: number;
+  price: number;
+  brand?: IBrand | null;
+  company?: ICompany | null;
+  subcategory?: ISubCategories | null;
+  category?: ICategories | null;
+}
+
+
+export default function CatalogoProductos() {
   const [filters, setFilters] = useState({
     producto: "",
     categoria: "",
-    subcategoria: "Pantalon",
-    marca: "Aranni",
+    subcategoria: "",
+    marca: "",
     proveedor: "",
     talla: "",
     color: "",
+  });
+
+  // Queries
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: getCategories,
+  });
+
+  const { data: subcategories = [] } = useQuery({
+    queryKey: ["subcategories"],
+    queryFn: getSubCategories,
+  });
+
+  const { data: brands = [] } = useQuery({
+    queryKey: ["brands"],
+    queryFn: getBrands,
+  });
+
+  const { data: companies = [] } = useQuery({
+    queryKey: ["companies"],
+    queryFn: getCompanies,
+  });
+
+  const { data: products = [] } = useQuery({
+    queryKey: ["products"],
+    queryFn: getProducts,
   });
 
   const handleFilterChange = (key: string, value: string) => {
@@ -125,6 +122,7 @@ export default function Catalogo() {
         <Button variant="default">Cargar Producto</Button>
         <Button>Importar Productos</Button>
       </div>
+
       {/* Filter Section */}
       <FormContainer>
         <FormGrid>
@@ -149,9 +147,11 @@ export default function Catalogo() {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ropa">Ropa</SelectItem>
-                <SelectItem value="calzado">Calzado</SelectItem>
-                <SelectItem value="accesorios">Accesorios</SelectItem>
+                {categories.map((cat: ICategories) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -166,12 +166,14 @@ export default function Catalogo() {
               }
             >
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Pantalon">Pantalon</SelectItem>
-                <SelectItem value="camisa">Camisa</SelectItem>
-                <SelectItem value="vestido">Vestido</SelectItem>
+                {subcategories.map((sub: ISubCategories) => (
+                  <SelectItem key={sub.id} value={sub.id}>
+                    {sub.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -184,12 +186,14 @@ export default function Catalogo() {
               onValueChange={(value) => handleFilterChange("marca", value)}
             >
               <SelectTrigger className="w-full">
-                <SelectValue />
+                <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Aranni">Aranni</SelectItem>
-                <SelectItem value="zara">Zara</SelectItem>
-                <SelectItem value="hm">H&M</SelectItem>
+                {brands.map((brand: IBrand) => (
+                  <SelectItem key={brand.id} value={brand.id}>
+                    {brand.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -207,9 +211,11 @@ export default function Catalogo() {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="burgenvilla">Burgenvilla</SelectItem>
-                <SelectItem value="textiles-sa">Textiles SA</SelectItem>
-                <SelectItem value="moda-ltda">Moda Ltda</SelectItem>
+                {companies.map((comp: ICompany) => (
+                  <SelectItem key={comp.id} value={comp.id}>
+                    {comp.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -285,18 +291,16 @@ export default function Catalogo() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sampleProducts.map((product) => (
-              <TableRow key={product.codigo} className=" hover:bg-gray-50">
-                <TableCell className="font-medium">{product.codigo}</TableCell>
-                <TableCell>{product.descripcion}</TableCell>
-                <TableCell>{product.color}</TableCell>
-                <TableCell>{product.talla}</TableCell>
-                <TableCell>{product.stock}</TableCell>
-                <TableCell>{product.precioVenta}</TableCell>
-                <TableCell>{product.marca}</TableCell>
-                <TableCell>{product.proveedor}</TableCell>
-                <TableCell>{product.subcategoria}</TableCell>
-                <TableCell>{product.categoria}</TableCell>
+            {products.map((product: IProduct) => (
+              <TableRow key={product.id} className="hover:bg-gray-50">
+                <TableCell className="font-medium">{product.sku}</TableCell>
+                <TableCell>{product.name}</TableCell>
+                <TableCell>{product.attribute2}</TableCell>
+                <TableCell>{product.price}</TableCell>
+                <TableCell>{product.brand?.name}</TableCell>
+                <TableCell>{product.company?.name}</TableCell>
+                <TableCell>{product.subcategory?.name}</TableCell>
+                <TableCell>{product.category?.name}</TableCell>
                 <TableActions>
                   <Button variant="table" size="icon" className="bg-lime">
                     <Edit />

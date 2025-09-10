@@ -10,13 +10,15 @@ interface ContainerProps {
 
 export default function ModalContainer({ children, className }: ContainerProps) {
   return (
-    <div
-      className={clsx(
-        "w-full my-6 flex flex-col gap-10 content-center justify-center max-w-3xl bg-white p-2.5 rounded-lg shadow-sm",
-        className
-      )}
-    >
-      {children}
-    </div> 
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div
+        className={clsx(
+          "w-full my-6 flex flex-col gap-10 content-center justify-center max-w-3xl bg-white p-2.5 rounded-lg shadow-sm",
+          className
+        )}
+      >
+        {children}
+      </div>
+    </div>
   );
 }

@@ -1,18 +1,22 @@
 import React from "react";
-import ModalContainer from "../components/ui/modal-container";
-import FormContainer from "../components/ui/form-container";
-import FormGrid from "../components/ui/form-grid";
-import Label from "../components/ui/label";
-import { Input } from "../components/ui/input";
-import Header from "../components/ui/header";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "../components/ui/select";
+import FormContainer from "../ui/form-container";
+import FormGrid from "../ui/form-grid";
+import Label from "../ui/label";
+import { Input } from "../ui/input";
+import Header from "../ui/header";
+import { Select, SelectContent, SelectItem, SelectTrigger } from "../ui/select";
 import { SelectValue } from "@radix-ui/react-select";
-import { Textarea } from "../components/ui/textarea";
-import { Button } from "../components/ui/button";
+import { Textarea } from "../ui/textarea";
+import { Button } from "../ui/button";
+import Container from "../ui/container";
 
-export const PagoComponent = () => {
+type Props = {
+  prev: () => void;
+};
+
+export const PagoComponent = ({ prev }: Props) => {
   return (
-    <ModalContainer>
+    <Container>
       <Header>Pago</Header>
       <FormContainer>
         <FormGrid>
@@ -39,7 +43,7 @@ export const PagoComponent = () => {
           </div>
         </FormGrid>
         <FormGrid>
-            <div>
+          <div>
             <Label>Observaciones</Label>
             <Textarea />
           </div>
@@ -47,13 +51,20 @@ export const PagoComponent = () => {
       </FormContainer>
       <div className="grid grid-cols-4 gap-15 w-full">
         <Button
+          onClick={prev}
           variant="outline"
           className="col-span-1 border-sky-blue text-sky-blue"
         >
           Regresar
         </Button>
-        <Button variant='lime' className="col-span-3">Enviar</Button>
+        <Button
+          onClick={() => alert("Enviado")}
+          variant="lime"
+          className="col-span-3"
+        >
+          Enviar
+        </Button>
       </div>
-    </ModalContainer>
+    </Container>
   );
 };

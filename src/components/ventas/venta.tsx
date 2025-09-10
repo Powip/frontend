@@ -1,74 +1,39 @@
-import React from 'react'
-import ModalContainer from '../components/ui/modal-container'
-import Header from '../components/ui/header'
-import FormContainer from '../components/ui/form-container'
-import FormGrid from '../components/ui/form-grid'
-import Label from '../components/ui/label'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select'
-import { Button } from '../components/ui/button'
-import { X } from 'lucide-react'
+import { Button } from "../ui/button";
+import Container from "../ui/container";
+import FormContainer from "../ui/form-container";
+import FormGrid from "../ui/form-grid";
+import Header from "../ui/header";
+import { Input } from "../ui/input";
+import Label from "../ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Textarea } from "../ui/textarea";
 
-export const AgregarProducto = () => {
+type Props = {
+  next: () => void;
+  prev: () => void;
+};
+
+export const Venta = ({ next, prev }: Props) => {
   return (
-    <ModalContainer>
-      <Header
-        action={
-          <Button variant="table" className="bg-red rounded-full">
-            <X strokeWidth={4} />
-          </Button>
-        }
-      >
-        Agregar Producto
-      </Header>
-      <FormContainer>
+    <Container>
+      <Header>Venta</Header>
+      <FormContainer className="border-none px-8 py-0">
         <FormGrid>
-          <div>
-            <Label>Producto*</Label>
-            <Select>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Seleccionar" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </FormGrid>
-        <FormGrid>
-          <div>
-            <Label>Talla*</Label>
-            <Select>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Seleccionar" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Color*</Label>
-            <Select>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Seleccionar" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex justify-end">
+            <Button>Seleccionar archivo</Button>
           </div>
         </FormGrid>
       </FormContainer>
       <FormContainer>
         <FormGrid>
           <div>
-            <Label>Cantidad*</Label>
+            <Label>Gestion*</Label>
             <Select>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleccionar" />
@@ -81,7 +46,7 @@ export const AgregarProducto = () => {
             </Select>
           </div>
           <div>
-            <Label>Tipo de Descuento*</Label>
+            <Label>Canal*</Label>
             <Select>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleccionar" />
@@ -94,7 +59,7 @@ export const AgregarProducto = () => {
             </Select>
           </div>
           <div>
-            <Label>Descuento</Label>
+            <Label>Canal de Cierre*</Label>
             <Select>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleccionar" />
@@ -105,15 +70,76 @@ export const AgregarProducto = () => {
                 <SelectItem value="Value">Value</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        </FormGrid>
+        <FormGrid>
+          <div>
+            <Label>Tienda*</Label>
+            <Select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Seleccionar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="Value">Value</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label>Entrega en:*</Label>
+            <Select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Seleccionar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="Value">Value</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </FormGrid>
+        <FormGrid>
+          <div>
+            <Label>Enviar por:*</Label>
+            <Select>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Seleccionar" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="Value">Value</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </FormGrid>
+        <FormGrid>
+          <div>
+            <Label>DNI*</Label>
+            <Input />
+          </div>
+        </FormGrid>
+        <FormGrid>
+          <div>
+            <Label>Referencia</Label>
+            <Textarea />
           </div>
         </FormGrid>
       </FormContainer>
       <div className="grid grid-cols-4 gap-15 w-full">
-              <Button variant="outline" className="col-span-1">
-                Cancelar
-              </Button>
-              <Button variant='lime' className="col-span-3">Agrergar</Button>
-            </div>
-    </ModalContainer>
-  )
-}
+        <Button
+          onClick={prev}
+          variant="outline"
+          className="col-span-1 border-sky-blue text-sky-blue"
+        >
+          Regresar
+        </Button>
+        <Button onClick={next} className="col-span-3">
+          Siguiente
+        </Button>
+      </div>
+    </Container>
+  );
+};

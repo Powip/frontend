@@ -1,5 +1,5 @@
-import React from "react"
-import ModalContainer from "../components/ui/modal-container"
+import React from "react";
+import ModalContainer from "../ui/modal-container";
 
 export default function ResumenCompra() {
   return (
@@ -39,5 +39,5 @@ export default function ResumenCompra() {
         <span className="text-right">$100.00</span>
       </div>
     </ModalContainer>
-  )
+  );
 }

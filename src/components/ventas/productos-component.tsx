@@ -1,10 +1,11 @@
 import { Search, Trash } from "lucide-react";
-import FormGrid from "../components/ui/form-grid";
-import Header from "../components/ui/header";
-import { Input } from "../components/ui/input";
-import Label from "../components/ui/label";
-import { Button } from "../components/ui/button";
-import FormContainer from "../components/ui/form-container";
+import { useState } from "react";
+import FormGrid from "../ui/form-grid";
+import Header from "../ui/header";
+import { Input } from "../ui/input";
+import Label from "../ui/label";
+import { Button } from "../ui/button";
+import FormContainer from "../ui/form-container";
 import {
   Table,
   TableActions,
@@ -13,25 +14,38 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "../components/ui/table";
-import ModalContainer from "../components/ui/modal-container";
+} from "../ui/table";
+import { AgregarProducto } from "./agregar-producto-component";
+import Container from "../ui/container";
 
-export const ProductosComponent = () => {
+type Props = {
+  next: () => void;
+  prev: () => void;
+};
+
+export const ProductosComponent = ({ next, prev }: Props) => {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
-    <ModalContainer>
+    <Container>
       <Header>Productos</Header>
       <FormContainer className="border-none py-0">
         <FormGrid>
-         
           <div className="grid grid-cols-4 gap-15 w-full">
             <div className="col-span-3">
-            <Label>Producto</Label>
-            <Input icon={Search} iconPosition="right" />
-          </div>
-            <Button className="col-span-1 self-end">Agregar Producto</Button>
+              <Label>Producto</Label>
+              <Input icon={Search} iconPosition="right" />
+            </div>
+            <Button
+              className="col-span-1 self-end"
+              onClick={() => setIsOpen(true)}
+            >
+              Agregar Producto
+            </Button>
           </div>
         </FormGrid>
       </FormContainer>
+
       <div>
         <h2 className="font-medium px-8">Carrito de compras:</h2>
       </div>
@@ -48,7 +62,7 @@ export const ProductosComponent = () => {
             </TableRow>
           </TableHeader>
           <TableBody>
-            <TableRow className=" hover:bg-gray-50">
+            <TableRow className="hover:bg-gray-50">
               <TableCell>Value</TableCell>
               <TableCell>Value</TableCell>
               <TableCell>Value</TableCell>
@@ -66,13 +80,18 @@ export const ProductosComponent = () => {
 
       <div className="grid grid-cols-4 gap-15 w-full">
         <Button
+          onClick={prev}
           variant="outline"
           className="col-span-1 border-sky-blue text-sky-blue"
         >
           Regresar
         </Button>
-        <Button className="col-span-3">Siguiente</Button>
+        <Button onClick={next} className="col-span-3">
+          Siguiente
+        </Button>
       </div>
-    </ModalContainer>
+
+      {isOpen && <AgregarProducto onClose={() => setIsOpen(false)} />}
+    </Container>
   );
 };

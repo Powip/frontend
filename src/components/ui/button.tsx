@@ -12,7 +12,7 @@ const buttonVariants = cva(
         default:
           "bg-green text-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)] hover:shadow-none active:shadow-[inset_0px_5px_5px_4px_rgba(0,0,0,0.25)]",
         outline:
-          "bg-transparent border-3 border-red text-red font-bold shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)] hover:shadow-none active:shadow-[inset_0px_5px_5px_4px_rgba(0,0,0,0.25)]",
+          "bg-transparent border border-red text-red font-bold  active:shadow-[inset_0px_5px_5px_4px_rgba(0,0,0,0.25)]",
         lime: 
           "bg-lime text-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)] hover:shadow-none active:shadow-[inset_0px_5px_5px_4px_rgba(0,0,0,0.25)]",
         red: 
