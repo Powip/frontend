@@ -7,6 +7,7 @@ import FiltersForm from "./FiltrosCatalogoProductos";
 import ProductsTable from "./TablaCatalogoProductos";
 import { useCatalogoProductos } from "@/src/hooks/useCatalogoProductos"; 
 import { deleteProduct } from "@/src/api/Productos";
+import ProductsTableSkeleton from "./SkeletonProductsTable";
 
 export default function CatalogoProductos() {
   const {
@@ -14,6 +15,7 @@ export default function CatalogoProductos() {
     products,
     categories,
     brands,
+    providers,
     subcategories,
     groupedAttributes,
     isFetching,
@@ -47,13 +49,18 @@ export default function CatalogoProductos() {
           applyFilters={applyFilters}
           resetFilters={resetFilters}
           products={products}
+          providers={providers}
         />
       </FormContainer>
 
       <div className="px-6">
-        {isFetching && <p>Cargando...</p>}
-        <ProductsTable products={products} onDelete={handleDelete} />
-      </div>
+  {isFetching ? (
+    <ProductsTableSkeleton />
+  ) : (
+    <ProductsTable products={products} onDelete={handleDelete} />
+  )}
+</div>
+
     </Container>
   );
 }

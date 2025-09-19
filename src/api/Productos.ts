@@ -53,7 +53,20 @@ export const getBrands = async (): Promise<IGetBrand[]> => {
   }
 };
 
-// Cuando desde backend implementen Proveedores hay que agregarlo
+// Proveedores
+export const getProviders = async () => {
+  try {
+    const { data } = await axios.get(`${API.productos}/providers`);
+    return data;
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      throw new Error(
+        error.response?.data?.message || "Error al obtener Proveedores"
+      );
+    }
+    throw new Error("Error inesperado al obtener Proveedores");
+  }
+};
 
 // Atributos por subcategoría
 export const getAttributesBySubcategory = async (subcategoryId: string) => {

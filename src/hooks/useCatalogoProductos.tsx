@@ -9,6 +9,7 @@ import {
   getProducts,
   getAttributesBySubcategory,
   deleteProduct,
+  getProviders,
 } from "@/src/api/Productos";
 import {
   ICategory,
@@ -18,6 +19,7 @@ import {
   IAttribute,
   IAttributesGroupedMap,
   ProductFilters,
+  IProvider,
 } from "@/src/components/products/interfaces";
 import { AxiosError } from "axios";
 
@@ -26,6 +28,7 @@ const initialFilters: ProductFilters = {
   categoryId: "",
   subcategoryId: "",
   brandId: "",
+  providerId:"",
   status: true,
 };
 
@@ -48,6 +51,11 @@ export function useCatalogoProductos() {
     queryKey: ["brands"],
     queryFn: getBrands,
   });
+
+  const {data: providers = []} = useQuery<IProvider[]>({
+    queryKey: ["providers"],
+    queryFn: getProviders,
+  })
 
   const { data: products = [], isFetching } = useQuery<IProduct[]>({
     queryKey: ["products", appliedFilters],
@@ -130,6 +138,7 @@ const deleteMutation = useMutation<void, AxiosError, string>({
     products,
     categories,
     brands,
+    providers,
     subcategories: filteredSubcategories,
     groupedAttributes,
     isFetching,
