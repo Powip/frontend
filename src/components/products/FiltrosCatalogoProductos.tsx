@@ -23,6 +23,7 @@ import {
 } from "./interfaces";
 import { exportProductsToExcel } from "./utils/ExportExcel";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
 interface Props {
   filters: ProductFilters;
@@ -56,6 +57,16 @@ export default function FiltersForm({
   resetFilters,
   products,
 }: Props) {
+  const handleDownload = async () => {
+    try {
+      await exportProductsToExcel(products);
+      toast.success("Archivo Excel descargado correctamente");
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al generar el Excel");
+    }
+  };
+
   return (
     <>
       <FormGrid>
@@ -212,7 +223,7 @@ export default function FiltersForm({
             )}
           </AnimatePresence>
         </div>
-        <Button onClick={() => exportProductsToExcel(products)}>
+        <Button onClick={handleDownload}>
           Descargar Excel
           <Download />
         </Button>

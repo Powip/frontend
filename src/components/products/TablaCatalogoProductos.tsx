@@ -49,17 +49,17 @@ export default function ProductsTable({ products, onDelete }: Props) {
               <Button variant="table" size="icon" className="bg-lime">
                 <Edit />
               </Button>
-              <Button variant="table" size="icon" className="bg-red" onClick={() => onDelete(product.id)}>
+              <Button
+                variant="table"
+                size="icon"
+                className="bg-red"
+                onClick={() => onDelete(product.id)}
+              >
                 <Trash />
               </Button>
-              <Button
-  variant="table"
-  size="icon"
-  className="bg-sky-blue"
-  
->
-  <Eye/>
-</Button>
+              <Button variant="table" size="icon" className="bg-sky-blue">
+                <Eye />
+              </Button>
             </TableActions>
           </TableRow>
         ))}
