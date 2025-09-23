@@ -5,8 +5,10 @@ import Header from "../ui/header";
 import FormContainer from "../ui/form-container";
 import FiltersForm from "./FiltrosCatalogoProductos";
 import ProductsTable from "./TablaCatalogoProductos";
-import { useCatalogoProductos } from "@/src/hooks/useCatalogoProductos"; 
+import { useCatalogoProductos } from "@/src/hooks/useCatalogoProductos";
 import { deleteProduct } from "@/src/api/Productos";
+import FormGrid from "../ui/form-grid";
+import { Button } from "../ui/button";
 
 export default function CatalogoProductos() {
   const {
@@ -24,15 +26,17 @@ export default function CatalogoProductos() {
     setFilters,
   } = useCatalogoProductos();
 
-  const handleDelete = (id: string) => {
-    if (confirm("¿Seguro que deseas eliminar este producto?")) {
-      deleteProduct(id);
-    }
-  };
 
   return (
     <Container>
       <Header>Catálogo de Productos</Header>
+
+      <FormGrid>
+        <div className="flex gap-3 justify-end px-8">
+          <Button>Agregar Producto</Button>
+          <Button>Importar Producto</Button>
+        </div>
+      </FormGrid>
 
       <FormContainer>
         <FiltersForm
@@ -52,7 +56,11 @@ export default function CatalogoProductos() {
 
       <div className="px-6">
         {isFetching && <p>Cargando...</p>}
-        <ProductsTable products={products} onDelete={handleDelete} />
+        <ProductsTable
+          products={products}
+          onDelete={(id) => console.log("Eliminar", id)}
+          onEdit={(id) => console.log("Editar", id)}
+        />
       </div>
     </Container>
   );

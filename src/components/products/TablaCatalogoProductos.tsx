@@ -16,9 +16,10 @@ import { IProduct } from "./interfaces";
 interface Props {
   products: IProduct[];
   onDelete: (id: string) => void;
+  onEdit: (id: string) => void;
 }
 
-export default function ProductsTable({ products, onDelete }: Props) {
+export default function ProductsTable({ products, onDelete, onEdit }: Props) {
   return (
     <Table>
       <TableHeader>
@@ -46,20 +47,25 @@ export default function ProductsTable({ products, onDelete }: Props) {
             <TableCell>{product.subcategory?.name}</TableCell>
             <TableCell>{product.category?.name}</TableCell>
             <TableActions>
-              <Button variant="table" size="icon" className="bg-lime">
+              <Button
+                variant="table"
+                size="icon"
+                className="bg-lime"
+                onClick={() => onEdit(product.id)}
+              >
                 <Edit />
               </Button>
-              <Button variant="table" size="icon" className="bg-red" onClick={() => onDelete(product.id)}>
+              <Button
+                variant="table"
+                size="icon"
+                className="bg-red"
+                onClick={() => onDelete(product.id)}
+              >
                 <Trash />
               </Button>
-              <Button
-  variant="table"
-  size="icon"
-  className="bg-sky-blue"
-  
->
-  <Eye/>
-</Button>
+              <Button variant="table" size="icon" className="bg-sky-blue">
+                <Eye />
+              </Button>
             </TableActions>
           </TableRow>
         ))}
