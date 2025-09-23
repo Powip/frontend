@@ -23,6 +23,14 @@ export interface IBrand {
   status?: boolean;
 }
 
+//Proveedores
+export interface IProvider {
+  id: string;
+  name: string;
+  description?: string;
+  status?: boolean;
+}
+
 // Compañía / Proveedor
 export interface ICompany {
   id: string;
@@ -100,6 +108,7 @@ export interface ProductFilters {
   categoryId: string;
   subcategoryId: string;
   brandId: string;
+  providerId: string
   status: boolean;
   [key: `attribute_${string}`]: string | undefined; // atributos dinámicos
 }

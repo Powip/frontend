@@ -12,17 +12,31 @@ import { Button } from "@/src/components/ui/button";
 import Label from "@/src/components/ui/label";
 import FormGrid from "@/src/components/ui/form-grid";
 import { FilterIcon, Download } from "lucide-react";
-import { ICategory, ISubCategory, IBrand, IGroupedAttribute, ProductFilters, IProduct } from "./interfaces";
+import {
+  ICategory,
+  ISubCategory,
+  IBrand,
+  IProvider,
+  IGroupedAttribute,
+  ProductFilters,
+  IProduct,
+} from "./interfaces";
 import { exportProductsToExcel } from "./utils/ExportExcel";
+import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 
 interface Props {
   filters: ProductFilters;
   categories: ICategory[];
   subcategories: ISubCategory[];
   brands: IBrand[];
+  providers: IProvider[];
   groupedAttributes: Record<string, IGroupedAttribute>;
   hasActiveFilters: boolean;
-  handleFilterChange: (key: keyof ProductFilters | `attribute_${string}`, value: string) => void;
+  handleFilterChange: (
+    key: keyof ProductFilters | `attribute_${string}`,
+    value: string
+  ) => void;
   setFilters: React.Dispatch<React.SetStateAction<ProductFilters>>;
   applyFilters: () => void;
   resetFilters: () => void;
@@ -34,6 +48,7 @@ export default function FiltersForm({
   categories,
   subcategories,
   brands,
+  providers,
   groupedAttributes,
   hasActiveFilters,
   handleFilterChange,
@@ -42,6 +57,16 @@ export default function FiltersForm({
   resetFilters,
   products,
 }: Props) {
+  const handleDownload = async () => {
+    try {
+      await exportProductsToExcel(products);
+      toast.success("Archivo Excel descargado correctamente");
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al generar el Excel");
+    }
+  };
+
   return (
     <>
       <FormGrid>
@@ -80,7 +105,9 @@ export default function FiltersForm({
           <Label>Subcategoría</Label>
           <Select
             value={filters.subcategoryId}
-            onValueChange={(value) => handleFilterChange("subcategoryId", value)}
+            onValueChange={(value) =>
+              handleFilterChange("subcategoryId", value)
+            }
           >
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Seleccionar" />
@@ -118,30 +145,59 @@ export default function FiltersForm({
 
       {/* Atributos dinámicos */}
       <FormGrid>
+        {/* proveedores */}
+        <div>
+          <Label>Proveedores</Label>
+          <Select
+            value={filters.providerId}
+            onValueChange={(value) => handleFilterChange("providerId", value)}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Seleccionar" />
+            </SelectTrigger>
+            <SelectContent>
+              {providers.map((provider) => (
+                <SelectItem key={provider.id} value={provider.id}>
+                  {provider.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
         {Object.values(groupedAttributes).map((attr) => (
-          <div key={attr.typeId}>
-            <Label>{attr.typeName}</Label>
-            <Select
-              value={(filters as ProductFilters)[`attribute_${attr.typeId}`] || ""}
-              onValueChange={(value) =>
-                setFilters((prev) => ({
-                  ...prev,
-                  [`attribute_${attr.typeId}`]: value,
-                }))
-              }
+          <AnimatePresence key={attr.typeId}>
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Seleccionar" />
-              </SelectTrigger>
-              <SelectContent>
-                {attr.values.map((val) => (
-                  <SelectItem key={val.id} value={val.id}>
-                    {val.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+              <Label>{attr.typeName}</Label>
+              <Select
+                value={
+                  (filters as ProductFilters)[`attribute_${attr.typeId}`] || ""
+                }
+                onValueChange={(value) =>
+                  setFilters((prev) => ({
+                    ...prev,
+                    [`attribute_${attr.typeId}`]: value,
+                  }))
+                }
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Seleccionar" />
+                </SelectTrigger>
+                <SelectContent>
+                  {attr.values.map((val) => (
+                    <SelectItem key={val.id} value={val.id}>
+                      {val.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </motion.div>
+          </AnimatePresence>
         ))}
       </FormGrid>
 
@@ -152,13 +208,22 @@ export default function FiltersForm({
             <FilterIcon />
             Filtrar
           </Button>
-          {hasActiveFilters && (
-            <Button onClick={resetFilters} variant="outline">
-              Limpiar filtros
-            </Button>
-          )}
+          <AnimatePresence>
+            {hasActiveFilters && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3, ease: "easeOut" }}
+              >
+                <Button onClick={resetFilters} variant="outline">
+                  Limpiar filtros
+                </Button>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-        <Button onClick={() => exportProductsToExcel(products)}>
+        <Button onClick={handleDownload}>
           Descargar Excel
           <Download />
         </Button>
