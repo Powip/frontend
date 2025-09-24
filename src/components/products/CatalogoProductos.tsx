@@ -6,13 +6,9 @@ import FormContainer from "../ui/form-container";
 import FiltersForm from "./FiltrosCatalogoProductos";
 import ProductsTable from "./TablaCatalogoProductos";
 import { useCatalogoProductos } from "@/src/hooks/useCatalogoProductos";
-import { deleteProduct } from "@/src/api/Productos";
-<<<<<<< HEAD
 import FormGrid from "../ui/form-grid";
 import { Button } from "../ui/button";
-=======
 import ProductsTableSkeleton from "./SkeletonProductsTable";
->>>>>>> bfda0b1268188e9f2cd6591b93bf0922d27634b1
 
 export default function CatalogoProductos() {
   const {
@@ -30,7 +26,6 @@ export default function CatalogoProductos() {
     hasActiveFilters,
     setFilters,
   } = useCatalogoProductos();
-
 
   return (
     <Container>
@@ -61,23 +56,16 @@ export default function CatalogoProductos() {
       </FormContainer>
 
       <div className="px-6">
-<<<<<<< HEAD
-        {isFetching && <p>Cargando...</p>}
-        <ProductsTable
-          products={products}
-          onDelete={(id) => console.log("Eliminar", id)}
-          onEdit={(id) => console.log("Editar", id)}
-        />
+        {isFetching ? (
+          <ProductsTableSkeleton />
+        ) : (
+          <ProductsTable
+            products={products}
+            onDelete={(id) => console.log("Eliminar", id)}
+            onEdit={(id) => console.log("Editar", id)}
+          />
+        )}
       </div>
-=======
-  {isFetching ? (
-    <ProductsTableSkeleton />
-  ) : (
-    <ProductsTable products={products} onDelete={handleDelete} />
-  )}
-</div>
-
->>>>>>> bfda0b1268188e9f2cd6591b93bf0922d27634b1
     </Container>
   );
 }
