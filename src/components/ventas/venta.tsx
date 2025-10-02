@@ -33,15 +33,15 @@ export const Venta = ({ next, prev }: Props) => {
       <FormContainer>
         <FormGrid>
           <div>
-            <Label>Gestion*</Label>
+            <Label>Gestión*</Label>
             <Select>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="venta">Venta</SelectItem>
+                <SelectItem value="canje">Canje</SelectItem>
+                <SelectItem value="reserva">Reserva</SelectItem>
               </SelectContent>
             </Select>
           </div>

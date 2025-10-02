@@ -78,3 +78,137 @@ export interface IGetCompany {
   disabled_at: string | null;
   enabled_at: string | null;
 }
+
+
+// INTERFACES DE VENTAS
+
+export interface ICreateOrderHeader {
+   receiptType: string;        // Ej: FACTURA
+  managementType: string;     // Ej: venta, canje, reserva
+  storeAssigned: string;
+  deliveryPoint: string;
+  salesChannel: string;
+  closingChannel: string;
+  gestion: string;
+  store: string;
+  courier: string;
+  reference?: string;         // opcional
+  totalAmount: number;
+  totalVat: number;
+  totalShippingCost: number;
+  customerId: string;         // DNI o ID cliente
+  status: string;             // Ej: PENDING
+}
+
+// =============================
+// ORDER HEADER (cabecera)
+// =============================
+
+export interface CreateOrderHeaderDto {
+  receiptType: string;          // Ej: FACTURA, TICKET
+  managementType: string;       // Ej: venta, canje, reserva
+  storeAssigned: string;        // Tienda asignada
+  deliveryPoint: string;        // Punto de entrega
+  salesChannel: string;         // Canal de venta (Web, Presencial, etc.)
+  closingChannel: string;       // Canal de cierre
+  gestion: string;              // Gestión
+  store: string;                // Tienda origen
+  courier: string;              // Envío por (Courier/Transporte)
+  reference?: string;           // Referencia opcional
+  totalAmount: number;          // Monto total
+  totalVat: number;             // IVA total
+  totalShippingCost: number;    // Costo de envío
+  customerId: string;           // DNI o ID del cliente
+  status: string;               // Estado de la orden (PENDING, CONFIRMED, etc.)
+}
+
+export interface OrderHeader extends CreateOrderHeaderDto {
+  id: string;                   // ID generado por la API
+  createdAt: string;
+  updatedAt: string;
+}
+
+// =============================
+// ORDER ITEMS (productos en la orden)
+// =============================
+
+export interface AttributeDto {
+  name: string;                 // Ej: Color, Talla
+  value: string;                // Ej: Rojo, M
+  unit?: string;                // Ej: cm, kg (opcional)
+}
+
+export interface CreateOrderItemsDto {
+  productId: string;
+  quantity: number;
+  unitPrice: number;
+  discountType: string;         // porcentaje | monto
+  discountAmount: number;
+  attributes?: AttributeDto[];
+  observations?: string;
+  status: string;               // ACTIVE, CANCELLED, etc.
+}
+
+export interface OrderItem extends CreateOrderItemsDto {
+  id: string;
+  orderId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// =============================
+// ORDER + ITEMS juntos
+// =============================
+
+export interface CreateOrderHeaderPlusItemsDto extends CreateOrderHeaderDto {
+  items: CreateOrderItemsDto[];
+}
+
+// =============================
+// PAYMENTS
+// =============================
+
+export interface CreatePaymentDto {
+  orderId: string;
+  paymentMethod: string;        // Ej: tarjeta, efectivo
+  amount: number;
+  paymentDate?: string;         // ISO date string
+  paymentProof?: string;        // URL o código comprobante
+  generalNote?: string;
+  status?: string;              // CONFIRMED, PENDING
+  externalReference?: string;   // ID externo (ej: pasarela de pagos)
+}
+
+export interface CompletePaymentDto extends CreatePaymentDto {
+  advancePayment: number;       // Monto adelantado
+}
+
+export interface Payment extends CreatePaymentDto {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
+// INTERFACES DE CLIENTES
+
+export interface IClient {
+  id: string;
+  documentNumber?: string;
+  ruc?: string;
+  companyId?: string;
+  businessName?: string;
+  name?: string;
+  lastName?: string;
+  nickName?: string;
+  phoneNumber?: string;
+  clientType?: string;
+  city?: string;
+  province?: string;
+  district?: string;
+  address?: string;
+  reference?: string;
+  is_active?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}

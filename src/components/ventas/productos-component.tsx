@@ -17,6 +17,7 @@ import {
 } from "../ui/table";
 import { AgregarProducto } from "./agregar-producto-component";
 import Container from "../ui/container";
+import { useCatalogoProductos } from "@/src/hooks/useCatalogoProductos";
 
 type Props = {
   next: () => void;
@@ -25,6 +26,8 @@ type Props = {
 
 export const ProductosComponent = ({ next, prev }: Props) => {
   const [isOpen, setIsOpen] = useState(false);
+
+  const {products} = useCatalogoProductos()
 
   return (
     <Container>
@@ -91,7 +94,7 @@ export const ProductosComponent = ({ next, prev }: Props) => {
         </Button>
       </div>
 
-      {isOpen && <AgregarProducto onClose={() => setIsOpen(false)} />}
+      {isOpen && <AgregarProducto products={products} onClose={() => setIsOpen(false)} />}
     </Container>
   );
 };

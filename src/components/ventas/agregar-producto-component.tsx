@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import ModalContainer from "../ui/modal-container";
 import Header from "../ui/header";
 import FormContainer from "../ui/form-container";
@@ -13,12 +13,16 @@ import {
 } from "../ui/select";
 import { Button } from "../ui/button";
 import { X } from "lucide-react";
+import { IProduct } from "../products/interfaces";
 
 type Props = {
   onClose: () => void;
+  products: IProduct[];
 };
 
-export const AgregarProducto = ({ onClose }: Props) => {
+export const AgregarProducto = ({ onClose, products }: Props) => {
+  const [selectedProduct, setSelectedProduct] = useState<string>("");
+
   return (
     <ModalContainer>
       <Header
@@ -36,20 +40,27 @@ export const AgregarProducto = ({ onClose }: Props) => {
       </Header>
       <FormContainer>
         <FormGrid>
+          {/* Producto */}
           <div>
-            <Label>Producto*</Label>
-            <Select>
+            <Label>Producto</Label>
+            <Select
+              value={selectedProduct}
+              onValueChange={(value) => setSelectedProduct(value)}
+            >
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Seleccionar" />
+                <SelectValue placeholder="Seleccionar producto" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
+                {products.map((prod) => (
+                  <SelectItem key={prod.id} value={prod.id}>
+                    {prod.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
         </FormGrid>
+        {/* resto del formulario */}
         <FormGrid>
           <div>
             <Label>Talla*</Label>
@@ -58,9 +69,9 @@ export const AgregarProducto = ({ onClose }: Props) => {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="s">S</SelectItem>
+                <SelectItem value="m">M</SelectItem>
+                <SelectItem value="l">L</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -71,9 +82,9 @@ export const AgregarProducto = ({ onClose }: Props) => {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="rojo">Rojo</SelectItem>
+                <SelectItem value="azul">Azul</SelectItem>
+                <SelectItem value="verde">Verde</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -88,9 +99,11 @@ export const AgregarProducto = ({ onClose }: Props) => {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
+                {[1, 2, 3, 4, 5].map((num) => (
+                  <SelectItem key={num} value={String(num)}>
+                    {num}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -101,9 +114,8 @@ export const AgregarProducto = ({ onClose }: Props) => {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="porcentaje">Porcentaje</SelectItem>
+                <SelectItem value="monto">Monto fijo</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -114,9 +126,9 @@ export const AgregarProducto = ({ onClose }: Props) => {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
-                <SelectItem value="Value">Value</SelectItem>
+                <SelectItem value="10">10%</SelectItem>
+                <SelectItem value="20">20%</SelectItem>
+                <SelectItem value="30">30%</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -127,7 +139,7 @@ export const AgregarProducto = ({ onClose }: Props) => {
           Cancelar
         </Button>
         <Button variant="lime" className="col-span-3">
-          Agrergar
+          Agregar
         </Button>
       </div>
     </ModalContainer>
