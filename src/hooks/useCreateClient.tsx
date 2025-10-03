@@ -39,7 +39,7 @@ export const useClientByPhone = (phone: string) => {
   return useQuery<IClient, Error>({
     queryKey: ["client-phone", phone],
     queryFn: () => getClientByPhone(phone),
-    enabled: !!phone,
+    enabled: !!phone && phone.length >= 9,
   });
 };
 
