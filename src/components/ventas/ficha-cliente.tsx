@@ -21,6 +21,7 @@ import {
   useCreateClient,
   useClientByPhone,
   useUpdateClient,
+  useDisableClient,
 } from "@/src/hooks/useCreateClient";
 import { AxiosError } from "axios";
 import { IClient } from "@/src/api/Interfaces";
@@ -31,12 +32,11 @@ type Props = {
 
 export const FichaCliente = ({ next }: Props) => {
   const [form, setForm] = useState({
-    companyId: "a1b2c3d4-e5f6-7890-abcd-1234567890ef",
     name: "",
     lastName: "",
     nickName: "",
     phoneNumber: "",
-    clientType: "TRADICIONAL",
+    clientType: "L",
     address: "",
     province: "",
     city: "",
@@ -51,6 +51,8 @@ export const FichaCliente = ({ next }: Props) => {
   // =============================
   const createClientMutation = useCreateClient();
   const updateClientMutation = useUpdateClient();
+  const disableClientMutation = useDisableClient();
+
   const { data: clientByPhone } = useClientByPhone(form.phoneNumber);
 
   // =============================
@@ -66,7 +68,7 @@ export const FichaCliente = ({ next }: Props) => {
         lastName: c.lastName || "",
         nickName: c.nickName || "",
         phoneNumber: c.phoneNumber || prev.phoneNumber,
-        clientType: c.clientType || "TRADICIONAL",
+        clientType: c.clientType || "",
         address: c.address || "",
         province: c.province || "",
         city: c.city || "",
@@ -124,12 +126,11 @@ export const FichaCliente = ({ next }: Props) => {
 
   const resetForm = () => {
     setForm({
-      companyId: "a1b2c3d4-e5f6-7890-abcd-1234567890ef",
       name: "",
       lastName: "",
       nickName: "",
       phoneNumber: "",
-      clientType: "TRADICIONAL",
+      clientType: "",
       address: "",
       province: "",
       city: "",
@@ -137,6 +138,21 @@ export const FichaCliente = ({ next }: Props) => {
       reference: "",
     });
     setCurrentClientId(null);
+  };
+
+  const handleDisable = () => {
+    if (!currentClientId) {
+      alert("No hay cliente para desactivar");
+      return;
+    }
+
+    disableClientMutation.mutate(currentClientId, {
+      onSuccess: () => {
+        alert("Cliente desactivado con éxito");
+        resetForm();
+      },
+      onError: handleError,
+    });
   };
 
   // =============================
@@ -169,9 +185,12 @@ export const FichaCliente = ({ next }: Props) => {
               <Edit />
               {updateClientMutation.isPending ? "Actualizando..." : "Modificar"}
             </Button>
-            <Button>
+            <Button
+              onClick={handleDisable}
+              disabled={disableClientMutation.isPending || !currentClientId}
+            >
               <Trash />
-              Eliminar
+              {disableClientMutation.isPending ? "Eliminando..." : "Eliminar"}
             </Button>
           </div>
         </FormGrid>
@@ -221,7 +240,7 @@ export const FichaCliente = ({ next }: Props) => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="TRADICIONAL">Tradicional</SelectItem>
-                <SelectItem value="EMPRESA">Empresa</SelectItem>
+                <SelectItem value="MAYORISTA">Mayorista</SelectItem>
               </SelectContent>
             </Select>
           </div>
