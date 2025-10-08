@@ -212,3 +212,92 @@ export interface IClient {
   createdAt?: string;
   updatedAt?: string;
 }
+
+// INTERFACES DE Ventas
+
+// ===============
+// 📦 ORDENES
+// ===============
+
+export interface ICreateOrderHeader {
+  clientId: string;
+  companyId: string;
+  total: number;
+  date?: string;
+  notes?: string;
+}
+
+export interface ICreateOrderHeaderPlusItems extends ICreateOrderHeader {
+  items: ICreateOrderItemsDto[];
+}
+
+export interface IUpdateOrderHeaderDto {
+  total?: number;
+  date?: string;
+  notes?: string;
+  status?: string;
+}
+
+export interface ICreateOrderItemsDto {
+  productId: string;
+  quantity: number;
+  price: number;
+  discount?: number;
+}
+
+export interface IOrder {
+  id: string;
+  clientId: string;
+  companyId: string;
+  total: number;
+  status: string;
+  date: string;
+  items: IOrderItem[];
+}
+
+export interface IOrderItem {
+  id: string;
+  productId: string;
+  quantity: number;
+  price: number;
+  discount?: number;
+  subtotal: number;
+}
+
+// ===============
+// 💳 PAGOS
+// ===============
+
+export interface ICreatePaymentDto {
+  orderId: string;
+  amount: number;
+  method: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA";
+  date?: string;
+}
+
+export interface IUpdatePaymentDto {
+  amount?: number;
+  method?: string;
+  status?: string;
+}
+
+export interface IPayment {
+  id: string;
+  orderId: string;
+  amount: number;
+  method: string;
+  status: string;
+  date: string;
+}
+
+// ===============
+// 📜 LOGS
+// ===============
+
+export interface ILogVenta {
+  id: string;
+  orderId: string;
+  action: string;
+  date: string;
+  user: string;
+}
