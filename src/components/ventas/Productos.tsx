@@ -15,7 +15,7 @@ import {
   TableHeader,
   TableRow,
 } from "../ui/table";
-import { AgregarProducto } from "./agregar-producto-component";
+import { AgregarProducto } from "./AgregarProducto";
 import Container from "../ui/container";
 import { useCatalogoProductos } from "@/src/hooks/useCatalogoProductos";
 
@@ -24,7 +24,7 @@ type Props = {
   prev: () => void;
 };
 
-export const ProductosComponent = ({ next, prev }: Props) => {
+export const Productos = ({ next, prev }: Props) => {
   const [isOpen, setIsOpen] = useState(false);
 
   const {products} = useCatalogoProductos()

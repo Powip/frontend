@@ -27,10 +27,10 @@ import { AxiosError } from "axios";
 import { IClient } from "@/src/api/Interfaces";
 
 type Props = {
-  next: () => void;
+  next: (id: string) => void;
 };
 
-export const FichaCliente = ({ next }: Props) => {
+export const Clientes = ({ next }: Props) => {
   const [form, setForm] = useState({
     name: "",
     lastName: "",
@@ -52,7 +52,6 @@ export const FichaCliente = ({ next }: Props) => {
   const createClientMutation = useCreateClient();
   const updateClientMutation = useUpdateClient();
   const disableClientMutation = useDisableClient();
-
   const { data: clientByPhone } = useClientByPhone(form.phoneNumber);
 
   // =============================
@@ -61,7 +60,8 @@ export const FichaCliente = ({ next }: Props) => {
   useEffect(() => {
     if (clientByPhone) {
       const c: IClient = clientByPhone;
-      setCurrentClientId(c.id); // guardamos el id para actualizar
+      setCurrentClientId(c.id);
+      next(c.id); // ✅ Avanzamos en el flujo con el id
       setForm((prev) => ({
         ...prev,
         name: c.name || "",
@@ -76,7 +76,7 @@ export const FichaCliente = ({ next }: Props) => {
         reference: c.reference || "",
       }));
     } else {
-      setCurrentClientId(null); // si no existe, limpiamos
+      setCurrentClientId(null);
     }
   }, [clientByPhone]);
 
@@ -89,9 +89,10 @@ export const FichaCliente = ({ next }: Props) => {
 
   const handleCreate = () => {
     createClientMutation.mutate(form, {
-      onSuccess: () => {
+      onSuccess: (newClient: IClient) => {
         alert("Cliente creado con éxito");
-        resetForm();
+        setCurrentClientId(newClient.id);
+        next(newClient.id); // ✅ Pasamos al siguiente paso con el id
       },
       onError: handleError,
     });
@@ -108,10 +109,26 @@ export const FichaCliente = ({ next }: Props) => {
       {
         onSuccess: () => {
           alert("Cliente actualizado con éxito");
+          next(currentClientId); // ✅ Continuar flujo
         },
         onError: handleError,
       }
     );
+  };
+
+  const handleDisable = () => {
+    if (!currentClientId) {
+      alert("No hay cliente para desactivar");
+      return;
+    }
+
+    disableClientMutation.mutate(currentClientId, {
+      onSuccess: () => {
+        alert("Cliente desactivado con éxito");
+        resetForm();
+      },
+      onError: handleError,
+    });
   };
 
   const handleError = (err: unknown) => {
@@ -130,7 +147,7 @@ export const FichaCliente = ({ next }: Props) => {
       lastName: "",
       nickName: "",
       phoneNumber: "",
-      clientType: "",
+      clientType: "L",
       address: "",
       province: "",
       city: "",
@@ -138,21 +155,6 @@ export const FichaCliente = ({ next }: Props) => {
       reference: "",
     });
     setCurrentClientId(null);
-  };
-
-  const handleDisable = () => {
-    if (!currentClientId) {
-      alert("No hay cliente para desactivar");
-      return;
-    }
-
-    disableClientMutation.mutate(currentClientId, {
-      onSuccess: () => {
-        alert("Cliente desactivado con éxito");
-        resetForm();
-      },
-      onError: handleError,
-    });
   };
 
   // =============================
@@ -196,7 +198,6 @@ export const FichaCliente = ({ next }: Props) => {
         </FormGrid>
       </FormContainer>
 
-      {/* resto del formulario igual */}
       <FormContainer>
         <FormGrid>
           <div>
@@ -221,6 +222,7 @@ export const FichaCliente = ({ next }: Props) => {
             />
           </div>
         </FormGrid>
+
         <FormGrid>
           <div>
             <Label>Teléfono*</Label>
@@ -290,12 +292,6 @@ export const FichaCliente = ({ next }: Props) => {
           </div>
         </FormGrid>
       </FormContainer>
-
-      <div>
-        <Button className="w-full" onClick={next}>
-          Siguiente
-        </Button>
-      </div>
     </Container>
   );
 };

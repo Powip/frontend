@@ -14,7 +14,7 @@ type Props = {
   prev: () => void;
 };
 
-export const PagoComponent = ({ prev }: Props) => {
+export const Pago = ({ prev }: Props) => {
   return (
     <Container>
       <Header>Pago</Header>
