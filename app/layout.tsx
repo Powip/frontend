@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import "./../src/styles/globals.css";
 import { Sidebar } from "@/src/components/layout/Sidebar";
+import Providers from "@/src/contexts/Providers";
+import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
   title: "Powip Frontend",
@@ -15,13 +18,17 @@ export default function RootLayout({
   return (
      <html lang="es">
       <body>
-        <div className="flex min-h-screen">
-          <Sidebar />
+        <Providers>
+          <div className="flex min-h-screen">
+            <Sidebar />
 
-          <main className="flex-1 bg-gray-light">
-            {children}
-          </main>
-        </div>
+            <main className="flex-1 bg-gray-light">
+              {children}
+            </main>
+            <Toaster position="bottom-center" richColors  />
+          </div>
+          <ReactQueryDevtools initialIsOpen={false} />
+        </Providers>
       </body>
     </html>
   );

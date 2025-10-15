@@ -1,10 +1,9 @@
-import Catalogo from "@/src/components/products/Catalogo";
-import Link from "next/link";
+import CatalogoProductos from "@/src/components/products/CatalogoProductos";
 
 export default function Productos() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <Catalogo/>
-    </div>
+      <div className="flex flex-col items-center justify-center min-h-screen">
+        <CatalogoProductos/>
+      </div>
   );
 }
