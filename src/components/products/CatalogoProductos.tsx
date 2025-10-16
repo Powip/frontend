@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import Container from "../ui/container";
 import Header from "../ui/header";
@@ -30,11 +31,11 @@ export default function CatalogoProductos() {
   return (
     <Container>
       <Header>Catálogo de Productos</Header>
-
       <FormGrid>
         <div className="flex gap-3 justify-end px-8">
-          <Button>Agregar Producto</Button>
-          <Button>Importar Producto</Button>
+          <Button variant="default" asChild>
+            <Link href="/productos/nuevo">Cargar Producto</Link>
+          </Button>
         </div>
       </FormGrid>
 
