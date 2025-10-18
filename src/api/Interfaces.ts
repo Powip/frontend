@@ -82,23 +82,6 @@ export interface IGetCompany {
 
 // INTERFACES DE VENTAS
 
-export interface ICreateOrderHeader {
-   receiptType: string;        // Ej: FACTURA
-  managementType: string;     // Ej: venta, canje, reserva
-  storeAssigned: string;
-  deliveryPoint: string;
-  salesChannel: string;
-  closingChannel: string;
-  gestion: string;
-  store: string;
-  courier: string;
-  reference?: string;         // opcional
-  totalAmount: number;
-  totalVat: number;
-  totalShippingCost: number;
-  customerId: string;         // DNI o ID cliente
-  status: string;             // Ej: PENDING
-}
 
 // =============================
 // ORDER HEADER (cabecera)
@@ -219,50 +202,44 @@ export interface IClient {
 // 📦 ORDENES
 // ===============
 
-export interface ICreateOrderHeader {
-  clientId: string;
-  companyId: string;
-  total: number;
-  date?: string;
-  notes?: string;
-}
-
-export interface ICreateOrderHeaderPlusItems extends ICreateOrderHeader {
-  items: ICreateOrderItemsDto[];
-}
-
-export interface IUpdateOrderHeaderDto {
-  total?: number;
-  date?: string;
-  notes?: string;
-  status?: string;
-}
-
-export interface ICreateOrderItemsDto {
-  productId: string;
-  quantity: number;
-  price: number;
-  discount?: number;
-}
-
-export interface IOrder {
-  id: string;
-  clientId: string;
-  companyId: string;
-  total: number;
-  status: string;
-  date: string;
-  items: IOrderItem[];
+export interface IOrderItemAttribute {
+  name: string;
+  value: string | number;
+  unit?: string;
 }
 
 export interface IOrderItem {
-  id: string;
   productId: string;
   quantity: number;
-  price: number;
-  discount?: number;
-  subtotal: number;
+  unitPrice: number;
+  discountType?: "PORCENTAJE" | "MONTO"; // según tus reglas
+  discountAmount?: number;
+  attributes?: IOrderItemAttribute[];
+  observations?: string;
+  status?: boolean;
 }
+
+export interface ICreateOrderHeader {
+  id?: string;
+  receiptType?: string;           // e.g., "FACT"
+  managementType?: string;        // e.g., "VENTA"
+  companyId?: string;
+  store: string;
+  storeAssigned?: string;
+  deliveryPoint?: string;
+  salesChannel?: string;
+  closingChannel?: string;
+  gestion?: string;
+  courier?: string;
+  reference?: string;
+  totalAmount?: number;
+  totalVat?: number;
+  totalShippingCost?: number;
+  customerId?: string;
+  status?: string;               // e.g., "PENDIENTE"
+  items?: IOrderItem[];
+}
+
 
 // ===============
 // 💳 PAGOS
@@ -270,8 +247,13 @@ export interface IOrderItem {
 
 export interface ICreatePaymentDto {
   orderId: string;
+  paymentMethod: string;
+  paymentDate: string;
+  paymentProof: string;
+  generalNote: string;
+  status: string;
   amount: number;
-  method: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA";
+  method?: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA";
   date?: string;
 }
 

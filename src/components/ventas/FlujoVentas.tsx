@@ -7,11 +7,9 @@ import { Venta } from "./Venta";
 import { Productos } from "./Productos";
 import { Pago } from "./Pago";
 import { toast } from "sonner";
-import {
-  IOrder,
-  IOrderItem,
-  ICreateOrderHeaderPlusItems,
-} from "@/src/api/Interfaces";
+import { IOrder, IOrderItem } from "@/src/api/Interfaces";
+import { ArrowBigRightIcon, ArrowLeft, ArrowRight } from "lucide-react";
+import { Button } from "@/src/components/ui/button";
 
 interface Totals {
   totalAmount: number;
@@ -35,18 +33,7 @@ export default function FlujoVentas() {
   // ======================
   // Handlers del flujo
   // ======================
-  const nextStep = () => {
-    if (step === 1 && !customerId) {
-      toast.error("Selecciona o crea un cliente antes de continuar");
-      return;
-    }
-    if (step === 2 && !orderId) {
-      toast.error("Crea una orden antes de continuar");
-      return;
-    }
-    setStep((prev) => Math.min(prev + 1, steps.length));
-  };
-
+  const nextStep = () => setStep((prev) => Math.min(prev + 1, steps.length));
   const prevStep = () => setStep((prev) => Math.max(prev - 1, 1));
 
   const handleCustomerSaved = (id: string) => {
@@ -57,11 +44,13 @@ export default function FlujoVentas() {
   const handleOrderCreated = (order: IOrder) => {
     setOrderId(order.id);
     setTotals({
-      totalAmount: order.total,
-      totalVat: 0, // si tu backend lo maneja, podrías tomarlo de order
-      totalShippingCost: 0,
+      totalAmount: order.totalAmount,
+      totalVat: order.totalVat,
+      totalShippingCost: order.totalShippingCost,
     });
+    setCartItems([]); // inicializa carrito vacío
     toast.success("Orden creada correctamente");
+    nextStep(); // pasar automáticamente al paso de Productos
   };
 
   const handleAddItem = (item: IOrderItem) => {
@@ -78,6 +67,7 @@ export default function FlujoVentas() {
     setOrderId(null);
     setCartItems([]);
     setTotals({ totalAmount: 0, totalVat: 0, totalShippingCost: 0 });
+    localStorage.removeItem("currentOrder");
   };
 
   // ======================
@@ -90,7 +80,7 @@ export default function FlujoVentas() {
   };
 
   return (
-    <div className="w-full mx-auto min-h-max p-6 bg-white rounded-2xl shadow-lg">
+    <div className="w-full mx-auto min-h-min p-6 bg-white rounded-2xl shadow-lg">
       {/* Header del wizard */}
       <div className="mb-6">
         <div className="flex justify-between items-center mb-3">
@@ -130,7 +120,7 @@ export default function FlujoVentas() {
       </div>
 
       {/* Contenido del paso */}
-      <div className="h-[1000px] relative">
+      <div className=" relative">
         <AnimatePresence mode="wait">
           <motion.div
             key={step}
@@ -139,15 +129,11 @@ export default function FlujoVentas() {
             animate="animate"
             exit="exit"
             transition={{ duration: 0.3 }}
-            className="absolute w-full"
+            className=" w-full"
           >
             {step === 1 && <Clientes next={handleCustomerSaved} />}
             {step === 2 && customerId && (
-              <Venta
-                prev={prevStep}
-                next={handleOrderCreated}
-                customerId={customerId}
-              />
+              <Venta prev={prevStep} next={handleOrderCreated} customerId={customerId} />
             )}
             {step === 3 && orderId && (
               <Productos
@@ -173,25 +159,22 @@ export default function FlujoVentas() {
 
       {/* Controles globales de navegación */}
       <div className="mt-8 flex justify-between">
-        <button
+        <Button
           onClick={prevStep}
           disabled={step === 1}
-          className={`px-4 py-2 rounded-xl font-medium transition ${
-            step === 1
-              ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-              : "bg-gray-100 hover:bg-gray-200 text-gray-700"
-          }`}
+          variant='outline'
+            className="border-sky-blue text-sky-blue"
+          
         >
-          ← Anterior
-        </button>
+          <ArrowLeft/>Anterior
+        </Button>
 
         {step < steps.length ? (
-          <button
+          <Button
             onClick={nextStep}
-            className="px-6 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-semibold shadow-sm transition"
           >
-            Siguiente →
-          </button>
+            Siguiente<ArrowRight/>
+          </Button>
         ) : (
           <button
             onClick={handlePaymentCompleted}

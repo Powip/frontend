@@ -60,12 +60,12 @@ export interface IProductVariant {
 
 export interface IProduct {
   id: string;
-  sku: string;
   name: string;
-  priceBase: number;
-  priceVta: number;
   description?: string;
-  stock?: number;
+  priceBase?: string | number;
+  priceVta?: string | number | null;
+  sku?: string;
+  companyId?: string;
 
   // Relaciones
   brand?: IBrand | null;
