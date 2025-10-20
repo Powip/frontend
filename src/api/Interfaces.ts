@@ -1,4 +1,3 @@
-
 // INTERFACES DE PRODUCTOS
 export interface IGetCategory {
   id: string;
@@ -17,7 +16,7 @@ export interface IGetSubCategory {
   category: IGetCategory;
   attribute_type_ids: string[];
   created_at: string;
-  updated_at: string; 
+  updated_at: string;
 }
 
 export interface IGetBrand {
@@ -43,9 +42,8 @@ export interface IGetProducts {
   status: boolean;
   images: string[];
   created_at: string;
-  updated_at: string; 
+  updated_at: string;
 }
-
 
 export interface IProductFilters {
   companyId?: string;
@@ -58,7 +56,6 @@ export interface IProductFilters {
 }
 
 // INTERFACES DE COMPAÑIAS
-
 export interface IGetCompany {
   id: string;
   name: string;
@@ -79,57 +76,46 @@ export interface IGetCompany {
   enabled_at: string | null;
 }
 
-
 // INTERFACES DE VENTAS
-
-
-// =============================
-// ORDER HEADER (cabecera)
-// =============================
-
 export interface CreateOrderHeaderDto {
-  receiptType: string;          // Ej: FACTURA, TICKET
-  managementType: string;       // Ej: venta, canje, reserva
-  storeAssigned: string;        // Tienda asignada
-  deliveryPoint: string;        // Punto de entrega
-  salesChannel: string;         // Canal de venta (Web, Presencial, etc.)
-  closingChannel: string;       // Canal de cierre
-  gestion: string;              // Gestión
-  store: string;                // Tienda origen
-  courier: string;              // Envío por (Courier/Transporte)
-  reference?: string;           // Referencia opcional
-  totalAmount: number;          // Monto total
-  totalVat: number;             // IVA total
-  totalShippingCost: number;    // Costo de envío
-  customerId: string;           // DNI o ID del cliente
-  status: string;               // Estado de la orden (PENDING, CONFIRMED, etc.)
+  receiptType: string;
+  managementType: string;
+  storeAssigned: string;
+  deliveryPoint: string;
+  salesChannel: string;
+  closingChannel: string;
+  gestion: string;
+  store: string;
+  courier: string;
+  reference?: string;
+  totalAmount: number;
+  totalVat: number;
+  totalShippingCost: number;
+  customerId: string;
+  status: string;
 }
 
 export interface OrderHeader extends CreateOrderHeaderDto {
-  id: string;                   // ID generado por la API
+  id: string;
   createdAt: string;
   updatedAt: string;
 }
 
-// =============================
-// ORDER ITEMS (productos en la orden)
-// =============================
-
 export interface AttributeDto {
-  name: string;                 // Ej: Color, Talla
-  value: string;                // Ej: Rojo, M
-  unit?: string;                // Ej: cm, kg (opcional)
+  name: string;
+  value: string;
+  unit?: string;
 }
 
 export interface CreateOrderItemsDto {
   productId: string;
   quantity: number;
   unitPrice: number;
-  discountType: string;         // porcentaje | monto
+  discountType: string;
   discountAmount: number;
   attributes?: AttributeDto[];
   observations?: string;
-  status: string;               // ACTIVE, CANCELLED, etc.
+  status: string;
 }
 
 export interface OrderItem extends CreateOrderItemsDto {
@@ -139,31 +125,23 @@ export interface OrderItem extends CreateOrderItemsDto {
   updatedAt: string;
 }
 
-// =============================
-// ORDER + ITEMS juntos
-// =============================
-
 export interface CreateOrderHeaderPlusItemsDto extends CreateOrderHeaderDto {
   items: CreateOrderItemsDto[];
 }
 
-// =============================
-// PAYMENTS
-// =============================
-
 export interface CreatePaymentDto {
   orderId: string;
-  paymentMethod: string;        // Ej: tarjeta, efectivo
+  paymentMethod: string;
   amount: number;
-  paymentDate?: string;         // ISO date string
-  paymentProof?: string;        // URL o código comprobante
+  paymentDate?: string;
+  paymentProof?: string;
   generalNote?: string;
-  status?: string;              // CONFIRMED, PENDING
-  externalReference?: string;   // ID externo (ej: pasarela de pagos)
+  status?: string;
+  externalReference?: string;
 }
 
 export interface CompletePaymentDto extends CreatePaymentDto {
-  advancePayment: number;       // Monto adelantado
+  advancePayment: number;
 }
 
 export interface Payment extends CreatePaymentDto {
@@ -172,9 +150,7 @@ export interface Payment extends CreatePaymentDto {
   updatedAt: string;
 }
 
-
 // INTERFACES DE CLIENTES
-
 export interface IClient {
   id: string;
   documentNumber?: string;
@@ -196,33 +172,48 @@ export interface IClient {
   updatedAt?: string;
 }
 
-// INTERFACES DE Ventas
-
-// ===============
-// 📦 ORDENES
-// ===============
-
 export interface IOrderItemAttribute {
   name: string;
   value: string | number;
   unit?: string;
 }
 
+export interface IOrder {
+  id: string;
+  totalAmount: number;
+  totalVat: number;
+  totalShippingCost: number;
+}
+
 export interface IOrderItem {
   productId: string;
+  productName: string;
   quantity: number;
+  priceVta: number;
+  priceBase: number;
   unitPrice: number;
-  discountType?: "PORCENTAJE" | "MONTO"; // según tus reglas
+  discountType?: "PORCENTAJE" | "MONTO";
+  discountValue?: string | number;
   discountAmount?: number;
   attributes?: IOrderItemAttribute[];
   observations?: string;
   status?: boolean;
 }
 
+export interface IAddItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number | string;
+  discountType: number | string | null;
+  discountValue: number | null;
+  attributes?: IOrderItemAttribute[];
+}
+
 export interface ICreateOrderHeader {
   id?: string;
-  receiptType?: string;           // e.g., "FACT"
-  managementType?: string;        // e.g., "VENTA"
+  receiptType?: string;
+  managementType?: string;
   companyId?: string;
   store: string;
   storeAssigned?: string;
@@ -236,14 +227,9 @@ export interface ICreateOrderHeader {
   totalVat?: number;
   totalShippingCost?: number;
   customerId?: string;
-  status?: string;               // e.g., "PENDIENTE"
+  status?: string;
   items?: IOrderItem[];
 }
-
-
-// ===============
-// 💳 PAGOS
-// ===============
 
 export interface ICreatePaymentDto {
   orderId: string;
@@ -255,6 +241,7 @@ export interface ICreatePaymentDto {
   amount: number;
   method?: "EFECTIVO" | "TARJETA" | "TRANSFERENCIA";
   date?: string;
+  externalReference: string;
 }
 
 export interface IUpdatePaymentDto {
@@ -271,10 +258,6 @@ export interface IPayment {
   status: string;
   date: string;
 }
-
-// ===============
-// 📜 LOGS
-// ===============
 
 export interface ILogVenta {
   id: string;

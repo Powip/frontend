@@ -1,7 +1,7 @@
 "use client";
 
-import { toast } from "sonner";
-import React, { useState } from "react";
+import React, { useState, useMemo, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import ModalContainer from "../ui/modal-container";
 import Header from "../ui/header";
 import FormContainer from "../ui/form-container";
@@ -16,60 +16,101 @@ import {
 } from "../ui/select";
 import { Button } from "../ui/button";
 import { X } from "lucide-react";
-import { IOrderItem } from "@/src/api/Interfaces";
-import { IProduct } from "../products/interfaces";
+import { IAddItem } from "@/src/api/Interfaces";
+import { IProduct, IGroupedAttribute } from "../products/interfaces";
+import { getAttributesBySubcategory } from "@/src/api/Productos";
 
 type Props = {
   onClose: () => void;
-  onAdd: (item: IOrderItem) => void;
+  onAdd: (item: IAddItem) => void;
   products: IProduct[];
 };
 
 export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
-  const FIXED_SIZES = ["S", "M", "L", "XL", "XXL"];
-  const FIXED_COLORS = ["Rojo", "Azul", "Negro", "Blanco", "Gris"];
-
-  const [selectedProduct, setSelectedProduct] = useState<IProduct | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<string>("");
   const [quantity, setQuantity] = useState<number>(1);
-  const [discountType, setDiscountType] = useState<string>("");
+  const [discountType, setDiscountType] = useState<string | null>(null);
   const [discountValue, setDiscountValue] = useState<number>(0);
-  const [color, setColor] = useState<string>(FIXED_COLORS[0]);
-  const [size, setSize] = useState<string>(FIXED_SIZES[0]);
+  const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string>>({});
 
-  const handleProductChange = (productId: string) => {
-    const product = products.find((p) => p.id === productId) || null;
-    setSelectedProduct(product);
-    setQuantity(1);
-    setDiscountType("");
-    setDiscountValue(0);
-    setSize(FIXED_SIZES[0]);
-    setColor(FIXED_COLORS[0]);
-  };
+  // Producto seleccionado
+  const productObj = useMemo(
+    () => products.find((p) => p.id === selectedProduct),
+    [selectedProduct, products]
+  );
 
+  // Traer atributos dinámicos según la subcategoría
+  const { data: attributes = [], isLoading } = useQuery({
+    queryKey: ["attributes", productObj?.subcategory?.id],
+    queryFn: () => getAttributesBySubcategory(productObj!.subcategory!.id),
+    enabled: !!productObj?.subcategory?.id,
+  });
+
+  // Mostrar en consola los atributos crudos
+  useEffect(() => {
+    if (attributes.length) {
+      console.log("Atributos crudos:", attributes.map(a => a.id));
+    }
+  }, [attributes]);
+
+  // Agrupar atributos por tipo
+  const groupedAttributes = useMemo(() => {
+    if (!attributes?.length) return {};
+
+    const grouped = attributes.reduce((acc: Record<string, IGroupedAttribute>, attr) => {
+      const typeId = attr.attributeType?.id;
+      const typeName = attr.attributeType?.name || "Sin nombre";
+      if (!typeId) return acc;
+
+      if (!acc[typeId]) {
+        acc[typeId] = { typeId, typeName, values: [] };
+      }
+
+      acc[typeId].values.push({ id: attr.id, name: attr.name });
+      return acc;
+    }, {});
+
+    // Log detallado de los groupedAttributes
+    Object.values(grouped).forEach(g =>
+      g.values.forEach(v =>
+        console.log("GroupedAttribute:", g.typeName, v.id, v.name)
+      )
+    );
+
+    return grouped;
+  }, [attributes]);
+
+  // Acción para agregar producto
   const handleAdd = () => {
-    if (!selectedProduct) return toast.error("Debe seleccionar un producto");
-    if (!size) return toast.error("Debe seleccionar una talla");
-    if (!color) return toast.error("Debe seleccionar un color");
+    if (!productObj) return;
 
-    const item: IOrderItem = {
-      orderId: "",
-      productId: selectedProduct.id,
-      productName: selectedProduct.name,
+    const attributesArray = Object.entries(selectedAttributes).map(([typeId, attrId]) => {
+      const group = groupedAttributes[typeId];
+      const valueObj = group?.values.find((v) => v.id === attrId);
+      return {
+        name: group?.typeName || "Desconocido",
+        value: valueObj?.name || "N/A",
+      };
+    });
+
+    const item: IAddItem = {
+      productId: productObj.id,
+      productName: productObj.name,
       quantity,
-      unitPrice: Number(selectedProduct.priceBase || 0),
-      discountType: discountType.toUpperCase(),
+      unitPrice: Number(productObj.priceBase) || 0,
+      discountType,
       discountValue,
-      attributes: [
-        { name: "Color", value: color, unit: "" },
-        { name: "Talla", value: size, unit: "" },
-      ],
-      observations: "",
+      attributes: attributesArray,
     };
 
+    console.log("Producto final a agregar:", item);
     onAdd(item);
-    toast.success("Producto agregado al carrito");
-    onClose();
   };
+
+  // Log de productos para rastrear duplicados
+  useEffect(() => {
+    console.log("Productos renderizados:", products.map(p => p.id));
+  }, [products]);
 
   return (
     <ModalContainer>
@@ -84,20 +125,18 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
       </Header>
 
       <FormContainer>
+        {/* Selección de producto */}
         <FormGrid>
           <div>
             <Label>Producto</Label>
-            <Select
-              value={selectedProduct?.id || ""}
-              onValueChange={handleProductChange}
-            >
+            <Select value={selectedProduct} onValueChange={setSelectedProduct}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleccionar producto" />
               </SelectTrigger>
               <SelectContent>
-                {products.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
+                {products.map((prod, index) => (
+                  <SelectItem key={`prod-${prod.id}-${index}`} value={prod.id}>
+                    {prod.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -105,53 +144,51 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
           </div>
         </FormGrid>
 
+        {/* Atributos dinámicos */}
         <FormGrid>
-          <div>
-            <Label>Talla</Label>
-            <Select onValueChange={setSize} value={size}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Seleccionar" />
-              </SelectTrigger>
-              <SelectContent>
-                {FIXED_SIZES.map((s) => (
-                  <SelectItem key={s} value={s}>
-                    {s}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div>
-            <Label>Color</Label>
-            <Select onValueChange={setColor} value={color}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Seleccionar" />
-              </SelectTrigger>
-              <SelectContent>
-                {FIXED_COLORS.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {isLoading ? (
+            <p className="text-sm text-gray-400 mt-2">Cargando atributos...</p>
+          ) : (
+            Object.values(groupedAttributes).map((attrGroup, groupIndex) => (
+              <div key={`${attrGroup.typeId}-${groupIndex}`} className="mt-2">
+                <Label>{attrGroup.typeName}</Label>
+                <Select
+                  value={selectedAttributes[attrGroup.typeId] || ""}
+                  onValueChange={(val) =>
+                    setSelectedAttributes((prev) => ({ ...prev, [attrGroup.typeId]: val }))
+                  }
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder={`Seleccionar ${attrGroup.typeName}`} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {attrGroup.values.map((val, valIndex) => (
+                      <SelectItem
+                        key={`${attrGroup.typeId}-${val.id}-${valIndex}`}
+                        value={val.id}
+                      >
+                        {val.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ))
+          )}
         </FormGrid>
 
+        {/* Cantidad y descuentos */}
         <FormGrid>
           <div>
             <Label>Cantidad</Label>
-            <Select
-              value={String(quantity)}
-              onValueChange={(v) => setQuantity(Number(v))}
-            >
+            <Select value={String(quantity)} onValueChange={(v) => setQuantity(Number(v))}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <SelectItem key={n} value={String(n)}>
-                    {n}
+                {[1, 2, 3, 4, 5].map((num, index) => (
+                  <SelectItem key={`qty-${num}-${index}`} value={String(num)}>
+                    {num}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -160,13 +197,17 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
 
           <div>
             <Label>Tipo de Descuento</Label>
-            <Select onValueChange={setDiscountType} value={discountType}>
+            <Select value={discountType || ""} onValueChange={(v) => setDiscountType(v)}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="PORCENTAJE">Porcentaje</SelectItem>
-                <SelectItem value="MONTO">Monto fijo</SelectItem>
+                <SelectItem key="disc-porcentaje" value="porcentaje">
+                  Porcentaje
+                </SelectItem>
+                <SelectItem key="disc-monto" value="monto">
+                  Monto fijo
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -181,10 +222,10 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                {[0, 5, 10, 15, 20, 30].map((num) => (
-                  <SelectItem key={num} value={String(num)}>
+                {[0, 5, 10, 15, 20, 30].map((num, index) => (
+                  <SelectItem key={`discval-${num}-${index}`} value={String(num)}>
                     {num}
-                    {discountType === "PORCENTAJE" ? "%" : ""}
+                    {discountType === "porcentaje" ? "%" : ""}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -193,11 +234,17 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
         </FormGrid>
       </FormContainer>
 
+      {/* Botones */}
       <div className="grid grid-cols-4 gap-4 w-full mt-4">
         <Button onClick={onClose} variant="outline" className="col-span-1">
           Cancelar
         </Button>
-        <Button onClick={handleAdd} variant="lime" className="col-span-3">
+        <Button
+          onClick={handleAdd}
+          variant="lime"
+          className="col-span-3"
+          disabled={!selectedProduct}
+        >
           Agregar
         </Button>
       </div>

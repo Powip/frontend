@@ -20,12 +20,12 @@ import { toast } from "sonner";
 import { ICreateOrderHeader } from "@/src/api/Interfaces";
 
 type Props = {
-  next: (order: ICreateOrderHeader) => void; // recibe la orden creada localmente
+  next: (order: ICreateOrderHeader) => void;
   prev: () => void;
   customerId: string;
 };
 
-export const Venta = ({ next, prev, customerId }: Props) => {
+export const Venta = ({ next, customerId }: Props) => {
   const [gestion, setGestion] = useState("");
   const [canal, setCanal] = useState("");
   const [canalCierre, setCanalCierre] = useState("");
@@ -47,7 +47,7 @@ export const Venta = ({ next, prev, customerId }: Props) => {
 
     // Creamos orden local
     const localOrder: ICreateOrderHeader = {
-      id: `local-${Date.now()}`, // id temporal local
+      id: `local-${Date.now()}`,
       receiptType: "FACT",
       managementType: gestion,
       deliveryPoint: entregaEn,
@@ -62,11 +62,11 @@ export const Venta = ({ next, prev, customerId }: Props) => {
       customerId,
       status: "PENDIENTE",
       reference: referencia || "",
-      items: [], // vacío inicialmente
+      items: [],
     };
 
     localStorage.setItem("currentOrder", JSON.stringify(localOrder));
-    toast.success("Orden creada localmente");
+    toast.success("Orden creada");
     next(localOrder);
   };
 
@@ -97,8 +97,6 @@ export const Venta = ({ next, prev, customerId }: Props) => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="668cbc82-08aa-4a09-9dd1-6a5fc132c3a7">Falabella</SelectItem>
-                <SelectItem value="tienda-op">Tienda OP</SelectItem>
-                <SelectItem value="web-kunka">Web Kunka</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -110,8 +108,6 @@ export const Venta = ({ next, prev, customerId }: Props) => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="668cbc82-08aa-4a09-9dd1-6a5fc132c3a7">Instagram</SelectItem>
-                <SelectItem value="facebook">Facebook</SelectItem>
-                <SelectItem value="whatsapp">WhatsApp</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -126,7 +122,6 @@ export const Venta = ({ next, prev, customerId }: Props) => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="7e9d979c-44c6-4fea-843c-15b4ef8a5b71">Tienda Central</SelectItem>
-                <SelectItem value="tienda-shopping">Tienda Shopping</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -175,12 +170,9 @@ export const Venta = ({ next, prev, customerId }: Props) => {
         </FormGrid>
       </FormContainer>
 
-      <div className="grid grid-cols-4 gap-15 w-full mt-6">
-        <Button onClick={prev} variant="outline" className="col-span-1">
-          Regresar
-        </Button>
-        <Button onClick={handleSubmit} className="col-span-3">
-          Siguiente
+      <div className="w-full mt-6">
+        <Button onClick={handleSubmit} className="w-full">
+          Generar Venta
         </Button>
       </div>
     </Container>

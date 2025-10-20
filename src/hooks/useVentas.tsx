@@ -1,15 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import * as ventasApi from "@/src/api/Ventas";
-import { 
-  ICreateOrderHeader, 
-  ICreateOrderHeaderPlusItems, 
-  ICreateOrderItemsDto, 
-  IUpdateOrderHeaderDto, 
-  ICreatePaymentDto, 
-  IUpdatePaymentDto 
+import {
+  ICreateOrderHeader,
+  ICreateOrderHeaderPlusItems,
+  ICreateOrderItemsDto,
+  IUpdateOrderHeaderDto,
+  ICreatePaymentDto,
+  IUpdatePaymentDto,
 } from "@/src/api/Interfaces";
-
-// ========== QUERIES ==========
 
 // Obtener todas las órdenes (cabeceras)
 export const useOrders = () => {
@@ -63,8 +61,7 @@ export const useLogVentas = (orderId?: string) => {
   });
 };
 
-// ========== MUTATIONS ==========
-
+// mutaciones
 export const useCreateOrderHeader = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -93,8 +90,13 @@ export const useUpdateOrderHeader = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["updateOrderHeader"],
-    mutationFn: ({ orderId, payload }: { orderId: string; payload: IUpdateOrderHeaderDto }) =>
-      ventasApi.updateOrderHeader(orderId, payload),
+    mutationFn: ({
+      orderId,
+      payload,
+    }: {
+      orderId: string;
+      payload: IUpdateOrderHeaderDto;
+    }) => ventasApi.updateOrderHeader(orderId, payload),
     onSuccess: (_, { orderId }) => {
       queryClient.invalidateQueries({ queryKey: ["order", orderId] });
       queryClient.invalidateQueries({ queryKey: ["orders"] });
@@ -130,8 +132,13 @@ export const useAddOrderItem = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["addOrderItem"],
-    mutationFn: ({ orderId, item }: { orderId: string; item: ICreateOrderItemsDto }) =>
-      ventasApi.addOrderItem(orderId, item),
+    mutationFn: ({
+      orderId,
+      item,
+    }: {
+      orderId: string;
+      item: ICreateOrderItemsDto;
+    }) => ventasApi.addOrderItem(orderId, item),
     onSuccess: (_, { orderId }) => {
       queryClient.invalidateQueries({ queryKey: ["order", orderId] });
     },
@@ -168,8 +175,13 @@ export const useUpdatePayment = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["updatePayment"],
-    mutationFn: ({ paymentId, payload }: { paymentId: string; payload: IUpdatePaymentDto }) =>
-      ventasApi.updatePayment(paymentId, payload),
+    mutationFn: ({
+      paymentId,
+      payload,
+    }: {
+      paymentId: string;
+      payload: IUpdatePaymentDto;
+    }) => ventasApi.updatePayment(paymentId, payload),
     onSuccess: (_, { paymentId }) => {
       queryClient.invalidateQueries({ queryKey: ["payment", paymentId] });
       queryClient.invalidateQueries({ queryKey: ["payments"] });
@@ -192,10 +204,17 @@ export const useCreatePaymentForOrder = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["createPaymentForOrder"],
-    mutationFn: ({ orderId, payload }: { orderId: string; payload: ICreatePaymentDto }) =>
-      ventasApi.createPaymentForOrder(orderId, payload),
+    mutationFn: ({
+      orderId,
+      payload,
+    }: {
+      orderId: string;
+      payload: ICreatePaymentDto;
+    }) => ventasApi.createPaymentForOrder(orderId, payload),
     onSuccess: (_, { orderId }) => {
-      queryClient.invalidateQueries({ queryKey: ["payments", "order", orderId] });
+      queryClient.invalidateQueries({
+        queryKey: ["payments", "order", orderId],
+      });
     },
   });
 };
@@ -214,7 +233,9 @@ export const useUpdatePaymentForOrder = () => {
       payload: IUpdatePaymentDto;
     }) => ventasApi.updatePaymentForOrder(orderId, paymentId, payload),
     onSuccess: (_, { orderId }) => {
-      queryClient.invalidateQueries({ queryKey: ["payments", "order", orderId] });
+      queryClient.invalidateQueries({
+        queryKey: ["payments", "order", orderId],
+      });
     },
   });
 };
@@ -231,7 +252,9 @@ export const useDeletePaymentForOrder = () => {
       paymentId: string;
     }) => ventasApi.deletePaymentForOrder(orderId, paymentId),
     onSuccess: (_, { orderId }) => {
-      queryClient.invalidateQueries({ queryKey: ["payments", "order", orderId] });
+      queryClient.invalidateQueries({
+        queryKey: ["payments", "order", orderId],
+      });
     },
   });
 };

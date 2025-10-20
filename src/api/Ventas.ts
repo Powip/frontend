@@ -9,10 +9,6 @@ import {
   IUpdatePaymentDto,
 } from "./Interfaces";
 
-// ===============================
-// 📦 ORDENES (Order Header)
-// ===============================
-
 // Crear cabecera de orden
 export const createOrderHeader = async (payload: ICreateOrderHeader) => {
   const { data } = await axios.post(`${API.ventas}/order-header`, payload);
@@ -68,10 +64,6 @@ export const recalculateOrder = async (orderId: string) => {
   return data;
 };
 
-// ===============================
-// 🧾 ITEMS
-// ===============================
-
 // Agregar ítem a orden
 export const addOrderItem = async (
   orderId: string,
@@ -91,10 +83,6 @@ export const deleteOrderItem = async (orderId: string, itemId: string) => {
   );
   return data;
 };
-
-// ===============================
-// 💳 PAGOS
-// ===============================
 
 // Crear pago general
 export const createPayment = async (payload: ICreatePaymentDto) => {
@@ -138,7 +126,7 @@ export const createPaymentForOrder = async (
   payload: ICreatePaymentDto
 ) => {
   const { data } = await axios.post(
-    `${API.ventas}/order-header/${orderId}/payment`,
+    `${API.ventas}/payments/orders/${orderId}`,
     payload
   );
   return data;
@@ -178,13 +166,11 @@ export const deletePaymentForOrder = async (
 
 // Revertir un pago
 export const revertPayment = async (paymentId: string) => {
-  const { data } = await axios.post(`${API.ventas}/payment/${paymentId}/revert`);
+  const { data } = await axios.post(
+    `${API.ventas}/payment/${paymentId}/revert`
+  );
   return data;
 };
-
-// ===============================
-// 📜 LOG VENTAS
-// ===============================
 
 export const getLogVentas = async (orderId: string) => {
   const { data } = await axios.get(`${API.ventas}/log-ventas/${orderId}`);
