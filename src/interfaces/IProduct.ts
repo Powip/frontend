@@ -21,6 +21,7 @@ export interface IProductRequest {
   subcategoryId: string;
   companyId: string;
   supplierId: string;
+  brandId: string;
   availability: boolean;
   status: boolean;
   images: string[];

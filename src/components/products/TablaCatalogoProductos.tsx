@@ -17,9 +17,15 @@ interface Props {
   products: IProduct[];
   onDelete: (id: string) => void;
   onEdit: (id: string) => void;
+  onView: (id: string) => void;
 }
 
-export default function ProductsTable({ products, onDelete, onEdit }: Props) {
+export default function ProductsTable({
+  products,
+  onDelete,
+  onEdit,
+  onView,
+}: Props) {
   return (
     <Table>
       <TableHeader>
@@ -39,7 +45,7 @@ export default function ProductsTable({ products, onDelete, onEdit }: Props) {
         {products.map((product) => (
           <TableRow key={product.id}>
             <TableCell>{product.sku}</TableCell>
-            <TableCell>{product.description}</TableCell>
+            <TableCell>{product.name}</TableCell>
             <TableCell>{product.priceBase}</TableCell>
             <TableCell>{product.priceVta}</TableCell>
             <TableCell>{product.brand?.name}</TableCell>
@@ -63,7 +69,12 @@ export default function ProductsTable({ products, onDelete, onEdit }: Props) {
               >
                 <Trash />
               </Button>
-              <Button variant="table" size="icon" className="bg-sky-blue">
+              <Button
+                variant="table"
+                size="icon"
+                className="bg-sky-blue"
+                onClick={() => onView(product.id)}
+              >
                 <Eye />
               </Button>
             </TableActions>

@@ -1,4 +1,4 @@
-import FichaProducto from "../../../src/components/products/FichaProducto";
+import FichaProducto from "@/src/components/products/FichaProducto";
 
 const ProductoNuevo = () => {
   return (

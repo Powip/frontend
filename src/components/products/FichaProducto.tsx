@@ -2,7 +2,7 @@
 import { FormEvent, useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Toaster, toast } from "sonner";
+import { toast } from "sonner";
 
 import Header from "../ui/header";
 import Container from "../ui/container";
@@ -39,7 +39,6 @@ import { createProductVariant } from "../..//services/productVariantService";
 
 const FichaProducto = () => {
   const router = useRouter();
-  // ID de compañía fija por ahora (podría venir del contexto de usuario logueado)
   const companyId = "5d5b824c-2b81-4b17-960f-855bfc7806e2";
 
   /* Producto Inicial */
@@ -197,7 +196,8 @@ const FichaProducto = () => {
       categoryId: product.categoryId,
       subcategoryId: product.subcategoryId,
       companyId: product.companyId,
-      supplierId: product.supplierId, // 👈 solo el proveedor
+      supplierId: product.supplierId,
+      brandId: product.brandId,
       availability: true,
       status: product.status,
       images: product.images,
@@ -271,10 +271,9 @@ const FichaProducto = () => {
 
   return (
     <Container>
-      <Toaster richColors />
       <form onSubmit={handleSubmit}>
-        <Header>Ficha Producto</Header>
-        <FormContainer>
+        <Header className="mb-6">Ficha Producto</Header>
+        <FormContainer className="mb-6">
           <FormGrid>
             {/* Producto */}
             <div>
@@ -430,7 +429,7 @@ const FichaProducto = () => {
           </FormGrid>
         </FormContainer>
 
-        <FormContainer>
+        <FormContainer className="mb-6">
           <FormGrid>
             {/* Atributos dinámicos */}
             {Object.entries(attributesByType).map(([typeName, attrs]) => (
@@ -499,7 +498,7 @@ const FichaProducto = () => {
           </FormGrid>
         </FormContainer>
 
-        <FormContainer>
+        <FormContainer className="mb-6">
           <div>
             <Label>Observaciones*</Label>
             <Input

@@ -2,6 +2,7 @@ export interface Brand {
   id: string;
   name: string;
   description?: string;
+  is_active?: boolean;
   supplier_id: string;
 }
 
