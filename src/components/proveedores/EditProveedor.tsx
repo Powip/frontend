@@ -389,7 +389,11 @@ const EditProveedor = () => {
 
         {/* Buttons */}
         <div className="flex justify-center gap-10 mb-4">
-          <Button variant="outline" onClick={() => router.push("/proveedores")}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => router.push("/proveedores")}
+          >
             Cancelar
           </Button>
           <Button variant="default" type="submit">

@@ -41,7 +41,7 @@ export default function DeleteProductModal({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onCancel}>
+          <Button type="button" variant="outline" onClick={onCancel}>
             Cancelar
           </Button>
           <Button variant="default" onClick={onConfirm}>

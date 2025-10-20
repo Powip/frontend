@@ -1,14 +1,36 @@
 export interface IProduct {
+  id?: string;
   name: string;
   sku: string;
   categoryId: string;
   subcategoryId: string;
   supplierId: string;
   brandId: string;
-  priceCpra: number;
+  priceCpra?: number; // 👈 en tus payloads usás priceBase o priceVta
   priceVta: number;
-  observations: string;
+  observations?: string;
   images: string[];
+
+  // ✅ Relaciones opcionales (cuando se hace getProductById)
+  description?: string;
+  category?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
+  subcategory?: {
+    id: string;
+    name: string;
+    description?: string;
+  };
+  supplier?: {
+    id: string;
+    name: string;
+  };
+  brand?: {
+    id: string;
+    name: string;
+  };
 }
 
 export interface IProductRequest {

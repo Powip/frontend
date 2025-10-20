@@ -1,8 +1,8 @@
 "use client";
-import { FormEvent, useState, useEffect } from "react";
-import { useRouter, useParams } from "next/navigation";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 
-import { Toaster, toast } from "sonner";
+import { toast } from "sonner";
 
 import Header from "../ui/header";
 import Container from "../ui/container";
@@ -12,13 +12,6 @@ import Label from "../ui/label";
 
 import { Button } from "@/src/components/ui/button";
 import { Input } from "@/src/components/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/src/components/ui/select";
 
 import { IOrder } from "@/src/interfaces/IOrder";
 import { getPedidoById } from "@/src/services/orderService";

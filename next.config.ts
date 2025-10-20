@@ -1,11 +1,16 @@
-import type { NextConfig } from "next";
-
-const nextConfig: NextConfig = {
-  /* config options here */
+const nextConfig = {
   images: {
-    // Aquí es donde defines los dominios externos permitidos
-    domains: ["res.cloudinary.com"],
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+      },
+      {
+        protocol: "https",
+        hostname: "cdn.example.com",
+      },
+    ],
   },
 };
 
-export default nextConfig;
+module.exports = nextConfig;

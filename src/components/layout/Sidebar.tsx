@@ -64,13 +64,15 @@ export function Sidebar({ className }: SidebarProps) {
                 priority
               />
             ) : (
-              <Image
-                src="/logo_powip.png"
-                alt="Powip logo"
-                width={120}
-                height={40}
-                priority
-              />
+              <Link href="/">
+                <Image
+                  src="/logo_powip.png"
+                  alt="Powip logo"
+                  width={120}
+                  height={40}
+                  priority
+                />
+              </Link>
             )}
           </div>
         )}

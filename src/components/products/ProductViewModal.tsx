@@ -79,7 +79,7 @@ export default function ProductViewModal({
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h3 className="text-lg font-semibold text-gray-900">
-                {product.name} - {productId}
+                {product.name}
               </h3>
               <p className="text-sm text-gray-600">{product.description}</p>
             </div>
@@ -97,7 +97,7 @@ export default function ProductViewModal({
                       className="rounded-lg shadow-md object-contain"
                     />
                   ) : (
-                    // ⚙️ Si la URL es válida pero no pertenece a un dominio permitido, usamos <img>
+                    //
                     <img
                       src={product.images[0]}
                       alt={product.name}

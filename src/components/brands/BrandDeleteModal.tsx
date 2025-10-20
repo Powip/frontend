@@ -34,7 +34,7 @@ export default function BrandDeleteModal({
     <Modal title="Eliminar Marca" open={open} onClose={onClose}>
       <p className="mt-2">¿Confirma la eliminación de esta marca?</p>
       <div className="flex justify-end gap-3 mt-6">
-        <Button variant="outline" onClick={onClose}>
+        <Button type="button" variant="outline" onClick={onClose}>
           Cancelar
         </Button>
         <Button variant="default" onClick={handleDelete}>

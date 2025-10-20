@@ -1,3 +1,0 @@
-Perfectísimo compañera!!! era por ahí el error :)
-
-Ya que estamos pulamos algo más, anoche hicimos un hermoso ProductViewModal.tsx que muestra la info del producto, con los productos que cargué con la imagen correcta funciona de 10, hay un problemita, los primeros productos de prueba los cargaron con urls ficticias, entonces falla cuando intento mostrar un producto con una imagen mal cargada. Hasta me pide que agregue el dominio al Next.config pero es innecesario porque son ficticias, te paso el código y lo retocamos para que no se produzca este error?
