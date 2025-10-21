@@ -17,7 +17,7 @@ import {
 import { Button } from "../ui/button";
 import { X } from "lucide-react";
 import { IAddItem } from "@/src/api/Interfaces";
-import { IProduct, IGroupedAttribute } from "../products/interfaces";
+import { IProduct } from "../products/interfaces";
 import { getAttributesBySubcategory } from "@/src/api/Productos";
 
 type Props = {
@@ -25,6 +25,19 @@ type Props = {
   onAdd: (item: IAddItem) => void;
   products: IProduct[];
 };
+
+interface IGroupedAttribute {
+  typeId: string;
+  typeName: string;
+  values: { id: string; name: string }[];
+}
+
+interface IGroupedAttribute {
+  typeId: string;
+  typeName: string;
+  values: { id: string; name: string }[];
+}
+
 
 export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
   const [selectedProduct, setSelectedProduct] = useState<string>("");
@@ -46,18 +59,12 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
     enabled: !!productObj?.subcategory?.id,
   });
 
-  // Mostrar en consola los atributos crudos
-  useEffect(() => {
-    if (attributes.length) {
-      console.log("Atributos crudos:", attributes.map(a => a.id));
-    }
-  }, [attributes]);
 
   // Agrupar atributos por tipo
-  const groupedAttributes = useMemo(() => {
+  const groupedAttributes: Record<string, IGroupedAttribute> = useMemo(() => {
     if (!attributes?.length) return {};
 
-    const grouped = attributes.reduce((acc: Record<string, IGroupedAttribute>, attr) => {
+    const grouped = attributes.reduce((acc: Record<string, IGroupedAttribute>, attr: { attributeType: { id: string; name: string; }; id: string; name: string; }) => {
       const typeId = attr.attributeType?.id;
       const typeName = attr.attributeType?.name || "Sin nombre";
       if (!typeId) return acc;
@@ -71,11 +78,13 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
     }, {});
 
     // Log detallado de los groupedAttributes
-    Object.values(grouped).forEach(g =>
-      g.values.forEach(v =>
-        console.log("GroupedAttribute:", g.typeName, v.id, v.name)
-      )
-    );
+  (Object.values(grouped) as IGroupedAttribute[]).forEach((group) => {
+  group.values.forEach((v) => {
+    console.log("GroupedAttribute:", group.typeName, v.id, v.name);
+  });
+});
+
+
 
     return grouped;
   }, [attributes]);
@@ -86,7 +95,7 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
 
     const attributesArray = Object.entries(selectedAttributes).map(([typeId, attrId]) => {
       const group = groupedAttributes[typeId];
-      const valueObj = group?.values.find((v) => v.id === attrId);
+      const valueObj = group?.values.find((v: { id: string; }) => v.id === attrId);
       return {
         name: group?.typeName || "Desconocido",
         value: valueObj?.name || "N/A",
@@ -162,7 +171,7 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
                     <SelectValue placeholder={`Seleccionar ${attrGroup.typeName}`} />
                   </SelectTrigger>
                   <SelectContent>
-                    {attrGroup.values.map((val, valIndex) => (
+                    {attrGroup.values.map((val: { id: string; name: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<unknown>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<unknown>> | Iterable<React.ReactNode> | null | undefined> | null | undefined; }, valIndex: unknown) => (
                       <SelectItem
                         key={`${attrGroup.typeId}-${val.id}-${valIndex}`}
                         value={val.id}

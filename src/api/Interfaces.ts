@@ -95,6 +95,36 @@ export interface CreateOrderHeaderDto {
   status: string;
 }
 
+export interface ICreateOrderHeader {
+  clientId: string;
+  companyId?: string;
+  total: number;
+  date?: string;
+  notes?: string;
+  id?: string | undefined;
+  totalAmount: number;
+  totalVat: number;
+  totalShippingCost: number;
+}
+
+export interface IUpdateOrderHeaderDto {
+  total?: number;
+  date?: string;
+  notes?: string;
+  status?: string;
+}
+
+export interface ICreateOrderItemsDto {
+  productId: string;
+  quantity: number;
+  price: number;
+  discount?: number;
+}
+export interface ICreateOrderHeaderPlusItems  {
+  items: IAddItem[];
+}
+
+
 export interface OrderHeader extends CreateOrderHeaderDto {
   id: string;
   createdAt: string;
@@ -179,7 +209,7 @@ export interface IOrderItemAttribute {
 }
 
 export interface IOrder {
-  id: string;
+  id?: string | undefined;
   totalAmount: number;
   totalVat: number;
   totalShippingCost: number;
@@ -205,8 +235,11 @@ export interface IAddItem {
   productName: string;
   quantity: number;
   unitPrice: number | string;
-  discountType: number | string | null;
+  discountType:  string | null;
   discountValue: number | null;
+  priceBase?: number;
+  discountAmount?: number;
+  observations?: string;
   attributes?: IOrderItemAttribute[];
 }
 
@@ -223,9 +256,9 @@ export interface ICreateOrderHeader {
   gestion?: string;
   courier?: string;
   reference?: string;
-  totalAmount?: number;
-  totalVat?: number;
-  totalShippingCost?: number;
+  totalAmount: number;
+  totalVat: number;
+  totalShippingCost: number;
   customerId?: string;
   status?: string;
   items?: IOrderItem[];

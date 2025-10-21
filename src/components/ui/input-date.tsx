@@ -6,7 +6,7 @@ import { CalendarIcon } from "lucide-react"
 import { Button } from "@/src/components/ui/button"
 import { Calendar } from "@/src/components/ui/calendar"
 import { Input } from "@/src/components/ui/input"
-import { Label } from "@/src/components/ui/label"
+import  Label  from "@/src/components/ui/label"
 import {
   Popover,
   PopoverContent,

@@ -39,6 +39,21 @@ type Props = {
   next: (id: string) => void;
 };
 
+export interface IClientPayload {
+  name: string;
+  lastName: string;
+  nickName: string;
+  phoneNumber: string;
+  clientType: string; 
+  address: string;
+  province: string;
+  city: string;
+  district: string;
+  reference: string;
+  companyId?: string; // opcional
+}
+
+
 export const Clientes = ({ next }: Props) => {
   const [form, setForm] = useState({
     name: "",
@@ -63,7 +78,7 @@ export const Clientes = ({ next }: Props) => {
   const updateClientMutation = useUpdateClient();
   const deleteClientMutation = useDeleteClient();
   const { data: clientByPhone, isLoading: isClientLoading } =
-    useClientByPhone(searchPhone);
+    useClientByPhone(searchPhone || "");
 
   const companyId = "5d5b824c-2b81-4b17-960f-855bfc7806e2";
 
@@ -122,7 +137,7 @@ export const Clientes = ({ next }: Props) => {
       return;
     }
 
-    const payload = { ...form };
+    const payload: IClientPayload = { ...form };
 
     if (isNew) {
       payload.companyId = companyId;

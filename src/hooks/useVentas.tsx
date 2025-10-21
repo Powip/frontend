@@ -7,6 +7,7 @@ import {
   IUpdateOrderHeaderDto,
   ICreatePaymentDto,
   IUpdatePaymentDto,
+  IAddItem,
 } from "@/src/api/Interfaces";
 
 // Obtener todas las órdenes (cabeceras)
@@ -78,7 +79,7 @@ export const useCreateOrderWithItems = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["createOrderWithItems"],
-    mutationFn: (payload: ICreateOrderHeaderPlusItems) =>
+    mutationFn: (payload: IAddItem) =>
       ventasApi.createOrderWithItems(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });

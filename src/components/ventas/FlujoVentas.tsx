@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clientes } from "./Clientes";
-import { Venta } from "./Venta";
+import { Venta } from "./venta";
 import { Productos } from "./Productos";
 import { Pago } from "./Pago";
 import { toast } from "sonner";
-import { IAddItem, IOrder } from "@/src/api/Interfaces";
+import { IAddItem, ICreateOrderHeader, IOrder } from "@/src/api/Interfaces";
 import { Button } from "@/src/components/ui/button";
 
 interface Totals {
@@ -23,7 +23,7 @@ interface Item {
 
 export default function FlujoVentas() {
   const [step, setStep] = useState(1);
-  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [customerId, setCustomerId] = useState<string | null | undefined>(null);
   const [orderId, setOrderId] = useState<string | null>(null);
   const [cartItems, setCartItems] = useState<IAddItem[]>([]);
   const [totals, setTotals] = useState<Totals>({
@@ -47,8 +47,8 @@ export default function FlujoVentas() {
     console.log("ID de orden actualizada desde Productos:", id);
   };
 
-  const handleOrderCreated = (order: IOrder) => {
-    setOrderId(order.id);
+  const handleOrderCreated = (order: ICreateOrderHeader) => {
+    setOrderId(order.id || null);
     console.log("Order ID creado:", order.id);
     setTotals({
       totalAmount: order.totalAmount,
@@ -151,7 +151,9 @@ export default function FlujoVentas() {
                 customerId={customerId}
               />
             )}
+            
             {step === 3 && orderId && (
+              
               <Productos
                 prev={prevStep}
                 next={nextStep}
