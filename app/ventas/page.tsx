@@ -1,12 +1,9 @@
-import Link from "next/link";
+import FlujoVentas from "@/src/components/ventas/FlujoVentas"
 
-export default function Ventas() {
+export default function VentasPage() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100">
-      <h1 className="text-4xl font-bold text-blue-600 mb-8">Ventas</h1>
-      <Link href="/" className="text-blue-500 hover:underline text-xl">
-        Volver a Home
-      </Link>
-    </div>
+    <div className="p-10">
+        <FlujoVentas />
+      </div>
   );
 }
