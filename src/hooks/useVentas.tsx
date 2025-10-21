@@ -79,7 +79,7 @@ export const useCreateOrderWithItems = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ["createOrderWithItems"],
-    mutationFn: (payload: IAddItem) =>
+    mutationFn: (payload: ICreateOrderHeaderPlusItems) =>
       ventasApi.createOrderWithItems(payload),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });

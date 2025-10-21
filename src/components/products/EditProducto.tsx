@@ -64,6 +64,7 @@ const EditProducto = () => {
   });
 
   // === Cargar datos iniciales ===
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!id) return;
 

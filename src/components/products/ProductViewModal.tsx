@@ -98,7 +98,7 @@ export default function ProductViewModal({
                     />
                   ) : (
                     //
-                    <img
+                    <Image
                       src={product.images[0]}
                       alt={product.name}
                       width={120}
@@ -112,7 +112,7 @@ export default function ProductViewModal({
                   )
                 ) : (
                   // 🩶 Si la URL no es válida, mostramos el placeholder directamente
-                  <img
+                  <Image
                     src="/placeholder-image.png"
                     alt="Imagen no disponible"
                     width={120}
