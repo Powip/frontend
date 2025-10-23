@@ -72,7 +72,6 @@ export default function SubcategoriesTable({
               <TableCell>{subcat.sku || "-"}</TableCell>
               <TableActions>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-lime"
                   onClick={() => handleEdit(subcat)}
@@ -80,7 +79,6 @@ export default function SubcategoriesTable({
                   <Edit />
                 </Button>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-red"
                   onClick={() => handleDelete(subcat)}

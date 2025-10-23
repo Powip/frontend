@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import { Brand } from "@/interfaces/IProvider";
-import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -14,6 +13,7 @@ import {
 import { Edit, Trash, Plus } from "lucide-react";
 import BrandModal from "../brands/BrandModal";
 import BrandDeleteModal from "./BrandDeleteModal";
+import { Button } from "../ui/button";
 
 interface Props {
   brands: Brand[];
@@ -64,7 +64,6 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
               <TableCell>{brand.description || "-"}</TableCell>
               <TableActions>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-lime"
                   onClick={() => handleEdit(brand)}
@@ -72,7 +71,6 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
                   <Edit />
                 </Button>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-red"
                   onClick={() => handleDelete(brand)}

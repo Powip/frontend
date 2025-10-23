@@ -157,7 +157,6 @@ export const Pago = ({ orderId, totals, onPaymentCompleted }: Props) => {
       <div className="w-full ">
         <Button
           onClick={handleSubmit}
-          variant="lime"
           className="w-full"
           disabled={createPaymentMutation.isPending}
         >
