@@ -204,7 +204,7 @@ export default function FiltersForm({
       {/* Botones */}
       <div className="flex justify-between gap-2 mt-4">
         <div className="flex gap-2">
-          <Button onClick={applyFilters} variant="lime">
+          <Button onClick={applyFilters}>
             <FilterIcon />
             Filtrar
           </Button>

@@ -99,7 +99,7 @@ export default function PedidosTable({ pedidos }: { pedidos: IOrder[] }) {
               <TableCell>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="table" size="icon" className="bg-lime">
+                    <Button size="icon" className="bg-lime">
                       <Ellipsis />
                     </Button>
                   </DropdownMenuTrigger>

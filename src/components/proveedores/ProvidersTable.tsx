@@ -51,7 +51,6 @@ export default function ProvidersTable({
               <TableCell>{prov.email}</TableCell>
               <TableActions>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-lime"
                   onClick={() => onEdit(prov.id!)}
@@ -59,7 +58,6 @@ export default function ProvidersTable({
                   <Edit />
                 </Button>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-red"
                   onClick={() => onDelete(prov.id!)}
@@ -67,7 +65,6 @@ export default function ProvidersTable({
                   <Trash />
                 </Button>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-sky-blue"
                   onClick={() => onView(prov.id!)}

@@ -385,7 +385,6 @@ export const Clientes = ({ next }: Props) => {
             <Button
               onClick={() => handleSaveClient(true)}
               disabled={isSaving || form.phoneNumber.length === 0}
-              variant="lime"
               className="w-full max-w-full"
             >
               <Save className="mr-2 h-4 w-4" />
@@ -432,10 +431,7 @@ export const Clientes = ({ next }: Props) => {
             >
               {deleteClientMutation.isPending ? "Eliminando..." : "Eliminar"}
             </Button>
-            <Button
-              variant="blue"
-              onClick={() => setIsDeleteConfirmOpen(false)}
-            >
+            <Button onClick={() => setIsDeleteConfirmOpen(false)}>
               Cancelar
             </Button>
           </DialogFooter>

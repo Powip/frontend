@@ -1,20 +1,24 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
+  const router = useRouter();
+
+  useEffect(() => {
+    // ejemplo de redirect
+    const loggedIn = false;
+    if (!loggedIn) {
+      router.push("/login");
+    }
+  }, []);
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <h1 className="text-6xl font-bold text-green mb-8">Home</h1>
-      <div className="flex direction-col space-x-6">
-        <Link href="/ventas" className="text-blue-500 hover:underline text-xl">
-          Ventas
-        </Link>
-        <Link href="/pedidos" className="text-blue-500 hover:underline text-xl">
-          Pedidos
-        </Link>
-        <Link href="/productos" className="text-blue-500 hover:underline text-xl">
-          Productos
-        </Link>
-      </div>
+    <div>
+      <h1>Home</h1>
+      <Link href="/ventas">Ventas</Link>
     </div>
   );
 }

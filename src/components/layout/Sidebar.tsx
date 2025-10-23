@@ -14,7 +14,7 @@ import {
   LogOut,
   Sun,
 } from "lucide-react";
-import { Button } from "@/components/ui/layout/button";
+
 import { Input } from "@/components/ui/layout/input";
 import {
   Avatar,
@@ -22,6 +22,7 @@ import {
   AvatarImage,
 } from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
+import { Button } from "../ui/button";
 
 interface SidebarProps {
   className?: string;

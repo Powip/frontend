@@ -76,24 +76,9 @@ export default function ProductsTableSkeleton() {
               <div className="h-4 w-24 bg-gray-200 rounded"></div>
             </TableCell>
             <TableActions>
-              <Button
-                variant="table"
-                size="icon"
-                disabled
-                className="bg-gray-200 w-8 h-8"
-              />
-              <Button
-                variant="table"
-                size="icon"
-                disabled
-                className="bg-gray-200 w-8 h-8"
-              />
-              <Button
-                variant="table"
-                size="icon"
-                disabled
-                className="bg-gray-200 w-8 h-8"
-              />
+              <Button size="icon" disabled className="bg-gray-200 w-8 h-8" />
+              <Button size="icon" disabled className="bg-gray-200 w-8 h-8" />
+              <Button size="icon" disabled className="bg-gray-200 w-8 h-8" />
             </TableActions>
           </TableRow>
         ))}

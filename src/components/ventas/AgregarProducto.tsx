@@ -140,11 +140,7 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
     <ModalContainer>
       <Header
         action={
-          <Button
-            onClick={onClose}
-            variant="table"
-            className="bg-red rounded-full"
-          >
+          <Button onClick={onClose} className="bg-red rounded-full">
             <X strokeWidth={4} />
           </Button>
         }
@@ -318,7 +314,6 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
         </Button>
         <Button
           onClick={handleAdd}
-          variant="lime"
           className="col-span-3"
           disabled={!selectedProduct}
         >

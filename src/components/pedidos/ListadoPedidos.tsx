@@ -129,10 +129,7 @@ const ListadoPedidos = () => {
             <Label>Fecha Venta</Label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button
-                  variant="table"
-                  className="w-full px-3 py-2 border border-input rounded-md text-left bg-background text-gray-700 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
-                >
+                <Button className="w-full px-3 py-2 border border-input rounded-md text-left bg-background text-gray-700 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
                   {rangeVenta?.from
                     ? rangeVenta.from.toLocaleDateString()
                     : "Desde"}{" "}
@@ -160,10 +157,7 @@ const ListadoPedidos = () => {
             <Label>Fecha Entrega</Label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button
-                  variant="table"
-                  className="w-full px-3 py-2 border border-input rounded-md text-left bg-background text-gray-700 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
-                >
+                <Button className="w-full px-3 py-2 border border-input rounded-md text-left bg-background text-gray-700 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
                   {rangeEntrega?.from
                     ? rangeEntrega.from.toLocaleDateString()
                     : "Desde"}{" "}

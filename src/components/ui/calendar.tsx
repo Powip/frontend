@@ -186,7 +186,6 @@ function CalendarDayButton({
   return (
     <Button
       ref={ref}
-      variant="table"
       size="icon"
       data-day={day.date.toLocaleDateString()}
       data-selected-single={
