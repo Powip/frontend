@@ -10,11 +10,11 @@ import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
 import Label from "../ui/label";
 
-import { Button } from "@/src/components/ui/button";
-import { Input } from "@/src/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
-import { IOrder } from "@/src/interfaces/IOrder";
-import { getPedidoById } from "@/src/services/orderService";
+import { IOrder } from "@/interfaces/IOrder";
+import { getPedidoById } from "@/services/orderService";
 import ProductPedidoTable from "./productPedidoTable";
 
 const EditPedido = () => {

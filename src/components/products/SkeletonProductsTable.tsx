@@ -8,8 +8,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/src/components/ui/table";
-import { Button } from "@/src/components/ui/button";
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 
 export default function ProductsTableSkeleton() {
   const skeletonRows = Array.from({ length: 5 });

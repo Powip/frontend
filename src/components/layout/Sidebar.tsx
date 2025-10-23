@@ -14,13 +14,13 @@ import {
   LogOut,
   Sun,
 } from "lucide-react";
-import { Button } from "@/src/components/ui/layout/button";
-import { Input } from "@/src/components/ui/layout/input";
+import { Button } from "@/components/ui/layout/button";
+import { Input } from "@/components/ui/layout/input";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
-} from "@/src/components/ui/layout/avatar";
+} from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
 
 interface SidebarProps {

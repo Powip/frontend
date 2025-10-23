@@ -10,28 +10,25 @@ import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
 import Label from "../ui/label";
 
-import { Button } from "@/src/components/ui/button";
-import { Input } from "@/src/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/components/ui/select";
+} from "@/components/ui/select";
 
-import { ProviderRequest } from "@/src/interfaces/IProvider";
+import { ProviderRequest } from "@/interfaces/IProvider";
 
 import {
   getDepartments,
   getProvinces,
   getDistricts,
-} from "@/src/services/geoPeruService";
+} from "@/services/geoPeruService";
 
-import {
-  getProviderById,
-  updateProvider,
-} from "@/src/services/providerService";
+import { getProviderById, updateProvider } from "@/services/providerService";
 
 const EditProveedor = () => {
   const router = useRouter();

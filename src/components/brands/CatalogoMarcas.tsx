@@ -15,12 +15,12 @@ import {
   SelectContent,
   SelectItem,
   SelectValue,
-} from "@/src/components/ui/select";
+} from "@/components/ui/select";
 
-import { Brand, Provider } from "@/src/interfaces/IProvider";
+import { Brand, Provider } from "@/interfaces/IProvider";
 
-import { getProvidersByCompany } from "@/src/services/providerService";
-import { getBrandsBySupplier } from "@/src/services/brandService";
+import { getProvidersByCompany } from "@/services/providerService";
+import { getBrandsBySupplier } from "@/services/brandService";
 
 import BrandsTable from "../brands/BrandsTable";
 

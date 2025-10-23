@@ -1,4 +1,4 @@
-import FichaProveedor from "@/src/components/proveedores/FichaProveedor";
+import FichaProveedor from "@/components/proveedores/FichaProveedor";
 
 const ProveedorNuevo = () => {
   return (

@@ -1,5 +1,5 @@
-import { Provider } from "@/src/interfaces/IProvider";
-import { Button } from "@/src/components/ui/button";
+import { Provider } from "@/interfaces/IProvider";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
   TableActions,
-} from "@/src/components/ui/table";
+} from "@/components/ui/table";
 import { Edit, Trash, Eye } from "lucide-react";
 
 interface Props {

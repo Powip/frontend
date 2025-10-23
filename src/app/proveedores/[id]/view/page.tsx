@@ -1,4 +1,4 @@
-import ViewProvider from "@/src/components/proveedores/ViewProveedor";
+import ViewProvider from "@/components/proveedores/ViewProveedor";
 
 export default function ProveedorView() {
   return (

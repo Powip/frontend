@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import "./../src/styles/globals.css";
-import { Sidebar } from "@/src/components/layout/Sidebar";
-import Providers from "@/src/contexts/Providers";
+import "../styles/globals.css";
+import { Sidebar } from "@/components/layout/Sidebar";
+import Providers from "@/contexts/Providers";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
 
@@ -16,16 +16,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-     <html lang="es">
+    <html lang="es">
       <body>
         <Providers>
           <div className="flex min-h-screen">
             <Sidebar />
 
-            <main className="flex-1 bg-gray-light">
-              {children}
-            </main>
-            <Toaster position="bottom-center" richColors  />
+            <main className="flex-1 bg-gray-light">{children}</main>
+            <Toaster position="bottom-center" richColors />
           </div>
           <ReactQueryDevtools initialIsOpen={false} />
         </Providers>

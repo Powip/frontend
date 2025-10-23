@@ -14,18 +14,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { Input } from "@/src/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { Button } from "../ui/button";
 
-import { Calendar } from "@/src/components/ui/calendar";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
-} from "@/src/components/ui/popover";
+} from "@/components/ui/popover";
 
-import { getPedidos } from "@/src/services/orderService";
-import { IOrder } from "@/src/interfaces/IOrder";
+import { getPedidos } from "@/services/orderService";
+import { IOrder } from "@/interfaces/IOrder";
 
 import PedidosTable from "./PedidosTable";
 

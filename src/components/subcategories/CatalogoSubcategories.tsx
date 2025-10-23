@@ -15,13 +15,13 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/components/ui/select";
+} from "@/components/ui/select";
 
-import { Category, Subcategory } from "@/src/interfaces/ICategory";
+import { Category, Subcategory } from "@/interfaces/ICategory";
 
 import { getCategories } from "../../services/categoryService";
 
-import SubcategoriesTable from "@/src/components/subcategories/SubcategoriesTable";
+import SubcategoriesTable from "@/components/subcategories/SubcategoriesTable";
 
 const CatalogoSubcategorias = () => {
   const [categories, setCategories] = useState<Category[]>([]);

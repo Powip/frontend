@@ -1,5 +1,5 @@
 import pedidos from "../mocks/pedidos";
-import { IOrder } from "@/src/interfaces/IOrder";
+import { IOrder } from "@/interfaces/IOrder";
 
 // Servicio para traer un pedido
 export async function getPedidos(): Promise<IOrder[]> {

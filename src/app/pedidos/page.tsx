@@ -1,4 +1,4 @@
-import ListadoPedidos from "@/src/components/pedidos/ListadoPedidos";
+import ListadoPedidos from "@/components/pedidos/ListadoPedidos";
 
 export default function Pedidos() {
   return (

@@ -1,4 +1,4 @@
-import EditProducto from "@/src/components/products/EditProducto";
+import EditProducto from "@/components/products/EditProducto";
 
 export default function ProductoEdit() {
   return (

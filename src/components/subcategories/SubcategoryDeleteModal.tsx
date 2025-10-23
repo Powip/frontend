@@ -1,7 +1,7 @@
 "use client";
-import { Button } from "@/src/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { inactivateSubcategory } from "@/src/services/subcategoryService";
+import { inactivateSubcategory } from "@/services/subcategoryService";
 import { Modal } from "../ui/modal";
 
 interface ConfirmDeleteModalProps {

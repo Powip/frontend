@@ -10,15 +10,15 @@ import Header from "../ui/header";
 import FormGrid from "../ui/form-grid";
 import FormContainer from "../ui/form-container";
 import Label from "../ui/label";
-import { Input } from "@/src/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { Button } from "../ui/button";
 
-import { Provider } from "@/src/interfaces/IProvider";
+import { Provider } from "@/interfaces/IProvider";
 import {
   getProvidersByCompany,
   getProviderById,
   inactivateProvider,
-} from "@/src/services/providerService";
+} from "@/services/providerService";
 
 import ProvidersTable from "../../components/proveedores/ProvidersTable";
 import DeleteProviderModal from "./DeleteProviderModal";

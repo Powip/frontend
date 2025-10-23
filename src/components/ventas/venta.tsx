@@ -17,7 +17,7 @@ import {
 } from "../ui/select";
 import { Textarea } from "../ui/textarea";
 import { toast } from "sonner";
-import { ICreateOrderHeader } from "@/src/api/Interfaces";
+import { ICreateOrderHeader } from "@/api/Interfaces";
 
 type Props = {
   next: (order: ICreateOrderHeader) => void;
@@ -97,7 +97,9 @@ export const Venta = ({ next, customerId }: Props) => {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="668cbc82-08aa-4a09-9dd1-6a5fc132c3a7">Falabella</SelectItem>
+                <SelectItem value="668cbc82-08aa-4a09-9dd1-6a5fc132c3a7">
+                  Falabella
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -108,7 +110,9 @@ export const Venta = ({ next, customerId }: Props) => {
                 <SelectValue placeholder="Seleccionar canal de cierre" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="668cbc82-08aa-4a09-9dd1-6a5fc132c3a7">Instagram</SelectItem>
+                <SelectItem value="668cbc82-08aa-4a09-9dd1-6a5fc132c3a7">
+                  Instagram
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -122,7 +126,9 @@ export const Venta = ({ next, customerId }: Props) => {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="7e9d979c-44c6-4fea-843c-15b4ef8a5b71">Tienda Central</SelectItem>
+                <SelectItem value="7e9d979c-44c6-4fea-843c-15b4ef8a5b71">
+                  Tienda Central
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -133,7 +139,9 @@ export const Venta = ({ next, customerId }: Props) => {
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="recoje-en-tienda">Recoje en tienda</SelectItem>
+                <SelectItem value="recoje-en-tienda">
+                  Recoje en tienda
+                </SelectItem>
                 <SelectItem value="lima">Lima</SelectItem>
                 <SelectItem value="provincia">Provincia</SelectItem>
               </SelectContent>
@@ -166,7 +174,10 @@ export const Venta = ({ next, customerId }: Props) => {
         <FormGrid>
           <div>
             <Label>Referencia</Label>
-            <Textarea value={referencia} onChange={(e) => setReferencia(e.target.value)} />
+            <Textarea
+              value={referencia}
+              onChange={(e) => setReferencia(e.target.value)}
+            />
           </div>
         </FormGrid>
       </FormContainer>

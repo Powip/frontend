@@ -6,11 +6,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/components/ui/select";
-import { Input } from "@/src/components/ui/input";
-import { Button } from "@/src/components/ui/button";
-import Label from "@/src/components/ui/label";
-import FormGrid from "@/src/components/ui/form-grid";
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import Label from "@/components/ui/label";
+import FormGrid from "@/components/ui/form-grid";
 import { FilterIcon, Download } from "lucide-react";
 import {
   ICategory,

@@ -11,7 +11,7 @@ import ProductsTable from "./TablaCatalogoProductos";
 import FormGrid from "../ui/form-grid";
 import { Button } from "../ui/button";
 
-import { useCatalogoProductos } from "@/src/hooks/useCatalogoProductos";
+import { useCatalogoProductos } from "@/hooks/useCatalogoProductos";
 import ProductsTableSkeleton from "./SkeletonProductsTable";
 
 import { deleteProduct, getProductById } from "../../services/productService";

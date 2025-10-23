@@ -1,9 +1,9 @@
-import CatalogoMarcas from "@/src/components/brands/CatalogoMarcas";
+import CatalogoProductos from "@/components/products/CatalogoProductos";
 
 export default function Productos() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen">
-      <CatalogoMarcas />
+      <CatalogoProductos />
     </div>
   );
 }

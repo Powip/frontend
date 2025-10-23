@@ -1,4 +1,4 @@
-import EditPedido from "@/src/components/pedidos/EditPedido";
+import EditPedido from "@/components/pedidos/EditPedido";
 
 export default function PedidoEdit() {
   return (

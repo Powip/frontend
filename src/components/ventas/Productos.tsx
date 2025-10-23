@@ -19,9 +19,13 @@ import {
 } from "../ui/table";
 import { AgregarProducto } from "./AgregarProducto";
 import Container from "../ui/container";
-import { useCatalogoProductos } from "@/src/hooks/useCatalogoProductos";
-import { useCreateOrderWithItems } from "@/src/hooks/useVentas";
-import { IAddItem, ICreateOrderHeaderPlusItems, IOrderItem } from "@/src/api/Interfaces";
+import { useCatalogoProductos } from "@/hooks/useCatalogoProductos";
+import { useCreateOrderWithItems } from "@/hooks/useVentas";
+import {
+  IAddItem,
+  ICreateOrderHeaderPlusItems,
+  IOrderItem,
+} from "@/api/Interfaces";
 import { toast } from "sonner";
 
 type Props = {

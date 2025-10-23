@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
-import { Brand } from "@/src/interfaces/IProvider";
-import { Button } from "@/src/components/ui/button";
+import { Brand } from "@/interfaces/IProvider";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
   TableActions,
-} from "@/src/components/ui/table";
+} from "@/components/ui/table";
 import { Edit, Trash, Plus } from "lucide-react";
 import BrandModal from "../brands/BrandModal";
 import BrandDeleteModal from "./BrandDeleteModal";

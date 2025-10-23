@@ -1,8 +1,8 @@
 "use client";
-import { Button } from "@/src/components/ui/button";
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { inactivateBrand } from "@/src/services/brandService";
-import { Modal } from "@/src/components/ui/modal";
+import { inactivateBrand } from "@/services/brandService";
+import { Modal } from "@/components/ui/modal";
 
 interface ConfirmDeleteModalProps {
   open: boolean;

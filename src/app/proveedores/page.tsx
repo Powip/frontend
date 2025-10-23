@@ -1,4 +1,4 @@
-import CatalogoProveedores from "@/src/components/proveedores/CatalogoProveedores";
+import CatalogoProveedores from "@/components/proveedores/CatalogoProveedores";
 
 const Proveedores = () => {
   return (

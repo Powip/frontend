@@ -10,15 +10,15 @@ import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
 import Label from "../ui/label";
 
-import { Button } from "@/src/components/ui/button";
-import { Input } from "@/src/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/components/ui/select";
+} from "@/components/ui/select";
 
 import { getCategories } from "../../services/categoryService";
 import { Category, Subcategory } from "../../interfaces/ICategory";

@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
-import { Subcategory } from "@/src/interfaces/ICategory";
-import { Button } from "@/src/components/ui/button";
+import { Subcategory } from "@/interfaces/ICategory";
+import { Button } from "@/components/ui/button";
 
 import {
   Table,
@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
   TableActions,
-} from "@/src/components/ui/table";
+} from "@/components/ui/table";
 import { Edit, Trash, Plus } from "lucide-react";
 import SubcategoryModal from "./SubcategoryModal";
 import SubcategoryDeleteModal from "./SubcategoryDeleteModal";

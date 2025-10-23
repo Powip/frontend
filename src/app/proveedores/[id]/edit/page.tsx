@@ -1,4 +1,4 @@
-import EditProveedor from "@/src/components/proveedores/EditProveedor";
+import EditProveedor from "@/components/proveedores/EditProveedor";
 
 export default function ProveedorEdit() {
   return (

@@ -1,9 +1,9 @@
-import CatalogoSubcategorias from "../../src/components/subcategories/CatalogoSubcategories";
+import CatalogoMarcas from "@/components/brands/CatalogoMarcas";
 
 export default function Productos() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen">
-      <CatalogoSubcategorias />
+      <CatalogoMarcas />
     </div>
   );
 }
