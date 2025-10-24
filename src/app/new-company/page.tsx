@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Upload } from "lucide-react";
 import {
@@ -24,6 +24,7 @@ import {
 import { Currency, currencyOptions } from "@/enum/Currency";
 import axios from "axios";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 /* 
 Manejar carga de imagenes -> Backend
@@ -41,6 +42,7 @@ interface FormData {
 }
 
 export default function NewCompanyPage() {
+  const { auth, logout } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -55,6 +57,12 @@ export default function NewCompanyPage() {
     currency: Currency.PEN,
   });
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+
+  useEffect(() => {
+    if (!auth) router.push("/login");
+  }, [auth]);
+
+  if (!auth) return null;
 
   const validateForm = (): boolean => {
     const newErrors: { [key: string]: string } = {};

@@ -4,6 +4,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import Providers from "@/contexts/Providers";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
+import { AuthProvider } from "@/contexts/AuthContext";
 
 export const metadata: Metadata = {
   title: "Powip Frontend",
@@ -18,8 +19,10 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body>
-        {children}
-        <Toaster position="top-right" richColors />
+        <AuthProvider>
+          {children}
+          <Toaster position="top-right" richColors />
+        </AuthProvider>
       </body>
     </html>
   );

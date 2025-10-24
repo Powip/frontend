@@ -8,6 +8,7 @@ import { Input } from "../ui/input";
 import Link from "next/link";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LoginData {
   email: string;
@@ -15,6 +16,7 @@ interface LoginData {
 }
 
 export default function LoginForm() {
+  const { login } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [loginData, setLoginData] = useState<LoginData>({
@@ -56,17 +58,13 @@ export default function LoginForm() {
       );
       if (response.status === 200) {
         toast.success("Inicio de sesión exitoso");
-        console.log(response.data);
+        login(response.data);
         router.push("/new-company");
       }
     } catch (error) {
       console.log(error);
       toast.error("El usuario y/o la contraseña son incorrectos");
     }
-  };
-
-  const handleOnRedirect = () => {
-    redirect("/new-company");
   };
 
   return (
