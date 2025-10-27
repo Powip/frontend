@@ -12,7 +12,7 @@ import { decodeToken, isExpired, DecodedToken } from "@/lib/jwt";
 interface AuthData {
   accessToken: string;
   refreshToken: string;
-  user: { email: string; userId: string };
+  user: { email: string; id: string; role: string };
   exp: number;
 }
 
@@ -38,7 +38,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setAuth({
           accessToken: parsed.accessToken,
           refreshToken: parsed.refreshToken,
-          user: { email: decoded.sub, userId: decoded.userId },
+          user: { email: decoded.email, id: decoded.id, role: decoded.role },
           exp: decoded.exp,
         });
       } else {
@@ -60,7 +60,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const newAuth = {
       accessToken,
       refreshToken,
-      user: { email: decoded.sub, userId: decoded.userId },
+      user: { email: decoded.email, id: decoded.id, role: decoded.role },
       exp: decoded.exp,
     };
     setAuth(newAuth);
@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const refreshAccessToken = async () => {
     if (!auth) return;
     try {
-      const res = await fetch("/api/v1/auth/refresh", {
+      const res = await fetch("http://localhost:8080/api/v1/auth/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken: auth.refreshToken }),

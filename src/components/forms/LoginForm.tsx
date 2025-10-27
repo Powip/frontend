@@ -9,6 +9,7 @@ import Link from "next/link";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
+import ForgotPassword from "../modals/forgotPasswortModal";
 
 interface LoginData {
   email: string;
@@ -26,6 +27,7 @@ export default function LoginForm() {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>(
     {}
   );
+  const [open, setOpen] = useState<boolean>(false);
 
   const handleSocialLogin = (provider: string) => {
     console.log(`[v0] Logging in with ${provider}`);
@@ -90,12 +92,14 @@ export default function LoginForm() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <Label htmlFor="password">Contraseña</Label>
-            <Link
-              href="/recuperar-contrasena"
+            <p
+              onClick={() => {
+                setOpen(true);
+              }}
               className="text-xs text-primary hover:underline"
             >
               ¿Olvidaste tu contraseña?
-            </Link>
+            </p>
           </div>
           <Input
             value={loginData.password}
@@ -186,6 +190,7 @@ export default function LoginForm() {
           Outlook
         </Button>
       </div>
+      <ForgotPassword open={open} onClose={() => setOpen(false)} />
     </div>
   );
 }

@@ -15,7 +15,6 @@ import LoginForm from "@/components/forms/LoginForm";
 /* 
 validar contraseña fuerte
 Redirigir en registerform
-creacion de auth-context
 */
 export default function LoginPage() {
   return (
