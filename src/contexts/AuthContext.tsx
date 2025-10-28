@@ -8,6 +8,7 @@ import {
   ReactNode,
 } from "react";
 import { decodeToken, isExpired, DecodedToken } from "@/lib/jwt";
+import { getCookie, setCookie, deleteCookie } from "cookies-next";
 
 interface AuthData {
   accessToken: string;
@@ -28,21 +29,22 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [auth, setAuth] = useState<AuthData | null>(null);
 
-  // Cargar sesión del localStorage (si existe)
+  // ---- CARGAR SESIÓN DESDE COOKIE ----
   useEffect(() => {
-    const saved = localStorage.getItem("auth");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      const decoded = decodeToken(parsed.accessToken);
+    const accessToken = getCookie("accessToken") as string | undefined;
+    const refreshToken = getCookie("refreshToken") as string | undefined;
+
+    if (accessToken && refreshToken) {
+      const decoded = decodeToken(accessToken);
       if (decoded && !isExpired(decoded.exp)) {
         setAuth({
-          accessToken: parsed.accessToken,
-          refreshToken: parsed.refreshToken,
+          accessToken,
+          refreshToken,
           user: { email: decoded.email, id: decoded.id, role: decoded.role },
           exp: decoded.exp,
         });
       } else {
-        localStorage.removeItem("auth");
+        logout();
       }
     }
   }, []);
@@ -57,20 +59,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }) => {
     const decoded = decodeToken(accessToken);
     if (!decoded) return;
+
     const newAuth = {
       accessToken,
       refreshToken,
       user: { email: decoded.email, id: decoded.id, role: decoded.role },
       exp: decoded.exp,
     };
+
     setAuth(newAuth);
-    localStorage.setItem("auth", JSON.stringify(newAuth));
+    // Guardar tokens en cookies (duración configurable)
+    setCookie("accessToken", accessToken, { maxAge: 60 * 60 }); // 15 minutos
+    setCookie("refreshToken", refreshToken, { maxAge: 60 * 60 * 24 * 7 }); // 7 días
   };
 
   // ---- LOGOUT ----
   const logout = () => {
     setAuth(null);
-    localStorage.removeItem("auth");
+    deleteCookie("accessToken");
+    deleteCookie("refreshToken");
   };
 
   // ---- REFRESH TOKEN ----
@@ -94,7 +101,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         exp: decoded.exp,
       };
       setAuth(updatedAuth);
-      localStorage.setItem("auth", JSON.stringify(updatedAuth));
+      setCookie("accessToken", data.accessToken, { maxAge: 60 * 15 });
     } catch (error) {
       console.error("Error refreshing token:", error);
       logout();
@@ -108,10 +115,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const checkAndRefresh = () => {
       const now = Math.floor(Date.now() / 1000);
       const timeLeft = auth.exp - now;
-      if (timeLeft < 60) refreshAccessToken(); // menos de 1 min → refresca
+      if (timeLeft < 60) refreshAccessToken();
     };
 
-    const interval = setInterval(checkAndRefresh, 60 * 1000); // cada minuto
+    const interval = setInterval(checkAndRefresh, 60 * 1000);
     return () => clearInterval(interval);
   }, [auth]);
 
