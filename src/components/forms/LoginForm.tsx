@@ -48,6 +48,7 @@ export default function LoginForm() {
   };
 
   const handleOnLogin = async (e: React.FormEvent) => {
+    setIsLoading(true);
     e.preventDefault();
     if (!validateForm()) {
       toast.error("Por favor, completa todos los campos requeridos.");
@@ -66,6 +67,8 @@ export default function LoginForm() {
     } catch (error) {
       console.log(error);
       toast.error("El usuario y/o la contraseña son incorrectos");
+    } finally {
+      setIsLoading(false);
     }
   };
 
