@@ -8,9 +8,12 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { useAuth } from "@/contexts/AuthContext";
+import axios from "axios";
 import { Check } from "lucide-react";
 import Image from "next/image";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export interface Plan {
   id: string;
@@ -25,29 +28,6 @@ export interface FrontPlan extends Plan {
   features: string[];
   popular: boolean;
 }
-const rawPlans: Plan[] = [
-  {
-    id: "99999999-8888-7777-6666-555555555555",
-    name: "Basic",
-    description: "Perfecto para emprendedores que están comenzando",
-    price: 9.99,
-    durationInDays: 30,
-  },
-  {
-    id: "88888888-7777-6666-5555-444444444444",
-    name: "Medium",
-    description: "Ideal para negocios en crecimiento",
-    price: 24.99,
-    durationInDays: 90,
-  },
-  {
-    id: "77777777-6666-5555-4444-333333333333",
-    name: "Premium",
-    description: "Para negocios establecidos que necesitan todo",
-    price: 49.99,
-    durationInDays: 365,
-  },
-];
 
 const adaptPlans = (plans: Plan[]): FrontPlan[] =>
   plans.map((plan) => ({
@@ -90,9 +70,59 @@ const adaptPlans = (plans: Plan[]): FrontPlan[] =>
   }));
 
 export default function SubscriptionsPage() {
-  const plans: FrontPlan[] = adaptPlans(rawPlans);
+  const router = useRouter();
+  const [plans, setPlans] = useState<FrontPlan[]>([]);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<FrontPlan | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+
+  const { auth } = useAuth();
+
+  useEffect(() => {
+    if (!auth) {
+      router.push("/login");
+    }
+  }, [auth, router]);
+
+  useEffect(() => {
+    const fetchPlans = async () => {
+      try {
+        setLoading(true);
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_SUBS}/plans`
+        );
+        if (response.status === 200) {
+          const data: Plan[] = response.data;
+          setPlans(adaptPlans(data));
+        }
+      } catch (error) {
+        console.error(error);
+        setError("No se pudieron cargar los planes.");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPlans();
+  }, []);
+
+  if (!auth) return null;
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-muted-foreground">
+        Cargando planes...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center text-red-500">
+        {error}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background py-12">
@@ -170,6 +200,7 @@ export default function SubscriptionsPage() {
         </div>
       </div>
       <SubscriptionModal
+        userId={auth.user?.id}
         open={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);

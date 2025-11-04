@@ -17,23 +17,38 @@ interface Props {
   open: boolean;
   onClose: () => void;
   plan: FrontPlan | null;
+  userId: string;
 }
-export default function SubscriptionModal({ open, onClose, plan }: Props) {
+export default function SubscriptionModal({
+  open,
+  onClose,
+  plan,
+  userId,
+}: Props) {
   const router = useRouter();
   if (!plan) return null;
   const handleRedirect = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     try {
+      const body = {
+        userId,
+        planId: plan.id,
+      };
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_SUBS}/subscriptions`
+        `${process.env.NEXT_PUBLIC_API_SUBS}/subscriptions`,
+        body
       );
-      if (response.status === 200) {
+
+      if (response.status === 201) {
         toast.success("Subscripcion comprada con exito!");
         router.push("/new-company");
       }
-    } catch (error) {
-      console.log("Error la crear la subscripcion");
-      router.push("/new-company");
+    } catch (error: any) {
+      console.log("Error la crear la subscripcion", error);
+      if (error.status === 400) {
+        toast.error(error.response.data.error);
+        router.push("/new-company");
+      }
     }
   };
   return (
