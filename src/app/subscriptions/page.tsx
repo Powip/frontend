@@ -94,10 +94,6 @@ export default function SubscriptionsPage() {
   const [selectedPlan, setSelectedPlan] = useState<FrontPlan | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
-  const handleSelectPlan = (plan: FrontPlan): void => {
-    setSelectedPlan(plan);
-    setIsModalOpen(true);
-  };
   return (
     <div className="min-h-screen bg-background py-12">
       <div className="container mx-auto px-4">
@@ -142,7 +138,7 @@ export default function SubscriptionsPage() {
                 <CardDescription>{plan.description}</CardDescription>
                 <div className="mt-4">
                   <span className="text-4xl font-bold text-foreground">
-                    {plan.price}
+                    ${plan.price}
                   </span>
                   <span className="text-muted-foreground">{plan.period}</span>
                 </div>

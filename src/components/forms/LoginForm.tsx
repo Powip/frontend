@@ -62,7 +62,7 @@ export default function LoginForm() {
       if (response.status === 200) {
         toast.success("Inicio de sesión exitoso");
         login(response.data);
-        router.push("/new-company");
+        router.push("/subscriptions");
       }
     } catch (error) {
       console.log(error);

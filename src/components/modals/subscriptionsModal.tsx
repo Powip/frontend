@@ -1,3 +1,4 @@
+"use client";
 import { FrontPlan } from "@/app/subscriptions/page";
 import {
   Dialog,
@@ -8,6 +9,9 @@ import {
 } from "../ui/dialog";
 import { Check } from "lucide-react";
 import { Button } from "../ui/button";
+import { useRouter } from "next/navigation";
+import axios from "axios";
+import { toast } from "sonner";
 
 interface Props {
   open: boolean;
@@ -15,7 +19,23 @@ interface Props {
   plan: FrontPlan | null;
 }
 export default function SubscriptionModal({ open, onClose, plan }: Props) {
+  const router = useRouter();
   if (!plan) return null;
+  const handleRedirect = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    try {
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_SUBS}/subscriptions`
+      );
+      if (response.status === 200) {
+        toast.success("Subscripcion comprada con exito!");
+        router.push("/new-company");
+      }
+    } catch (error) {
+      console.log("Error la crear la subscripcion");
+      router.push("/new-company");
+    }
+  };
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-md">
@@ -27,7 +47,7 @@ export default function SubscriptionModal({ open, onClose, plan }: Props) {
           <div className="rounded-lg bg-muted p-4">
             <div className="mb-2 text-sm text-muted-foreground">Precio</div>
             <div className="text-3xl font-bold text-foreground">
-              {plan?.price}
+              ${plan?.price}
               <span className="text-base font-normal text-muted-foreground">
                 {plan?.period}
               </span>
@@ -48,7 +68,11 @@ export default function SubscriptionModal({ open, onClose, plan }: Props) {
               ))}
             </ul>
           </div>
-          <Button className="w-full" size="lg">
+          <Button
+            className="w-full"
+            size="lg"
+            onClick={(e) => handleRedirect(e)}
+          >
             Pagar con Mercado Pago
           </Button>
         </div>
