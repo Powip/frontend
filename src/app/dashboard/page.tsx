@@ -9,20 +9,15 @@ export default function DashboardPage() {
   const { auth, logout } = useAuth();
   const router = useRouter();
 
-  /* useEffect(() => {
+  useEffect(() => {
     if (!auth) router.push("/login");
   }, [auth]);
 
   if (!auth) return null;
- */
-  return (
-    <div className="flex flex-col items-center justify-center min-h-screen">
-      <h1 className="text-6xl font-bold text-green mb-8">Home</h1>
-      <div className="flex direction-col space-x-6">
 
-        <Stats  />
-        
-      </div>
+  return (
+    <div className="min-h-screen">
+      <Stats />
     </div>
   );
 }

@@ -1,8 +1,5 @@
 import type { Metadata } from "next";
 import "../styles/globals.css";
-import { Sidebar } from "@/components/layout/Sidebar";
-import Providers from "@/contexts/Providers";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 

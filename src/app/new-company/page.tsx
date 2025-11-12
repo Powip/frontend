@@ -131,6 +131,8 @@ export default function NewCompanyPage() {
       }
     } catch (error) {
       console.log("Error al crear la compañia", error);
+    } finally {
+      setIsLoading(false);
     }
   };
   return (

@@ -60,7 +60,6 @@ export default function LoginForm() {
         loginData
       );
       if (response.status === 200) {
-        toast.success("Inicio de sesión exitoso");
         login(response.data);
         router.push("/subscriptions");
       }
