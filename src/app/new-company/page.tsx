@@ -116,25 +116,50 @@ export default function NewCompanyPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!validateForm()) {
       toast.error("Por favor completa correctamente el formulario.");
       return;
     }
+
     setIsLoading(true);
+
     try {
-      const response = await axios.post(
-        "https://ms-company-s5k4.onrender.com/company",
-        formData
-      );
-      if (response.status === 201) {
-        toast.success("Compañia creada con exito");
+      const formDataToSend = new FormData();
+
+      // 🔹 Los nombres deben coincidir con el DTO del backend
+      formDataToSend.append("name", formData.companyName);
+      formDataToSend.append("description", formData.description);
+      formDataToSend.append("user_id", auth.user.id);
+      formDataToSend.append("cuit", formData.cuit);
+      formDataToSend.append("billing_address", formData.billingAddress);
+      formDataToSend.append("phone", formData.phone);
+      formDataToSend.append("billing_email", formData.email);
+      formDataToSend.append("currency", formData.currency);
+
+      if (formData.logo) {
+        formDataToSend.append("logo", formData.logo);
       }
-    } catch (error) {
-      console.log("Error al crear la compañia", error);
+
+      const response = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_COMPANY}/company`,
+        formDataToSend,
+        {
+          headers: { "Content-Type": "multipart/form-data" },
+        }
+      );
+
+      if (response.status === 201) {
+        toast.success("Compañía creada con éxito");
+        router.push("/dashboard");
+      }
+    } catch (error: any) {
+      console.log("Error al crear la compañía", error.response?.data || error);
     } finally {
       setIsLoading(false);
     }
   };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 py-12">
       <div className="container mx-auto max-w-2xl px-4">

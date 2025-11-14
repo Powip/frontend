@@ -136,3 +136,12 @@
     @apply bg-background text-foreground;
   }
 }
+/* Tailwind no trae por defecto para ocultar scrollbar en todos los navegadores */
+.scrollbar-none::-webkit-scrollbar {
+  display: none; /* Chrome, Safari y Opera */
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none; /* IE y Edge */
+  scrollbar-width: none; /* Firefox */
+}

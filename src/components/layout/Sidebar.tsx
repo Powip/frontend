@@ -1,40 +1,66 @@
 "use client";
 import Image from "next/image";
-
-import { useState } from "react";
 import Link from "next/link";
+import { useState } from "react";
 import {
   Menu,
-  Search,
-  Package,
-  ShoppingBag,
-  Receipt,
-  ChevronDown,
-  ChevronRight,
-  LogOut,
   Sun,
+  LogOut,
+  LayoutDashboard,
+  Package,
+  ShoppingCart,
+  FileText,
+  Users,
+  Building2,
+  Truck,
+  UserCog,
+  DollarSign,
+  BarChart,
+  Headphones,
+  Settings,
+  FileSearch,
 } from "lucide-react";
 
-import { Input } from "@/components/ui/layout/input";
+import { Button } from "../ui/button";
 import {
   Avatar,
   AvatarFallback,
   AvatarImage,
 } from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
-import { Button } from "../ui/button";
 
 interface SidebarProps {
   className?: string;
 }
 
+interface NavigationItem {
+  name: string;
+  href: string;
+  icon: React.ElementType;
+}
+
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [openSection, setOpenSection] = useState<string | null>(null);
 
-  const toggleSection = (section: string) => {
-    setOpenSection(openSection === section ? null : section);
-  };
+  const navigation: NavigationItem[] = [
+    { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    { name: "Inventario", href: "/inventario", icon: Package },
+    { name: "Órdenes", href: "/ordenes", icon: ShoppingCart },
+    { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
+    { name: "Clientes", href: "/clientes", icon: Users },
+    { name: "Proveedores", href: "/proveedores", icon: Building2 },
+    { name: "Repartidores", href: "/repartidores", icon: Truck },
+    { name: "Usuarios", href: "/usuarios", icon: UserCog },
+    { name: "Finanzas", href: "/finanzas", icon: DollarSign },
+    { name: "Reportes", href: "/reportes", icon: BarChart },
+    {
+      name: "Servicio al cliente",
+      href: "/servicio-cliente",
+      icon: Headphones,
+    },
+    { name: "Configuración", href: "/configuracion", icon: Settings },
+    { name: "Auditoría", href: "/auditoria", icon: FileSearch },
+  ];
 
   return (
     <div
@@ -88,70 +114,43 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* Menu items */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden py-4 scrollbar-hover">
+      <div className="flex-1 overflow-y-auto scrollbar-none py-4">
         <nav
           className={cn("flex flex-col gap-3", isCollapsed && "items-center")}
         >
-          {/* Productos */}
-          <div className={cn("w-full", isCollapsed && "flex justify-center")}>
-            <Button
-              variant="ghost"
-              className={cn(
-                "flex items-center",
-                isCollapsed ? "justify-center w-10" : "justify-between w-full"
-              )}
-              onClick={() => toggleSection("productos")}
-            >
-              <div className="flex items-center gap-3">
-                <Package className="h-5 w-5 text-green" />
-                {!isCollapsed && (
-                  <span className="text-sm font-medium">Productos</span>
-                )}
+          {navigation.map((item) => {
+            const Icon = item.icon;
+            return (
+              <div
+                key={item.name}
+                className={cn("w-full", isCollapsed && "flex justify-center ")}
+              >
+                <Link
+                  href={item.href}
+                  className={cn(isCollapsed ? "w-auto" : "w-full")}
+                >
+                  <Button
+                    variant="ghost"
+                    className={cn(
+                      "flex items-center gap-3 h-10 cursor-pointer",
+                      isCollapsed
+                        ? "justify-center w-10"
+                        : "justify-start w-full"
+                    )}
+                  >
+                    <Icon className="h-5 w-5 text-green" />
+                    {!isCollapsed && (
+                      <span className="text-sm">{item.name}</span>
+                    )}
+                  </Button>
+                </Link>
               </div>
-            </Button>
-          </div>
-
-          {/* Pedidos */}
-          <div className={cn("w-full", isCollapsed && "flex justify-center")}>
-            <Link
-              href="/pedidos"
-              className={cn(isCollapsed ? "w-auto" : "w-full")}
-            >
-              <Button
-                variant="ghost"
-                className={cn(
-                  "flex items-center gap-3 h-10",
-                  isCollapsed ? "justify-center w-10" : "justify-start w-full"
-                )}
-              >
-                <ShoppingBag className="h-5 w-5 text-green" />
-                {!isCollapsed && <span className="text-sm">Pedidos</span>}
-              </Button>
-            </Link>
-          </div>
-
-          {/* Ventas */}
-          <div className={cn("w-full", isCollapsed && "flex justify-center")}>
-            <Link
-              href="/ventas"
-              className={cn(isCollapsed ? "w-auto" : "w-full")}
-            >
-              <Button
-                variant="ghost"
-                className={cn(
-                  "flex items-center gap-3 h-10",
-                  isCollapsed ? "justify-center w-10" : "justify-start w-full"
-                )}
-              >
-                <Receipt className="h-5 w-5 text-green" />
-                {!isCollapsed && <span className="text-sm">Ventas</span>}
-              </Button>
-            </Link>
-          </div>
+            );
+          })}
         </nav>
       </div>
 
-      {/* Footer */}
+      {/* Footer (modo claro + usuario) */}
       <div className="space-y-4 mt-4">
         <div className="flex items-center">
           {isCollapsed ? (

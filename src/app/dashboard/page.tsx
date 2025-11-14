@@ -9,11 +9,11 @@ export default function DashboardPage() {
   const { auth, logout } = useAuth();
   const router = useRouter();
 
-  useEffect(() => {
+  /* useEffect(() => {
     if (!auth) router.push("/login");
   }, [auth]);
 
-  if (!auth) return null;
+  if (!auth) return null; */
 
   return (
     <div className="min-h-screen">
