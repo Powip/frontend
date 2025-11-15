@@ -1,5 +1,6 @@
 "use client";
 import { Stats } from "@/components/dashboard/stats";
+import Header from "@/components/header/Header";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -16,8 +17,11 @@ export default function DashboardPage() {
   if (!auth) return null; */
 
   return (
-    <div className="min-h-screen">
-      <Stats />
+    <div className="h-screen flex flex-col">
+      <Header title="Dashboard" />
+      <div className="flex-1 overflow-hidden">
+        <Stats />
+      </div>
     </div>
   );
 }

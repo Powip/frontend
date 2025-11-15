@@ -28,6 +28,7 @@ import {
   AvatarImage,
 } from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface SidebarProps {
   className?: string;
@@ -41,6 +42,7 @@ interface NavigationItem {
 
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const { auth, logout } = useAuth();
 
   const navigation: NavigationItem[] = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -65,7 +67,7 @@ export function Sidebar({ className }: SidebarProps) {
   return (
     <div
       className={cn(
-        "flex flex-col p-6 h-full bg-white border-r border-gray-200 transition-all duration-300",
+        "flex flex-col p-6 h-full bg-white border-r border-gray-200 transition-all duration-300 ",
         isCollapsed ? "w-20" : "w-64",
         className
       )}
@@ -151,7 +153,7 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* Footer (modo claro + usuario) */}
-      <div className="space-y-4 mt-4">
+      <div className="space-y-4 pt-4 ">
         <div className="flex items-center">
           {isCollapsed ? (
             <Button variant="ghost" size="icon" className="h-8 w-8 mx-auto">
@@ -188,10 +190,15 @@ export function Sidebar({ className }: SidebarProps) {
                 </Avatar>
                 <div className="ml-3">
                   <div className="text-sm font-medium">Usuario</div>
-                  <div className="text-xs text-gray-500">Administrador</div>
+                  <div className="text-xs text-gray-500">{auth?.user.role}</div>
                 </div>
               </div>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={() => logout()}
+              >
                 <LogOut className="h-4 w-4 text-red" />
               </Button>
             </div>
