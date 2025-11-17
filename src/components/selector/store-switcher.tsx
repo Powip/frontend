@@ -1,3 +1,4 @@
+"use client";
 import { useState } from "react";
 import {
   DropdownMenu,
@@ -48,7 +49,6 @@ export function StoreSwitcher() {
               {currentStore.name}
             </span>
             <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-              <MapPin className="h-3 w-3" />
               Activa
             </span>
           </div>
@@ -97,6 +97,7 @@ export function StoreSwitcher() {
             )}
           </DropdownMenuItem>
         ))}
+        <div className="border-t text-sm"> Administrar Tiendas</div>
       </DropdownMenuContent>
     </DropdownMenu>
   );
