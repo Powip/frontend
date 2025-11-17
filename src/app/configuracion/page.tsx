@@ -9,7 +9,7 @@ export default function ConfiguracionPage() {
       title: "Datos Personales",
       description: "Administra tu información de perfil",
       icon: User,
-      href: "/configuracion/datos-personales",
+      href: "/configuracion/editar-usuario",
       color: "text-blue-600",
       bgColor: "bg-blue-50",
     },
@@ -33,8 +33,7 @@ export default function ConfiguracionPage() {
 
   return (
     <main>
-      <Header />
-
+      
       <div className="grid gap-6 md:grid-cols-3 p-6">
         {configSections.map((section) => {
           const Icon = section.icon;
