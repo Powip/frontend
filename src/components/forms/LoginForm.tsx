@@ -17,7 +17,7 @@ interface LoginData {
 }
 
 export default function LoginForm() {
-  const { login } = useAuth();
+  const { auth, login } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [loginData, setLoginData] = useState<LoginData>({
@@ -48,20 +48,50 @@ export default function LoginForm() {
   };
 
   const handleOnLogin = async (e: React.FormEvent) => {
-    setIsLoading(true);
     e.preventDefault();
+    setIsLoading(true);
+
     if (!validateForm()) {
       toast.error("Por favor, completa todos los campos requeridos.");
+      setIsLoading(false);
       return;
     }
+
     try {
       const response = await axios.post(
         "http://localhost:8080/api/v1/auth/login",
         loginData
       );
+
       if (response.status === 200) {
-        login(response.data);
-        router.push("/subscriptions");
+        // ⭐ LOGIN devuelve AuthData
+        const userData = await login(response.data);
+
+        if (!userData) {
+          toast.error("Error procesando la sesión del usuario.");
+          return;
+        }
+        console.log(userData);
+
+        // ⭐ 1. Si no tiene suscripción → ir a subscriptions
+        if (!userData.subscription) {
+          router.push("/subscriptions");
+          return;
+        }
+
+        if (userData.subscription.status !== "ACTIVE") {
+          router.push("/subscriptions");
+          return;
+        }
+
+        // ⭐ 2. Si tiene suscripción pero NO tiene company → crear empresa
+        if (!userData.company) {
+          router.push("/new-company");
+          return;
+        }
+
+        // ⭐ 3. Si tiene suscripción y company → dashboard
+        router.push("/");
       }
     } catch (error) {
       console.log(error);

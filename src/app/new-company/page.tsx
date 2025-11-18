@@ -28,6 +28,7 @@ import { useAuth } from "@/contexts/AuthContext";
 
 /* 
 Manejar carga de imagenes -> Backend
+Una vez creada la compañia debo agregarla a mi authContext
 */
 
 interface FormData {
@@ -42,7 +43,7 @@ interface FormData {
 }
 
 export default function NewCompanyPage() {
-  const { auth, logout } = useAuth();
+  const { auth, updateCompany, logout } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -151,6 +152,10 @@ export default function NewCompanyPage() {
 
       if (response.status === 201) {
         toast.success("Compañía creada con éxito");
+        updateCompany({
+          id: response.data.id,
+          name: response.data.name,
+        });
         router.push("/dashboard");
       }
     } catch (error: any) {

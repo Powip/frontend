@@ -7,21 +7,38 @@ import {
   useState,
   ReactNode,
 } from "react";
-import { decodeToken, isExpired, DecodedToken } from "@/lib/jwt";
+import { decodeToken, isExpired } from "@/lib/jwt";
 import { getCookie, setCookie, deleteCookie } from "cookies-next";
+import { fetchUserCompany } from "@/services/companyService";
+import { fetchUserSubscription } from "@/services/fetchUserSubscription";
+
+interface Subscription {
+  id: string;
+  status: string;
+  plan: {
+    id: string;
+    name: string;
+  };
+}
 
 interface AuthData {
   accessToken: string;
   refreshToken: string;
   user: { email: string; id: string; role: string };
+  company: { id: string; name: string } | null;
+  subscription: Subscription | null;
   exp: number;
 }
 
 interface AuthContextType {
   auth: AuthData | null;
-  login: (tokens: { accessToken: string; refreshToken: string }) => void;
+  login: (tokens: {
+    accessToken: string;
+    refreshToken: string;
+  }) => Promise<AuthData | null>;
   logout: () => void;
   refreshAccessToken: () => Promise<void>;
+  updateCompany: (company: { id: string; name: string }) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -29,48 +46,80 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [auth, setAuth] = useState<AuthData | null>(null);
 
-  // ---- CARGAR SESIÓN DESDE COOKIE ----
+  // ---- Load session from cookies ----
   useEffect(() => {
-    const accessToken = getCookie("accessToken") as string | undefined;
-    const refreshToken = getCookie("refreshToken") as string | undefined;
+    const loadFromCookies = async () => {
+      const accessToken = getCookie("accessToken") as string | undefined;
+      const refreshToken = getCookie("refreshToken") as string | undefined;
 
-    if (accessToken && refreshToken) {
-      const decoded = decodeToken(accessToken);
-      if (decoded && !isExpired(decoded.exp)) {
-        setAuth({
-          accessToken,
-          refreshToken,
-          user: { email: decoded.email, id: decoded.id, role: decoded.role },
-          exp: decoded.exp,
-        });
-      } else {
-        logout();
+      if (accessToken && refreshToken) {
+        const decoded = decodeToken(accessToken);
+
+        if (decoded && !isExpired(decoded.exp)) {
+          const company = await fetchUserCompany(decoded.id, accessToken);
+          const subscription = await fetchUserSubscription(
+            decoded.id,
+            accessToken
+          );
+
+          setAuth({
+            accessToken,
+            refreshToken,
+            user: {
+              email: decoded.email,
+              id: decoded.id,
+              role: decoded.role,
+            },
+            company,
+            subscription,
+            exp: decoded.exp,
+          });
+        } else {
+          logout();
+        }
       }
-    }
+    };
+
+    loadFromCookies();
   }, []);
 
   // ---- LOGIN ----
-  const login = ({
+  const login = async ({
     accessToken,
     refreshToken,
   }: {
     accessToken: string;
     refreshToken: string;
-  }) => {
+  }): Promise<AuthData | null> => {
     const decoded = decodeToken(accessToken);
-    if (!decoded) return;
+    if (!decoded) return null;
 
-    const newAuth = {
+    const user = {
+      email: decoded.email,
+      id: decoded.id,
+      role: decoded.role,
+    };
+
+    const company = await fetchUserCompany(decoded.id, accessToken);
+    console.log("llamando a subscription", decoded.id, accessToken);
+
+    const subscription = await fetchUserSubscription(decoded.id, accessToken);
+
+    const newAuth: AuthData = {
       accessToken,
       refreshToken,
-      user: { email: decoded.email, id: decoded.id, role: decoded.role },
+      user,
+      company,
+      subscription,
       exp: decoded.exp,
     };
 
     setAuth(newAuth);
-    // Guardar tokens en cookies (duración configurable)
-    setCookie("accessToken", accessToken, { maxAge: 60 * 60 }); // 15 minutos
-    setCookie("refreshToken", refreshToken, { maxAge: 60 * 60 * 24 * 7 }); // 7 días
+
+    setCookie("accessToken", accessToken, { maxAge: 60 * 60 });
+    setCookie("refreshToken", refreshToken, { maxAge: 60 * 60 * 24 * 7 });
+
+    return newAuth; // 🔥 clave
   };
 
   // ---- LOGOUT ----
@@ -83,12 +132,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // ---- REFRESH TOKEN ----
   const refreshAccessToken = async () => {
     if (!auth) return;
+
     try {
       const res = await fetch("http://localhost:8080/api/v1/auth/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ refreshToken: auth.refreshToken }),
       });
+
       if (!res.ok) throw new Error("Failed to refresh token");
 
       const data = await res.json();
@@ -100,6 +151,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         accessToken: data.accessToken,
         exp: decoded.exp,
       };
+
       setAuth(updatedAuth);
       setCookie("accessToken", data.accessToken, { maxAge: 60 * 15 });
     } catch (error) {
@@ -108,22 +160,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const updateCompany = (company: { id: string; name: string }) => {
+    setAuth((prev) =>
+      prev
+        ? {
+            ...prev,
+            company,
+          }
+        : prev
+    );
+  };
+
   // ---- AUTO REFRESH ----
   useEffect(() => {
     if (!auth) return;
 
-    const checkAndRefresh = () => {
+    const interval = setInterval(() => {
       const now = Math.floor(Date.now() / 1000);
       const timeLeft = auth.exp - now;
       if (timeLeft < 60) refreshAccessToken();
-    };
+    }, 60 * 1000);
 
-    const interval = setInterval(checkAndRefresh, 60 * 1000);
     return () => clearInterval(interval);
   }, [auth]);
 
   return (
-    <AuthContext.Provider value={{ auth, login, logout, refreshAccessToken }}>
+    <AuthContext.Provider
+      value={{ auth, login, logout, refreshAccessToken, updateCompany }}
+    >
       {children}
     </AuthContext.Provider>
   );

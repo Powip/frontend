@@ -1,4 +1,5 @@
 import Header from "@/components/header/Header";
+import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
 import { Building2, Store, User } from "lucide-react";
 import Link from "next/link";
@@ -32,8 +33,11 @@ export default function ConfiguracionPage() {
   ];
 
   return (
-    <main>
-      
+    <main className="flex-1 p-8">
+      <HeaderConfig
+        title="Configuración"
+        description="Administra los parámetros de tu cuenta y empresa"
+      />
       <div className="grid gap-6 md:grid-cols-3 p-6">
         {configSections.map((section) => {
           const Icon = section.icon;

@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "next/navigation";
 
 interface SidebarProps {
   className?: string;
@@ -43,6 +44,7 @@ interface NavigationItem {
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { auth, logout } = useAuth();
+  const router = useRouter();
 
   const navigation: NavigationItem[] = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -197,7 +199,10 @@ export function Sidebar({ className }: SidebarProps) {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                onClick={() => logout()}
+                onClick={() => {
+                  logout();
+                  router.push("/login");
+                }}
               >
                 <LogOut className="h-4 w-4 text-red" />
               </Button>

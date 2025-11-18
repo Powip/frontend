@@ -10,7 +10,12 @@ export default function AppContainer({
 }) {
   const pathname = usePathname();
 
-  const noSidebarRoutes = ["/login", "/restablecer-contraseña", "/new-company"];
+  const noSidebarRoutes = [
+    "/login",
+    "/restablecer-contraseña",
+    "/new-company",
+    "/subscriptions",
+  ];
 
   const hideSidebar = noSidebarRoutes.some((r) => pathname.startsWith(r));
 
