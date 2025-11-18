@@ -11,6 +11,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import Label from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
+import { HeaderConfig } from "@/components/header/HeaderConfig";
 
 /* ------------------------------------------
     INTERFACES
@@ -31,7 +32,7 @@ interface User {
 ------------------------------------------- */
 
 export default function DatosPersonalesPage() {
-    const { auth, logout } = useAuth();
+  const { auth, logout } = useAuth();
   const userId = auth?.user.id;
   const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
@@ -54,7 +55,9 @@ export default function DatosPersonalesPage() {
 
     const fetchData = async () => {
       try {
-        const res = await axios.get(`http://localhost:8080/api/v1/auth/user/${userId}`);
+        const res = await axios.get(
+          `http://localhost:8080/api/v1/auth/user/${userId}`
+        );
         setUser(res.data);
         console.log(res.data);
       } catch (error) {
@@ -148,20 +151,12 @@ export default function DatosPersonalesPage() {
 
   return (
     <div className="flex min-h-screen">
-      
-
-      <main className=" flex-1 p-8">
+      <main className="flex-1 py-4 px-6">
         {/* Header */}
-        <div className="mb-6 flex items-center gap-4">
-          <Link href="/configuracion">
-            <Button variant="outline" size="sm" className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Volver
-            </Button>
-          </Link>
-
-          
-        </div>
+        <HeaderConfig
+          title="Datos Personales"
+          description="Administra tu información de perfil y cuenta"
+        />
 
         {/* Grid */}
         <div className="grid gap-6 lg:grid-cols-2">
@@ -184,7 +179,9 @@ export default function DatosPersonalesPage() {
                 <Label>Apellido</Label>
                 <Input
                   value={user.surname}
-                  onChange={(e) => setUser({ ...user, surname: e.target.value })}
+                  onChange={(e) =>
+                    setUser({ ...user, surname: e.target.value })
+                  }
                 />
               </div>
 
@@ -197,7 +194,9 @@ export default function DatosPersonalesPage() {
                 <Label>Dirección</Label>
                 <Input
                   value={user.address}
-                  onChange={(e) => setUser({ ...user, address: e.target.value })}
+                  onChange={(e) =>
+                    setUser({ ...user, address: e.target.value })
+                  }
                 />
               </div>
 
@@ -205,7 +204,9 @@ export default function DatosPersonalesPage() {
                 <Label>Distrito</Label>
                 <Input
                   value={user.district}
-                  onChange={(e) => setUser({ ...user, district: e.target.value })}
+                  onChange={(e) =>
+                    setUser({ ...user, district: e.target.value })
+                  }
                 />
               </div>
 
@@ -213,7 +214,9 @@ export default function DatosPersonalesPage() {
                 <Label>Teléfono</Label>
                 <Input
                   value={user.phoneNumber}
-                  onChange={(e) => setUser({ ...user, phoneNumber: e.target.value })}
+                  onChange={(e) =>
+                    setUser({ ...user, phoneNumber: e.target.value })
+                  }
                 />
               </div>
             </CardContent>
