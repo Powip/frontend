@@ -3,7 +3,11 @@ export enum Currency {
   USD = "USD", // Dólar estadounidense
   // ARS = "ARS",
 }
-export const currencyOptions = [
+export interface CurrencyOption {
+  value: Currency;
+  label: string;
+}
+export const currencyOptions: CurrencyOption[] = [
   { value: Currency.USD, label: "USD - Dólar Estadounidense" },
   { value: Currency.PEN, label: "PEN - Sol Peruano" },
 ];

@@ -1,7 +1,12 @@
 "use client";
-import { useEffect, useState } from "react";
+import axios from "axios";
 import { useRouter } from "next/navigation";
+import { useState, useEffect } from "react";
+import Image from "next/image";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 import { Building2, Upload } from "lucide-react";
+import { Currency, currencyOptions } from "@/enum/Currency";
 import {
   Card,
   CardContent,
@@ -12,8 +17,6 @@ import {
 import Label from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import Image from "next/image";
 import {
   Select,
   SelectContent,
@@ -21,15 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Currency, currencyOptions } from "@/enum/Currency";
-import axios from "axios";
-import { toast } from "sonner";
-import { useAuth } from "@/contexts/AuthContext";
-
-/* 
-Manejar carga de imagenes -> Backend
-Una vez creada la compañia debo agregarla a mi authContext
-*/
+import { Button } from "@/components/ui/button";
 
 interface FormData {
   companyName: string;
@@ -43,32 +38,34 @@ interface FormData {
 }
 
 export default function NewCompanyPage() {
-  const { auth, updateCompany, logout } = useAuth();
+  const { auth, updateCompany } = useAuth();
   const router = useRouter();
+
   const [isLoading, setIsLoading] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<FormData>({
     companyName: "",
     description: "",
-    logo: null as File | null,
+    logo: null,
     cuit: "",
     billingAddress: "",
     phone: "",
     email: "",
     currency: Currency.PEN,
   });
+
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   useEffect(() => {
     if (!auth) router.push("/login");
-  }, [auth]);
+  }, [auth, router]);
 
   if (!auth) return null;
 
+  // VALIDATION
   const validateForm = (): boolean => {
-    const newErrors: { [key: string]: string } = {};
+    const newErrors: Record<string, string> = {};
 
-    // Campos requeridos
     const requiredFields: (keyof FormData)[] = [
       "companyName",
       "billingAddress",
@@ -84,17 +81,17 @@ export default function NewCompanyPage() {
       }
     });
 
-    // Validación de email
+    // Email format
     if (formData.email && !/\S+@\S+\.\S+/.test(formData.email)) {
       newErrors.email = "El correo electrónico no es válido.";
     }
 
-    // Validación opcional de CUIT
+    // CUIT (optional)
     if (formData.cuit && !/^\d{2}-\d{8}-\d{1}$/.test(formData.cuit)) {
-      newErrors.cuit = "El formato del CUIT no es válido (ej: 20-12345678-9).";
+      newErrors.cuit = "Formato inválido (ej: 20-12345678-9).";
     }
 
-    // Validación opcional del logo
+    // Logo size (optional)
     if (formData.logo && formData.logo.size > 2 * 1024 * 1024) {
       newErrors.logo = "El logo no debe superar los 2MB.";
     }
@@ -104,62 +101,59 @@ export default function NewCompanyPage() {
   };
 
   const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const file = e.target.files?.[0] || null;
+    setFormData((prev) => ({ ...prev, logo: file }));
+
     if (file) {
-      setFormData((prev) => ({ ...prev, logo: file }));
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setLogoPreview(reader.result as string);
-      };
+      reader.onloadend = () => setLogoPreview(reader.result as string);
       reader.readAsDataURL(file);
     }
   };
 
+  // SUBMIT
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!validateForm()) {
       toast.error("Por favor completa correctamente el formulario.");
       return;
     }
 
     setIsLoading(true);
-
     try {
-      const formDataToSend = new FormData();
-
-      // 🔹 Los nombres deben coincidir con el DTO del backend
-      formDataToSend.append("name", formData.companyName);
-      formDataToSend.append("description", formData.description);
-      formDataToSend.append("user_id", auth.user.id);
-      formDataToSend.append("cuit", formData.cuit);
-      formDataToSend.append("billing_address", formData.billingAddress);
-      formDataToSend.append("phone", formData.phone);
-      formDataToSend.append("billing_email", formData.email);
-      formDataToSend.append("currency", formData.currency);
+      const body = new FormData();
+      body.append("name", formData.companyName);
+      body.append("description", formData.description);
+      body.append("user_id", auth.user.id);
+      body.append("cuit", formData.cuit);
+      body.append("billing_address", formData.billingAddress);
+      body.append("phone", formData.phone);
+      body.append("billing_email", formData.email);
+      body.append("currency", formData.currency);
 
       if (formData.logo) {
-        formDataToSend.append("logo", formData.logo);
+        body.append("logo", formData.logo);
       }
 
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_COMPANY}/company`,
-        formDataToSend,
-        {
-          headers: { "Content-Type": "multipart/form-data" },
-        }
+        body,
+        { headers: { "Content-Type": "multipart/form-data" } }
       );
 
       if (response.status === 201) {
         toast.success("Compañía creada con éxito");
+
         updateCompany({
           id: response.data.id,
           name: response.data.name,
         });
+
         router.push("/dashboard");
       }
-    } catch (error: any) {
-      console.log("Error al crear la compañía", error.response?.data || error);
+    } catch (err: any) {
+      console.log("Error al crear la compañía:", err.response?.data || err);
+      toast.error("Hubo un error al crear la empresa");
     } finally {
       setIsLoading(false);
     }
@@ -168,144 +162,119 @@ export default function NewCompanyPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20 py-12">
       <div className="container mx-auto max-w-2xl px-4">
-        {/* Header */}
+        {/* HEADER */}
         <div className="mb-8 flex flex-col items-center gap-4">
           <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-primary/10">
             <Building2 className="h-8 w-8 text-primary" />
           </div>
           <div className="text-center">
-            <h1 className="mb-2 text-3xl font-bold text-foreground">
-              Crea tu Empresa
-            </h1>
+            <h1 className="text-3xl font-bold">Crea tu Empresa</h1>
             <p className="text-muted-foreground">
-              Completa la información básica para comenzar a usar Powip
+              Completa la información básica para comenzar
             </p>
           </div>
         </div>
 
-        {/* Form Card */}
+        {/* FORM */}
         <Card className="shadow-lg">
           <CardHeader>
             <CardTitle>Información de la Empresa</CardTitle>
-            <CardDescription>
-              Ingresa los datos básicos de tu negocio
-            </CardDescription>
+            <CardDescription>Completa los datos obligatorios</CardDescription>
           </CardHeader>
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Company Name */}
+              {/* NOMBRE */}
               <div className="space-y-2">
-                <Label htmlFor="companyName">
-                  Nombre de la Empresa{" "}
-                  <span className="text-destructive">*</span>
-                </Label>
+                <Label htmlFor="companyName">Nombre de la Empresa *</Label>
                 <Input
                   id="companyName"
-                  placeholder="Mi Tienda Online"
                   value={formData.companyName}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      companyName: e.target.value,
-                    }))
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setFormData((p) => ({ ...p, companyName: e.target.value }))
                   }
-                  required
+                  placeholder="Ej: Mi Empresa"
                   disabled={isLoading}
-                  className={errors.name ? "border-red-500" : ""}
+                  className={errors.companyName ? "border-red-500" : ""}
                 />
                 {errors.companyName && (
                   <p className="text-xs text-red-500">{errors.companyName}</p>
                 )}
               </div>
 
-              {/* Logo Upload */}
+              {/* LOGO */}
               <div className="space-y-2">
-                <Label htmlFor="logo">Logo de la Empresa</Label>
+                <Label>Logo (Opcional)</Label>
                 <div className="flex items-center gap-4">
                   {logoPreview ? (
-                    <div className="relative h-20 w-20 overflow-hidden rounded-lg border-2 border-border">
+                    <div className="relative h-20 w-20 overflow-hidden rounded-lg border">
                       <Image
-                        src={logoPreview || "/placeholder.svg"}
-                        alt="Logo preview"
+                        src={logoPreview}
+                        alt="Preview"
                         fill
                         className="object-cover"
                       />
                     </div>
                   ) : (
-                    <div className="flex h-20 w-20 items-center justify-center rounded-lg border-2 border-dashed border-border bg-muted">
+                    <div className="flex h-20 w-20 items-center justify-center rounded-lg border border-dashed">
                       <Upload className="h-8 w-8 text-muted-foreground" />
                     </div>
                   )}
-                  <div className="flex-1">
-                    <Input
-                      id="logo"
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoChange}
-                      disabled={isLoading}
-                      className="cursor-pointer"
-                    />
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      PNG, JPG o JPEG (máx. 2MB)
-                    </p>
-                  </div>
+                  <Input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoChange}
+                    disabled={isLoading}
+                  />
                 </div>
               </div>
 
-              {/* Description */}
+              {/* DESCRIPCIÓN */}
               <div className="space-y-2">
-                <Label htmlFor="description">Descripción</Label>
+                <Label htmlFor="description">Descripción (Opcional)</Label>
                 <Textarea
                   id="description"
-                  placeholder="Describe brevemente tu negocio y lo que ofreces..."
-                  rows={4}
                   value={formData.description}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      description: e.target.value,
-                    }))
+                  onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    setFormData((p) => ({ ...p, description: e.target.value }))
                   }
+                  rows={4}
                   disabled={isLoading}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Opcional - Puedes agregar más detalles después
-                </p>
               </div>
 
               {/* CUIT */}
               <div className="space-y-2">
-                <Label htmlFor="cuit">CUIT</Label>
+                <Label htmlFor="cuit">CUIT (Opcional)</Label>
                 <Input
                   id="cuit"
-                  placeholder="20-12345678-9"
                   value={formData.cuit}
-                  onChange={(e) =>
-                    setFormData((prev) => ({ ...prev, cuit: e.target.value }))
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setFormData((p) => ({ ...p, cuit: e.target.value }))
                   }
                   disabled={isLoading}
+                  className={errors.cuit ? "border-red-500" : ""}
                 />
-                <p className="text-xs text-muted-foreground">
-                  Opcional - Número de identificación tributaria
-                </p>
+                {errors.cuit && (
+                  <p className="text-xs text-red-500">{errors.cuit}</p>
+                )}
               </div>
-              {/* Direccion de Facturacion */}
+
+              {/* BILLING ADDRESS */}
               <div className="space-y-2">
                 <Label htmlFor="billingAddress">
-                  Dirección de Facturación
-                  <span className="text-destructive">*</span>
+                  Dirección de Facturación *
                 </Label>
                 <Input
                   id="billingAddress"
-                  placeholder="Calle 123, Ciudad, Provincia"
                   value={formData.billingAddress}
-                  onChange={(e) =>
-                    setFormData((prev) => ({
-                      ...prev,
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                    setFormData((p) => ({
+                      ...p,
                       billingAddress: e.target.value,
                     }))
                   }
-                  required
+                  placeholder="Ej: Av. Siempre Viva 742"
                   disabled={isLoading}
                   className={errors.billingAddress ? "border-red-500" : ""}
                 />
@@ -315,25 +284,18 @@ export default function NewCompanyPage() {
                   </p>
                 )}
               </div>
-              {/* Numero de Telefono */}
-              <div className="grid gap-6 md:grid-cols-2">
+
+              {/* PHONE & EMAIL */}
+              <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <Label htmlFor="phone">
-                    Número de Teléfono
-                    <span className="text-destructive">*</span>
-                  </Label>
+                  <Label htmlFor="phone">Número de Teléfono *</Label>
                   <Input
                     id="phone"
-                    type="tel"
-                    placeholder="+54 11 1234-5678"
                     value={formData.phone}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        phone: e.target.value,
-                      }))
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setFormData((p) => ({ ...p, phone: e.target.value }))
                     }
-                    required
+                    placeholder="Ej: +54 11 1234-5678"
                     disabled={isLoading}
                     className={errors.phone ? "border-red-500" : ""}
                   />
@@ -343,21 +305,15 @@ export default function NewCompanyPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="email">
-                    Email <span className="text-destructive">*</span>
-                  </Label>
+                  <Label htmlFor="email">Email *</Label>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="empresa@ejemplo.com"
                     value={formData.email}
-                    onChange={(e) =>
-                      setFormData((prev) => ({
-                        ...prev,
-                        email: e.target.value,
-                      }))
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setFormData((p) => ({ ...p, email: e.target.value }))
                     }
-                    required
+                    placeholder="Ej: empresa@correo.com"
                     disabled={isLoading}
                     className={errors.email ? "border-red-500" : ""}
                   />
@@ -367,48 +323,38 @@ export default function NewCompanyPage() {
                 </div>
               </div>
 
+              {/* CURRENCY */}
               <div className="space-y-2">
-                <Label htmlFor="currency">
-                  Moneda <span className="text-destructive">*</span>
-                </Label>
+                <Label>Moneda *</Label>
                 <Select
                   value={formData.currency}
-                  onValueChange={(value) =>
-                    setFormData((prev) => ({
-                      ...prev,
-                      currency: value as Currency,
-                    }))
+                  onValueChange={(val: string) =>
+                    setFormData((p) => ({ ...p, currency: val as Currency }))
                   }
                   disabled={isLoading}
                 >
-                  <SelectTrigger id="currency">
+                  <SelectTrigger>
                     <SelectValue placeholder="Selecciona una moneda" />
                   </SelectTrigger>
                   <SelectContent>
-                    {currencyOptions.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                    {currencyOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
 
-              {/* Info Box */}
-              <div className="rounded-lg border border-border bg-muted/50 p-4">
+              {/* INFO */}
+              <div className="rounded-lg border p-4 bg-muted/50">
                 <p className="text-sm text-muted-foreground">
-                  Podrás modificar esta información y agregar más detalles desde
-                  la configuración de tu cuenta.
+                  Podrás modificar esta información después en Configuración.
                 </p>
               </div>
 
-              {/* Submit Button */}
-              <Button
-                type="submit"
-                className="w-full"
-                size="lg"
-                disabled={isLoading}
-              >
+              {/* SUBMIT */}
+              <Button className="w-full" size="lg" disabled={isLoading}>
                 {isLoading ? "Creando empresa..." : "Crear Empresa y Comenzar"}
               </Button>
             </form>
