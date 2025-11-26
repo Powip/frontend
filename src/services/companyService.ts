@@ -1,6 +1,20 @@
 import axios from "axios";
 
-export const fetchUserCompany = async (userId: string, token: string) => {
+interface Store {
+  id: string;
+  name: string;
+}
+
+interface Company {
+  id: string;
+  name: string;
+  stores?: Store[];
+}
+
+export const fetchUserCompany = async (
+  userId: string,
+  token: string
+): Promise<Company | null> => {
   try {
     const response = await axios.get(
       `${process.env.NEXT_PUBLIC_API_COMPANY}/company/user/${userId}`,
@@ -16,6 +30,7 @@ export const fetchUserCompany = async (userId: string, token: string) => {
     return {
       id: response.data.id,
       name: response.data.name,
+      stores: response.data.stores || [],
     };
   } catch (error) {
     console.error("Error al obtener company by userId:", error);

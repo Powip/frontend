@@ -20,12 +20,22 @@ interface Subscription {
     name: string;
   };
 }
+interface Store {
+  id: string;
+  name: string;
+}
+
+interface Company {
+  id: string;
+  name: string;
+  stores?: Store[];
+}
 
 interface AuthData {
   accessToken: string;
   refreshToken: string;
   user: { email: string; id: string; role: string };
-  company: { id: string; name: string } | null;
+  company: Company | null;
   subscription: Subscription | null;
   exp: number;
 }
@@ -38,19 +48,24 @@ interface AuthContextType {
   }) => Promise<AuthData | null>;
   logout: () => void;
   refreshAccessToken: () => Promise<void>;
-  updateCompany: (company: { id: string; name: string }) => void;
+  updateCompany: (company: Company) => void;
+  selectedStoreId: string | null;
+  setSelectedStore: (storeId: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [auth, setAuth] = useState<AuthData | null>(null);
+  const [selectedStoreId, setSelectedStore] = useState<string | null>(null);
 
   // ---- Load session from cookies ----
   useEffect(() => {
     const loadFromCookies = async () => {
       const accessToken = getCookie("accessToken") as string | undefined;
       const refreshToken = getCookie("refreshToken") as string | undefined;
+      const selected = getCookie("selectedStoreId");
+      if (selected) setSelectedStore(selected as string);
 
       if (accessToken && refreshToken) {
         const decoded = decodeToken(accessToken);
@@ -101,7 +116,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const company = await fetchUserCompany(decoded.id, accessToken);
-    console.log("llamando a subscription", decoded.id, accessToken);
+    let defaultStore = null;
+
+    if (company?.stores && company.stores.length > 0) {
+      defaultStore = company.stores[0].id;
+    }
+    setSelectedStore(defaultStore);
+
+    setCookie("selectedStoreId", defaultStore);
 
     const subscription = await fetchUserSubscription(decoded.id, accessToken);
 
@@ -160,7 +182,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const updateCompany = (company: { id: string; name: string }) => {
+  const updateCompany = (company: Company) => {
     setAuth((prev) =>
       prev
         ? {
@@ -186,7 +208,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <AuthContext.Provider
-      value={{ auth, login, logout, refreshAccessToken, updateCompany }}
+      value={{
+        auth,
+        login,
+        logout,
+        refreshAccessToken,
+        updateCompany,
+        selectedStoreId,
+        setSelectedStore,
+      }}
     >
       {children}
     </AuthContext.Provider>

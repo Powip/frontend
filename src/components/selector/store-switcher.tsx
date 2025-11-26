@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +13,8 @@ import {
   DropdownMenuSeparator,
 } from "@radix-ui/react-dropdown-menu";
 import { UserRound } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Store {
   id: string;
@@ -20,30 +22,26 @@ interface Store {
   logo?: string | null;
 }
 export function StoreSwitcher() {
-  const [stores] = useState<Store[]>([
-    { id: "1", name: "Tienda Principal", logo: null },
-    { id: "2", name: "Tienda Online", logo: null },
-    { id: "3", name: "Tienda Física", logo: null },
-  ]);
+  const { auth, selectedStoreId, setSelectedStore } = useAuth();
 
-  const [currentStore, setCurrentStore] = useState<Store>(stores[0]);
+  const stores = auth?.company?.stores || [];
+  const currentStore =
+    stores.find((s) => s.id === selectedStoreId) || stores[0];
+
   const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!selectedStoreId && stores.length > 0) {
+      setSelectedStore(stores[0].id);
+    }
+  }, [stores, selectedStoreId, setSelectedStore]);
+
+  if (stores.length === 0) return null;
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       <DropdownMenuTrigger asChild>
         <button className="flex h-9 items-center gap-2 px-2 py-1.5 rounded-md hover:bg-accent transition-colors border border-input">
-          {currentStore.logo ? (
-            <Image
-              src={currentStore.logo}
-              alt={currentStore.name}
-              width={24}
-              height={24}
-              className="rounded-md"
-            />
-          ) : (
-            <UserRound className="w-6 h-6 text-muted-foreground" />
-          )}
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-medium text-foreground">
               {currentStore.name}
@@ -57,10 +55,7 @@ export function StoreSwitcher() {
         </button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent
-        align="start"
-        className="w-52 rounded-md p-1" // <-- padding general + bordes suaves
-      >
+      <DropdownMenuContent align="start" className="w-52 rounded-md p-1">
         <DropdownMenuLabel className="text-xs text-muted-foreground px-2 py-1.5">
           Seleccionar Tienda
         </DropdownMenuLabel>
@@ -71,23 +66,11 @@ export function StoreSwitcher() {
           <DropdownMenuItem
             key={store.id}
             onClick={() => {
-              setCurrentStore(store);
+              setSelectedStore(store.id);
               setIsOpen(false);
             }}
             className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md"
           >
-            {store.logo ? (
-              <Image
-                src={store.logo}
-                alt={store.name}
-                width={20}
-                height={20}
-                className="rounded-sm"
-              />
-            ) : (
-              <UserRound className="w-5 h-5 text-muted-foreground" />
-            )}
-
             <div className="flex-1">
               <p className="text-sm">{store.name}</p>
             </div>
@@ -97,7 +80,6 @@ export function StoreSwitcher() {
             )}
           </DropdownMenuItem>
         ))}
-        <div className="border-t text-sm"> Administrar Tiendas</div>
       </DropdownMenuContent>
     </DropdownMenu>
   );

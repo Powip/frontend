@@ -147,6 +147,7 @@ export default function NewCompanyPage() {
         updateCompany({
           id: response.data.id,
           name: response.data.name,
+          store_id: response.data.store_id,
         });
 
         router.push("/dashboard");

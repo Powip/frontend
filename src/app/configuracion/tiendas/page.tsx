@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import Label from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
-import { Skeleton } from "@/src/components/ui/skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 import axios from "axios";
 import { Edit2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
