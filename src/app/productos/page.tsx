@@ -1,9 +1,9 @@
-import CatalogoProductos from "@/components/products/CatalogoProductos";
+import ProductCreateForm from "./create-product/create-product";
 
 export default function Productos() {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen">
-      <CatalogoProductos />
+      <ProductCreateForm />
     </div>
   );
 }
