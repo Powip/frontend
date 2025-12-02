@@ -33,51 +33,44 @@ export default function ProductCreateForm() {
     priceVta: 0,
     categoryId: "",
     subcategoryId: "",
-    inventory_id: "5e68e71d-c987-4e68-9688-d0ea9199aaa7", // por ahora fijo
+    inventory_id: "5e68e71d-c987-4e68-9688-d0ea9199aaa7",
     quantity: 0,
     min_stock: 0,
   });
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  // 1️⃣ Cargar categorías al montar el componente
+  // 1️⃣ Cargar categorías
   useEffect(() => {
-    const fetchCategories = async () => {
-      try {
-        const res = await axios.get("http://localhost:3005/categories");
-        setCategories(res.data);
-      } catch (error) {
-        console.error("Error al cargar categorías", error);
-      }
-    };
-
-    fetchCategories();
+    axios
+      .get("http://localhost:3005/categories")
+      .then((res) => setCategories(res.data))
+      .catch((err) => console.error("Error al cargar categorías", err));
   }, []);
 
-  // 2️⃣ Cuando cambia categoryId → cargar subcategorías
+  // 2️⃣ Cargar subcategorías cuando cambia la categoría
   useEffect(() => {
     if (!form.categoryId) return;
 
-    const fetchSubcategories = async () => {
-      try {
-        const res = await axios.get(
-          `http://localhost:3005/sub-categories?categoryId=${form.categoryId}`
-        );
-        setSubcategories(res.data);
-      } catch (error) {
-        console.error("Error al cargar subcategorías", error);
-      }
-    };
-
-    fetchSubcategories();
+    axios
+      .get(
+        `http://localhost:3005/sub-categories?categoryId=${form.categoryId}`
+      )
+      .then((res) => setSubcategories(res.data))
+      .catch((err) => console.error("Error al cargar subcategorías", err));
   }, [form.categoryId]);
 
-  // 3️⃣ Manejo de inputs
+  // 3️⃣ Manejo de inputs normales
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >
   ) => {
     const { name, value } = e.target;
 
@@ -93,21 +86,47 @@ export default function ProductCreateForm() {
     }));
   };
 
-  // 4️⃣ Enviar formulario
+  // 4️⃣ Manejo del archivo de imagen
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null;
+    setImageFile(file);
+
+    if (file) {
+      setPreview(URL.createObjectURL(file));
+    } else {
+      setPreview(null);
+    }
+  };
+
+  // 5️⃣ Enviar formulario con FormData
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setMessage("");
 
     try {
-      await axios.post(`http://localhost:3005/products`, {
-        ...form,
-        subcategoryId: form.subcategoryId,
+      const formData = new FormData();
+
+      formData.append("name", form.name);
+      formData.append("description", form.description);
+      formData.append("priceBase", String(form.priceBase));
+      formData.append("priceVta", String(form.priceVta));
+      formData.append("categoryId", form.categoryId);
+      formData.append("subcategoryId", form.subcategoryId);
+      formData.append("inventory_id", form.inventory_id);
+      formData.append("quantity", String(form.quantity));
+      formData.append("min_stock", String(form.min_stock));
+
+      if (imageFile) {
+        formData.append("image", imageFile);
+      }
+
+      await axios.post(`http://localhost:3005/products`, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
 
       setMessage("Producto creado con éxito ✔️");
 
-      // Reset de form
       setForm({
         name: "",
         description: "",
@@ -119,7 +138,10 @@ export default function ProductCreateForm() {
         quantity: 0,
         min_stock: 0,
       });
+
       setSubcategories([]);
+      setImageFile(null);
+      setPreview(null);
     } catch (error) {
       console.error(error);
       setMessage("❌ Error al crear el producto");
@@ -133,7 +155,6 @@ export default function ProductCreateForm() {
       <h2 className="text-3xl font-bold">Crear Producto</h2>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
         {/* Nombre */}
         <div>
           <label className="block text-sm font-semibold">Nombre</label>
@@ -251,6 +272,26 @@ export default function ProductCreateForm() {
               </option>
             ))}
           </select>
+        </div>
+
+        {/* Imagen */}
+        <div className="md:col-span-2">
+          <label className="block text-sm font-semibold">Imagen del producto</label>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageChange}
+            className="mt-1 w-full border rounded-lg p-2"
+          />
+
+          {/* Vista previa */}
+          {preview && (
+            <img
+              src={preview}
+              alt="preview"
+              className="mt-4 w-48 h-48 object-cover rounded-lg border"
+            />
+          )}
         </div>
       </div>
 
