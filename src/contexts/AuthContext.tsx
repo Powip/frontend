@@ -11,6 +11,7 @@ import { decodeToken, isExpired } from "@/lib/jwt";
 import { getCookie, setCookie, deleteCookie } from "cookies-next";
 import { fetchUserCompany } from "@/services/companyService";
 import { fetchUserSubscription } from "@/services/fetchUserSubscription";
+import axios from "axios";
 
 interface Subscription {
   id: string;
@@ -23,6 +24,12 @@ interface Subscription {
 interface Store {
   id: string;
   name: string;
+}
+
+interface Inventory {
+  id: string;
+  name: string;
+  storeId: string;
 }
 
 interface Company {
@@ -51,6 +58,7 @@ interface AuthContextType {
   updateCompany: (company: Company) => void;
   selectedStoreId: string | null;
   setSelectedStore: (storeId: string) => void;
+  inventories: Inventory[];
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -58,6 +66,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [auth, setAuth] = useState<AuthData | null>(null);
   const [selectedStoreId, setSelectedStore] = useState<string | null>(null);
+  const [inventories, setInventories] = useState<Inventory[]>([]);
 
   // ---- Load session from cookies ----
   useEffect(() => {
@@ -98,6 +107,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     loadFromCookies();
   }, []);
 
+  useEffect(() => {
+    if (!auth?.accessToken || !selectedStoreId) return;
+
+    const fetchInventories = async () => {
+      try {
+        const res = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${selectedStoreId}`
+        );
+
+        setInventories(res.data);
+      } catch (err) {
+        console.error("Error loading inventories", err);
+      }
+    };
+
+    fetchInventories();
+  }, [selectedStoreId, auth]);
+
   // ---- LOGIN ----
   const login = async ({
     accessToken,
@@ -116,6 +143,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const company = await fetchUserCompany(decoded.id, accessToken);
+
     let defaultStore = null;
 
     if (company?.stores && company.stores.length > 0) {
@@ -216,6 +244,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         updateCompany,
         selectedStoreId,
         setSelectedStore,
+        inventories,
       }}
     >
       {children}

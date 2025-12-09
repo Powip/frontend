@@ -19,6 +19,8 @@ import {
   Headphones,
   Settings,
   FileSearch,
+  Package2,
+  Tags,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -48,6 +50,7 @@ export function Sidebar({ className }: SidebarProps) {
 
   const navigation: NavigationItem[] = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    { name: "Productos", href: "/productos", icon: Tags },
     { name: "Inventario", href: "/inventario", icon: Package },
     { name: "Órdenes", href: "/ordenes", icon: ShoppingCart },
     { name: "Registrar venta", href: "/registrar-venta", icon: FileText },

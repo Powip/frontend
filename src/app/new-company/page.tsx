@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { fetchUserCompany } from "@/services/companyService";
 
 interface FormData {
   companyName: string;
@@ -38,7 +39,7 @@ interface FormData {
 }
 
 export default function NewCompanyPage() {
-  const { auth, updateCompany } = useAuth();
+  const { auth, updateCompany, setSelectedStore } = useAuth();
   const router = useRouter();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -144,11 +145,22 @@ export default function NewCompanyPage() {
       if (response.status === 201) {
         toast.success("Compañía creada con éxito");
 
-        updateCompany({
-          id: response.data.id,
-          name: response.data.name,
-          store_id: response.data.store_id,
-        });
+        const fullCompany = await fetchUserCompany(
+          auth.user.id,
+          auth.accessToken
+        );
+
+        if (!fullCompany) {
+          console.error("No se pudo obtener la compañía después de crearla");
+          return;
+        }
+
+        updateCompany(fullCompany);
+
+        if (fullCompany.stores && fullCompany.stores.length > 0) {
+          const firstStoreId = fullCompany.stores[0].id;
+          setSelectedStore(firstStoreId);
+        }
 
         router.push("/dashboard");
       }

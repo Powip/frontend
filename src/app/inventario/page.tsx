@@ -3,14 +3,6 @@
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import Label from "@/components/ui/label";
 import {
@@ -29,25 +21,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  Download,
-  Edit,
-  Eye,
-  Plus,
-  Search,
-  Trash2,
-  Upload,
-} from "lucide-react";
+import { Download, Edit, Eye, Search, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import axios from "axios";
-import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 
 interface InventoryItem {
   id: string;
-  inventory_id: string;
-  product_id: string;
+  variant_id: string;
   quantity: number;
+  min_stock: number;
 }
 
 interface Inventory {
@@ -58,14 +41,32 @@ interface Inventory {
   status: boolean;
 }
 
+interface ProductVariantDetail {
+  id: string;
+  sku: string;
+  priceVta: number;
+  attributeValues: Record<string, string>;
+  product: {
+    id: string;
+    name: string;
+    description: string;
+    sku: string;
+    companyId: string;
+    inventory_id: string;
+    status: boolean;
+    hasVariants: boolean;
+  };
+}
+
 export default function InventarioPage() {
   const { auth, selectedStoreId, logout } = useAuth();
-  const [inventories, setInventories] = useState<Inventory[]>([]); // falta tipo
+  const [inventories, setInventories] = useState<Inventory[]>([]);
   const [selectedInventory, setSelectedInventory] = useState(null);
   const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(
     null
   );
   const [isLoading, setIsLoading] = useState(false);
+  const [productsWithDetails, setProductsWithDetails] = useState<any[]>([]);
 
   const stores = auth?.company?.stores || [];
 
@@ -73,17 +74,28 @@ export default function InventarioPage() {
     stores.find((s) => s.id === selectedStoreId) || stores[0];
 
   useEffect(() => {
-    const storeId = selectedStoreId ?? null;
+    /* const storeId = selectedStoreId ?? null;
 
-    if (!storeId) return;
+    if (!storeId) return; */
 
     const fetchInventories = async () => {
       setIsLoading(true);
       try {
         const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${storeId}`
+          `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/17bb91d3-8dfb-4f8a-8f3e-93ad2498b5f4`
         );
-        setInventories(response.data);
+
+        console.log("📦 Inventory items:", response.data);
+
+        setInventories([
+          {
+            id: "virtual",
+            name: "Inventario",
+            store_id: currentStore?.id ?? "virtual-store",
+            status: true,
+            items: response.data,
+          },
+        ]);
       } catch (error) {
         console.log("Error al obtener inventarios", error);
       } finally {
@@ -99,7 +111,45 @@ export default function InventarioPage() {
     }
   }, [inventories]);
 
-  const paginatedProducts: InventoryItem[] = [];
+  useEffect(() => {
+    const loadVariantDetails = async () => {
+      if (!inventories || inventories.length === 0) return;
+
+      const inventory = inventories[0]; // o el seleccionado por el usuario
+      const items = inventory.items || [];
+
+      const results = [];
+
+      for (const item of items) {
+        try {
+          const { data: variant } = await axios.get(
+            `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${item.variant_id}`
+          );
+
+          results.push({
+            inventoryItemId: item.id,
+            variantId: item.variant_id,
+            quantity: item.quantity,
+            min_stock: item.min_stock,
+
+            // Datos de la variante desde ms-products
+            sku: variant.sku,
+            name: variant.product.name,
+            attributes: variant.attributeValues,
+            priceVta: Number(variant.priceVta),
+          });
+        } catch (err) {
+          console.log("❌ Error obteniendo detalle de variante:", err);
+        }
+      }
+
+      setProductsWithDetails(results);
+    };
+
+    loadVariantDetails();
+  }, [inventories]);
+
+  const paginatedProducts = productsWithDetails;
 
   return (
     <div className="h-screen flex flex-col px-6">
@@ -154,111 +204,9 @@ export default function InventarioPage() {
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm">
-                <Upload className="mr-2 h-4 w-4" />
-                Importar
-              </Button>
-              <Button variant="outline" size="sm">
                 <Download className="mr-2 h-4 w-4" />
                 Exportar
               </Button>
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button size="sm">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Agregar producto
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-2xl">
-                  <DialogHeader>
-                    <DialogTitle>Agregar Nuevo Producto</DialogTitle>
-                    <DialogDescription>
-                      Completa la información del producto
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="productName">Nombre del Producto</Label>
-                        <Input
-                          id="productName"
-                          placeholder="Ej: Camiseta Básica"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="productDescription">Descripcion</Label>
-                        <Textarea
-                          id="productDescription"
-                          placeholder="Ej: SKU-001"
-                        />
-                      </div>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="category">Categoría</Label>
-                        <Select>
-                          <SelectTrigger id="category">
-                            <SelectValue placeholder="Selecciona categoría" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Ropa">Ropa</SelectItem>
-                            <SelectItem value="Calzado">Calzado</SelectItem>
-                            <SelectItem value="Electrónica">
-                              Electrónica
-                            </SelectItem>
-                            <SelectItem value="Accesorios">
-                              Accesorios
-                            </SelectItem>
-                            <SelectItem value="Hogar">Hogar</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label htmlFor="subcategory">Subcategorías</Label>
-                        <Select>
-                          <SelectTrigger id="subcategory">
-                            <SelectValue placeholder="Selecciona categoría" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="Ropa">Ropa</SelectItem>
-                            <SelectItem value="Calzado">Calzado</SelectItem>
-                            <SelectItem value="Electrónica">
-                              Electrónica
-                            </SelectItem>
-                            <SelectItem value="Accesorios">
-                              Accesorios
-                            </SelectItem>
-                            <SelectItem value="Hogar">Hogar</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="costPrice">Precio de Costo</Label>
-                        <Input id="costPrice" type="number" placeholder="0" />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="salePrice">Precio de Venta</Label>
-                        <Input id="salePrice" type="number" placeholder="0" />
-                      </div>
-                    </div>
-
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="stock">Stock</Label>
-                        <Input id="stock" type="number" placeholder="0.00" />
-                      </div>
-                    </div>
-
-                    <div className="flex justify-end gap-2">
-                      <Button variant="outline">Cancelar</Button>
-                      <Button>Crear Producto</Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
             </div>
           </div>
 
@@ -277,42 +225,44 @@ export default function InventarioPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedProducts.length > 0 ? (
-                  paginatedProducts.map((product) => {
-                    return (
-                      <TableRow key={product.id}>
-                        <TableCell className="font-medium">REM-2001</TableCell>
-                        <TableCell>REMERA</TableCell>
-                        <TableCell>ROPA</TableCell>
-                        <TableCell className="font-medium">40</TableCell>
-                        <TableCell>$9.10</TableCell>
-                        <TableCell>
-                          <Badge variant="default">Disponible</Badge>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Ver detalle"
-                            >
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button variant="ghost" size="icon" title="Editar">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })
+                {productsWithDetails.length > 0 ? (
+                  productsWithDetails.map((product) => (
+                    <TableRow key={product.inventoryItemId}>
+                      <TableCell>{product.sku}</TableCell>
+                      <TableCell>{product.name}</TableCell>
+                      <TableCell>
+                        {Object.entries(product.attributes)
+                          .map(([key, value]) => `${key}: ${value}`)
+                          .join(" / ")}
+                      </TableCell>
+                      <TableCell className="font-medium">
+                        {product.quantity}
+                      </TableCell>
+                      <TableCell>${product.priceVta}</TableCell>
+
+                      <TableCell>
+                        <Badge variant="default">Disponible</Badge>
+                      </TableCell>
+
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="Ver detalle"
+                          >
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="Editar">
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" title="Eliminar">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
                 ) : (
                   <TableRow>
                     <TableCell

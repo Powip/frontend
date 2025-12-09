@@ -17,7 +17,7 @@ interface LoginData {
 }
 
 export default function LoginForm() {
-  const { auth, login } = useAuth();
+  const { auth, login, inventories } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [loginData, setLoginData] = useState<LoginData>({
@@ -71,7 +71,7 @@ export default function LoginForm() {
           toast.error("Error procesando la sesión del usuario.");
           return;
         }
-        console.log(userData);
+        console.log(userData, inventories);
 
         // ⭐ 1. Si no tiene suscripción → ir a subscriptions
         if (!userData.subscription) {

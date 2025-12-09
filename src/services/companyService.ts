@@ -17,10 +17,7 @@ export const fetchUserCompany = async (
 ): Promise<Company | null> => {
   try {
     const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_COMPANY}/company/user/${userId}`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-      }
+      `${process.env.NEXT_PUBLIC_API_COMPANY}/company/user/${userId}`
     );
 
     // Si no trae company
