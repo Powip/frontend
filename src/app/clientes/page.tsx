@@ -13,7 +13,7 @@ const initialCustomers = [
   { id: "C001", name: "Juan Pérez", email: "juan@email.com", phone: "+52 555 1234", compras: 12, estado: "Activo" },
   { id: "C002", name: "María García", email: "maria@email.com", phone: "+52 555 5678", compras: 8, estado: "Activo" },
   { id: "C003", name: "Carlos López", email: "carlos@email.com", phone: "+52 555 9012", compras: 5, estado: "Activo" },
-  { id: "C004", name: "Ana Martínez", email: "ana@email.com", phone: "+52 555 3456", compras: 15, estado: "VIP" },
+  { id: "C004", name: "Ana Martínez", email: "ana@email.com", phone: "+52 555 3456", compras: 15, estado: "Inactivo" },
   { id: "C005", name: "Luis Rodríguez", email: "luis@email.com", phone: "+52 555 7890", compras: 2, estado: "Inactivo" },
 ]
 
