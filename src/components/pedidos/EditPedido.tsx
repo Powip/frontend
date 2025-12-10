@@ -8,7 +8,6 @@ import Header from "../ui/header";
 import Container from "../ui/container";
 import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
-import Label from "../ui/label";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { IOrder } from "@/interfaces/IOrder";
 import { getPedidoById } from "@/services/orderService";
 import ProductPedidoTable from "./productPedidoTable";
+import { Label } from "../ui/label";
 
 const EditPedido = () => {
   const params = useParams();

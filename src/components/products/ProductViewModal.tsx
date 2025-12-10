@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import Image from "next/image";
 import { IProduct } from "@/interfaces/IProduct";
 import { Attribute } from "@/interfaces/IAttribute";
-import Label from "@/components/ui/label";
+import { Label } from "../ui/label";
 
 interface ProductViewModalProps {
   open: boolean;

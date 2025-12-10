@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import Label from "@/components/ui/label";
 import FormGrid from "@/components/ui/form-grid";
 import { FilterIcon, Download } from "lucide-react";
 import {
@@ -24,6 +23,7 @@ import {
 import { exportProductsToExcel } from "./utils/ExportExcel";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { Label } from "../ui/label";
 
 interface Props {
   filters: ProductFilters;

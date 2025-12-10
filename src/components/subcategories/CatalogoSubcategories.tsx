@@ -7,7 +7,6 @@ import Container from "../ui/container";
 import Header from "../ui/header";
 import FormGrid from "../ui/form-grid";
 import FormContainer from "../ui/form-container";
-import Label from "../ui/label";
 
 import {
   Select,
@@ -22,6 +21,7 @@ import { Category, Subcategory } from "@/interfaces/ICategory";
 import { getCategories } from "../../services/categoryService";
 
 import SubcategoriesTable from "@/components/subcategories/SubcategoriesTable";
+import { Label } from "../ui/label";
 
 const CatalogoSubcategorias = () => {
   const [categories, setCategories] = useState<Category[]>([]);

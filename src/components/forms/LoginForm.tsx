@@ -3,13 +3,14 @@ import axios from "axios";
 import { redirect, useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import Label from "../ui/label";
+
 import { Input } from "../ui/input";
 import Link from "next/link";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import ForgotPassword from "../modals/forgotPasswortModal";
+import { Label } from "../ui/label";
 
 interface LoginData {
   email: string;

@@ -1,12 +1,13 @@
 "use client";
 import axios from "axios";
 import { useState } from "react";
-import Label from "../ui/label";
+
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import Link from "next/link";
 import { toast } from "sonner";
+import { Label } from "../ui/label";
 
 interface RegisterData {
   name: string;

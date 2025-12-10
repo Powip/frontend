@@ -5,12 +5,11 @@ import { useState } from "react";
 import FormGrid from "../ui/form-grid";
 import Header from "../ui/header";
 import { Input } from "../ui/input";
-import Label from "../ui/label";
+
 import { Button } from "../ui/button";
 import FormContainer from "../ui/form-container";
 import {
   Table,
-  TableActions,
   TableBody,
   TableCell,
   TableHead,
@@ -27,6 +26,7 @@ import {
   IOrderItem,
 } from "@/api/Interfaces";
 import { toast } from "sonner";
+import { Label } from "../ui/label";
 
 type Props = {
   next: () => void;
@@ -224,9 +224,8 @@ export const Productos = ({
                         }`
                       : "-"}
                   </TableCell>
-                  <TableActions>
+                  <TableCell>
                     <Button
-                      variant="table"
                       size="icon"
                       className="bg-red"
                       onClick={() => handleDelete(item.productId)}
@@ -234,7 +233,7 @@ export const Productos = ({
                     >
                       <Trash />
                     </Button>
-                  </TableActions>
+                  </TableCell>
                 </TableRow>
               ))
             ) : (

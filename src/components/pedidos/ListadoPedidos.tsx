@@ -6,7 +6,7 @@ import Container from "../ui/container";
 import Header from "../ui/header";
 import FormGrid from "../ui/form-grid";
 import FormContainer from "../ui/form-container";
-import Label from "../ui/label";
+
 import {
   Select,
   SelectContent,
@@ -28,6 +28,7 @@ import { getPedidos } from "@/services/orderService";
 import { IOrder } from "@/interfaces/IOrder";
 
 import PedidosTable from "./PedidosTable";
+import { Label } from "../ui/label";
 
 const ListadoPedidos = () => {
   const [pedidos, setPedidos] = useState<IOrder[]>([]);

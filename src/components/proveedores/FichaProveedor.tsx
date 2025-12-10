@@ -7,7 +7,6 @@ import Header from "../ui/header";
 import Container from "../ui/container";
 import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
-import Label from "../ui/label";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +27,7 @@ import {
 } from "@/services/geoPeruService";
 
 import { createProvider } from "@/services/providerService";
+import { Label } from "../ui/label";
 
 const FichaProveedor = () => {
   const router = useRouter();

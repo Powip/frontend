@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
-import Label from "../ui/label";
+
 import { Input } from "../ui/input";
 import Header from "../ui/header";
 import {
@@ -19,6 +19,7 @@ import Container from "../ui/container";
 import { toast } from "sonner";
 import { ICreatePaymentDto } from "@/api/Interfaces";
 import { useCreatePaymentForOrder } from "@/hooks/useVentas";
+import { Label } from "../ui/label";
 
 interface Totals {
   totalAmount: number;

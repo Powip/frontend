@@ -2,11 +2,12 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import Label from "@/components/ui/label";
+
 import axios from "axios";
 import { useState } from "react";
 import { toast } from "sonner";
 import { useSearchParams } from "next/navigation";
+import { Label } from "@/components/ui/label";
 
 export default function RestablecerPage() {
   const searchParams = useSearchParams();

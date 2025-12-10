@@ -14,7 +14,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import Label from "@/components/ui/label";
+
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { fetchUserCompany } from "@/services/companyService";
+import { Label } from "@/components/ui/label";
 
 interface FormData {
   companyName: string;

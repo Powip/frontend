@@ -9,7 +9,7 @@ import Container from "../ui/container";
 import Header from "../ui/header";
 import FormGrid from "../ui/form-grid";
 import FormContainer from "../ui/form-container";
-import Label from "../ui/label";
+
 import { Input } from "@/components/ui/input";
 import { Button } from "../ui/button";
 
@@ -22,6 +22,7 @@ import {
 
 import ProvidersTable from "../../components/proveedores/ProvidersTable";
 import DeleteProviderModal from "./DeleteProviderModal";
+import { Label } from "../ui/label";
 
 const CatalogoProveedores = () => {
   const router = useRouter();

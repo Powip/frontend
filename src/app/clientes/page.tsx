@@ -1,41 +1,75 @@
 "use client";
 
-import { useState } from "react"
+import { useEffect, useState } from "react";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Edit, Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { Plus, Search, Edit, Trash2 } from "lucide-react";
+import axios from "axios";
+import { useAuth } from "@/contexts/AuthContext";
 
-const initialCustomers = [
-  { id: "C001", name: "Juan Pérez", email: "juan@email.com", phone: "+52 555 1234", compras: 12, estado: "Activo" },
-  { id: "C002", name: "María García", email: "maria@email.com", phone: "+52 555 5678", compras: 8, estado: "Activo" },
-  { id: "C003", name: "Carlos López", email: "carlos@email.com", phone: "+52 555 9012", compras: 5, estado: "Activo" },
-  { id: "C004", name: "Ana Martínez", email: "ana@email.com", phone: "+52 555 3456", compras: 15, estado: "Inactivo" },
-  { id: "C005", name: "Luis Rodríguez", email: "luis@email.com", phone: "+52 555 7890", compras: 2, estado: "Inactivo" },
-]
+interface Client {
+  id: string;
+  fullName: string;
+  phoneNumber: string;
+  clientType: "TRADICIONAL" | "MAYORISTA";
+  isActive: boolean;
+}
 
 export default function ClientesPage() {
-  const [searchQuery, setSearchQuery] = useState("")
+  const { auth } = useAuth();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [clients, setClients] = useState<Client[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [openModal, setOpenModal] = useState(false);
 
-  const filteredCustomers = initialCustomers.filter((customer) =>
-    customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    customer.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    customer.id.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  useEffect(() => {
+    const fetchClients = async () => {
+      try {
+        const res = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/clients/company/${auth?.company?.id}`
+        );
+        setClients(res.data);
+      } catch (error) {
+        console.log("Error cargando clientes:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    if (auth?.company?.id) fetchClients();
+  }, [auth?.company?.id]);
+
+  const filtered = clients.filter((c) => {
+    const q = searchQuery.toLowerCase();
+
+    return (
+      c.fullName.toLowerCase().includes(q) ||
+      c.phoneNumber.toLowerCase().includes(q) ||
+      c.clientType.toLowerCase().includes(q) ||
+      c.id.toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
-      
       <main className="flex-1 p-4 md:p-6 flex flex-col overflow-hidden">
-        
-        <HeaderConfig title="Clientes" description="Gestión de clientes y contactos" />
+        <HeaderConfig
+          title="Clientes"
+          description="Gestión de clientes y contactos"
+        />
 
         <Card className="mt-4 flex-1 overflow-hidden">
           <CardContent className="p-4 flex flex-col h-full">
-
             {/* Filtro + Acción */}
             <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
               <div className="relative w-full md:w-80">
@@ -48,7 +82,7 @@ export default function ClientesPage() {
                 />
               </div>
 
-              <Button size="sm">
+              <Button size="sm" onClick={() => setOpenModal(true)}>
                 <Plus className="mr-2 h-4 w-4" />
                 Agregar cliente
               </Button>
@@ -59,38 +93,40 @@ export default function ClientesPage() {
               <Table className="w-full">
                 <TableHeader className="sticky top-0 bg-background z-10">
                   <TableRow>
-                    <TableHead>ID</TableHead>
+                    <TableHead>N°</TableHead>
                     <TableHead>Nombre</TableHead>
-                    <TableHead>Email</TableHead>
                     <TableHead>Teléfono</TableHead>
                     <TableHead>Compras</TableHead>
+                    <TableHead>Tipo</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
 
                 <TableBody>
-                  {filteredCustomers.length > 0 ? (
-                    filteredCustomers.map((customer) => (
-                      <TableRow key={customer.id}>
-                        <TableCell className="font-medium">{customer.id}</TableCell>
-                        <TableCell>{customer.name}</TableCell>
-                        <TableCell>{customer.email}</TableCell>
-                        <TableCell>{customer.phone}</TableCell>
-                        <TableCell>{customer.compras}</TableCell>
+                  {loading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-6">
+                        Cargando clientes...
+                      </TableCell>
+                    </TableRow>
+                  ) : filtered.length > 0 ? (
+                    filtered.map((c, index) => (
+                      <TableRow key={c.id}>
+                        <TableCell className="font-medium">
+                          {index + 1}
+                        </TableCell>
+                        <TableCell>{c.fullName}</TableCell>
+                        <TableCell>{c.phoneNumber}</TableCell>
+                        <TableCell>16</TableCell>
+                        <TableCell>{c.clientType}</TableCell>
+
                         <TableCell>
-                          <Badge
-                            variant={
-                              customer.estado === "VIP"
-                                ? "default"
-                                : customer.estado === "Activo"
-                                ? "secondary"
-                                : "outline"
-                            }
-                          >
-                            {customer.estado}
+                          <Badge variant={c.isActive ? "secondary" : "outline"}>
+                            {c.isActive ? "Activo" : "Inactivo"}
                           </Badge>
                         </TableCell>
+
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
                             <Button variant="ghost" size="icon">
@@ -105,19 +141,20 @@ export default function ClientesPage() {
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                      <TableCell
+                        colSpan={6}
+                        className="text-center py-6 text-muted-foreground"
+                      >
                         No se encontraron clientes.
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
-
             </div>
           </CardContent>
         </Card>
-
       </main>
     </div>
-  )
+  );
 }

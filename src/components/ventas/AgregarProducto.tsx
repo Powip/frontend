@@ -6,7 +6,7 @@ import ModalContainer from "../ui/modal-container";
 import Header from "../ui/header";
 import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
-import Label from "../ui/label";
+
 import {
   Select,
   SelectContent,
@@ -19,6 +19,7 @@ import { X } from "lucide-react";
 import { IAddItem } from "@/api/Interfaces";
 import { IProduct } from "../products/interfaces";
 import { getAttributesBySubcategory } from "@/api/Productos";
+import { Label } from "../ui/label";
 
 type Props = {
   onClose: () => void;

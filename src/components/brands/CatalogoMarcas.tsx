@@ -7,7 +7,6 @@ import Container from "../ui/container";
 import Header from "../ui/header";
 import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
-import Label from "../ui/label";
 
 import {
   Select,
@@ -23,6 +22,7 @@ import { getProvidersByCompany } from "@/services/providerService";
 import { getBrandsBySupplier } from "@/services/brandService";
 
 import BrandsTable from "../brands/BrandsTable";
+import { Label } from "../ui/label";
 
 const CatalogoMarcas = () => {
   const [providers, setProviders] = useState<Provider[]>([]);

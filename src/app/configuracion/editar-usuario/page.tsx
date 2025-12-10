@@ -9,9 +9,9 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import axios from "axios";
 import { toast } from "sonner";
-import Label from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
+import { Label } from "@/components/ui/label";
 
 /* ------------------------------------------
     INTERFACES
