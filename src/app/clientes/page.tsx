@@ -17,37 +17,35 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Edit, Trash2 } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
-
-interface Client {
-  id: string;
-  fullName: string;
-  phoneNumber: string;
-  clientType: "TRADICIONAL" | "MAYORISTA";
-  isActive: boolean;
-}
+import ClienteModal from "@/components/modals/ClienteModal";
+import { Cliente } from "@/interfaces/ICliente";
+import { toast } from "sonner";
+import { findByCompany, toggleClienteActivo } from "@/api/clientes/route";
 
 export default function ClientesPage() {
   const { auth } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [clients, setClients] = useState<Client[]>([]);
+  const [clients, setClients] = useState<Cliente[]>([]);
   const [loading, setLoading] = useState(true);
   const [openModal, setOpenModal] = useState(false);
+  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
 
   useEffect(() => {
-    const fetchClients = async () => {
-      try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/clients/company/${auth?.company?.id}`
-        );
-        setClients(res.data);
-      } catch (error) {
-        console.log("Error cargando clientes:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    if (auth?.company?.id) fetchClients();
+    if (auth?.company?.id) {
+      fetchClients(auth?.company?.id);
+    }
   }, [auth?.company?.id]);
+
+  const fetchClients = async (companyId: string) => {
+    try {
+      const res = await findByCompany(companyId);
+      if (res) setClients(res.data);
+    } catch (error) {
+      console.log("Error cargando clientes:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filtered = clients.filter((c) => {
     const q = searchQuery.toLowerCase();
@@ -56,9 +54,29 @@ export default function ClientesPage() {
       c.fullName.toLowerCase().includes(q) ||
       c.phoneNumber.toLowerCase().includes(q) ||
       c.clientType.toLowerCase().includes(q) ||
-      c.id.toLowerCase().includes(q)
+      c.id?.toLowerCase().includes(q)
     );
   });
+
+  const handleClienteSaved = async () => {
+    setOpenModal(false);
+    setSelectedCliente(null);
+    await fetchClients(auth!.company!.id);
+  };
+
+  const handleToggleActivo = async (cliente: Cliente) => {
+    if (!cliente.id) return;
+    try {
+      const res = await toggleClienteActivo(cliente.id);
+      console.log(res);
+
+      toast.success("Cliente actualizado correctamente");
+      fetchClients(auth!.company!.id);
+    } catch (error) {
+      toast.error("Error al actualizar cliente");
+      console.error(error);
+    }
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden">
@@ -82,7 +100,13 @@ export default function ClientesPage() {
                 />
               </div>
 
-              <Button size="sm" onClick={() => setOpenModal(true)}>
+              <Button
+                size="sm"
+                onClick={() => {
+                  setSelectedCliente(null);
+                  setOpenModal(true);
+                }}
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 Agregar cliente
               </Button>
@@ -129,10 +153,23 @@ export default function ClientesPage() {
 
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-2">
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                setSelectedCliente(c);
+                                setOpenModal(true);
+                              }}
+                            >
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => {
+                                handleToggleActivo(c);
+                              }}
+                            >
                               <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
@@ -155,6 +192,15 @@ export default function ClientesPage() {
           </CardContent>
         </Card>
       </main>
+
+      <ClienteModal
+        open={openModal}
+        onClose={() => {
+          setOpenModal(false);
+        }}
+        cliente={selectedCliente}
+        onClienteSaved={handleClienteSaved}
+      />
     </div>
   );
 }

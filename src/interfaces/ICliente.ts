@@ -1,4 +1,5 @@
 export interface Cliente {
+  id?: string;
   fullName: string;
   phoneNumber: string;
   clientType: "TRADICIONAL" | "MAYORISTA";
@@ -9,4 +10,5 @@ export interface Cliente {
   reference?: string;
   latitude?: number;
   longitude?: number;
+  isActive: boolean;
 }

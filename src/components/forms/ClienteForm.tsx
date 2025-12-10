@@ -8,53 +8,204 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
+import { Textarea } from "../ui/textarea";
+import { useEffect, useState } from "react";
+import { Button } from "../ui/button";
+import { toast } from "sonner";
+import { createClient, updateClient } from "@/api/clientes/route";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
   cliente: Cliente | null;
   onClienteSaved: () => void;
 }
+
+const empty: Cliente = {
+  fullName: "",
+  phoneNumber: "",
+  clientType: "TRADICIONAL",
+  province: "",
+  city: "",
+  district: "",
+  address: "",
+  reference: "",
+  isActive: true,
+};
+
 export default function ClienteForm({ cliente, onClienteSaved }: Props) {
+  function toState(c?: Cliente | null): Cliente {
+    if (!c) return empty;
+    return {
+      fullName: c.fullName ?? "",
+      phoneNumber: c.phoneNumber ?? "",
+      clientType: c.clientType ?? "TRADICIONAL",
+      province: c.province ?? "",
+      city: c.city ?? "",
+      district: c.district ?? "",
+      address: c.address ?? "",
+      reference: c.reference ?? "",
+      latitude: c.latitude,
+      longitude: c.longitude,
+      isActive: c.isActive ?? true,
+      id: c.id,
+    };
+  }
+
+  const [state, setState] = useState<Cliente>(toState(cliente));
+  const [loading, setLoading] = useState(false);
+  const { auth } = useAuth();
+
+  useEffect(() => {
+    setState(toState(cliente));
+  }, [cliente]);
+
+  const validateForm = () =>
+    state.fullName.trim() &&
+    state.clientType &&
+    state.province.trim() &&
+    state.city.trim() &&
+    state.district.trim() &&
+    state.address.trim();
+
+  const handleOnSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!validateForm()) {
+      toast.warning("Completa todos los campos obligatorios");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      if (state.id) {
+        await updateClient(state.id, {
+          ...state,
+          id: state.id,
+        });
+        toast.success("Cliente actualizado correctamente");
+      } else {
+        const res = await createClient({
+          ...state,
+          companyId: auth!.company!.id,
+        });
+        console.log(res);
+
+        toast.success("Cliente creado correctamente");
+        setState(empty);
+      }
+
+      onClienteSaved();
+    } catch (err: any) {
+      toast.error(err.message || "Error al guardar cliente");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <form className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div className=" flex flex-col gap-1.5">
+    <form
+      className="grid grid-cols-1 md:grid-cols-2 gap-4"
+      onSubmit={handleOnSubmit}
+    >
+      <div className="flex flex-col gap-1.5">
         <Label htmlFor="fullname">Nombre Completo</Label>
-        <Input id="fullname" placeholder="John Snow" required />
-      </div>
-      <div className=" flex flex-col gap-1.5">
-        <Label htmlFor="phonenumber">Numero de telefono</Label>
-        <Input id="phonenumber" required />
+        <Input
+          id="fullname"
+          value={state.fullName}
+          onChange={(e) => setState({ ...state, fullName: e.target.value })}
+          placeholder="John Snow"
+          required
+        />
       </div>
 
-      <div className=" flex flex-col gap-1.5">
-        <Select>
-          <SelectTrigger className="w-full">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="phonenumber">Número de teléfono</Label>
+        <Input
+          id="phonenumber"
+          value={state.phoneNumber}
+          onChange={(e) => setState({ ...state, phoneNumber: e.target.value })}
+          placeholder="Ej: 2615555555"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label>Tipo de cliente</Label>
+        <Select
+          value={state.clientType}
+          onValueChange={(val) =>
+            setState({
+              ...state,
+              clientType: val as "TRADICIONAL" | "MAYORISTA",
+            })
+          }
+        >
+          <SelectTrigger>
             <SelectValue placeholder="Tipo de cliente" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="TRADICIONAL">Tradiccional</SelectItem>
+            <SelectItem value="TRADICIONAL">Tradicional</SelectItem>
             <SelectItem value="MAYORISTA">Mayorista</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
-      <div className=" flex flex-col gap-1.5">
+      <div className="flex flex-col gap-1.5">
         <Label htmlFor="province">Provincia</Label>
-        <Input id="province" required />
-      </div>
-      <div className=" flex flex-col gap-1.5">
-        <Label htmlFor="city">Ciudad</Label>
-        <Input id="city" required />
-      </div>
-
-      <div className=" flex flex-col gap-1.5">
-        <Label htmlFor="district">Distrito</Label>
-        <Input id="district" required />
+        <Input
+          id="province"
+          value={state.province}
+          onChange={(e) => setState({ ...state, province: e.target.value })}
+          required
+        />
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="address">Direccion</Label>
-        <Input id="address" required />
+        <Label htmlFor="city">Ciudad</Label>
+        <Input
+          id="city"
+          value={state.city}
+          onChange={(e) => setState({ ...state, city: e.target.value })}
+          required
+        />
       </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="district">Distrito</Label>
+        <Input
+          id="district"
+          value={state.district}
+          onChange={(e) => setState({ ...state, district: e.target.value })}
+          required
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="address">Dirección</Label>
+        <Input
+          id="address"
+          value={state.address}
+          onChange={(e) => setState({ ...state, address: e.target.value })}
+          required
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5 col-span-full">
+        <Label htmlFor="reference">Referencia</Label>
+        <Textarea
+          id="reference"
+          placeholder="Referencia (opcional)"
+          value={state.reference}
+          onChange={(e) => setState({ ...state, reference: e.target.value })}
+        />
+      </div>
+
+      <Button
+        type="submit"
+        className="col-span-full justify-self-end"
+        disabled={loading}
+      >
+        {cliente?.id && cliente ? "Actualizar Cliente" : "Crear Cliente"}
+      </Button>
     </form>
   );
 }
