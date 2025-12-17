@@ -23,3 +23,14 @@ export interface IOrder {
   trakking?: string;
   agente?: string;
 }
+
+export interface CartItem {
+  id: string;
+  inventoryItemId: string;
+  variantId: string;
+  productName: string;
+  sku: string;
+  attributes?: Record<string, string>;
+  quantity: number;
+  price: number;
+}

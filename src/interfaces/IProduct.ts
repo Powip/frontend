@@ -56,3 +56,13 @@ export interface IProductApiResponse {
 export interface IProductResponse extends IProductRequest {
   id: string;
 }
+
+export interface InventoryItemForSale {
+  inventoryItemId: string;
+  variantId: string;
+  productName: string;
+  sku: string;
+  price: number;
+  availableStock: number;
+  attributes?: Record<string, string>;
+}
