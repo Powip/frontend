@@ -29,8 +29,12 @@ export enum DeliveryType {
 }
 
 export enum OrderStatus {
-  CONFIRMADA = "CONFIRMADA",
-  PAGADA = "PAGADA",
+  PENDIENTE = 'PENDIENTE',
+  PREPARADO = 'PREPARADO',
+  LLAMADO = 'LLAMADO',
+  EN_ENVIO = 'EN_ENVIO',
+  ENTREGADO = 'ENTREGADO',
+  ANULADO = 'ANULADO',
 }
 
 export enum PaymentMethod {
