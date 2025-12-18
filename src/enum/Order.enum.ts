@@ -18,6 +18,7 @@ export enum SalesChannel {
   FACEBOOK = "FACEBOOK",
   MARKETPLACE = "MARKETPLACE",
   MERCADOLIBRE = "MERCADOLIBRE",
+  WEB = "WEB",
   OTRO = "OTRO",
 }
 
@@ -30,4 +31,11 @@ export enum DeliveryType {
 export enum OrderStatus {
   CONFIRMADA = "CONFIRMADA",
   PAGADA = "PAGADA",
+}
+
+export enum PaymentMethod {
+  EFECTIVO = "EFECTIVO",
+  TRANSFERENCIA = "TRANSFERENCIA",
+  TARJETA_DEBITO = "TARJETA_DEBITO",
+  MERCADO_PAGO = "MERCADO_PAGO",
 }

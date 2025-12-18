@@ -52,7 +52,7 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Productos", href: "/productos", icon: Tags },
     { name: "Inventario", href: "/inventario", icon: Package },
-    { name: "Órdenes", href: "/ordenes", icon: ShoppingCart },
+    { name: "Ventas", href: "/ventas", icon: ShoppingCart },
     { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
     { name: "Clientes", href: "/clientes", icon: Users },
     { name: "Proveedores", href: "/proveedores", icon: Building2 },

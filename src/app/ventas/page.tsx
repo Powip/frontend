@@ -1,20 +1,11 @@
-"use client"
+"use client";
 
-import Link from "next/link"
-import { useEffect, useState } from "react"
-import {
-  Plus,
-  Pencil,
-  Trash2,
-} from "lucide-react"
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { Plus, Pencil, Trash2, FileText } from "lucide-react";
 
-import { Button } from "@/components/ui/button"
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -22,86 +13,115 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { HeaderConfig } from "@/components/header/HeaderConfig"
+} from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
+import { HeaderConfig } from "@/components/header/HeaderConfig";
+import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
+import { useAuth } from "@/contexts/AuthContext";
+import axios from "axios";
+import OrderReceiptModal from "@/components/modals/orderReceiptModal";
 
-/* -----------------------------------------
-   Tipos
------------------------------------------ */
-type SaleStatus = "PENDIENTE" | "FINALIZADA" | "CANCELADA"
+export type SaleStatus = "PENDIENTE" | "CONFIRMADA" | "PAGADA" | "ANULADA";
 
-interface Sale {
-  id: string
-  clientName: string
-  date: string
-  total: number
-  status: SaleStatus
-  paymentMethod: string
-  deliveryType: string
+export interface Sale {
+  id: string;
+  clientName: string;
+  date: string;
+  total: number;
+  status: SaleStatus;
+  paymentMethod: string;
+  deliveryType: string;
+}
+type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+
+function mapOrderStatusToSaleStatus(status: OrderStatus): SaleStatus {
+  switch (status) {
+    case "PENDIENTE":
+      return "PENDIENTE";
+
+    case "CONFIRMADA":
+    case "EN_PREPARACION":
+    case "ENVIADA":
+    case "ENTREGADA":
+      return "CONFIRMADA";
+
+    case "PAGADA":
+      return "PAGADA";
+
+    case "ANULADA":
+      return "ANULADA";
+
+    default:
+      return "PENDIENTE";
+  }
+}
+
+function mapOrderToSale(order: OrderHeader): Sale {
+  return {
+    id: order.id,
+    clientName: order.customer.fullName,
+    date: new Date(order.created_at).toLocaleDateString("es-AR"),
+    total: Number(order.grandTotal),
+    status: mapOrderStatusToSaleStatus(order.status),
+    paymentMethod:
+      order.payments.length > 0 ? order.payments[0].paymentMethod : "—",
+    deliveryType: order.deliveryType.replace("_", " "),
+  };
 }
 
 /* -----------------------------------------
    Page
 ----------------------------------------- */
 export default function VentasPage() {
-  const [sales, setSales] = useState<Sale[]>([])
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
-  /* -----------------------------------------
-     Mock data (luego Axios)
-  ----------------------------------------- */
+  const [sales, setSales] = useState<Sale[]>([]);
+  const { auth, selectedStoreId } = useAuth();
+
   useEffect(() => {
-    setSales([
-      {
-        id: "1",
-        clientName: "Juan Pérez",
-        date: "2025-01-10",
-        total: 185.00,
-        status: "FINALIZADA",
-        paymentMethod: "Tarjeta",
-        deliveryType: "Domicilio",
-      },
-      {
-        id: "2",
-        clientName: "María González",
-        date: "2025-01-11",
-        total: 92.50,
-        status: "PENDIENTE",
-        paymentMethod: "Transferencia",
-        deliveryType: "Sucursal",
-      },
-      {
-        id: "3",
-        clientName: "Carlos López",
-        date: "2025-01-12",
-        total: 140.00,
-        status: "CANCELADA",
-        paymentMethod: "Efectivo",
-        deliveryType: "Domicilio",
-      },
-    ])
-  }, [])
+    if (!selectedStoreId) return;
+
+    async function fetchOrders() {
+      try {
+        const res = await axios.get<OrderHeader[]>(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
+        );
+
+        const mappedSales = res.data.map(mapOrderToSale);
+        setSales(mappedSales);
+      } catch (error) {
+        console.error("Error fetching orders", error);
+      }
+    }
+
+    fetchOrders();
+  }, [selectedStoreId]);
 
   /* -----------------------------------------
      Helpers
   ----------------------------------------- */
-  const statusVariant = (status: SaleStatus) => {
+  const statusVariant = (status: SaleStatus): BadgeVariant => {
     switch (status) {
-      case "FINALIZADA":
-        return "success"
-      case "PENDIENTE":
-        return "warning"
-      case "CANCELADA":
-        return "destructive"
-      default:
-        return "secondary"
-    }
-  }
+      case "PAGADA":
+        return "default";
 
+      case "CONFIRMADA":
+        return "secondary";
+
+      case "PENDIENTE":
+        return "outline";
+
+      case "ANULADA":
+        return "destructive";
+
+      default:
+        return "secondary";
+    }
+  };
   const handleDelete = (id: string) => {
-    // TODO: reemplazar por axios.delete(...)
-    setSales((prev) => prev.filter((sale) => sale.id !== id))
-  }
+    setSales((prev) => prev.filter((sale) => sale.id !== id));
+  };
 
   return (
     <div className="flex h-screen w-full">
@@ -138,9 +158,7 @@ export default function VentasPage() {
                   <TableHead>Envío</TableHead>
                   <TableHead>Total</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">
-                    Acciones
-                  </TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
 
@@ -161,14 +179,20 @@ export default function VentasPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right space-x-2">
-                      <Link href={`/ventas/${sale.id}/editar`}>
-                        <Button
-                          size="icon"
-                          variant="outline"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                      </Link>
+                      <Button size="icon" variant="outline">
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() => {
+                          setSelectedOrderId(sale.id);
+                          setReceiptOpen(true);
+                        }}
+                      >
+                        <FileText className="h-4 w-4" />
+                      </Button>
 
                       <Button
                         size="icon"
@@ -196,6 +220,21 @@ export default function VentasPage() {
           </CardContent>
         </Card>
       </main>
+      <OrderReceiptModal
+        open={receiptOpen}
+        orderId={selectedOrderId}
+        onClose={() => {
+          setReceiptOpen(false);
+          setSelectedOrderId(null);
+        }}
+      />
     </div>
-  )
+  );
 }
+
+/* boleta o factura es correcto pero puede ir en operaciones */
+/* meotod de envio son los courier o empresas con las que hacemos envio (cargadas) */
+/* los items del comprobante deben estar separados. */
+/* El cliente puede consultar por un link el estado de su pedido/venta */
+/* Todos los pedidos de lima y provincia se tratan diferente (separados)*/
+/* Poder subir el comprobante de la tranferencia (registrar-venta) */
