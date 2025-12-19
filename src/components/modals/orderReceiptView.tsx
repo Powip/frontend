@@ -65,7 +65,7 @@ export default function OrderReceiptView({ data }: Props) {
         <div className="w-full space-y-1">
           <div className="flex justify-between">
             <span>Subtotal</span>
-            <span>${totals.subtotal}</span>
+            <span>${totals.productsTotal}</span>
           </div>
           <div className="flex justify-between">
             <span>IVA</span>
@@ -79,17 +79,17 @@ export default function OrderReceiptView({ data }: Props) {
             <span>Descuento</span>
             <span>-${totals.discountTotal}</span>
           </div>
-          <div className="flex justify-between font-bold border-t pt-2">
+          <div className="flex justify-between font-bold ">
             <span>Total</span>
             <span>${totals.grandTotal}</span>
           </div>
-          <div className="flex justify-between">
+          <div className="flex justify-between border-t pt-2">
             <span>Pagado</span>
-            <span>${totals.advancePayment}</span>
+            <span>${totals.totalPaid}</span>
           </div>
           <div className="flex justify-between">
             <span>Por cobrar</span>
-            <span>${totals.pendingPayment}</span>
+            <span>${totals.pendingAmount}</span>
           </div>
         </div>
       </div>

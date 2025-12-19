@@ -278,7 +278,7 @@ export default function RegistrarVentaPage() {
       payments: [
         {
           paymentMethod,
-          amount: grandTotal,
+          amount: advancePayment,
           paymentDate: new Date().toISOString(),
         },
       ],
@@ -585,6 +585,22 @@ export default function RegistrarVentaPage() {
                     <SelectItem value="MAYORISTA">Mayorista</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              <div className="space-y-1">
+                <Label>Numero de Telefono</Label>
+
+                <Input
+                  disabled={!formEnabled}
+                  placeholder="Numero de telefono"
+                  value={clientForm.phoneNumber}
+                  onChange={(e) =>
+                    setClientForm({
+                      ...clientForm,
+                      phoneNumber: e.target.value,
+                    })
+                  }
+                />
               </div>
 
               <div className="space-y-2">

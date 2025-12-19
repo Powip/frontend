@@ -24,6 +24,8 @@ export default function OrderReceiptModal({ open, orderId, onClose }: Props) {
         const res = await axios.get(
           `http://localhost:3002/order-header/${orderId}/receipt`
         );
+        console.log(res.data);
+
         setReceipt(res.data);
       } catch (err) {
         console.error("Error fetching receipt", err);
