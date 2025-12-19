@@ -1,11 +1,11 @@
-import { Cliente } from "@/interfaces/ICliente";
+import { Client } from "@/interfaces/ICliente";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import ClienteForm from "../forms/ClienteForm";
 
 interface Props {
   open: boolean;
   onClose: () => void;
-  cliente: Cliente | null;
+  cliente: Client | null;
   onClienteSaved: () => void;
 }
 export default function ClienteModal({

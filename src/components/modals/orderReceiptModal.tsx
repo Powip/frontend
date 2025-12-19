@@ -88,9 +88,9 @@ export default function OrderReceiptModal({ open, orderId, onClose }: Props) {
         }
       }}
     >
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Comprobante de Venta</DialogTitle>
+          <DialogTitle></DialogTitle>
         </DialogHeader>
 
         {loading && <p>Cargando comprobante...</p>}

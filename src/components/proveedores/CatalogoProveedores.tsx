@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -95,7 +95,7 @@ const CatalogoProveedores = () => {
         </div>
       </FormGrid>
 
-      {/* Filtros */}
+
       <FormContainer>
         <FormGrid>
           <div>
@@ -139,3 +139,4 @@ const CatalogoProveedores = () => {
 };
 
 export default CatalogoProveedores;
+ */

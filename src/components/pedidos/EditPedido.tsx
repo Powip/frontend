@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 
@@ -81,11 +81,11 @@ const EditPedido = () => {
           Pedido - {pedido.cliente} - {pedido.dateVta}
         </Header>
 
-        {/* Datos Clientes */}
+   
         <FormContainer>
           <h2 className="text-xl font-bold">Datos Cliente</h2>
           <FormGrid>
-            {/* Telefono */}
+     
             <div>
               <Label>Teléfono</Label>
               <Input
@@ -96,7 +96,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Dirección */}
+        
             <div>
               <Label>Dirección</Label>
               <Input
@@ -107,7 +107,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Distrito */}
+         
             <div>
               <Label>Distrito</Label>
               <Input
@@ -118,7 +118,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Provincia */}
+            
             <div>
               <Label>Provincia</Label>
               <Input
@@ -130,7 +130,7 @@ const EditPedido = () => {
             </div>
           </FormGrid>
           <FormGrid>
-            {/* Entrega */}
+       
             <div>
               <Label>Entrega</Label>
               <Input
@@ -141,7 +141,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Datos de Entrega */}
+      
             <div>
               <Label>Datos de Entrega</Label>
               <Input
@@ -152,7 +152,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Contacto Adicional */}
+       
             <div>
               <Label>Contacto Adicional</Label>
               <Input
@@ -165,7 +165,6 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Teléfono Adicional */}
             <div>
               <Label>Telefono Adicional</Label>
               <Input
@@ -180,11 +179,11 @@ const EditPedido = () => {
           </FormGrid>
         </FormContainer>
 
-        {/* Datos Ventas */}
+
         <FormContainer>
           <h2 className="text-xl font-bold">Datos Ventas</h2>
           <FormGrid>
-            {/* Canal de Venta */}
+   
             <div>
               <Label>Canal de Venta</Label>
               <Input
@@ -195,7 +194,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Estado Pago */}
+     
             <div>
               <Label>Estado Pago</Label>
               <Input
@@ -206,7 +205,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Importe Total*/}
+         
             <div>
               <Label>Importe Total</Label>
               <Input
@@ -217,7 +216,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Pendiente por Pagar*/}
+
             <div>
               <Label>Pendiente por Pagar</Label>
               <Input
@@ -236,11 +235,11 @@ const EditPedido = () => {
           </FormGrid>
         </FormContainer>
 
-        {/* Datos Entrega */}
+
         <FormContainer>
           <h2 className="text-xl font-bold">Datos Entrega</h2>
           <FormGrid>
-            {/* Fecha de Entrega */}
+   
             <div>
               <Label>Fecha de Entrega</Label>
               <Input
@@ -251,7 +250,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Empresa Curier */}
+ 
             <div>
               <Label>Empresa Curier</Label>
               <Input
@@ -262,7 +261,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Clave de Recojo */}
+   
             <div>
               <Label>Clave de Recojo</Label>
               <Input
@@ -273,7 +272,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Trakking */}
+     
             <div>
               <Label>Trakking</Label>
               <Input
@@ -292,11 +291,11 @@ const EditPedido = () => {
           </FormGrid>
         </FormContainer>
 
-        {/* Pedido */}
+ 
         <FormContainer>
           <h2 className="text-xl font-bold">Datos Pedido</h2>
           <FormGrid>
-            {/* Status */}
+   
             <div>
               <Label>Status</Label>
               <Input
@@ -307,7 +306,7 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Agente */}
+    
             <div>
               <Label>Agente</Label>
               <Input
@@ -318,7 +317,6 @@ const EditPedido = () => {
               />
             </div>
 
-            {/* Botón historial */}
             <div className="flex items-end">
               <Button variant="default" className="w-full">
                 Ver Historial
@@ -328,12 +326,12 @@ const EditPedido = () => {
         </FormContainer>
       </form>
 
-      {/* Tabla Productos */}
+
       <div className="px-6">
         <ProductPedidoTable />
       </div>
 
-      {/* Buttons */}
+
       <div className="flex justify-center gap-10 mb-4">
         <Button variant="default">Guardar</Button>
         <Button variant="default">Imprimir Ticket</Button>
@@ -344,3 +342,4 @@ const EditPedido = () => {
 };
 
 export default EditPedido;
+ */

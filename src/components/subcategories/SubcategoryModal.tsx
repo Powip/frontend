@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -120,3 +120,4 @@ export default function SubcategoryModal({
     </Modal>
   );
 }
+ */

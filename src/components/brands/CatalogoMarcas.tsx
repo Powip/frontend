@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -103,3 +103,4 @@ const CatalogoMarcas = () => {
 };
 
 export default CatalogoMarcas;
+ */

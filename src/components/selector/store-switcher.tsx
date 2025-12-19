@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,7 +24,11 @@ interface Store {
 export function StoreSwitcher() {
   const { auth, selectedStoreId, setSelectedStore } = useAuth();
 
-  const stores = auth?.company?.stores || [];
+  const stores = useMemo(
+    () => auth?.company?.stores ?? [],
+    [auth?.company?.stores]
+  );
+
   const currentStore =
     stores.find((s) => s.id === selectedStoreId) || stores[0];
 

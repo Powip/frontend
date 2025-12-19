@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -136,3 +136,4 @@ export default function CatalogoProductos() {
     </Container>
   );
 }
+ */

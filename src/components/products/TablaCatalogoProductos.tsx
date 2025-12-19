@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 
 import {
   Table,
@@ -81,3 +81,4 @@ export default function ProductsTable({
     </Table>
   );
 }
+ */

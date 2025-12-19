@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 import { useState } from "react";
 import { Brand } from "@/interfaces/IProvider";
 import {
@@ -83,7 +83,7 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
         </TableBody>
       </Table>
 
-      {/* Modal Crear/Editar */}
+
       <BrandModal
         open={openModal}
         onClose={() => setOpenModal(false)}
@@ -92,7 +92,7 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
         onSaved={onUpdated}
       />
 
-      {/* Modal Eliminar */}
+ 
       <BrandDeleteModal
         open={openDelete}
         onClose={() => setOpenDelete(false)}
@@ -102,3 +102,4 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
     </>
   );
 }
+ */

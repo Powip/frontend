@@ -1,4 +1,4 @@
-import { Cliente } from "@/interfaces/ICliente";
+import { Client } from "@/interfaces/ICliente";
 import { Label } from "../ui/label";
 import { Input } from "../ui/input";
 import {
@@ -16,11 +16,26 @@ import { createClient, updateClient } from "@/api/clientes/route";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
-  cliente: Cliente | null;
+  cliente: Client | null;
   onClienteSaved: () => void;
 }
 
-const empty: Cliente = {
+type ClientFormState = {
+  id?: string;
+  fullName: string;
+  phoneNumber: string;
+  clientType: "TRADICIONAL" | "MAYORISTA";
+  province: string;
+  city: string;
+  district: string;
+  address: string;
+  reference?: string;
+  latitude?: number;
+  longitude?: number;
+  isActive: boolean;
+};
+
+const empty: ClientFormState = {
   fullName: "",
   phoneNumber: "",
   clientType: "TRADICIONAL",
@@ -33,12 +48,14 @@ const empty: Cliente = {
 };
 
 export default function ClienteForm({ cliente, onClienteSaved }: Props) {
-  function toState(c?: Cliente | null): Cliente {
+  function toState(c?: Client | null): ClientFormState {
     if (!c) return empty;
+
     return {
+      id: c.id,
       fullName: c.fullName ?? "",
       phoneNumber: c.phoneNumber ?? "",
-      clientType: c.clientType ?? "TRADICIONAL",
+      clientType: c.clientType,
       province: c.province ?? "",
       city: c.city ?? "",
       district: c.district ?? "",
@@ -47,11 +64,11 @@ export default function ClienteForm({ cliente, onClienteSaved }: Props) {
       latitude: c.latitude,
       longitude: c.longitude,
       isActive: c.isActive ?? true,
-      id: c.id,
     };
   }
 
-  const [state, setState] = useState<Cliente>(toState(cliente));
+  const [state, setState] = useState<ClientFormState>(toState(cliente));
+
   const [loading, setLoading] = useState(false);
   const { auth } = useAuth();
 

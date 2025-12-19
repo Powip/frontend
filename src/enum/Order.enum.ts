@@ -28,15 +28,6 @@ export enum DeliveryType {
   PUNTO_EXTERNO = "PUNTO_EXTERNO",
 }
 
-export enum OrderStatus {
-  PENDIENTE = 'PENDIENTE',
-  PREPARADO = 'PREPARADO',
-  LLAMADO = 'LLAMADO',
-  EN_ENVIO = 'EN_ENVIO',
-  ENTREGADO = 'ENTREGADO',
-  ANULADO = 'ANULADO',
-}
-
 export enum PaymentMethod {
   EFECTIVO = "EFECTIVO",
   TRANSFERENCIA = "TRANSFERENCIA",

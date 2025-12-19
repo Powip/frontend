@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -105,3 +105,4 @@ const CatalogoSubcategorias = () => {
 };
 
 export default CatalogoSubcategorias;
+ */

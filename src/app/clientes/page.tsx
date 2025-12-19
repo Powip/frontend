@@ -18,17 +18,17 @@ import { Plus, Search, Edit, Trash2 } from "lucide-react";
 import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import ClienteModal from "@/components/modals/ClienteModal";
-import { Cliente } from "@/interfaces/ICliente";
+import { Client } from "@/interfaces/ICliente";
 import { toast } from "sonner";
 import { findByCompany, toggleClienteActivo } from "@/api/clientes/route";
 
 export default function ClientesPage() {
   const { auth } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
-  const [clients, setClients] = useState<Cliente[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [openModal, setOpenModal] = useState(false);
-  const [selectedCliente, setSelectedCliente] = useState<Cliente | null>(null);
+  const [selectedCliente, setSelectedCliente] = useState<Client | null>(null);
 
   useEffect(() => {
     if (auth?.company?.id) {
@@ -52,7 +52,7 @@ export default function ClientesPage() {
 
     return (
       c.fullName.toLowerCase().includes(q) ||
-      c.phoneNumber.toLowerCase().includes(q) ||
+      (c.phoneNumber?.toLowerCase() ?? "").includes(q) ||
       c.clientType.toLowerCase().includes(q) ||
       c.id?.toLowerCase().includes(q)
     );
@@ -64,7 +64,7 @@ export default function ClientesPage() {
     await fetchClients(auth!.company!.id);
   };
 
-  const handleToggleActivo = async (cliente: Cliente) => {
+  const handleToggleActivo = async (cliente: Client) => {
     if (!cliente.id) return;
     try {
       const res = await toggleClienteActivo(cliente.id);

@@ -3,7 +3,8 @@ interface Props {
 }
 
 export default function OrderReceiptView({ data }: Props) {
-  const { orderNumber, status, createdAt, customer, items, totals } = data;
+  const { orderNumber, status, createdAt, customer, items, totals, payments } =
+    data;
 
   // Expandir items: cada unidad como una fila separada
   const expandedItems = items.flatMap((item: any) =>
@@ -13,6 +14,15 @@ export default function OrderReceiptView({ data }: Props) {
       subtotal: item.unitPrice,
     }))
   );
+
+  const totalPaid = Array.isArray(payments)
+    ? payments.reduce(
+        (acc: number, payment: any) => acc + Number(payment.amount || 0),
+        0
+      )
+    : 0;
+
+  const pendingAmount = Math.max(totals.grandTotal - totalPaid, 0);
 
   return (
     <div id="receipt-content" className="p-6 text-sm">
@@ -85,11 +95,11 @@ export default function OrderReceiptView({ data }: Props) {
           </div>
           <div className="flex justify-between border-t pt-2">
             <span>Pagado</span>
-            <span>${totals.totalPaid}</span>
+            <span>${totalPaid}</span>
           </div>
           <div className="flex justify-between">
             <span>Por cobrar</span>
-            <span>${totals.pendingAmount}</span>
+            <span>${pendingAmount}</span>
           </div>
         </div>
       </div>

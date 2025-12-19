@@ -26,26 +26,35 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import {
-  OrderHeader,
-  OrderStatus,
-} from "@/interfaces/IOrder";
+import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import OrderReceiptModal from "@/components/modals/orderReceiptModal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { toast } from "sonner";
+import { ORDER_STATUS_FLOW } from "@/utils/domain/orders-status-flow";
 
 /* -----------------------------------------
    Types
 ----------------------------------------- */
 
-const  ORDER_STATUS= {
- PENDIENTE: "PENDIENTE",
+const ORDER_STATUS = {
+  PENDIENTE: "PENDIENTE",
   PREPARADO: "PREPARADO",
   LLAMADO: "LLAMADO",
   EN_ENVIO: "EN_ENVIO",
   ENTREGADO: "ENTREGADO",
   ANULADO: "ANULADO",
-}
+};
 
 export interface Sale {
   id: string;
@@ -60,6 +69,21 @@ export interface Sale {
 }
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
+
+function InfoRow({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <span className="text-muted-foreground">{label}</span>
+      <span className="font-medium">{children}</span>
+    </>
+  );
+}
 
 /* -----------------------------------------
    Mapper
@@ -91,25 +115,119 @@ export default function VentasPage() {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
+  const [selectedOrder, setSelectedOrder] = useState<OrderHeader | null>(null);
+  const [loadingOrder, setLoadingOrder] = useState(false);
+
+  const [editStatus, setEditStatus] = useState<OrderStatus | null>(null);
+  const [editNotes, setEditNotes] = useState("");
+  const [editCancellationReason, setEditCancellationReason] = useState("");
+  const [productsOpen, setProductsOpen] = useState(false);
+  const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+
   const { selectedStoreId } = useAuth();
+
+  async function fetchOrders() {
+    try {
+      const res = await axios.get<OrderHeader[]>(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
+      );
+
+      setSales(res.data.map(mapOrderToSale));
+    } catch (error) {
+      console.error("Error fetching orders", error);
+    }
+  }
+  async function fetchOrderById(orderId: string) {
+    try {
+      setLoadingOrder(true);
+
+      const response = await axios.get<OrderHeader>(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`
+      );
+
+      setSelectedOrder(response.data);
+      setEditOpen(true);
+    } catch (error) {
+      console.error("Error fetching order by id", error);
+    } finally {
+      setLoadingOrder(false);
+    }
+  }
+  const handleSave = () => {
+    if (
+      selectedOrder &&
+      editStatus === "ANULADO" &&
+      selectedOrder.status !== "ANULADO"
+    ) {
+      if (editStatus === "ANULADO" && !editCancellationReason) {
+        toast.warning("Debés seleccionar un motivo de cancelación");
+        return;
+      }
+
+      setConfirmCancelOpen(true);
+      return;
+    }
+
+    submitUpdate();
+  };
+
+  const submitUpdate = async () => {
+    if (!selectedOrder || !editStatus) return;
+
+    const payload: Record<string, any> = {
+      status: editStatus,
+      notes: editNotes,
+    };
+
+    if (editStatus === "ANULADO") {
+      payload.cancellationReason = editCancellationReason;
+    }
+
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${selectedOrder.id}`,
+        payload
+      );
+
+      setEditOpen(false);
+      setConfirmCancelOpen(false);
+      fetchOrders();
+    } catch (error) {
+      console.error("Error updating order", error);
+    }
+  };
 
   useEffect(() => {
     if (!selectedStoreId) return;
 
-    async function fetchOrders() {
-      try {
-        const res = await axios.get<OrderHeader[]>(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
-        );
-        setSales(res.data.map(mapOrderToSale));
-      } catch (error) {
-        console.error("Error fetching orders", error);
-      }
-    }
-
     fetchOrders();
   }, [selectedStoreId]);
 
+  useEffect(() => {
+    if (!selectedOrder) return;
+
+    setEditStatus(selectedOrder.status);
+    setEditNotes(selectedOrder.notes || "");
+    setEditCancellationReason(selectedOrder.cancellationReason || "");
+  }, [selectedOrder]);
+
+  const expandedItems = useMemo(() => {
+    if (!selectedOrder) return [];
+
+    return selectedOrder.items.flatMap((item) =>
+      Array.from({ length: item.quantity }, () => ({
+        id: item.id,
+        productName: item.productName,
+        attributes: item.attributes,
+      }))
+    );
+  }, [selectedOrder]);
+
+  const allowedStatuses = useMemo<OrderStatus[]>(() => {
+    if (!selectedOrder) return [];
+
+    return [selectedOrder.status, ...ORDER_STATUS_FLOW[selectedOrder.status]];
+  }, [selectedOrder]);
   /* -----------------------------------------
      Helpers
   ----------------------------------------- */
@@ -153,9 +271,7 @@ export default function VentasPage() {
       <TableBody>
         {data.map((sale) => (
           <TableRow key={sale.id}>
-            <TableCell className="font-medium">
-              {sale.orderNumber}
-            </TableCell>
+            <TableCell className="font-medium">{sale.orderNumber}</TableCell>
             <TableCell>{sale.clientName}</TableCell>
             <TableCell>{sale.phoneNumber}</TableCell>
             <TableCell>{sale.date}</TableCell>
@@ -163,18 +279,13 @@ export default function VentasPage() {
             <TableCell>{sale.deliveryType}</TableCell>
             <TableCell>${sale.total.toFixed(2)}</TableCell>
             <TableCell>
-              <Badge variant={statusVariant(sale.status)}>
-                {sale.status}
-              </Badge>
+              <Badge variant={statusVariant(sale.status)}>{sale.status}</Badge>
             </TableCell>
             <TableCell className="text-right space-x-2">
               <Button
                 size="icon"
                 variant="outline"
-                onClick={() => {
-                  setSelectedSale(sale);
-                  setEditOpen(true);
-                }}
+                onClick={() => fetchOrderById(sale.id)}
               >
                 <Pencil className="h-4 w-4" />
               </Button>
@@ -190,13 +301,13 @@ export default function VentasPage() {
                 <FileText className="h-4 w-4" />
               </Button>
 
-              <Button
+              {/* <Button
                 size="icon"
                 variant="destructive"
                 onClick={() => handleDelete(sale.id)}
               >
                 <Trash2 className="h-4 w-4" />
-              </Button>
+              </Button> */}
             </TableCell>
           </TableRow>
         ))}
@@ -240,6 +351,16 @@ export default function VentasPage() {
     [sales]
   );
 
+  const totalPaid =
+    selectedOrder?.payments?.reduce(
+      (acc, p) => acc + Number(p.amount || 0),
+      0
+    ) || 0;
+
+  const pendingAmount = selectedOrder
+    ? Number(selectedOrder.grandTotal) - totalPaid
+    : 0;
+
   return (
     <div className="flex h-screen w-full">
       <main className="flex-1 p-6 space-y-6 overflow-auto">
@@ -267,9 +388,15 @@ export default function VentasPage() {
                 <TabsTrigger value="preparado">Preparado</TabsTrigger>
                 <TabsTrigger value="contactado">Contactado</TabsTrigger>
               </TabsList>
-              <TabsContent value="pendiente">{renderTable(pendientes)}</TabsContent>
-              <TabsContent value="preparado">{renderTable(preparados)}</TabsContent>
-              <TabsContent value="contactado">{renderTable(contactados)}</TabsContent>
+              <TabsContent value="pendiente">
+                {renderTable(pendientes)}
+              </TabsContent>
+              <TabsContent value="preparado">
+                {renderTable(preparados)}
+              </TabsContent>
+              <TabsContent value="contactado">
+                {renderTable(contactados)}
+              </TabsContent>
             </Tabs>
           </CardContent>
         </Card>
@@ -284,8 +411,12 @@ export default function VentasPage() {
                 <TabsTrigger value="despachado">Despachado</TabsTrigger>
                 <TabsTrigger value="entregado">Entregado</TabsTrigger>
               </TabsList>
-              <TabsContent value="despachado">{renderTable(despachados)}</TabsContent>
-              <TabsContent value="entregado">{renderTable(entregados)}</TabsContent>
+              <TabsContent value="despachado">
+                {renderTable(despachados)}
+              </TabsContent>
+              <TabsContent value="entregado">
+                {renderTable(entregados)}
+              </TabsContent>
             </Tabs>
           </CardContent>
         </Card>
@@ -293,50 +424,208 @@ export default function VentasPage() {
 
       {/* Modal editar venta */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Editar venta</DialogTitle>
-          </DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          {selectedOrder && (
+            <>
+              {/* ---------- Header ---------- */}
+              <DialogHeader>
+                <DialogTitle className="text-lg font-semibold">
+                  Editar Venta {selectedOrder.orderNumber}
+                </DialogTitle>
+              </DialogHeader>
 
-          {selectedSale && (
-            <div className="space-y-4">
-              <div>
-                <Label>Cliente</Label>
-                <Input defaultValue={selectedSale.clientName} />
+              {/* ---------- Info tipo tabla ---------- */}
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm mt-4">
+                <InfoRow label="Pendiente a pagar">
+                  ${pendingAmount.toFixed(2)}
+                </InfoRow>
+
+                <InfoRow label="Provincia">
+                  {selectedOrder.customer.province}
+                </InfoRow>
+
+                <InfoRow label="Distrito">
+                  {selectedOrder.customer.district}
+                </InfoRow>
+
+                <InfoRow label="Dirección">
+                  {selectedOrder.customer.address}
+                </InfoRow>
+
+                <InfoRow label="Teléfono">
+                  {selectedOrder.customer.phoneNumber}
+                </InfoRow>
+
+                <InfoRow label="DNI">
+                  {selectedOrder.customer.documentNumber ?? "No aplica"}
+                </InfoRow>
+
+                <InfoRow label="Tipo de gestión">
+                  {selectedOrder.orderType}
+                </InfoRow>
+
+                <InfoRow label="Canal de venta">
+                  {selectedOrder.salesChannel}
+                </InfoRow>
+
+                <InfoRow label="Productos">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setProductsOpen(true)}
+                  >
+                    Ver productos
+                  </Button>
+                </InfoRow>
+
+                <InfoRow label="Comprobante de venta">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setSelectedOrderId(selectedOrder.id);
+                      setReceiptOpen(true);
+                    }}
+                  >
+                    Ver orden
+                  </Button>
+                </InfoRow>
               </div>
 
-              <div>
-                <Label>Teléfono</Label>
-                <Input defaultValue={selectedSale.phoneNumber} />
+              {/* ---------- Pagos / Gestión ---------- */}
+              <div className="space-y-4 mt-6">
+                <div>
+                  <Label>Método de pago</Label>
+                  <Input
+                    disabled
+                    value={
+                      selectedOrder.payments[0]?.paymentMethod ?? "No definido"
+                    }
+                  />
+                </div>
+
+                <div>
+                  <Label>Observaciones</Label>
+                  <Input
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <Label>Estado</Label>
+                  <select
+                    value={editStatus ?? ""}
+                    onChange={(e) =>
+                      setEditStatus(e.target.value as OrderStatus)
+                    }
+                    className="w-full border rounded-md px-3 py-2 text-sm"
+                  >
+                    {allowedStatuses.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* ---------- Motivo cancelación ---------- */}
+                {editStatus === "ANULADO" && (
+                  <div>
+                    <Label>Motivo de cancelación</Label>
+                    <select
+                      value={editCancellationReason}
+                      onChange={(e) =>
+                        setEditCancellationReason(e.target.value)
+                      }
+                      className="w-full border rounded-md px-3 py-2 text-sm"
+                    >
+                      <option value="">Seleccionar motivo</option>
+                      <option value="CLIENTE">Cancelado por el cliente</option>
+                      <option value="STOCK">Sin stock</option>
+                      <option value="ERROR">Error en la venta</option>
+                    </select>
+                  </div>
+                )}
               </div>
 
-              <div>
-                <Label>Tipo de envío</Label>
-                <Input defaultValue={selectedSale.deliveryType} />
-              </div>
-
-              <div>
-                <Label>Método de pago</Label>
-                <Input defaultValue={selectedSale.paymentMethod} />
-              </div>
-
-              <div>
-                <Label>Estado</Label>
-                <Input defaultValue={selectedSale.status} />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-4">
+              {/* ---------- Footer ---------- */}
+              <div className="flex justify-end gap-2 pt-6">
                 <Button variant="outline" onClick={() => setEditOpen(false)}>
                   Cancelar
                 </Button>
-                <Button className="bg-teal-600 hover:bg-teal-700">
-                  Guardar cambios
+                <Button
+                  className="bg-teal-600 hover:bg-teal-700"
+                  onClick={handleSave}
+                >
+                  Guardar
                 </Button>
               </div>
-            </div>
+            </>
           )}
         </DialogContent>
       </Dialog>
+      {/* Productos */}
+      <Dialog open={productsOpen} onOpenChange={setProductsOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Productos de la venta</DialogTitle>
+          </DialogHeader>
+
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Producto</TableHead>
+                <TableHead>Variantes</TableHead>
+                <TableHead className="text-center">Cantidad</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {expandedItems.map((item, index) => (
+                <TableRow key={index}>
+                  <TableCell>{item.productName}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {Object.entries(item.attributes)
+                      .map(([k, v]) => `${k}: ${v}`)
+                      .join(" · ")}
+                  </TableCell>
+                  <TableCell className="text-center">1</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={confirmCancelOpen} onOpenChange={setConfirmCancelOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar venta</AlertDialogTitle>
+            <AlertDialogDescription>
+              Estás a punto de cancelar la venta{" "}
+              <strong>{selectedOrder?.orderNumber}</strong>.
+              <br />
+              Motivo:{" "}
+              <strong>
+                {editCancellationReason || "Sin motivo especificado"}
+              </strong>
+              <br />
+              <br />
+              Esta acción no se puede deshacer. ¿Estás seguro?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={submitUpdate}
+            >
+              Confirmar cancelación
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <OrderReceiptModal
         open={receiptOpen}

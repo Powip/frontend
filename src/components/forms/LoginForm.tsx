@@ -64,36 +64,36 @@ export default function LoginForm() {
         loginData
       );
 
-      if (response.status === 200) {
-        // ⭐ LOGIN devuelve AuthData
-        const userData = await login(response.data);
+      await login(response.data);
 
-        if (!userData) {
-          toast.error("Error procesando la sesión del usuario.");
-          return;
-        }
-        console.log(userData, inventories);
+      // ⚠️ auth se actualiza async, usamos una referencia segura
+      const updatedAuth =
+        auth ?? JSON.parse(localStorage.getItem("auth-data")!);
 
-        // ⭐ 1. Si no tiene suscripción → ir a subscriptions
-        if (!userData.subscription) {
-          router.push("/subscriptions");
-          return;
-        }
-
-        if (userData.subscription.status !== "ACTIVE") {
-          router.push("/subscriptions");
-          return;
-        }
-
-        // ⭐ 2. Si tiene suscripción pero NO tiene company → crear empresa
-        if (!userData.company) {
-          router.push("/new-company");
-          return;
-        }
-
-        // ⭐ 3. Si tiene suscripción y company → dashboard
-        router.push("/");
+      if (!updatedAuth) {
+        toast.error("Error procesando la sesión del usuario.");
+        return;
       }
+
+      // 1️⃣ Sin suscripción
+      if (!updatedAuth.subscription) {
+        router.push("/subscriptions");
+        return;
+      }
+
+      if (updatedAuth.subscription.status !== "ACTIVE") {
+        router.push("/subscriptions");
+        return;
+      }
+
+      // 2️⃣ Sin company
+      if (!updatedAuth.company) {
+        router.push("/new-company");
+        return;
+      }
+
+      // 3️⃣ Todo OK
+      router.push("/");
     } catch (error) {
       console.log(error);
       toast.error("El usuario y/o la contraseña son incorrectos");

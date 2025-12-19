@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 import { useState } from "react";
 import { Subcategory } from "@/interfaces/ICategory";
 import { Button } from "@/components/ui/button";
@@ -91,7 +91,7 @@ export default function SubcategoriesTable({
         </TableBody>
       </Table>
 
-      {/* Modal Crear/Editar */}
+
       <SubcategoryModal
         open={openModal}
         onClose={() => setOpenModal(false)}
@@ -100,7 +100,7 @@ export default function SubcategoriesTable({
         onSaved={onUpdated}
       />
 
-      {/* Modal Eliminar */}
+
       <SubcategoryDeleteModal
         open={openDelete}
         onClose={() => setOpenDelete(false)}
@@ -110,3 +110,4 @@ export default function SubcategoriesTable({
     </>
   );
 }
+ */

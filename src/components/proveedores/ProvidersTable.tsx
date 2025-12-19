@@ -1,4 +1,4 @@
-import { Provider } from "@/interfaces/IProvider";
+/* import { Provider } from "@/interfaces/IProvider";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -78,3 +78,4 @@ export default function ProvidersTable({
     </Table>
   );
 }
+ */

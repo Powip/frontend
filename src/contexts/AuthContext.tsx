@@ -21,6 +21,7 @@ interface Subscription {
     name: string;
   };
 }
+
 interface Store {
   id: string;
   name: string;
@@ -52,9 +53,8 @@ interface AuthContextType {
   login: (tokens: {
     accessToken: string;
     refreshToken: string;
-  }) => Promise<AuthData | null>;
+  }) => Promise<void>;
   logout: () => void;
-  refreshAccessToken: () => Promise<void>;
   updateCompany: (company: Company) => void;
   selectedStoreId: string | null;
   setSelectedStore: (storeId: string) => void;
@@ -63,50 +63,34 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const AUTH_STORAGE_KEY = "auth-data";
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [auth, setAuth] = useState<AuthData | null>(null);
   const [selectedStoreId, setSelectedStore] = useState<string | null>(null);
   const [inventories, setInventories] = useState<Inventory[]>([]);
 
-  // ---- Load session from cookies ----
+  // ---- REHIDRATAR DESDE LOCALSTORAGE ----
   useEffect(() => {
-    const loadFromCookies = async () => {
-      const accessToken = getCookie("accessToken") as string | undefined;
-      const refreshToken = getCookie("refreshToken") as string | undefined;
-      const selected = getCookie("selectedStoreId");
-      if (selected) setSelectedStore(selected as string);
+    const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+    const storedStore = localStorage.getItem("selectedStoreId");
 
-      if (accessToken && refreshToken) {
-        const decoded = decodeToken(accessToken);
+    if (storedAuth) {
+      const parsed: AuthData = JSON.parse(storedAuth);
 
-        if (decoded && !isExpired(decoded.exp)) {
-          const company = await fetchUserCompany(decoded.id, accessToken);
-          const subscription = await fetchUserSubscription(
-            decoded.id,
-            accessToken
-          );
-
-          setAuth({
-            accessToken,
-            refreshToken,
-            user: {
-              email: decoded.email,
-              id: decoded.id,
-              role: decoded.role,
-            },
-            company,
-            subscription,
-            exp: decoded.exp,
-          });
-        } else {
-          logout();
-        }
+      if (!isExpired(parsed.exp)) {
+        setAuth(parsed);
+      } else {
+        logout();
       }
-    };
+    }
 
-    loadFromCookies();
+    if (storedStore) {
+      setSelectedStore(storedStore);
+    }
   }, []);
 
+  // ---- INVENTORIES ----
   useEffect(() => {
     if (!auth?.accessToken || !selectedStoreId) return;
 
@@ -115,7 +99,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const res = await axios.get(
           `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${selectedStoreId}`
         );
-
         setInventories(res.data);
       } catch (err) {
         console.error("Error loading inventories", err);
@@ -123,7 +106,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     fetchInventories();
-  }, [selectedStoreId, auth]);
+  }, [auth, selectedStoreId]);
 
   // ---- LOGIN ----
   const login = async ({
@@ -132,9 +115,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }: {
     accessToken: string;
     refreshToken: string;
-  }): Promise<AuthData | null> => {
+  }) => {
     const decoded = decodeToken(accessToken);
-    if (!decoded) return null;
+    if (!decoded) return;
 
     const user = {
       email: decoded.email,
@@ -143,17 +126,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const company = await fetchUserCompany(decoded.id, accessToken);
-
-    let defaultStore = null;
-
-    if (company?.stores && company.stores.length > 0) {
-      defaultStore = company.stores[0].id;
-    }
-    setSelectedStore(defaultStore);
-
-    setCookie("selectedStoreId", defaultStore);
-
     const subscription = await fetchUserSubscription(decoded.id, accessToken);
+
+    const defaultStore =
+      company?.stores && company.stores.length > 0
+        ? company.stores[0].id
+        : null;
 
     const newAuth: AuthData = {
       accessToken,
@@ -165,74 +143,45 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
 
     setAuth(newAuth);
+    setSelectedStore(defaultStore);
 
-    setCookie("accessToken", accessToken, { maxAge: 60 * 60 });
+    // 🔐 Cookies (TTL largo para demo)
+    setCookie("accessToken", accessToken, { maxAge: 60 * 60 * 5 }); // 5 horas
     setCookie("refreshToken", refreshToken, { maxAge: 60 * 60 * 24 * 7 });
 
-    return newAuth; // 🔥 clave
+    // 💾 Persistencia local
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(newAuth));
+    if (defaultStore) {
+      localStorage.setItem("selectedStoreId", defaultStore);
+    }
+  };
+
+  const updateCompany = (company: Company) => {
+    setAuth((prev) => {
+      if (!prev) return prev;
+
+      const updated = {
+        ...prev,
+        company,
+      };
+
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(updated));
+      return updated;
+    });
   };
 
   // ---- LOGOUT ----
   const logout = () => {
     setAuth(null);
+    setSelectedStore(null);
+    setInventories([]);
+
     deleteCookie("accessToken");
     deleteCookie("refreshToken");
+
+    localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem("selectedStoreId");
   };
-
-  // ---- REFRESH TOKEN ----
-  const refreshAccessToken = async () => {
-    if (!auth) return;
-
-    try {
-      const res = await fetch("http://localhost:8080/api/v1/auth/refresh", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken: auth.refreshToken }),
-      });
-
-      if (!res.ok) throw new Error("Failed to refresh token");
-
-      const data = await res.json();
-      const decoded = decodeToken(data.accessToken);
-      if (!decoded) throw new Error("Invalid new token");
-
-      const updatedAuth = {
-        ...auth,
-        accessToken: data.accessToken,
-        exp: decoded.exp,
-      };
-
-      setAuth(updatedAuth);
-      setCookie("accessToken", data.accessToken, { maxAge: 60 * 15 });
-    } catch (error) {
-      console.error("Error refreshing token:", error);
-      logout();
-    }
-  };
-
-  const updateCompany = (company: Company) => {
-    setAuth((prev) =>
-      prev
-        ? {
-            ...prev,
-            company,
-          }
-        : prev
-    );
-  };
-
-  // ---- AUTO REFRESH ----
-  useEffect(() => {
-    if (!auth) return;
-
-    const interval = setInterval(() => {
-      const now = Math.floor(Date.now() / 1000);
-      const timeLeft = auth.exp - now;
-      if (timeLeft < 60) refreshAccessToken();
-    }, 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, [auth]);
 
   return (
     <AuthContext.Provider
@@ -240,11 +189,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         auth,
         login,
         logout,
-        refreshAccessToken,
-        updateCompany,
         selectedStoreId,
         setSelectedStore,
         inventories,
+        updateCompany,
       }}
     >
       {children}
@@ -254,6 +202,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 export const useAuth = () => {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used within an AuthProvider");
+  if (!ctx) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
   return ctx;
 };
