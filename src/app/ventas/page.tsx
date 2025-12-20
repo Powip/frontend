@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, Trash2, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, FileText, Clipboard } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -124,6 +124,13 @@ export default function VentasPage() {
   const [productsOpen, setProductsOpen] = useState(false);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
 
+  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
+    new Set()
+  );
+
+  const [gestionTab, setGestionTab] = useState<OrderStatus>("PENDIENTE");
+  const [despachoTab, setDespachoTab] = useState<OrderStatus>("EN_ENVIO");
+
   const { selectedStoreId } = useAuth();
 
   async function fetchOrders() {
@@ -197,6 +204,16 @@ export default function VentasPage() {
     }
   };
 
+  const toggleSale = (id: string) => {
+    setSelectedSaleIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedSaleIds(new Set());
+
   useEffect(() => {
     if (!selectedStoreId) return;
 
@@ -253,10 +270,50 @@ export default function VentasPage() {
     setSales((prev) => prev.filter((sale) => sale.id !== id));
   };
 
+  const handleCopySelected = async (currentStatus: OrderStatus) => {
+    const visibleSales = sales.filter((s) => s.status === currentStatus);
+
+    const selectedSales = visibleSales.filter((s) => selectedSaleIds.has(s.id));
+
+    if (selectedSales.length === 0) {
+      toast.warning("No hay pedidos seleccionados en esta vista");
+      return;
+    }
+
+    const text = selectedSales
+      .map((sale) =>
+        `
+Venta ${sale.orderNumber}
+Cliente: ${sale.clientName}
+Teléfono: ${sale.phoneNumber}
+Fecha: ${sale.date}
+Total: $${sale.total.toFixed(2)}
+Estado: ${sale.status}
+`.trim()
+      )
+      .join("\n\n--------------------\n\n");
+
+    await navigator.clipboard.writeText(text);
+    toast.success(`${selectedSales.length} pedido(s) copiados`);
+  };
+
   const renderTable = (data: Sale[]) => (
     <Table>
       <TableHeader>
         <TableRow>
+          <TableHead className="w-[40px]">
+            <input
+              type="checkbox"
+              checked={data.length > 0 && selectedSaleIds.size === data.length}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  setSelectedSaleIds(new Set(data.map((s) => s.id)));
+                } else {
+                  clearSelection();
+                }
+              }}
+            />
+          </TableHead>
           <TableHead>N° Orden</TableHead>
           <TableHead>Cliente</TableHead>
           <TableHead>Teléfono</TableHead>
@@ -271,6 +328,13 @@ export default function VentasPage() {
       <TableBody>
         {data.map((sale) => (
           <TableRow key={sale.id}>
+            <TableCell>
+              <input
+                type="checkbox"
+                checked={selectedSaleIds.has(sale.id)}
+                onChange={() => toggleSale(sale.id)}
+              />
+            </TableCell>
             <TableCell className="font-medium">{sale.orderNumber}</TableCell>
             <TableCell>{sale.clientName}</TableCell>
             <TableCell>{sale.phoneNumber}</TableCell>
@@ -376,25 +440,37 @@ export default function VentasPage() {
             </Button>
           </Link>
         </div>
-
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Gestión de pedidos</CardTitle>
+
+            <Button
+              variant="outline"
+              disabled={selectedSaleIds.size === 0}
+              onClick={() => handleCopySelected(gestionTab)}
+            >
+              Copiar seleccionados ({selectedSaleIds.size})
+            </Button>
           </CardHeader>
+
           <CardContent>
-            <Tabs defaultValue="pendiente">
+            <Tabs
+              value={gestionTab}
+              onValueChange={(v) => setGestionTab(v as OrderStatus)}
+            >
               <TabsList>
-                <TabsTrigger value="pendiente">Pendiente</TabsTrigger>
-                <TabsTrigger value="preparado">Preparado</TabsTrigger>
-                <TabsTrigger value="contactado">Contactado</TabsTrigger>
+                <TabsTrigger value="PENDIENTE">Pendiente</TabsTrigger>
+                <TabsTrigger value="PREPARADO">Preparado</TabsTrigger>
+                <TabsTrigger value="LLAMADO">Contactado</TabsTrigger>
               </TabsList>
-              <TabsContent value="pendiente">
+
+              <TabsContent value="PENDIENTE">
                 {renderTable(pendientes)}
               </TabsContent>
-              <TabsContent value="preparado">
+              <TabsContent value="PREPARADO">
                 {renderTable(preparados)}
               </TabsContent>
-              <TabsContent value="contactado">
+              <TabsContent value="LLAMADO">
                 {renderTable(contactados)}
               </TabsContent>
             </Tabs>
@@ -402,19 +478,32 @@ export default function VentasPage() {
         </Card>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Despacho y entrega</CardTitle>
+
+            <Button
+              variant="outline"
+              disabled={selectedSaleIds.size === 0}
+              onClick={() => handleCopySelected(despachoTab)}
+            >
+              Copiar seleccionados ({selectedSaleIds.size})
+            </Button>
           </CardHeader>
+
           <CardContent>
-            <Tabs defaultValue="despachado">
+            <Tabs
+              value={despachoTab}
+              onValueChange={(v) => setDespachoTab(v as OrderStatus)}
+            >
               <TabsList>
-                <TabsTrigger value="despachado">Despachado</TabsTrigger>
-                <TabsTrigger value="entregado">Entregado</TabsTrigger>
+                <TabsTrigger value="EN_ENVIO">Despachado</TabsTrigger>
+                <TabsTrigger value="ENTREGADO">Entregado</TabsTrigger>
               </TabsList>
-              <TabsContent value="despachado">
+
+              <TabsContent value="EN_ENVIO">
                 {renderTable(despachados)}
               </TabsContent>
-              <TabsContent value="entregado">
+              <TabsContent value="ENTREGADO">
                 {renderTable(entregados)}
               </TabsContent>
             </Tabs>

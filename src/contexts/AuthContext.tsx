@@ -50,6 +50,7 @@ interface AuthData {
 
 interface AuthContextType {
   auth: AuthData | null;
+  loading: boolean;
   login: (tokens: {
     accessToken: string;
     refreshToken: string;
@@ -67,6 +68,7 @@ const AUTH_STORAGE_KEY = "auth-data";
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [auth, setAuth] = useState<AuthData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [selectedStoreId, setSelectedStore] = useState<string | null>(null);
   const [inventories, setInventories] = useState<Inventory[]>([]);
 
@@ -88,6 +90,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (storedStore) {
       setSelectedStore(storedStore);
     }
+    setLoading(false);
   }, []);
 
   // ---- INVENTORIES ----
@@ -187,6 +190,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     <AuthContext.Provider
       value={{
         auth,
+        loading,
         login,
         logout,
         selectedStoreId,

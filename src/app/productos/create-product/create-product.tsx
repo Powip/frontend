@@ -387,6 +387,7 @@ export default function ProductCreateForm() {
         `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/with-variants`,
         payload
       );
+      console.log(res);
 
       setMessage("✅ Producto creado correctamente con variantes.");
 
