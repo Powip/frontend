@@ -1,7 +1,7 @@
-"use client";
+/* "use client";
 import { useState } from "react";
-import { Subcategory } from "@/src/interfaces/ICategory";
-import { Button } from "@/src/components/ui/button";
+import { Subcategory } from "@/interfaces/ICategory";
+import { Button } from "@/components/ui/button";
 
 import {
   Table,
@@ -11,7 +11,7 @@ import {
   TableHeader,
   TableRow,
   TableActions,
-} from "@/src/components/ui/table";
+} from "@/components/ui/table";
 import { Edit, Trash, Plus } from "lucide-react";
 import SubcategoryModal from "./SubcategoryModal";
 import SubcategoryDeleteModal from "./SubcategoryDeleteModal";
@@ -72,7 +72,6 @@ export default function SubcategoriesTable({
               <TableCell>{subcat.sku || "-"}</TableCell>
               <TableActions>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-lime"
                   onClick={() => handleEdit(subcat)}
@@ -80,7 +79,6 @@ export default function SubcategoriesTable({
                   <Edit />
                 </Button>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-red"
                   onClick={() => handleDelete(subcat)}
@@ -93,7 +91,7 @@ export default function SubcategoriesTable({
         </TableBody>
       </Table>
 
-      {/* Modal Crear/Editar */}
+
       <SubcategoryModal
         open={openModal}
         onClose={() => setOpenModal(false)}
@@ -102,7 +100,7 @@ export default function SubcategoriesTable({
         onSaved={onUpdated}
       />
 
-      {/* Modal Eliminar */}
+
       <SubcategoryDeleteModal
         open={openDelete}
         onClose={() => setOpenDelete(false)}
@@ -112,3 +110,4 @@ export default function SubcategoriesTable({
     </>
   );
 }
+ */

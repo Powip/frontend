@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 
 import {
   Table,
@@ -8,8 +8,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/src/components/ui/table";
-import { Button } from "@/src/components/ui/button";
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 
 export default function ProductsTableSkeleton() {
   const skeletonRows = Array.from({ length: 5 });
@@ -76,24 +76,9 @@ export default function ProductsTableSkeleton() {
               <div className="h-4 w-24 bg-gray-200 rounded"></div>
             </TableCell>
             <TableActions>
-              <Button
-                variant="table"
-                size="icon"
-                disabled
-                className="bg-gray-200 w-8 h-8"
-              />
-              <Button
-                variant="table"
-                size="icon"
-                disabled
-                className="bg-gray-200 w-8 h-8"
-              />
-              <Button
-                variant="table"
-                size="icon"
-                disabled
-                className="bg-gray-200 w-8 h-8"
-              />
+              <Button size="icon" disabled className="bg-gray-200 w-8 h-8" />
+              <Button size="icon" disabled className="bg-gray-200 w-8 h-8" />
+              <Button size="icon" disabled className="bg-gray-200 w-8 h-8" />
             </TableActions>
           </TableRow>
         ))}
@@ -101,3 +86,4 @@ export default function ProductsTableSkeleton() {
     </Table>
   );
 }
+ */

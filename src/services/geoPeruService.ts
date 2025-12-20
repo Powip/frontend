@@ -1,4 +1,4 @@
-import { API_URLS } from "@/src/config/apiConfig";
+import { API_URLS } from "@/config/apiConfig";
 
 const API_URL = API_URLS.supplier;
 

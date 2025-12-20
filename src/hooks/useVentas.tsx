@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import * as ventasApi from "@/src/api/Ventas";
+import * as ventasApi from "@/api/Ventas";
 import {
   ICreateOrderHeader,
   ICreateOrderHeaderPlusItems,
@@ -8,7 +8,7 @@ import {
   ICreatePaymentDto,
   IUpdatePaymentDto,
   IAddItem,
-} from "@/src/api/Interfaces";
+} from "@/api/Interfaces";
 
 // Obtener todas las órdenes (cabeceras)
 export const useOrders = () => {

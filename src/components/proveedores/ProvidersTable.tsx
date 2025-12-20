@@ -1,5 +1,5 @@
-import { Provider } from "@/src/interfaces/IProvider";
-import { Button } from "@/src/components/ui/button";
+/* import { Provider } from "@/interfaces/IProvider";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
   TableActions,
-} from "@/src/components/ui/table";
+} from "@/components/ui/table";
 import { Edit, Trash, Eye } from "lucide-react";
 
 interface Props {
@@ -51,7 +51,6 @@ export default function ProvidersTable({
               <TableCell>{prov.email}</TableCell>
               <TableActions>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-lime"
                   onClick={() => onEdit(prov.id!)}
@@ -59,7 +58,6 @@ export default function ProvidersTable({
                   <Edit />
                 </Button>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-red"
                   onClick={() => onDelete(prov.id!)}
@@ -67,7 +65,6 @@ export default function ProvidersTable({
                   <Trash />
                 </Button>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-sky-blue"
                   onClick={() => onView(prov.id!)}
@@ -81,3 +78,4 @@ export default function ProvidersTable({
     </Table>
   );
 }
+ */

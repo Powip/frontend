@@ -1,5 +1,5 @@
-import { Brand } from "@/src/interfaces/IProvider";
-import { API_URLS } from "@/src/config/apiConfig";
+import { Brand } from "@/interfaces/IProvider";
+import { API_URLS } from "@/config/apiConfig";
 
 const API_URL = API_URLS.supplier;
 

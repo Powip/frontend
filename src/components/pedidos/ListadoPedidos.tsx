@@ -6,7 +6,7 @@ import Container from "../ui/container";
 import Header from "../ui/header";
 import FormGrid from "../ui/form-grid";
 import FormContainer from "../ui/form-container";
-import Label from "../ui/label";
+
 import {
   Select,
   SelectContent,
@@ -14,20 +14,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { Input } from "@/src/components/ui/input";
+import { Input } from "@/components/ui/input";
 import { Button } from "../ui/button";
 
-import { Calendar } from "@/src/components/ui/calendar";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
   PopoverTrigger,
   PopoverContent,
-} from "@/src/components/ui/popover";
+} from "@/components/ui/popover";
 
-import { getPedidos } from "@/src/services/orderService";
-import { IOrder } from "@/src/interfaces/IOrder";
+import { getPedidos } from "@/services/orderService";
+import { IOrder } from "@/interfaces/IOrder";
 
 import PedidosTable from "./PedidosTable";
+import { Label } from "../ui/label";
 
 const ListadoPedidos = () => {
   const [pedidos, setPedidos] = useState<IOrder[]>([]);
@@ -129,10 +130,7 @@ const ListadoPedidos = () => {
             <Label>Fecha Venta</Label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button
-                  variant="table"
-                  className="w-full px-3 py-2 border border-input rounded-md text-left bg-background text-gray-700 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
-                >
+                <Button className="w-full px-3 py-2 border border-input rounded-md text-left bg-background text-gray-700 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
                   {rangeVenta?.from
                     ? rangeVenta.from.toLocaleDateString()
                     : "Desde"}{" "}
@@ -160,10 +158,7 @@ const ListadoPedidos = () => {
             <Label>Fecha Entrega</Label>
             <Popover>
               <PopoverTrigger asChild>
-                <Button
-                  variant="table"
-                  className="w-full px-3 py-2 border border-input rounded-md text-left bg-background text-gray-700 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary"
-                >
+                <Button className="w-full px-3 py-2 border border-input rounded-md text-left bg-background text-gray-700 hover:bg-muted focus:outline-none focus:ring-2 focus:ring-primary">
                   {rangeEntrega?.from
                     ? rangeEntrega.from.toLocaleDateString()
                     : "Desde"}{" "}

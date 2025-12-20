@@ -7,8 +7,8 @@ import { Venta } from "./venta";
 import { Productos } from "./Productos";
 import { Pago } from "./Pago";
 import { toast } from "sonner";
-import { IAddItem, ICreateOrderHeader, IOrder } from "@/src/api/Interfaces";
-import { Button } from "@/src/components/ui/button";
+import { IAddItem, ICreateOrderHeader, IOrder } from "@/api/Interfaces";
+import { Button } from "@/components/ui/button";
 
 interface Totals {
   totalAmount: number;
@@ -151,9 +151,8 @@ export default function FlujoVentas() {
                 customerId={customerId}
               />
             )}
-            
+
             {step === 3 && orderId && (
-              
               <Productos
                 prev={prevStep}
                 next={nextStep}

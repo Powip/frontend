@@ -8,23 +8,24 @@ import Container from "../ui/container";
 import Header from "../ui/header";
 import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
-import Label from "../ui/label";
-import { Input } from "@/src/components/ui/input";
-import { Button } from "@/src/components/ui/button";
 
-import { getProductById, updateProduct } from "@/src/services/productService";
-import { getCategories } from "@/src/services/categoryService";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
-import { getProvidersByCompany } from "@/src/services/providerService";
-import { getBrandsBySupplier } from "@/src/services/brandService";
-import { uploadImage } from "@/src/services/uploadService";
-import { getAttributesBySubcategory } from "@/src/services/attributeService";
+import { getProductById, updateProduct } from "@/services/productService";
+import { getCategories } from "@/services/categoryService";
+
+import { getProvidersByCompany } from "@/services/providerService";
+import { getBrandsBySupplier } from "@/services/brandService";
+import { uploadImage } from "@/services/uploadService";
+import { getAttributesBySubcategory } from "@/services/attributeService";
 import { groupAttributesByType } from "../../utils/groupAttributes";
 
-import { Category, Subcategory } from "@/src/interfaces/ICategory";
-import { Provider, Brand } from "@/src/interfaces/IProvider";
-import { IProductRequest } from "@/src/interfaces/IProduct";
-import { Attribute, SelectedAttribute } from "@/src/interfaces/IAttribute";
+import { Category, Subcategory } from "@/interfaces/ICategory";
+import { Provider, Brand } from "@/interfaces/IProvider";
+import { IProductRequest } from "@/interfaces/IProduct";
+import { Attribute, SelectedAttribute } from "@/interfaces/IAttribute";
+import { Label } from "../ui/label";
 
 const EditProducto = () => {
   const router = useRouter();
@@ -63,8 +64,6 @@ const EditProducto = () => {
     images: [] as string[],
   });
 
-  // === Cargar datos iniciales ===
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!id) return;
 

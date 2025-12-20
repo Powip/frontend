@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
-import Label from "../ui/label";
+
 import { Input } from "../ui/input";
 import Header from "../ui/header";
 import {
@@ -17,8 +17,9 @@ import { Textarea } from "../ui/textarea";
 import { Button } from "../ui/button";
 import Container from "../ui/container";
 import { toast } from "sonner";
-import { ICreatePaymentDto } from "@/src/api/Interfaces";
-import { useCreatePaymentForOrder } from "@/src/hooks/useVentas";
+import { ICreatePaymentDto } from "@/api/Interfaces";
+import { useCreatePaymentForOrder } from "@/hooks/useVentas";
+import { Label } from "../ui/label";
 
 interface Totals {
   totalAmount: number;
@@ -97,7 +98,9 @@ export const Pago = ({ orderId, totals, onPaymentCompleted }: Props) => {
       <Header>Pago</Header>
 
       <div className="mb-4 p-4 border rounded-lg bg-gray-50">
-        <h3 className="font-semibold text-lg text-green-700">Resumen de la Orden</h3>
+        <h3 className="font-semibold text-lg text-green-700">
+          Resumen de la Orden
+        </h3>
         <p>Total a Pagar: ${totals.totalAmount.toFixed(2)}</p>
         <p>IVA: ${totals.totalVat.toFixed(2)}</p>
       </div>
@@ -112,8 +115,12 @@ export const Pago = ({ orderId, totals, onPaymentCompleted }: Props) => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="efectivo">Efectivo</SelectItem>
-                <SelectItem value="tarjeta">Tarjeta (Crédito/Débito)</SelectItem>
-                <SelectItem value="transferencia">Transferencia Bancaria</SelectItem>
+                <SelectItem value="tarjeta">
+                  Tarjeta (Crédito/Débito)
+                </SelectItem>
+                <SelectItem value="transferencia">
+                  Transferencia Bancaria
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -129,7 +136,9 @@ export const Pago = ({ orderId, totals, onPaymentCompleted }: Props) => {
               type="number"
               value={adelanto}
               onChange={(e) => setAdelanto(e.target.value)}
-              placeholder={`Monto a pagar (Max: ${totals.totalAmount.toFixed(2)})`}
+              placeholder={`Monto a pagar (Max: ${totals.totalAmount.toFixed(
+                2
+              )})`}
               max={totals.totalAmount.toFixed(2)}
             />
           </div>
@@ -147,10 +156,8 @@ export const Pago = ({ orderId, totals, onPaymentCompleted }: Props) => {
       </FormContainer>
 
       <div className="w-full ">
-
         <Button
           onClick={handleSubmit}
-          variant="lime"
           className="w-full"
           disabled={createPaymentMutation.isPending}
         >

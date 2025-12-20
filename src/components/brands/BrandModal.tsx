@@ -1,12 +1,13 @@
 "use client";
 import { useState, useEffect } from "react";
-import { Input } from "@/src/components/ui/input";
-import Label from "@/src/components/ui/label";
-import { Button } from "@/src/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Brand } from "@/src/interfaces/IProvider";
-import { createBrand, updateBrand } from "@/src/services/brandService";
-import { Modal } from "@/src/components/ui/modal";
+import { Brand } from "@/interfaces/IProvider";
+import { createBrand, updateBrand } from "@/services/brandService";
+import { Modal } from "@/components/ui/modal";
+import { Label } from "../ui/label";
 
 interface BrandModalProps {
   open: boolean;

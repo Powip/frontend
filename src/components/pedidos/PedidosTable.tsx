@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { Button } from "@/src/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   Table,
   TableBody,
@@ -9,16 +9,16 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/src/components/ui/table";
+} from "@/components/ui/table";
 import { Ellipsis } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/src/components/ui/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 
-import { IOrder } from "@/src/interfaces/IOrder";
+import { IOrder } from "@/interfaces/IOrder";
 
 export default function PedidosTable({ pedidos }: { pedidos: IOrder[] }) {
   const [selected, setSelected] = useState<string[]>([]);
@@ -99,7 +99,7 @@ export default function PedidosTable({ pedidos }: { pedidos: IOrder[] }) {
               <TableCell>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="table" size="icon" className="bg-lime">
+                    <Button size="icon" className="bg-lime">
                       <Ellipsis />
                     </Button>
                   </DropdownMenuTrigger>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { QueryClient, useMutation, useQuery} from "@tanstack/react-query";
+import { QueryClient, useMutation, useQuery } from "@tanstack/react-query";
 import {
   getCategories,
   getSubCategories,
@@ -10,7 +10,7 @@ import {
   getAttributesBySubcategory,
   deleteProduct,
   getProviders,
-} from "@/src/api/Productos";
+} from "@/api/Productos";
 import {
   ICategory,
   ISubCategory,
@@ -20,7 +20,7 @@ import {
   IAttributesGroupedMap,
   ProductFilters,
   IProvider,
-} from "@/src/components/products/interfaces";
+} from "@/components/products/interfaces";
 import { AxiosError } from "axios";
 
 const initialFilters: ProductFilters = {
@@ -28,7 +28,7 @@ const initialFilters: ProductFilters = {
   categoryId: "",
   subcategoryId: "",
   brandId: "",
-  providerId:"",
+  providerId: "",
   status: true,
 };
 
@@ -52,10 +52,10 @@ export function useCatalogoProductos() {
     queryFn: getBrands,
   });
 
-  const {data: providers = []} = useQuery<IProvider[]>({
+  const { data: providers = [] } = useQuery<IProvider[]>({
     queryKey: ["providers"],
     queryFn: getProviders,
-  })
+  });
 
   const { data: products = [], isFetching } = useQuery<IProduct[]>({
     queryKey: ["products", appliedFilters],
@@ -68,18 +68,17 @@ export function useCatalogoProductos() {
     enabled: !!filters.subcategoryId,
   });
 
- 
-const deleteMutation = useMutation<void, AxiosError, string>({
-  mutationFn: (id: string) => deleteProduct(id),
-  onSuccess: () => {
-    const queryClient = new QueryClient();
-    queryClient.invalidateQueries({ queryKey: ["products"] });
-  },
-  onError: (error) => {
-    const err = error as AxiosError<{ message: string }>;
-    alert(err.response?.data?.message || "Error al eliminar producto");
-  },
-});
+  const deleteMutation = useMutation<void, AxiosError, string>({
+    mutationFn: (id: string) => deleteProduct(id),
+    onSuccess: () => {
+      const queryClient = new QueryClient();
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (error) => {
+      const err = error as AxiosError<{ message: string }>;
+      alert(err.response?.data?.message || "Error al eliminar producto");
+    },
+  });
 
   // Agrupación de atributos dinámicos
   const groupedAttributes = useMemo(() => {
@@ -148,6 +147,6 @@ const deleteMutation = useMutation<void, AxiosError, string>({
     hasActiveFilters,
     setFilters,
     deleteProduct: deleteMutation.mutate,
-  isDeleting: deleteMutation.isPending, 
+    isDeleting: deleteMutation.isPending,
   };
 }

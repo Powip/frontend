@@ -6,11 +6,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/components/ui/select";
-import { Input } from "@/src/components/ui/input";
-import { Button } from "@/src/components/ui/button";
-import Label from "@/src/components/ui/label";
-import FormGrid from "@/src/components/ui/form-grid";
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import FormGrid from "@/components/ui/form-grid";
 import { FilterIcon, Download } from "lucide-react";
 import {
   ICategory,
@@ -24,6 +23,7 @@ import {
 import { exportProductsToExcel } from "./utils/ExportExcel";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+import { Label } from "../ui/label";
 
 interface Props {
   filters: ProductFilters;
@@ -204,7 +204,7 @@ export default function FiltersForm({
       {/* Botones */}
       <div className="flex justify-between gap-2 mt-4">
         <div className="flex gap-2">
-          <Button onClick={applyFilters} variant="lime">
+          <Button onClick={applyFilters}>
             <FilterIcon />
             Filtrar
           </Button>

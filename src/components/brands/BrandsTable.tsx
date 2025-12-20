@@ -1,7 +1,6 @@
-"use client";
+/* "use client";
 import { useState } from "react";
-import { Brand } from "@/src/interfaces/IProvider";
-import { Button } from "@/src/components/ui/button";
+import { Brand } from "@/interfaces/IProvider";
 import {
   Table,
   TableBody,
@@ -10,10 +9,11 @@ import {
   TableHeader,
   TableRow,
   TableActions,
-} from "@/src/components/ui/table";
+} from "@/components/ui/table";
 import { Edit, Trash, Plus } from "lucide-react";
 import BrandModal from "../brands/BrandModal";
 import BrandDeleteModal from "./BrandDeleteModal";
+import { Button } from "../ui/button";
 
 interface Props {
   brands: Brand[];
@@ -64,7 +64,6 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
               <TableCell>{brand.description || "-"}</TableCell>
               <TableActions>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-lime"
                   onClick={() => handleEdit(brand)}
@@ -72,7 +71,6 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
                   <Edit />
                 </Button>
                 <Button
-                  variant="table"
                   size="icon"
                   className="bg-red"
                   onClick={() => handleDelete(brand)}
@@ -85,7 +83,7 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
         </TableBody>
       </Table>
 
-      {/* Modal Crear/Editar */}
+
       <BrandModal
         open={openModal}
         onClose={() => setOpenModal(false)}
@@ -94,7 +92,7 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
         onSaved={onUpdated}
       />
 
-      {/* Modal Eliminar */}
+ 
       <BrandDeleteModal
         open={openDelete}
         onClose={() => setOpenDelete(false)}
@@ -104,3 +102,4 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
     </>
   );
 }
+ */

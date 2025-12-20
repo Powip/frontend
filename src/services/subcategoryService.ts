@@ -1,5 +1,5 @@
-import { Subcategory } from "@/src/interfaces/ICategory";
-import { API_URLS } from "@/src/config/apiConfig";
+import { Subcategory } from "@/interfaces/ICategory";
+import { API_URLS } from "@/config/apiConfig";
 
 const API_URL = API_URLS.productos; // viene de tu .env.local → NEXT_PUBLIC_API_PRODUCTOS
 

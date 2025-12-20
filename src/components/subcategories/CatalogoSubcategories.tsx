@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
@@ -7,7 +7,6 @@ import Container from "../ui/container";
 import Header from "../ui/header";
 import FormGrid from "../ui/form-grid";
 import FormContainer from "../ui/form-container";
-import Label from "../ui/label";
 
 import {
   Select,
@@ -15,13 +14,14 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/components/ui/select";
+} from "@/components/ui/select";
 
-import { Category, Subcategory } from "@/src/interfaces/ICategory";
+import { Category, Subcategory } from "@/interfaces/ICategory";
 
 import { getCategories } from "../../services/categoryService";
 
-import SubcategoriesTable from "@/src/components/subcategories/SubcategoriesTable";
+import SubcategoriesTable from "@/components/subcategories/SubcategoriesTable";
+import { Label } from "../ui/label";
 
 const CatalogoSubcategorias = () => {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -105,3 +105,4 @@ const CatalogoSubcategorias = () => {
 };
 
 export default CatalogoSubcategorias;
+ */

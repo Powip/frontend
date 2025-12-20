@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 
 import {
   Table,
@@ -8,8 +8,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/src/components/ui/table";
-import { Button } from "@/src/components/ui/button";
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { Edit, Eye, Trash } from "lucide-react";
 import { IProduct } from "./interfaces";
 
@@ -54,7 +54,6 @@ export default function ProductsTable({
             <TableCell>{product.category?.name}</TableCell>
             <TableActions>
               <Button
-                variant="table"
                 size="icon"
                 className="bg-lime"
                 onClick={() => onEdit(product.id)}
@@ -62,7 +61,6 @@ export default function ProductsTable({
                 <Edit />
               </Button>
               <Button
-                variant="table"
                 size="icon"
                 className="bg-red"
                 onClick={() => onDelete(product.id)}
@@ -70,7 +68,6 @@ export default function ProductsTable({
                 <Trash />
               </Button>
               <Button
-                variant="table"
                 size="icon"
                 className="bg-sky-blue"
                 onClick={() => onView(product.id)}
@@ -84,3 +81,4 @@ export default function ProductsTable({
     </Table>
   );
 }
+ */

@@ -8,7 +8,7 @@ import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
 import Header from "../ui/header";
 import { Input } from "../ui/input";
-import Label from "../ui/label";
+
 import {
   Select,
   SelectContent,
@@ -22,9 +22,9 @@ import {
   useClientByPhone,
   useUpdateClient,
   useDeleteClient,
-} from "@/src/hooks/useCreateClient";
+} from "@/hooks/useCreateClient";
 import { AxiosError } from "axios";
-import { IClient } from "@/src/api/Interfaces";
+import { IClient } from "@/api/Interfaces";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -34,6 +34,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "../ui/dialog";
+import { Label } from "../ui/label";
 
 type Props = {
   next: (id: string) => void;
@@ -44,7 +45,7 @@ export interface IClientPayload {
   lastName: string;
   nickName: string;
   phoneNumber: string;
-  clientType: string; 
+  clientType: string;
   address: string;
   province: string;
   city: string;
@@ -52,7 +53,6 @@ export interface IClientPayload {
   reference: string;
   companyId?: string; // opcional
 }
-
 
 export const Clientes = ({ next }: Props) => {
   const [form, setForm] = useState({
@@ -77,8 +77,9 @@ export const Clientes = ({ next }: Props) => {
   const createClientMutation = useCreateClient();
   const updateClientMutation = useUpdateClient();
   const deleteClientMutation = useDeleteClient();
-  const { data: clientByPhone, isLoading: isClientLoading } =
-    useClientByPhone(searchPhone || "");
+  const { data: clientByPhone, isLoading: isClientLoading } = useClientByPhone(
+    searchPhone || ""
+  );
 
   const companyId = "5d5b824c-2b81-4b17-960f-855bfc7806e2";
 
@@ -152,7 +153,8 @@ export const Clientes = ({ next }: Props) => {
         onError: handleError,
       });
     } else {
-      if (!currentClientId) return toast.error("No hay cliente para actualizar");
+      if (!currentClientId)
+        return toast.error("No hay cliente para actualizar");
 
       updateClientMutation.mutate(
         { id: currentClientId, client: payload },
@@ -384,7 +386,6 @@ export const Clientes = ({ next }: Props) => {
             <Button
               onClick={() => handleSaveClient(true)}
               disabled={isSaving || form.phoneNumber.length === 0}
-              variant="lime"
               className="w-full max-w-full"
             >
               <Save className="mr-2 h-4 w-4" />
@@ -403,7 +404,10 @@ export const Clientes = ({ next }: Props) => {
             {`¿Está seguro que desea habilitar la edición para el cliente ${form.name} ${form.lastName}? Al confirmar, podrá cambiar todos los campos y deberá presionar 'Guardar Cambios' al finalizar.`}
           </DialogDescription>
           <DialogFooter className="flex justify-between">
-            <Button variant="outline" onClick={() => setIsEditConfirmOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setIsEditConfirmOpen(false)}
+            >
               Cancelar
             </Button>
             <Button onClick={confirmEdit}>Confirmar Edición</Button>
@@ -428,7 +432,7 @@ export const Clientes = ({ next }: Props) => {
             >
               {deleteClientMutation.isPending ? "Eliminando..." : "Eliminar"}
             </Button>
-            <Button variant="blue" onClick={() => setIsDeleteConfirmOpen(false)}>
+            <Button onClick={() => setIsDeleteConfirmOpen(false)}>
               Cancelar
             </Button>
           </DialogFooter>

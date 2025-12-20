@@ -6,7 +6,7 @@ import ModalContainer from "../ui/modal-container";
 import Header from "../ui/header";
 import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
-import Label from "../ui/label";
+
 import {
   Select,
   SelectContent,
@@ -16,9 +16,10 @@ import {
 } from "../ui/select";
 import { Button } from "../ui/button";
 import { X } from "lucide-react";
-import { IAddItem } from "@/src/api/Interfaces";
+import { IAddItem } from "@/api/Interfaces";
 import { IProduct } from "../products/interfaces";
-import { getAttributesBySubcategory } from "@/src/api/Productos";
+import { getAttributesBySubcategory } from "@/api/Productos";
+import { Label } from "../ui/label";
 
 type Props = {
   onClose: () => void;
@@ -38,13 +39,14 @@ interface IGroupedAttribute {
   values: { id: string; name: string }[];
 }
 
-
 export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
   const [selectedProduct, setSelectedProduct] = useState<string>("");
   const [quantity, setQuantity] = useState<number>(1);
   const [discountType, setDiscountType] = useState<string | null>(null);
   const [discountValue, setDiscountValue] = useState<number>(0);
-  const [selectedAttributes, setSelectedAttributes] = useState<Record<string, string>>({});
+  const [selectedAttributes, setSelectedAttributes] = useState<
+    Record<string, string>
+  >({});
 
   // Producto seleccionado
   const productObj = useMemo(
@@ -59,32 +61,39 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
     enabled: !!productObj?.subcategory?.id,
   });
 
-
   // Agrupar atributos por tipo
   const groupedAttributes: Record<string, IGroupedAttribute> = useMemo(() => {
     if (!attributes?.length) return {};
 
-    const grouped = attributes.reduce((acc: Record<string, IGroupedAttribute>, attr: { attributeType: { id: string; name: string; }; id: string; name: string; }) => {
-      const typeId = attr.attributeType?.id;
-      const typeName = attr.attributeType?.name || "Sin nombre";
-      if (!typeId) return acc;
+    const grouped = attributes.reduce(
+      (
+        acc: Record<string, IGroupedAttribute>,
+        attr: {
+          attributeType: { id: string; name: string };
+          id: string;
+          name: string;
+        }
+      ) => {
+        const typeId = attr.attributeType?.id;
+        const typeName = attr.attributeType?.name || "Sin nombre";
+        if (!typeId) return acc;
 
-      if (!acc[typeId]) {
-        acc[typeId] = { typeId, typeName, values: [] };
-      }
+        if (!acc[typeId]) {
+          acc[typeId] = { typeId, typeName, values: [] };
+        }
 
-      acc[typeId].values.push({ id: attr.id, name: attr.name });
-      return acc;
-    }, {});
+        acc[typeId].values.push({ id: attr.id, name: attr.name });
+        return acc;
+      },
+      {}
+    );
 
     // Log detallado de los groupedAttributes
-  (Object.values(grouped) as IGroupedAttribute[]).forEach((group) => {
-  group.values.forEach((v) => {
-    console.log("GroupedAttribute:", group.typeName, v.id, v.name);
-  });
-});
-
-
+    (Object.values(grouped) as IGroupedAttribute[]).forEach((group) => {
+      group.values.forEach((v) => {
+        console.log("GroupedAttribute:", group.typeName, v.id, v.name);
+      });
+    });
 
     return grouped;
   }, [attributes]);
@@ -93,14 +102,18 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
   const handleAdd = () => {
     if (!productObj) return;
 
-    const attributesArray = Object.entries(selectedAttributes).map(([typeId, attrId]) => {
-      const group = groupedAttributes[typeId];
-      const valueObj = group?.values.find((v: { id: string; }) => v.id === attrId);
-      return {
-        name: group?.typeName || "Desconocido",
-        value: valueObj?.name || "N/A",
-      };
-    });
+    const attributesArray = Object.entries(selectedAttributes).map(
+      ([typeId, attrId]) => {
+        const group = groupedAttributes[typeId];
+        const valueObj = group?.values.find(
+          (v: { id: string }) => v.id === attrId
+        );
+        return {
+          name: group?.typeName || "Desconocido",
+          value: valueObj?.name || "N/A",
+        };
+      }
+    );
 
     const item: IAddItem = {
       productId: productObj.id,
@@ -118,14 +131,17 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
 
   // Log de productos para rastrear duplicados
   useEffect(() => {
-    console.log("Productos renderizados:", products.map(p => p.id));
+    console.log(
+      "Productos renderizados:",
+      products.map((p) => p.id)
+    );
   }, [products]);
 
   return (
     <ModalContainer>
       <Header
         action={
-          <Button onClick={onClose} variant="table" className="bg-red rounded-full">
+          <Button onClick={onClose} className="bg-red rounded-full">
             <X strokeWidth={4} />
           </Button>
         }
@@ -164,21 +180,61 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
                 <Select
                   value={selectedAttributes[attrGroup.typeId] || ""}
                   onValueChange={(val) =>
-                    setSelectedAttributes((prev) => ({ ...prev, [attrGroup.typeId]: val }))
+                    setSelectedAttributes((prev) => ({
+                      ...prev,
+                      [attrGroup.typeId]: val,
+                    }))
                   }
                 >
                   <SelectTrigger className="w-full">
-                    <SelectValue placeholder={`Seleccionar ${attrGroup.typeName}`} />
+                    <SelectValue
+                      placeholder={`Seleccionar ${attrGroup.typeName}`}
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {attrGroup.values.map((val: { id: string; name: string | number | bigint | boolean | React.ReactElement<unknown, string | React.JSXElementConstructor<unknown>> | Iterable<React.ReactNode> | React.ReactPortal | Promise<string | number | bigint | boolean | React.ReactPortal | React.ReactElement<unknown, string | React.JSXElementConstructor<unknown>> | Iterable<React.ReactNode> | null | undefined> | null | undefined; }, valIndex: unknown) => (
-                      <SelectItem
-                        key={`${attrGroup.typeId}-${val.id}-${valIndex}`}
-                        value={val.id}
-                      >
-                        {val.name}
-                      </SelectItem>
-                    ))}
+                    {attrGroup.values.map(
+                      (
+                        val: {
+                          id: string;
+                          name:
+                            | string
+                            | number
+                            | bigint
+                            | boolean
+                            | React.ReactElement<
+                                unknown,
+                                string | React.JSXElementConstructor<unknown>
+                              >
+                            | Iterable<React.ReactNode>
+                            | React.ReactPortal
+                            | Promise<
+                                | string
+                                | number
+                                | bigint
+                                | boolean
+                                | React.ReactPortal
+                                | React.ReactElement<
+                                    unknown,
+                                    | string
+                                    | React.JSXElementConstructor<unknown>
+                                  >
+                                | Iterable<React.ReactNode>
+                                | null
+                                | undefined
+                              >
+                            | null
+                            | undefined;
+                        },
+                        valIndex: unknown
+                      ) => (
+                        <SelectItem
+                          key={`${attrGroup.typeId}-${val.id}-${valIndex}`}
+                          value={val.id}
+                        >
+                          {val.name}
+                        </SelectItem>
+                      )
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -190,7 +246,10 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
         <FormGrid>
           <div>
             <Label>Cantidad</Label>
-            <Select value={String(quantity)} onValueChange={(v) => setQuantity(Number(v))}>
+            <Select
+              value={String(quantity)}
+              onValueChange={(v) => setQuantity(Number(v))}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
@@ -206,7 +265,10 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
 
           <div>
             <Label>Tipo de Descuento</Label>
-            <Select value={discountType || ""} onValueChange={(v) => setDiscountType(v)}>
+            <Select
+              value={discountType || ""}
+              onValueChange={(v) => setDiscountType(v)}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="Seleccionar" />
               </SelectTrigger>
@@ -232,7 +294,10 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
               </SelectTrigger>
               <SelectContent>
                 {[0, 5, 10, 15, 20, 30].map((num, index) => (
-                  <SelectItem key={`discval-${num}-${index}`} value={String(num)}>
+                  <SelectItem
+                    key={`discval-${num}-${index}`}
+                    value={String(num)}
+                  >
                     {num}
                     {discountType === "porcentaje" ? "%" : ""}
                   </SelectItem>
@@ -250,7 +315,6 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
         </Button>
         <Button
           onClick={handleAdd}
-          variant="lime"
           className="col-span-3"
           disabled={!selectedProduct}
         >

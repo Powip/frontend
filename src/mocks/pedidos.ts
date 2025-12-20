@@ -1,4 +1,4 @@
-import { IOrder } from "@/src/interfaces/IOrder";
+import { IOrder } from "@/interfaces/IOrder";
 
 const pedidos: IOrder[] = [
   {

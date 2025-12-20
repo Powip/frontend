@@ -1,4 +1,4 @@
-import { Button } from "@/src/components/ui/button";
+/* import { Button } from "@/components/ui/button";
 
 import {
   Table,
@@ -8,7 +8,7 @@ import {
   TableHeader,
   TableRow,
   TableActions,
-} from "@/src/components/ui/table";
+} from "@/components/ui/table";
 
 import {
   Select,
@@ -16,7 +16,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/src/components/ui/select";
+} from "@/components/ui/select";
 
 import { Edit, Eye } from "lucide-react";
 
@@ -133,3 +133,4 @@ export default function ProductPedidoTable() {
     </Table>
   );
 }
+ */

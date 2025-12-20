@@ -1,14 +1,14 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Modal } from "@/src/components/ui/modal";
-import { getProductById } from "@/src/services/productService";
-import { getAttributesBySubcategory } from "@/src/services/attributeService";
-import { groupAttributesByType } from "@/src/utils/groupAttributes";
+import { Modal } from "@/components/ui/modal";
+import { getProductById } from "@/services/productService";
+import { getAttributesBySubcategory } from "@/services/attributeService";
+import { groupAttributesByType } from "@/utils/groupAttributes";
 import { toast } from "sonner";
 import Image from "next/image";
-import { IProduct } from "@/src/interfaces/IProduct";
-import { Attribute } from "@/src/interfaces/IAttribute";
-import Label from "@/src/components/ui/label";
+import { IProduct } from "@/interfaces/IProduct";
+import { Attribute } from "@/interfaces/IAttribute";
+import { Label } from "../ui/label";
 
 interface ProductViewModalProps {
   open: boolean;

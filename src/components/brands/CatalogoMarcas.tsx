@@ -1,4 +1,4 @@
-"use client";
+/* "use client";
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -7,7 +7,6 @@ import Container from "../ui/container";
 import Header from "../ui/header";
 import FormContainer from "../ui/form-container";
 import FormGrid from "../ui/form-grid";
-import Label from "../ui/label";
 
 import {
   Select,
@@ -15,14 +14,15 @@ import {
   SelectContent,
   SelectItem,
   SelectValue,
-} from "@/src/components/ui/select";
+} from "@/components/ui/select";
 
-import { Brand, Provider } from "@/src/interfaces/IProvider";
+import { Brand, Provider } from "@/interfaces/IProvider";
 
-import { getProvidersByCompany } from "@/src/services/providerService";
-import { getBrandsBySupplier } from "@/src/services/brandService";
+import { getProvidersByCompany } from "@/services/providerService";
+import { getBrandsBySupplier } from "@/services/brandService";
 
 import BrandsTable from "../brands/BrandsTable";
+import { Label } from "../ui/label";
 
 const CatalogoMarcas = () => {
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -103,3 +103,4 @@ const CatalogoMarcas = () => {
 };
 
 export default CatalogoMarcas;
+ */

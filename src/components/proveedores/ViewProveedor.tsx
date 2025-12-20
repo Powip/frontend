@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getProviderById } from "@/src/services/providerService";
-import { Provider } from "@/src/interfaces/IProvider";
+import { getProviderById } from "@/services/providerService";
+import { Provider } from "@/interfaces/IProvider";
 
 import Container from "../ui/container";
 import Header from "../ui/header";
-import { Button } from "@/src/components/ui/button";
+import { Button } from "@/components/ui/button";
 
 const ViewProvider = () => {
   const { id } = useParams();
