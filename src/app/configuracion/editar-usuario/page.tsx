@@ -56,7 +56,7 @@ export default function DatosPersonalesPage() {
     const fetchData = async () => {
       try {
         const res = await axios.get(
-          `http://localhost:8080/api/v1/auth/user/${userId}`
+          `${process.env.NEXT_PUBLIC_API_USERS}/auth/user/${userId}`
         );
         setUser(res.data);
         console.log(res.data);
@@ -81,13 +81,16 @@ export default function DatosPersonalesPage() {
     setSavingChanges(true);
 
     try {
-      await axios.put(`http://localhost:8080/api/v1/auth/user/${userId}`, {
-        name: user.name,
-        surname: user.surname,
-        address: user.address,
-        district: user.district,
-        phoneNumber: user.phoneNumber,
-      });
+      await axios.put(
+        `${process.env.NEXT_PUBLIC_API_USERS}/auth/user/${userId}`,
+        {
+          name: user.name,
+          surname: user.surname,
+          address: user.address,
+          district: user.district,
+          phoneNumber: user.phoneNumber,
+        }
+      );
 
       toast.success("Datos actualizados con éxito");
     } catch (error) {
@@ -111,11 +114,14 @@ export default function DatosPersonalesPage() {
     setChangingPassword(true);
 
     try {
-      await axios.post(`http://localhost:8080/api/v1/auth/update-password`, {
-        userId,
-        currentPassword,
-        newPassword,
-      });
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_USERS}/auth/update-password`,
+        {
+          userId,
+          currentPassword,
+          newPassword,
+        }
+      );
 
       toast.success("Contraseña actualizada correctamente");
       setCurrentPassword("");

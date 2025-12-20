@@ -53,7 +53,7 @@ export default function RestablecerClient() {
     setLoading(true);
     try {
       await axios.post(
-        "http://localhost:8080/api/v1/auth/reset-password",
+        `${process.env.NEXT_PUBLIC_API_USERS}/auth/reset-password`,
         {
           token,
           newPassword: data.password,

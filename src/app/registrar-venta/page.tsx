@@ -288,7 +288,7 @@ export default function RegistrarVentaPage() {
 
     try {
       const response = await axios.post(
-        "http://localhost:3002/order-header",
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header`,
         payload
       );
       toast.success("Venta registrada");

@@ -22,7 +22,7 @@ export default function ForgotPassword({ open, onClose }: Props) {
     try {
       setLoading(true);
       const response = await axios.post(
-        "http://localhost:8080/api/v1/auth/forgot-password",
+        `${process.env.NEXT_PUBLIC_API_USERS}/auth/forgot-password`,
         { email }
       );
       if (response.status === 200) {
