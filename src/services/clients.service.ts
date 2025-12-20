@@ -1,13 +1,13 @@
 import { Client } from "@/interfaces/ICliente";
 
-const API_URL = "http://localhost:3002";
+const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS!;
 
 export async function fetchClientByPhone(
   companyId: string,
   phone: string
 ): Promise<Client | null> {
   const res = await fetch(
-    `${API_URL}/clients/company/${companyId}/phone/${phone}`,
+    `${API_VENTAS}/clients/company/${companyId}/phone/${phone}`,
     {
       method: "GET",
       headers: {
@@ -59,7 +59,7 @@ export async function createClient(payload: {
   address: string;
   reference?: string;
 }) {
-  const res = await fetch("http://localhost:3002/clients", {
+  const res = await fetch(`${API_VENTAS}/clients`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

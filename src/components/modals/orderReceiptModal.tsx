@@ -22,7 +22,7 @@ export default function OrderReceiptModal({ open, orderId, onClose }: Props) {
       try {
         setLoading(true);
         const res = await axios.get(
-          `http://localhost:3002/order-header/${orderId}/receipt`
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`
         );
         console.log(res.data);
 
