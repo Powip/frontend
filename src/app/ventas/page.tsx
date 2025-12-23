@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, Trash2, FileText, Clipboard } from "lucide-react";
+import { Plus, Pencil, Trash2, FileText, Clipboard, Check } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +42,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
 import { ORDER_STATUS_FLOW } from "@/utils/domain/orders-status-flow";
+import { useRouter } from "next/navigation";
 
 /* -----------------------------------------
    Types
@@ -66,7 +67,17 @@ export interface Sale {
   status: OrderStatus;
   paymentMethod: string;
   deliveryType: string;
+  salesRegion: "LIMA" | "PROVINCIA";
 }
+
+const ORDER_STATUS_WAY: Record<OrderStatus, OrderStatus | null> = {
+  PENDIENTE: "PREPARADO",
+  PREPARADO: "LLAMADO",
+  LLAMADO: "EN_ENVIO",
+  EN_ENVIO: "ENTREGADO",
+  ENTREGADO: null, // no avanza más
+  ANULADO: null, // no avanza
+};
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 
@@ -94,13 +105,14 @@ function mapOrderToSale(order: OrderHeader): Sale {
     id: order.id,
     orderNumber: order.orderNumber,
     clientName: order.customer.fullName,
-    phoneNumber: order.customer.phoneNumber,
+    phoneNumber: order.customer.phoneNumber ?? "999",
     date: new Date(order.created_at).toLocaleDateString("es-AR"),
     total: Number(order.grandTotal),
     status: order.status,
     paymentMethod:
       order.payments.length > 0 ? order.payments[0].paymentMethod : "—",
     deliveryType: order.deliveryType.replace("_", " "),
+    salesRegion: order.salesRegion,
   };
 }
 
@@ -123,6 +135,21 @@ export default function VentasPage() {
   const [editCancellationReason, setEditCancellationReason] = useState("");
   const [productsOpen, setProductsOpen] = useState(false);
   const [confirmCancelOpen, setConfirmCancelOpen] = useState(false);
+  const [regionFilterPendiente, setRegionFilterPendiente] = useState<
+    "" | "LIMA" | "PROVINCIA"
+  >("");
+  const [regionFilterPreparado, setRegionFilterPreparado] = useState<
+    "" | "LIMA" | "PROVINCIA"
+  >("");
+  const [regionFilterContactado, setRegionFilterContactado] = useState<
+    "" | "LIMA" | "PROVINCIA"
+  >("");
+  const [regionFilterDespachado, setRegionFilterDespachado] = useState<
+    "" | "LIMA" | "PROVINCIA"
+  >("");
+  const [regionFilterEntregado, setRegionFilterEntregado] = useState<
+    "" | "LIMA" | "PROVINCIA"
+  >("");
 
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
     new Set()
@@ -133,11 +160,14 @@ export default function VentasPage() {
 
   const { selectedStoreId } = useAuth();
 
+  const router = useRouter();
+
   async function fetchOrders() {
     try {
       const res = await axios.get<OrderHeader[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
       );
+      console.log("datos de sales", res.data);
 
       setSales(res.data.map(mapOrderToSale));
     } catch (error) {
@@ -160,6 +190,30 @@ export default function VentasPage() {
       setLoadingOrder(false);
     }
   }
+
+  const handleAdvanceStatus = async (sale: Sale) => {
+    const nextStatus = ORDER_STATUS_WAY[sale.status];
+
+    if (!nextStatus) {
+      toast.info("La venta ya está en el estado final o cancelada");
+      return;
+    }
+
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
+        { status: nextStatus }
+      );
+      toast.success(
+        `Estado de la venta ${sale.orderNumber} actualizado a ${nextStatus}`
+      );
+      fetchOrders(); // refresca la lista
+    } catch (error) {
+      console.error("Error actualizando estado", error);
+      toast.error("No se pudo actualizar el estado");
+    }
+  };
+
   const handleSave = () => {
     if (
       selectedOrder &&
@@ -322,6 +376,8 @@ Estado: ${sale.status}
           <TableHead>Envío</TableHead>
           <TableHead>Total</TableHead>
           <TableHead>Estado</TableHead>
+          <TableHead>Region</TableHead>
+          <TableHead>Resumen de Venta</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
         </TableRow>
       </TableHeader>
@@ -345,33 +401,49 @@ Estado: ${sale.status}
             <TableCell>
               <Badge variant={statusVariant(sale.status)}>{sale.status}</Badge>
             </TableCell>
-            <TableCell className="text-right space-x-2">
+            <TableCell>{sale.salesRegion}</TableCell>
+            <TableCell>
               <Button
-                size="icon"
-                variant="outline"
-                onClick={() => fetchOrderById(sale.id)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-
-              <Button
-                size="icon"
+                size="sm"
                 variant="outline"
                 onClick={() => {
                   setSelectedOrderId(sale.id);
                   setReceiptOpen(true);
                 }}
               >
-                <FileText className="h-4 w-4" />
+                <FileText className="h-4 w-4 " />
+                Ver
+              </Button>
+            </TableCell>
+
+            <TableCell className="text-right space-x-2">
+              <Button
+                title="Avanzar la venta al siguiente estado"
+                size="icon"
+                variant="outline"
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => handleAdvanceStatus(sale)}
+              >
+                <Check className="text-white" />
               </Button>
 
-              {/* <Button
+              <Button
+                size="icon"
+                variant="outline"
+                onClick={() =>
+                  router.push(`/registrar-venta?orderId=${sale.id}`)
+                }
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+
+              <Button
                 size="icon"
                 variant="destructive"
                 onClick={() => handleDelete(sale.id)}
               >
                 <Trash2 className="h-4 w-4" />
-              </Button> */}
+              </Button>
             </TableCell>
           </TableRow>
         ))}
@@ -379,7 +451,7 @@ Estado: ${sale.status}
         {data.length === 0 && (
           <TableRow>
             <TableCell
-              colSpan={9}
+              colSpan={12}
               className="text-center text-muted-foreground py-6"
             >
               No hay ventas en este estado
@@ -395,24 +467,58 @@ Estado: ${sale.status}
   ----------------------------------------- */
 
   const pendientes = useMemo(
-    () => sales.filter((s) => s.status === ORDER_STATUS.PENDIENTE),
-    [sales]
+    () =>
+      sales.filter(
+        (s) =>
+          s.status === ORDER_STATUS.PENDIENTE &&
+          (regionFilterPendiente === "" ||
+            s.salesRegion === regionFilterPendiente)
+      ),
+    [sales, regionFilterPendiente]
   );
+
   const preparados = useMemo(
-    () => sales.filter((s) => s.status === ORDER_STATUS.PREPARADO),
-    [sales]
+    () =>
+      sales.filter(
+        (s) =>
+          s.status === ORDER_STATUS.PREPARADO &&
+          (regionFilterPreparado === "" ||
+            s.salesRegion === regionFilterPreparado)
+      ),
+    [sales, regionFilterPreparado]
   );
+
   const contactados = useMemo(
-    () => sales.filter((s) => s.status === ORDER_STATUS.LLAMADO),
-    [sales]
+    () =>
+      sales.filter(
+        (s) =>
+          s.status === ORDER_STATUS.LLAMADO &&
+          (regionFilterContactado === "" ||
+            s.salesRegion === regionFilterContactado)
+      ),
+    [sales, regionFilterContactado]
   );
+
   const despachados = useMemo(
-    () => sales.filter((s) => s.status === ORDER_STATUS.EN_ENVIO),
-    [sales]
+    () =>
+      sales.filter(
+        (s) =>
+          s.status === ORDER_STATUS.EN_ENVIO &&
+          (regionFilterDespachado === "" ||
+            s.salesRegion === regionFilterDespachado)
+      ),
+    [sales, regionFilterDespachado]
   );
+
   const entregados = useMemo(
-    () => sales.filter((s) => s.status === ORDER_STATUS.ENTREGADO),
-    [sales]
+    () =>
+      sales.filter(
+        (s) =>
+          s.status === ORDER_STATUS.ENTREGADO &&
+          (regionFilterEntregado === "" ||
+            s.salesRegion === regionFilterEntregado)
+      ),
+    [sales, regionFilterEntregado]
   );
 
   const totalPaid =
@@ -465,12 +571,60 @@ Estado: ${sale.status}
               </TabsList>
 
               <TabsContent value="PENDIENTE">
+                <div className="mb-4 flex items-center gap-2">
+                  <Label>Filtrar por región:</Label>
+                  <select
+                    className="border rounded-md px-2 py-1 text-sm"
+                    value={regionFilterPendiente}
+                    onChange={(e) =>
+                      setRegionFilterPendiente(
+                        e.target.value as "" | "LIMA" | "PROVINCIA"
+                      )
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="LIMA">Lima</option>
+                    <option value="PROVINCIA">Provincia</option>
+                  </select>
+                </div>
                 {renderTable(pendientes)}
               </TabsContent>
               <TabsContent value="PREPARADO">
+                <div className="mb-4 flex items-center gap-2">
+                  <Label>Filtrar por región:</Label>
+                  <select
+                    className="border rounded-md px-2 py-1 text-sm"
+                    value={regionFilterPreparado}
+                    onChange={(e) =>
+                      setRegionFilterPreparado(
+                        e.target.value as "" | "LIMA" | "PROVINCIA"
+                      )
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="LIMA">Lima</option>
+                    <option value="PROVINCIA">Provincia</option>
+                  </select>
+                </div>
                 {renderTable(preparados)}
               </TabsContent>
               <TabsContent value="LLAMADO">
+                <div className="mb-4 flex items-center gap-2">
+                  <Label>Filtrar por región:</Label>
+                  <select
+                    className="border rounded-md px-2 py-1 text-sm"
+                    value={regionFilterContactado}
+                    onChange={(e) =>
+                      setRegionFilterContactado(
+                        e.target.value as "" | "LIMA" | "PROVINCIA"
+                      )
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="LIMA">Lima</option>
+                    <option value="PROVINCIA">Provincia</option>
+                  </select>
+                </div>
                 {renderTable(contactados)}
               </TabsContent>
             </Tabs>
@@ -501,9 +655,41 @@ Estado: ${sale.status}
               </TabsList>
 
               <TabsContent value="EN_ENVIO">
+                <div className="mb-4 flex items-center gap-2">
+                  <Label>Filtrar por región:</Label>
+                  <select
+                    className="border rounded-md px-2 py-1 text-sm"
+                    value={regionFilterDespachado}
+                    onChange={(e) =>
+                      setRegionFilterDespachado(
+                        e.target.value as "" | "LIMA" | "PROVINCIA"
+                      )
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="LIMA">Lima</option>
+                    <option value="PROVINCIA">Provincia</option>
+                  </select>
+                </div>
                 {renderTable(despachados)}
               </TabsContent>
               <TabsContent value="ENTREGADO">
+                <div className="mb-4 flex items-center gap-2">
+                  <Label>Filtrar por región:</Label>
+                  <select
+                    className="border rounded-md px-2 py-1 text-sm"
+                    value={regionFilterEntregado}
+                    onChange={(e) =>
+                      setRegionFilterEntregado(
+                        e.target.value as "" | "LIMA" | "PROVINCIA"
+                      )
+                    }
+                  >
+                    <option value="">Todas</option>
+                    <option value="LIMA">Lima</option>
+                    <option value="PROVINCIA">Provincia</option>
+                  </select>
+                </div>
                 {renderTable(entregados)}
               </TabsContent>
             </Tabs>

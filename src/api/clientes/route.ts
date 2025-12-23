@@ -24,7 +24,7 @@ export async function createClient(data: CreateClientDto) {
     );
     return res;
   } catch (error) {
-    console.log("Hemos teniedo un error al crear el usuario", error);
+    console.log("Hemos tenido un error al crear el usuario", error);
   }
 }
 

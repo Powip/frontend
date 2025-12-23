@@ -21,12 +21,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
-import { CartItem } from "@/interfaces/IOrder";
+import { CartItem, OrderHeader } from "@/interfaces/IOrder";
 import { DeliveryType, OrderType, SalesChannel } from "@/enum/Order.enum";
 import { Switch } from "@/components/ui/switch";
 import axios from "axios";
 import { toast } from "sonner";
 import OrderReceiptModal from "@/components/modals/orderReceiptModal";
+import { useSearchParams } from "next/navigation";
+import { Checkbox } from "@/components/ui/checkbox";
 
 type ClientSearchState = "idle" | "found" | "not_found";
 
@@ -44,6 +46,10 @@ const emptyClientForm = {
 };
 
 export default function RegistrarVentaPage() {
+  /* ---------------- Params ---------------- */
+  const searchParams = useSearchParams();
+  const orderId = searchParams.get("orderId");
+
   /* ---------------- Cliente ---------------- */
   const [clientFound, setClientFound] = useState<Client | null>(null);
   const [searchState, setSearchState] = useState<ClientSearchState>("idle");
@@ -74,6 +80,7 @@ export default function RegistrarVentaPage() {
     enviaPor: undefined as "REPARTIDOR" | "CORREO" | undefined,
     notes: "",
   });
+  const [salesRegion, setSalesRegion] = useState<"LIMA" | "PROVINCIA">("LIMA");
 
   /* ---------------- Pago ---------------- */
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -87,6 +94,9 @@ export default function RegistrarVentaPage() {
   const [receiptOrderId, setReceiptOrderId] = useState("");
   const [receiptOpen, setReceiptOpen] = useState(false);
 
+  /* ---------------- Modal ---------------- */
+  const [orderData, setOrderData] = useState<OrderHeader | null>(null);
+
   const { auth, selectedStoreId, setSelectedStore, inventories } = useAuth();
 
   const companyId = auth?.company?.id;
@@ -97,6 +107,81 @@ export default function RegistrarVentaPage() {
   const isNotFound = searchState === "not_found";
 
   const formEnabled = !isIdle;
+
+  useEffect(() => {
+    if (!orderId) return;
+
+    const loadOrder = async () => {
+      try {
+        const response = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`
+        );
+        console.log(response);
+
+        setOrderData(response.data);
+      } catch (error) {
+        console.log("Error al obtener la Order", error);
+      }
+    };
+    loadOrder();
+  }, [orderId]);
+
+  useEffect(() => {
+    if (!orderData) return;
+
+    // --- Cliente ---
+    const cust = orderData.customer;
+    setClientFound(cust);
+    setOriginalClient(cust);
+    setClientForm({
+      fullName: cust.fullName ?? "",
+      phoneNumber: cust.phoneNumber ?? "",
+      documentType: cust.documentType,
+      documentNumber: cust.documentNumber ?? "",
+      clientType: cust.clientType,
+      province: cust.province ?? "",
+      city: cust.city ?? "",
+      district: cust.district ?? "",
+      address: cust.address ?? "",
+      reference: cust.reference ?? "",
+    });
+    setSearchState("found");
+
+    // --- Detalles de la venta ---
+    setOrderDetails({
+      orderType: orderData.orderType as OrderType,
+      salesChannel: orderData.salesChannel as SalesChannel,
+      closingChannel: orderData.closingChannel as SalesChannel,
+      deliveryType: orderData.deliveryType as DeliveryType,
+      entregaEn:
+        orderData.deliveryType === "RETIRO_TIENDA" ? "SUCURSAL" : "DOMICILIO",
+      enviaPor: orderData.courierId ? "REPARTIDOR" : undefined,
+      notes: orderData.notes ?? "",
+    });
+
+    setSalesRegion(orderData.salesRegion);
+
+    // --- Productos ---
+    const mappedCart: CartItem[] = orderData.items.map((item) => ({
+      id: crypto.randomUUID(),
+      inventoryItemId: item.productVariantId,
+      variantId: item.productVariantId,
+      productName: item.productName,
+      sku: item.sku,
+      attributes: item.attributes,
+      quantity: item.quantity,
+      price: Number(item.unitPrice),
+    }));
+    setCart(mappedCart);
+
+    // --- Pagos ---
+    console.log(orderData.payments);
+
+    if (orderData.payments?.length) {
+      setPaymentMethod(orderData.payments[0].paymentMethod);
+      setAdvancePayment(Number(orderData.payments[0].amount));
+    }
+  }, [orderData]);
 
   useEffect(() => {
     if (searchState === "found" && clientFound) {
@@ -125,24 +210,14 @@ export default function RegistrarVentaPage() {
   }, [searchState, clientForm.phoneNumber]);
 
   useEffect(() => {
-    setSelectedInventory("");
+    setSelectedInventory(inventories[0]?.id || "");
     setProducts([]);
     setProductsMeta(null);
   }, [selectedStoreId]);
 
-  useEffect(() => {
-    if (inventories.length === 1) {
-      const inventoryId = inventories[0].id;
-      setSelectedInventory(inventoryId);
-    }
-  }, [inventories]);
-
   /* ---------------- Actions ---------------- */
 
   const searchProducts = async (page = 1) => {
-    console.log(selectedInventory);
-    console.log(productsLoading);
-
     if (!selectedInventory) return;
 
     try {
@@ -252,6 +327,7 @@ export default function RegistrarVentaPage() {
       salesChannel: orderDetails.salesChannel,
       closingChannel: orderDetails.closingChannel,
       deliveryType: orderDetails.deliveryType,
+      salesRegion: salesRegion,
 
       // --- Envío ---
       shippingTotal: shippingTotal ?? 0,
@@ -284,18 +360,20 @@ export default function RegistrarVentaPage() {
       ],
     };
 
-    console.log("🧾 CREATE SALE PAYLOAD", payload);
-
     try {
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header`,
-        payload
-      );
-      toast.success("Venta registrada");
-
-      const orderId = response.data.id;
-      setReceiptOrderId(orderId);
-      setReceiptOpen(true);
+      if (!orderData) {
+        const response = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header`,
+          payload
+        );
+        toast.success("Venta registrada");
+        const orderId = response.data.id;
+        setReceiptOrderId(orderId);
+        setReceiptOpen(true);
+      } else {
+        toast.success("Venta Actualizada");
+        console.log(orderData);
+      }
     } catch (error) {
       console.error("❌ Error creating sale", error);
     }
@@ -675,6 +753,7 @@ export default function RegistrarVentaPage() {
               <div className="space-y-1">
                 <Label>Tienda seleccionada</Label>
                 <Select
+                  disabled={orderId !== null}
                   value={selectedStoreId ?? ""}
                   onValueChange={(storeId) => setSelectedStore(storeId)}
                 >
@@ -1016,6 +1095,24 @@ export default function RegistrarVentaPage() {
               </Select>
             </div>
 
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={salesRegion === "PROVINCIA"}
+                  onCheckedChange={() => setSalesRegion("PROVINCIA")}
+                />
+                <Label>Provincia</Label>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={salesRegion === "LIMA"}
+                  onCheckedChange={() => setSalesRegion("LIMA")}
+                />
+                <Label>Lima</Label>
+              </div>
+            </div>
+
             {/* Método de envío */}
             {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
               <div className="space-y-1">
@@ -1063,7 +1160,7 @@ export default function RegistrarVentaPage() {
             {/* Método de pago */}
             <div className="space-y-1">
               <Label>Método de pago</Label>
-              <Select onValueChange={setPaymentMethod}>
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar método de pago" />
                 </SelectTrigger>
@@ -1095,13 +1192,14 @@ export default function RegistrarVentaPage() {
               <Input
                 type="number"
                 min={0}
+                disabled={orderId !== null}
                 value={advancePayment}
                 onChange={(e) => setAdvancePayment(Number(e.target.value))}
               />
             </div>
 
             {/* Descuento */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
               <Label>Aplicar descuento</Label>
               <Switch
                 checked={hasDiscount}
@@ -1159,7 +1257,7 @@ export default function RegistrarVentaPage() {
               disabled={!canSubmit}
               onClick={handleConfirmSale}
             >
-              Confirmar venta
+              {orderId ? "Actualizar venta" : "Confirmar venta"}
             </Button>
           </CardContent>
         </Card>

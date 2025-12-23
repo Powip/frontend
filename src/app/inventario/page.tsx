@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import ExcelJS from "exceljs";
-import JsBarcode from "jsbarcode";
 import {
   Select,
   SelectContent,
@@ -28,18 +27,13 @@ import axios from "axios";
 
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-
-interface InventoryItem {
-  id: string;
-  variant_id: string;
-  quantity: number;
-  min_stock: number;
-}
+import InventarioModal from "@/components/modals/InventarioModal";
 
 interface VariantBatchItem {
   id: string;
   sku: string;
   priceVta: number;
+  priceBase: number;
   attributeValues: Record<string, string>;
   product: {
     id: string;
@@ -53,6 +47,50 @@ interface VariantBatchItem {
   };
 }
 
+interface ProductWithInventoryDetails {
+  inventoryItemId: string;
+  variantId: string;
+  quantity: number;
+  min_stock: number;
+
+  descripcion: string;
+  sku: string;
+  name: string;
+  attributes: Record<string, string>;
+  priceBase: number;
+  priceVta: number;
+}
+
+interface Product {
+  id: string;
+  name: string;
+  description: string;
+  sku: string;
+  companyId: string;
+  inventory_id: string;
+  status: boolean;
+  hasVariants: boolean;
+  created_at: string; // ISO date string
+  updated_at: string; // ISO date string
+}
+
+export interface InventoryItem {
+  id: string;
+  variant_id: string;
+  product: Product;
+  sku: string;
+  attributeValues: Record<string, string>; // ej. { Color: "Rojo", Talle: "S" }
+  priceBase: string; // "200.00"
+  priceVta: string; // "350.00"
+  images: string[]; // lista de URLs o paths
+  quantity: number;
+  min_stock: number;
+  max_stock: number;
+  isActive: boolean;
+  created_at: string; // ISO date string
+  updated_at: string; // ISO date string
+}
+
 export default function InventarioPage() {
   const { auth, selectedStoreId, inventories: storeInventories } = useAuth();
 
@@ -63,6 +101,7 @@ export default function InventarioPage() {
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [productsWithDetails, setProductsWithDetails] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [open, setOpen] = useState(false);
 
   const stores = auth?.company?.stores || [];
   const currentStore =
@@ -128,7 +167,6 @@ export default function InventarioPage() {
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/multiple/by-ids`,
           { ids: variantIds }
         );
-        console.log(variants);
         // VARIABLE: unir items + variants
         const merged = inventoryItems.map((item) => {
           const variant = variants.find((v) => v.id === item.variant_id);
@@ -139,12 +177,12 @@ export default function InventarioPage() {
             quantity: item.quantity,
             min_stock: item.min_stock,
 
-            // Datos del variant
             descripcion: variant?.product.description,
             sku: variant?.sku ?? "N/A",
             name: variant?.product?.name ?? "Sin nombre",
             attributes: variant?.attributeValues ?? {},
             priceVta: Number(variant?.priceVta ?? 0),
+            priceBase: Number(variant?.priceBase ?? 0),
           };
         });
 
@@ -157,18 +195,23 @@ export default function InventarioPage() {
     loadVariantsBatch();
   }, [inventoryItems]);
 
-  const filteredProducts = productsWithDetails.filter((item) => {
-    const q = searchQuery.toLowerCase();
+  const filteredProducts: ProductWithInventoryDetails[] =
+    productsWithDetails.filter((item) => {
+      const q = searchQuery.toLowerCase();
 
-    const sku = item.sku?.toLowerCase() || "";
-    const name = item.name?.toLowerCase() || "";
+      const sku = item.sku?.toLowerCase() || "";
+      const name = item.name?.toLowerCase() || "";
 
-    const attributesString = Object.entries(item.attributes || {})
-      .map(([k, v]) => `${String(k).toLowerCase()} ${String(v).toLowerCase()}`)
-      .join(" ");
+      const attributesString = Object.entries(item.attributes || {})
+        .map(
+          ([k, v]) => `${String(k).toLowerCase()} ${String(v).toLowerCase()}`
+        )
+        .join(" ");
 
-    return sku.includes(q) || name.includes(q) || attributesString.includes(q);
-  });
+      return (
+        sku.includes(q) || name.includes(q) || attributesString.includes(q)
+      );
+    });
 
   const handleExportExcel = async () => {
     if (filteredProducts.length === 0) {
@@ -215,6 +258,7 @@ export default function InventarioPage() {
         variantes: variantesText,
         stock: prod.quantity,
         precio: prod.priceVta,
+        precioBase: prod.priceBase,
       });
     });
 
@@ -247,37 +291,6 @@ export default function InventarioPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  const handleGenerateBarcode = (sku: string) => {
-    // Crear canvas en memoria
-    const canvas = document.createElement("canvas");
-
-    // Generar código de barras
-    JsBarcode(canvas, sku, {
-      format: "CODE128",
-      width: 2,
-      height: 100,
-      displayValue: true,
-    });
-
-    // Convertir a imagen
-    const dataUrl = canvas.toDataURL("image/png");
-
-    // Abrir en nueva pestaña
-    const win = window.open();
-    if (win) {
-      win.document.write(`
-      <html>
-        <head><title>Código de barras - ${sku}</title></head>
-        <body style="text-align: center; padding: 20px;">
-          <h2>${sku}</h2>
-          <img src="${dataUrl}" />
-        </body>
-      </html>
-    `);
-      win.document.close();
-    }
-  };
-
   // ------------------------------------------------------
   // RENDER
   // ------------------------------------------------------
@@ -291,6 +304,9 @@ export default function InventarioPage() {
 
       <Card>
         <CardContent className="p-6">
+          <div className="mb-6 flex justify-end">
+            <Button onClick={() => setOpen(true)}>Crear Inventario</Button>
+          </div>
           {/* INVENTORY SELECT */}
           <div className="mb-6 flex flex-col gap-4 sm:flex-row">
             <div className="flex-1 sm:max-w-xs">
@@ -299,7 +315,7 @@ export default function InventarioPage() {
               <Select
                 value={selectedInventoryId || undefined}
                 onValueChange={(value) => setSelectedInventoryId(value)}
-                disabled={storeInventories.length <= 1} // 🟢 solo si hay más de uno
+                disabled={storeInventories.length <= 1}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar inventario" />
@@ -355,8 +371,8 @@ export default function InventarioPage() {
                   <TableHead>Descripcion</TableHead>
                   <TableHead>Variantes</TableHead>
                   <TableHead>Stock</TableHead>
-                  <TableHead>Precio</TableHead>
-                  <TableHead>Acciones</TableHead>
+                  <TableHead>Precio base</TableHead>
+                  <TableHead>Precio venta</TableHead>
                 </TableRow>
               </TableHeader>
 
@@ -369,7 +385,7 @@ export default function InventarioPage() {
                   </TableRow>
                 ) : filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-6">
+                    <TableCell colSpan={10} className="text-center py-6">
                       No hay productos en este inventario
                     </TableCell>
                   </TableRow>
@@ -385,16 +401,8 @@ export default function InventarioPage() {
                           .join(" / ")}
                       </TableCell>
                       <TableCell>{prod.quantity}u</TableCell>
+                      <TableCell>${prod.priceBase}</TableCell>
                       <TableCell>${prod.priceVta}</TableCell>
-                      <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleGenerateBarcode(prod.sku)}
-                        >
-                          Generar código de barras
-                        </Button>
-                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -403,6 +411,15 @@ export default function InventarioPage() {
           </div>
         </CardContent>
       </Card>
+      <InventarioModal
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+        onSaved={() => {
+          setOpen(false);
+        }}
+      />
     </div>
   );
 }
