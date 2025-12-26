@@ -11,23 +11,24 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RegisterForm from "@/components/forms/RegisterForm";
 import LoginForm from "@/components/forms/LoginForm";
+import Image from "next/image";
 
 /* 
 validar contraseña fuerte
-Redirigir en registerform
+redirigir en registerform
 */
 export default function LoginPage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-50 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center gap-4">
-          {/* <Image
-          src="/powip-logo.jpeg"
-          alt="Powip"
-          width={64}
-          height={64}
-          className="rounded-xl"
-        /> */}
+          <Image
+            src="/logo_icon.svg"
+            alt="Powip Logo"
+            width={64}
+            height={64}
+            className="rounded-xl shadow-sm"
+          />
           <div className="text-center">
             <h1 className="text-2xl font-bold text-foreground">
               Bienvenido a Powip

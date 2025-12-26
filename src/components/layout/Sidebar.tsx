@@ -2,9 +2,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { useTheme } from "next-themes";
 import {
   Menu,
   Sun,
+  Moon,
   LogOut,
   LayoutDashboard,
   Package,
@@ -19,7 +21,6 @@ import {
   Headphones,
   Settings,
   FileSearch,
-  Package2,
   Tags,
 } from "lucide-react";
 
@@ -47,12 +48,18 @@ export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const { auth, logout } = useAuth();
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
 
   const navigation: NavigationItem[] = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Productos", href: "/productos", icon: Tags },
     { name: "Inventario", href: "/inventario", icon: Package },
     { name: "Ventas", href: "/ventas", icon: ShoppingCart },
+    { name: "Operaciones", href: "/operaciones", icon: Truck },
     { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
     { name: "Clientes", href: "/clientes", icon: Users },
     { name: "Proveedores", href: "/proveedores", icon: Building2 },
@@ -72,47 +79,73 @@ export function Sidebar({ className }: SidebarProps) {
   return (
     <div
       className={cn(
-        "flex flex-col p-6 h-full bg-white border-r border-gray-200 transition-all duration-300 ",
-        isCollapsed ? "w-20" : "w-64",
+        "flex flex-col px-3 py-4 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300",
+        isCollapsed ? "w-16" : "w-56",
         className
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-6">
         {isCollapsed ? (
-          <div className="flex flex-col items-center gap-4 w-full">
-            <Image
-              src="/logo_icon.png"
-              alt="Powip icon"
-              width={40}
-              height={40}
-              priority
-            />
+          <div className="flex flex-col items-center gap-2 w-full">
+            <Link href="/" className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#2A5368] hover:bg-[#224455] transition-colors">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 512 512"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M130 320L256 194L382 320"
+                  stroke="white"
+                  strokeWidth="80"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </Link>
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className="h-8 w-8"
+              className="h-7 w-7"
             >
               <Menu className="h-4 w-4 text-green" />
             </Button>
           </div>
         ) : (
           <>
-            <Link href="/">
-              <Image
-                src="/logo_powip.png"
-                alt="Powip logo"
-                width={120}
-                height={40}
-                priority
-              />
+            <Link href="/" className="flex items-center gap-0.5 group">
+              <span className="text-2xl font-bold tracking-tighter text-[#2A5368] dark:text-white group-hover:opacity-90 transition-opacity">
+                P
+              </span>
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#2A5368] group-hover:bg-[#224455] transition-colors mt-0.5">
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 512 512"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M130 320L256 194L382 320"
+                    stroke="white"
+                    strokeWidth="80"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+              <span className="text-2xl font-bold tracking-tighter text-[#2A5368] dark:text-white group-hover:opacity-90 transition-opacity">
+                WIP
+              </span>
             </Link>
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setIsCollapsed(!isCollapsed)}
-              className="h-8 w-8"
+              className="h-7 w-7"
             >
               <Menu className="h-4 w-4 text-green" />
             </Button>
@@ -121,16 +154,16 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* Menu items */}
-      <div className="flex-1 overflow-y-auto scrollbar-none py-4">
+      <div className="flex-1 overflow-y-auto scrollbar-none py-2">
         <nav
-          className={cn("flex flex-col gap-3", isCollapsed && "items-center")}
+          className={cn("flex flex-col gap-1", isCollapsed && "items-center")}
         >
           {navigation.map((item) => {
             const Icon = item.icon;
             return (
               <div
                 key={item.name}
-                className={cn("w-full", isCollapsed && "flex justify-center ")}
+                className={cn("w-full", isCollapsed && "flex justify-center")}
               >
                 <Link
                   href={item.href}
@@ -139,13 +172,13 @@ export function Sidebar({ className }: SidebarProps) {
                   <Button
                     variant="ghost"
                     className={cn(
-                      "flex items-center gap-3 h-10 cursor-pointer",
+                      "flex items-center gap-2 h-9 cursor-pointer",
                       isCollapsed
-                        ? "justify-center w-10"
+                        ? "justify-center w-9"
                         : "justify-start w-full"
                     )}
                   >
-                    <Icon className="h-5 w-5 text-green" />
+                    <Icon className="h-4 w-4 text-green" />
                     {!isCollapsed && (
                       <span className="text-sm">{item.name}</span>
                     )}
@@ -157,22 +190,48 @@ export function Sidebar({ className }: SidebarProps) {
         </nav>
       </div>
 
-      {/* Footer (modo claro + usuario) */}
-      <div className="space-y-4 pt-4 ">
+      {/* Footer (modo claro/oscuro + usuario) */}
+      <div className="space-y-3 pt-3 border-t border-gray-200 dark:border-gray-700">
         <div className="flex items-center">
           {isCollapsed ? (
-            <Button variant="ghost" size="icon" className="h-8 w-8 mx-auto">
-              <Sun className="h-4 w-4" />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 mx-auto"
+              onClick={toggleTheme}
+            >
+              {theme === "dark" ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
             </Button>
           ) : (
             <div className="flex items-center justify-between w-full">
-              <div className="flex items-center gap-3">
-                <Sun className="h-4 w-4" />
-                <span className="text-sm">Modo claro</span>
+              <div className="flex items-center gap-2">
+                {theme === "dark" ? (
+                  <Moon className="h-4 w-4" />
+                ) : (
+                  <Sun className="h-4 w-4" />
+                )}
+                <span className="text-sm">
+                  {theme === "dark" ? "Modo oscuro" : "Modo claro"}
+                </span>
               </div>
-              <div className="w-10 h-6 bg-gray-900 rounded-full relative">
-                <div className="w-4 h-4 bg-white rounded-full absolute top-1 right-1 transition-transform" />
-              </div>
+              <button
+                onClick={toggleTheme}
+                className={cn(
+                  "w-10 h-6 rounded-full relative transition-colors",
+                  theme === "dark" ? "bg-primary" : "bg-gray-300"
+                )}
+              >
+                <div
+                  className={cn(
+                    "w-4 h-4 bg-white rounded-full absolute top-1 transition-all",
+                    theme === "dark" ? "right-1" : "left-1"
+                  )}
+                />
+              </button>
             </div>
           )}
         </div>
@@ -180,7 +239,15 @@ export function Sidebar({ className }: SidebarProps) {
         {/* Usuario */}
         <div className="flex items-center">
           {isCollapsed ? (
-            <Button variant="ghost" size="icon" className="h-8 w-8 mx-auto">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 mx-auto"
+              onClick={() => {
+                logout();
+                router.push("/login");
+              }}
+            >
               <LogOut className="h-4 w-4 text-red" />
             </Button>
           ) : (
@@ -193,9 +260,11 @@ export function Sidebar({ className }: SidebarProps) {
                   />
                   <AvatarFallback>US</AvatarFallback>
                 </Avatar>
-                <div className="ml-3">
+                <div className="ml-2">
                   <div className="text-sm font-medium">Usuario</div>
-                  <div className="text-xs text-gray-500">{auth?.user.role}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {auth?.user.role}
+                  </div>
                 </div>
               </div>
               <Button

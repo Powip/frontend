@@ -93,6 +93,7 @@ export default function RegistrarVentaPage() {
 
   const [receiptOrderId, setReceiptOrderId] = useState("");
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
@@ -360,6 +361,7 @@ export default function RegistrarVentaPage() {
       ],
     };
 
+    setIsSubmitting(true);
     try {
       if (!orderData) {
         const response = await axios.post(
@@ -376,6 +378,9 @@ export default function RegistrarVentaPage() {
       }
     } catch (error) {
       console.error("❌ Error creating sale", error);
+      toast.error("Error al registrar la venta");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -914,36 +919,51 @@ export default function RegistrarVentaPage() {
                         </Button>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 items-center">
+                      <div className="grid grid-cols-3 gap-2 items-end">
                         {/* Cantidad */}
-                        <Input
-                          type="number"
-                          min={1}
-                          value={item.quantity}
-                          onChange={(e) =>
-                            updateQuantity(item.id, Number(e.target.value))
-                          }
-                        />
+                        <div className="space-y-1">
+                          <Label className="text-xs">Cantidad</Label>
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            value={item.quantity === 0 ? "" : item.quantity}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "" || /^\d+$/.test(val)) {
+                                updateQuantity(item.id, val === "" ? 0 : Number(val));
+                              }
+                            }}
+                          />
+                        </div>
 
                         {/* Precio editable */}
-                        <Input
-                          type="number"
-                          min={0}
-                          value={item.price}
-                          onChange={(e) =>
-                            setCart((prev) =>
-                              prev.map((p) =>
-                                p.id === item.id
-                                  ? { ...p, price: Number(e.target.value) }
-                                  : p
-                              )
-                            )
-                          }
-                        />
+                        <div className="space-y-1">
+                          <Label className="text-xs">Precio</Label>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            value={item.price === 0 ? "" : item.price}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                                setCart((prev) =>
+                                  prev.map((p) =>
+                                    p.id === item.id
+                                      ? { ...p, price: val === "" ? 0 : Number(val) }
+                                      : p
+                                  )
+                                );
+                              }
+                            }}
+                          />
+                        </div>
 
                         {/* Subtotal */}
-                        <div className="text-right font-medium">
-                          ${item.price * item.quantity}
+                        <div className="space-y-1 flex justify-end items-center gap-2">
+                          <Label className="text-xs">Subtotal</Label>
+                          <div className="h-9 flex items-center justify-end font-medium">
+                            ${item.price * item.quantity}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -1175,26 +1195,38 @@ export default function RegistrarVentaPage() {
               </Select>
             </div>
 
-            {/* Costo de envío */}
-            <div className="space-y-1">
-              <Label>Costo de envío</Label>
-              <Input
-                type="number"
-                min={0}
-                value={shippingTotal}
-                onChange={(e) => setShippingTotal(Number(e.target.value))}
-              />
-            </div>
+            {/* Costo de envío - solo si es envío a domicilio */}
+            {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
+              <div className="space-y-1">
+                <Label>Costo de envío</Label>
+                <Input
+                  type="text"
+                  inputMode="decimal"
+                  value={shippingTotal === 0 ? "" : shippingTotal}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                      setShippingTotal(val === "" ? 0 : Number(val));
+                    }
+                  }}
+                />
+              </div>
+            )}
 
             {/* Adelanto de pago */}
             <div className="space-y-1">
               <Label>Monto de Pago</Label>
               <Input
-                type="number"
-                min={0}
+                type="text"
+                inputMode="decimal"
                 disabled={orderId !== null}
-                value={advancePayment}
-                onChange={(e) => setAdvancePayment(Number(e.target.value))}
+                value={advancePayment === 0 ? "" : advancePayment}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                    setAdvancePayment(val === "" ? 0 : Number(val));
+                  }
+                }}
               />
             </div>
 
@@ -1214,10 +1246,15 @@ export default function RegistrarVentaPage() {
               <div className="space-y-1">
                 <Label>Monto de descuento</Label>
                 <Input
-                  type="number"
-                  min={0}
-                  value={discountTotal}
-                  onChange={(e) => setDiscountTotal(Number(e.target.value))}
+                  type="text"
+                  inputMode="decimal"
+                  value={discountTotal === 0 ? "" : discountTotal}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                      setDiscountTotal(val === "" ? 0 : Number(val));
+                    }
+                  }}
                 />
               </div>
             )}
@@ -1254,10 +1291,19 @@ export default function RegistrarVentaPage() {
 
             <Button
               className="w-full bg-teal-600 hover:bg-teal-700"
-              disabled={!canSubmit}
+              disabled={!canSubmit || isSubmitting}
               onClick={handleConfirmSale}
             >
-              {orderId ? "Actualizar venta" : "Confirmar venta"}
+              {isSubmitting ? (
+                <span className="flex items-center gap-2">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  Procesando...
+                </span>
+              ) : orderId ? (
+                "Actualizar venta"
+              ) : (
+                "Confirmar venta"
+              )}
             </Button>
           </CardContent>
         </Card>

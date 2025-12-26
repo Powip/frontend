@@ -129,9 +129,9 @@ export const Stats: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-screen w-full">
+    <div className="flex flex-col h-full w-full overflow-auto min-h-0">
       {/* Contenido principal */}
-      <div className="flex-1 px-4 py-2 space-y-6">
+      <div className="flex-1 flex flex-col px-4 py-2 gap-6 min-h-0">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Ventas Totales"
@@ -176,12 +176,12 @@ export const Stats: React.FC = () => {
           />
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+        <div className="flex-1 grid gap-4 md:grid-cols-2 lg:grid-cols-7 min-h-[350px]">
           <Card className="col-span-4">
             <CardHeader>
               <CardTitle>Ventas por Día</CardTitle>
             </CardHeader>
-            <CardContent className="h-[300px]">
+            <CardContent className="flex-1 min-h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
                   data={dailySalesData}
@@ -220,7 +220,7 @@ export const Stats: React.FC = () => {
             <CardHeader>
               <CardTitle>Ventas por Tienda</CardTitle>
             </CardHeader>
-            <CardContent className="h-[300px]">
+            <CardContent className="flex-1 min-h-[250px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie

@@ -7,13 +7,15 @@ import OrderReceiptView from "./orderReceiptView";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import QRCode from "qrcode";
+import { toast } from "sonner";
 
 interface Props {
   open: boolean;
   orderId: string | null;
   onClose: () => void;
+  onStatusChange?: () => void;
 }
-export default function OrderReceiptModal({ open, orderId, onClose }: Props) {
+export default function OrderReceiptModal({ open, orderId, onClose, onStatusChange }: Props) {
   const [loading, setLoading] = useState(false);
   const [receipt, setReceipt] = useState<any>(null);
 
@@ -49,6 +51,22 @@ export default function OrderReceiptModal({ open, orderId, onClose }: Props) {
 
   const handlePrint = async () => {
     if (!receipt) return;
+
+    // Si el estado es PENDIENTE, cambiarlo según la región
+    if (receipt.status === "PENDIENTE" && orderId) {
+      const newStatus = receipt.salesRegion === "PROVINCIA" ? "EN_ENVIO" : "PREPARADO";
+      try {
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+          { status: newStatus }
+        );
+        toast.success(`Estado actualizado a ${newStatus}`);
+        onStatusChange?.();
+      } catch (error) {
+        console.error("Error actualizando estado", error);
+        toast.error("No se pudo actualizar el estado");
+      }
+    }
 
     const qrDataUrl = await generateQR(receipt.orderId);
 
