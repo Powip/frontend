@@ -354,7 +354,7 @@ export default function TiendasPage() {
                         <AlertDialogDescription asChild>
                           <div className="space-y-3">
                             <p>
-                              Estás a punto de eliminar la tienda <strong>"{store.name}"</strong>. Esta acción no se puede deshacer.
+                              Estás a punto de eliminar la tienda <strong>&quot;{store.name}&quot;</strong>. Esta acción no se puede deshacer.
                             </p>
                             <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-3">
                               <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
