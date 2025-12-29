@@ -571,7 +571,7 @@ export default function ProductCreateForm() {
             {customAttributes.length === 0 && (
               <div className="rounded-lg border border-dashed p-6 text-center">
                 <p className="text-sm text-muted-foreground">
-                  No hay atributos personalizados. Haz clic en "Agregar atributo" para añadir uno.
+                  No hay atributos personalizados. Haz clic en &quot;Agregar atributo&quot; para añadir uno.
                 </p>
               </div>
             )}

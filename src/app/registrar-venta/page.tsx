@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,7 @@ const emptyClientForm = {
   reference: "",
 };
 
-export default function RegistrarVentaPage() {
+function RegistrarVentaContent() {
   /* ---------------- Params ---------------- */
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
@@ -1314,5 +1314,13 @@ export default function RegistrarVentaPage() {
         onClose={() => setReceiptOpen(false)}
       />
     </div>
+  );
+}
+
+export default function RegistrarVentaPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">Cargando...</div>}>
+      <RegistrarVentaContent />
+    </Suspense>
   );
 }
