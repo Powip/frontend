@@ -14,10 +14,22 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import axios from "axios";
-import { Edit2, Plus, Trash2 } from "lucide-react";
+import { Edit2, Plus, Trash2, AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+
 
 interface Store {
   id?: string;
@@ -137,10 +149,41 @@ export default function TiendasPage() {
 
   if (loading) {
     return (
-      <div className="space-y-2">
-        {[...Array(5)].map((_, i) => (
-          <Skeleton key={i} className="h-9 w-full rounded-md" />
-        ))}
+      <div>
+        {/* Header skeleton */}
+        <div className="mb-6 px-10">
+          <Skeleton className="h-8 w-64 mb-2" />
+          <Skeleton className="h-4 w-48" />
+        </div>
+
+        {/* Card skeleton */}
+        <Card className="mx-10">
+          <CardHeader className="flex flex-row items-center justify-between">
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="h-9 w-32 rounded-md" />
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {/* Store items skeleton */}
+              {[...Array(3)].map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between rounded-lg border p-4"
+                >
+                  <div className="space-y-2">
+                    <Skeleton className="h-5 w-40" />
+                    <Skeleton className="h-4 w-56" />
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Skeleton className="h-9 w-9 rounded-md" />
+                    <Skeleton className="h-9 w-9 rounded-md" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -213,7 +256,7 @@ export default function TiendasPage() {
             {stores.map((store) => (
               <div
                 key={store.id}
-                className="flex items-center justify-between rounded-lg border p-4 hover:bg-gray-50"
+                className="flex items-center justify-between rounded-lg border p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
               >
                 <div>
                   <h4 className="font-medium">{store.name}</h4>
@@ -292,13 +335,57 @@ export default function TiendasPage() {
                       )}
                     </DialogContent>
                   </Dialog>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => store.id && handleDeleteStore(store.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        disabled={stores.length <= 1}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                          <AlertTriangle className="h-5 w-5 text-red-500" />
+                          ¿Eliminar tienda?
+                        </AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                          <div className="space-y-3">
+                            <p>
+                              Estás a punto de eliminar la tienda <strong>"{store.name}"</strong>. Esta acción no se puede deshacer.
+                            </p>
+                            <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-3">
+                              <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
+                                Al eliminar esta tienda perderás:
+                              </p>
+                              <ul className="text-sm text-red-700 dark:text-red-300 list-disc list-inside space-y-1">
+                                <li>Todos los inventarios asociados</li>
+                                <li>Productos registrados en la tienda</li>
+                                <li>Historial de ventas</li>
+                                <li>Estadísticas y trazabilidad</li>
+                              </ul>
+                            </div>
+                            {stores.length <= 1 && (
+                              <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+                                ⚠️ No puedes eliminar la última tienda de tu empresa.
+                              </p>
+                            )}
+                          </div>
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                        <AlertDialogAction
+                          className="bg-red-600 hover:bg-red-700"
+                          onClick={() => store.id && handleDeleteStore(store.id)}
+                        >
+                          Eliminar tienda
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               </div>
             ))}

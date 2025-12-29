@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, Trash2, FileText, ArrowRight, Printer } from "lucide-react";
+import { Pencil, FileText, ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Badge } from "@/components/ui/badge";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Label } from "@/components/ui/label";
 
@@ -99,16 +100,15 @@ function mapOrderToSale(order: OrderHeader): Sale {
    Page
 ----------------------------------------- */
 
-export default function VentasPage() {
+export default function FinanzasPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [isPrinting, setIsPrinting] = useState(false);
 
-  const [regionFilterPendiente, setRegionFilterPendiente] = useState<
+  const [regionFilterDespachado, setRegionFilterDespachado] = useState<
     "" | "LIMA" | "PROVINCIA"
   >("");
-  const [regionFilterAnulado, setRegionFilterAnulado] = useState<
+  const [regionFilterEntregado, setRegionFilterEntregado] = useState<
     "" | "LIMA" | "PROVINCIA"
   >("");
 
@@ -157,19 +157,6 @@ export default function VentasPage() {
     fetchOrders();
   }, [selectedStoreId]);
 
-  const handleDelete = async (id: string) => {
-    try {
-      await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`
-      );
-      toast.success("Venta eliminada");
-      fetchOrders();
-    } catch (error) {
-      console.error("Error eliminando venta", error);
-      toast.error("No se pudo eliminar la venta");
-    }
-  };
-
   const handleCopySelected = async (statusFilter: OrderStatus) => {
     const visibleSales = sales.filter((s) => s.status === statusFilter);
     const selectedSales = visibleSales.filter((s) => selectedSaleIds.has(s.id));
@@ -200,147 +187,8 @@ Estado: ${sale.status}
     toast.success(`${selectedSales.length} pedido(s) copiados`);
   };
 
-  // Impresión masiva: obtiene recibos, imprime cada uno en página separada, luego cambia estado
-  const handleBulkPrint = async () => {
-    const selectedPendientes = pendientes.filter((s) => selectedSaleIds.has(s.id));
-    
-    if (selectedPendientes.length === 0) {
-      toast.warning("No hay pedidos seleccionados para imprimir");
-      return;
-    }
-
-    setIsPrinting(true);
-    toast.info(`Preparando ${selectedPendientes.length} recibo(s) para imprimir...`);
-
-    try {
-      // Obtener recibos de todas las ventas seleccionadas
-      const receipts = await Promise.all(
-        selectedPendientes.map(async (sale) => {
-          const res = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`
-          );
-          return { ...res.data, salesRegion: sale.salesRegion };
-        })
-      );
-
-      // Generar HTML para impresión con page-break
-      const printContent = receipts.map((receipt, index) => {
-        const totalPaid = receipt.payments?.reduce(
-          (acc: number, p: any) => acc + Number(p.amount || 0),
-          0
-        ) || 0;
-        const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
-        const newStatus = receipt.salesRegion === "PROVINCIA" ? "EN_ENVIO" : "PREPARADO";
-
-        return `
-          <div style="page-break-after: ${index < receipts.length - 1 ? 'always' : 'auto'}; padding: 20px; font-family: Arial, sans-serif;">
-            <div style="background: ${receipt.salesRegion === 'PROVINCIA' ? '#7c3aed' : '#dc2626'}; color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
-              <strong>${receipt.salesRegion === 'PROVINCIA' ? 'PROVINCIA → ' + newStatus : 'LIMA → ' + newStatus}</strong>
-            </div>
-            
-            <h2 style="margin: 0 0 8px 0;">Orden #${receipt.orderNumber}</h2>
-            <p style="font-size: 18px; font-weight: bold; margin: 0 0 16px 0;">Total: S/${receipt.totals.grandTotal}</p>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
-              <div><span style="color: #666;">Cliente:</span> ${receipt.customer.fullName}</div>
-              <div><span style="color: #666;">Distrito:</span> ${receipt.customer.district || '-'}</div>
-              <div><span style="color: #666;">Teléfono:</span> ${receipt.customer.phoneNumber}</div>
-              <div><span style="color: #666;">Dirección:</span> ${receipt.customer.address || '-'}</div>
-            </div>
-            
-            <h3 style="margin: 16px 0 8px 0;">Productos</h3>
-            <table style="width: 100%; border-collapse: collapse;">
-              <thead>
-                <tr style="background: #f3f4f6;">
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Producto</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Cant.</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Precio</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${receipt.items.map((item: any) => `
-                  <tr>
-                    <td style="border: 1px solid #ddd; padding: 8px;">${item.productName}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.quantity}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.unitPrice}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.subtotal}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-            
-            <div style="margin-top: 16px; border-top: 2px solid #333; padding-top: 8px;">
-              <div style="display: flex; justify-content: space-between;"><span>Total:</span><strong>S/${receipt.totals.grandTotal}</strong></div>
-              <div style="display: flex; justify-content: space-between; color: #16a34a;"><span>Adelanto:</span><span>S/${totalPaid.toFixed(2)}</span></div>
-              <div style="display: flex; justify-content: space-between; color: #dc2626;"><span>Por Cobrar:</span><span>S/${pendingAmount.toFixed(2)}</span></div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      // Abrir ventana de impresión
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Impresión de Recibos</title>
-              <style>
-                @media print {
-                  body { margin: 0; }
-                }
-              </style>
-            </head>
-            <body>
-              ${printContent}
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
-        printWindow.close();
-      }
-
-      // Después de imprimir, cambiar estados
-      let successCount = 0;
-      let errorCount = 0;
-
-      for (const sale of selectedPendientes) {
-        const newStatus = sale.salesRegion === "PROVINCIA" ? "EN_ENVIO" : "PREPARADO";
-        try {
-          await axios.patch(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
-            { status: newStatus }
-          );
-          successCount++;
-        } catch (error) {
-          console.error(`Error actualizando ${sale.orderNumber}`, error);
-          errorCount++;
-        }
-      }
-
-      if (successCount > 0) {
-        toast.success(`${successCount} pedido(s) impresos y actualizados`);
-      }
-      if (errorCount > 0) {
-        toast.error(`${errorCount} pedido(s) no pudieron ser actualizados`);
-      }
-      
-      fetchOrders();
-      setSelectedSaleIds(new Set());
-    } catch (error) {
-      console.error("Error en impresión masiva", error);
-      toast.error("Error al preparar los recibos para imprimir");
-    } finally {
-      setIsPrinting(false);
-    }
-  };
-
-  // Tabla para Pendientes (sin delete)
-  const renderPendientesTable = (data: Sale[]) => (
+  // Tabla para Despachados (con select de estado)
+  const renderDespachadosTable = (data: Sale[]) => (
     <Table>
       <TableHeader>
         <TableRow>
@@ -444,8 +292,8 @@ Estado: ${sale.status}
     </Table>
   );
 
-  // Tabla para Anulados (con delete)
-  const renderAnuladosTable = (data: Sale[]) => (
+  // Tabla para Entregados (sin select de estado, solo badge)
+  const renderEntregadosTable = (data: Sale[]) => (
     <Table>
       <TableHeader>
         <TableRow>
@@ -501,17 +349,7 @@ Estado: ${sale.status}
             <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
             <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
             <TableCell>
-              <select
-                value={sale.status}
-                onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
-                className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
-              >
-                {ALL_STATUSES.map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
+              <Badge variant="default" className="bg-green-600">ENTREGADO</Badge>
             </TableCell>
             <TableCell>{sale.salesRegion}</TableCell>
             <TableCell>
@@ -527,20 +365,13 @@ Estado: ${sale.status}
                 Ver
               </Button>
             </TableCell>
-            <TableCell className="text-right space-x-2">
+            <TableCell className="text-right">
               <Button
                 size="icon"
                 variant="outline"
                 onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
               >
                 <Pencil className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="destructive"
-                onClick={() => handleDelete(sale.id)}
-              >
-                <Trash2 className="h-4 w-4" />
               </Button>
             </TableCell>
           </TableRow>
@@ -560,83 +391,65 @@ Estado: ${sale.status}
      Filters
   ----------------------------------------- */
 
-  const pendientes = useMemo(
+  const despachados = useMemo(
     () =>
       sales.filter(
         (s) =>
-          s.status === ORDER_STATUS.PENDIENTE &&
-          (regionFilterPendiente === "" || s.salesRegion === regionFilterPendiente)
+          s.status === ORDER_STATUS.EN_ENVIO &&
+          (regionFilterDespachado === "" || s.salesRegion === regionFilterDespachado)
       ),
-    [sales, regionFilterPendiente]
+    [sales, regionFilterDespachado]
   );
 
-  const anulados = useMemo(
+  const entregados = useMemo(
     () =>
       sales.filter(
         (s) =>
-          s.status === ORDER_STATUS.ANULADO &&
-          (regionFilterAnulado === "" || s.salesRegion === regionFilterAnulado)
+          s.status === ORDER_STATUS.ENTREGADO &&
+          (regionFilterEntregado === "" || s.salesRegion === regionFilterEntregado)
       ),
-    [sales, regionFilterAnulado]
+    [sales, regionFilterEntregado]
   );
-
-  const selectedPendientesCount = pendientes.filter((s) => selectedSaleIds.has(s.id)).length;
 
   return (
     <div className="flex h-screen w-full">
       <main className="flex-1 p-6 space-y-6 overflow-auto">
         <div className="flex flex-col items-center mb-6">
           <HeaderConfig
-            title="Ventas"
-            description="Gestión de ventas pendientes y anuladas"
+            title="Finanzas"
+            description="Gestión de pedidos despachados y entregados"
           />
         </div>
 
-        <div className="flex justify-end gap-2 mb-4">
+        <div className="flex justify-start mb-4">
           <Link href="/operaciones">
             <Button variant="outline">
-              Ir a Operaciones
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
-          </Link>
-          <Link href="/registrar-venta">
-            <Button className="bg-teal-600 hover:bg-teal-700">
-              <Plus className="h-4 w-4 mr-2" />
-              Nueva venta
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Volver a Operaciones
             </Button>
           </Link>
         </div>
 
-        {/* Card Pendientes */}
+        {/* Card Despachados */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Ventas Pendientes</CardTitle>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                disabled={selectedPendientesCount === 0 || isPrinting}
-                onClick={handleBulkPrint}
-              >
-                <Printer className="h-4 w-4 mr-2" />
-                {isPrinting ? "Procesando..." : `Imprimir seleccionados (${selectedPendientesCount})`}
-              </Button>
-              <Button
-                variant="outline"
-                disabled={selectedSaleIds.size === 0}
-                onClick={() => handleCopySelected("PENDIENTE")}
-              >
-                Copiar seleccionados ({selectedPendientesCount})
-              </Button>
-            </div>
+            <CardTitle>Pedidos Despachados</CardTitle>
+            <Button
+              variant="outline"
+              disabled={selectedSaleIds.size === 0}
+              onClick={() => handleCopySelected("EN_ENVIO")}
+            >
+              Copiar seleccionados ({despachados.filter((s) => selectedSaleIds.has(s.id)).length})
+            </Button>
           </CardHeader>
           <CardContent>
             <div className="mb-4 flex items-center gap-2">
               <Label>Filtrar por región:</Label>
               <select
                 className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
-                value={regionFilterPendiente}
+                value={regionFilterDespachado}
                 onChange={(e) =>
-                  setRegionFilterPendiente(e.target.value as "" | "LIMA" | "PROVINCIA")
+                  setRegionFilterDespachado(e.target.value as "" | "LIMA" | "PROVINCIA")
                 }
               >
                 <option value="">Todas</option>
@@ -644,31 +457,38 @@ Estado: ${sale.status}
                 <option value="PROVINCIA">Provincia</option>
               </select>
             </div>
-            {renderPendientesTable(pendientes)}
+            {renderDespachadosTable(despachados)}
           </CardContent>
           <Pagination
             currentPage={1}
-            totalPages={Math.ceil(pendientes.length / 10) || 1}
-            totalItems={pendientes.length}
+            totalPages={Math.ceil(despachados.length / 10) || 1}
+            totalItems={despachados.length}
             itemsPerPage={10}
             onPageChange={() => {}}
-            itemName="ventas"
+            itemName="pedidos"
           />
         </Card>
 
-        {/* Card Anuladas */}
+        {/* Card Entregados */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Ventas Anuladas</CardTitle>
+            <CardTitle>Pedidos Entregados</CardTitle>
+            <Button
+              variant="outline"
+              disabled={selectedSaleIds.size === 0}
+              onClick={() => handleCopySelected("ENTREGADO")}
+            >
+              Copiar seleccionados ({entregados.filter((s) => selectedSaleIds.has(s.id)).length})
+            </Button>
           </CardHeader>
           <CardContent>
             <div className="mb-4 flex items-center gap-2">
               <Label>Filtrar por región:</Label>
               <select
                 className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
-                value={regionFilterAnulado}
+                value={regionFilterEntregado}
                 onChange={(e) =>
-                  setRegionFilterAnulado(e.target.value as "" | "LIMA" | "PROVINCIA")
+                  setRegionFilterEntregado(e.target.value as "" | "LIMA" | "PROVINCIA")
                 }
               >
                 <option value="">Todas</option>
@@ -676,15 +496,15 @@ Estado: ${sale.status}
                 <option value="PROVINCIA">Provincia</option>
               </select>
             </div>
-            {renderAnuladosTable(anulados)}
+            {renderEntregadosTable(entregados)}
           </CardContent>
           <Pagination
             currentPage={1}
-            totalPages={Math.ceil(anulados.length / 10) || 1}
-            totalItems={anulados.length}
+            totalPages={Math.ceil(entregados.length / 10) || 1}
+            totalItems={entregados.length}
             itemsPerPage={10}
             onPageChange={() => {}}
-            itemName="ventas"
+            itemName="pedidos"
           />
         </Card>
       </main>

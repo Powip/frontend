@@ -17,7 +17,7 @@ export default function DashboardPage() {
   if (!auth) return null; */
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-full flex flex-col">
       <Header />
       <div className="flex-1 overflow-hidden">
         <Stats />

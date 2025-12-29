@@ -3,6 +3,7 @@ import "../styles/globals.css";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import AppContainer from "@/components/layout/AppContainer";
+import { ThemeProvider } from "@/components/providers/ThemeProvider";
 
 export const metadata: Metadata = {
   title: "Powip Frontend",
@@ -15,12 +16,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es">
+    <html lang="es" suppressHydrationWarning>
       <body>
-        <AuthProvider>
-          <AppContainer>{children}</AppContainer>
-          <Toaster position="top-right" richColors />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <AppContainer>{children}</AppContainer>
+            <Toaster position="top-right" richColors />
+          </AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
