@@ -30,6 +30,7 @@ import axios from "axios";
 import OrderReceiptModal from "@/components/modals/orderReceiptModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { Pagination } from "@/components/ui/pagination";
 
 /* -----------------------------------------
    Types
@@ -419,6 +420,14 @@ Estado: ${sale.status}
           <CardContent>
             {renderTable(preparados, true)}
           </CardContent>
+          <Pagination
+            currentPage={1}
+            totalPages={Math.ceil(preparados.length / 10) || 1}
+            totalItems={preparados.length}
+            itemsPerPage={10}
+            onPageChange={() => {}}
+            itemName="pedidos"
+          />
         </Card>
 
         {/* Card Contactados */}
@@ -450,6 +459,14 @@ Estado: ${sale.status}
             </div>
             {renderTable(contactados, false)}
           </CardContent>
+          <Pagination
+            currentPage={1}
+            totalPages={Math.ceil(contactados.length / 10) || 1}
+            totalItems={contactados.length}
+            itemsPerPage={10}
+            onPageChange={() => {}}
+            itemName="pedidos"
+          />
         </Card>
       </main>
 

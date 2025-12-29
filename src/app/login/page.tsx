@@ -19,15 +19,15 @@ redirigir en registerform
 */
 export default function LoginPage() {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-50 py-12">
+    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950 py-12">
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center gap-4">
           <Image
-            src="/logo_icon.svg"
+            src="/logo_icon.png"
             alt="Powip Logo"
             width={64}
             height={64}
-            className="rounded-xl shadow-sm"
+            className="rounded-xl"
           />
           <div className="text-center">
             <h1 className="text-2xl font-bold text-foreground">

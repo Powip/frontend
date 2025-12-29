@@ -176,7 +176,7 @@ export default function LoginForm() {
           type="button"
           onClick={() => handleSocialLogin("google")}
           disabled={isLoading}
-          className="w-full"
+          className="w-full bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:border-gray-600"
         >
           <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
             <path
@@ -203,7 +203,7 @@ export default function LoginForm() {
           type="button"
           onClick={() => handleSocialLogin("facebook")}
           disabled={isLoading}
-          className="w-full"
+          className="w-full bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:border-gray-600"
         >
           <svg className="mr-2 h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
             <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
@@ -215,7 +215,7 @@ export default function LoginForm() {
           type="button"
           onClick={() => handleSocialLogin("outlook")}
           disabled={isLoading}
-          className="w-full"
+          className="w-full bg-white hover:bg-gray-50 dark:bg-gray-800 dark:hover:bg-gray-700 dark:border-gray-600"
         >
           <svg className="mr-2 h-4 w-4" fill="currentColor" viewBox="0 0 24 24">
             <path d="M7.88 12.04q0 .45-.11.87-.1.41-.33.74-.22.33-.58.52-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55-.22-.33-.33-.75-.1-.42-.1-.86t.1-.87q.1-.43.34-.76.22-.34.59-.54.36-.2.87-.2t.86.2q.35.21.57.55.22.34.31.77.1.43.1.88zM24 12v9.38q0 .46-.33.8-.33.32-.8.32H7.13q-.46 0-.8-.33-.32-.33-.32-.8V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6.5V2.59q0-.48.33-.8.33-.32.8-.32h14.38q.46 0 .8.33.32.33.32.8V12zm-6.5-5.13q0-.17-.13-.3-.12-.13-.3-.13H7.06q-.17 0-.3.13-.12.13-.12.3v1.13q0 .17.12.3.13.13.3.13h10.01q.17 0 .3-.13.13-.13.13-.3V6.87zm0 2.5q0-.17-.13-.3-.12-.13-.3-.13H7.06q-.17 0-.3.13-.12.13-.12.3v1.13q0 .17.12.3.13.13.3.13h10.01q.17 0 .3-.13.13-.13.13-.3V9.37zm0 2.5q0-.17-.13-.3-.12-.13-.3-.13H7.06q-.17 0-.3.13-.12.13-.12.3v1.13q0 .17.12.3.13.13.3.13h10.01q.17 0 .3-.13.13-.13.13-.3v-1.13zm0 2.5q0-.17-.13-.3-.12-.13-.3-.13H7.06q-.17 0-.3.13-.12.13-.12.3v1.13q0 .17.12.3.13.13.3.13h10.01q.17 0 .3-.13.13-.13.13-.3v-1.13z" />

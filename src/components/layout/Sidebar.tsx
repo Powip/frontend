@@ -79,31 +79,23 @@ export function Sidebar({ className }: SidebarProps) {
   return (
     <div
       className={cn(
-        "flex flex-col px-3 py-4 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300",
+        "flex flex-col px-3 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300",
         isCollapsed ? "w-16" : "w-56",
         className
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between">
         {isCollapsed ? (
-          <div className="flex flex-col items-center gap-2 w-full">
-            <Link href="/" className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#2A5368] hover:bg-[#224455] transition-colors">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 512 512"
-                fill="none"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  d="M130 320L256 194L382 320"
-                  stroke="white"
-                  strokeWidth="80"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+          <div className="flex flex-col items-center w-full">
+            <Link href="/" className="flex h-10 w-10 items-center justify-center">
+              <Image
+                src="/logo_icon.png"
+                alt="Powip Logo"
+                width={40}
+                height={40}
+                className="rounded-lg"
+              />
             </Link>
             <Button
               variant="ghost"
@@ -116,30 +108,23 @@ export function Sidebar({ className }: SidebarProps) {
           </div>
         ) : (
           <>
-            <Link href="/" className="flex items-center gap-0.5 group">
-              <span className="text-2xl font-bold tracking-tighter text-[#2A5368] dark:text-white group-hover:opacity-90 transition-opacity">
-                P
-              </span>
-              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#2A5368] group-hover:bg-[#224455] transition-colors mt-0.5">
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 512 512"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <path
-                    d="M130 320L256 194L382 320"
-                    stroke="white"
-                    strokeWidth="80"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </div>
-              <span className="text-2xl font-bold tracking-tighter text-[#2A5368] dark:text-white group-hover:opacity-90 transition-opacity">
-                WIP
-              </span>
+            <Link href="/" className="flex items-center pl-4">
+              {/* Logo for light mode */}
+              <Image
+                src="/logo_powip_white.png"
+                alt="Powip Logo"
+                  width={80}
+                height={40}
+                className="dark:hidden"
+              />
+              {/* Logo for dark mode */}
+              <Image
+                src="/logo_powip_dark.png"
+                alt="Powip Logo"
+                width={80}
+                height={40}
+                className="hidden dark:block"
+              />
             </Link>
             <Button
               variant="ghost"
@@ -154,7 +139,7 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* Menu items */}
-      <div className="flex-1 overflow-y-auto scrollbar-none py-2">
+      <div className="flex-1 overflow-y-auto scrollbar-none">
         <nav
           className={cn("flex flex-col gap-1", isCollapsed && "items-center")}
         >

@@ -21,13 +21,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
-import { Download, Search } from "lucide-react";
+import { Download, Loader2, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import InventarioModal from "@/components/modals/InventarioModal";
+import { Pagination } from "@/components/ui/pagination";
+
+const ITEMS_PER_PAGE = 10;
 
 interface VariantBatchItem {
   id: string;
@@ -101,7 +105,10 @@ export default function InventarioPage() {
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [productsWithDetails, setProductsWithDetails] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingVariants, setIsLoadingVariants] = useState(false);
+  const [isLoadingInventories, setIsLoadingInventories] = useState(true);
   const [open, setOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const stores = auth?.company?.stores || [];
   const currentStore =
@@ -111,7 +118,12 @@ export default function InventarioPage() {
   // 1) Seleccionar inventario automáticamente
   // ------------------------------------------------------
   useEffect(() => {
-    if (!storeInventories || storeInventories.length === 0) return;
+    if (!storeInventories || storeInventories.length === 0) {
+      setIsLoadingInventories(true);
+      return;
+    }
+
+    setIsLoadingInventories(false);
 
     if (storeInventories.length === 1) {
       // Solo un inventario → seleccionarlo
@@ -156,8 +168,11 @@ export default function InventarioPage() {
     const loadVariantsBatch = async () => {
       if (!inventoryItems || inventoryItems.length === 0) {
         setProductsWithDetails([]);
+        setIsLoadingVariants(false);
         return;
       }
+
+      setIsLoadingVariants(true);
 
       try {
         const variantIds = inventoryItems.map((item) => item.variant_id);
@@ -189,6 +204,8 @@ export default function InventarioPage() {
         setProductsWithDetails(merged);
       } catch (err) {
         console.error("❌ Error cargando variantes batch:", err);
+      } finally {
+        setIsLoadingVariants(false);
       }
     };
 
@@ -212,6 +229,17 @@ export default function InventarioPage() {
         sku.includes(q) || name.includes(q) || attributesString.includes(q)
       );
     });
+
+  // Pagination
+  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const endIndex = startIndex + ITEMS_PER_PAGE;
+  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
+
+  // Reset page when search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedInventoryId]);
 
   const handleExportExcel = async () => {
     if (filteredProducts.length === 0) {
@@ -312,22 +340,29 @@ export default function InventarioPage() {
             <div className="flex-1 sm:max-w-xs">
               <Label className="mb-2 block">Seleccionar Inventario</Label>
 
-              <Select
-                value={selectedInventoryId || undefined}
-                onValueChange={(value) => setSelectedInventoryId(value)}
-                disabled={storeInventories.length <= 1}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar inventario" />
-                </SelectTrigger>
-                <SelectContent>
-                  {storeInventories.map((inv) => (
-                    <SelectItem key={inv.id} value={inv.id}>
-                      {inv.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {isLoadingInventories ? (
+                <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted">
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">Cargando inventarios...</span>
+                </div>
+              ) : (
+                <Select
+                  value={selectedInventoryId || undefined}
+                  onValueChange={(value) => setSelectedInventoryId(value)}
+                  disabled={storeInventories.length <= 1}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar inventario" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {storeInventories.map((inv) => (
+                      <SelectItem key={inv.id} value={inv.id}>
+                        {inv.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             <div className="flex items-end">
@@ -366,42 +401,49 @@ export default function InventarioPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Nombre</TableHead>
-                  <TableHead>Descripcion</TableHead>
-                  <TableHead>Variantes</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Precio base</TableHead>
+                  <TableHead className="border-r">SKU</TableHead>
+                  <TableHead className="border-r">Nombre</TableHead>
+                  <TableHead className="border-r">Descripcion</TableHead>
+                  <TableHead className="border-r">Variantes</TableHead>
+                  <TableHead className="border-r">Stock</TableHead>
+                  <TableHead className="border-r">Precio base</TableHead>
                   <TableHead>Precio venta</TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
-                {isLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-6">
-                      Cargando inventario...
-                    </TableCell>
-                  </TableRow>
+                {(isLoading || isLoadingVariants) ? (
+                  // Skeleton rows
+                  [...Array(5)].map((_, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="border-r"><Skeleton className="h-4 w-20" /></TableCell>
+                      <TableCell className="border-r"><Skeleton className="h-4 w-32" /></TableCell>
+                      <TableCell className="border-r"><Skeleton className="h-4 w-40" /></TableCell>
+                      <TableCell className="border-r"><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="border-r"><Skeleton className="h-4 w-12" /></TableCell>
+                      <TableCell className="border-r"><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                    </TableRow>
+                  ))
                 ) : filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={10} className="text-center py-6">
+                    <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
                       No hay productos en este inventario
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredProducts.map((prod) => (
+                  paginatedProducts.map((prod) => (
                     <TableRow key={prod.inventoryItemId}>
-                      <TableCell>{prod.sku}</TableCell>
-                      <TableCell>{prod.name}</TableCell>
-                      <TableCell>{prod.descripcion}</TableCell>
-                      <TableCell>
+                      <TableCell className="border-r">{prod.sku}</TableCell>
+                      <TableCell className="border-r">{prod.name}</TableCell>
+                      <TableCell className="border-r">{prod.descripcion}</TableCell>
+                      <TableCell className="border-r">
                         {Object.entries(prod.attributes)
                           .map(([k, v]) => `${k}: ${v}`)
                           .join(" / ")}
                       </TableCell>
-                      <TableCell>{prod.quantity}u</TableCell>
-                      <TableCell>${prod.priceBase}</TableCell>
+                      <TableCell className="border-r">{prod.quantity}u</TableCell>
+                      <TableCell className="border-r">${prod.priceBase}</TableCell>
                       <TableCell>${prod.priceVta}</TableCell>
                     </TableRow>
                   ))
@@ -410,6 +452,18 @@ export default function InventarioPage() {
             </Table>
           </div>
         </CardContent>
+        
+        {/* Pagination */}
+        {!(isLoading || isLoadingVariants) && (
+          <Pagination
+            currentPage={currentPage}
+            totalPages={totalPages}
+            totalItems={filteredProducts.length}
+            itemsPerPage={ITEMS_PER_PAGE}
+            onPageChange={setCurrentPage}
+            itemName="productos"
+          />
+        )}
       </Card>
       <InventarioModal
         open={open}
