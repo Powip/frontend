@@ -21,38 +21,9 @@ import { User } from "@/interfaces/IUser";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
+import { getUsersByCompany } from "@/services/userService";
 
 const ITEMS_PER_PAGE = 10;
-
-// Mock data for initial visual only state
-const MOCK_USERS: User[] = [
-  {
-    id: "1",
-    name: "Mauri",
-    surname: "Dev",
-    email: "mauri.dev@example.com",
-    identityDocument: "12345678",
-    phoneNumber: "987654321",
-    status: true,
-    department: "Lima",
-    province: "Lima",
-    district: "Miraflores",
-    role: { id: "1", name: "ADMIN" }
-  },
-  {
-    id: "2",
-    name: "Carlos",
-    surname: "Vendedor",
-    email: "carlos.v@example.com",
-    identityDocument: "87654321",
-    phoneNumber: "912345678",
-    status: true,
-    department: "Lima",
-    province: "Lima",
-    district: "Santiago De Surco",
-    role: { id: "2", name: "VENDEDOR" }
-  }
-];
 
 export default function UsuariosPage() {
   const { auth } = useAuth();
@@ -63,17 +34,27 @@ export default function UsuariosPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  useEffect(() => {
-    // Simulating API fetch
-    const fetchUsers = async () => {
-      setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setUsers(MOCK_USERS);
+  const fetchUsers = async () => {
+    if (!auth?.company?.id || !auth?.accessToken) {
       setLoading(false);
-    };
+      return;
+    }
 
+    setLoading(true);
+    try {
+      const usersData = await getUsersByCompany(auth.company.id, auth.accessToken);
+      setUsers(usersData);
+    } catch (error) {
+      console.error("Error al cargar usuarios:", error);
+      toast.error("Error al cargar usuarios");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchUsers();
-  }, []);
+  }, [auth?.company?.id, auth?.accessToken]);
 
   const filtered = users.filter((u) => {
     const q = searchQuery.toLowerCase();
@@ -100,12 +81,12 @@ export default function UsuariosPage() {
   const handleUserSaved = () => {
     setOpenModal(false);
     setSelectedUser(null);
-    // In a real scenario, we would re-fetch users or update state
-    toast.success("Vista actualizada (simulado)");
+    fetchUsers(); // Refrescar lista de usuarios
+    toast.success("Usuario guardado correctamente");
   };
 
   const handleToggleStatus = (user: User) => {
-    setUsers(prev => prev.map(u => 
+    setUsers(prev => prev.map(u =>
       u.id === user.id ? { ...u, status: !u.status } : u
     ));
     toast.success(`Usuario ${user.status ? 'desactivado' : 'activado'} correctamente`);
@@ -199,12 +180,12 @@ export default function UsuariosPage() {
                           {startIndex + index + 1}
                         </TableCell>
                         <TableCell className="border-r">
-                           <div className="flex items-center gap-2">
-                             <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700">
-                               <UserIcon className="w-4 h-4" />
-                             </div>
-                             <span>{u.name} {u.surname}</span>
-                           </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center text-teal-700">
+                              <UserIcon className="w-4 h-4" />
+                            </div>
+                            <span>{u.name} {u.surname}</span>
+                          </div>
                         </TableCell>
                         <TableCell className="border-r text-muted-foreground">{u.email}</TableCell>
                         <TableCell className="border-r">{u.identityDocument}</TableCell>
@@ -216,10 +197,10 @@ export default function UsuariosPage() {
                         </TableCell>
 
                         <TableCell className="border-r">
-                          <Badge 
+                          <Badge
                             className={
-                              u.status 
-                                ? "bg-green-100 text-green-700 hover:bg-green-100" 
+                              u.status
+                                ? "bg-green-100 text-green-700 hover:bg-green-100"
                                 : "bg-gray-100 text-gray-600 hover:bg-gray-100"
                             }
                           >
@@ -268,7 +249,7 @@ export default function UsuariosPage() {
               </Table>
             </div>
           </CardContent>
-          
+
           {!loading && (
             <Pagination
               currentPage={currentPage}
