@@ -61,11 +61,11 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Ventas", href: "/ventas", icon: ShoppingCart },
     { name: "Operaciones", href: "/operaciones", icon: Truck },
     { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
+    { name: "Finanzas", href: "/finanzas", icon: DollarSign },
     { name: "Clientes", href: "/clientes", icon: Users },
     { name: "Proveedores", href: "/proveedores", icon: Building2 },
     { name: "Repartidores", href: "/repartidores", icon: Truck },
     { name: "Usuarios", href: "/usuarios", icon: UserCog },
-    { name: "Finanzas", href: "/finanzas", icon: DollarSign },
     { name: "Reportes", href: "/reportes", icon: BarChart },
     {
       name: "Servicio al cliente",

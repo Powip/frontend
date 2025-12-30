@@ -1,0 +1,3004 @@
+[
+  {
+    "country": "Peru",
+    "departments": [
+      {
+        "name": "Amazonas",
+        "provinces": [
+          {
+            "name": "Chachapoyas",
+            "districts": [
+              "Chachapoyas",
+              "Asuncion",
+              "Balsas",
+              "Cheto",
+              "Chiliquin",
+              "Chuquibamba",
+              "Granada",
+              "Huancas",
+              "La Jalca",
+              "Leimebamba",
+              "Levanto",
+              "Magdalena",
+              "Mariscal Castilla",
+              "Molinopampa",
+              "Montevideo",
+              "Olleros",
+              "Quinjalca",
+              "San Francisco De Daguas",
+              "San Isidro De Maino",
+              "Soloco",
+              "Sonche"
+            ]
+          },
+          {
+            "name": "Bagua",
+            "districts": [
+              "Bagua",
+              "Aramango",
+              "Copallin",
+              "El Parco",
+              "Imaza",
+              "La Peca"
+            ]
+          },
+          {
+            "name": "Bongara",
+            "districts": [
+              "Jumbilla",
+              "Chisquilla",
+              "Churuja",
+              "Corosha",
+              "Cuispes",
+              "Florida",
+              "Jazan",
+              "Recta",
+              "San Carlos",
+              "Shipasbamba",
+              "Valera",
+              "Yambrasbamba"
+            ]
+          },
+          {
+            "name": "Condorcanqui",
+            "districts": [
+              "Nieva",
+              "El Cenepa",
+              "Rio Santiago"
+            ]
+          },
+          {
+            "name": "Luya",
+            "districts": [
+              "Lamud",
+              "Camporredondo",
+              "Cocabamba",
+              "Colcamar",
+              "Conila",
+              "Inguilpata",
+              "Longuita",
+              "Lonya Chico",
+              "Luya",
+              "Luya Viejo",
+              "Maria",
+              "Ocalli",
+              "Ocumal",
+              "Pisuquia",
+              "Providencia",
+              "San Cristobal",
+              "San Francisco Del Yeso",
+              "San Jeronimo",
+              "San Juan De Lopecancha",
+              "Santa Catalina",
+              "Santo Tomas",
+              "Tingo",
+              "Trita"
+            ]
+          },
+          {
+            "name": "Rodriguez De Mendoza",
+            "districts": [
+              "San Nicolas",
+              "Chirimoto",
+              "Cochamal",
+              "Huambo",
+              "Limabamba",
+              "Longar",
+              "Mariscal Benavides",
+              "Milpuc",
+              "Omia",
+              "Santa Rosa",
+              "Totora",
+              "Vista Alegre"
+            ]
+          },
+          {
+            "name": "Utcubamba",
+            "districts": [
+              "Bagua Grande",
+              "Cajaruro",
+              "Cumba",
+              "El Milagro",
+              "Jamalca",
+              "Lonya Grande",
+              "Yamon"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Ancash",
+        "provinces": [
+          {
+            "name": "Huaraz",
+            "districts": [
+              "Huaraz",
+              "Cochabamba",
+              "Colcabamba",
+              "Huanchay",
+              "Independencia",
+              "Jangas",
+              "La Libertad",
+              "Olleros",
+              "Pampas",
+              "Pariacoto",
+              "Pira",
+              "Tarica"
+            ]
+          },
+          {
+            "name": "Aija",
+            "districts": [
+              "Aija",
+              "Coris",
+              "Huacllan",
+              "La Merced",
+              "Succha"
+            ]
+          },
+          {
+            "name": "Antonio Raymondi",
+            "districts": [
+              "Llamellin",
+              "Aczo",
+              "Chaccho",
+              "Chingas",
+              "Mirgas",
+              "San Juan De Rontoy"
+            ]
+          },
+          {
+            "name": "Asuncion",
+            "districts": [
+              "Chacas",
+              "Acochaca"
+            ]
+          },
+          {
+            "name": "Bolognesi",
+            "districts": [
+              "Chiquian",
+              "Abelardo Pardo Lezameta",
+              "Antonio Raymondi",
+              "Aquia",
+              "Cajacay",
+              "Canis",
+              "Colquioc",
+              "Huallanca",
+              "Huasta",
+              "Huayllacayan",
+              "La Primavera",
+              "Mangas",
+              "Pacllon",
+              "San Miguel De Corpanqui",
+              "Ticllos"
+            ]
+          },
+          {
+            "name": "Carhuaz",
+            "districts": [
+              "Carhuaz",
+              "Acopampa",
+              "Amashca",
+              "Anta",
+              "Ataquero",
+              "Marcara",
+              "Pariahuanca",
+              "San Miguel De Aco",
+              "Shilla",
+              "Tinco",
+              "Yungar"
+            ]
+          },
+          {
+            "name": "Carlos Fermin Fitzcarrald",
+            "districts": [
+              "San Luis",
+              "San Nicolas",
+              "Yauya"
+            ]
+          },
+          {
+            "name": "Casma",
+            "districts": [
+              "Casma",
+              "Buena Vista Alta",
+              "Comandante Noel",
+              "Yautan"
+            ]
+          },
+          {
+            "name": "Corongo",
+            "districts": [
+              "Corongo",
+              "Aco",
+              "Bambas",
+              "Cusca",
+              "La Pampa",
+              "Yanac",
+              "Yupan"
+            ]
+          },
+          {
+            "name": "Huari",
+            "districts": [
+              "Huari",
+              "Anra",
+              "Cajay",
+              "Chavin De Huantar",
+              "Huacachi",
+              "Huacchis",
+              "Huachis",
+              "Huantar",
+              "Masin",
+              "Paucas",
+              "Ponto",
+              "Rahuapampa",
+              "Rapayan",
+              "San Marcos",
+              "San Pedro De Chana",
+              "Uco"
+            ]
+          },
+          {
+            "name": "Huarmey",
+            "districts": [
+              "Huarmey",
+              "Cochapeti",
+              "Culebras",
+              "Huayan",
+              "Malvas"
+            ]
+          },
+          {
+            "name": "Huaylas",
+            "districts": [
+              "Caraz",
+              "Huallanca",
+              "Huata",
+              "Huaylas",
+              "Mato",
+              "Pamparomas",
+              "Pueblo Libre",
+              "Santa Cruz",
+              "Santo Toribio",
+              "Yuracmarca"
+            ]
+          },
+          {
+            "name": "Mariscal Luzuriaga",
+            "districts": [
+              "Piscobamba",
+              "Casca",
+              "Eleazar Guzman Barron",
+              "Fidel Olivas Escudero",
+              "Llama",
+              "Llumpa",
+              "Lucma",
+              "Musga"
+            ]
+          },
+          {
+            "name": "Ocros",
+            "districts": [
+              "Ocros",
+              "Acas",
+              "Cajamarquilla",
+              "Carhuapampa",
+              "Cochas",
+              "Congas",
+              "Llipa",
+              "San Cristobal De Rajan",
+              "San Pedro",
+              "Santiago De Chilcas"
+            ]
+          },
+          {
+            "name": "Pallasca",
+            "districts": [
+              "Cabana",
+              "Bolognesi",
+              "Conchucos",
+              "Huacaschuque",
+              "Huandoval",
+              "Lacabamba",
+              "Llapo",
+              "Pallasca",
+              "Pampas",
+              "Santa Rosa",
+              "Tauca"
+            ]
+          },
+          {
+            "name": "Pomabamba",
+            "districts": [
+              "Pomabamba",
+              "Huayllan",
+              "Parobamba",
+              "Quinuabamba"
+            ]
+          },
+          {
+            "name": "Recuay",
+            "districts": [
+              "Recuay",
+              "Catac",
+              "Cotaparaco",
+              "Huayllapampa",
+              "Llacllin",
+              "Marca",
+              "Pampas Chico",
+              "Pararin",
+              "Tapacocha",
+              "Ticapampa"
+            ]
+          },
+          {
+            "name": "Santa",
+            "districts": [
+              "Chimbote",
+              "Caceres Del Peru",
+              "Coishco",
+              "Macate",
+              "Moro",
+              "Nepeña",
+              "Samanco",
+              "Santa",
+              "Nuevo Chimbote"
+            ]
+          },
+          {
+            "name": "Sihuas",
+            "districts": [
+              "Sihuas",
+              "Acobamba",
+              "Alfonso Ugarte",
+              "Cashapampa",
+              "Chingalpo",
+              "Huayllabamba",
+              "Quiches",
+              "Ragash",
+              "San Juan",
+              "Sicsibamba"
+            ]
+          },
+          {
+            "name": "Yungay",
+            "districts": [
+              "Yungay",
+              "Cascapara",
+              "Mancos",
+              "Matacoto",
+              "Quillo",
+              "Ranrahirca",
+              "Shupluy",
+              "Yanama"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Apurimac",
+        "provinces": [
+          {
+            "name": "Abancay",
+            "districts": [
+              "Abancay",
+              "Chacoche",
+              "Circa",
+              "Curahuasi",
+              "Huanipaca",
+              "Lambrama",
+              "Pichirhua",
+              "San Pedro De Cachora",
+              "Tamburco"
+            ]
+          },
+          {
+            "name": "Andahuaylas",
+            "districts": [
+              "Andahuaylas",
+              "Andarapa",
+              "Chiara",
+              "Huancarama",
+              "Huancaray",
+              "Huayana",
+              "Kishuara",
+              "Pacobamba",
+              "Pacucha",
+              "Pampachiri",
+              "Pomacocha",
+              "San Antonio De Cachi",
+              "San Jeronimo",
+              "San Miguel De Chaccrampa",
+              "Santa Maria De Chicmo",
+              "Talavera",
+              "Tumay Huaraca",
+              "Turpo",
+              "Kaquiabamba",
+              "Jose Maria Arguedas"
+            ]
+          },
+          {
+            "name": "Antabamba",
+            "districts": [
+              "Antabamba",
+              "El Oro",
+              "Huaquirca",
+              "Juan Espinoza Medrano",
+              "Oropesa",
+              "Pachaconas",
+              "Sabaino"
+            ]
+          },
+          {
+            "name": "Aymaraes",
+            "districts": [
+              "Chalhuanca",
+              "Capaya",
+              "Caraybamba",
+              "Chapimarca",
+              "Colcabamba",
+              "Cotaruse",
+              "Huayllo",
+              "Justo Apu Sahuaraura",
+              "Lucre",
+              "Pocohuanca",
+              "San Juan De Chacña",
+              "Sañayca",
+              "Soraya",
+              "Tapairihua",
+              "Tintay",
+              "Toraya",
+              "Yanaca"
+            ]
+          },
+          {
+            "name": "Cotabambas",
+            "districts": [
+              "Tambobamba",
+              "Cotabambas",
+              "Coyllurqui",
+              "Haquira",
+              "Mara",
+              "Challhuahuacho"
+            ]
+          },
+          {
+            "name": "Chincheros",
+            "districts": [
+              "Chincheros",
+              "Anco-huallo",
+              "Cocharcas",
+              "Huaccana",
+              "Ocobamba",
+              "Ongoy",
+              "Uranmarca",
+              "Ranracancha",
+              "Rocchacc",
+              "El Porvenir",
+              "Los Chankas",
+              "Ahuayro"
+            ]
+          },
+          {
+            "name": "Grau",
+            "districts": [
+              "Chuquibambilla",
+              "Curpahuasi",
+              "Gamarra",
+              "Huayllati",
+              "Mamara",
+              "Micaela Bastidas",
+              "Pataypampa",
+              "Progreso",
+              "San Antonio",
+              "Santa Rosa",
+              "Turpay",
+              "Vilcabamba",
+              "Virundo",
+              "Curasco"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Arequipa",
+        "provinces": [
+          {
+            "name": "Arequipa",
+            "districts": [
+              "Arequipa",
+              "Alto Selva Alegre",
+              "Cayma",
+              "Cerro Colorado",
+              "Characato",
+              "Chiguata",
+              "Jacobo Hunter",
+              "La Joya",
+              "Mariano Melgar",
+              "Miraflores",
+              "Mollebaya",
+              "Paucarpata",
+              "Pocsi",
+              "Polobaya",
+              "Quequeña",
+              "Sabandia",
+              "Sachaca",
+              "San Juan De Siguas",
+              "San Juan De Tarucani",
+              "Santa Isabel De Siguas",
+              "Santa Rita De Siguas",
+              "Socabaya",
+              "Tiabaya",
+              "Uchumayo",
+              "Vitor",
+              "Yanahuara",
+              "Yarabamba",
+              "Yura",
+              "Jose Luis Bustamante Y Rivero"
+            ]
+          },
+          {
+            "name": "Camana",
+            "districts": [
+              "Camana",
+              "Jose Maria Quimper",
+              "Mariano Nicolas Valcarcel",
+              "Mariscal Caceres",
+              "Nicolas De Pierola",
+              "Ocoña",
+              "Quilca",
+              "Samuel Pastor"
+            ]
+          },
+          {
+            "name": "Caraveli",
+            "districts": [
+              "Caraveli",
+              "Acari",
+              "Atico",
+              "Atiquipa",
+              "Bella Union",
+              "Cahuacho",
+              "Chala",
+              "Chaparra",
+              "Huanuhuanu",
+              "Jaqui",
+              "Lomas",
+              "Quicacha",
+              "Yauca"
+            ]
+          },
+          {
+            "name": "Castilla",
+            "districts": [
+              "Aplao",
+              "Andagua",
+              "Ayo",
+              "Chachas",
+              "Chilcaymarca",
+              "Choco",
+              "Huancarqui",
+              "Machaguay",
+              "Orcopampa",
+              "Pampacolca",
+              "Tipan",
+              "Uñon",
+              "Uraca",
+              "Viraco"
+            ]
+          },
+          {
+            "name": "Caylloma",
+            "districts": [
+              "Chivay",
+              "Achoma",
+              "Cabanaconde",
+              "Callalli",
+              "Caylloma",
+              "Coporaque",
+              "Huambo",
+              "Huanca",
+              "Ichupampa",
+              "Lari",
+              "Lluta",
+              "Maca",
+              "Madrigal",
+              "San Antonio De Chuca",
+              "Sibayo",
+              "Tapay",
+              "Tisco",
+              "Tuti",
+              "Yanque",
+              "Majes"
+            ]
+          },
+          {
+            "name": "Condesuyos",
+            "districts": [
+              "Chuquibamba",
+              "Andaray",
+              "Cayarani",
+              "Chichas",
+              "Iray",
+              "Rio Grande",
+              "Salamanca",
+              "Yanaquihua"
+            ]
+          },
+          {
+            "name": "Islay",
+            "districts": [
+              "Mollendo",
+              "Cocachacra",
+              "Dean Valdivia",
+              "Islay",
+              "Mejia",
+              "Punta De Bombon"
+            ]
+          },
+          {
+            "name": "La Union",
+            "districts": [
+              "Cotahuasi",
+              "Alca",
+              "Charcana",
+              "Huaynacotas",
+              "Pampamarca",
+              "Puyca",
+              "Quechualla",
+              "Sayla",
+              "Tauria",
+              "Tomepampa",
+              "Toro"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Ayacucho",
+        "provinces": [
+          {
+            "name": "Huamanga",
+            "districts": [
+              "Ayacucho",
+              "Acocro",
+              "Acos Vinchos",
+              "Carmen Alto",
+              "Chiara",
+              "Ocros",
+              "Pacaycasa",
+              "Quinua",
+              "San Jose De Ticllas",
+              "San Juan Bautista",
+              "Santiago De Pischa",
+              "Socos",
+              "Tambillo",
+              "Vinchos",
+              "Jesus Nazareno",
+              "Andres Avelino Caceres Dorregaray"
+            ]
+          },
+          {
+            "name": "Cangallo",
+            "districts": [
+              "Cangallo",
+              "Chuschi",
+              "Los Morochucos",
+              "Maria Parado De Bellido",
+              "Paras",
+              "Totos"
+            ]
+          },
+          {
+            "name": "Huanca Sancos",
+            "districts": [
+              "Sancos",
+              "Carapo",
+              "Sacsamarca",
+              "Santiago De Lucanamarca"
+            ]
+          },
+          {
+            "name": "Huanta",
+            "districts": [
+              "Huanta",
+              "Ayahuanco",
+              "Huamanguilla",
+              "Iguain",
+              "Luricocha",
+              "Santillana",
+              "Sivia",
+              "Llochegua",
+              "Canayre",
+              "Uchuraccay",
+              "Pucacolpa",
+              "Chaca",
+              "Putis"
+            ]
+          },
+          {
+            "name": "La Mar",
+            "districts": [
+              "San Miguel",
+              "Anco",
+              "Ayna",
+              "Chilcas",
+              "Chungui",
+              "Luis Carranza",
+              "Santa Rosa",
+              "Tambo",
+              "Samugari",
+              "Anchihuay",
+              "Oronccoy",
+              "Union Progreso",
+              "Rio Magdalena",
+              "Ninabamba",
+              "Patibamba"
+            ]
+          },
+          {
+            "name": "Lucanas",
+            "districts": [
+              "Puquio",
+              "Aucara",
+              "Cabana",
+              "Carmen Salcedo",
+              "Chaviña",
+              "Chipao",
+              "Huac-huas",
+              "Laramate",
+              "Leoncio Prado",
+              "Llauta",
+              "Lucanas",
+              "Ocaña",
+              "Otoca",
+              "Saisa",
+              "San Cristobal",
+              "San Juan",
+              "San Pedro",
+              "San Pedro De Palco",
+              "Sancos",
+              "Santa Ana De Huaycahuacho",
+              "Santa Lucia"
+            ]
+          },
+          {
+            "name": "Parinacochas",
+            "districts": [
+              "Coracora",
+              "Chumpi",
+              "Coronel Castañeda",
+              "Pacapausa",
+              "Pullo",
+              "Puyusca",
+              "San Francisco De Ravacayco",
+              "Upahuacho"
+            ]
+          },
+          {
+            "name": "Paucar Del Sara Sara",
+            "districts": [
+              "Pausa",
+              "Colta",
+              "Corculla",
+              "Lampa",
+              "Marcabamba",
+              "Oyolo",
+              "Pararca",
+              "San Javier De Alpabamba",
+              "San Jose De Ushua",
+              "Sara Sara"
+            ]
+          },
+          {
+            "name": "Sucre",
+            "districts": [
+              "Querobamba",
+              "Belen",
+              "Chalcos",
+              "Chilcayoc",
+              "Huacaña",
+              "Morcolla",
+              "Paico",
+              "San Pedro De Larcay",
+              "San Salvador De Quije",
+              "Santiago De Paucaray",
+              "Soras"
+            ]
+          },
+          {
+            "name": "Victor Fajardo",
+            "districts": [
+              "Huancapi",
+              "Alcamenca",
+              "Apongo",
+              "Asquipata",
+              "Canaria",
+              "Cayara",
+              "Colca",
+              "Huamanquiquia",
+              "Huancaraylla",
+              "Huaya",
+              "Sarhua",
+              "Vilcanchos"
+            ]
+          },
+          {
+            "name": "Vilcas Huaman",
+            "districts": [
+              "Vilcas Huaman",
+              "Accomarca",
+              "Carhuanca",
+              "Concepcion",
+              "Huambalpa",
+              "Independencia",
+              "Saurama",
+              "Vischongo"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Cajamarca",
+        "provinces": [
+          {
+            "name": "Cajamarca",
+            "districts": [
+              "Cajamarca",
+              "Asuncion",
+              "Chetilla",
+              "Cospan",
+              "Encañada",
+              "Jesus",
+              "Llacanora",
+              "Los Baños Del Inca",
+              "Magdalena",
+              "Matara",
+              "Namora",
+              "San Juan"
+            ]
+          },
+          {
+            "name": "Cajabamba",
+            "districts": [
+              "Cajabamba",
+              "Cachachi",
+              "Condebamba",
+              "Sitacocha"
+            ]
+          },
+          {
+            "name": "Celendin",
+            "districts": [
+              "Celendin",
+              "Chumuch",
+              "Cortegana",
+              "Huasmin",
+              "Jorge Chavez",
+              "Jose Galvez",
+              "Miguel Iglesias",
+              "Oxamarca",
+              "Sorochuco",
+              "Sucre",
+              "Utco",
+              "La Libertad De Pallan"
+            ]
+          },
+          {
+            "name": "Chota",
+            "districts": [
+              "Chota",
+              "Anguia",
+              "Chadin",
+              "Chiguirip",
+              "Chimban",
+              "Choropampa",
+              "Cochabamba",
+              "Conchan",
+              "Huambos",
+              "Lajas",
+              "Llama",
+              "Miracosta",
+              "Paccha",
+              "Pion",
+              "Querocoto",
+              "San Juan De Licupis",
+              "Tacabamba",
+              "Tocmoche",
+              "Chalamarca"
+            ]
+          },
+          {
+            "name": "Contumaza",
+            "districts": [
+              "Contumaza",
+              "Chilete",
+              "Cupisnique",
+              "Guzmango",
+              "San Benito",
+              "Santa Cruz De Toledo",
+              "Tantarica",
+              "Yonan"
+            ]
+          },
+          {
+            "name": "Cutervo",
+            "districts": [
+              "Cutervo",
+              "Callayuc",
+              "Choros",
+              "Cujillo",
+              "La Ramada",
+              "Pimpingos",
+              "Querocotillo",
+              "San Andres De Cutervo",
+              "San Juan De Cutervo",
+              "San Luis De Lucma",
+              "Santa Cruz",
+              "Santo Domingo De La Capilla",
+              "Santo Tomas",
+              "Socota",
+              "Toribio Casanova"
+            ]
+          },
+          {
+            "name": "Hualgayoc",
+            "districts": [
+              "Bambamarca",
+              "Chugur",
+              "Hualgayoc"
+            ]
+          },
+          {
+            "name": "Jaen",
+            "districts": [
+              "Jaen",
+              "Bellavista",
+              "Chontali",
+              "Colasay",
+              "Huabal",
+              "Las Pirias",
+              "Pomahuaca",
+              "Pucara",
+              "Sallique",
+              "San Felipe",
+              "San Jose Del Alto",
+              "Santa Rosa"
+            ]
+          },
+          {
+            "name": "San Ignacio",
+            "districts": [
+              "San Ignacio",
+              "Chirinos",
+              "Huarango",
+              "La Coipa",
+              "Namballe",
+              "San Jose De Lourdes",
+              "Tabaconas"
+            ]
+          },
+          {
+            "name": "San Marcos",
+            "districts": [
+              "Pedro Galvez",
+              "Chancay",
+              "Eduardo Villanueva",
+              "Gregorio Pita",
+              "Ichocan",
+              "Jose Manuel Quiroz",
+              "Jose Sabogal"
+            ]
+          },
+          {
+            "name": "San Miguel",
+            "districts": [
+              "San Miguel",
+              "Bolivar",
+              "Calquis",
+              "Catilluc",
+              "El Prado",
+              "La Florida",
+              "Llapa",
+              "Nanchoc",
+              "Niepos",
+              "San Gregorio",
+              "San Silvestre De Cochan",
+              "Tongod",
+              "Union Agua Blanca"
+            ]
+          },
+          {
+            "name": "San Pablo",
+            "districts": [
+              "San Pablo",
+              "San Bernardino",
+              "San Luis",
+              "Tumbaden"
+            ]
+          },
+          {
+            "name": "Santa Cruz",
+            "districts": [
+              "Santa Cruz",
+              "Andabamba",
+              "Catache",
+              "Chancaybaños",
+              "La Esperanza",
+              "Ninabamba",
+              "Pulan",
+              "Saucepampa",
+              "Sexi",
+              "Uticyacu",
+              "Yauyucan"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Callao",
+        "provinces": [
+          {
+            "name": "Callao",
+            "districts": [
+              "Callao",
+              "Bellavista",
+              "Carmen De La Legua Reynoso",
+              "La Perla",
+              "La Punta",
+              "Ventanilla",
+              "Mi Peru"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Cusco",
+        "provinces": [
+          {
+            "name": "Cusco",
+            "districts": [
+              "Cusco",
+              "Ccorca",
+              "Poroy",
+              "San Jeronimo",
+              "San Sebastian",
+              "Santiago",
+              "Saylla",
+              "Wanchaq"
+            ]
+          },
+          {
+            "name": "Acomayo",
+            "districts": [
+              "Acomayo",
+              "Acopia",
+              "Acos",
+              "Mosoc Llacta",
+              "Pomacanchi",
+              "Rondocan",
+              "Sangarara"
+            ]
+          },
+          {
+            "name": "Anta",
+            "districts": [
+              "Anta",
+              "Ancahuasi",
+              "Cachimayo",
+              "Chinchaypujio",
+              "Huarocondo",
+              "Limatambo",
+              "Mollepata",
+              "Pucyura",
+              "Zurite"
+            ]
+          },
+          {
+            "name": "Calca",
+            "districts": [
+              "Calca",
+              "Coya",
+              "Lamay",
+              "Lares",
+              "Pisac",
+              "San Salvador",
+              "Taray",
+              "Yanatile"
+            ]
+          },
+          {
+            "name": "Canas",
+            "districts": [
+              "Yanaoca",
+              "Checca",
+              "Kunturkanki",
+              "Langui",
+              "Layo",
+              "Pampamarca",
+              "Quehue",
+              "Tupac Amaru"
+            ]
+          },
+          {
+            "name": "Canchis",
+            "districts": [
+              "Sicuani",
+              "Checacupe",
+              "Combapata",
+              "Marangani",
+              "Pitumarca",
+              "San Pablo",
+              "San Pedro",
+              "Tinta"
+            ]
+          },
+          {
+            "name": "Chumbivilcas",
+            "districts": [
+              "Santo Tomas",
+              "Capacmarca",
+              "Chamaca",
+              "Colquemarca",
+              "Livitaca",
+              "Llusco",
+              "Quiñota",
+              "Velille"
+            ]
+          },
+          {
+            "name": "Espinar",
+            "districts": [
+              "Espinar",
+              "Condoroma",
+              "Coporaque",
+              "Ocoruro",
+              "Pallpata",
+              "Pichigua",
+              "Suyckutambo",
+              "Alto Pichigua"
+            ]
+          },
+          {
+            "name": "La Convencion",
+            "districts": [
+              "Santa Ana",
+              "Echarate",
+              "Huayopata",
+              "Maranura",
+              "Ocobamba",
+              "Quellouno",
+              "Quimbiri",
+              "Santa Teresa",
+              "Vilcabamba",
+              "Pichari",
+              "Inkawasi",
+              "Villa Virgen",
+              "Villa Kintiarina",
+              "Megantoni",
+              "Kumpirushiato",
+              "Cielo Punco",
+              "Manitea",
+              "Union Asháninka"
+            ]
+          },
+          {
+            "name": "Paruro",
+            "districts": [
+              "Paruro",
+              "Accha",
+              "Ccapi",
+              "Colcha",
+              "Huanoquite",
+              "Omacha",
+              "Paccaritambo",
+              "Pillpinto",
+              "Yaurisque"
+            ]
+          },
+          {
+            "name": "Paucartambo",
+            "districts": [
+              "Paucartambo",
+              "Caicay",
+              "Challabamba",
+              "Colquepata",
+              "Huancarani",
+              "Kosñipata"
+            ]
+          },
+          {
+            "name": "Quispicanchi",
+            "districts": [
+              "Urcos",
+              "Andahuaylillas",
+              "Camanti",
+              "Ccarhuayo",
+              "Ccatca",
+              "Cusipata",
+              "Huaro",
+              "Lucre",
+              "Marcapata",
+              "Ocongate",
+              "Oropesa",
+              "Quiquijana"
+            ]
+          },
+          {
+            "name": "Urubamba",
+            "districts": [
+              "Urubamba",
+              "Chinchero",
+              "Huayllabamba",
+              "Machupicchu",
+              "Maras",
+              "Ollantaytambo",
+              "Yucay"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Huancavelica",
+        "provinces": [
+          {
+            "name": "Huancavelica",
+            "districts": [
+              "Huancavelica",
+              "Acobambilla",
+              "Acoria",
+              "Conayca",
+              "Cuenca",
+              "Huachocolpa",
+              "Huayllahuara",
+              "Izcuchaca",
+              "Laria",
+              "Manta",
+              "Mariscal Caceres",
+              "Moya",
+              "Nuevo Occoro",
+              "Palca",
+              "Pilchaca",
+              "Vilca",
+              "Yauli",
+              "Ascension",
+              "Huando"
+            ]
+          },
+          {
+            "name": "Acobamba",
+            "districts": [
+              "Acobamba",
+              "Andabamba",
+              "Anta",
+              "Caja",
+              "Marcas",
+              "Paucara",
+              "Pomacocha",
+              "Rosario"
+            ]
+          },
+          {
+            "name": "Angaraes",
+            "districts": [
+              "Lircay",
+              "Anchonga",
+              "Callanmarca",
+              "Ccochaccasa",
+              "Chincho",
+              "Congalla",
+              "Huanca-huanca",
+              "Huayllay Grande",
+              "Julcamarca",
+              "San Antonio De Antaparco",
+              "Santo Tomas De Pata",
+              "Secclla"
+            ]
+          },
+          {
+            "name": "Castrovirreyna",
+            "districts": [
+              "Castrovirreyna",
+              "Arma",
+              "Aurahua",
+              "Capillas",
+              "Chupamarca",
+              "Cocas",
+              "Huachos",
+              "Huamatambo",
+              "Mollepampa",
+              "San Juan",
+              "Santa Ana",
+              "Tantara",
+              "Ticrapo"
+            ]
+          },
+          {
+            "name": "Churcampa",
+            "districts": [
+              "Churcampa",
+              "Anco",
+              "Chinchihuasi",
+              "El Carmen",
+              "La Merced",
+              "Locroja",
+              "Paucarbamba",
+              "San Miguel De Mayocc",
+              "San Pedro De Coris",
+              "Pachamarca",
+              "Cosme"
+            ]
+          },
+          {
+            "name": "Huaytara",
+            "districts": [
+              "Huaytara",
+              "Ayavi",
+              "Cordova",
+              "Huayacundo Arma",
+              "Laramarca",
+              "Ocoyo",
+              "Pilpichaca",
+              "Querco",
+              "Quito-arma",
+              "San Antonio De Cusicancha",
+              "San Francisco De Sangayaico",
+              "San Isidro",
+              "Santiago De Chocorvos",
+              "Santiago De Quirahuara",
+              "Santo Domingo De Capillas",
+              "Tambo"
+            ]
+          },
+          {
+            "name": "Tayacaja",
+            "districts": [
+              "Pampas",
+              "Acostambo",
+              "Acraquia",
+              "Ahuaycha",
+              "Colcabamba",
+              "Daniel Hernandez",
+              "Huachocolpa",
+              "Huaribamba",
+              "Ñahuimpuquio",
+              "Pazos",
+              "Quishuar",
+              "Salcabamba",
+              "Salcahuasi",
+              "San Marcos De Rocchac",
+              "Surcubamba",
+              "Tintay Puncu",
+              "Quichuas",
+              "Andaymarca",
+              "Roble",
+              "Pichos",
+              "Santiago De Tucuma",
+              "Lambras",
+              "Cochabamba"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Huanuco",
+        "provinces": [
+          {
+            "name": "Huanuco",
+            "districts": [
+              "Huanuco",
+              "Amarilis",
+              "Chinchao",
+              "Churubamba",
+              "Margos",
+              "Quisqui",
+              "San Francisco De Cayran",
+              "San Pedro De Chaulan",
+              "Santa Maria Del Valle",
+              "Yarumayo",
+              "Pillco Marca",
+              "Yacus",
+              "San Pablo De Pillao"
+            ]
+          },
+          {
+            "name": "Ambo",
+            "districts": [
+              "Ambo",
+              "Cayna",
+              "Colpas",
+              "Conchamarca",
+              "Huacar",
+              "San Francisco",
+              "San Rafael",
+              "Tomay Kichwa"
+            ]
+          },
+          {
+            "name": "Dos De Mayo",
+            "districts": [
+              "La Union",
+              "Chuquis",
+              "Marias",
+              "Pachas",
+              "Quivilla",
+              "Ripan",
+              "Shunqui",
+              "Sillapata",
+              "Yanas"
+            ]
+          },
+          {
+            "name": "Huacaybamba",
+            "districts": [
+              "Huacaybamba",
+              "Canchabamba",
+              "Cochabamba",
+              "Pinra"
+            ]
+          },
+          {
+            "name": "Huamalies",
+            "districts": [
+              "Llata",
+              "Arancay",
+              "Chavin De Pariarca",
+              "Jacas Grande",
+              "Jircan",
+              "Miraflores",
+              "Monzon",
+              "Punchao",
+              "Puños",
+              "Singa",
+              "Tantamayo"
+            ]
+          },
+          {
+            "name": "Leoncio Prado",
+            "districts": [
+              "Rupa-rupa",
+              "Daniel Alomias Robles",
+              "Hermilio Valdizan",
+              "Jose Crespo Y Castillo",
+              "Luyando",
+              "Mariano Damaso Beraun",
+              "Pucayacu",
+              "Castillo Grande",
+              "Pueblo Nuevo",
+              "Santo Domingo De Anda"
+            ]
+          },
+          {
+            "name": "Marañon",
+            "districts": [
+              "Huacrachuco",
+              "Cholon",
+              "San Buenaventura",
+              "La Morada",
+              "Santa Rosa De Alto Yanajanca"
+            ]
+          },
+          {
+            "name": "Pachitea",
+            "districts": [
+              "Panao",
+              "Chaglla",
+              "Molino",
+              "Umari"
+            ]
+          },
+          {
+            "name": "Puerto Inca",
+            "districts": [
+              "Puerto Inca",
+              "Codo Del Pozuzo",
+              "Honoria",
+              "Tournavista",
+              "Yuyapichis"
+            ]
+          },
+          {
+            "name": "Lauricocha",
+            "districts": [
+              "Jesus",
+              "Baños",
+              "Jivia",
+              "Queropalca",
+              "Rondos",
+              "San Francisco De Asis",
+              "San Miguel De Cauri"
+            ]
+          },
+          {
+            "name": "Yarowilca",
+            "districts": [
+              "Chavinillo",
+              "Cahuac",
+              "Chacabamba",
+              "Aparicio Pomares",
+              "Jacas Chico",
+              "Obas",
+              "Pampamarca",
+              "Choras"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Ica",
+        "provinces": [
+          {
+            "name": "Ica",
+            "districts": [
+              "Ica",
+              "La Tinguiña",
+              "Los Aquijes",
+              "Ocucaje",
+              "Pachacutec",
+              "Parcona",
+              "Pueblo Nuevo",
+              "Salas",
+              "San Jose De Los Molinos",
+              "San Juan Bautista",
+              "Santiago",
+              "Subtanjalla",
+              "Tate",
+              "Yauca Del Rosario"
+            ]
+          },
+          {
+            "name": "Chincha",
+            "districts": [
+              "Chincha Alta",
+              "Alto Laran",
+              "Chavin",
+              "Chincha Baja",
+              "El Carmen",
+              "Grocio Prado",
+              "Pueblo Nuevo",
+              "San Juan De Yanac",
+              "San Pedro De Huacarpana",
+              "Sunampe",
+              "Tambo De Mora"
+            ]
+          },
+          {
+            "name": "Nazca",
+            "districts": [
+              "Nazca",
+              "Changuillo",
+              "El Ingenio",
+              "Marcona",
+              "Vista Alegre"
+            ]
+          },
+          {
+            "name": "Palpa",
+            "districts": [
+              "Palpa",
+              "Llipata",
+              "Rio Grande",
+              "Santa Cruz",
+              "Tibillo"
+            ]
+          },
+          {
+            "name": "Pisco",
+            "districts": [
+              "Pisco",
+              "Huancano",
+              "Humay",
+              "Independencia",
+              "Paracas",
+              "San Andres",
+              "San Clemente",
+              "Tupac Amaru Inca"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Junin",
+        "provinces": [
+          {
+            "name": "Huancayo",
+            "districts": [
+              "Huancayo",
+              "Carhuacallanga",
+              "Chacapampa",
+              "Chicche",
+              "Chilca",
+              "Chongos Alto",
+              "Chupuro",
+              "Colca",
+              "Cullhuas",
+              "El Tambo",
+              "Huacrapuquio",
+              "Hualhuas",
+              "Huancan",
+              "Huasicancha",
+              "Huayucachi",
+              "Ingenio",
+              "Pariahuanca",
+              "Pilcomayo",
+              "Pucara",
+              "Quichuay",
+              "Quilcas",
+              "San Agustin",
+              "San Jeronimo De Tunan",
+              "Saño",
+              "Sapallanga",
+              "Sicaya",
+              "Santo Domingo De Acobamba",
+              "Viques"
+            ]
+          },
+          {
+            "name": "Concepcion",
+            "districts": [
+              "Concepcion",
+              "Aco",
+              "Andamarca",
+              "Chambara",
+              "Cochas",
+              "Comas",
+              "Heroinas Toledo",
+              "Manzanares",
+              "Mariscal Castilla",
+              "Matahuasi",
+              "Mito",
+              "Nueve De Julio",
+              "Orcotuna",
+              "San Jose De Quero",
+              "Santa Rosa De Ocopa"
+            ]
+          },
+          {
+            "name": "Chanchamayo",
+            "districts": [
+              "Chanchamayo",
+              "Perene",
+              "Pichanaqui",
+              "San Luis De Shuaro",
+              "San Ramon",
+              "Vitoc"
+            ]
+          },
+          {
+            "name": "Jauja",
+            "districts": [
+              "Jauja",
+              "Acolla",
+              "Apata",
+              "Ataura",
+              "Canchayllo",
+              "Curicaca",
+              "El Mantaro",
+              "Huamali",
+              "Huaripampa",
+              "Huertas",
+              "Janjaillo",
+              "Julcan",
+              "Leonor Ordoñez",
+              "Llocllapampa",
+              "Marco",
+              "Masma",
+              "Masma Chicche",
+              "Molinos",
+              "Monobamba",
+              "Muqui",
+              "Muquiyauyo",
+              "Paca",
+              "Paccha",
+              "Pancan",
+              "Parco",
+              "Pomacancha",
+              "Ricran",
+              "San Lorenzo",
+              "San Pedro De Chunan",
+              "Sausa",
+              "Sincos",
+              "Tunan Marca",
+              "Yauli",
+              "Yauyos"
+            ]
+          },
+          {
+            "name": "Junin",
+            "districts": [
+              "Junin",
+              "Carhuamayo",
+              "Ondores",
+              "Ulcumayo"
+            ]
+          },
+          {
+            "name": "Satipo",
+            "districts": [
+              "Satipo",
+              "Coviriali",
+              "Llaylla",
+              "Mazamari",
+              "Pampa Hermosa",
+              "Pangoa",
+              "Rio Negro",
+              "Rio Tambo",
+              "Vizcatan Del Ene"
+            ]
+          },
+          {
+            "name": "Tarma",
+            "districts": [
+              "Tarma",
+              "Acobamba",
+              "Huaricolca",
+              "Huasahuasi",
+              "La Union",
+              "Palca",
+              "Palcamayo",
+              "San Pedro De Cajas",
+              "Tapo"
+            ]
+          },
+          {
+            "name": "Yauli",
+            "districts": [
+              "La Oroya",
+              "Chacapalpa",
+              "Huay-huay",
+              "Marcapomacocha",
+              "Morococha",
+              "Paccha",
+              "Santa Barbara De Carhuacayan",
+              "Santa Rosa De Sacco",
+              "Suitucancha",
+              "Yauli"
+            ]
+          },
+          {
+            "name": "Chupaca",
+            "districts": [
+              "Chupaca",
+              "Ahuac",
+              "Chongos Bajo",
+              "Huachac",
+              "Huamancaca Chico",
+              "San Juan De Yscos",
+              "San Juan De Jarpa",
+              "Tres De Diciembre",
+              "Yanacancha"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "La Libertad",
+        "provinces": [
+          {
+            "name": "Trujillo",
+            "districts": [
+              "Trujillo",
+              "El Porvenir",
+              "Florencia De Mora",
+              "Huanchaco",
+              "La Esperanza",
+              "Laredo",
+              "Moche",
+              "Poroto",
+              "Salaverry",
+              "Simbal",
+              "Victor Larco Herrera"
+            ]
+          },
+          {
+            "name": "Ascope",
+            "districts": [
+              "Ascope",
+              "Chicama",
+              "Chocope",
+              "Magdalena De Cao",
+              "Paijan",
+              "Razuri",
+              "Santiago De Cao",
+              "Casa Grande"
+            ]
+          },
+          {
+            "name": "Bolivar",
+            "districts": [
+              "Bolivar",
+              "Bambamarca",
+              "Condormarca",
+              "Longotea",
+              "Uchumarca",
+              "Ucuncha"
+            ]
+          },
+          {
+            "name": "Chepen",
+            "districts": [
+              "Chepen",
+              "Pacanga",
+              "Pueblo Nuevo"
+            ]
+          },
+          {
+            "name": "Julcan",
+            "districts": [
+              "Julcan",
+              "Calamarca",
+              "Carabamba",
+              "Huaso"
+            ]
+          },
+          {
+            "name": "Otuzco",
+            "districts": [
+              "Otuzco",
+              "Agallpampa",
+              "Charat",
+              "Huaranchal",
+              "La Cuesta",
+              "Mache",
+              "Paranday",
+              "Salpo",
+              "Sinsicap",
+              "Usquil"
+            ]
+          },
+          {
+            "name": "Pacasmayo",
+            "districts": [
+              "San Pedro De Lloc",
+              "Guadalupe",
+              "Jequetepeque",
+              "Pacasmayo",
+              "San Jose"
+            ]
+          },
+          {
+            "name": "Pataz",
+            "districts": [
+              "Tayabamba",
+              "Buldibuyo",
+              "Chillia",
+              "Huancaspata",
+              "Huaylillas",
+              "Huayo",
+              "Ongon",
+              "Parcoy",
+              "Pataz",
+              "Pias",
+              "Santiago De Challas",
+              "Taurija",
+              "Urpay"
+            ]
+          },
+          {
+            "name": "Sanchez Carrion",
+            "districts": [
+              "Huamachuco",
+              "Chugay",
+              "Cochorco",
+              "Curgos",
+              "Marcabal",
+              "Sanagoran",
+              "Sarin",
+              "Sartimbamba"
+            ]
+          },
+          {
+            "name": "Santiago De Chuco",
+            "districts": [
+              "Santiago De Chuco",
+              "Angasmarca",
+              "Cachicadan",
+              "Mollebamba",
+              "Mollepata",
+              "Quiruvilca",
+              "Santa Cruz De Chuca",
+              "Sitabamba"
+            ]
+          },
+          {
+            "name": "Gran Chimu",
+            "districts": [
+              "Cascas",
+              "Lucma",
+              "Marmot",
+              "Sayapullo"
+            ]
+          },
+          {
+            "name": "Viru",
+            "districts": [
+              "Viru",
+              "Chao",
+              "Guadalupito"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Lambayeque",
+        "provinces": [
+          {
+            "name": "Chiclayo",
+            "districts": [
+              "Chiclayo",
+              "Chongoyape",
+              "Eten",
+              "Eten Puerto",
+              "Jose Leonardo Ortiz",
+              "La Victoria",
+              "Lagunas",
+              "Monsefu",
+              "Nueva Arica",
+              "Oyotun",
+              "Picsi",
+              "Pimentel",
+              "Reque",
+              "Santa Rosa",
+              "Saña",
+              "Cayalti",
+              "Patapo",
+              "Pomalca",
+              "Pucala",
+              "Tuman"
+            ]
+          },
+          {
+            "name": "Ferreñafe",
+            "districts": [
+              "Ferreñafe",
+              "Cañaris",
+              "Incahuasi",
+              "Manuel Antonio Mesones Muro",
+              "Pitipo",
+              "Pueblo Nuevo"
+            ]
+          },
+          {
+            "name": "Lambayeque",
+            "districts": [
+              "Lambayeque",
+              "Chochope",
+              "Illimo",
+              "Jayanca",
+              "Mochumi",
+              "Morrope",
+              "Motupe",
+              "Olmos",
+              "Pacora",
+              "Salas",
+              "San Jose",
+              "Tucume"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Lima",
+        "provinces": [
+          {
+            "name": "Lima",
+            "districts": [
+              "Lima",
+              "Ancon",
+              "Ate",
+              "Barranco",
+              "Breña",
+              "Carabayllo",
+              "Chaclacayo",
+              "Chorrillos",
+              "Cieneguilla",
+              "Comas",
+              "El Agustino",
+              "Independencia",
+              "Jesus Maria",
+              "La Molina",
+              "La Victoria",
+              "Lince",
+              "Los Olivos",
+              "Lurigancho",
+              "Lurin",
+              "Magdalena Del Mar",
+              "Pueblo Libre",
+              "Miraflores",
+              "Pachacamac",
+              "Pucusana",
+              "Puente Piedra",
+              "Punta Hermosa",
+              "Punta Negra",
+              "Rimac",
+              "San Bartolo",
+              "San Borja",
+              "San Isidro",
+              "San Juan De Lurigancho",
+              "San Juan De Miraflores",
+              "San Luis",
+              "San Martin De Porres",
+              "San Miguel",
+              "Santa Anita",
+              "Santa Maria Del Mar",
+              "Santa Rosa",
+              "Santiago De Surco",
+              "Surquillo",
+              "Villa El Salvador",
+              "Villa Maria Del Triunfo",
+              "Santa Maria De Huachipa"
+            ]
+          },
+          {
+            "name": "Barranca",
+            "districts": [
+              "Barranca",
+              "Paramonga",
+              "Pativilca",
+              "Supe",
+              "Supe Puerto"
+            ]
+          },
+          {
+            "name": "Cajatambo",
+            "districts": [
+              "Cajatambo",
+              "Copa",
+              "Gorgor",
+              "Huancapon",
+              "Manas"
+            ]
+          },
+          {
+            "name": "Canta",
+            "districts": [
+              "Canta",
+              "Arahuay",
+              "Huamantanga",
+              "Huaros",
+              "Lachaqui",
+              "San Buenaventura",
+              "Santa Rosa De Quives"
+            ]
+          },
+          {
+            "name": "Cañete",
+            "districts": [
+              "San Vicente De Cañete",
+              "Asia",
+              "Calango",
+              "Cerro Azul",
+              "Chilca",
+              "Coayllo",
+              "Imperial",
+              "Lunahuana",
+              "Mala",
+              "Nuevo Imperial",
+              "Pacaran",
+              "Quilmana",
+              "San Antonio",
+              "San Luis",
+              "Santa Cruz De Flores",
+              "Zuñiga"
+            ]
+          },
+          {
+            "name": "Huaral",
+            "districts": [
+              "Huaral",
+              "Atavillos Alto",
+              "Atavillos Bajo",
+              "Aucallama",
+              "Chancay",
+              "Ihuari",
+              "Lampian",
+              "Pacaraos",
+              "San Miguel De Acos",
+              "Santa Cruz De Andamarca",
+              "Sumbilca",
+              "Veintisiete De Noviembre"
+            ]
+          },
+          {
+            "name": "Huarochiri",
+            "districts": [
+              "Matucana",
+              "Antioquia",
+              "Callahuanca",
+              "Carampoma",
+              "Chicla",
+              "Cuenca",
+              "Huachupampa",
+              "Huanza",
+              "Huarochiri",
+              "Lahuaytambo",
+              "Langa",
+              "Laraos",
+              "Mariatana",
+              "Ricardo Palma",
+              "San Andres De Tupicocha",
+              "San Antonio",
+              "San Bartolome",
+              "San Damian",
+              "San Juan De Iris",
+              "San Juan De Tantaranche",
+              "San Lorenzo De Quinti",
+              "San Mateo",
+              "San Mateo De Otao",
+              "San Pedro De Casta",
+              "San Pedro De Huancayre",
+              "Sangallaya",
+              "Santa Cruz De Cocachacra",
+              "Santa Eulalia",
+              "Santiago De Anchucaya",
+              "Santiago De Tuna",
+              "Santo Domingo De Los Olleros",
+              "Surco"
+            ]
+          },
+          {
+            "name": "Huaura",
+            "districts": [
+              "Huacho",
+              "Ambar",
+              "Caleta De Carquin",
+              "Checras",
+              "Hualmay",
+              "Huaura",
+              "Leoncio Prado",
+              "Paccho",
+              "Santa Leonor",
+              "Santa Maria",
+              "Sayan",
+              "Vegueta"
+            ]
+          },
+          {
+            "name": "Oyon",
+            "districts": [
+              "Oyon",
+              "Andajes",
+              "Caujul",
+              "Cochamarca",
+              "Navan",
+              "Pachangara"
+            ]
+          },
+          {
+            "name": "Yauyos",
+            "districts": [
+              "Yauyos",
+              "Alis",
+              "Ayauca",
+              "Ayaviri",
+              "Azangaro",
+              "Cacra",
+              "Carania",
+              "Catahuasi",
+              "Chocos",
+              "Cochas",
+              "Colonia",
+              "Hongos",
+              "Huampara",
+              "Huancaya",
+              "Huangascar",
+              "Huantan",
+              "Huañec",
+              "Laraos",
+              "Lincha",
+              "Madean",
+              "Miraflores",
+              "Omas",
+              "Putinza",
+              "Quinches",
+              "Quinocay",
+              "San Joaquin",
+              "San Pedro De Pilas",
+              "Tanta",
+              "Tauripampa",
+              "Tomas",
+              "Tupe",
+              "Viñac",
+              "Vitis"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Loreto",
+        "provinces": [
+          {
+            "name": "Maynas",
+            "districts": [
+              "Iquitos",
+              "Alto Nanay",
+              "Fernando Lores",
+              "Indiana",
+              "Las Amazonas",
+              "Mazan",
+              "Napo",
+              "Punchana",
+              "Putumayo",
+              "Torres Causana",
+              "Belen",
+              "San Juan Bautista",
+              "Teniente Manuel Clavero"
+            ]
+          },
+          {
+            "name": "Alto Amazonas",
+            "districts": [
+              "Yurimaguas",
+              "Balsapuerto",
+              "Jeberos",
+              "Lagunas",
+              "Santa Cruz",
+              "Teniente Cesar Lopez Rojas"
+            ]
+          },
+          {
+            "name": "Loreto",
+            "districts": [
+              "Nauta",
+              "Parinari",
+              "Tigre",
+              "Trompeteros",
+              "Urarinas"
+            ]
+          },
+          {
+            "name": "Mariscal Ramon Castilla",
+            "districts": [
+              "Ramon Castilla",
+              "Pebas",
+              "Yavari",
+              "San Pablo"
+            ]
+          },
+          {
+            "name": "Requena",
+            "districts": [
+              "Requena",
+              "Alto Tapiche",
+              "Capelo",
+              "Emilio San Martin",
+              "Maquia",
+              "Puinahua",
+              "Saquena",
+              "Soplin",
+              "Tapiche",
+              "Jenaro Herrera",
+              "Yaquerana"
+            ]
+          },
+          {
+            "name": "Ucayali",
+            "districts": [
+              "Contamana",
+              "Inahuaya",
+              "Padre Marquez",
+              "Pampa Hermosa",
+              "Sarayacu",
+              "Vargas Guerra"
+            ]
+          },
+          {
+            "name": "Datem Del Marañon",
+            "districts": [
+              "Barranca",
+              "Cahuapanas",
+              "Manseriche",
+              "Morona",
+              "Pastaza",
+              "Andoas"
+            ]
+          },
+          {
+            "name": "Putumayo",
+            "districts": [
+              "Putumayo",
+              "Rosa Panduro",
+              "Teniente Manuel Clavero",
+              "Yaguas"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Madre De Dios",
+        "provinces": [
+          {
+            "name": "Tambopata",
+            "districts": [
+              "Tambopata",
+              "Inambari",
+              "Las Piedras",
+              "Laberinto"
+            ]
+          },
+          {
+            "name": "Manu",
+            "districts": [
+              "Manu",
+              "Fitzcarrald",
+              "Madre De Dios",
+              "Huepetuhe"
+            ]
+          },
+          {
+            "name": "Tahuamanu",
+            "districts": [
+              "Iñapari",
+              "Iberia",
+              "Tahuamanu"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Moquegua",
+        "provinces": [
+          {
+            "name": "Mariscal Nieto",
+            "districts": [
+              "Moquegua",
+              "Carumas",
+              "Cuchumbaya",
+              "Samegua",
+              "San Cristobal",
+              "Torata"
+            ]
+          },
+          {
+            "name": "General Sanchez Cerro",
+            "districts": [
+              "Omate",
+              "Chojata",
+              "Coalaque",
+              "Ichuña",
+              "La Capilla",
+              "Lloque",
+              "Matalaque",
+              "Puquina",
+              "Quinistaquillas",
+              "Ubinas",
+              "Yunga"
+            ]
+          },
+          {
+            "name": "Ilo",
+            "districts": [
+              "Ilo",
+              "El Algarrobal",
+              "Pacocha"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Pasco",
+        "provinces": [
+          {
+            "name": "Pasco",
+            "districts": [
+              "Chaupimarca",
+              "Huachon",
+              "Huariaca",
+              "Huayllay",
+              "Ninacaca",
+              "Pallanchacra",
+              "Paucartambo",
+              "San Francisco De Asis De Yarusyacan",
+              "Simon Bolivar",
+              "Ticlacayan",
+              "Tinyahuarco",
+              "Vicco",
+              "Yanacancha"
+            ]
+          },
+          {
+            "name": "Daniel Alcides Carrion",
+            "districts": [
+              "Yanahuanca",
+              "Chacayan",
+              "Goyllarisquizga",
+              "Paucar",
+              "San Pedro De Pillao",
+              "Santa Ana De Tusi",
+              "Tapuc",
+              "Vilcabamba"
+            ]
+          },
+          {
+            "name": "Oxapampa",
+            "districts": [
+              "Oxapampa",
+              "Chontabamba",
+              "Huancabamba",
+              "Palcazu",
+              "Pozuzo",
+              "Puerto Bermudez",
+              "Villa Rica",
+              "Constitucion"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Piura",
+        "provinces": [
+          {
+            "name": "Piura",
+            "districts": [
+              "Piura",
+              "Castilla",
+              "Catacaos",
+              "Cura Mori",
+              "El Tallan",
+              "La Arena",
+              "La Union",
+              "Las Lomas",
+              "Tambo Grande",
+              "Veintiseis De Octubre"
+            ]
+          },
+          {
+            "name": "Ayabaca",
+            "districts": [
+              "Ayabaca",
+              "Frias",
+              "Jilili",
+              "Lagunas",
+              "Montero",
+              "Pacaipampa",
+              "Paimas",
+              "Sapillica",
+              "Sicchez",
+              "Suyo"
+            ]
+          },
+          {
+            "name": "Huancabamba",
+            "districts": [
+              "Huancabamba",
+              "Canchaque",
+              "El Carmen De La Frontera",
+              "Huarmaca",
+              "Lalaquiz",
+              "San Miguel De El Faique",
+              "Sondor",
+              "Sondorillo"
+            ]
+          },
+          {
+            "name": "Morropon",
+            "districts": [
+              "Chulucanas",
+              "Buenos Aires",
+              "Chalaco",
+              "La Matanza",
+              "Morropon",
+              "Salitral",
+              "San Juan De Bigote",
+              "Santa Catalina De Mossa",
+              "Santo Domingo",
+              "Yamango"
+            ]
+          },
+          {
+            "name": "Paita",
+            "districts": [
+              "Paita",
+              "Amotape",
+              "Arenal",
+              "Colan",
+              "La Huaca",
+              "Tamarindo",
+              "Vichayal"
+            ]
+          },
+          {
+            "name": "Sullana",
+            "districts": [
+              "Sullana",
+              "Bellavista",
+              "Ignacio Escudero",
+              "Lancones",
+              "Marcavelica",
+              "Miguel Checa",
+              "Querecotillo",
+              "Salitral"
+            ]
+          },
+          {
+            "name": "Talara",
+            "districts": [
+              "Pariñas",
+              "El Alto",
+              "La Brea",
+              "Lobitos",
+              "Los Organos",
+              "Mancora"
+            ]
+          },
+          {
+            "name": "Sechura",
+            "districts": [
+              "Sechura",
+              "Bellavista De La Union",
+              "Bernal",
+              "Cristo Nos Valga",
+              "Vice",
+              "Rinconada Llicuar"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Puno",
+        "provinces": [
+          {
+            "name": "Puno",
+            "districts": [
+              "Puno",
+              "Acora",
+              "Amantani",
+              "Atuncolla",
+              "Capachica",
+              "Chucuito",
+              "Coata",
+              "Huata",
+              "Mañazo",
+              "Paucarcolla",
+              "Pichacani",
+              "Plateria",
+              "San Antonio",
+              "Tiquillaca",
+              "Vilque"
+            ]
+          },
+          {
+            "name": "Azangaro",
+            "districts": [
+              "Azangaro",
+              "Achaya",
+              "Arapa",
+              "Asillo",
+              "Caminaca",
+              "Chupa",
+              "Jose Domingo Choquehuanca",
+              "Muñani",
+              "Potoni",
+              "Saman",
+              "San Anton",
+              "San Jose",
+              "San Juan De Salinas",
+              "Santiago De Pupuja",
+              "Tirapata"
+            ]
+          },
+          {
+            "name": "Carabaya",
+            "districts": [
+              "Macusani",
+              "Ajoyani",
+              "Ayapata",
+              "Coasa",
+              "Corani",
+              "Crucero",
+              "Ituata",
+              "Ollachea",
+              "San Gaban",
+              "Usicayos"
+            ]
+          },
+          {
+            "name": "Chucuito",
+            "districts": [
+              "Juli",
+              "Desaguadero",
+              "Huacullani",
+              "Kelluyo",
+              "Pisacoma",
+              "Pomata",
+              "Zepita"
+            ]
+          },
+          {
+            "name": "El Collao",
+            "districts": [
+              "Ilave",
+              "Capazo",
+              "Pilcuyo",
+              "Santa Rosa",
+              "Conduriri"
+            ]
+          },
+          {
+            "name": "Huancane",
+            "districts": [
+              "Huancane",
+              "Cojata",
+              "Huatasani",
+              "Inchupalla",
+              "Pusi",
+              "Rosaspata",
+              "Taraco",
+              "Vilque Chico"
+            ]
+          },
+          {
+            "name": "Lampa",
+            "districts": [
+              "Lampa",
+              "Cabanilla",
+              "Calapuja",
+              "Nicasio",
+              "Ocuviri",
+              "Palca",
+              "Paratia",
+              "Pucara",
+              "Santa Lucia",
+              "Vilavila"
+            ]
+          },
+          {
+            "name": "Melgar",
+            "districts": [
+              "Ayaviri",
+              "Antauta",
+              "Cupi",
+              "Llalli",
+              "Macari",
+              "Nuñoa",
+              "Orurillo",
+              "Santa Rosa",
+              "Umachiri"
+            ]
+          },
+          {
+            "name": "Moho",
+            "districts": [
+              "Moho",
+              "Conima",
+              "Huayrapata",
+              "Tilali"
+            ]
+          },
+          {
+            "name": "San Antonio De Putina",
+            "districts": [
+              "Putina",
+              "Ananea",
+              "Pedro Vilca Apaza",
+              "Quilcapuncu",
+              "Sina"
+            ]
+          },
+          {
+            "name": "San Roman",
+            "districts": [
+              "Juliaca",
+              "Cabana",
+              "Cabanillas",
+              "Caracoto",
+              "San Miguel"
+            ]
+          },
+          {
+            "name": "Sandia",
+            "districts": [
+              "Sandia",
+              "Cuyocuyo",
+              "Limbani",
+              "Patambuco",
+              "Phara",
+              "Quiaca",
+              "San Juan Del Oro",
+              "Yanahuaya",
+              "Alto Inambari",
+              "San Pedro De Putina Punco"
+            ]
+          },
+          {
+            "name": "Yunguyo",
+            "districts": [
+              "Yunguyo",
+              "Anapia",
+              "Copani",
+              "Cuturapi",
+              "Ollaraya",
+              "Tinicachi",
+              "Unicachi"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "San Martin",
+        "provinces": [
+          {
+            "name": "Moyobamba",
+            "districts": [
+              "Moyobamba",
+              "Calzada",
+              "Habana",
+              "Jepelacio",
+              "Soritor",
+              "Yantalo"
+            ]
+          },
+          {
+            "name": "Bellavista",
+            "districts": [
+              "Bellavista",
+              "Alto Biavo",
+              "Bajo Biavo",
+              "Huallaga",
+              "San Pablo",
+              "San Rafael"
+            ]
+          },
+          {
+            "name": "El Dorado",
+            "districts": [
+              "San Jose De Sisa",
+              "Agua Blanca",
+              "San Martin",
+              "Santa Rosa",
+              "Shatoja"
+            ]
+          },
+          {
+            "name": "Huallaga",
+            "districts": [
+              "Saposoa",
+              "Alto Saposoa",
+              "El Eslabon",
+              "Piscoyacu",
+              "Sacanche",
+              "Tingo De Saposoa"
+            ]
+          },
+          {
+            "name": "Lamas",
+            "districts": [
+              "Lamas",
+              "Alonso De Alvarado",
+              "Barranquita",
+              "Caynarachi",
+              "Cuñumbuqui",
+              "Pinto Recodo",
+              "Rumisapa",
+              "San Roque De Cumbaza",
+              "Shanao",
+              "Tabalosos",
+              "Zapatero"
+            ]
+          },
+          {
+            "name": "Mariscal Caceres",
+            "districts": [
+              "Juanjui",
+              "Campanilla",
+              "Huicungo",
+              "Pachiza",
+              "Pajarillo"
+            ]
+          },
+          {
+            "name": "Picota",
+            "districts": [
+              "Picota",
+              "Buenos Aires",
+              "Caspisapa",
+              "Pilluana",
+              "Pucacaca",
+              "San Cristobal",
+              "San Hilarion",
+              "Shamboyacu",
+              "Tingo De Ponasa",
+              "Tres Unidos"
+            ]
+          },
+          {
+            "name": "Rioja",
+            "districts": [
+              "Rioja",
+              "Awajun",
+              "Elias Soplin Vargas",
+              "Nueva Cajamarca",
+              "Pardo Miguel",
+              "Posic",
+              "San Fernando",
+              "Yorongos",
+              "Yuracyacu"
+            ]
+          },
+          {
+            "name": "San Martin",
+            "districts": [
+              "Tarapoto",
+              "Alberto Leveau",
+              "Cacatachi",
+              "Chazuta",
+              "Chipurana",
+              "El Porvenir",
+              "Huimbayoc",
+              "Juan Guerra",
+              "La Banda De Shilcayo",
+              "Morales",
+              "Papaplaya",
+              "San Antonio",
+              "Sauce",
+              "Shapaja"
+            ]
+          },
+          {
+            "name": "Tocache",
+            "districts": [
+              "Tocache",
+              "Nuevo Progreso",
+              "Polvora",
+              "Shunte",
+              "Uchiza",
+              "Santa Lucia"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Tacna",
+        "provinces": [
+          {
+            "name": "Tacna",
+            "districts": [
+              "Tacna",
+              "Alto De La Alianza",
+              "Calana",
+              "Ciudad Nueva",
+              "Inclan",
+              "Pachia",
+              "Palca",
+              "Pocollay",
+              "Sama",
+              "Coronel Gregorio Albarracin Lanchipa",
+              "La Yarada Los Palos"
+            ]
+          },
+          {
+            "name": "Candarave",
+            "districts": [
+              "Candarave",
+              "Cairani",
+              "Camilaca",
+              "Curibaya",
+              "Huanuara",
+              "Quilahuani"
+            ]
+          },
+          {
+            "name": "Jorge Basadre",
+            "districts": [
+              "Locumba",
+              "Ilabaya",
+              "Ite"
+            ]
+          },
+          {
+            "name": "Tarata",
+            "districts": [
+              "Tarata",
+              "Heroes Albarracin Chucatamani",
+              "Estique",
+              "Estique-pampa",
+              "Sitajara",
+              "Susapaya",
+              "Tarucachi",
+              "Ticaco"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Tumbes",
+        "provinces": [
+          {
+            "name": "Tumbes",
+            "districts": [
+              "Tumbes",
+              "Corrales",
+              "La Cruz",
+              "Pampas De Hospital",
+              "San Jacinto",
+              "San Juan De La Virgen"
+            ]
+          },
+          {
+            "name": "Contralmirante Villar",
+            "districts": [
+              "Zorritos",
+              "Casitas",
+              "Canoas De Punta Sal"
+            ]
+          },
+          {
+            "name": "Zarumilla",
+            "districts": [
+              "Zarumilla",
+              "Aguas Verdes",
+              "Matapalo",
+              "Papayal"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Ucayali",
+        "provinces": [
+          {
+            "name": "Coronel Portillo",
+            "districts": [
+              "Calleria",
+              "Campoverde",
+              "Iparia",
+              "Masisea",
+              "Yarinacocha",
+              "Nueva Requena",
+              "Manantay"
+            ]
+          },
+          {
+            "name": "Atalaya",
+            "districts": [
+              "Raymondi",
+              "Sepahua",
+              "Tahuania",
+              "Yurua"
+            ]
+          },
+          {
+            "name": "Padre Abad",
+            "districts": [
+              "Padre Abad",
+              "Irazola",
+              "Curimana",
+              "Neshuya",
+              "Alexander Von Humboldt",
+              "Huipoca",
+              "Boqueron"
+            ]
+          },
+          {
+            "name": "Purus",
+            "districts": [
+              "Purus"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
