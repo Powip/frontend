@@ -246,7 +246,7 @@ export default function PaymentVerificationModal({
             )}
 
             {/* Lista de pagos aprobados */}
-            {orderData?.payments.filter((p) => p.status === "PAID").length! > 0 && (
+            {(orderData?.payments.filter((p) => p.status === "PAID").length ?? 0) > 0 && (
               <div className="border rounded-lg p-3">
                 <h4 className="font-medium text-sm mb-2">Pagos Aprobados</h4>
                 <div className="space-y-1">
