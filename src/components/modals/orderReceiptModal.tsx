@@ -52,7 +52,7 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
   const handlePrint = async () => {
     if (!receipt) return;
 
-    // Si el estado es PENDIENTE, cambiarlo según la región
+    // Si el estado es PENDIENTE, intentar cambiarlo según la región
     if (receipt.status === "PENDIENTE" && orderId) {
       const newStatus = receipt.salesRegion === "PROVINCIA" ? "EN_ENVIO" : "PREPARADO";
       try {
@@ -62,9 +62,15 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
         );
         toast.success(`Estado actualizado a ${newStatus}`);
         onStatusChange?.();
-      } catch (error) {
-        console.error("Error actualizando estado", error);
-        toast.error("No se pudo actualizar el estado");
+      } catch (error: any) {
+        const backendMessage = error?.response?.data?.message;
+        if (backendMessage) {
+          toast.error(backendMessage, { duration: 8000 });
+        } else {
+          toast.error("No se pudo actualizar el estado");
+        }
+        // No continuar con la impresión si falla el cambio de estado por stock
+        return;
       }
     }
 
@@ -172,11 +178,19 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
   };
 
   const handleWhatsapp = () => {
-    const message = `Hola ${receipt.customer.fullName}, acá tenés el resumen de tu compra N° ${receipt.orderNumber}.`;
+    if (!receipt) return;
+
+    const phone = receipt.customer.phoneNumber.replace(/\D/g, "");
+    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+
+    const message = `Hola ${receipt.customer.fullName}, tu pedido N° ${receipt.orderNumber} se está procesando. A la brevedad se te enviará el comprobante de venta por este medio.`;
+
+    toast.info("Abriendo WhatsApp. Recuerda descargar el comprobante y adjuntarlo en el chat.", {
+      duration: 5000,
+    });
+
     window.open(
-      `https://wa.me/${receipt.customer.phoneNumber}?text=${encodeURIComponent(
-        message
-      )}`,
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
       "_blank"
     );
   };

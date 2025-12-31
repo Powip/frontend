@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Plus, Pencil, Trash2, FileText, ArrowRight, Printer } from "lucide-react";
+import { Plus, Pencil, Trash2, FileText, ArrowRight, Printer, AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +24,12 @@ import OrderReceiptModal from "@/components/modals/orderReceiptModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
+import { SalesTableFilters, SalesFilters, emptySalesFilters, applyFilters } from "@/components/ventas/SalesTableFilters";
+import { Copy, MessageSquare } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import CancellationModal, { CancellationReason } from "@/components/modals/CancellationModal";
+import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
+import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 
 /* -----------------------------------------
    Types
@@ -62,6 +68,7 @@ export interface Sale {
   address: string;
   advancePayment: number;
   pendingPayment: number;
+  hasStockIssue?: boolean;
 }
 
 /* -----------------------------------------
@@ -92,6 +99,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     address: order.customer.address ?? "",
     advancePayment,
     pendingPayment,
+    hasStockIssue: order.hasStockIssue ?? false,
   };
 }
 
@@ -105,16 +113,22 @@ export default function VentasPage() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
 
-  const [regionFilterPendiente, setRegionFilterPendiente] = useState<
-    "" | "LIMA" | "PROVINCIA"
-  >("");
-  const [regionFilterAnulado, setRegionFilterAnulado] = useState<
-    "" | "LIMA" | "PROVINCIA"
-  >("");
+  // Filtros avanzados
+  const [filtersPendiente, setFiltersPendiente] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersAnulado, setFiltersAnulado] = useState<SalesFilters>(emptySalesFilters);
 
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
     new Set()
   );
+
+  // Estado para modal de cancelación
+  const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
+  const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+
+  // Estado para modal de comentarios
+  const [commentsModalOpen, setCommentsModalOpen] = useState(false);
+  const [selectedSaleForComments, setSelectedSaleForComments] = useState<Sale | null>(null);
 
   const { selectedStoreId } = useAuth();
   const router = useRouter();
@@ -130,17 +144,57 @@ export default function VentasPage() {
     }
   }
 
-  const handleChangeStatus = async (saleId: string, newStatus: OrderStatus) => {
+  const handleChangeStatus = async (saleId: string, newStatus: OrderStatus, cancellationReason?: CancellationReason) => {
+    // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
+    if (newStatus === "ANULADO" && !cancellationReason) {
+      const sale = sales.find((s) => s.id === saleId);
+      if (sale) {
+        setSaleToCancel(sale);
+        setCancellationModalOpen(true);
+      }
+      return;
+    }
+
     try {
+      const payload: { status: OrderStatus; cancellationReason?: string } = { status: newStatus };
+      if (cancellationReason) {
+        payload.cancellationReason = cancellationReason;
+      }
+      
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
-        { status: newStatus }
+        payload
       );
       toast.success(`Estado actualizado a ${newStatus}`);
       fetchOrders();
     } catch (error) {
       console.error("Error actualizando estado", error);
       toast.error("No se pudo actualizar el estado");
+    }
+  };
+
+  const handleConfirmCancellation = async (reason: CancellationReason, notes?: string) => {
+    if (!saleToCancel) return;
+    
+    setIsCancelling(true);
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
+        {
+          status: "ANULADO",
+          cancellationReason: reason,
+          notes: notes,
+        }
+      );
+      toast.success(`Venta ${saleToCancel.orderNumber} anulada`);
+      setCancellationModalOpen(false);
+      setSaleToCancel(null);
+      fetchOrders();
+    } catch (error) {
+      console.error("Error anulando venta", error);
+      toast.error("No se pudo anular la venta");
+    } finally {
+      setIsCancelling(false);
     }
   };
 
@@ -339,6 +393,116 @@ Estado: ${sale.status}
     }
   };
 
+  // Impresión masiva genérica (sin cambiar estado)
+  const handleBulkPrintForStatus = async (salesList: Sale[], statusLabel: string) => {
+    const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
+    
+    if (selectedSales.length === 0) {
+      toast.warning("No hay pedidos seleccionados para imprimir");
+      return;
+    }
+
+    setIsPrinting(true);
+    toast.info(`Preparando ${selectedSales.length} recibo(s) para imprimir...`);
+
+    try {
+      const receipts = await Promise.all(
+        selectedSales.map(async (sale) => {
+          const res = await axios.get(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`
+          );
+          return { ...res.data, salesRegion: sale.salesRegion, status: sale.status };
+        })
+      );
+
+      const printContent = receipts.map((receipt, index) => {
+        const totalPaid = receipt.payments?.reduce(
+          (acc: number, p: any) => acc + Number(p.amount || 0),
+          0
+        ) || 0;
+        const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
+
+        return `
+          <div style="page-break-after: ${index < receipts.length - 1 ? 'always' : 'auto'}; padding: 20px; font-family: Arial, sans-serif;">
+            <div style="background: ${receipt.salesRegion === 'PROVINCIA' ? '#7c3aed' : '#dc2626'}; color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+              <strong>${receipt.salesRegion} - ${receipt.status}</strong>
+            </div>
+            
+            <h2 style="margin: 0 0 8px 0;">Orden #${receipt.orderNumber}</h2>
+            <p style="font-size: 18px; font-weight: bold; margin: 0 0 16px 0;">Total: S/${receipt.totals.grandTotal}</p>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
+              <div><span style="color: #666;">Cliente:</span> ${receipt.customer.fullName}</div>
+              <div><span style="color: #666;">Distrito:</span> ${receipt.customer.district || '-'}</div>
+              <div><span style="color: #666;">Teléfono:</span> ${receipt.customer.phoneNumber}</div>
+              <div><span style="color: #666;">Dirección:</span> ${receipt.customer.address || '-'}</div>
+            </div>
+            
+            <h3 style="margin: 16px 0 8px 0;">Productos</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <thead>
+                <tr style="background: #f3f4f6;">
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Producto</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Cant.</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Precio</th>
+                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${receipt.items.map((item: any) => `
+                  <tr>
+                    <td style="border: 1px solid #ddd; padding: 8px;">${item.productName}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.quantity}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.unitPrice}</td>
+                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.subtotal}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            
+            <div style="margin-top: 16px; border-top: 2px solid #333; padding-top: 8px;">
+              <div style="display: flex; justify-content: space-between;"><span>Total:</span><strong>S/${receipt.totals.grandTotal}</strong></div>
+              <div style="display: flex; justify-content: space-between; color: #16a34a;"><span>Adelanto:</span><span>S/${totalPaid.toFixed(2)}</span></div>
+              <div style="display: flex; justify-content: space-between; color: #dc2626;"><span>Por Cobrar:</span><span>S/${pendingAmount.toFixed(2)}</span></div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+            <head>
+              <title>Impresión de Recibos</title>
+              <style>
+                @media print {
+                  body { margin: 0; }
+                }
+              </style>
+            </head>
+            <body>
+              ${printContent}
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        printWindow.print();
+        printWindow.close();
+      }
+
+      toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
+      setSelectedSaleIds(new Set());
+    } catch (error) {
+      console.error("Error en impresión masiva", error);
+      toast.error("Error al preparar los recibos para imprimir");
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   // Tabla para Pendientes (sin delete)
   const renderPendientesTable = (data: Sale[]) => (
     <Table>
@@ -386,7 +550,16 @@ Estado: ${sale.status}
                 onChange={() => toggleSale(sale.id)}
               />
             </TableCell>
-            <TableCell className="font-medium">{sale.orderNumber}</TableCell>
+            <TableCell className="font-medium">
+              <div className="flex items-center gap-1">
+                {sale.hasStockIssue && (
+                  <span title="Stock insuficiente - No se puede preparar">
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                  </span>
+                )}
+                {sale.orderNumber}
+              </div>
+            </TableCell>
             <TableCell>{sale.clientName}</TableCell>
             <TableCell>{sale.phoneNumber}</TableCell>
             <TableCell>{sale.date}</TableCell>
@@ -401,7 +574,7 @@ Estado: ${sale.status}
                 onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
                 className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
               >
-                {ALL_STATUSES.map((status) => (
+                {getAvailableStatuses(sale.status, sale.salesRegion).map((status) => (
                   <option key={status} value={status}>
                     {status}
                   </option>
@@ -423,13 +596,27 @@ Estado: ${sale.status}
               </Button>
             </TableCell>
             <TableCell className="text-right">
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
+              <div className="flex gap-1 justify-end">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedSaleForComments(sale);
+                    setCommentsModalOpen(true);
+                  }}
+                  title="Comentarios"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
+                  title="Editar"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         ))}
@@ -506,7 +693,7 @@ Estado: ${sale.status}
                 onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
                 className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
               >
-                {ALL_STATUSES.map((status) => (
+                {getAvailableStatuses(sale.status, sale.salesRegion).map((status) => (
                   <option key={status} value={status}>
                     {status}
                   </option>
@@ -561,23 +748,19 @@ Estado: ${sale.status}
   ----------------------------------------- */
 
   const pendientes = useMemo(
-    () =>
-      sales.filter(
-        (s) =>
-          s.status === ORDER_STATUS.PENDIENTE &&
-          (regionFilterPendiente === "" || s.salesRegion === regionFilterPendiente)
-      ),
-    [sales, regionFilterPendiente]
+    () => {
+      const statusFiltered = sales.filter((s) => s.status === ORDER_STATUS.PENDIENTE);
+      return applyFilters(statusFiltered, filtersPendiente);
+    },
+    [sales, filtersPendiente]
   );
 
   const anulados = useMemo(
-    () =>
-      sales.filter(
-        (s) =>
-          s.status === ORDER_STATUS.ANULADO &&
-          (regionFilterAnulado === "" || s.salesRegion === regionFilterAnulado)
-      ),
-    [sales, regionFilterAnulado]
+    () => {
+      const statusFiltered = sales.filter((s) => s.status === ORDER_STATUS.ANULADO);
+      return applyFilters(statusFiltered, filtersAnulado);
+    },
+    [sales, filtersAnulado]
   );
 
   const selectedPendientesCount = pendientes.filter((s) => selectedSaleIds.has(s.id)).length;
@@ -607,86 +790,101 @@ Estado: ${sale.status}
           </Link>
         </div>
 
-        {/* Card Pendientes */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Ventas Pendientes</CardTitle>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                disabled={selectedPendientesCount === 0 || isPrinting}
-                onClick={handleBulkPrint}
-              >
-                <Printer className="h-4 w-4 mr-2" />
-                {isPrinting ? "Procesando..." : `Imprimir seleccionados (${selectedPendientesCount})`}
-              </Button>
-              <Button
-                variant="outline"
-                disabled={selectedSaleIds.size === 0}
-                onClick={() => handleCopySelected("PENDIENTE")}
-              >
-                Copiar seleccionados ({selectedPendientesCount})
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-4 flex items-center gap-2">
-              <Label>Filtrar por región:</Label>
-              <select
-                className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
-                value={regionFilterPendiente}
-                onChange={(e) =>
-                  setRegionFilterPendiente(e.target.value as "" | "LIMA" | "PROVINCIA")
-                }
-              >
-                <option value="">Todas</option>
-                <option value="LIMA">Lima</option>
-                <option value="PROVINCIA">Provincia</option>
-              </select>
-            </div>
-            {renderPendientesTable(pendientes)}
-          </CardContent>
-          <Pagination
-            currentPage={1}
-            totalPages={Math.ceil(pendientes.length / 10) || 1}
-            totalItems={pendientes.length}
-            itemsPerPage={10}
-            onPageChange={() => {}}
-            itemName="ventas"
-          />
-        </Card>
+        {/* Tabs para Ventas */}
+        <Tabs defaultValue="pendientes" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="pendientes">
+              Ventas Pendientes ({pendientes.length})
+            </TabsTrigger>
+            <TabsTrigger value="anuladas">
+              Ventas Anuladas ({anulados.length})
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Card Anuladas */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Ventas Anuladas</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="mb-4 flex items-center gap-2">
-              <Label>Filtrar por región:</Label>
-              <select
-                className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
-                value={regionFilterAnulado}
-                onChange={(e) =>
-                  setRegionFilterAnulado(e.target.value as "" | "LIMA" | "PROVINCIA")
-                }
-              >
-                <option value="">Todas</option>
-                <option value="LIMA">Lima</option>
-                <option value="PROVINCIA">Provincia</option>
-              </select>
-            </div>
-            {renderAnuladosTable(anulados)}
-          </CardContent>
-          <Pagination
-            currentPage={1}
-            totalPages={Math.ceil(anulados.length / 10) || 1}
-            totalItems={anulados.length}
-            itemsPerPage={10}
-            onPageChange={() => {}}
-            itemName="ventas"
-          />
-        </Card>
+          {/* Tab Pendientes */}
+          <TabsContent value="pendientes">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Ventas Pendientes</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={selectedPendientesCount === 0 || isPrinting}
+                    onClick={handleBulkPrint}
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    {isPrinting ? "Procesando..." : `Imprimir seleccionados (${selectedPendientesCount})`}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={selectedPendientesCount === 0}
+                    onClick={() => handleCopySelected("PENDIENTE")}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({selectedPendientesCount})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersPendiente}
+                  onFiltersChange={setFiltersPendiente}
+                />
+                {renderPendientesTable(pendientes)}
+              </CardContent>
+              <Pagination
+                currentPage={1}
+                totalPages={Math.ceil(pendientes.length / 10) || 1}
+                totalItems={pendientes.length}
+                itemsPerPage={10}
+                onPageChange={() => {}}
+                itemName="ventas"
+              />
+            </Card>
+          </TabsContent>
+
+          {/* Tab Anuladas */}
+          <TabsContent value="anuladas">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Ventas Anuladas</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={anulados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    onClick={() => handleBulkPrintForStatus(anulados, "ANULADO")}
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir seleccionados ({anulados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={anulados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    onClick={() => handleCopySelected("ANULADO")}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({anulados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersAnulado}
+                  onFiltersChange={setFiltersAnulado}
+                />
+                {renderAnuladosTable(anulados)}
+              </CardContent>
+              <Pagination
+                currentPage={1}
+                totalPages={Math.ceil(anulados.length / 10) || 1}
+                totalItems={anulados.length}
+                itemsPerPage={10}
+                onPageChange={() => {}}
+                itemName="ventas"
+              />
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
 
       <OrderReceiptModal
@@ -694,6 +892,27 @@ Estado: ${sale.status}
         orderId={selectedOrderId || ""}
         onClose={() => setReceiptOpen(false)}
         onStatusChange={fetchOrders}
+      />
+
+      <CancellationModal
+        open={cancellationModalOpen}
+        onClose={() => {
+          setCancellationModalOpen(false);
+          setSaleToCancel(null);
+        }}
+        orderNumber={saleToCancel?.orderNumber || ""}
+        onConfirm={handleConfirmCancellation}
+        isLoading={isCancelling}
+      />
+
+      <CommentsTimelineModal
+        open={commentsModalOpen}
+        onClose={() => {
+          setCommentsModalOpen(false);
+          setSelectedSaleForComments(null);
+        }}
+        orderId={selectedSaleForComments?.id || ""}
+        orderNumber={selectedSaleForComments?.orderNumber || ""}
       />
     </div>
   );

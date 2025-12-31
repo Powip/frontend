@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { FrontPlan } from "@/app/subscriptions/page";
 import {
   Dialog,
@@ -7,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
-import { Check } from "lucide-react";
+import { Check, Loader2 } from "lucide-react";
 import { Button } from "../ui/button";
 import { useRouter } from "next/navigation";
 import axios from "axios";
@@ -26,9 +27,13 @@ export default function SubscriptionModal({
   userId,
 }: Props) {
   const router = useRouter();
+  const [isLoading, setIsLoading] = useState(false);
+
   if (!plan) return null;
+
   const handleRedirect = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
+    setIsLoading(true);
     try {
       const body = {
         userId,
@@ -49,8 +54,11 @@ export default function SubscriptionModal({
         toast.error(error.response.data.error);
         router.push("/new-company");
       }
+    } finally {
+      setIsLoading(false);
     }
   };
+
   return (
     <Dialog open={open} onOpenChange={() => onClose()}>
       <DialogContent className="sm:max-w-md">
@@ -87,8 +95,16 @@ export default function SubscriptionModal({
             className="w-full"
             size="lg"
             onClick={(e) => handleRedirect(e)}
+            disabled={isLoading}
           >
-            Pagar con Mercado Pago
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Procesando...
+              </>
+            ) : (
+              "Pagar con Mercado Pago"
+            )}
           </Button>
         </div>
       </DialogContent>

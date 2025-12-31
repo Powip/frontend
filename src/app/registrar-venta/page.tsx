@@ -15,8 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
-import { createClient, fetchClientByPhone } from "@/services/clients.service";
+import { createClient, fetchClientByPhone, updateClient } from "@/services/clients.service";
 import { useAuth } from "@/contexts/AuthContext";
 import { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
@@ -29,6 +30,7 @@ import { toast } from "sonner";
 import OrderReceiptModal from "@/components/modals/orderReceiptModal";
 import { useSearchParams } from "next/navigation";
 import { Checkbox } from "@/components/ui/checkbox";
+import ubigeos from "@/utils/json/ubigeos.json";
 
 type ClientSearchState = "idle" | "found" | "not_found";
 
@@ -38,8 +40,8 @@ const emptyClientForm = {
   documentType: undefined as DocumentType | undefined,
   documentNumber: "",
   clientType: "TRADICIONAL" as ClientType,
+  department: "",
   province: "",
-  city: "",
   district: "",
   address: "",
   reference: "",
@@ -77,7 +79,7 @@ function RegistrarVentaContent() {
     closingChannel: undefined as SalesChannel | undefined,
     deliveryType: undefined as DeliveryType | undefined,
     entregaEn: undefined as "DOMICILIO" | "SUCURSAL" | undefined,
-    enviaPor: undefined as "REPARTIDOR" | "CORREO" | undefined,
+    enviaPor: undefined as string | undefined,
     notes: "",
   });
   const [salesRegion, setSalesRegion] = useState<"LIMA" | "PROVINCIA">("LIMA");
@@ -140,8 +142,8 @@ function RegistrarVentaContent() {
       documentType: cust.documentType,
       documentNumber: cust.documentNumber ?? "",
       clientType: cust.clientType,
+      department: cust.city ?? "",
       province: cust.province ?? "",
-      city: cust.city ?? "",
       district: cust.district ?? "",
       address: cust.address ?? "",
       reference: cust.reference ?? "",
@@ -156,11 +158,14 @@ function RegistrarVentaContent() {
       deliveryType: orderData.deliveryType as DeliveryType,
       entregaEn:
         orderData.deliveryType === "RETIRO_TIENDA" ? "SUCURSAL" : "DOMICILIO",
-      enviaPor: orderData.courierId ? "REPARTIDOR" : undefined,
+      enviaPor: orderData.courier ?? undefined,
       notes: orderData.notes ?? "",
     });
 
     setSalesRegion(orderData.salesRegion);
+
+    // --- Costo de envío ---
+    setShippingTotal(Number(orderData.shippingTotal) || 0);
 
     // --- Productos ---
     const mappedCart: CartItem[] = orderData.items.map((item) => ({
@@ -192,8 +197,8 @@ function RegistrarVentaContent() {
         documentType: clientFound.documentType,
         documentNumber: clientFound.documentNumber ?? "",
         clientType: clientFound.clientType,
+        department: clientFound.city ?? "",
         province: clientFound.province ?? "",
-        city: clientFound.city ?? "",
         district: clientFound.district ?? "",
         address: clientFound.address ?? "",
         reference: clientFound.reference ?? "",
@@ -295,7 +300,7 @@ function RegistrarVentaContent() {
           : undefined,
         clientType: clientForm.clientType,
         province: clientForm.province,
-        city: clientForm.city,
+        city: clientForm.department,
         district: clientForm.district,
         address: clientForm.address,
         reference: clientForm.reference || undefined,
@@ -332,6 +337,7 @@ function RegistrarVentaContent() {
 
       // --- Envío ---
       shippingTotal: shippingTotal ?? 0,
+      courier: orderDetails.enviaPor ?? null,
 
       // --- Notas ---
       notes: orderDetails.notes ?? null,
@@ -452,34 +458,9 @@ function RegistrarVentaContent() {
     setCart((prev) => prev.filter((item) => item.id !== cartItemId));
   };
 
-  const updateQuantity = (cartItemId: string, newQuantity: number) => {
+  const handleUpdateQuantity = (cartItemId: string, newQuantity: number) => {
     setCart((prev) => {
       if (newQuantity < 1) return prev;
-
-      const item = prev.find((p) => p.id === cartItemId);
-      if (!item) return prev;
-
-      const productStock =
-        products.find(
-          (p) =>
-            p.inventoryItemId === item.inventoryItemId &&
-            p.variantId === item.variantId
-        )?.availableStock ?? Infinity;
-
-      const usedStock =
-        prev
-          .filter(
-            (p) =>
-              p.inventoryItemId === item.inventoryItemId &&
-              p.variantId === item.variantId &&
-              p.id !== cartItemId
-          )
-          .reduce((acc, p) => acc + p.quantity, 0) + newQuantity;
-
-      if (usedStock > productStock) {
-        toast.error("Cantidad supera el stock disponible");
-        return prev;
-      }
 
       return prev.map((p) =>
         p.id === cartItemId ? { ...p, quantity: newQuantity } : p
@@ -487,12 +468,39 @@ function RegistrarVentaContent() {
     });
   };
 
-  const handleUpdateClient = () => {};
+  const handleUpdateClient = async () => {
+    if (!clientFound?.id || !auth?.company?.id) return;
+
+    try {
+      const updated = await updateClient(clientFound.id, {
+        companyId: auth.company.id,
+        fullName: clientForm.fullName,
+        phoneNumber: clientForm.phoneNumber,
+        documentType: clientForm.documentType,
+        documentNumber: clientForm.documentType
+          ? clientForm.documentNumber
+          : undefined,
+        clientType: clientForm.clientType,
+        province: clientForm.province,
+        city: clientForm.department, // Mapear department a city
+        district: clientForm.district,
+        address: clientForm.address,
+        reference: clientForm.reference || undefined,
+      } as any);
+
+      setClientFound(updated);
+      setOriginalClient(updated);
+      toast.success("Cliente actualizado");
+    } catch (error) {
+      console.error(error);
+      toast.error("Error al actualizar cliente");
+    }
+  };
 
   /* ---------------- Totales ---------------- */
   const subtotal = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
   const discount = subtotal * 0.1;
-  const taxes = subtotal * 0.21; // esta preparado para IVA(arg) no igv(peru)
+  const taxes = subtotal * 0.18; // IGV Perú (18%)
 
   const grandTotal = subtotal + taxes + shippingTotal - discountTotal;
 
@@ -689,37 +697,81 @@ function RegistrarVentaContent() {
               <div className="space-y-2">
                 <Label>Dirección</Label>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
+                <div className="grid grid-cols-3 gap-2">
+                  <Select
                     disabled={!formEnabled}
-                    placeholder="Provincia"
+                    value={clientForm.department}
+                    onValueChange={(value) =>
+                      setClientForm({
+                        ...clientForm,
+                        department: value,
+                        province: "",
+                        district: "",
+                      })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Departamento" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ubigeos[0].departments.map((d) => (
+                        <SelectItem key={d.name} value={d.name}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    disabled={!formEnabled || !clientForm.department}
                     value={clientForm.province}
-                    onChange={(e) =>
-                      setClientForm({ ...clientForm, province: e.target.value })
+                    onValueChange={(value) =>
+                      setClientForm({
+                        ...clientForm,
+                        province: value,
+                        district: "",
+                      })
                     }
-                  />
-                  <Input
-                    disabled={!formEnabled}
-                    placeholder="Ciudad"
-                    value={clientForm.city}
-                    onChange={(e) =>
-                      setClientForm({ ...clientForm, city: e.target.value })
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Provincia" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(ubigeos[0].departments.find((d) => d.name === clientForm.department)?.provinces || []).map((p) => (
+                        <SelectItem key={p.name} value={p.name}>
+                          {p.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <Select
+                    disabled={!formEnabled || !clientForm.province}
+                    value={clientForm.district}
+                    onValueChange={(value) =>
+                      setClientForm({ ...clientForm, district: value })
                     }
-                  />
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Distrito" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(ubigeos[0].departments
+                        .find((d) => d.name === clientForm.department)
+                        ?.provinces.find((p) => p.name === clientForm.province)
+                        ?.districts || []
+                      ).map((dist) => (
+                        <SelectItem key={dist} value={dist}>
+                          {dist}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <Input
                   disabled={!formEnabled}
-                  placeholder="Barrio / Distrito"
-                  value={clientForm.district}
-                  onChange={(e) =>
-                    setClientForm({ ...clientForm, district: e.target.value })
-                  }
-                />
-
-                <Input
-                  disabled={!formEnabled}
-                  placeholder="Dirección"
+                  placeholder="Dirección exacta"
                   value={clientForm.address}
                   onChange={(e) =>
                     setClientForm({ ...clientForm, address: e.target.value })
@@ -838,8 +890,15 @@ function RegistrarVentaContent() {
                 key={`${p.inventoryItemId}-${p.price}`}
                 className="flex justify-between items-center border rounded-md p-3"
               >
-                <div>
-                  <p className="font-medium">{p.productName}</p>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{p.productName}</p>
+                    {p.availableStock <= 0 && (
+                      <Badge variant="destructive" className="text-xs">
+                        Sin stock - Venta bajo pedido
+                      </Badge>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">
                     SKU: {p.sku} • Stock: {p.availableStock}
                   </p>
@@ -858,23 +917,14 @@ function RegistrarVentaContent() {
                   )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex items-center gap-3">
+                  <p className="font-semibold text-lg">${p.price}</p>
                   <Button
-                    size="sm"
-                    disabled={p.availableStock <= 0}
                     onClick={() => addToCart(p)}
-                  >
-                    <Plus className="h-4 w-4 mr-1" />
-                    Agregar
-                  </Button>
-
-                  <Button
                     size="sm"
-                    variant="outline"
-                    disabled={p.availableStock <= 0}
-                    onClick={() => addAsSeparateItem(p)}
+                    disabled={cart.some((c) => c.variantId === p.variantId)}
                   >
-                    Ítem separado
+                    <Plus className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
@@ -930,7 +980,7 @@ function RegistrarVentaContent() {
                             onChange={(e) => {
                               const val = e.target.value;
                               if (val === "" || /^\d+$/.test(val)) {
-                                updateQuantity(item.id, val === "" ? 0 : Number(val));
+                                handleUpdateQuantity(item.id, val === "" ? 0 : Number(val));
                               }
                             }}
                           />
@@ -1147,10 +1197,14 @@ function RegistrarVentaContent() {
                     <SelectValue placeholder="Seleccionar método de envío" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="REPARTIDOR_INTERNO">
-                      Repartidor interno
+                    <SelectItem value="MOTORIZADO_PROPIO">
+                      Motorizado Propio
                     </SelectItem>
-                    <SelectItem value="CORREO">Correo</SelectItem>
+                    <SelectItem value="SHALOM">Shalom</SelectItem>
+                    <SelectItem value="OLVA_COURIER">Olva Courier</SelectItem>
+                    <SelectItem value="MARVISUR">Marvisur</SelectItem>
+                    <SelectItem value="FLORES">Flores</SelectItem>
+                    <SelectItem value="OTROS">Otros</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1217,15 +1271,14 @@ function RegistrarVentaContent() {
             <div className="space-y-1">
               <Label>Monto de Pago</Label>
               <Input
-                type="text"
-                inputMode="decimal"
+                type="number"
+                step="0.01"
+                min="0"
                 disabled={orderId !== null}
                 value={advancePayment === 0 ? "" : advancePayment}
                 onChange={(e) => {
                   const val = e.target.value;
-                  if (val === "" || /^\d*\.?\d*$/.test(val)) {
-                    setAdvancePayment(val === "" ? 0 : Number(val));
-                  }
+                  setAdvancePayment(val === "" ? 0 : Number(val));
                 }}
               />
             </div>

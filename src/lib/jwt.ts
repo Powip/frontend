@@ -4,6 +4,7 @@ export interface DecodedToken {
   role: string;
   id: string;
   email: string;
+  companyId?: string;
   exp: number;
   iat: number;
 }

@@ -14,6 +14,7 @@ import { Button } from "../ui/button";
 import { toast } from "sonner";
 import { createClient, updateClient } from "@/api/clientes/route";
 import { useAuth } from "@/contexts/AuthContext";
+import ubigeos from "@/utils/json/ubigeos.json";
 
 interface Props {
   cliente: Client | null;
@@ -25,8 +26,8 @@ type ClientFormState = {
   fullName: string;
   phoneNumber: string;
   clientType: "TRADICIONAL" | "MAYORISTA";
+  department: string;
   province: string;
-  city: string;
   district: string;
   address: string;
   reference?: string;
@@ -39,8 +40,8 @@ const empty: ClientFormState = {
   fullName: "",
   phoneNumber: "",
   clientType: "TRADICIONAL",
+  department: "",
   province: "",
-  city: "",
   district: "",
   address: "",
   reference: "",
@@ -56,8 +57,8 @@ export default function ClienteForm({ cliente, onClienteSaved }: Props) {
       fullName: c.fullName ?? "",
       phoneNumber: c.phoneNumber ?? "",
       clientType: c.clientType,
+      department: c.city ?? "",
       province: c.province ?? "",
-      city: c.city ?? "",
       district: c.district ?? "",
       address: c.address ?? "",
       reference: c.reference ?? "",
@@ -80,7 +81,7 @@ export default function ClienteForm({ cliente, onClienteSaved }: Props) {
     state.fullName.trim() &&
     state.clientType &&
     state.province.trim() &&
-    state.city.trim() &&
+    state.department.trim() &&
     state.district.trim() &&
     state.address.trim();
 
@@ -97,14 +98,16 @@ export default function ClienteForm({ cliente, onClienteSaved }: Props) {
       if (state.id) {
         await updateClient(state.id, {
           ...state,
+          city: state.department, // Mapear department a city para el backend
           id: state.id,
-        });
+        } as any);
         toast.success("Cliente actualizado correctamente");
       } else {
         const res = await createClient({
           ...state,
+          city: state.department, // Mapear department a city para el backend
           companyId: auth!.company!.id,
-        });
+        } as any);
         console.log(res);
 
         toast.success("Cliente creado correctamente");
@@ -141,7 +144,7 @@ export default function ClienteForm({ cliente, onClienteSaved }: Props) {
           id="phonenumber"
           value={state.phoneNumber}
           onChange={(e) => setState({ ...state, phoneNumber: e.target.value })}
-          placeholder="Ej: 2615555555"
+          placeholder="912345678"
         />
       </div>
 
@@ -167,41 +170,92 @@ export default function ClienteForm({ cliente, onClienteSaved }: Props) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="province">Provincia</Label>
-        <Input
-          id="province"
+        <Label>Departamento</Label>
+        <Select
+          value={state.department}
+          onValueChange={(val) =>
+            setState({
+              ...state,
+              department: val,
+              province: "",
+              district: "",
+            })
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Seleccionar departamento" />
+          </SelectTrigger>
+          <SelectContent>
+            {ubigeos[0].departments.map((d) => (
+              <SelectItem key={d.name} value={d.name}>
+                {d.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex flex-col gap-1.5">
+        <Label>Provincia</Label>
+        <Select
+          disabled={!state.department}
           value={state.province}
-          onChange={(e) => setState({ ...state, province: e.target.value })}
-          required
-        />
+          onValueChange={(val) =>
+            setState({
+              ...state,
+              province: val,
+              district: "",
+            })
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Seleccionar provincia" />
+          </SelectTrigger>
+          <SelectContent>
+            {(
+              ubigeos[0].departments.find((d) => d.name === state.department)
+                ?.provinces || []
+            ).map((p) => (
+              <SelectItem key={p.name} value={p.name}>
+                {p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="city">Ciudad</Label>
-        <Input
-          id="city"
-          value={state.city}
-          onChange={(e) => setState({ ...state, city: e.target.value })}
-          required
-        />
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="district">Distrito</Label>
-        <Input
-          id="district"
+        <Label>Distrito</Label>
+        <Select
+          disabled={!state.province}
           value={state.district}
-          onChange={(e) => setState({ ...state, district: e.target.value })}
-          required
-        />
+          onValueChange={(val) => setState({ ...state, district: val })}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Seleccionar distrito" />
+          </SelectTrigger>
+          <SelectContent>
+            {(
+              ubigeos[0].departments
+                .find((d) => d.name === state.department)
+                ?.provinces.find((p) => p.name === state.province)?.districts ||
+              []
+            ).map((dist) => (
+              <SelectItem key={dist} value={dist}>
+                {dist}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="address">Dirección</Label>
+        <Label htmlFor="address">Dirección exacta</Label>
         <Input
           id="address"
           value={state.address}
           onChange={(e) => setState({ ...state, address: e.target.value })}
+          placeholder="Av. Las Magnolias 123"
           required
         />
       </div>

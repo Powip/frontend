@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface Category {
   id: string;
@@ -28,6 +29,19 @@ interface CreateProductBase {
   categoryId: string;
   subcategoryId: string;
   inventory_id: string;
+  supplierId: string;
+  brandId: string;
+}
+
+interface Supplier {
+  id: string;
+  name: string;
+}
+
+interface Brand {
+  id: string;
+  name: string;
+  supplier: { id: string };
 }
 
 interface DefaultAttribute {
@@ -73,10 +87,15 @@ export default function ProductCreateForm() {
     categoryId: "",
     subcategoryId: "",
     inventory_id: "",
+    supplierId: "",
+    brandId: "",
   });
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [filteredBrands, setFilteredBrands] = useState<Brand[]>([]);
   const [defaultAttributes, setDefaultAttributes] = useState<
     DefaultAttribute[]
   >([]);
@@ -92,6 +111,14 @@ export default function ProductCreateForm() {
   const [variants, setVariants] = useState<VariantForm[]>([]);
   const [message, setMessage] = useState("");
 
+  // Quick create modals
+  const [supplierModalOpen, setSupplierModalOpen] = useState(false);
+  const [brandModalOpen, setBrandModalOpen] = useState(false);
+  const [quickSupplierName, setQuickSupplierName] = useState("");
+  const [quickBrandName, setQuickBrandName] = useState("");
+  const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
+  const [isCreatingBrand, setIsCreatingBrand] = useState(false);
+
   // =========================
   // Cargar categorías
   // =========================
@@ -100,6 +127,18 @@ export default function ProductCreateForm() {
       .get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/categories`)
       .then((res) => setCategories(res.data))
       .catch((err) => console.error("Error al cargar categorías", err));
+
+    // Cargar proveedores
+    axios
+      .get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers`)
+      .then((res) => setSuppliers(res.data))
+      .catch((err) => console.error("Error al cargar proveedores", err));
+
+    // Cargar marcas
+    axios
+      .get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`)
+      .then((res) => setBrands(res.data))
+      .catch((err) => console.error("Error al cargar marcas", err));
   }, []);
 
   // Auto-seleccionar inventario si solo hay uno
@@ -159,6 +198,26 @@ export default function ProductCreateForm() {
       })
       .catch((err) => console.error("Error cargando atributos default", err));
   }, [form.subcategoryId]);
+
+  // Filtrar marcas cuando cambia el proveedor
+  useEffect(() => {
+    if (form.supplierId) {
+      const filtered = brands.filter(
+        (brand) => brand.supplier.id === form.supplierId
+      );
+      setFilteredBrands(filtered);
+      // Resetear marca si ya no pertenece al proveedor seleccionado
+      if (form.brandId) {
+        const brandBelongsToSupplier = filtered.some(b => b.id === form.brandId);
+        if (!brandBelongsToSupplier) {
+          setForm(prev => ({ ...prev, brandId: "" }));
+        }
+      }
+    } else {
+      setFilteredBrands([]);
+      setForm(prev => ({ ...prev, brandId: "" }));
+    }
+  }, [form.supplierId, brands]);
 
   // =========================
   // Manejo inputs base
@@ -287,6 +346,87 @@ export default function ProductCreateForm() {
     );
   };
 
+  // =========================
+  // Quick create Supplier/Brand
+  // =========================
+  const handleQuickCreateSupplier = async () => {
+    if (!quickSupplierName.trim()) {
+      toast.error("El nombre del proveedor es requerido");
+      return;
+    }
+
+    setIsCreatingSupplier(true);
+    try {
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers`,
+        { name: quickSupplierName.trim() }
+      );
+      
+      toast.success("Proveedor creado exitosamente");
+      
+      // Recargar proveedores
+      const suppliersRes = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers`
+      );
+      setSuppliers(suppliersRes.data);
+      
+      // Seleccionar el nuevo proveedor
+      setForm(prev => ({ ...prev, supplierId: res.data.id }));
+      
+      // Cerrar modal y limpiar
+      setSupplierModalOpen(false);
+      setQuickSupplierName("");
+    } catch (error) {
+      console.error("Error creating supplier", error);
+      toast.error("Error al crear proveedor");
+    } finally {
+      setIsCreatingSupplier(false);
+    }
+  };
+
+  const handleQuickCreateBrand = async () => {
+    if (!quickBrandName.trim()) {
+      toast.error("El nombre de la marca es requerido");
+      return;
+    }
+
+    if (!form.supplierId) {
+      toast.error("Primero selecciona un proveedor");
+      return;
+    }
+
+    setIsCreatingBrand(true);
+    try {
+      const res = await axios.post(
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`,
+        {
+          name: quickBrandName.trim(),
+          supplierId: form.supplierId,
+        }
+      );
+      
+      toast.success("Marca creada exitosamente");
+      
+      // Recargar marcas
+      const brandsRes = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`
+      );
+      setBrands(brandsRes.data);
+      
+      // Seleccionar la nueva marca
+      setForm(prev => ({ ...prev, brandId: res.data.id }));
+      
+      // Cerrar modal y limpiar
+      setBrandModalOpen(false);
+      setQuickBrandName("");
+    } catch (error) {
+      console.error("Error creating brand", error);
+      toast.error("Error al crear marca");
+    } finally {
+      setIsCreatingBrand(false);
+    }
+  };
+
   const resetForm = () => {
     setForm({
       name: "",
@@ -294,6 +434,8 @@ export default function ProductCreateForm() {
       description: "",
       subcategoryId: "",
       inventory_id: "",
+      supplierId: "",
+      brandId: "",
     });
 
     setDefaultAttributes([]);
@@ -387,6 +529,8 @@ export default function ProductCreateForm() {
       companyId: auth?.company?.id,
       subcategoryId: form.subcategoryId,
       inventory_id: form.inventory_id,
+      supplierId: form.supplierId || null,
+      brandId: form.brandId || null,
       attributes: attributesPayload,
       variants: variantsPayload,
     };
@@ -464,6 +608,79 @@ export default function ProductCreateForm() {
                     </option>
                   ))}
                 </select>
+              </div>
+            </div>
+
+            {/* Row: Proveedor + Marca */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="supplierId">
+                  Proveedor <span className="text-muted-foreground text-xs">(opcional)</span>
+                </Label>
+                <div className="flex gap-2">
+                  <select
+                    id="supplierId"
+                    name="supplierId"
+                    value={form.supplierId}
+                    onChange={handleChange}
+                    className="flex-1 border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
+                  >
+                    <option value="">Seleccionar proveedor...</option>
+                    {suppliers.map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setSupplierModalOpen(true)}
+                    title="Crear nuevo proveedor"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="brandId">
+                  Marca <span className="text-muted-foreground text-xs">(opcional)</span>
+                </Label>
+                <div className="flex gap-2">
+                  <select
+                    id="brandId"
+                    name="brandId"
+                    value={form.brandId}
+                    onChange={handleChange}
+                    disabled={!form.supplierId}
+                    className="flex-1 border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600 disabled:bg-gray-200 dark:disabled:bg-gray-700"
+                  >
+                    {!form.supplierId ? (
+                      <option value="">Selecciona proveedor primero...</option>
+                    ) : (
+                      <>
+                        <option value="">Seleccionar marca...</option>
+                        {filteredBrands.map((brand) => (
+                          <option key={brand.id} value={brand.id}>
+                            {brand.name}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setBrandModalOpen(true)}
+                    disabled={!form.supplierId}
+                    title="Crear nueva marca"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </div>
 
@@ -553,6 +770,17 @@ export default function ProductCreateForm() {
               </div>
             )}
 
+            {/* Botón generar variantes */}
+            {(defaultAttributes.length > 0 || customAttributes.length > 0) && (
+              <Button
+                type="button"
+                onClick={handleGenerateVariants}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                Generar variantes
+              </Button>
+            )}
+
             {/* Custom attributes header */}
             <div className="flex items-center justify-between pt-2">
               <Label className="text-base">Atributos personalizados</Label>
@@ -575,6 +803,7 @@ export default function ProductCreateForm() {
                 </p>
               </div>
             )}
+            
 
             {customAttributes.length > 0 && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -617,16 +846,7 @@ export default function ProductCreateForm() {
               </div>
             )}
 
-            {/* Botón generar variantes */}
-            {(defaultAttributes.length > 0 || customAttributes.length > 0) && (
-              <Button
-                type="button"
-                onClick={handleGenerateVariants}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                Generar variantes
-              </Button>
-            )}
+            
 
             {/* Variantes generadas */}
             {variants.length > 0 && (
@@ -652,7 +872,7 @@ export default function ProductCreateForm() {
                     </div>
 
                     {/* Atributos de la variante */}
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-s text-muted-foreground">
                       {Object.entries(variant.attributes)
                         .map(([name, value]) => `${name}: ${value}`)
                         .join(" | ")}
@@ -704,7 +924,7 @@ export default function ProductCreateForm() {
                         />
                       </div>
 
-                      <div className="space-y-1">
+                     {/*  <div className="space-y-1">
                         <Label className="text-xs">Imagen (opcional)</Label>
                         <input
                           type="file"
@@ -717,7 +937,7 @@ export default function ProductCreateForm() {
                             {variant.imageFile.name}
                           </p>
                         )}
-                      </div>
+                      </div> */}
                     </div>
                   </div>
                 ))}
@@ -753,11 +973,101 @@ export default function ProductCreateForm() {
         </Button>
       </div>
 
-      {message && (
-        <p className="text-sm font-medium text-muted-foreground mt-3 text-center">
-          {message}
-        </p>
-      )}
+
+      {/* Modal: Crear Proveedor Rápido */}
+      <Dialog open={supplierModalOpen} onOpenChange={setSupplierModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Crear Proveedor</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="quick-supplier-name">Nombre del Proveedor *</Label>
+              <Input
+                id="quick-supplier-name"
+                value={quickSupplierName}
+                onChange={(e) => setQuickSupplierName(e.target.value)}
+                placeholder="Ej: Nike, Adidas..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleQuickCreateSupplier();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSupplierModalOpen(false);
+                setQuickSupplierName("");
+              }}
+              disabled={isCreatingSupplier}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleQuickCreateSupplier}
+              disabled={isCreatingSupplier}
+            >
+              {isCreatingSupplier ? "Creando..." : "Crear"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal: Crear Marca Rápida */}
+      <Dialog open={brandModalOpen} onOpenChange={setBrandModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Crear Marca</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Proveedor</Label>
+              <Input
+                value={
+                  suppliers.find((s) => s.id === form.supplierId)?.name || ""
+                }
+                disabled
+                className="bg-muted"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="quick-brand-name">Nombre de la Marca *</Label>
+              <Input
+                id="quick-brand-name"
+                value={quickBrandName}
+                onChange={(e) => setQuickBrandName(e.target.value)}
+                placeholder="Ej: Air Jordan, Ultraboost..."
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleQuickCreateBrand();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setBrandModalOpen(false);
+                setQuickBrandName("");
+              }}
+              disabled={isCreatingBrand}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleQuickCreateBrand} disabled={isCreatingBrand}>
+              {isCreatingBrand ? "Creando..." : "Crear"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </form>
   );
 }

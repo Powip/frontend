@@ -73,3 +73,34 @@ export async function createClient(payload: {
 
   return res.json();
 }
+
+export async function updateClient(
+  id: string,
+  payload: Partial<{
+    companyId: string;
+    fullName: string;
+    phoneNumber?: string;
+    documentType?: string;
+    documentNumber?: string;
+    clientType: "TRADICIONAL" | "MAYORISTA";
+    province: string;
+    city: string;
+    district: string;
+    address: string;
+    reference?: string;
+  }>
+) {
+  const res = await fetch(`${API_VENTAS}/clients/${id}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error("Error updating client");
+  }
+
+  return res.json();
+}

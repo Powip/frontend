@@ -77,6 +77,31 @@ export default function OrderReceiptView({ data }: Props) {
         {statusStyle.label}
       </div>
 
+      {/* Payment Warning Alert - Only shown when there's pending balance and not ANULADO */}
+      {pendingAmount > 0 && status !== "ANULADO" && (
+        <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 rounded-r-md">
+          <div className="flex items-start gap-3">
+            <span className="text-amber-500 text-xl">⚠️</span>
+            <div className="text-sm text-amber-800">
+              <p className="font-semibold mb-2">
+                Estimado cliente, por favor tenga en cuenta que el despacho está programado.
+                Es obligatorio realizar el pago del saldo pendiente antes de la entrega:
+              </p>
+              <p className="mb-2">
+                💰 <strong>PAGO:</strong> Yape o Plin al <strong>970334874</strong> o CTA BCP (Corporación Aranni SAC).
+              </p>
+              <p className="mb-2">
+                📩 <strong>CONFIRMACIÓN:</strong> Envía el comprobante por WhatsApp al <strong>960255616</strong>.
+              </p>
+              <p className="font-bold text-amber-900 mt-3">
+                ⚠️ IMPORTANTE: Sin la validación del pago, el motorizado o la empresa de transportes no está autorizado a entregar el paquete.
+              </p>
+              <p className="mt-2 text-amber-700">¡Gracias por su colaboración!</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Order Header */}
       <div className="mb-6">
         <h2 className="text-xl font-bold">No de Orden # {orderNumber}</h2>

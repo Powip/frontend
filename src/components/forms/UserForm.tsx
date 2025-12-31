@@ -159,7 +159,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
 
       if (error?.response?.data) {
         const data = error.response.data;
-        // Errores de validación de Spring
+        // Errores de validación de Spring (MethodArgumentNotValidException)
         if (data.errors && Array.isArray(data.errors)) {
           message = data.errors.map((e: any) => e.defaultMessage || e.message).join(". ");
         } else if (data.message) {
@@ -168,14 +168,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           message = data;
         }
       } else if (error?.message) {
-        // Detectar errores comunes
-        if (error.message.includes("password")) {
-          message = "La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número";
-        } else if (error.message.includes("email")) {
-          message = "El email ya está registrado";
-        } else {
-          message = error.message;
-        }
+        message = error.message;
       }
 
       toast.error(message);
@@ -255,6 +248,11 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
             required={!user}
           />
+          {!user && (
+            <p className="text-[10px] text-muted-foreground mt-1">
+              La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número.
+            </p>
+          )}
         </div>
       </div>
 
