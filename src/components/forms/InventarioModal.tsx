@@ -13,7 +13,7 @@ interface Props {
 export default function InventarioForm({ onClienteSaved }: Props) {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
-  const { auth } = useAuth();
+  const { auth, refreshInventories } = useAuth();
 
   const handleOnSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,6 +34,9 @@ export default function InventarioForm({ onClienteSaved }: Props) {
         store_id: auth?.company?.stores[0]?.id,
       });
 
+      // Refrescar inventarios en el contexto global
+      await refreshInventories();
+      toast.success("Inventario creado correctamente");
       onClienteSaved();
     } catch (err: any) {
       toast.error(err.message || "Error al guardar Inventario");
