@@ -9,7 +9,7 @@ import {
 } from "react";
 import { decodeToken, isExpired } from "@/lib/jwt";
 import { getCookie, setCookie, deleteCookie } from "cookies-next";
-import { fetchUserCompany } from "@/services/companyService";
+import { fetchUserCompany, fetchCompanyById } from "@/services/companyService";
 import { fetchUserSubscription } from "@/services/fetchUserSubscription";
 import axios from "axios";
 
@@ -128,7 +128,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       role: decoded.role,
     };
 
-    const company = await fetchUserCompany(decoded.id, accessToken);
+    let company = await fetchUserCompany(decoded.id, accessToken);
+    
+    // Si no es dueño de compañía, buscar por companyId en el token (usuarios staff)
+    if (!company && decoded.companyId) {
+      company = await fetchCompanyById(decoded.companyId, accessToken);
+    }
+
     const subscription = await fetchUserSubscription(decoded.id, accessToken);
 
     const defaultStore =

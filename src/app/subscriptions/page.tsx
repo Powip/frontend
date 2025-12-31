@@ -138,7 +138,7 @@ export default function SubscriptionsPage() {
             </p>
           </div>
           <Image
-            src="/powip-logo.jpeg"
+            src="/logo_icon.png"
             alt="Powip"
             width={48}
             height={48}

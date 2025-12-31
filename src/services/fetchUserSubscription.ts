@@ -24,7 +24,7 @@ export const fetchUserSubscription = async (userId: string, token: string) => {
       },
     };
   } catch (error) {
-    console.error("Error obteniendo suscripción:", error);
+    // Es normal que falle si el usuario no tiene suscripción personal (ej: personal operativos)
     return null;
   }
 };

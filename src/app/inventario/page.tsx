@@ -21,10 +21,11 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
-import { Download, Loader2, Search } from "lucide-react";
+import { Download, Loader2, Plus, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { Skeleton } from "@/components/ui/skeleton";
+import Link from "next/link";
 
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
@@ -332,7 +333,13 @@ export default function InventarioPage() {
 
       <Card>
         <CardContent className="p-6">
-          <div className="mb-6 flex justify-end">
+          <div className="mb-6 flex justify-end gap-2">
+            <Link href="/productos">
+              <Button variant="outline">
+                <Plus className="mr-2 h-4 w-4" />
+                Crear Producto
+              </Button>
+            </Link>
             <Button onClick={() => setOpen(true)}>Crear Inventario</Button>
           </div>
           {/* INVENTORY SELECT */}

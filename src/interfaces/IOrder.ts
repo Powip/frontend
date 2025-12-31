@@ -128,6 +128,7 @@ export interface OrderHeader {
   closingChannel: SalesChannel;
   deliveryType: DeliveryType;
   courierId: string | null;
+  courier: string | null;
   subtotal: string;
   taxTotal: string;
   shippingTotal: string;
@@ -139,6 +140,7 @@ export interface OrderHeader {
   notes: string | null;
   items: OrderItem[];
   payments: OrderPayment[];
+  hasStockIssue?: boolean;
   created_at: string;
   updated_at: string;
 }

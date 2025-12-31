@@ -75,25 +75,20 @@ export default function LoginForm() {
         return;
       }
 
-      // 1️⃣ Sin suscripción
-      if (!updatedAuth.subscription) {
+      // 1️⃣ Prioridad: Si ya tiene compañía, va al dashboard (independiente de suscripción personal - caso staff)
+      if (updatedAuth.company) {
+        router.push("/");
+        return;
+      }
+
+      // 2️⃣ Si NO tiene compañía, verificar suscripción para permitir crear una
+      if (!updatedAuth.subscription || updatedAuth.subscription.status !== "ACTIVE") {
         router.push("/subscriptions");
         return;
       }
 
-      if (updatedAuth.subscription.status !== "ACTIVE") {
-        router.push("/subscriptions");
-        return;
-      }
-
-      // 2️⃣ Sin company
-      if (!updatedAuth.company) {
-        router.push("/new-company");
-        return;
-      }
-
-      // 3️⃣ Todo OK
-      router.push("/");
+      // 3️⃣ Tiene suscripción pero no compañía -> Crear compañía
+      router.push("/new-company");
     } catch (error) {
       console.log(error);
       toast.error("El usuario y/o la contraseña son incorrectos");

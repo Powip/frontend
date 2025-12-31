@@ -56,24 +56,24 @@ export function Sidebar({ className }: SidebarProps) {
 
   const navigation: NavigationItem[] = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
-    { name: "Productos", href: "/productos", icon: Tags },
+    { name: "Crear Productos", href: "/productos", icon: Tags },
+    { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
     { name: "Inventario", href: "/inventario", icon: Package },
     { name: "Ventas", href: "/ventas", icon: ShoppingCart },
     { name: "Operaciones", href: "/operaciones", icon: Truck },
-    { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
+    { name: "Finanzas", href: "/finanzas", icon: DollarSign },
     { name: "Clientes", href: "/clientes", icon: Users },
     { name: "Proveedores", href: "/proveedores", icon: Building2 },
-    { name: "Repartidores", href: "/repartidores", icon: Truck },
+   /*  { name: "Repartidores", href: "/repartidores", icon: Truck }, */
     { name: "Usuarios", href: "/usuarios", icon: UserCog },
-    { name: "Finanzas", href: "/finanzas", icon: DollarSign },
-    { name: "Reportes", href: "/reportes", icon: BarChart },
-    {
+ /*    { name: "Reportes", href: "/reportes", icon: BarChart }, */
+ /*    {
       name: "Servicio al cliente",
       href: "/servicio-cliente",
       icon: Headphones,
-    },
+    }, */
     { name: "Configuración", href: "/configuracion", icon: Settings },
-    { name: "Auditoría", href: "/auditoria", icon: FileSearch },
+ /*    { name: "Auditoría", href: "/auditoria", icon: FileSearch }, */
   ];
 
   return (
