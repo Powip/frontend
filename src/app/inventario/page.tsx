@@ -21,14 +21,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
-import { Download, Loader2, Search } from "lucide-react";
+import { Download, Loader2, Search, Plus, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import InventarioModal from "@/components/modals/InventarioModal";
+import AddStockModal from "@/components/modals/AddStockModal";
+import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
 import { Pagination } from "@/components/ui/pagination";
 
 const ITEMS_PER_PAGE = 10;
@@ -113,6 +116,13 @@ export default function InventarioPage() {
   const stores = auth?.company?.stores || [];
   const currentStore =
     stores.find((s) => s.id === selectedStoreId) || stores[0];
+
+  const router = useRouter();
+
+  // Estados para modales de acciones
+  const [addStockOpen, setAddStockOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<ProductWithInventoryDetails | null>(null);
 
   // ------------------------------------------------------
   // 1) Seleccionar inventario automáticamente
@@ -407,7 +417,8 @@ export default function InventarioPage() {
                   <TableHead className="border-r">Variantes</TableHead>
                   <TableHead className="border-r">Stock</TableHead>
                   <TableHead className="border-r">Precio base</TableHead>
-                  <TableHead>Precio venta</TableHead>
+                  <TableHead className="border-r">Precio venta</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
 
@@ -422,12 +433,13 @@ export default function InventarioPage() {
                       <TableCell className="border-r"><Skeleton className="h-4 w-24" /></TableCell>
                       <TableCell className="border-r"><Skeleton className="h-4 w-12" /></TableCell>
                       <TableCell className="border-r"><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell className="border-r"><Skeleton className="h-4 w-16" /></TableCell>
+                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
                     </TableRow>
                   ))
                 ) : filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-6 text-muted-foreground">
+                    <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
                       No hay productos en este inventario
                     </TableCell>
                   </TableRow>
@@ -444,7 +456,41 @@ export default function InventarioPage() {
                       </TableCell>
                       <TableCell className="border-r">{prod.quantity}u</TableCell>
                       <TableCell className="border-r">${prod.priceBase}</TableCell>
-                      <TableCell>${prod.priceVta}</TableCell>
+                      <TableCell className="border-r">${prod.priceVta}</TableCell>
+                      <TableCell className="text-right space-x-1">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          title="Agregar Stock"
+                          onClick={() => {
+                            setSelectedItem(prod);
+                            setAddStockOpen(true);
+                          }}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          title="Editar Producto"
+                          onClick={() => {
+                            router.push(`/productos?edit=${prod.variantId}`);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="destructive"
+                          title="Eliminar"
+                          onClick={() => {
+                            setSelectedItem(prod);
+                            setDeleteOpen(true);
+                          }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}
@@ -452,7 +498,7 @@ export default function InventarioPage() {
             </Table>
           </div>
         </CardContent>
-        
+
         {/* Pagination */}
         {!(isLoading || isLoadingVariants) && (
           <Pagination
@@ -472,6 +518,40 @@ export default function InventarioPage() {
         }}
         onSaved={() => {
           setOpen(false);
+        }}
+      />
+
+      <AddStockModal
+        open={addStockOpen}
+        inventoryItemId={selectedItem?.inventoryItemId || null}
+        productName={selectedItem?.name || ""}
+        currentStock={selectedItem?.quantity || 0}
+        onClose={() => setAddStockOpen(false)}
+        onSuccess={() => {
+          // Recargar items del inventario
+          if (selectedInventoryId) {
+            axios.get(
+              `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`
+            ).then(res => setInventoryItems(res.data))
+              .catch(err => console.error(err));
+          }
+        }}
+      />
+
+      <DeleteInventoryItemModal
+        open={deleteOpen}
+        inventoryItemId={selectedItem?.inventoryItemId || null}
+        productName={selectedItem?.name || ""}
+        sku={selectedItem?.sku || ""}
+        onClose={() => setDeleteOpen(false)}
+        onSuccess={() => {
+          // Recargar items del inventario
+          if (selectedInventoryId) {
+            axios.get(
+              `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`
+            ).then(res => setInventoryItems(res.data))
+              .catch(err => console.error(err));
+          }
         }}
       />
     </div>
