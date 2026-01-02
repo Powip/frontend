@@ -14,7 +14,7 @@ import {
 import { User, Role } from "@/interfaces/IUser";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { createCompanyUser, getRoles, CreateCompanyUserRequest } from "@/services/userService";
+import { createCompanyUser, getRoles, CreateCompanyUserRequest, updateUser, UpdateUserRequest } from "@/services/userService";
 
 import ubigeos from "@/utils/json/ubigeos.json";
 
@@ -131,8 +131,22 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
 
     try {
       if (user) {
-        // TODO: Implementar actualización de usuario
-        toast.info("La edición de usuarios estará disponible próximamente");
+        // Actualizar usuario existente
+        const updateRequest: UpdateUserRequest = {
+          name: formData.name,
+          surname: formData.surname,
+          address: formData.address,
+          city: formData.department,
+          province: formData.province,
+          district: formData.district,
+          phoneNumber: formData.phoneNumber,
+          roleName: formData.roleName,
+          // Solo enviar password si se ingresó uno nuevo
+          ...(formData.password && { password: formData.password }),
+        };
+
+        await updateUser(user.id, updateRequest, auth.accessToken!);
+        toast.success("Usuario actualizado exitosamente");
       } else {
         // Crear nuevo usuario
         const request: CreateCompanyUserRequest = {

@@ -16,6 +16,7 @@ import {
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Table,
   TableBody,
@@ -52,6 +53,9 @@ interface Brand {
 }
 
 export default function ProveedoresPage() {
+  const { auth } = useAuth();
+  const companyId = auth?.company?.id;
+
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(
     new Set()
@@ -80,14 +84,17 @@ export default function ProveedoresPage() {
   });
 
   useEffect(() => {
-    fetchSuppliers();
-  }, []);
+    if (companyId) {
+      fetchSuppliers();
+    }
+  }, [companyId]);
 
   const fetchSuppliers = async () => {
+    if (!companyId) return;
     setIsLoading(true);
     try {
       const res = await axios.get<Supplier[]>(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers`
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers/company/${companyId}`
       );
       setSuppliers(res.data);
     } catch (error) {
@@ -141,7 +148,7 @@ export default function ProveedoresPage() {
       } else {
         await axios.post(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers`,
-          supplierForm
+          { ...supplierForm, companyId }
         );
         toast.success("Proveedor creado");
       }
