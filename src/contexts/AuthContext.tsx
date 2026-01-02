@@ -60,6 +60,7 @@ interface AuthContextType {
   selectedStoreId: string | null;
   setSelectedStore: (storeId: string) => void;
   inventories: Inventory[];
+  refreshInventories: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -94,20 +95,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ---- INVENTORIES ----
-  useEffect(() => {
+  const fetchInventories = async () => {
     if (!auth?.accessToken || !selectedStoreId) return;
 
-    const fetchInventories = async () => {
-      try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${selectedStoreId}`
-        );
-        setInventories(res.data);
-      } catch (err) {
-        console.error("Error loading inventories", err);
-      }
-    };
+    try {
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${selectedStoreId}`
+      );
+      setInventories(res.data);
+    } catch (err) {
+      console.error("Error loading inventories", err);
+    }
+  };
 
+  const refreshInventories = async () => {
+    await fetchInventories();
+  };
+
+  useEffect(() => {
     fetchInventories();
   }, [auth, selectedStoreId]);
 
@@ -202,6 +207,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         selectedStoreId,
         setSelectedStore,
         inventories,
+        refreshInventories,
         updateCompany,
       }}
     >
