@@ -90,6 +90,7 @@ function RegistrarVentaContent() {
   const [advancePayment, setAdvancePayment] = useState(0);
   const [hasDiscount, setHasDiscount] = useState(false);
   const [discountTotal, setDiscountTotal] = useState(0);
+  const [taxMode, setTaxMode] = useState<"AUTOMATICO" | "INCLUIDO">("AUTOMATICO");
 
   /* ---------------- Modal ---------------- */
 
@@ -339,6 +340,9 @@ function RegistrarVentaContent() {
       shippingTotal: shippingTotal ?? 0,
       courier: orderDetails.enviaPor ?? null,
 
+      // --- Modo de impuestos ---
+      taxMode: taxMode,
+
       // --- Notas ---
       notes: orderDetails.notes ?? null,
 
@@ -500,7 +504,8 @@ function RegistrarVentaContent() {
   /* ---------------- Totales ---------------- */
   const subtotal = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
   const discount = subtotal * 0.1;
-  const taxes = subtotal * 0.18; // IGV Perú (18%)
+  // Si INCLUIDO, los precios ya incluyen impuestos
+  const taxes = taxMode === "INCLUIDO" ? 0 : subtotal * 0.18;
 
   const grandTotal = subtotal + taxes + shippingTotal - discountTotal;
 
@@ -1239,12 +1244,13 @@ function RegistrarVentaContent() {
                   <SelectValue placeholder="Seleccionar método de pago" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="EFECTIVO">Efectivo</SelectItem>
-                  <SelectItem value="TRANSFERENCIA">Transferencia</SelectItem>
-                  <SelectItem value="TARJETA_DEBITO">
-                    Tarjeta de débito
-                  </SelectItem>
-                  <SelectItem value="MERCADO_PAGO">Mercado Pago</SelectItem>
+                  <SelectItem value="YAPE">Yape</SelectItem>
+                  <SelectItem value="PLIN">Plin</SelectItem>
+                  <SelectItem value="CONTRAENTREGA">Contraentrega</SelectItem>
+                  <SelectItem value="BCP">BCP</SelectItem>
+                  <SelectItem value="BANCO_NACION">Banco de la Nación</SelectItem>
+                  <SelectItem value="MERCADO_PAGO">Pago link - Mercado Pago</SelectItem>
+                  <SelectItem value="POS">POS</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -1312,34 +1318,86 @@ function RegistrarVentaContent() {
               </div>
             )}
 
+            {/* Modo de impuestos */}
+            <div className="space-y-1">
+              <Label>Modo de impuestos</Label>
+              <Select
+                value={taxMode}
+                onValueChange={(v) => setTaxMode(v as "AUTOMATICO" | "INCLUIDO")}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar modo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AUTOMATICO">
+                    Cálculo automático (+18% IGV)
+                  </SelectItem>
+                  <SelectItem value="INCLUIDO">
+                    Impuestos incluidos en precio
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {taxMode === "AUTOMATICO" 
+                  ? "El sistema agregará 18% de IGV al subtotal" 
+                  : "Los precios ya incluyen impuestos"}
+              </p>
+            </div>
+
             {/* Resumen */}
-            <div className="border-t pt-4 text-sm space-y-1">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span>${subtotal}</span>
-              </div>
+            <div className="border-t pt-4 text-sm">
+              <table className="w-full">
+                <tbody>
+                  <tr>
+                    <td className="py-1">Importe productos</td>
+                    <td className="py-1 text-right">S/ {subtotal.toFixed(2)}</td>
+                  </tr>
+                  {hasDiscount && (
+                    <tr>
+                      <td className="py-1">Total descuento</td>
+                      <td className="py-1 text-right">S/ {discountTotal.toFixed(2)}</td>
+                    </tr>
+                  )}
+                  <tr>
+                    <td className="py-1">Sub total</td>
+                    <td className="py-1 text-right">S/ {(subtotal - discountTotal).toFixed(2)}</td>
+                  </tr>
+                  {taxMode === "AUTOMATICO" && (
+                    <tr>
+                      <td className="py-1">IGV 18%</td>
+                      <td className="py-1 text-right">S/ {taxes.toFixed(2)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
 
-              <div className="flex justify-between">
-                <span>Envío</span>
-                <span>${shippingTotal}</span>
-              </div>
+              <table className="w-full border-t mt-2 pt-2">
+                <tbody>
+                  <tr className="font-semibold">
+                    <td className="py-1 pt-2">Total</td>
+                    <td className="py-1 pt-2 text-right">S/ {grandTotal.toFixed(2)}</td>
+                  </tr>
+                  <tr>
+                    <td className="py-1">Costo de envío</td>
+                    <td className="py-1 text-right">S/ {shippingTotal.toFixed(2)}</td>
+                  </tr>
+                  {advancePayment > 0 && (
+                    <tr>
+                      <td className="py-1">Adelanto de pago</td>
+                      <td className="py-1 text-right">S/ {advancePayment.toFixed(2)}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
 
-              {hasDiscount && (
-                <div className="flex justify-between text-green-600">
-                  <span>Descuento</span>
-                  <span>-${discountTotal}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between font-semibold text-base">
-                <span>Total</span>
-                <span>${grandTotal}</span>
-              </div>
-
-              <div className="flex justify-between text-muted-foreground">
-                <span>Pendiente de pago</span>
-                <span>${pendingPayment}</span>
-              </div>
+              <table className="w-full border-t mt-2">
+                <tbody>
+                  <tr className="text-red-600 font-semibold">
+                    <td className="py-1 pt-2">Pendiente de pago</td>
+                    <td className="py-1 pt-2 text-right">S/ {pendingPayment.toFixed(2)}</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
 
             <Button

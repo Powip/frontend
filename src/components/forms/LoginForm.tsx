@@ -3,6 +3,7 @@ import axios from "axios";
 import { redirect, useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { Eye, EyeOff } from "lucide-react";
 
 import { Input } from "../ui/input";
 import Link from "next/link";
@@ -29,6 +30,7 @@ export default function LoginForm() {
     {}
   );
   const [open, setOpen] = useState<boolean>(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSocialLogin = (provider: string) => {
     console.log(`[v0] Logging in with ${provider}`);
@@ -89,9 +91,10 @@ export default function LoginForm() {
 
       // 3️⃣ Tiene suscripción pero no compañía -> Crear compañía
       router.push("/new-company");
-    } catch (error) {
-      console.log(error);
-      toast.error("El usuario y/o la contraseña son incorrectos");
+    } catch (error: any) {
+      console.error("Login Error:", error.response?.data || error.message);
+      const errorMessage = error.response?.data?.message || "El usuario y/o la contraseña son incorrectos";
+      toast.error(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -124,22 +127,36 @@ export default function LoginForm() {
               onClick={() => {
                 setOpen(true);
               }}
-              className="text-xs text-primary hover:underline"
+              className="text-xs text-primary hover:underline cursor-pointer"
             >
               ¿Olvidaste tu contraseña?
             </p>
           </div>
-          <Input
-            value={loginData.password}
-            onChange={(e) =>
-              setLoginData({ ...loginData, password: e.target.value })
-            }
-            id="password"
-            type="password"
-            placeholder="••••••••"
-            required
-            className={`${errors.password ? "border-red-500" : ""}`}
-          />
+          <div className="relative">
+            <Input
+              value={loginData.password}
+              onChange={(e) =>
+                setLoginData({ ...loginData, password: e.target.value })
+              }
+              id="password"
+              type={showPassword ? "text" : "password"}
+              placeholder="••••••••"
+              required
+              className={`pr-10 ${errors.password ? "border-red-500" : ""}`}
+            />
+            <button
+              type="button"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground"
+              onClick={() => setShowPassword(!showPassword)}
+              tabIndex={-1}
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
+            </button>
+          </div>
           {errors.password && (
             <p className="text-xs text-red-500">{errors.password}</p>
           )}

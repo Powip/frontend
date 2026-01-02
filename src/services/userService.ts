@@ -67,3 +67,34 @@ export const getUsersByCompany = async (
     );
     return response.data;
 };
+
+export interface UpdateUserRequest {
+    name?: string;
+    surname?: string;
+    address?: string;
+    city?: string; // Departamento
+    province?: string;
+    district?: string;
+    phoneNumber?: string;
+    roleName?: string;
+    password?: string; // Opcional - solo si el admin quiere cambiar la contraseña
+}
+
+// Actualizar usuario existente
+export const updateUser = async (
+    userId: string,
+    request: UpdateUserRequest,
+    accessToken: string
+) => {
+    const response = await axios.put(
+        `${API_AUTH}/api/v1/auth/user/${userId}`,
+        request,
+        {
+            headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+            },
+        }
+    );
+    return response.data;
+};
