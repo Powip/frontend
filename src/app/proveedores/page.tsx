@@ -69,6 +69,10 @@ export default function ProveedoresPage() {
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [selectedSupplierForBrand, setSelectedSupplierForBrand] =
     useState<Supplier | null>(null);
+  
+  // Loading states for save buttons
+  const [isSavingSupplier, setIsSavingSupplier] = useState(false);
+  const [isSavingBrand, setIsSavingBrand] = useState(false);
 
   // Forms
   const [supplierForm, setSupplierForm] = useState({
@@ -138,6 +142,7 @@ export default function ProveedoresPage() {
       return;
     }
 
+    setIsSavingSupplier(true);
     try {
       if (editingSupplier) {
         await axios.patch(
@@ -157,6 +162,8 @@ export default function ProveedoresPage() {
     } catch (error) {
       console.error("Error saving supplier", error);
       toast.error("Error al guardar proveedor");
+    } finally {
+      setIsSavingSupplier(false);
     }
   };
 
@@ -201,6 +208,7 @@ export default function ProveedoresPage() {
       return;
     }
 
+    setIsSavingBrand(true);
     try {
       if (editingBrand) {
         await axios.patch(
@@ -220,6 +228,8 @@ export default function ProveedoresPage() {
     } catch (error) {
       console.error("Error saving brand", error);
       toast.error("Error al guardar marca");
+    } finally {
+      setIsSavingBrand(false);
     }
   };
 
@@ -464,10 +474,13 @@ export default function ProveedoresPage() {
             <Button
               variant="outline"
               onClick={() => setSupplierModalOpen(false)}
+              disabled={isSavingSupplier}
             >
               Cancelar
             </Button>
-            <Button onClick={handleSaveSupplier}>Guardar</Button>
+            <Button onClick={handleSaveSupplier} disabled={isSavingSupplier}>
+              {isSavingSupplier ? "Guardando..." : "Guardar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -505,10 +518,12 @@ export default function ProveedoresPage() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBrandModalOpen(false)}>
+            <Button variant="outline" onClick={() => setBrandModalOpen(false)} disabled={isSavingBrand}>
               Cancelar
             </Button>
-            <Button onClick={handleSaveBrand}>Guardar</Button>
+            <Button onClick={handleSaveBrand} disabled={isSavingBrand}>
+              {isSavingBrand ? "Guardando..." : "Guardar"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
