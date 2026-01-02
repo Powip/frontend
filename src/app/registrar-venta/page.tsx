@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -88,6 +88,9 @@ function RegistrarVentaContent() {
   const [advancePayment, setAdvancePayment] = useState(0);
   const [hasDiscount, setHasDiscount] = useState(false);
   const [discountTotal, setDiscountTotal] = useState(0);
+  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
+  const [paymentProofPreview, setPaymentProofPreview] = useState<string | null>(null);
+  const paymentProofInputRef = useRef<HTMLInputElement>(null);
 
   /* ---------------- Modal ---------------- */
 
@@ -487,7 +490,7 @@ function RegistrarVentaContent() {
     });
   };
 
-  const handleUpdateClient = () => {};
+  const handleUpdateClient = () => { };
 
   /* ---------------- Totales ---------------- */
   const subtotal = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
@@ -525,18 +528,18 @@ function RegistrarVentaContent() {
   const hasClientChanges =
     originalClient &&
     JSON.stringify(clientForm) !==
-      JSON.stringify({
-        fullName: originalClient.fullName,
-        phoneNumber: originalClient.phoneNumber,
-        documentType: originalClient.documentType,
-        documentNumber: originalClient.documentNumber,
-        clientType: originalClient.clientType,
-        province: originalClient.province,
-        city: originalClient.city,
-        district: originalClient.district,
-        address: originalClient.address,
-        reference: originalClient.reference,
-      });
+    JSON.stringify({
+      fullName: originalClient.fullName,
+      phoneNumber: originalClient.phoneNumber,
+      documentType: originalClient.documentType,
+      documentNumber: originalClient.documentNumber,
+      clientType: originalClient.clientType,
+      province: originalClient.province,
+      city: originalClient.city,
+      district: originalClient.district,
+      address: originalClient.address,
+      reference: originalClient.reference,
+    });
 
   return (
     <div className="flex h-screen w-full">
@@ -1228,6 +1231,84 @@ function RegistrarVentaContent() {
                   }
                 }}
               />
+            </div>
+
+            {/* Comprobante de pago */}
+            <div className="space-y-1">
+              <Label>Comprobante de pago (opcional)</Label>
+              <div
+                className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors
+                  ${paymentProofFile ? 'border-teal-500 bg-teal-50' : 'border-gray-300 hover:border-gray-400'}`}
+                onClick={() => paymentProofInputRef.current?.click()}
+              >
+                <input
+                  ref={paymentProofInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+
+                    const allowedTypes = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+                    if (!allowedTypes.includes(file.type)) {
+                      toast.error("Tipo de archivo no permitido. Use JPG, PNG, WEBP o PDF.");
+                      return;
+                    }
+
+                    if (file.size > 5 * 1024 * 1024) {
+                      toast.error("El archivo es muy grande. Máximo 5MB.");
+                      return;
+                    }
+
+                    setPaymentProofFile(file);
+
+                    if (file.type.startsWith('image/')) {
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        setPaymentProofPreview(reader.result as string);
+                      };
+                      reader.readAsDataURL(file);
+                    } else {
+                      setPaymentProofPreview(null);
+                    }
+                  }}
+                  className="hidden"
+                />
+
+                {!paymentProofFile ? (
+                  <div className="space-y-1">
+                    <p className="text-sm text-gray-600">Clic para seleccionar comprobante</p>
+                    <p className="text-xs text-gray-400">JPG, PNG, WEBP o PDF (máx. 5MB)</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {paymentProofPreview ? (
+                      <img
+                        src={paymentProofPreview}
+                        alt="Preview"
+                        className="max-h-24 mx-auto rounded-md"
+                      />
+                    ) : (
+                      <p className="text-sm text-teal-600 font-medium">PDF seleccionado</p>
+                    )}
+                    <p className="text-xs text-gray-600 truncate">{paymentProofFile.name}</p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPaymentProofFile(null);
+                        setPaymentProofPreview(null);
+                        if (paymentProofInputRef.current) {
+                          paymentProofInputRef.current.value = '';
+                        }
+                      }}
+                    >
+                      Quitar
+                    </Button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Descuento */}
