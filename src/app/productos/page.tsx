@@ -1,9 +1,10 @@
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import ProductCreateForm from "./create-product/create-product";
 
-export default function Productos() {
+function ProductosContent() {
   const searchParams = useSearchParams();
   const editVariantId = searchParams.get("edit");
 
@@ -11,5 +12,13 @@ export default function Productos() {
     <div className="flex flex-col items-center justify-center min-h-screen">
       <ProductCreateForm editVariantId={editVariantId} />
     </div>
+  );
+}
+
+export default function Productos() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Cargando...</div>}>
+      <ProductosContent />
+    </Suspense>
   );
 }
