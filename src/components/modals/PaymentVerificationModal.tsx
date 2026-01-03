@@ -111,10 +111,16 @@ export default function PaymentVerificationModal({
       return;
     }
 
+    const numericAmount = parseFloat(amount);
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      toast.warning("El monto debe ser un número válido mayor a 0");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const formData = new FormData();
-      formData.append("amount", amount);
+      formData.append("amount", numericAmount.toString());
       formData.append("paymentMethod", paymentMethod);
       
       if (file) {

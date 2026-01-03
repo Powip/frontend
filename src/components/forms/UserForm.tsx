@@ -68,7 +68,6 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
         }
       } catch (error) {
         // Usar roles por defecto si falla la API
-        console.log("Usando roles por defecto");
       }
     };
     loadRoles();

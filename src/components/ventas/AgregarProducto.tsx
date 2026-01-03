@@ -89,11 +89,7 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
     );
 
     // Log detallado de los groupedAttributes
-    (Object.values(grouped) as IGroupedAttribute[]).forEach((group) => {
-      group.values.forEach((v) => {
-        console.log("GroupedAttribute:", group.typeName, v.id, v.name);
-      });
-    });
+
 
     return grouped;
   }, [attributes]);
@@ -125,17 +121,9 @@ export const AgregarProducto = ({ onClose, onAdd, products }: Props) => {
       attributes: attributesArray,
     };
 
-    console.log("Producto final a agregar:", item);
     onAdd(item);
   };
 
-  // Log de productos para rastrear duplicados
-  useEffect(() => {
-    console.log(
-      "Productos renderizados:",
-      products.map((p) => p.id)
-    );
-  }, [products]);
 
   return (
     <ModalContainer>

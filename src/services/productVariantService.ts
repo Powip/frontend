@@ -22,7 +22,6 @@ export async function createProductVariant(payload: IProductVariantRequest) {
     }
 
     const data = await res.json();
-    console.log("✅ Variante creada:", data);
     return data;
   } catch (err) {
     console.error("⚠️ Excepción en createProductVariant:", err);

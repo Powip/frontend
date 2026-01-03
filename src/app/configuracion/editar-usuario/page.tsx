@@ -59,7 +59,7 @@ export default function DatosPersonalesPage() {
           `${process.env.NEXT_PUBLIC_API_USERS}/auth/user/${userId}`
         );
         setUser(res.data);
-        console.log(res.data);
+
       } catch (error) {
         console.error(error);
         toast.error("Error al cargar los datos del usuario.");

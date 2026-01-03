@@ -157,7 +157,6 @@ const FichaProducto = () => {
         images: [imageUrl],
       }));
 
-      console.log("Uploaded image URL:", imageUrl);
     } catch (error) {
       console.error("Error al subir la imagen:", error);
       alert("No se pudo subir la imagen. Intenta de nuevo.");
@@ -203,12 +202,11 @@ const FichaProducto = () => {
       images: product.images,
     };
 
-    console.log("📤 Payload producto:", productPayload);
 
     try {
       // 2️⃣ Crear el producto
       const newProduct = await createProduct(productPayload);
-      console.log("✅ Producto creado:", newProduct);
+  
 
       // 3️⃣ Crear variantes
       const createdVariants = [];
@@ -226,7 +224,7 @@ const FichaProducto = () => {
               sku: `VAR${newProduct.id.substring(0, 6)}1`,
             };
 
-            console.log("📦 Enviando variante con 1 atributo:", variantPayload);
+    
 
             const variant = await createProductVariant(variantPayload);
             createdVariants.push(variant);

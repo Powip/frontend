@@ -108,7 +108,7 @@ export default function ClienteForm({ cliente, onClienteSaved }: Props) {
           city: state.department, // Mapear department a city para el backend
           companyId: auth!.company!.id,
         } as any);
-        console.log(res);
+
 
         toast.success("Cliente creado correctamente");
         setState(empty);

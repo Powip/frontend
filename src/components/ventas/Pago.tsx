@@ -76,7 +76,6 @@ export const Pago = ({ orderId, totals, onPaymentCompleted }: Props) => {
       generalNote: `Envío: ${envio}. Observaciones: ${observaciones}`,
     };
 
-    console.log("Payload de pago:", payload);
 
     createPaymentMutation.mutate(
       { orderId, payload },

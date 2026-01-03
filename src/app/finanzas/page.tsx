@@ -565,13 +565,27 @@ Estado: ${sale.status}
               </Button>
             </TableCell>
             <TableCell className="text-right">
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
+              <div className="flex gap-1 justify-end">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedSaleForComments(sale);
+                    setCommentsModalOpen(true);
+                  }}
+                  title="Comentarios"
+                >
+                  <MessageSquare className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
+                  title="Editar"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              </div>
             </TableCell>
           </TableRow>
         ))}

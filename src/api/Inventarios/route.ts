@@ -6,7 +6,6 @@ interface CreateInventoryDto {
 }
 
 export async function createInventory(data: CreateInventoryDto) {
-  console.log(data);
   try {
     const res = await axios.post(
       `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory`,

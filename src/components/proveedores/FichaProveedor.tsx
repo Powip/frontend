@@ -107,7 +107,7 @@ const FichaProveedor = () => {
       is_active: provider.is_active,
     };
 
-    console.log("Payload extendido a enviar:", providerToSave);
+
 
     try {
       await createProvider(providerToSave);
