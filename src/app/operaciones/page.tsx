@@ -32,12 +32,13 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
 import { SalesTableFilters, SalesFilters, emptySalesFilters, applyFilters } from "@/components/ventas/SalesTableFilters";
-import { Copy, Printer, Truck, MessageSquare } from "lucide-react";
+import { Copy, Printer, Truck, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CancellationModal, { CancellationReason } from "@/components/modals/CancellationModal";
 import CourierAssignmentModal, { CourierType } from "@/components/modals/CourierAssignmentModal";
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
+import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 
 /* -----------------------------------------
    Types
@@ -154,6 +155,10 @@ export default function OperacionesPage() {
   // Estado para modal de comentarios/timeline
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
   const [selectedSaleForComments, setSelectedSaleForComments] = useState<Sale | null>(null);
+
+  // Estado para modal de pagos
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<Sale | null>(null);
 
   const { selectedStoreId } = useAuth();
   const router = useRouter();
@@ -618,6 +623,18 @@ Estado: ${sale.status}
               <Button
                 size="icon"
                 variant="outline"
+                className="bg-amber-50 hover:bg-amber-100 text-amber-600"
+                onClick={() => {
+                  setSelectedSaleForPayment(sale);
+                  setPaymentModalOpen(true);
+                }}
+                title="Gestión de Pagos"
+              >
+                <DollarSign className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
                 onClick={() => {
                   setSelectedSaleForComments(sale);
                   setCommentsModalOpen(true);
@@ -864,6 +881,17 @@ Estado: ${sale.status}
         }}
         orderId={selectedSaleForComments?.id || ""}
         orderNumber={selectedSaleForComments?.orderNumber || ""}
+      />
+
+      <PaymentVerificationModal
+        open={paymentModalOpen}
+        onClose={() => {
+          setPaymentModalOpen(false);
+          setSelectedSaleForPayment(null);
+        }}
+        orderId={selectedSaleForPayment?.id || ""}
+        orderNumber={selectedSaleForPayment?.orderNumber || ""}
+        onPaymentUpdated={fetchOrders}
       />
     </div>
   );

@@ -107,7 +107,7 @@ export interface OrderPayment {
   amount: string;
   externalReference: string | null;
   paymentProofUrl: string | null;
-  status: "PENDING" | "CONFIRMED" | "REJECTED";
+  status: "PENDING" | "PAID" | "LOST";
   notes: string | null;
   paymentDate: string;
   created_at: string;

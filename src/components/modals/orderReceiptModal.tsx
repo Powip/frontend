@@ -453,20 +453,6 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
         {!loading && receipt && <OrderReceiptView data={receipt} />}
 
         <div className="flex justify-end gap-2 mt-4">
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (receipt?.payments?.length > 0) {
-                setSelectedPaymentId(receipt.payments[0].id);
-                setUploadOpen(true);
-              } else {
-                toast.warning("No hay pagos registrados para subir comprobante");
-              }
-            }}
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Subir Comprobante
-          </Button>
           <Button variant="outline" onClick={handlePrint}>
             Imprimir
           </Button>

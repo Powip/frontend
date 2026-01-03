@@ -84,7 +84,7 @@ export default function ClientesPage() {
     if (!cliente.id) return;
     try {
       const res = await toggleClienteActivo(cliente.id);
-      console.log(res);
+
 
       toast.success("Cliente actualizado correctamente");
       fetchClients(auth!.company!.id);

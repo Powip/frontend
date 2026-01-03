@@ -139,7 +139,6 @@ export const Productos = ({
       items,
     };
 
-    console.log("✅ Payload final enviado al backend:", payload);
 
     try {
       const response = await createOrderWithItems(payload);

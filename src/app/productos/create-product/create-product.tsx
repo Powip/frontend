@@ -59,6 +59,7 @@ interface CustomAttribute {
 }
 
 interface VariantForm {
+  id?: string; // ID de la variante (solo en modo edición)
   attributes: Record<string, string>; // { Talle: "M", Color: "Negro" }
   priceBase: number;
   priceVta: number;
@@ -78,9 +79,17 @@ function generateCartesian(obj: Record<string, string[]>) {
   return entries.reduce(cartesian, [{}]);
 }
 
-export default function ProductCreateForm() {
+interface ProductCreateFormProps {
+  editVariantId?: string | null;
+}
+
+export default function ProductCreateForm({ editVariantId }: ProductCreateFormProps) {
   const { auth, inventories } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isLoadingProduct, setIsLoadingProduct] = useState(false);
+  const [editProductId, setEditProductId] = useState<string | null>(null);
+  
   const [form, setForm] = useState<CreateProductBase>({
     name: "",
     description: "",
@@ -141,25 +150,144 @@ export default function ProductCreateForm() {
       .catch((err) => console.error("Error al cargar marcas", err));
   }, []);
 
+  // =========================
+  // Cargar datos del producto si está en modo edición
+  // =========================
+  useEffect(() => {
+    if (!editVariantId) return;
+
+    const loadProductForEdit = async () => {
+      setIsLoadingProduct(true);
+      setIsEditMode(true);
+
+      try {
+        // Obtener la variante y su producto
+        const { data: variants } = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/multiple/by-ids`,
+          { ids: [editVariantId] }
+        );
+
+        if (variants.length === 0) {
+          toast.error("No se encontró el producto");
+          return;
+        }
+
+        const variant = variants[0];
+        const product = variant.product;
+        setEditProductId(product.id);
+
+        // Obtener detalles completos del producto CON relaciones (subcategory, etc.)
+        const { data: productDetailsArray } = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/details`,
+          { productIds: [product.id] }
+        );
+
+        if (!productDetailsArray || productDetailsArray.length === 0) {
+          toast.error("No se encontraron detalles del producto");
+          setIsLoadingProduct(false);
+          return;
+        }
+
+        const productDetails = productDetailsArray[0];
+        
+
+        // Obtener subcategoryId de la relación
+        const subcategoryId = productDetails.subcategory?.id;
+
+        if (!subcategoryId) {
+          console.error("No se encontró subcategoryId en productDetails:", productDetails);
+          toast.error("No se pudo obtener la subcategoría del producto");
+          setIsLoadingProduct(false);
+          return;
+        }
+
+        // Obtener la categoría de la subcategoría (ya viene incluida en productDetails)
+        const categoryId = productDetails.subcategory?.category?.id;
+
+        // Cargar subcategorías de la categoría para el select
+        const { data: subcategoriesData } = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${categoryId}`
+        );
+        setSubcategories(subcategoriesData);
+
+        // Obtener atributos default de la subcategoría
+        const { data: subcategoryData } = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${subcategoryId}`
+        );
+
+        // Cargar atributos default de la subcategoría
+        const attrs: DefaultAttribute[] = subcategoryData.defaultAttributes || [];
+        setDefaultAttributes(attrs);
+
+        // Llenar el formulario
+        setForm({
+          name: product.name || "",
+          description: product.description || "",
+          categoryId: categoryId || "",
+          subcategoryId: subcategoryId || "",
+          inventory_id: product.inventory_id || "",
+          supplierId: productDetails.supplier?.id || "",
+          brandId: productDetails.brand?.id || "",
+        });
+
+        // Llenar la variante con sus valores
+        const variantForm: VariantForm = {
+          attributes: variant.attributeValues || {},
+          priceBase: Number(variant.priceBase) || 0,
+          priceVta: Number(variant.priceVta) || 0,
+          stock: 0, // El stock se maneja en inventario
+          minStock: 0,
+          imageFile: null,
+        };
+        setVariants([variantForm]);
+
+        // Llenar los valores de atributos
+        const attrVals: Record<string, string> = {};
+        attrs.forEach((attr) => {
+          const val = variant.attributeValues?.[attr.name];
+          if (val) {
+            attrVals[attr.id] = val;
+          }
+        });
+        setAttributeValues(attrVals);
+
+        toast.success("Producto cargado para edición");
+      } catch (error) {
+        console.error("Error cargando producto para editar:", error);
+        toast.error("Error al cargar el producto");
+      } finally {
+        setIsLoadingProduct(false);
+      }
+    };
+
+    loadProductForEdit();
+  }, [editVariantId]);
+
   // Auto-seleccionar inventario si solo hay uno
   useEffect(() => {
-    if (inventories.length === 1 && !form.inventory_id) {
+    if (inventories.length === 1 && !form.inventory_id && !isEditMode) {
       setForm((prev) => ({
         ...prev,
         inventory_id: inventories[0].id,
       }));
     }
-  }, [inventories]);
+  }, [inventories, isEditMode]);
 
   // =========================
   // Cargar subcategorías al cambiar categoría
   // =========================
   useEffect(() => {
-    setSubcategories([]);
-    setDefaultAttributes([]);
-    setAttributeValues({});
-    setCustomAttributes([]);
-    setVariants([]);
+    // No resetear en modo edición durante la carga inicial
+    if (isEditMode && isLoadingProduct) return;
+    
+    // Solo resetear si el usuario cambió la categoría manualmente
+    if (!isEditMode || (isEditMode && !isLoadingProduct)) {
+      setSubcategories([]);
+      setDefaultAttributes([]);
+      setAttributeValues({});
+      setCustomAttributes([]);
+      setVariants([]);
+    }
 
     if (!form.categoryId) return;
 
@@ -169,16 +297,22 @@ export default function ProductCreateForm() {
       )
       .then((res) => setSubcategories(res.data))
       .catch((err) => console.error("Error al cargar subcategorías", err));
-  }, [form.categoryId]);
+  }, [form.categoryId, isEditMode, isLoadingProduct]);
 
   // =========================
   // Cargar atributos default al cambiar subcategoría
   // =========================
   useEffect(() => {
-    setDefaultAttributes([]);
-    setAttributeValues({});
-    setCustomAttributes([]);
-    setVariants([]);
+    // No resetear en modo edición durante la carga inicial
+    if (isEditMode && isLoadingProduct) return;
+    
+    // Solo resetear si el usuario cambió la subcategoría manualmente
+    if (!isEditMode || (isEditMode && !isLoadingProduct)) {
+      setDefaultAttributes([]);
+      setAttributeValues({});
+      setCustomAttributes([]);
+      setVariants([]);
+    }
 
     if (!form.subcategoryId) return;
 
@@ -190,14 +324,17 @@ export default function ProductCreateForm() {
         const attrs: DefaultAttribute[] = res.data.defaultAttributes || [];
         setDefaultAttributes(attrs);
 
-        const initialValues: Record<string, string> = {};
-        attrs.forEach((attr) => {
-          initialValues[attr.id] = "";
-        });
-        setAttributeValues(initialValues);
+        // Solo inicializar valores vacíos si no estamos en modo edición
+        if (!isEditMode) {
+          const initialValues: Record<string, string> = {};
+          attrs.forEach((attr) => {
+            initialValues[attr.id] = "";
+          });
+          setAttributeValues(initialValues);
+        }
       })
       .catch((err) => console.error("Error cargando atributos default", err));
-  }, [form.subcategoryId]);
+  }, [form.subcategoryId, isEditMode, isLoadingProduct]);
 
   // Filtrar marcas cuando cambia el proveedor
   useEffect(() => {
@@ -479,12 +616,17 @@ export default function ProductCreateForm() {
       return;
     }
 
-    // Validar precios y stock
+    // Validar precios (y stock solo en modo creación)
     for (const v of variants) {
-      if (v.priceBase <= 0 || v.priceVta <= 0 || v.stock < 0) {
+      if (v.priceBase <= 0 || v.priceVta <= 0) {
         toast.error(
-          "Todas las variantes deben tener precio base, precio venta y stock mayor a 0."
+          "Todas las variantes deben tener precio base y precio venta mayor a 0."
         );
+        return;
+      }
+      // Solo validar stock en modo creación
+      if (!isEditMode && v.stock < 0) {
+        toast.error("El stock no puede ser negativo.");
         return;
       }
     }
@@ -536,29 +678,67 @@ export default function ProductCreateForm() {
     };
 
     try {
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/with-variants`,
-        payload
-      );
-      console.log(res);
+      if (isEditMode && editVariantId && editProductId) {
+        // Modo edición: actualizar la variante existente
+        const variantToUpdate = variants[0];
+        const variantPayload = {
+          priceBase: variantToUpdate.priceBase,
+          priceVta: variantToUpdate.priceVta,
+          attributeValues: variantToUpdate.attributes,
+        };
 
-      toast.success("¡Producto creado exitosamente!");
-      resetForm();
+        // Actualizar la variante
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${editVariantId}`,
+          variantPayload
+        );
+
+        // Actualizar el producto (nombre, descripción)
+        const productPayload = {
+          name: form.name,
+          description: form.description,
+        };
+
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/${editProductId}`,
+          productPayload
+        );
+
+        toast.success("¡Producto actualizado exitosamente!");
+        // Redirigir al inventario
+        window.history.back();
+      } else {
+        // Modo creación
+        const res = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/with-variants`,
+          payload
+        );
+     
+        toast.success("¡Producto creado exitosamente!");
+        resetForm();
+      }
     } catch (error) {
-      console.error("❌ Error al crear producto:", error);
-      toast.error("Error al crear el producto. Intenta nuevamente.");
+      console.error("❌ Error al guardar producto:", error);
+      toast.error(isEditMode ? "Error al actualizar el producto." : "Error al crear el producto. Intenta nuevamente.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   // =========================
-  // RENDER
-  // =========================
   return (
     <form onSubmit={handleSubmit} className="w-full px-6 pb-6">
-      <HeaderConfig title="Productos" description="Crear nuevo producto" />
+      <HeaderConfig 
+        title="Productos" 
+        description={isEditMode ? "Editar producto" : "Crear nuevo producto"} 
+      />
 
+      {isLoadingProduct ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <span className="ml-3 text-muted-foreground">Cargando datos del producto...</span>
+        </div>
+      ) : (
       <div className="space-y-6">
         {/* Card 1: Información básica */}
         <Card>
@@ -946,6 +1126,7 @@ export default function ProductCreateForm() {
           </CardContent>
         </Card>
       </div>
+      )}
 
       {/* Submit buttons */}
       <div className="flex items-center justify-end gap-3 mt-6">

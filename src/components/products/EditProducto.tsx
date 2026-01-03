@@ -35,7 +35,7 @@ const EditProducto = () => {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  console.log(saving);
+
 
   // Listas para selects
   const [categories, setCategories] = useState<Category[]>([]);

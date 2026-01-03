@@ -124,7 +124,6 @@ function RegistrarVentaContent() {
         const response = await axios.get(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`
         );
-        console.log(response);
 
         setOrderData(response.data);
       } catch (error) {
@@ -186,11 +185,21 @@ function RegistrarVentaContent() {
     setCart(mappedCart);
 
     // --- Pagos ---
-    console.log(orderData.payments);
+   
 
     if (orderData.payments?.length) {
-      setPaymentMethod(orderData.payments[0].paymentMethod);
-      setAdvancePayment(Number(orderData.payments[0].amount));
+      // Sumar todos los pagos aprobados (PAID)
+      const totalPaid = orderData.payments
+        .filter((p) => p.status === "PAID")
+        .reduce((sum, p) => sum + Number(p.amount), 0);
+      
+      setAdvancePayment(totalPaid);
+      
+      // Usar el método del primer pago aprobado como referencia
+      const firstPaidPayment = orderData.payments.find((p) => p.status === "PAID");
+      if (firstPaidPayment) {
+        setPaymentMethod(firstPaidPayment.paymentMethod);
+      }
     }
   }, [orderData]);
 
@@ -365,14 +374,22 @@ function RegistrarVentaContent() {
         attributes: item.attributes,
       })),
 
-      // --- Pagos ---
-      payments: [
-        {
-          paymentMethod,
-          amount: advancePayment,
-          paymentDate: new Date().toISOString(),
-        },
-      ],
+      // --- Pagos (siempre incluir) ---
+      payments: advancePayment > 0
+        ? [
+            {
+              paymentMethod,
+              amount: advancePayment,
+              paymentDate: new Date().toISOString(),
+            },
+          ]
+        : [
+            {
+              paymentMethod: paymentMethod || "EFECTIVO",
+              amount: 0,
+              paymentDate: new Date().toISOString(),
+            },
+          ],
     };
 
     setIsSubmitting(true);
@@ -382,13 +399,41 @@ function RegistrarVentaContent() {
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header`,
           payload
         );
+        
+        const createdOrderId = response.data.id;
+        
+        // Si hay comprobante de pago, subirlo al pago recién creado
+        if (paymentProofFile && response.data.payments?.length > 0) {
+          const firstPaymentId = response.data.payments[0].id;
+          try {
+            const formData = new FormData();
+            formData.append("file", paymentProofFile);
+            
+            await axios.patch(
+              `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${firstPaymentId}/upload-proof`,
+              formData,
+              {
+                headers: {
+                  "Content-Type": "multipart/form-data",
+                },
+              }
+            );
+          } catch (proofError) {
+            console.error("Error subiendo comprobante", proofError);
+            toast.warning("Venta creada pero hubo un error al subir el comprobante");
+          }
+        }
+        
         toast.success("Venta registrada");
-        const orderId = response.data.id;
-        setReceiptOrderId(orderId);
+        setReceiptOrderId(createdOrderId);
         setReceiptOpen(true);
+        
+        // Limpiar el comprobante
+        setPaymentProofFile(null);
+        setPaymentProofPreview(null);
       } else {
         toast.success("Venta Actualizada");
-        console.log(orderData);
+   
       }
     } catch (error) {
       console.error("❌ Error creating sale", error);
@@ -1001,18 +1046,30 @@ function RegistrarVentaContent() {
                           <Input
                             type="text"
                             inputMode="decimal"
-                            value={item.price === 0 ? "" : item.price}
+                            step="0.01"
+                            value={item.price === 0 ? "" : String(item.price)}
                             onChange={(e) => {
                               const val = e.target.value;
+                              // Permitir vacío, números enteros y decimales (incluyendo estados intermedios como "10.")
                               if (val === "" || /^\d*\.?\d*$/.test(val)) {
                                 setCart((prev) =>
                                   prev.map((p) =>
                                     p.id === item.id
-                                      ? { ...p, price: val === "" ? 0 : Number(val) }
+                                      ? { ...p, price: val === "" ? 0 : (val.endsWith('.') ? val : Number(val)) as any }
                                       : p
                                   )
                                 );
                               }
+                            }}
+                            onBlur={(e) => {
+                              // Al perder el foco, asegurarse de que el precio sea un número válido
+                              const val = e.target.value;
+                              const numVal = parseFloat(val) || 0;
+                              setCart((prev) =>
+                                prev.map((p) =>
+                                  p.id === item.id ? { ...p, price: numVal } : p
+                                )
+                              );
                             }}
                           />
                         </div>
@@ -1353,8 +1410,9 @@ function RegistrarVentaContent() {
                     )}
                     <p className="text-xs text-gray-600 truncate">{paymentProofFile.name}</p>
                     <Button
-                      variant="ghost"
+                      variant="destructive"
                       size="sm"
+                      className="mt-2"
                       onClick={(e) => {
                         e.stopPropagation();
                         setPaymentProofFile(null);
@@ -1364,6 +1422,7 @@ function RegistrarVentaContent() {
                         }
                       }}
                     >
+                      <Trash2 className="h-4 w-4 mr-1" />
                       Quitar
                     </Button>
                   </div>

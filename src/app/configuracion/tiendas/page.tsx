@@ -58,7 +58,6 @@ export default function TiendasPage() {
   const { auth, logout } = useAuth();
 
   useEffect(() => {
-    console.log(auth);
 
     if (auth?.company?.id) {
       fetchStore();
@@ -73,7 +72,7 @@ export default function TiendasPage() {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${auth.company.id}`
       );
-      console.log(response.data?.stores);
+
 
       setStores(response.data?.stores);
     } catch (error) {

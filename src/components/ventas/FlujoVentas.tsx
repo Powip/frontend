@@ -44,12 +44,10 @@ export default function FlujoVentas() {
 
   const handleOrderUpdated = (id: string) => {
     setOrderId(id);
-    console.log("ID de orden actualizada desde Productos:", id);
   };
 
   const handleOrderCreated = (order: ICreateOrderHeader) => {
     setOrderId(order.id || null);
-    console.log("Order ID creado:", order.id);
     setTotals({
       totalAmount: order.totalAmount,
       totalVat: order.totalVat,
