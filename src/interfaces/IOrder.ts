@@ -35,6 +35,7 @@ export interface CartItem {
   attributes?: Record<string, string>;
   quantity: number;
   price: number;
+  discount: number; // Descuento por item
 }
 
 /* -----------------------------------------

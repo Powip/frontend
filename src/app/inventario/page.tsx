@@ -463,7 +463,7 @@ export default function InventarioPage() {
                           .map(([k, v]) => `${k}: ${v}`)
                           .join(" / ")}
                       </TableCell>
-                      <TableCell className="border-r">{prod.quantity}u</TableCell>
+                      <TableCell className="border-r">{prod.quantity}</TableCell>
                       <TableCell className="border-r">${prod.priceBase}</TableCell>
                       <TableCell className="border-r">${prod.priceVta}</TableCell>
                       <TableCell className="text-right space-x-1">

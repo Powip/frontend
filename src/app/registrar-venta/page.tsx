@@ -24,7 +24,6 @@ import { searchInventoryItems } from "@/services/inventoryItems.service";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 import { CartItem, OrderHeader } from "@/interfaces/IOrder";
 import { DeliveryType, OrderType, SalesChannel } from "@/enum/Order.enum";
-import { Switch } from "@/components/ui/switch";
 import axios from "axios";
 import { toast } from "sonner";
 import OrderReceiptModal from "@/components/modals/orderReceiptModal";
@@ -88,8 +87,7 @@ function RegistrarVentaContent() {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [shippingTotal, setShippingTotal] = useState(0);
   const [advancePayment, setAdvancePayment] = useState(0);
-  const [hasDiscount, setHasDiscount] = useState(false);
-  const [discountTotal, setDiscountTotal] = useState(0);
+
 
   const [taxMode, setTaxMode] = useState<"AUTOMATICO" | "INCLUIDO">("AUTOMATICO");
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
@@ -181,6 +179,7 @@ function RegistrarVentaContent() {
       attributes: item.attributes,
       quantity: item.quantity,
       price: Number(item.unitPrice),
+      discount: Number(item.discountAmount) || 0,
     }));
     setCart(mappedCart);
 
@@ -369,8 +368,8 @@ function RegistrarVentaContent() {
         productName: item.productName,
         quantity: item.quantity,
         unitPrice: item.price,
-        discountType: "NONE",
-        discountAmount: 0,
+        discountType: item.discount > 0 ? "FIXED" : "NONE",
+        discountAmount: item.discount || 0,
         attributes: item.attributes,
       })),
 
@@ -390,6 +389,9 @@ function RegistrarVentaContent() {
               paymentDate: new Date().toISOString(),
             },
           ],
+
+      // --- Usuario (para log de auditoría) ---
+      userId: auth?.user?.id ?? null,
     };
 
     setIsSubmitting(true);
@@ -432,8 +434,38 @@ function RegistrarVentaContent() {
         setPaymentProofFile(null);
         setPaymentProofPreview(null);
       } else {
-        toast.success("Venta Actualizada");
-   
+        // Actualizar orden existente
+        const updatePayload = {
+          salesChannel: orderDetails.salesChannel,
+          closingChannel: orderDetails.closingChannel,
+          deliveryType: orderDetails.deliveryType,
+          salesRegion: salesRegion,
+          shippingTotal: shippingTotal ?? 0,
+          courier: orderDetails.enviaPor ?? null,
+          taxMode: taxMode,
+          notes: orderDetails.notes ?? null,
+          customerId: clientFound.id,
+          items: cart.map((item) => ({
+            productVariantId: item.variantId,
+            sku: item.sku,
+            productName: item.productName,
+            quantity: item.quantity,
+            unitPrice: item.price,
+            discountType: item.discount > 0 ? "FIXED" : "NONE",
+            discountAmount: item.discount || 0,
+            attributes: item.attributes,
+          })),
+          userId: auth?.user?.id ?? null,
+        };
+
+        await axios.put(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderData.id}`,
+          updatePayload
+        );
+        
+        toast.success("Venta actualizada correctamente");
+        setReceiptOrderId(orderData.id);
+        setReceiptOpen(true);
       }
     } catch (error) {
       console.error("❌ Error creating sale", error);
@@ -486,6 +518,7 @@ function RegistrarVentaContent() {
           attributes: product.attributes,
           quantity: 1,
           price: product.price,
+          discount: 0,
         },
       ];
     });
@@ -503,6 +536,7 @@ function RegistrarVentaContent() {
         attributes: product.attributes,
         quantity: 1,
         price: product.price,
+        discount: 0,
       },
     ]);
   };
@@ -551,12 +585,19 @@ function RegistrarVentaContent() {
   };
 
   /* ---------------- Totales ---------------- */
-  const subtotal = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
-  const discount = subtotal * 0.1;
+  // Subtotal bruto (precio * cantidad)
+  const subtotalBruto = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
+  // Total de descuentos por item (manejar strings durante edición)
+  const totalItemDiscounts = cart.reduce((acc, p) => {
+    const discount = typeof p.discount === 'number' ? p.discount : parseFloat(p.discount as any) || 0;
+    return acc + discount;
+  }, 0);
+  // Subtotal neto (después de descuentos por item)
+  const subtotal = subtotalBruto - totalItemDiscounts;
   // Si INCLUIDO, los precios ya incluyen impuestos
   const taxes = taxMode === "INCLUIDO" ? 0 : subtotal * 0.18;
 
-  const grandTotal = subtotal + taxes + shippingTotal - discountTotal;
+  const grandTotal = subtotal + taxes + shippingTotal;
 
   const pendingPayment = Math.max(grandTotal - advancePayment, 0);
 
@@ -572,7 +613,6 @@ function RegistrarVentaContent() {
 
   const hasValidPayments =
     !!paymentMethod &&
-    discountTotal <= subtotal &&
     advancePayment <= grandTotal;
 
   const canSubmit =
@@ -1023,7 +1063,7 @@ function RegistrarVentaContent() {
                         </Button>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 items-end">
+                      <div className="grid grid-cols-4 gap-2 items-end">
                         {/* Cantidad */}
                         <div className="space-y-1">
                           <Label className="text-xs">Cantidad</Label>
@@ -1074,11 +1114,46 @@ function RegistrarVentaContent() {
                           />
                         </div>
 
+                        {/* Descuento por item */}
+                        <div className="space-y-1">
+                          <Label className="text-xs">Descuento (Precio S/)</Label>
+                          <Input
+                            type="text"
+                            inputMode="decimal"
+                            step="0.01"
+                            placeholder="0"
+                            value={item.discount === 0 ? "" : String(item.discount)}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              // Permitir vacío, números enteros y decimales (incluyendo estados intermedios como "10.")
+                              if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                                setCart((prev) =>
+                                  prev.map((p) =>
+                                    p.id === item.id
+                                      ? { ...p, discount: val === "" ? 0 : (val.endsWith('.') || val.includes('.') ? val : Number(val)) as any }
+                                      : p
+                                  )
+                                );
+                              }
+                            }}
+                            onBlur={(e) => {
+                              // Al perder el foco, asegurarse de que el descuento sea un número válido
+                              const val = e.target.value;
+                              const numVal = parseFloat(val) || 0;
+                              setCart((prev) =>
+                                prev.map((p) =>
+                                  p.id === item.id ? { ...p, discount: numVal } : p
+                                )
+                              );
+                            }}
+                          />
+                        </div>
+
                         {/* Subtotal */}
-                        <div className="space-y-1 flex justify-end items-center gap-2">
+                        <div className="space-y-1 flex flex-col items-end">
                           <Label className="text-xs">Subtotal</Label>
                           <div className="h-9 flex items-center justify-end font-medium">
-                            ${item.price * item.quantity}
+                            ${(item.price * item.quantity - (typeof item.discount === 'number' ? item.discount : parseFloat(item.discount as any) || 0)).toFixed(2)}
                           </div>
                         </div>
                       </div>
@@ -1430,34 +1505,6 @@ function RegistrarVentaContent() {
               </div>
             </div>
 
-            {/* Descuento */}
-            <div className="flex items-center gap-2">
-              <Label>Aplicar descuento</Label>
-              <Switch
-                checked={hasDiscount}
-                onCheckedChange={(v) => {
-                  setHasDiscount(v);
-                  if (!v) setDiscountTotal(0);
-                }}
-              />
-            </div>
-
-            {hasDiscount && (
-              <div className="space-y-1">
-                <Label>Monto de descuento</Label>
-                <Input
-                  type="text"
-                  inputMode="decimal"
-                  value={discountTotal === 0 ? "" : discountTotal}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === "" || /^\d*\.?\d*$/.test(val)) {
-                      setDiscountTotal(val === "" ? 0 : Number(val));
-                    }
-                  }}
-                />
-              </div>
-            )}
 
             {/* Modo de impuestos */}
             <div className="space-y-1">
@@ -1491,17 +1538,17 @@ function RegistrarVentaContent() {
                 <tbody>
                   <tr>
                     <td className="py-1">Importe productos</td>
-                    <td className="py-1 text-right">S/ {subtotal.toFixed(2)}</td>
+                    <td className="py-1 text-right">S/ {subtotalBruto.toFixed(2)}</td>
                   </tr>
-                  {hasDiscount && (
+                  {totalItemDiscounts > 0 && (
                     <tr>
-                      <td className="py-1">Total descuento</td>
-                      <td className="py-1 text-right">S/ {discountTotal.toFixed(2)}</td>
+                      <td className="py-1">Total descuentos</td>
+                      <td className="py-1 text-right">- S/ {totalItemDiscounts.toFixed(2)}</td>
                     </tr>
                   )}
                   <tr>
                     <td className="py-1">Sub total</td>
-                    <td className="py-1 text-right">S/ {(subtotal - discountTotal).toFixed(2)}</td>
+                    <td className="py-1 text-right">S/ {subtotal.toFixed(2)}</td>
                   </tr>
                   {taxMode === "AUTOMATICO" && (
                     <tr>
