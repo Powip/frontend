@@ -41,7 +41,8 @@ const STATUS_STYLES: Record<
 };
 
 export default function OrderReceiptView({ data }: Props) {
-  const { orderNumber, status, customer, items, totals, payments, salesChannel } =
+
+  const { orderNumber, status, customer, items, totals, payments, salesChannel, closingChannel } =
     data;
 
   const statusStyle = STATUS_STYLES[status as OrderStatus] ?? {
@@ -54,6 +55,7 @@ export default function OrderReceiptView({ data }: Props) {
   const expandedItems = items.flatMap((item: any) =>
     Array.from({ length: item.quantity }, () => ({
       ...item,
+      originalQuantity: item.quantity, // Guardar cantidad original para calcular descuento prorrateado
       quantity: 1,
       subtotal: item.unitPrice,
     }))
@@ -105,7 +107,7 @@ export default function OrderReceiptView({ data }: Props) {
       {/* Order Header */}
       <div className="mb-6">
         <h2 className="text-xl font-bold">No de Orden # {orderNumber}</h2>
-        <p className="text-lg font-semibold">Total: S/{totals.grandTotal}</p>
+        <p className="text-lg font-semibold">Total: S/{Number(totals.grandTotal).toFixed(2)}</p>
       </div>
 
       {/* Customer & Order Info Grid */}
@@ -142,7 +144,7 @@ export default function OrderReceiptView({ data }: Props) {
           <span className="text-black-600 font-medium">{customer.city || "-"}</span>
         </div>
         <div>
-          <span className="text-muted-foreground">Canal: </span>
+          <span className="text-muted-foreground">Canal Venta: </span>
           <span className="text-black-600 font-medium">{salesChannel || "-"}</span>
         </div>
 
@@ -151,8 +153,13 @@ export default function OrderReceiptView({ data }: Props) {
           <span className="text-black-600 font-medium">{customer.province || "-"}</span>
         </div>
         <div>
+          <span className="text-muted-foreground">Canal Cierre: </span>
+          <span className="text-black-600 font-medium">{closingChannel || "-"}</span>
+        </div>
+
+        <div>
           <span className="text-muted-foreground">Dni: </span>
-          <span className="text-black-600 font-medium">{customer.documentNumber || "-"}</span>
+          <span className="text-black-600 font-medium">{customer.dni || customer.documentNumber || "-"}</span>
         </div>
       </div>
 
@@ -160,35 +167,49 @@ export default function OrderReceiptView({ data }: Props) {
       <div className="mb-6">
         <h3 className="font-bold mb-3">Productos</h3>
         <div className="space-y-3">
-          {expandedItems.map((item: any, i: number) => (
-            <div key={i} className="border rounded-md p-3 flex justify-between items-start">
-              <div className="space-y-1">
-                <p className="text-black-600 font-medium">{item.productName}</p>
-                {item.attributes && (
-                  <div className="text-xs text-muted-foreground space-y-0.5">
-                    {Object.entries(item.attributes).map(([k, v]) => (
-                      <p key={k}>
-                        <span className="text-muted-foreground">{k}: </span>
-                        <span className="text-black-600 font-medium">{String(v)}</span>
-                      </p>
-                    ))}
-                  </div>
-                )}
-                <p className="text-xs">
-                  <span className="text-muted-foreground">Cantidad: </span>
-                  <span className="text-black-600 font-medium">{item.quantity}</span>
-                </p>
-                <p className="text-xs">
-                  <span className="text-muted-foreground">Valor Und: </span>
-                  <span className="text-black-600 font-medium">S/ {item.unitPrice}</span>
-                </p>
-                <p className="text-xs">
-                  <span className="text-muted-foreground">Sub Total: </span>
-                  <span className="text-black-600 font-medium">S/ {item.subtotal}</span>
-                </p>
+          {expandedItems.map((item: any, i: number) => {
+            // Calcular el descuento prorrateado por unidad
+            const discountPerUnit = item.originalQuantity > 0 
+              ? (Number(item.discountAmount) || 0) / item.originalQuantity 
+              : 0;
+            const subtotalWithDiscount = item.unitPrice - discountPerUnit;
+            
+            return (
+              <div key={i} className="border rounded-md p-3 flex justify-between items-start">
+                <div className="space-y-1">
+                  <p className="text-black-600 font-medium">{item.productName}</p>
+                  {item.attributes && (
+                    <div className="text-xs text-muted-foreground space-y-0.5">
+                      {Object.entries(item.attributes).map(([k, v]) => (
+                        <p key={k}>
+                          <span className="text-muted-foreground">{k}: </span>
+                          <span className="text-black-600 font-medium">{String(v)}</span>
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                  <p className="text-xs">
+                    <span className="text-muted-foreground">Cantidad: </span>
+                    <span className="text-black-600 font-medium">{item.quantity}</span>
+                  </p>
+                  <p className="text-xs">
+                    <span className="text-muted-foreground">Valor Und: </span>
+                    <span className="text-black-600 font-medium">S/ {Number(item.unitPrice).toFixed(2)}</span>
+                  </p>
+                  {discountPerUnit > 0 && (
+                    <p className="text-xs text-red-600">
+                      <span className="text-muted-foreground">Descuento: </span>
+                      <span className="font-medium">- S/ {discountPerUnit.toFixed(2)}</span>
+                    </p>
+                  )}
+                  <p className="text-xs">
+                    <span className="text-muted-foreground">Sub Total: </span>
+                    <span className="text-black-600 font-medium">S/ {subtotalWithDiscount.toFixed(2)}</span>
+                  </p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -196,31 +217,31 @@ export default function OrderReceiptView({ data }: Props) {
       <div className="border-t pt-4 space-y-2">
         <div className="flex justify-between">
           <span className="text-muted-foreground">Productos:</span>
-          <span>S/ {totals.productsTotal}</span>
+          <span>S/ {Number(totals.productsTotal).toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">IGV 18%:</span>
-          <span>S/ {totals.taxTotal}</span>
+          <span>S/ {Number(totals.taxTotal).toFixed(2)}</span>
         </div>
         <div className="flex justify-between">
           <span className="text-muted-foreground">Envío:</span>
-          <span>S/ {totals.shippingTotal}</span>
+          <span>S/ {Number(totals.shippingTotal).toFixed(2)}</span>
         </div>
         <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
           <span>Total:</span>
-          <span>S/ {totals.grandTotal}</span>
+          <span>S/ {Number(totals.grandTotal).toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-muted-foreground">
           <span>Descuentos:</span>
-          <span>S/ {totals.discountTotal}</span>
+          <span>S/ {Number(totals.discountTotal).toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-muted-foreground">
           <span>Adelanto:</span>
-          <span>S/ {totalPaid}</span>
+          <span>S/ {totalPaid.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-muted-foreground">
           <span>Por Cobrar:</span>
-          <span>S/ {pendingAmount}</span>
+          <span>S/ {pendingAmount.toFixed(2)}</span>
         </div>
       </div>
     </div>

@@ -90,13 +90,20 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
     const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
 
     // Generar items expandidos para la impresión
-    const expandedItems = receipt.items.flatMap((item: any) =>
-      Array.from({ length: item.quantity }, () => ({
+    const expandedItems = receipt.items.flatMap((item: any) => {
+      const discountPerUnit = item.quantity > 0 
+        ? (Number(item.discountAmount) || 0) / item.quantity 
+        : 0;
+      const subtotalWithDiscount = item.unitPrice - discountPerUnit;
+      
+      return Array.from({ length: item.quantity }, () => ({
         ...item,
+        originalQuantity: item.quantity,
         quantity: 1,
-        subtotal: item.unitPrice,
-      }))
-    );
+        subtotal: subtotalWithDiscount,
+        discountPerUnit,
+      }));
+    });
 
     // Crear ventana de impresión con contenido limpio
     const printWindow = window.open('', '_blank', 'width=400,height=600');
@@ -156,18 +163,26 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
           .info-item { line-height: 1.3; }
           .info-label { color: #666; }
           .info-value { font-weight: 500; }
-          .products-list { 
-            border: 1px solid #ddd; 
-            padding: 8px;
+          .products-table { 
+            width: 100%;
+            font-size: 9px;
+            border-collapse: collapse;
             margin-bottom: 10px;
           }
-          .product-item { 
-            padding: 6px 0;
-            border-bottom: 1px dotted #eee;
+          .products-table th {
+            text-align: left;
+            border-bottom: 1px solid #333;
+            padding: 4px 2px;
+            font-size: 8px;
           }
-          .product-item:last-child { border-bottom: none; }
-          .product-name { font-weight: bold; font-size: 11px; }
-          .product-detail { font-size: 9px; color: #666; }
+          .products-table td {
+            padding: 3px 2px;
+            border-bottom: 1px dotted #ddd;
+            vertical-align: top;
+          }
+          .products-table .qty { width: 25px; text-align: center; }
+          .products-table .price { text-align: right; white-space: nowrap; }
+          .products-table .desc { font-size: 8px; color: #666; }
           .totals { 
             border-top: 1px dashed #333;
             padding-top: 8px;
@@ -242,24 +257,39 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
             </div>
             <div class="info-item">
               <span class="info-label">DNI:</span>
-              <span class="info-value">${receipt.customer.documentNumber || '-'}</span>
+              <span class="info-value">${receipt.customer.dni || receipt.customer.documentNumber || '-'}</span>
             </div>
           </div>
         </div>
 
         <div class="section">
           <div class="section-title">Productos</div>
-          <div class="products-list">
-            ${expandedItems.map((item: any) => `
-              <div class="product-item">
-                <div class="product-name">${item.productName}</div>
-                ${item.attributes ? Object.entries(item.attributes).map(([k, v]) =>
-      `<div class="product-detail">${k}: ${v}</div>`
-    ).join('') : ''}
-                <div class="product-detail">Cantidad: ${item.quantity} | Valor Und: S/ ${item.unitPrice} | Sub Total: S/ ${item.subtotal}</div>
-              </div>
-            `).join('')}
-          </div>
+          <table class="products-table">
+            <thead>
+              <tr>
+                <th class="qty">Qty</th>
+                <th>Producto</th>
+                <th class="price">Precio</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${receipt.items.map((item: any) => {
+                const attrs = item.attributes ? Object.entries(item.attributes).map(([k, v]) => `${v}`).join('/') : '';
+                const discount = Number(item.discountAmount) || 0;
+                const subtotal = Number(item.subtotal);
+                return `
+                  <tr>
+                    <td class="qty">${item.quantity}</td>
+                    <td>
+                      ${item.productName}${attrs ? ` (${attrs})` : ''}
+                      ${discount > 0 ? `<div class="desc">Dcto: -S/${discount.toFixed(2)}</div>` : ''}
+                    </td>
+                    <td class="price">S/${subtotal.toFixed(2)}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
         </div>
 
         <div class="totals">
