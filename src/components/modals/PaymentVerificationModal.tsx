@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DollarSign, Upload, Check, AlertCircle, ExternalLink } from "lucide-react";
+import { DollarSign, Upload, Check, AlertCircle, ExternalLink, ImagePlus, Loader2 } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
@@ -62,6 +62,8 @@ export default function PaymentVerificationModal({
   const [orderData, setOrderData] = useState<OrderData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadingProofForId, setUploadingProofForId] = useState<string | null>(null);
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Form states
   const [amount, setAmount] = useState("");
@@ -165,6 +167,40 @@ export default function PaymentVerificationModal({
     }
   };
 
+  const handleUploadProofToPayment = async (paymentId: string, proofFile: File) => {
+    setUploadingProofForId(paymentId);
+    try {
+      const formData = new FormData();
+      formData.append("file", proofFile);
+
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/upload-proof`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+          },
+        }
+      );
+
+      toast.success("Comprobante subido correctamente");
+      fetchOrderData();
+      onPaymentUpdated?.();
+    } catch (error) {
+      console.error("Error subiendo comprobante", error);
+      toast.error("Error al subir el comprobante");
+    } finally {
+      setUploadingProofForId(null);
+    }
+  };
+
+  const handleProofFileChange = (paymentId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      handleUploadProofToPayment(paymentId, selectedFile);
+    }
+  };
+
   const formatCurrency = (value: number) => {
     return `S/ ${value.toFixed(2)}`;
   };
@@ -218,33 +254,71 @@ export default function PaymentVerificationModal({
                   {pendingPayments.map((payment) => (
                     <div
                       key={payment.id}
-                      className="flex items-center justify-between bg-amber-50 rounded-md p-2"
+                      className="bg-amber-50 rounded-md p-3 space-y-2"
                     >
-                      <div>
-                        <p className="text-sm font-medium text-amber-900">
-                          {formatCurrency(Number(payment.amount))} - {payment.paymentMethod}
-                        </p>
-                        {payment.paymentProofUrl && (
-                          <a
-                            href={payment.paymentProofUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            Ver comprobante
-                          </a>
-                        )}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-amber-900">
+                            {formatCurrency(Number(payment.amount))} - {payment.paymentMethod}
+                          </p>
+                          {payment.paymentProofUrl ? (
+                            <a
+                              href={payment.paymentProofUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              Ver comprobante
+                            </a>
+                          ) : (
+                            <span className="text-xs text-amber-600">
+                              Sin comprobante adjunto
+                            </span>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="bg-green-50 hover:bg-green-100 text-green-600"
+                          onClick={() => handleApprovePayment(payment.id)}
+                        >
+                          <Check className="h-4 w-4 mr-1" />
+                          Aprobar
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="bg-green-50 hover:bg-green-100 text-green-600"
-                        onClick={() => handleApprovePayment(payment.id)}
-                      >
-                        <Check className="h-4 w-4 mr-1" />
-                        Aprobar
-                      </Button>
+                      
+                      {/* Botón para subir comprobante si no tiene */}
+                      {!payment.paymentProofUrl && (
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="file"
+                            ref={(el) => { fileInputRefs.current[payment.id] = el; }}
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => handleProofFileChange(payment.id, e)}
+                          />
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs"
+                            disabled={uploadingProofForId === payment.id}
+                            onClick={() => fileInputRefs.current[payment.id]?.click()}
+                          >
+                            {uploadingProofForId === payment.id ? (
+                              <>
+                                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                                Subiendo...
+                              </>
+                            ) : (
+                              <>
+                                <ImagePlus className="h-3 w-3 mr-1" />
+                                Agregar comprobante
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

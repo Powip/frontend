@@ -137,6 +137,9 @@ export interface OrderHeader {
   grandTotal: string;
   status: OrderStatus;
   salesRegion: "LIMA" | "PROVINCIA";
+  taxMode?: "AUTOMATICO" | "INCLUIDO";
+  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
+  callAttempts?: number;
   cancellationReason: string | null;
   notes: string | null;
   items: OrderItem[];

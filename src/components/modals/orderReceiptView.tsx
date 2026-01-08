@@ -79,6 +79,78 @@ export default function OrderReceiptView({ data }: Props) {
         {statusStyle.label}
       </div>
 
+      {/* Payment Status Banner */}
+      {(() => {
+        const totalPaidApproved = totals.totalPaid || 0;
+        const totalPendingApproval = totals.totalPendingApproval || 0;
+        const pendingPaymentsCount = totals.pendingPaymentsCount || 0;
+        const approvedPaymentsCount = totals.approvedPaymentsCount || 0;
+        const total = totals.grandTotal || 0;
+        
+        // Caso 1: Completamente pagado (aprobado)
+        if (totalPaidApproved >= total) {
+          return (
+            <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6 rounded-r-md">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">✅</span>
+                <div>
+                  <p className="font-semibold text-green-800">Pago Completo</p>
+                  <p className="text-sm text-green-700">
+                    {approvedPaymentsCount} pago(s) aprobado(s) - Total: S/ {totalPaidApproved.toFixed(2)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          );
+        }
+        
+        // Caso 2: Hay pagos pendientes de revisión
+        if (pendingPaymentsCount > 0) {
+          return (
+            <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 mb-6 rounded-r-md">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">⏳</span>
+                <div>
+                  <p className="font-semibold text-yellow-800">Pagos Pendientes de Aprobación</p>
+                  <p className="text-sm text-yellow-700">
+                    {pendingPaymentsCount} pago(s) en revisión por S/ {totalPendingApproval.toFixed(2)}
+                  </p>
+                  {approvedPaymentsCount > 0 && (
+                    <p className="text-sm text-green-700 mt-1">
+                      ✓ {approvedPaymentsCount} pago(s) aprobado(s) por S/ {totalPaidApproved.toFixed(2)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
+        
+        // Caso 3: Falta monto (sin pagos pendientes de revisión)
+        if (pendingAmount > 0) {
+          return (
+            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-md">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">💰</span>
+                <div>
+                  <p className="font-semibold text-red-800">Pago Pendiente</p>
+                  <p className="text-sm text-red-700">
+                    Falta por pagar: S/ {pendingAmount.toFixed(2)}
+                  </p>
+                  {approvedPaymentsCount > 0 && (
+                    <p className="text-sm text-green-700 mt-1">
+                      ✓ Adelanto aprobado: S/ {totalPaidApproved.toFixed(2)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
+        
+        return null;
+      })()}
+
       {/* Payment Warning Alert - Only shown when there's pending balance and not ANULADO */}
       {pendingAmount > 0 && status !== "ANULADO" && (
         <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 rounded-r-md">

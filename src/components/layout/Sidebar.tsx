@@ -63,15 +63,16 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Operaciones", href: "/operaciones", icon: Truck },
     { name: "Finanzas", href: "/finanzas", icon: DollarSign },
     { name: "Clientes", href: "/clientes", icon: Users },
+    {
+      name: "Atención al cliente",
+      href: "/atencion-cliente",
+      icon: Headphones,
+    },
     { name: "Proveedores", href: "/proveedores", icon: Building2 },
    /*  { name: "Repartidores", href: "/repartidores", icon: Truck }, */
     { name: "Usuarios", href: "/usuarios", icon: UserCog },
  /*    { name: "Reportes", href: "/reportes", icon: BarChart }, */
- /*    {
-      name: "Servicio al cliente",
-      href: "/servicio-cliente",
-      icon: Headphones,
-    }, */
+
     { name: "Configuración", href: "/configuracion", icon: Settings },
  /*    { name: "Auditoría", href: "/auditoria", icon: FileSearch }, */
   ];

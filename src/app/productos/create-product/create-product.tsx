@@ -55,7 +55,7 @@ interface DefaultAttribute {
 interface CustomAttribute {
   id: string; // local id
   name: string;
-  values: string[];
+  rawValues: string; // Valor raw para el input (ej: "S, M, L")
 }
 
 interface VariantForm {
@@ -396,7 +396,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
     const newAttr: CustomAttribute = {
       id: `custom_${Date.now()}`,
       name: "",
-      values: [],
+      rawValues: "",
     };
     setCustomAttributes((prev) => [...prev, newAttr]);
   };
@@ -407,16 +407,18 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
     );
   };
 
-  const handleCustomAttrValuesChange = (id: string, raw: string) => {
-    const values = raw
-      .replace(/\s*,\s*/g, ",")
+  const handleCustomAttrValuesChange = (id: string, rawValues: string) => {
+    setCustomAttributes((prev) =>
+      prev.map((attr) => (attr.id === id ? { ...attr, rawValues } : attr))
+    );
+  };
+
+  // Parsear valores raw a array (usado al generar variantes)
+  const parseCustomAttrValues = (rawValues: string): string[] => {
+    return rawValues
       .split(",")
       .map((v) => v.trim())
       .filter((v) => v.length > 0);
-
-    setCustomAttributes((prev) =>
-      prev.map((attr) => (attr.id === id ? { ...attr, values } : attr))
-    );
   };
 
   const handleRemoveCustomAttr = (id: string) => {
@@ -438,8 +440,9 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
     });
 
     customAttributes.forEach((attr) => {
-      if (attr.name && attr.values.length > 0) {
-        mapByName[attr.name] = attr.values;
+      const values = parseCustomAttrValues(attr.rawValues);
+      if (attr.name && values.length > 0) {
+        mapByName[attr.name] = values;
       }
     });
 
@@ -643,17 +646,20 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
       })),
       // custom attributes
       ...customAttributes
-        .filter((a) => a.name && a.values.length > 0)
-        .map((attr, idx) => ({
-          customAttribute: {
-            name: attr.name,
-            type: "input",
-            required: true,
-            options: attr.values.map((v) => ({ value: v })),
-          },
-          isActive: true,
-          sortOrder: defaultAttributes.length + idx,
-        })),
+        .filter((a) => a.name && parseCustomAttrValues(a.rawValues).length > 0)
+        .map((attr, idx) => {
+          const values = parseCustomAttrValues(attr.rawValues);
+          return {
+            customAttribute: {
+              name: attr.name,
+              type: "input",
+              required: true,
+              options: values.map((v: string) => ({ value: v })),
+            },
+            isActive: true,
+            sortOrder: defaultAttributes.length + idx,
+          };
+        }),
     ];
 
     const variantsPayload = variants.map((v, index) => ({
@@ -1005,10 +1011,11 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
                     <div className="space-y-2">
                       <Label>Valores (separados por coma)</Label>
                       <Input
-                        value={attr.values.join(", ")}
+                        value={attr.rawValues}
                         onChange={(e) =>
                           handleCustomAttrValuesChange(attr.id, e.target.value)
                         }
+                        placeholder="Ej: S, M, L, XL"
                       />
                     </div>
 
