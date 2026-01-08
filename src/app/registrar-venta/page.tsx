@@ -86,6 +86,7 @@ function RegistrarVentaContent() {
   /* ---------------- Pago ---------------- */
   const [paymentMethod, setPaymentMethod] = useState("");
   const [shippingTotal, setShippingTotal] = useState(0);
+  const [shippingTotalDisplay, setShippingTotalDisplay] = useState(""); // Para manejar input con decimales
   const [advancePayment, setAdvancePayment] = useState(0);
 
 
@@ -167,7 +168,9 @@ function RegistrarVentaContent() {
     setSalesRegion(orderData.salesRegion);
 
     // --- Costo de envío ---
-    setShippingTotal(Number(orderData.shippingTotal) || 0);
+    const shippingValue = Number(orderData.shippingTotal) || 0;
+    setShippingTotal(shippingValue);
+    setShippingTotalDisplay(shippingValue === 0 ? "" : String(shippingValue));
 
     // --- Productos ---
     const mappedCart: CartItem[] = orderData.items.map((item) => ({
@@ -183,21 +186,29 @@ function RegistrarVentaContent() {
     }));
     setCart(mappedCart);
 
-    // --- Pagos ---
-   
+    // --- Modo de impuestos ---
+    if (orderData.taxMode) {
+      setTaxMode(orderData.taxMode as "AUTOMATICO" | "INCLUIDO");
+    }
 
+    // --- Pagos ---
     if (orderData.payments?.length) {
-      // Sumar todos los pagos aprobados (PAID)
-      const totalPaid = orderData.payments
+      // Sumar todos los pagos (PAID + PENDING)
+      const totalPaidApproved = orderData.payments
         .filter((p) => p.status === "PAID")
         .reduce((sum, p) => sum + Number(p.amount), 0);
       
-      setAdvancePayment(totalPaid);
+      const totalPending = orderData.payments
+        .filter((p) => p.status === "PENDING")
+        .reduce((sum, p) => sum + Number(p.amount), 0);
       
-      // Usar el método del primer pago aprobado como referencia
-      const firstPaidPayment = orderData.payments.find((p) => p.status === "PAID");
-      if (firstPaidPayment) {
-        setPaymentMethod(firstPaidPayment.paymentMethod);
+      // Mostrar el total de pagos (aprobados + pendientes)
+      setAdvancePayment(totalPaidApproved + totalPending);
+      
+      // Usar el método del primer pago (sea PAID o PENDING)
+      const firstPayment = orderData.payments[0];
+      if (firstPayment) {
+        setPaymentMethod(firstPayment.paymentMethod);
       }
     }
   }, [orderData]);
@@ -297,6 +308,44 @@ function RegistrarVentaContent() {
     setSearchState("idle");
     setClientForm(emptyClientForm);
     setOriginalClient(null);
+  };
+
+  const resetForm = () => {
+    // Cliente
+    setClientFound(null);
+    setSearchState("idle");
+    setClientForm(emptyClientForm);
+    setOriginalClient(null);
+    
+    // Productos
+    setProductQuery("");
+    setProducts([]);
+    setProductsMeta(null);
+    setCart([]);
+    
+    // Detalles de orden
+    setOrderDetails({
+      orderType: undefined,
+      salesChannel: undefined,
+      closingChannel: undefined,
+      deliveryType: undefined,
+      entregaEn: undefined,
+      enviaPor: undefined,
+      notes: "",
+    });
+    setSalesRegion("LIMA");
+    
+    // Pagos
+    setPaymentMethod("");
+    setShippingTotal(0);
+    setShippingTotalDisplay("");
+    setAdvancePayment(0);
+    setPaymentProofFile(null);
+    setPaymentProofPreview(null);
+    setTaxMode("AUTOMATICO");
+    
+    // Order data (para modo edición)
+    setOrderData(null);
   };
 
   const handleCreateClient = async () => {
@@ -430,9 +479,8 @@ function RegistrarVentaContent() {
         setReceiptOrderId(createdOrderId);
         setReceiptOpen(true);
         
-        // Limpiar el comprobante
-        setPaymentProofFile(null);
-        setPaymentProofPreview(null);
+        // Limpiar todo el formulario después de venta exitosa
+        resetForm();
       } else {
         // Actualizar orden existente
         const updatePayload = {
@@ -456,6 +504,9 @@ function RegistrarVentaContent() {
             attributes: item.attributes,
           })),
           userId: auth?.user?.id ?? null,
+          // Datos de pago
+          paymentMethod: paymentMethod || null,
+          paymentAmount: advancePayment,
         };
 
         await axios.put(
@@ -547,7 +598,9 @@ function RegistrarVentaContent() {
 
   const handleUpdateQuantity = (cartItemId: string, newQuantity: number) => {
     setCart((prev) => {
-      if (newQuantity < 1) return prev;
+      // Permitir 0 temporalmente para que el usuario pueda borrar y escribir un nuevo número
+      // La validación de cantidad > 0 se hace en hasValidCart al momento de submit
+      if (newQuantity < 0) return prev;
 
       return prev.map((p) =>
         p.id === cartItemId ? { ...p, quantity: newQuantity } : p
@@ -611,9 +664,7 @@ function RegistrarVentaContent() {
     orderDetails.deliveryType === DeliveryType.RETIRO_TIENDA ||
     (orderDetails.deliveryType && orderDetails.enviaPor);
 
-  const hasValidPayments =
-    !!paymentMethod &&
-    advancePayment <= grandTotal;
+  const hasValidPayments = !!paymentMethod;
 
   const canSubmit =
     !!clientFound &&
@@ -1398,12 +1449,24 @@ function RegistrarVentaContent() {
                 <Input
                   type="text"
                   inputMode="decimal"
-                  value={shippingTotal === 0 ? "" : shippingTotal}
+                  value={shippingTotalDisplay}
                   onChange={(e) => {
                     const val = e.target.value;
+                    // Permitir vacío, números enteros y decimales (incluyendo estados intermedios como "10.")
                     if (val === "" || /^\d*\.?\d*$/.test(val)) {
-                      setShippingTotal(val === "" ? 0 : Number(val));
+                      setShippingTotalDisplay(val);
+                      // Solo actualizar el valor numérico si es un número válido
+                      if (val === "" || !val.endsWith('.')) {
+                        setShippingTotal(val === "" ? 0 : Number(val));
+                      }
                     }
+                  }}
+                  onBlur={(e) => {
+                    // Al perder el foco, asegurarse de que el valor sea un número válido
+                    const val = e.target.value;
+                    const numVal = parseFloat(val) || 0;
+                    setShippingTotal(numVal);
+                    setShippingTotalDisplay(numVal === 0 ? "" : String(numVal));
                   }}
                 />
               </div>
@@ -1416,7 +1479,6 @@ function RegistrarVentaContent() {
                 type="number"
                 step="0.01"
                 min="0"
-                disabled={orderId !== null}
                 value={advancePayment === 0 ? "" : advancePayment}
                 onChange={(e) => {
                   const val = e.target.value;

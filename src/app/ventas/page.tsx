@@ -735,6 +735,17 @@ Estado: ${sale.status}
               <Button
                 size="icon"
                 variant="outline"
+                onClick={() => {
+                  setSelectedSaleForComments(sale);
+                  setCommentsModalOpen(true);
+                }}
+                title="Ver comentarios / razón de anulación"
+              >
+                <MessageSquare className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="outline"
                 onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
               >
                 <Pencil className="h-4 w-4" />

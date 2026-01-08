@@ -9,9 +9,10 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { MessageSquare, Send, Clock, User } from "lucide-react";
+import { MessageSquare, Send, Clock, User, Settings, MessageCircle } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LogEntry {
   id: number;
@@ -20,6 +21,8 @@ interface LogEntry {
   operacion: string;
   timestamp: string;
   userId: string | null;
+  userName?: string | null;
+  isSystemGenerated?: boolean;
 }
 
 interface CommentsTimelineModalProps {
@@ -54,6 +57,7 @@ export default function CommentsTimelineModal({
   const [isLoading, setIsLoading] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [isSending, setIsSending] = useState(false);
+  const { auth } = useAuth();
 
   const fetchLogs = async () => {
     if (!orderId) return;
@@ -87,13 +91,11 @@ export default function CommentsTimelineModal({
         orderId,
         comentarios: newComment.trim(),
         operacion: "COMMENT",
-        tipoDoc: "ORDER",
-        docId: orderId,
-        customerId: null,
-        userId: null,
+        userId: auth?.user?.id ?? null,
+        userName: auth?.user?.email ?? null, 
         data: {},
+        isSystemGenerated: false,
       });
-      toast.success("Comentario agregado");
       setNewComment("");
       fetchLogs();
     } catch (error) {
@@ -151,28 +153,52 @@ export default function CommentsTimelineModal({
                 >
                   {/* Dot */}
                   <div
-                    className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 ${
-                      log.operacion === "COMMENT"
-                        ? "bg-primary border-primary"
-                        : "bg-muted border-muted-foreground"
+                    className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${
+                      log.isSystemGenerated
+                        ? "bg-muted border-muted-foreground"
+                        : "bg-primary border-primary"
                     }`}
-                  />
+                  >
+                    {log.isSystemGenerated ? (
+                      <Settings className="h-2 w-2 text-muted-foreground" />
+                    ) : (
+                      <MessageCircle className="h-2 w-2 text-primary-foreground" />
+                    )}
+                  </div>
 
                   {/* Content */}
-                  <div className="bg-muted/50 rounded-lg p-3">
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-                      <Clock className="h-3 w-3" />
-                      <span>{formatDate(log.timestamp)}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-muted text-xs font-medium">
-                        {OPERACION_LABELS[log.operacion] || log.operacion}
-                      </span>
+                  <div className={`rounded-lg p-3 ${log.isSystemGenerated ? 'bg-muted/30 border border-muted' : 'bg-primary/10 border border-primary/20'}`}>
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-1">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-3 w-3" />
+                        <span>{formatDate(log.timestamp)}</span>
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-medium flex items-center gap-1 ${log.isSystemGenerated ? 'bg-muted text-muted-foreground' : 'bg-primary/20 text-primary'}`}>
+                          {log.isSystemGenerated ? (
+                            <><Settings className="h-3 w-3" /> Sistema</>
+                          ) : (
+                            <><MessageCircle className="h-3 w-3" /> {OPERACION_LABELS[log.operacion] || log.operacion}</>
+                          )}
+                        </span>
+                        {log.isSystemGenerated && (
+                          <span className="px-1.5 py-0.5 rounded bg-muted text-xs">
+                            {OPERACION_LABELS[log.operacion] || log.operacion}
+                          </span>
+                        )}
+                      </div>
+                      {/* Nombre del usuario */}
+                      {log.userName && (
+                        <div className="flex items-center gap-1 text-xs font-medium text-foreground">
+                          <User className="h-3 w-3" />
+                          <span>{log.userName}</span>
+                        </div>
+                      )}
                     </div>
                     {log.comentarios && (
                       <p className="text-sm mt-1">{log.comentarios}</p>
                     )}
-                    {!log.comentarios && log.operacion !== "COMMENT" && (
+                    {!log.comentarios && log.isSystemGenerated && (
                       <p className="text-sm text-muted-foreground italic">
-                        Sin comentarios
+                        Acción automática del sistema
                       </p>
                     )}
                   </div>
