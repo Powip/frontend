@@ -465,6 +465,7 @@ Estado: ${sale.status}
         orderId={selectedSaleForPayment?.id || ""}
         orderNumber={selectedSaleForPayment?.orderNumber || ""}
         onPaymentUpdated={fetchOrders}
+        canApprove={true}
       />
 
       {/* Modal de Atención al Cliente */}

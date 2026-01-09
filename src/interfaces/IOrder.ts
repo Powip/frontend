@@ -60,6 +60,7 @@ export type OrderStatus =
   | "PENDIENTE"
   | "PREPARADO"
   | "LLAMADO"
+  | "ASIGNADO_A_GUIA"
   | "EN_ENVIO"
   | "ENTREGADO"
   | "ANULADO";

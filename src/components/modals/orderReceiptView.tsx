@@ -23,6 +23,11 @@ const STATUS_STYLES: Record<
     text: "text-white",
     label: "Contactado",
   },
+  ASIGNADO_A_GUIA: {
+    bg: "bg-teal-500",
+    text: "text-white",
+    label: "En Guía",
+  },
   EN_ENVIO: {
     bg: "bg-purple-500",
     text: "text-white",

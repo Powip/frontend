@@ -42,6 +42,8 @@ interface PaymentVerificationModalProps {
   orderId: string;
   orderNumber: string;
   onPaymentUpdated?: () => void;
+  /** Solo permitir aprobar pagos desde /finanzas y /atencion-cliente */
+  canApprove?: boolean;
 }
 
 const PAYMENT_METHODS = [
@@ -58,6 +60,7 @@ export default function PaymentVerificationModal({
   orderId,
   orderNumber,
   onPaymentUpdated,
+  canApprove = false,
 }: PaymentVerificationModalProps) {
   const [orderData, setOrderData] = useState<OrderData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -277,15 +280,17 @@ export default function PaymentVerificationModal({
                             </span>
                           )}
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="bg-green-50 hover:bg-green-100 text-green-600"
-                          onClick={() => handleApprovePayment(payment.id)}
-                        >
-                          <Check className="h-4 w-4 mr-1" />
-                          Aprobar
-                        </Button>
+{canApprove && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="bg-green-50 hover:bg-green-100 text-green-600"
+                            onClick={() => handleApprovePayment(payment.id)}
+                          >
+                            <Check className="h-4 w-4 mr-1" />
+                            Aprobar
+                          </Button>
+                        )}
                       </div>
                       
                       {/* Botón para subir comprobante si no tiene */}
@@ -330,16 +335,33 @@ export default function PaymentVerificationModal({
               <div className="border rounded-lg p-3">
                 <h4 className="font-medium text-sm mb-2">Pagos Aprobados</h4>
                 <div className="space-y-1">
-                  {orderData?.payments
+  {orderData?.payments
                     .filter((p) => p.status === "PAID")
                     .map((payment) => (
                       <div
                         key={payment.id}
-                        className="flex items-center justify-between text-sm py-1 border-b last:border-0"
+                        className="flex items-center justify-between text-sm py-2 border-b last:border-0"
                       >
-                        <span>
-                          {formatCurrency(Number(payment.amount))} - {payment.paymentMethod}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <span>
+                            {formatCurrency(Number(payment.amount))} - {payment.paymentMethod}
+                          </span>
+                          {payment.paymentProofUrl ? (
+                            <a
+                              href={payment.paymentProofUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              Ver comprobante
+                            </a>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">
+                              Sin comprobante adjunto
+                            </span>
+                          )}
+                        </div>
                         <span className="text-green-600 text-xs font-medium">
                           ✓ Aprobado
                         </span>

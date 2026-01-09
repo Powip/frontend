@@ -71,6 +71,10 @@ export interface Sale {
   advancePayment: number;
   pendingPayment: number;
   courier: string | null;
+  // Nuevos campos para pagos
+  hasPendingPayments: boolean;
+  pendingPaymentsCount: number;
+  pendingPaymentsAmount: number;
 }
 
 /* -----------------------------------------
@@ -84,6 +88,13 @@ function mapOrderToSale(order: OrderHeader): Sale {
     0
   );
   const pendingPayment = Math.max(total - advancePayment, 0);
+  
+  // Calcular pagos pendientes de aprobación
+  const pendingPayments = order.payments.filter((p) => p.status === "PENDING");
+  const pendingPaymentsAmount = pendingPayments.reduce(
+    (acc, p) => acc + Number(p.amount || 0),
+    0
+  );
 
   return {
     id: order.id,
@@ -102,6 +113,9 @@ function mapOrderToSale(order: OrderHeader): Sale {
     advancePayment,
     pendingPayment,
     courier: order.courier ?? null,
+    hasPendingPayments: pendingPayments.length > 0,
+    pendingPaymentsCount: pendingPayments.length,
+    pendingPaymentsAmount,
   };
 }
 
@@ -115,7 +129,7 @@ export default function FinanzasPage() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   // Filtros avanzados
-  const [filtersDespachado, setFiltersDespachado] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersPagosPendientes, setFiltersPagosPendientes] = useState<SalesFilters>(emptySalesFilters);
   const [filtersEntregado, setFiltersEntregado] = useState<SalesFilters>(emptySalesFilters);
   const [isPrinting, setIsPrinting] = useState(false);
 
@@ -604,12 +618,13 @@ Estado: ${sale.status}
      Filters
   ----------------------------------------- */
 
-  const despachados = useMemo(
+  // Ventas con pagos pendientes de aprobación
+  const pagosPendientes = useMemo(
     () => {
-      const statusFiltered = sales.filter((s) => s.status === ORDER_STATUS.EN_ENVIO);
-      return applyFilters(statusFiltered, filtersDespachado);
+      const filtered = sales.filter((s) => s.hasPendingPayments);
+      return applyFilters(filtered, filtersPagosPendientes);
     },
-    [sales, filtersDespachado]
+    [sales, filtersPagosPendientes]
   );
 
   const entregados = useMemo(
@@ -634,7 +649,7 @@ Estado: ${sale.status}
         <div className="flex flex-col items-center mb-6">
           <HeaderConfig
             title="Finanzas"
-            description="Gestión de pedidos despachados y entregados"
+            description="Gestión de pagos pendientes y ventas entregadas"
           />
         </div>
 
@@ -648,56 +663,109 @@ Estado: ${sale.status}
         </div>
 
         {/* Tabs para Finanzas */}
-        <Tabs defaultValue="despachados" className="w-full">
+        <Tabs defaultValue="pagosPendientes" className="w-full">
           <TabsList className="mb-4">
-            <TabsTrigger value="despachados">
-              Despachados ({despachados.length})
+            <TabsTrigger value="pagosPendientes">
+              Pagos Pendientes ({pagosPendientes.length})
             </TabsTrigger>
             <TabsTrigger value="entregados">
               Entregados ({entregados.length})
             </TabsTrigger>
           </TabsList>
 
-          {/* Tab Despachados */}
-          <TabsContent value="despachados">
+          {/* Tab Pagos Pendientes */}
+          <TabsContent value="pagosPendientes">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Pedidos Despachados</CardTitle>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={despachados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
-                    onClick={() => handleBulkPrintForStatus(despachados)}
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados ({despachados.filter((s) => selectedSaleIds.has(s.id)).length})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={despachados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("EN_ENVIO")}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({despachados.filter((s) => selectedSaleIds.has(s.id)).length})
-                  </Button>
+                <div>
+                  <CardTitle>Pagos Pendientes de Aprobación</CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Ventas con comprobantes de pago por verificar
+                  </p>
                 </div>
               </CardHeader>
               <CardContent>
-              <SalesTableFilters
-                  filters={filtersDespachado}
-                  onFiltersChange={setFiltersDespachado}
-                  showCourierFilter={true}
-                  availableCouriers={availableCouriers}
+                <SalesTableFilters
+                  filters={filtersPagosPendientes}
+                  onFiltersChange={setFiltersPagosPendientes}
                 />
-                {renderDespachadosTable(despachados)}
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>N° Orden</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Teléfono</TableHead>
+                      <TableHead>Estado Venta</TableHead>
+                      <TableHead>Total Venta</TableHead>
+                      <TableHead>Pagos Pendientes</TableHead>
+                      <TableHead>Monto por Aprobar</TableHead>
+                      <TableHead>Resumen</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pagosPendientes.map((sale) => (
+                      <TableRow key={sale.id}>
+                        <TableCell className="font-medium">{sale.orderNumber}</TableCell>
+                        <TableCell>{sale.clientName}</TableCell>
+                        <TableCell>{sale.phoneNumber}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{sale.status}</Badge>
+                        </TableCell>
+                        <TableCell>S/{sale.total.toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Badge className="bg-amber-100 text-amber-800">
+                            {sale.pendingPaymentsCount} pago(s)
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-medium text-amber-600">
+                          S/{sale.pendingPaymentsAmount.toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setSelectedOrderId(sale.id);
+                              setReceiptOpen(true);
+                            }}
+                          >
+                            <FileText className="h-4 w-4 mr-1" />
+                            Ver
+                          </Button>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            className="bg-amber-500 hover:bg-amber-600 text-white"
+                            onClick={() => {
+                              setSelectedSaleForPayment(sale);
+                              setPaymentModalOpen(true);
+                            }}
+                          >
+                            <DollarSign className="h-4 w-4 mr-1" />
+                            Gestionar Pagos
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {pagosPendientes.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
+                          No hay pagos pendientes de aprobación
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </CardContent>
               <Pagination
                 currentPage={1}
-                totalPages={Math.ceil(despachados.length / 10) || 1}
-                totalItems={despachados.length}
+                totalPages={Math.ceil(pagosPendientes.length / 10) || 1}
+                totalItems={pagosPendientes.length}
                 itemsPerPage={10}
                 onPageChange={() => {}}
-                itemName="pedidos"
+                itemName="ventas"
               />
             </Card>
           </TabsContent>
@@ -785,6 +853,7 @@ Estado: ${sale.status}
         orderId={selectedSaleForPayment?.id || ""}
         orderNumber={selectedSaleForPayment?.orderNumber || ""}
         onPaymentUpdated={fetchOrders}
+        canApprove={true}
       />
     </div>
   );

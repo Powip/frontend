@@ -128,16 +128,23 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
             margin: 0 auto;
           }
           .header { 
-            text-align: center; 
-            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
             padding-bottom: 8px;
             border-bottom: 1px dashed #333;
           }
           .qr-code { 
-            width: 80px; 
-            height: 80px; 
-            margin: 0 auto 8px;
-            display: block;
+            width: 70px; 
+            height: 70px; 
+            flex-shrink: 0;
+          }
+          .header-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
           }
           .order-title { 
             font-size: 14px; 
@@ -196,13 +203,13 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
           .total-row.main { 
             font-size: 14px; 
             font-weight: bold;
-            border-top: 1px solid #333;
+            border-top: 1px solid #333333ff;
             padding-top: 6px;
             margin-top: 6px;
           }
           .total-row.pending { 
             font-weight: bold;
-            color: #d97706;
+            color: #333333ff;
           }
           @media print {
             body { padding: 10px; }
@@ -213,8 +220,10 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
       <body>
         <div class="header">
           ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" class="qr-code">` : ''}
-          <div class="order-title">Orden # ${receipt.orderNumber}</div>
-          <div class="order-total">Total: S/ ${receipt.totals.grandTotal.toFixed(2)}</div>
+          <div class="header-info">
+            <div class="order-title">Orden # ${receipt.orderNumber}</div>
+            <div class="order-total">Total: S/ ${receipt.totals.grandTotal.toFixed(2)}</div>
+          </div>
         </div>
 
         <div class="section">

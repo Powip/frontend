@@ -514,6 +514,7 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
           fetchReceipt();
           onOrderUpdated?.();
         }}
+        canApprove={true}
       />
     </>
   );
