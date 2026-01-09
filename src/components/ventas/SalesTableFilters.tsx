@@ -14,6 +14,7 @@ export interface SalesFilters {
   region: "" | "LIMA" | "PROVINCIA";
   deliveryType: "" | "RETIRO_TIENDA" | "DOMICILIO";
   courier: string;
+  zone: string;
 }
 
 export const emptySalesFilters: SalesFilters = {
@@ -24,6 +25,7 @@ export const emptySalesFilters: SalesFilters = {
   region: "",
   deliveryType: "",
   courier: "",
+  zone: "",
 };
 
 interface SalesTableFiltersProps {
@@ -31,6 +33,7 @@ interface SalesTableFiltersProps {
   onFiltersChange: (filters: SalesFilters) => void;
   showRegionFilter?: boolean;
   showCourierFilter?: boolean;
+  showZoneFilter?: boolean;
   availableCouriers?: string[];
 }
 
@@ -60,11 +63,23 @@ const DELIVERY_TYPE_OPTIONS = [
   { value: "DOMICILIO", label: "Domicilio" },
 ];
 
+const ZONE_OPTIONS = [
+  { value: "", label: "Todas las zonas" },
+  { value: "LIMA_NORTE", label: "🟦 Lima Norte" },
+  { value: "CALLAO", label: "🟨 Callao" },
+  { value: "LIMA_CENTRO", label: "🟩 Lima Centro" },
+  { value: "LIMA_SUR", label: "🟪Lima Sur" },
+  { value: "LIMA_ESTE", label: "🟧 Lima Este" },
+  { value: "ZONAS_ALEDANAS", label: "⛰️ Zonas Aledañas" },
+  { value: "PROVINCIAS", label: "🧭 Provincias" },
+];
+
 export function SalesTableFilters({
   filters,
   onFiltersChange,
   showRegionFilter = true,
   showCourierFilter = false,
+  showZoneFilter = false,
   availableCouriers = [],
 }: SalesTableFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -241,6 +256,24 @@ export function SalesTableFilters({
                 </select>
               </div>
             )}
+
+            {/* Zona de reparto */}
+            {showZoneFilter && (
+              <div className="space-y-1">
+                <Label className="text-xs">Zona de reparto</Label>
+                <select
+                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  value={filters.zone}
+                  onChange={(e) => updateFilter("zone", e.target.value)}
+                >
+                  {ZONE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -259,6 +292,7 @@ export function applyFilters<T extends {
   salesRegion: "LIMA" | "PROVINCIA";
   deliveryType: string;
   courier?: string | null;
+  zone?: string;
 }>(data: T[], filters: SalesFilters): T[] {
   return data.filter((item) => {
     // Search filter (cliente, teléfono, N° orden)
@@ -314,6 +348,11 @@ export function applyFilters<T extends {
 
     // Courier filter
     if (filters.courier && item.courier !== filters.courier) {
+      return false;
+    }
+
+    // Zone filter
+    if (filters.zone && item.zone !== filters.zone) {
       return false;
     }
 

@@ -81,6 +81,7 @@ export interface OrderCustomer {
   district: string;
   address: string;
   reference: string | null;
+  zone?: string;
   latitude: number | null;
   longitude: number | null;
   isActive: boolean;

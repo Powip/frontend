@@ -85,6 +85,7 @@ export interface Sale {
   notes: string;
   courier?: string | null;
   hasStockIssue?: boolean;
+  zone?: string;
 }
 
 /* -----------------------------------------
@@ -118,6 +119,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     pendingPayment,
     notes: order.notes ?? "",
     hasStockIssue: order.hasStockIssue ?? false,
+    zone: order.customer.zone ?? undefined,
   };
 }
 
@@ -210,7 +212,7 @@ export default function OperacionesPage() {
       if (cancellationReason) {
         payload.cancellationReason = cancellationReason;
       }
-      
+
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
         payload
@@ -230,7 +232,7 @@ export default function OperacionesPage() {
 
   const handleConfirmCancellation = async (reason: CancellationReason, notes?: string) => {
     if (!saleToCancel) return;
-    
+
     setIsCancelling(true);
     try {
       await axios.patch(
@@ -267,7 +269,7 @@ export default function OperacionesPage() {
 
   const handleAssignCourier = async (courier: string) => {
     const eligibleSales = getSelectedConGuia();
-    
+
     if (eligibleSales.length === 0) {
       toast.warning("No hay pedidos seleccionados con guía asignada");
       return;
@@ -320,39 +322,40 @@ export default function OperacionesPage() {
   // Obtener ventas seleccionadas en estado LLAMADO para crear guía
   const getSelectedLlamadosForGuide = () => {
     return contactados.filter(
-      (s) => selectedSaleIds.has(s.id) && 
-             s.status === ORDER_STATUS.LLAMADO &&
-             s.deliveryType.toUpperCase() === "DOMICILIO"
+      (s) => selectedSaleIds.has(s.id) &&
+        s.status === ORDER_STATUS.LLAMADO &&
+        s.deliveryType.toUpperCase() === "DOMICILIO"
     );
   };
 
-  // Crear guía de envío
-  const handleCreateGuide = async (guideData: CreateGuideData) => {
+  // Crear guía(s) de envío (solo crea la guía, no actualiza estado de órdenes)
+  const handleCreateGuide = async (guidesData: CreateGuideData[]) => {
     setIsCreatingGuide(true);
     try {
-      // 1. Crear guía en ms-courier
-      const guideResponse = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides`,
-        guideData
-      );
+      const createdGuides: string[] = [];
+      let totalOrders = 0;
 
-      // 2. Actualizar estado de cada venta a ASIGNADO_A_GUIA
-      let successCount = 0;
-      for (const orderId of guideData.orderIds) {
-        try {
-          await axios.patch(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-            { status: "ASIGNADO_A_GUIA" }
-          );
-          successCount++;
-        } catch (error) {
-          console.error(`Error actualizando orden ${orderId}`, error);
-        }
+      // Crear una guía por cada grupo de zona
+      for (const guideData of guidesData) {
+        const guideResponse = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides`,
+          guideData
+        );
+
+        createdGuides.push(guideResponse.data.guideNumber);
+        totalOrders += guideData.orderIds.length;
       }
 
-      toast.success(
-        `Guía ${guideResponse.data.guideNumber} creada con ${successCount} pedido(s)`
-      );
+      if (createdGuides.length === 1) {
+        toast.success(
+          `Guía ${createdGuides[0]} creada con ${totalOrders} pedido(s)`
+        );
+      } else {
+        toast.success(
+          `${createdGuides.length} guías creadas (${createdGuides.join(", ")}) con ${totalOrders} pedido(s)`
+        );
+      }
+
       setCreateGuideModalOpen(false);
       setSelectedSaleIds(new Set());
       fetchOrders();
@@ -363,6 +366,7 @@ export default function OperacionesPage() {
       setIsCreatingGuide(false);
     }
   };
+
 
   const handleOpenNotes = (sale: Sale) => {
     setSelectedSaleForNotes(sale);
@@ -397,7 +401,7 @@ export default function OperacionesPage() {
   const handleWhatsApp = (phoneNumber: string, orderNumber?: string, clientName?: string) => {
     // Limpiar el número de caracteres no numéricos
     let cleanPhone = phoneNumber.replace(/\D/g, "");
-    
+
     // Si el número no empieza con 51 (código de Perú), agregarlo
     if (!cleanPhone.startsWith("51")) {
       // Si empieza con 0, quitarlo (ej: 0987654321 -> 987654321)
@@ -406,14 +410,14 @@ export default function OperacionesPage() {
       }
       cleanPhone = `51${cleanPhone}`;
     }
-    
+
     // Construir mensaje si tenemos datos de la orden
     let url = `https://api.whatsapp.com/send?phone=${cleanPhone}`;
     if (orderNumber && clientName) {
       const message = `Hola ${clientName}, acá tenés el resumen de tu compra N° ${orderNumber}`;
       url += `&text=${encodeURIComponent(message)}`;
     }
-    
+
     window.open(url, "_blank");
   };
 
@@ -467,7 +471,7 @@ Estado: ${sale.status}
   // Impresión masiva genérica
   const handleBulkPrintForStatus = async (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
-    
+
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados para imprimir");
       return;
@@ -607,6 +611,7 @@ Estado: ${sale.status}
           <TableHead>Estado</TableHead>
           <TableHead>Guía</TableHead>
           <TableHead>Region</TableHead>
+          <TableHead>Zona</TableHead>
           <TableHead>Resumen</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
         </TableRow>
@@ -654,7 +659,7 @@ Estado: ${sale.status}
             </TableCell>
             <TableCell>
               {sale.status === ORDER_STATUS.ASIGNADO_A_GUIA ? (
-                <Badge 
+                <Badge
                   className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
                   onClick={() => {
                     setSelectedOrderForGuide(sale.id);
@@ -671,6 +676,32 @@ Estado: ${sale.status}
               ) : null}
             </TableCell>
             <TableCell>{sale.salesRegion}</TableCell>
+            <TableCell>
+              {sale.zone ? (
+                <Badge
+                  className={`text-xs whitespace-nowrap ${sale.zone === 'LIMA_NORTE' ? 'bg-blue-100 text-blue-800' :
+                    sale.zone === 'CALLAO' ? 'bg-yellow-100 text-yellow-800' :
+                      sale.zone === 'LIMA_CENTRO' ? 'bg-green-100 text-green-800' :
+                        sale.zone === 'LIMA_SUR' ? 'bg-purple-100 text-purple-800' :
+                          sale.zone === 'LIMA_ESTE' ? 'bg-orange-100 text-orange-800' :
+                            sale.zone === 'ZONAS_ALEDANAS' ? 'bg-gray-100 text-gray-800' :
+                              sale.zone === 'PROVINCIAS' ? 'bg-red-100 text-red-800' :
+                                'bg-muted text-muted-foreground'
+                    }`}
+                >
+                  {sale.zone === 'LIMA_NORTE' ? '🟦 L. Norte' :
+                    sale.zone === 'CALLAO' ? '🟨 Callao' :
+                      sale.zone === 'LIMA_CENTRO' ? '🟩 L. Centro' :
+                        sale.zone === 'LIMA_SUR' ? '🟪 L. Sur' :
+                          sale.zone === 'LIMA_ESTE' ? '🟧 L. Este' :
+                            sale.zone === 'ZONAS_ALEDANAS' ? '⛰️ Aledañas' :
+                              sale.zone === 'PROVINCIAS' ? '🧭 Provincias' :
+                                sale.zone}
+                </Badge>
+              ) : (
+                <span className="text-muted-foreground text-xs">-</span>
+              )}
+            </TableCell>
             <TableCell>
               <Button
                 size="sm"
@@ -861,7 +892,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(preparados.length / 10) || 1}
                 totalItems={preparados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>
@@ -904,6 +935,7 @@ Estado: ${sale.status}
                 <SalesTableFilters
                   filters={filtersContactados}
                   onFiltersChange={setFiltersContactados}
+                  showZoneFilter={true}
                 />
                 {renderTable(contactados, false)}
               </CardContent>
@@ -912,7 +944,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(contactados.length / 10) || 1}
                 totalItems={contactados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>
@@ -956,7 +988,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(despachados.length / 10) || 1}
                 totalItems={despachados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>
@@ -1049,6 +1081,7 @@ Estado: ${sale.status}
           district: s.district,
           total: s.total,
           pendingPayment: s.pendingPayment,
+          zone: s.zone,
         }))}
         storeId={selectedStoreId || ""}
         onConfirm={handleCreateGuide}
