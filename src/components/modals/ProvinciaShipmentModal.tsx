@@ -76,9 +76,11 @@ interface ProvinciaShipmentModalProps {
 
 // Helper to calculate pending payment
 const calculatePendingPayment = (order: OrderHeader): number => {
+  if (!order) return 0;
   const grandTotal = parseFloat(order.grandTotal) || 0;
+  if (!order.payments) return grandTotal;
   const totalPaid = order.payments
-    .filter(p => p.status === "PAID")
+    .filter(p => p && p.status === "PAID")
     .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
   return grandTotal - totalPaid;
 };
