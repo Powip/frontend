@@ -11,7 +11,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Package, Truck, User, Calendar, MapPin, Loader2, ExternalLink } from "lucide-react";
+import { Package, Truck, User, Calendar, MapPin, Loader2, ExternalLink, MessageSquare } from "lucide-react";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import axios from "axios";
 import { toast } from "sonner";
 
@@ -40,6 +42,7 @@ interface GuideDetailsModalProps {
   open: boolean;
   onClose: () => void;
   orderId: string;
+  defaultCourier?: string | null;
   onGuideUpdated?: () => void;
 }
 
@@ -67,10 +70,30 @@ const COURIERS = [
   "Flores",
 ];
 
+// Mapa para normalizar nombres de courier de la BD al formato de display
+const COURIER_NORMALIZE_MAP: Record<string, string> = {
+  "MOTORIZADO_PROPIO": "Motorizado Propio",
+  "Motorizado Propio": "Motorizado Propio",
+  "SHALOM": "Shalom",
+  "Shalom": "Shalom",
+  "OLVA_COURIER": "Olva Courier",
+  "Olva Courier": "Olva Courier",
+  "MARVISUR": "Marvisur",
+  "Marvisur": "Marvisur",
+  "FLORES": "Flores",
+  "Flores": "Flores",
+};
+
+const normalizeCourier = (courier?: string | null): string => {
+  if (!courier) return "";
+  return COURIER_NORMALIZE_MAP[courier] || courier;
+};
+
 export default function GuideDetailsModal({
   open,
   onClose,
   orderId,
+  defaultCourier,
   onGuideUpdated,
 }: GuideDetailsModalProps) {
   const [guide, setGuide] = useState<ShippingGuide | null>(null);
@@ -91,8 +114,11 @@ export default function GuideDetailsModal({
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderId}`
       );
       setGuide(res.data);
+      // Prioridad: courierName de la guía > defaultCourier del pedido
       if (res.data?.courierName) {
-        setSelectedCourier(res.data.courierName);
+        setSelectedCourier(normalizeCourier(res.data.courierName));
+      } else if (defaultCourier) {
+        setSelectedCourier(normalizeCourier(defaultCourier));
       }
     } catch (error) {
       console.error("Error fetching guide:", error);
@@ -107,6 +133,7 @@ export default function GuideDetailsModal({
 
     setAssigning(true);
     try {
+      // 1. Asignar courier a la guía en ms-courier
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/assign-courier`,
         {
@@ -114,7 +141,19 @@ export default function GuideDetailsModal({
           courierName: selectedCourier,
         }
       );
-      toast.success(`Courier ${selectedCourier} asignado a la guía`);
+
+      // 2. Actualizar todas las órdenes de la guía a EN_ENVIO y asignar courier
+      for (const orderId of guide.orderIds) {
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+          {
+            status: "EN_ENVIO",
+            courier: selectedCourier,
+          }
+        );
+      }
+
+      toast.success(`Courier ${selectedCourier} asignado y ${guide.orderIds.length} pedido(s) despachados`);
       fetchGuide();
       onGuideUpdated?.();
     } catch (error: any) {
@@ -223,11 +262,10 @@ export default function GuideDetailsModal({
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <Truck className="h-4 w-4" />
-                Courier / Repartidor
+                Courier / Repartidor:
               </Label>
               {guide.courierName ? (
                 <div className="flex items-center gap-2">
-                  <User className="h-4 w-4 text-muted-foreground" />
                   <span className="font-medium">{guide.courierName}</span>
                   <Badge variant="outline" className="text-green-600 border-green-600">
                     Asignado
@@ -264,9 +302,32 @@ export default function GuideDetailsModal({
 
             {/* Notas */}
             {guide.notes && (
-              <div className="border-t pt-3">
-                <p className="text-sm text-muted-foreground">Notas:</p>
-                <p className="text-sm">{guide.notes}</p>
+              <div className="border-t pt-3 space-y-2">
+                <p className="text-sm font-medium flex items-center gap-1.5 text-muted-foreground">
+                  <MessageSquare className="h-4 w-4" /> Notas / Historial:
+                </p>
+                <div className="space-y-3 max-h-[200px] overflow-y-auto pr-2">
+                  {(() => {
+                    try {
+                      const notes = JSON.parse(guide.notes || "[]");
+                      if (!Array.isArray(notes)) return <p className="text-sm">{guide.notes}</p>;
+                      
+                      return notes.map((note: any, idx: number) => (
+                        <div key={idx} className="bg-muted/50 rounded-lg p-2 text-sm border border-muted">
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="font-semibold text-xs text-primary">{note.user}</span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {note.date ? format(new Date(note.date), "dd/MM/yy HH:mm", { locale: es }) : "-"}
+                            </span>
+                          </div>
+                          <p className="text-sm leading-relaxed">{note.text}</p>
+                        </div>
+                      ));
+                    } catch (e) {
+                      return <p className="text-sm">{guide.notes}</p>;
+                    }
+                  })()}
+                </div>
               </div>
             )}
 
@@ -293,20 +354,6 @@ export default function GuideDetailsModal({
           <Button variant="outline" onClick={handleClose}>
             Cerrar
           </Button>
-          {guide && guide.status === "ASIGNADA" && (
-            <Button
-              onClick={handleStartDelivery}
-              disabled={assigning}
-              className="bg-amber-600 hover:bg-amber-700"
-            >
-              {assigning ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Truck className="h-4 w-4 mr-2" />
-              )}
-              Iniciar Reparto
-            </Button>
-          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

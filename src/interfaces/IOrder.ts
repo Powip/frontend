@@ -132,6 +132,7 @@ export interface OrderHeader {
   deliveryType: DeliveryType;
   courierId: string | null;
   courier: string | null;
+  guideNumber?: string | null;
   subtotal: string;
   taxTotal: string;
   shippingTotal: string;

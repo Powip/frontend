@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
 import { getUsersByCompany } from "@/services/userService";
+import { useRouter } from "next/navigation";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -34,7 +35,16 @@ export default function UsuariosPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const fetchUsers = async () => {
+  
+  
+    const router = useRouter();
+  
+    useEffect(() => {
+      if (!auth) router.push("/login");
+    }, [auth, router]);
+      
+
+  const fetchUsers = useCallback(async () => {
     if (!auth?.company?.id || !auth?.accessToken) {
       setLoading(false);
       return;
@@ -50,11 +60,11 @@ export default function UsuariosPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [auth?.company?.id, auth?.accessToken]);
 
   useEffect(() => {
     fetchUsers();
-  }, [auth?.company?.id, auth?.accessToken]);
+  }, [fetchUsers]);
 
   const filtered = users.filter((u) => {
     const q = searchQuery.toLowerCase();
@@ -103,6 +113,8 @@ export default function UsuariosPage() {
         return <Badge variant="outline" className="text-muted-foreground">{name}</Badge>;
     }
   };
+
+  if (!auth) return null;
 
   return (
     <div className="flex h-screen w-full overflow-hidden">

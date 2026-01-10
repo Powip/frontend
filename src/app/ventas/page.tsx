@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Plus, Pencil, Trash2, FileText, ArrowRight, Printer, AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -135,10 +135,16 @@ export default function VentasPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<Sale | null>(null);
 
-  const { selectedStoreId } = useAuth();
+  const { auth,selectedStoreId } = useAuth();
   const router = useRouter();
 
-  async function fetchOrders() {
+
+  useEffect(() => {
+    if (!auth) router.push("/login");
+  }, [auth]);
+    
+
+  const fetchOrders = useCallback(async () => {
     try {
       const res = await axios.get<OrderHeader[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
@@ -147,7 +153,7 @@ export default function VentasPage() {
     } catch (error) {
       console.error("Error fetching orders", error);
     }
-  }
+  }, [selectedStoreId]);
 
   const handleChangeStatus = async (saleId: string, newStatus: OrderStatus, cancellationReason?: CancellationReason) => {
     // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
@@ -214,7 +220,7 @@ export default function VentasPage() {
   useEffect(() => {
     if (!selectedStoreId) return;
     fetchOrders();
-  }, [selectedStoreId]);
+  }, [selectedStoreId, fetchOrders]);
 
   const handleDelete = async (id: string) => {
     try {
@@ -289,7 +295,7 @@ Estado: ${sale.status}
           0
         ) || 0;
         const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
-        const newStatus = receipt.salesRegion === "PROVINCIA" ? "EN_ENVIO" : "PREPARADO";
+        const newStatus = "PREPARADO"; // Flujo unificado para LIMA y PROVINCIA
 
         return `
           <div style="page-break-after: ${index < receipts.length - 1 ? 'always' : 'auto'}; padding: 20px; font-family: Arial, sans-serif;">
@@ -368,7 +374,7 @@ Estado: ${sale.status}
       let errorCount = 0;
 
       for (const sale of selectedPendientes) {
-        const newStatus = sale.salesRegion === "PROVINCIA" ? "EN_ENVIO" : "PREPARADO";
+        const newStatus = "PREPARADO"; // Flujo unificado para LIMA y PROVINCIA
         try {
           await axios.patch(
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
@@ -792,6 +798,8 @@ Estado: ${sale.status}
   );
 
   const selectedPendientesCount = pendientes.filter((s) => selectedSaleIds.has(s.id)).length;
+
+  if (!auth) return null;
 
   return (
     <div className="flex h-screen w-full">

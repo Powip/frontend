@@ -22,24 +22,20 @@ import { toast } from "sonner";
 import { findByCompany, toggleClienteActivo } from "@/api/clientes/route";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
+import { useRouter } from "next/navigation";
 
 const ITEMS_PER_PAGE = 10;
 
 export default function ClientesPage() {
-  const { auth } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [openModal, setOpenModal] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<Client | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-
-  useEffect(() => {
-    if (auth?.company?.id) {
-      fetchClients(auth?.company?.id);
-    }
-  }, [auth?.company?.id]);
-
+  const router = useRouter();
+  const { auth } = useAuth();
+  
   const fetchClients = async (companyId: string) => {
     setLoading(true);
     try {
@@ -51,6 +47,16 @@ export default function ClientesPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!auth) router.push("/login");
+  }, [auth, router]);
+
+  useEffect(() => {
+    if (auth?.company?.id) {
+      fetchClients(auth?.company?.id);
+    }
+  }, [auth?.company?.id]);
 
   const filtered = clients.filter((c) => {
     const q = searchQuery.toLowerCase();
@@ -73,6 +79,8 @@ export default function ClientesPage() {
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
+
+  if (!auth) return null;
 
   const handleClienteSaved = async () => {
     setOpenModal(false);

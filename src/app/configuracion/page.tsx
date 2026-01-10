@@ -1,10 +1,24 @@
+'use client';
 import Header from "@/components/header/Header";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
+import { useAuth } from "@/contexts/AuthContext";
 import { Building2, Store, User } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect } from "react";
 
 export default function ConfiguracionPage() {
+
+    const router = useRouter();
+    const { auth } = useAuth();
+    
+     
+    useEffect(() => {
+      if (!auth) router.push("/login");
+    }, [auth, router]);
+  
+    if (!auth) return null;
   const configSections = [
     {
       title: "Datos Personales",

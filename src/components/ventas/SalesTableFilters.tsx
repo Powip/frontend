@@ -15,6 +15,7 @@ export interface SalesFilters {
   deliveryType: "" | "RETIRO_TIENDA" | "DOMICILIO";
   courier: string;
   zone: string;
+  hasGuide: "" | "yes" | "no";
 }
 
 export const emptySalesFilters: SalesFilters = {
@@ -26,6 +27,7 @@ export const emptySalesFilters: SalesFilters = {
   deliveryType: "",
   courier: "",
   zone: "",
+  hasGuide: "",
 };
 
 interface SalesTableFiltersProps {
@@ -34,6 +36,7 @@ interface SalesTableFiltersProps {
   showRegionFilter?: boolean;
   showCourierFilter?: boolean;
   showZoneFilter?: boolean;
+  showGuideFilter?: boolean;
   availableCouriers?: string[];
 }
 
@@ -74,12 +77,19 @@ const ZONE_OPTIONS = [
   { value: "PROVINCIAS", label: "🧭 Provincias" },
 ];
 
+const GUIDE_OPTIONS = [
+  { value: "", label: "Todas" },
+  { value: "yes", label: "Con guía" },
+  { value: "no", label: "Sin guía" },
+];
+
 export function SalesTableFilters({
   filters,
   onFiltersChange,
   showRegionFilter = true,
   showCourierFilter = false,
   showZoneFilter = false,
+  showGuideFilter = false,
   availableCouriers = [],
 }: SalesTableFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -274,6 +284,26 @@ export function SalesTableFilters({
                 </select>
               </div>
             )}
+
+            {/* Guía de envío */}
+            {showGuideFilter && (
+              <div className="space-y-1">
+                <Label className="text-xs">Guía</Label>
+                <select
+                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  value={filters.hasGuide}
+                  onChange={(e) =>
+                    updateFilter("hasGuide", e.target.value as "" | "yes" | "no")
+                  }
+                >
+                  {GUIDE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -293,6 +323,7 @@ export function applyFilters<T extends {
   deliveryType: string;
   courier?: string | null;
   zone?: string;
+  guideNumber?: string | null;
 }>(data: T[], filters: SalesFilters): T[] {
   return data.filter((item) => {
     // Search filter (cliente, teléfono, N° orden)
@@ -353,6 +384,14 @@ export function applyFilters<T extends {
 
     // Zone filter
     if (filters.zone && item.zone !== filters.zone) {
+      return false;
+    }
+
+    // Guide filter
+    if (filters.hasGuide === "yes" && !item.guideNumber) {
+      return false;
+    }
+    if (filters.hasGuide === "no" && item.guideNumber) {
       return false;
     }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { Pencil, Trash2, FileText, ArrowRight, ArrowLeft, MessageCircle, StickyNote, AlertTriangle, PackagePlus, Eye } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,7 @@ export interface Sale {
   pendingPayment: number;
   notes: string;
   courier?: string | null;
+  guideNumber?: string | null;
   hasStockIssue?: boolean;
   zone?: string;
 }
@@ -120,6 +121,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     notes: order.notes ?? "",
     hasStockIssue: order.hasStockIssue ?? false,
     zone: order.customer.zone ?? undefined,
+    guideNumber: order.guideNumber ?? null,
   };
 }
 
@@ -171,12 +173,20 @@ export default function OperacionesPage() {
 
   // Estado para modal de ver guía
   const [guideDetailsModalOpen, setGuideDetailsModalOpen] = useState(false);
-  const [selectedOrderForGuide, setSelectedOrderForGuide] = useState<string | null>(null);
+  const [selectedSaleForGuide, setSelectedSaleForGuide] = useState<Sale | null>(null);
 
-  const { selectedStoreId } = useAuth();
+  const { auth ,selectedStoreId } = useAuth();
   const router = useRouter();
 
-  async function fetchOrders() {
+
+  
+   
+  useEffect(() => {
+    if (!auth) router.push("/login");
+  }, [auth, router]);
+
+
+  const fetchOrders = useCallback(async () => {
     try {
       const res = await axios.get<OrderHeader[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
@@ -185,7 +195,7 @@ export default function OperacionesPage() {
     } catch (error) {
       console.error("Error fetching orders", error);
     }
-  }
+  }, [selectedStoreId]);
 
   const handleChangeStatus = async (saleId: string, newStatus: OrderStatus, cancellationReason?: CancellationReason) => {
     // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
@@ -328,7 +338,7 @@ export default function OperacionesPage() {
     );
   };
 
-  // Crear guía(s) de envío (solo crea la guía, no actualiza estado de órdenes)
+  // Crear guía(s) de envío y actualizar órdenes con el guideNumber
   const handleCreateGuide = async (guidesData: CreateGuideData[]) => {
     setIsCreatingGuide(true);
     try {
@@ -342,8 +352,20 @@ export default function OperacionesPage() {
           guideData
         );
 
-        createdGuides.push(guideResponse.data.guideNumber);
+        const guideNumber = guideResponse.data.guideNumber;
+        createdGuides.push(guideNumber);
         totalOrders += guideData.orderIds.length;
+
+        // Actualizar cada orden con el guideNumber y cambiar estado a ASIGNADO_A_GUIA
+        for (const orderId of guideData.orderIds) {
+          await axios.patch(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+            {
+              guideNumber: guideNumber,
+              status: "ASIGNADO_A_GUIA",
+            }
+          );
+        }
       }
 
       if (createdGuides.length === 1) {
@@ -432,7 +454,7 @@ export default function OperacionesPage() {
   useEffect(() => {
     if (!selectedStoreId) return;
     fetchOrders();
-  }, [selectedStoreId]);
+  }, [selectedStoreId, fetchOrders]);
 
   const handleDelete = (id: string) => {
     setSales((prev) => prev.filter((sale) => sale.id !== id));
@@ -578,7 +600,7 @@ Estado: ${sale.status}
     }
   };
 
-  const renderTable = (data: Sale[], showWhatsApp: boolean = false) => (
+  const renderTable = (data: Sale[], showWhatsApp: boolean = false, showGuideColumn: boolean = false) => (
     <Table>
       <TableHeader>
         <TableRow>
@@ -609,8 +631,9 @@ Estado: ${sale.status}
           <TableHead>Adelanto</TableHead>
           <TableHead>Por Cobrar</TableHead>
           <TableHead>Estado</TableHead>
-          <TableHead>Guía</TableHead>
+          {showGuideColumn && <TableHead>Guía</TableHead>}
           <TableHead>Region</TableHead>
+          <TableHead>Distrito</TableHead>
           <TableHead>Zona</TableHead>
           <TableHead>Resumen</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
@@ -657,25 +680,30 @@ Estado: ${sale.status}
                 ))}
               </select>
             </TableCell>
-            <TableCell>
-              {sale.status === ORDER_STATUS.ASIGNADO_A_GUIA ? (
-                <Badge
-                  className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
-                  onClick={() => {
-                    setSelectedOrderForGuide(sale.id);
-                    setGuideDetailsModalOpen(true);
-                  }}
-                >
-                  <Eye className="h-3 w-3 mr-1" />
-                  Ver guía
-                </Badge>
-              ) : sale.status === ORDER_STATUS.LLAMADO ? (
-                <Badge className="bg-amber-100 text-amber-800">
-                  Sin guía
-                </Badge>
-              ) : null}
-            </TableCell>
+            {showGuideColumn && (
+              <TableCell>
+                {sale.guideNumber ? (
+                  <Badge
+                    className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
+                    onClick={() => {
+                      setSelectedSaleForGuide(sale);
+                      setGuideDetailsModalOpen(true);
+                    }}
+                  >
+                    <Truck className="h-3 w-3 mr-1" />
+                    Ver Guía
+                  </Badge>
+                ) : sale.deliveryType.toUpperCase() === "DOMICILIO" ? (
+                  <Badge className="bg-amber-100 text-amber-800">
+                    Sin guía
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs">N/A</span>
+                )}
+              </TableCell>
+            )}
             <TableCell>{sale.salesRegion}</TableCell>
+            <TableCell>{sale.district}</TableCell>
             <TableCell>
               {sale.zone ? (
                 <Badge
@@ -816,6 +844,8 @@ Estado: ${sale.status}
     return [...new Set(couriers)];
   }, [sales]);
 
+  if (!auth) return null;
+
   return (
     <div className="flex h-screen w-full">
       <main className="flex-1 p-6 space-y-6 overflow-auto">
@@ -851,7 +881,7 @@ Estado: ${sale.status}
               Contactados ({contactados.length})
             </TabsTrigger>
             <TabsTrigger value="despachados">
-              Despachados ({despachados.length})
+              En Envío ({despachados.length})
             </TabsTrigger>
           </TabsList>
 
@@ -885,7 +915,7 @@ Estado: ${sale.status}
                   onFiltersChange={setFiltersPreparados}
                   showRegionFilter={true}
                 />
-                {renderTable(preparados, true)}
+                {renderTable(preparados, true, false)}
               </CardContent>
               <Pagination
                 currentPage={1}
@@ -936,8 +966,10 @@ Estado: ${sale.status}
                   filters={filtersContactados}
                   onFiltersChange={setFiltersContactados}
                   showZoneFilter={true}
+                  showRegionFilter={true}
+                  showGuideFilter={true}
                 />
-                {renderTable(contactados, false)}
+                {renderTable(contactados, false, true)}
               </CardContent>
               <Pagination
                 currentPage={1}
@@ -954,7 +986,7 @@ Estado: ${sale.status}
           <TabsContent value="despachados">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Pedidos Despachados (En Envío)</CardTitle>
+                <CardTitle>Pedidos En Envío</CardTitle>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -979,9 +1011,12 @@ Estado: ${sale.status}
                   filters={filtersDespachados}
                   onFiltersChange={setFiltersDespachados}
                   showCourierFilter={true}
+                  showZoneFilter={true}
+                  showRegionFilter={true}
+                  showGuideFilter={true}
                   availableCouriers={availableCouriers}
                 />
-                {renderTable(despachados, false)}
+                {renderTable(despachados, false, true)}
               </CardContent>
               <Pagination
                 currentPage={1}
@@ -1092,9 +1127,10 @@ Estado: ${sale.status}
         open={guideDetailsModalOpen}
         onClose={() => {
           setGuideDetailsModalOpen(false);
-          setSelectedOrderForGuide(null);
+          setSelectedSaleForGuide(null);
         }}
-        orderId={selectedOrderForGuide || ""}
+        orderId={selectedSaleForGuide?.id || ""}
+        defaultCourier={selectedSaleForGuide?.courier}
         onGuideUpdated={fetchOrders}
       />
     </div>

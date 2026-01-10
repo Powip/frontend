@@ -15,7 +15,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import axios from "axios";
 import { Edit2, Plus, Trash2, AlertTriangle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 import {
@@ -29,6 +29,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { useRouter } from "next/navigation";
 
 
 interface Store {
@@ -57,14 +58,15 @@ export default function TiendasPage() {
 
   const { auth, logout } = useAuth();
 
-  useEffect(() => {
+    const router = useRouter();
+  
+    
+     
+    useEffect(() => {
+      if (!auth) router.push("/login");
+    }, [auth, router]);
 
-    if (auth?.company?.id) {
-      fetchStore();
-    }
-  }, [auth]);
-
-  const fetchStore = async () => {
+  const fetchStore = useCallback(async () => {
     setLoading(true);
     try {
       if (!auth?.company?.id) return;
@@ -80,7 +82,13 @@ export default function TiendasPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [auth]);
+
+  useEffect(() => {
+    if (auth?.company?.id) {
+      fetchStore();
+    }
+  }, [auth, fetchStore]);
 
   const handleAddStore = async () => {
     try {
@@ -145,6 +153,8 @@ export default function TiendasPage() {
       }
     }
   };
+
+  if (!auth) return null;
 
   if (loading) {
     return (

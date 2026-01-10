@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DollarSign, Upload, Check, AlertCircle, ExternalLink, ImagePlus, Loader2 } from "lucide-react";
+import { DollarSign, Upload, Check, AlertCircle, ExternalLink, ImagePlus, Loader2, X } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
@@ -170,6 +170,24 @@ export default function PaymentVerificationModal({
     }
   };
 
+  const handleRejectPayment = async (paymentId: string) => {
+    if (!confirm("¿Estás seguro de rechazar este pago? El pago quedará marcado como PERDIDO.")) {
+      return;
+    }
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/reject`,
+        { notes: "Pago rechazado" }
+      );
+      toast.success("Pago rechazado");
+      fetchOrderData();
+      onPaymentUpdated?.();
+    } catch (error) {
+      console.error("Error rechazando pago", error);
+      toast.error("Error al rechazar el pago");
+    }
+  };
+
   const handleUploadProofToPayment = async (paymentId: string, proofFile: File) => {
     setUploadingProofForId(paymentId);
     try {
@@ -281,15 +299,26 @@ export default function PaymentVerificationModal({
                           )}
                         </div>
 {canApprove && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="bg-green-50 hover:bg-green-100 text-green-600"
-                            onClick={() => handleApprovePayment(payment.id)}
-                          >
-                            <Check className="h-4 w-4 mr-1" />
-                            Aprobar
-                          </Button>
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="bg-green-50 hover:bg-green-100 text-green-600"
+                              onClick={() => handleApprovePayment(payment.id)}
+                            >
+                              <Check className="h-4 w-4 mr-1" />
+                              Aprobar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="bg-red-50 hover:bg-red-100 text-red-600"
+                              onClick={() => handleRejectPayment(payment.id)}
+                            >
+                              <X className="h-4 w-4 mr-1" />
+                              Rechazar
+                            </Button>
+                          </div>
                         )}
                       </div>
                       

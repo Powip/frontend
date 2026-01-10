@@ -1,6 +1,6 @@
 import { OrderStatus } from "@/interfaces/IOrder";
 
-// Flujo estándar para LIMA
+// Flujo unificado para LIMA y PROVINCIA (mismo flujo para ambas regiones)
 export const ORDER_STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   PENDIENTE: ["PREPARADO", "ANULADO"],
   PREPARADO: ["LLAMADO", "ANULADO"],
@@ -11,31 +11,15 @@ export const ORDER_STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   ANULADO: [],
 };
 
-// Flujo para PROVINCIA (salta PREPARADO y LLAMADO)
-export const ORDER_STATUS_FLOW_PROVINCIA: Record<OrderStatus, OrderStatus[]> = {
-  PENDIENTE: ["EN_ENVIO", "ANULADO"],
-  PREPARADO: ["EN_ENVIO", "ANULADO"], // Por si acaso
-  LLAMADO: ["ASIGNADO_A_GUIA", "EN_ENVIO", "ANULADO"],
-  ASIGNADO_A_GUIA: ["EN_ENVIO", "ANULADO"],
-  EN_ENVIO: ["ENTREGADO", "ANULADO"],
-  ENTREGADO: [],
-  ANULADO: [],
-};
-
 /**
- * Obtiene los estados disponibles para una venta según su estado actual y región.
- * Para PROVINCIA, solo muestra: estado actual + estados válidos siguientes
- * Para LIMA, muestra todos los estados pero resalta los válidos
+ * Obtiene los estados disponibles para una venta según su estado actual.
+ * Ahora usa el mismo flujo para LIMA y PROVINCIA.
  */
 export function getAvailableStatuses(
   currentStatus: OrderStatus,
-  salesRegion: "LIMA" | "PROVINCIA"
+  _salesRegion?: "LIMA" | "PROVINCIA" // Se mantiene el parámetro por compatibilidad pero ya no se usa
 ): OrderStatus[] {
-  const flow = salesRegion === "PROVINCIA" 
-    ? ORDER_STATUS_FLOW_PROVINCIA 
-    : ORDER_STATUS_FLOW;
-  
-  const validNextStatuses = flow[currentStatus] ?? [];
+  const validNextStatuses = ORDER_STATUS_FLOW[currentStatus] ?? [];
   
   // Retorna el estado actual + los estados válidos siguientes
   return [currentStatus, ...validNextStatuses];

@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Label } from "@/components/ui/label";
+import { useRouter } from "next/navigation";
 
 /* ------------------------------------------
     INTERFACES
@@ -46,6 +47,14 @@ export default function DatosPersonalesPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+    const router = useRouter();
+    
+    
+     
+    useEffect(() => {
+      if (!auth) router.push("/login");
+    }, [auth, router]);
+  
   /* ------------------------------------------
       FETCH USER DATA
   ------------------------------------------- */
@@ -120,6 +129,7 @@ export default function DatosPersonalesPage() {
           userId,
           currentPassword,
           newPassword,
+          confirmPassword,
         }
       );
 
@@ -134,6 +144,8 @@ export default function DatosPersonalesPage() {
       setChangingPassword(false);
     }
   };
+
+  if (!auth) return null;
 
   if (loadingUser) {
     return (

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pencil, FileText, ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -150,10 +150,10 @@ export default function FinanzasPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<Sale | null>(null);
 
-  const { selectedStoreId } = useAuth();
+  const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
 
-  async function fetchOrders() {
+  const fetchOrders = useCallback(async () => {
     try {
       const res = await axios.get<OrderHeader[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
@@ -162,9 +162,9 @@ export default function FinanzasPage() {
     } catch (error) {
       console.error("Error fetching orders", error);
     }
-  }
+  }, [selectedStoreId]);
 
-  const handleChangeStatus = async (saleId: string, newStatus: OrderStatus, cancellationReason?: CancellationReason) => {
+  const handleChangeStatus = useCallback(async (saleId: string, newStatus: OrderStatus, cancellationReason?: CancellationReason) => {
     // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
     if (newStatus === "ANULADO" && !cancellationReason) {
       const sale = sales.find((s) => s.id === saleId);
@@ -191,9 +191,9 @@ export default function FinanzasPage() {
       console.error("Error actualizando estado", error);
       toast.error("No se pudo actualizar el estado");
     }
-  };
+  }, [sales, fetchOrders]);
 
-  const handleConfirmCancellation = async (reason: CancellationReason, notes?: string) => {
+  const handleConfirmCancellation = useCallback(async (reason: CancellationReason, notes?: string) => {
     if (!saleToCancel) return;
     
     setIsCancelling(true);
@@ -215,20 +215,21 @@ export default function FinanzasPage() {
     } finally {
       setIsCancelling(false);
     }
-  };
+  }, [saleToCancel, fetchOrders]);
 
-  const toggleSale = (id: string) => {
+  const toggleSale = useCallback((id: string) => {
     setSelectedSaleIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
       return next;
     });
-  };
+  }, []);
+
 
   useEffect(() => {
     if (!selectedStoreId) return;
     fetchOrders();
-  }, [selectedStoreId]);
+  }, [selectedStoreId, fetchOrders]);
 
   const handleCopySelected = async (statusFilter: OrderStatus) => {
     const visibleSales = sales.filter((s) => s.status === statusFilter);
@@ -642,6 +643,12 @@ Estado: ${sale.status}
       .filter((c): c is string => !!c);
     return [...new Set(couriers)];
   }, [sales]);
+
+  useEffect(() => {
+    if (!auth) router.push("/login");
+  }, [auth, router]);
+
+  if (!auth) return null;
 
   return (
     <div className="flex h-screen w-full">

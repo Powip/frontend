@@ -56,9 +56,9 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
   const handlePrint = async () => {
     if (!receipt) return;
 
-    // Si el estado es PENDIENTE, intentar cambiarlo según la región
+    // Si el estado es PENDIENTE, cambiarlo a PREPARADO (flujo unificado para LIMA y PROVINCIA)
     if (receipt.status === "PENDIENTE" && orderId) {
-      const newStatus = receipt.salesRegion === "PROVINCIA" ? "EN_ENVIO" : "PREPARADO";
+      const newStatus = "PREPARADO";
       try {
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,

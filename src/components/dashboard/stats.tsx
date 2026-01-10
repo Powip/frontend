@@ -92,7 +92,7 @@ export const Stats: React.FC = () => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // 🟩 En el futuro: cambiar esta URL por tu endpoint real del backend
+        // eEn el futuro: cambiar esta URL por tu endpoint real del backend
         // const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/stats/sales`);
         // setSalesData(response.data);
 
