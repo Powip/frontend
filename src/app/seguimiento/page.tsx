@@ -123,9 +123,11 @@ const GUIDE_STATUSES = [
    Helper functions
 ----------------------------------------- */
 const calculatePendingPayment = (order: OrderHeader): number => {
+  if (!order) return 0;
   const grandTotal = parseFloat(order.grandTotal) || 0;
+  if (!order.payments) return grandTotal;
   const totalPaid = order.payments
-    .filter(p => p.status === "PAID")
+    .filter(p => p && p.status === "PAID")
     .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
   return grandTotal - totalPaid;
 };
@@ -168,20 +170,20 @@ export default function SeguimientoPage() {
     
 
   // Fetch orders with EN_ENVIO status
-  const fetchEnvios = async () => {
-    if (!selectedStoreId) return;
+  const fetchEnvios = useCallback(async () => {
+    if (!selectedStoreId) {
+      setLoading(false);
+      return;
+    }
     
     setLoading(true);
     try {
-      // Fetch all orders for the store
       const ordersRes = await axios.get<OrderHeader[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
       );
 
-      // Filter only EN_ENVIO orders
       const orders = ordersRes.data.filter(o => o.status === "EN_ENVIO");
       
-      // For each order with guideNumber, fetch the guide details
       const envioItems: EnvioItem[] = await Promise.all(
         orders.map(async (order) => {
           let guide: ShippingGuide | null = null;
@@ -194,7 +196,6 @@ export default function SeguimientoPage() {
               );
               guide = guideRes.data;
               
-              // Calculate days since guide creation
               if (guide?.created_at) {
                 const createdDate = new Date(guide.created_at);
                 const today = new Date();
@@ -212,20 +213,19 @@ export default function SeguimientoPage() {
 
       setEnvios(envioItems);
 
-      // If a modal is open, update its data too
-      if (selectedEnvio) {
-        const updatedItem = envioItems.find(item => item.order.id === selectedEnvio.order.id);
-        if (updatedItem) {
-          setSelectedEnvio(updatedItem);
-        }
-      }
+      // Actualizar modal si está abierto (usando actualización funcional para evitar loop)
+      setSelectedEnvio((prev) => {
+        if (!prev) return null;
+        const updated = envioItems.find(item => item.order.id === prev.order.id);
+        return updated || prev;
+      });
     } catch (error) {
       console.error("Error fetching envios:", error);
       toast.error("Error al cargar los envíos");
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedStoreId]);
 
   useEffect(() => {
     fetchEnvios();
