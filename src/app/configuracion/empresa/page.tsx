@@ -24,6 +24,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { ISubscription } from "@/interfaces/ISubscription";
 import axios from "axios";
 import { Check } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -47,7 +48,15 @@ export default function EmpresaPage() {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [subscription, setSubscription] = useState<ISubscription | null>(null);
 
+  
+
+  const router = useRouter();
   const { auth } = useAuth();
+    
+     
+    useEffect(() => {
+      if (!auth) router.push("/login");
+    }, [auth, router]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -77,6 +86,8 @@ export default function EmpresaPage() {
 
     fetchData();
   }, [auth]);
+
+  if (!auth) return null;
 
   if (!company) {
     return <div>Cargando...</div>;
@@ -138,6 +149,8 @@ export default function EmpresaPage() {
       setIsLoading(false);
     }
   };
+
+  if (!auth) return null;
 
   return (
     <div className="flex min-h-screen">

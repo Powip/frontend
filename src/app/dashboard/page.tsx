@@ -7,14 +7,15 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function DashboardPage() {
-  const { auth, logout } = useAuth();
+
   const router = useRouter();
 
-  /* useEffect(() => {
+  const { auth, logout } = useAuth();
+  useEffect(() => {
     if (!auth) router.push("/login");
-  }, [auth]);
+  }, [auth, router]);
 
-  if (!auth) return null; */
+  if (!auth) return null;
 
   return (
     <div className="h-full flex flex-col">

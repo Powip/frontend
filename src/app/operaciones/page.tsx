@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
-import { Pencil, Trash2, FileText, ArrowRight, ArrowLeft, MessageCircle, StickyNote, AlertTriangle } from "lucide-react";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { Pencil, Trash2, FileText, ArrowRight, ArrowLeft, MessageCircle, StickyNote, AlertTriangle, PackagePlus, Eye } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +39,9 @@ import CourierAssignmentModal, { CourierType } from "@/components/modals/Courier
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
+import CreateGuideModal, { CreateGuideData } from "@/components/modals/CreateGuideModal";
+import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
+import { Badge } from "@/components/ui/badge";
 
 /* -----------------------------------------
    Types
@@ -48,6 +51,7 @@ const ORDER_STATUS = {
   PENDIENTE: "PENDIENTE",
   PREPARADO: "PREPARADO",
   LLAMADO: "LLAMADO",
+  ASIGNADO_A_GUIA: "ASIGNADO_A_GUIA",
   EN_ENVIO: "EN_ENVIO",
   ENTREGADO: "ENTREGADO",
   ANULADO: "ANULADO",
@@ -57,6 +61,7 @@ const ALL_STATUSES: OrderStatus[] = [
   "PENDIENTE",
   "PREPARADO",
   "LLAMADO",
+  "ASIGNADO_A_GUIA",
   "EN_ENVIO",
   "ENTREGADO",
   "ANULADO",
@@ -79,7 +84,9 @@ export interface Sale {
   pendingPayment: number;
   notes: string;
   courier?: string | null;
+  guideNumber?: string | null;
   hasStockIssue?: boolean;
+  zone?: string;
 }
 
 /* -----------------------------------------
@@ -113,6 +120,8 @@ function mapOrderToSale(order: OrderHeader): Sale {
     pendingPayment,
     notes: order.notes ?? "",
     hasStockIssue: order.hasStockIssue ?? false,
+    zone: order.customer.zone ?? undefined,
+    guideNumber: order.guideNumber ?? null,
   };
 }
 
@@ -132,11 +141,9 @@ export default function OperacionesPage() {
   const [savingNotes, setSavingNotes] = useState(false);
 
   // Filtros avanzados
-  const [filtersPreparados, setFiltersPreparados] = useState<SalesFilters>({
-    ...emptySalesFilters,
-    region: "LIMA", // Preparados solo Lima por defecto
-  });
+  const [filtersPreparados, setFiltersPreparados] = useState<SalesFilters>(emptySalesFilters);
   const [filtersContactados, setFiltersContactados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersDespachados, setFiltersDespachados] = useState<SalesFilters>(emptySalesFilters);
   const [isPrinting, setIsPrinting] = useState(false);
 
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
@@ -160,10 +167,26 @@ export default function OperacionesPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<Sale | null>(null);
 
-  const { selectedStoreId } = useAuth();
+  // Estado para modal de crear guía
+  const [createGuideModalOpen, setCreateGuideModalOpen] = useState(false);
+  const [isCreatingGuide, setIsCreatingGuide] = useState(false);
+
+  // Estado para modal de ver guía
+  const [guideDetailsModalOpen, setGuideDetailsModalOpen] = useState(false);
+  const [selectedSaleForGuide, setSelectedSaleForGuide] = useState<Sale | null>(null);
+
+  const { auth ,selectedStoreId } = useAuth();
   const router = useRouter();
 
-  async function fetchOrders() {
+
+  
+   
+  useEffect(() => {
+    if (!auth) router.push("/login");
+  }, [auth, router]);
+
+
+  const fetchOrders = useCallback(async () => {
     try {
       const res = await axios.get<OrderHeader[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
@@ -172,7 +195,7 @@ export default function OperacionesPage() {
     } catch (error) {
       console.error("Error fetching orders", error);
     }
-  }
+  }, [selectedStoreId]);
 
   const handleChangeStatus = async (saleId: string, newStatus: OrderStatus, cancellationReason?: CancellationReason) => {
     // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
@@ -199,7 +222,7 @@ export default function OperacionesPage() {
       if (cancellationReason) {
         payload.cancellationReason = cancellationReason;
       }
-      
+
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
         payload
@@ -219,7 +242,7 @@ export default function OperacionesPage() {
 
   const handleConfirmCancellation = async (reason: CancellationReason, notes?: string) => {
     if (!saleToCancel) return;
-    
+
     setIsCancelling(true);
     try {
       await axios.patch(
@@ -247,18 +270,18 @@ export default function OperacionesPage() {
     }
   };
 
-  // Obtener ventas seleccionadas de Contactados que son a domicilio
-  const getSelectedContactadosForCourier = () => {
+  // Obtener ventas seleccionadas con guía (ASIGNADO_A_GUIA) para ver
+  const getSelectedConGuia = () => {
     return contactados.filter(
-      (s) => selectedSaleIds.has(s.id) && s.deliveryType.toUpperCase().includes("DOMICILIO")
+      (s) => selectedSaleIds.has(s.id) && s.status === ORDER_STATUS.ASIGNADO_A_GUIA
     );
   };
 
   const handleAssignCourier = async (courier: string) => {
-    const eligibleSales = getSelectedContactadosForCourier();
-    
+    const eligibleSales = getSelectedConGuia();
+
     if (eligibleSales.length === 0) {
-      toast.warning("No hay pedidos seleccionados con envío a domicilio");
+      toast.warning("No hay pedidos seleccionados con guía asignada");
       return;
     }
 
@@ -306,6 +329,67 @@ export default function OperacionesPage() {
     }
   };
 
+  // Obtener ventas seleccionadas en estado LLAMADO para crear guía
+  const getSelectedLlamadosForGuide = () => {
+    return contactados.filter(
+      (s) => selectedSaleIds.has(s.id) &&
+        s.status === ORDER_STATUS.LLAMADO &&
+        s.deliveryType.toUpperCase() === "DOMICILIO"
+    );
+  };
+
+  // Crear guía(s) de envío y actualizar órdenes con el guideNumber
+  const handleCreateGuide = async (guidesData: CreateGuideData[]) => {
+    setIsCreatingGuide(true);
+    try {
+      const createdGuides: string[] = [];
+      let totalOrders = 0;
+
+      // Crear una guía por cada grupo de zona
+      for (const guideData of guidesData) {
+        const guideResponse = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides`,
+          guideData
+        );
+
+        const guideNumber = guideResponse.data.guideNumber;
+        createdGuides.push(guideNumber);
+        totalOrders += guideData.orderIds.length;
+
+        // Actualizar cada orden con el guideNumber y cambiar estado a ASIGNADO_A_GUIA
+        for (const orderId of guideData.orderIds) {
+          await axios.patch(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+            {
+              guideNumber: guideNumber,
+              status: "ASIGNADO_A_GUIA",
+            }
+          );
+        }
+      }
+
+      if (createdGuides.length === 1) {
+        toast.success(
+          `Guía ${createdGuides[0]} creada con ${totalOrders} pedido(s)`
+        );
+      } else {
+        toast.success(
+          `${createdGuides.length} guías creadas (${createdGuides.join(", ")}) con ${totalOrders} pedido(s)`
+        );
+      }
+
+      setCreateGuideModalOpen(false);
+      setSelectedSaleIds(new Set());
+      fetchOrders();
+    } catch (error: any) {
+      const message = error?.response?.data?.message || "Error creando guía";
+      toast.error(message);
+    } finally {
+      setIsCreatingGuide(false);
+    }
+  };
+
+
   const handleOpenNotes = (sale: Sale) => {
     setSelectedSaleForNotes(sale);
     setNotesText(sale.notes || "");
@@ -339,7 +423,7 @@ export default function OperacionesPage() {
   const handleWhatsApp = (phoneNumber: string, orderNumber?: string, clientName?: string) => {
     // Limpiar el número de caracteres no numéricos
     let cleanPhone = phoneNumber.replace(/\D/g, "");
-    
+
     // Si el número no empieza con 51 (código de Perú), agregarlo
     if (!cleanPhone.startsWith("51")) {
       // Si empieza con 0, quitarlo (ej: 0987654321 -> 987654321)
@@ -348,14 +432,14 @@ export default function OperacionesPage() {
       }
       cleanPhone = `51${cleanPhone}`;
     }
-    
+
     // Construir mensaje si tenemos datos de la orden
     let url = `https://api.whatsapp.com/send?phone=${cleanPhone}`;
     if (orderNumber && clientName) {
       const message = `Hola ${clientName}, acá tenés el resumen de tu compra N° ${orderNumber}`;
       url += `&text=${encodeURIComponent(message)}`;
     }
-    
+
     window.open(url, "_blank");
   };
 
@@ -370,7 +454,7 @@ export default function OperacionesPage() {
   useEffect(() => {
     if (!selectedStoreId) return;
     fetchOrders();
-  }, [selectedStoreId]);
+  }, [selectedStoreId, fetchOrders]);
 
   const handleDelete = (id: string) => {
     setSales((prev) => prev.filter((sale) => sale.id !== id));
@@ -409,7 +493,7 @@ Estado: ${sale.status}
   // Impresión masiva genérica
   const handleBulkPrintForStatus = async (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
-    
+
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados para imprimir");
       return;
@@ -516,7 +600,7 @@ Estado: ${sale.status}
     }
   };
 
-  const renderTable = (data: Sale[], showWhatsApp: boolean = false) => (
+  const renderTable = (data: Sale[], showWhatsApp: boolean = false, showGuideColumn: boolean = false) => (
     <Table>
       <TableHeader>
         <TableRow>
@@ -547,7 +631,10 @@ Estado: ${sale.status}
           <TableHead>Adelanto</TableHead>
           <TableHead>Por Cobrar</TableHead>
           <TableHead>Estado</TableHead>
+          {showGuideColumn && <TableHead>Guía</TableHead>}
           <TableHead>Region</TableHead>
+          <TableHead>Distrito</TableHead>
+          <TableHead>Zona</TableHead>
           <TableHead>Resumen</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
         </TableRow>
@@ -593,7 +680,56 @@ Estado: ${sale.status}
                 ))}
               </select>
             </TableCell>
+            {showGuideColumn && (
+              <TableCell>
+                {sale.guideNumber ? (
+                  <Badge
+                    className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
+                    onClick={() => {
+                      setSelectedSaleForGuide(sale);
+                      setGuideDetailsModalOpen(true);
+                    }}
+                  >
+                    <Truck className="h-3 w-3 mr-1" />
+                    Ver Guía
+                  </Badge>
+                ) : sale.deliveryType.toUpperCase() === "DOMICILIO" ? (
+                  <Badge className="bg-amber-100 text-amber-800">
+                    Sin guía
+                  </Badge>
+                ) : (
+                  <span className="text-muted-foreground text-xs">N/A</span>
+                )}
+              </TableCell>
+            )}
             <TableCell>{sale.salesRegion}</TableCell>
+            <TableCell>{sale.district}</TableCell>
+            <TableCell>
+              {sale.zone ? (
+                <Badge
+                  className={`text-xs whitespace-nowrap ${sale.zone === 'LIMA_NORTE' ? 'bg-blue-100 text-blue-800' :
+                    sale.zone === 'CALLAO' ? 'bg-yellow-100 text-yellow-800' :
+                      sale.zone === 'LIMA_CENTRO' ? 'bg-green-100 text-green-800' :
+                        sale.zone === 'LIMA_SUR' ? 'bg-purple-100 text-purple-800' :
+                          sale.zone === 'LIMA_ESTE' ? 'bg-orange-100 text-orange-800' :
+                            sale.zone === 'ZONAS_ALEDANAS' ? 'bg-gray-100 text-gray-800' :
+                              sale.zone === 'PROVINCIAS' ? 'bg-red-100 text-red-800' :
+                                'bg-muted text-muted-foreground'
+                    }`}
+                >
+                  {sale.zone === 'LIMA_NORTE' ? '🟦 L. Norte' :
+                    sale.zone === 'CALLAO' ? '🟨 Callao' :
+                      sale.zone === 'LIMA_CENTRO' ? '🟩 L. Centro' :
+                        sale.zone === 'LIMA_SUR' ? '🟪 L. Sur' :
+                          sale.zone === 'LIMA_ESTE' ? '🟧 L. Este' :
+                            sale.zone === 'ZONAS_ALEDANAS' ? '⛰️ Aledañas' :
+                              sale.zone === 'PROVINCIAS' ? '🧭 Provincias' :
+                                sale.zone}
+                </Badge>
+              ) : (
+                <span className="text-muted-foreground text-xs">-</span>
+              )}
+            </TableCell>
             <TableCell>
               <Button
                 size="sm"
@@ -656,7 +792,7 @@ Estado: ${sale.status}
         ))}
         {data.length === 0 && (
           <TableRow>
-            <TableCell colSpan={14} className="text-center text-muted-foreground py-6">
+            <TableCell colSpan={15} className="text-center text-muted-foreground py-6">
               No hay ventas en este estado
             </TableCell>
           </TableRow>
@@ -669,11 +805,11 @@ Estado: ${sale.status}
      Filters
   ----------------------------------------- */
 
-  // Preparados: solo LIMA (por defecto)
+  // Preparados: Lima y Provincia
   const preparados = useMemo(
     () => {
       const statusFiltered = sales.filter(
-        (s) => s.status === ORDER_STATUS.PREPARADO && s.salesRegion === "LIMA"
+        (s) => s.status === ORDER_STATUS.PREPARADO
       );
       return applyFilters(statusFiltered, filtersPreparados);
     },
@@ -682,11 +818,33 @@ Estado: ${sale.status}
 
   const contactados = useMemo(
     () => {
-      const statusFiltered = sales.filter((s) => s.status === ORDER_STATUS.LLAMADO);
+      const statusFiltered = sales.filter(
+        (s) => s.status === ORDER_STATUS.LLAMADO || s.status === ORDER_STATUS.ASIGNADO_A_GUIA
+      );
       return applyFilters(statusFiltered, filtersContactados);
     },
     [sales, filtersContactados]
   );
+
+  const despachados = useMemo(
+    () => {
+      const statusFiltered = sales.filter(
+        (s) => s.status === ORDER_STATUS.EN_ENVIO
+      );
+      return applyFilters(statusFiltered, filtersDespachados);
+    },
+    [sales, filtersDespachados]
+  );
+
+  // Extraer lista de couriers únicos para el filtro
+  const availableCouriers = useMemo(() => {
+    const couriers = sales
+      .map((s) => s.courier)
+      .filter((c): c is string => !!c);
+    return [...new Set(couriers)];
+  }, [sales]);
+
+  if (!auth) return null;
 
   return (
     <div className="flex h-screen w-full">
@@ -694,7 +852,7 @@ Estado: ${sale.status}
         <div className="flex flex-col items-center mb-6">
           <HeaderConfig
             title="Operaciones"
-            description="Gestión de pedidos preparados y contactados"
+            description="Gestión de pedidos preparados, contactados y despachados"
           />
         </div>
 
@@ -717,10 +875,13 @@ Estado: ${sale.status}
         <Tabs defaultValue="preparados" className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="preparados">
-              Preparados - Lima ({preparados.length})
+              Preparados ({preparados.length})
             </TabsTrigger>
             <TabsTrigger value="contactados">
               Contactados ({contactados.length})
+            </TabsTrigger>
+            <TabsTrigger value="despachados">
+              En Envío ({despachados.length})
             </TabsTrigger>
           </TabsList>
 
@@ -728,7 +889,7 @@ Estado: ${sale.status}
           <TabsContent value="preparados">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Pedidos Preparados (Solo Lima)</CardTitle>
+                <CardTitle>Pedidos Preparados</CardTitle>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -752,16 +913,16 @@ Estado: ${sale.status}
                 <SalesTableFilters
                   filters={filtersPreparados}
                   onFiltersChange={setFiltersPreparados}
-                  showRegionFilter={false}
+                  showRegionFilter={true}
                 />
-                {renderTable(preparados, true)}
+                {renderTable(preparados, true, false)}
               </CardContent>
               <Pagination
                 currentPage={1}
                 totalPages={Math.ceil(preparados.length / 10) || 1}
                 totalItems={preparados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>
@@ -775,12 +936,12 @@ Estado: ${sale.status}
                 <div className="flex gap-2">
                   <Button
                     variant="default"
-                    className="bg-teal-600 hover:bg-teal-700"
-                    disabled={getSelectedContactadosForCourier().length === 0 || isAssigningCourier}
-                    onClick={() => setCourierModalOpen(true)}
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    disabled={getSelectedLlamadosForGuide().length === 0 || isCreatingGuide}
+                    onClick={() => setCreateGuideModalOpen(true)}
                   >
-                    <Truck className="h-4 w-4 mr-2" />
-                    Asignar Repartidor ({getSelectedContactadosForCourier().length})
+                    <PackagePlus className="h-4 w-4 mr-2" />
+                    Generar Guía ({getSelectedLlamadosForGuide().length})
                   </Button>
                   <Button
                     variant="outline"
@@ -804,15 +965,65 @@ Estado: ${sale.status}
                 <SalesTableFilters
                   filters={filtersContactados}
                   onFiltersChange={setFiltersContactados}
+                  showZoneFilter={true}
+                  showRegionFilter={true}
+                  showGuideFilter={true}
                 />
-                {renderTable(contactados, false)}
+                {renderTable(contactados, false, true)}
               </CardContent>
               <Pagination
                 currentPage={1}
                 totalPages={Math.ceil(contactados.length / 10) || 1}
                 totalItems={contactados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
+                itemName="pedidos"
+              />
+            </Card>
+          </TabsContent>
+
+          {/* Tab Despachados */}
+          <TabsContent value="despachados">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Pedidos En Envío</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={despachados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    onClick={() => handleBulkPrintForStatus(despachados)}
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir seleccionados ({despachados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={despachados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    onClick={() => handleCopySelected("EN_ENVIO")}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({despachados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersDespachados}
+                  onFiltersChange={setFiltersDespachados}
+                  showCourierFilter={true}
+                  showZoneFilter={true}
+                  showRegionFilter={true}
+                  showGuideFilter={true}
+                  availableCouriers={availableCouriers}
+                />
+                {renderTable(despachados, false, true)}
+              </CardContent>
+              <Pagination
+                currentPage={1}
+                totalPages={Math.ceil(despachados.length / 10) || 1}
+                totalItems={despachados.length}
+                itemsPerPage={10}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>
@@ -868,7 +1079,7 @@ Estado: ${sale.status}
       <CourierAssignmentModal
         open={courierModalOpen}
         onClose={() => setCourierModalOpen(false)}
-        selectedCount={getSelectedContactadosForCourier().length}
+        selectedCount={getSelectedConGuia().length}
         onConfirm={handleAssignCourier}
         isLoading={isAssigningCourier}
       />
@@ -892,6 +1103,35 @@ Estado: ${sale.status}
         orderId={selectedSaleForPayment?.id || ""}
         orderNumber={selectedSaleForPayment?.orderNumber || ""}
         onPaymentUpdated={fetchOrders}
+      />
+
+      <CreateGuideModal
+        open={createGuideModalOpen}
+        onClose={() => setCreateGuideModalOpen(false)}
+        selectedOrders={getSelectedLlamadosForGuide().map((s) => ({
+          id: s.id,
+          orderNumber: s.orderNumber,
+          clientName: s.clientName,
+          address: s.address,
+          district: s.district,
+          total: s.total,
+          pendingPayment: s.pendingPayment,
+          zone: s.zone,
+        }))}
+        storeId={selectedStoreId || ""}
+        onConfirm={handleCreateGuide}
+        isLoading={isCreatingGuide}
+      />
+
+      <GuideDetailsModal
+        open={guideDetailsModalOpen}
+        onClose={() => {
+          setGuideDetailsModalOpen(false);
+          setSelectedSaleForGuide(null);
+        }}
+        orderId={selectedSaleForGuide?.id || ""}
+        defaultCourier={selectedSaleForGuide?.courier}
+        onGuideUpdated={fetchOrders}
       />
     </div>
   );

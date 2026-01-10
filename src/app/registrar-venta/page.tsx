@@ -27,7 +27,7 @@ import { DeliveryType, OrderType, SalesChannel } from "@/enum/Order.enum";
 import axios from "axios";
 import { toast } from "sonner";
 import OrderReceiptModal from "@/components/modals/orderReceiptModal";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Checkbox } from "@/components/ui/checkbox";
 import ubigeos from "@/utils/json/ubigeos.json";
 
@@ -114,6 +114,15 @@ function RegistrarVentaContent() {
   const isNotFound = searchState === "not_found";
 
   const formEnabled = !isIdle;
+
+      const router = useRouter();
+    
+    
+      
+       
+      useEffect(() => {
+        if (!auth) router.push("/login");
+      }, [auth, router]);
 
   useEffect(() => {
     if (!orderId) return;
@@ -690,6 +699,8 @@ function RegistrarVentaContent() {
       address: originalClient.address,
       reference: originalClient.reference,
     });
+
+  if (!auth) return null;
 
   return (
     <div className="flex h-screen w-full">

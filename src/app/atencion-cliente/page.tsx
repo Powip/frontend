@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Pencil, FileText, ArrowLeft, MessageSquare, DollarSign } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -109,7 +109,11 @@ export default function AtencionClientePage() {
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(new Set());
   const [isPrinting, setIsPrinting] = useState(false);
 
-  const fetchOrders = async () => {
+  useEffect(() => {
+    if (!auth) router.push("/login");
+  }, [auth, router]);
+  
+  const fetchOrders = useCallback(async () => {
     if (!selectedStoreId) return;
     try {
       setLoading(true);
@@ -123,12 +127,12 @@ export default function AtencionClientePage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedStoreId]);
 
   useEffect(() => {
     if (!selectedStoreId) return;
     fetchOrders();
-  }, [selectedStoreId]);
+  }, [selectedStoreId, fetchOrders]);
 
   const handleWhatsApp = (phoneNumber: string, orderNumber?: string, clientName?: string) => {
     const phone = phoneNumber.replace(/\D/g, "");
@@ -218,6 +222,7 @@ Estado: ${sale.status}
           <TableHead>Por Cobrar</TableHead>
           <TableHead>Estado</TableHead>
           <TableHead>Region</TableHead>
+          <TableHead>Distrito</TableHead>
           <TableHead>Resumen</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
         </TableRow>
@@ -251,6 +256,7 @@ Estado: ${sale.status}
               </span>
             </TableCell>
             <TableCell>{sale.salesRegion}</TableCell>
+            <TableCell>{sale.district}</TableCell>
             <TableCell>
               <Button
                 size="sm"
@@ -303,7 +309,7 @@ Estado: ${sale.status}
         ))}
         {data.length === 0 && (
           <TableRow>
-            <TableCell colSpan={14} className="text-center text-muted-foreground py-6">
+            <TableCell colSpan={15} className="text-center text-muted-foreground py-6">
               No hay ventas en esta categoría
             </TableCell>
           </TableRow>
@@ -343,6 +349,8 @@ Estado: ${sale.status}
   const selectedPreparadosCount = pedidosPreparados.filter((s) => selectedSaleIds.has(s.id)).length;
   const selectedNoConfirmadosCount = pedidosNoConfirmados.filter((s) => selectedSaleIds.has(s.id)).length;
   const selectedConfirmadosCount = pedidosConfirmados.filter((s) => selectedSaleIds.has(s.id)).length;
+
+  if (!auth) return null;
 
   return (
     <div className="flex h-screen w-full">
@@ -465,6 +473,7 @@ Estado: ${sale.status}
         orderId={selectedSaleForPayment?.id || ""}
         orderNumber={selectedSaleForPayment?.orderNumber || ""}
         onPaymentUpdated={fetchOrders}
+        canApprove={true}
       />
 
       {/* Modal de Atención al Cliente */}

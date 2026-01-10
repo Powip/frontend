@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DollarSign, Upload, Check, AlertCircle, ExternalLink, ImagePlus, Loader2 } from "lucide-react";
+import { DollarSign, Upload, Check, AlertCircle, ExternalLink, ImagePlus, Loader2, X } from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
@@ -42,6 +42,8 @@ interface PaymentVerificationModalProps {
   orderId: string;
   orderNumber: string;
   onPaymentUpdated?: () => void;
+  /** Solo permitir aprobar pagos desde /finanzas y /atencion-cliente */
+  canApprove?: boolean;
 }
 
 const PAYMENT_METHODS = [
@@ -58,6 +60,7 @@ export default function PaymentVerificationModal({
   orderId,
   orderNumber,
   onPaymentUpdated,
+  canApprove = false,
 }: PaymentVerificationModalProps) {
   const [orderData, setOrderData] = useState<OrderData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -164,6 +167,24 @@ export default function PaymentVerificationModal({
     } catch (error) {
       console.error("Error aprobando pago", error);
       toast.error("Error al aprobar el pago");
+    }
+  };
+
+  const handleRejectPayment = async (paymentId: string) => {
+    if (!confirm("¿Estás seguro de rechazar este pago? El pago quedará marcado como PERDIDO.")) {
+      return;
+    }
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/reject`,
+        { notes: "Pago rechazado" }
+      );
+      toast.success("Pago rechazado");
+      fetchOrderData();
+      onPaymentUpdated?.();
+    } catch (error) {
+      console.error("Error rechazando pago", error);
+      toast.error("Error al rechazar el pago");
     }
   };
 
@@ -277,15 +298,28 @@ export default function PaymentVerificationModal({
                             </span>
                           )}
                         </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="bg-green-50 hover:bg-green-100 text-green-600"
-                          onClick={() => handleApprovePayment(payment.id)}
-                        >
-                          <Check className="h-4 w-4 mr-1" />
-                          Aprobar
-                        </Button>
+{canApprove && (
+                          <div className="flex gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="bg-green-50 hover:bg-green-100 text-green-600"
+                              onClick={() => handleApprovePayment(payment.id)}
+                            >
+                              <Check className="h-4 w-4 mr-1" />
+                              Aprobar
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="bg-red-50 hover:bg-red-100 text-red-600"
+                              onClick={() => handleRejectPayment(payment.id)}
+                            >
+                              <X className="h-4 w-4 mr-1" />
+                              Rechazar
+                            </Button>
+                          </div>
+                        )}
                       </div>
                       
                       {/* Botón para subir comprobante si no tiene */}
@@ -330,16 +364,33 @@ export default function PaymentVerificationModal({
               <div className="border rounded-lg p-3">
                 <h4 className="font-medium text-sm mb-2">Pagos Aprobados</h4>
                 <div className="space-y-1">
-                  {orderData?.payments
+  {orderData?.payments
                     .filter((p) => p.status === "PAID")
                     .map((payment) => (
                       <div
                         key={payment.id}
-                        className="flex items-center justify-between text-sm py-1 border-b last:border-0"
+                        className="flex items-center justify-between text-sm py-2 border-b last:border-0"
                       >
-                        <span>
-                          {formatCurrency(Number(payment.amount))} - {payment.paymentMethod}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <span>
+                            {formatCurrency(Number(payment.amount))} - {payment.paymentMethod}
+                          </span>
+                          {payment.paymentProofUrl ? (
+                            <a
+                              href={payment.paymentProofUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                            >
+                              <ExternalLink className="h-3 w-3" />
+                              Ver comprobante
+                            </a>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">
+                              Sin comprobante adjunto
+                            </span>
+                          )}
+                        </div>
                         <span className="text-green-600 text-xs font-medium">
                           ✓ Aprobado
                         </span>

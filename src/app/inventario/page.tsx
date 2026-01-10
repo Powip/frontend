@@ -127,6 +127,14 @@ export default function InventarioPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ProductWithInventoryDetails | null>(null);
 
+   
+
+  
+   
+  useEffect(() => {
+    if (!auth) router.push("/login");
+  }, [auth, router]);
+
   // ------------------------------------------------------
   // 1) Seleccionar inventario automáticamente
   // ------------------------------------------------------
@@ -147,7 +155,7 @@ export default function InventarioPage() {
         setSelectedInventoryId(storeInventories[0].id);
       }
     }
-  }, [storeInventories]);
+  }, [storeInventories, selectedInventoryId]);
 
   // ------------------------------------------------------
   // 2) Cargar items del inventario seleccionado
@@ -335,6 +343,9 @@ export default function InventarioPage() {
   // ------------------------------------------------------
   // RENDER
   // ------------------------------------------------------
+
+
+  if (!auth) return null;
 
   return (
     <div className="h-screen flex flex-col px-6">

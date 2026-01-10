@@ -22,6 +22,7 @@ import {
   Settings,
   FileSearch,
   Tags,
+  MapPin,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -61,6 +62,7 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Inventario", href: "/inventario", icon: Package },
     { name: "Ventas", href: "/ventas", icon: ShoppingCart },
     { name: "Operaciones", href: "/operaciones", icon: Truck },
+    { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
     { name: "Finanzas", href: "/finanzas", icon: DollarSign },
     { name: "Clientes", href: "/clientes", icon: Users },
     {

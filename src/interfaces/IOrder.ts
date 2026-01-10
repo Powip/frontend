@@ -60,6 +60,7 @@ export type OrderStatus =
   | "PENDIENTE"
   | "PREPARADO"
   | "LLAMADO"
+  | "ASIGNADO_A_GUIA"
   | "EN_ENVIO"
   | "ENTREGADO"
   | "ANULADO";
@@ -80,6 +81,7 @@ export interface OrderCustomer {
   district: string;
   address: string;
   reference: string | null;
+  zone?: string;
   latitude: number | null;
   longitude: number | null;
   isActive: boolean;
@@ -130,6 +132,7 @@ export interface OrderHeader {
   deliveryType: DeliveryType;
   courierId: string | null;
   courier: string | null;
+  guideNumber?: string | null;
   subtotal: string;
   taxTotal: string;
   shippingTotal: string;
