@@ -31,6 +31,7 @@ import PaymentVerificationModal from "@/components/modals/PaymentVerificationMod
 import { useRouter } from "next/navigation";
 import CustomerServiceModal from "@/components/modals/CustomerServiceModal"; 
 import { useAuth } from "@/contexts/AuthContext";
+import { SalesTableFilters, SalesFilters, emptySalesFilters, applyFilters } from "@/components/ventas/SalesTableFilters";
 
 /* -----------------------------------------
    Types
@@ -109,9 +110,10 @@ export default function AtencionClientePage() {
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(new Set());
   const [isPrinting, setIsPrinting] = useState(false);
 
-  useEffect(() => {
-    if (!auth) router.push("/login");
-  }, [auth, router]);
+  // Filtros para cada tab
+  const [filtersPreparados, setFiltersPreparados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersNoConfirmados, setFiltersNoConfirmados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersConfirmados, setFiltersConfirmados] = useState<SalesFilters>(emptySalesFilters);
   
   const fetchOrders = useCallback(async () => {
     if (!selectedStoreId) return;
@@ -323,28 +325,28 @@ Estado: ${sale.status}
   ----------------------------------------- */
 
   // Pedidos Preparados: status = PREPARADO y (callStatus null o PENDING)
-  const pedidosPreparados = useMemo(
-    () => sales.filter((s) => 
+  const pedidosPreparados = useMemo(() => {
+    const statusFiltered = sales.filter((s) => 
       s.status === "PREPARADO" && 
       (!s.callStatus || s.callStatus === "PENDING")
-    ),
-    [sales]
-  );
+    );
+    return applyFilters(statusFiltered, filtersPreparados);
+  }, [sales, filtersPreparados]);
 
   // Pedidos No Confirmados: status = PREPARADO y callStatus = NO_ANSWER
-  const pedidosNoConfirmados = useMemo(
-    () => sales.filter((s) => 
+  const pedidosNoConfirmados = useMemo(() => {
+    const statusFiltered = sales.filter((s) => 
       s.status === "PREPARADO" && 
       s.callStatus === "NO_ANSWER"
-    ),
-    [sales]
-  );
+    );
+    return applyFilters(statusFiltered, filtersNoConfirmados);
+  }, [sales, filtersNoConfirmados]);
 
   // Pedidos Confirmados: status = LLAMADO
-  const pedidosConfirmados = useMemo(
-    () => sales.filter((s) => s.status === "LLAMADO"),
-    [sales]
-  );
+  const pedidosConfirmados = useMemo(() => {
+    const statusFiltered = sales.filter((s) => s.status === "LLAMADO");
+    return applyFilters(statusFiltered, filtersConfirmados);
+  }, [sales, filtersConfirmados]);
 
   const selectedPreparadosCount = pedidosPreparados.filter((s) => selectedSaleIds.has(s.id)).length;
   const selectedNoConfirmadosCount = pedidosNoConfirmados.filter((s) => selectedSaleIds.has(s.id)).length;
@@ -393,6 +395,11 @@ Estado: ${sale.status}
                 </div>
               </CardHeader>
               <CardContent>
+                <SalesTableFilters
+                  filters={filtersPreparados}
+                  onFiltersChange={setFiltersPreparados}
+                  showRegionFilter={true}
+                />
                 {renderTable(pedidosPreparados, "preparados")}
               </CardContent>
             </Card>
@@ -415,6 +422,11 @@ Estado: ${sale.status}
                 </div>
               </CardHeader>
               <CardContent>
+                <SalesTableFilters
+                  filters={filtersNoConfirmados}
+                  onFiltersChange={setFiltersNoConfirmados}
+                  showRegionFilter={true}
+                />
                 {renderTable(pedidosNoConfirmados, "no_confirmados")}
               </CardContent>
             </Card>
@@ -437,6 +449,11 @@ Estado: ${sale.status}
                 </div>
               </CardHeader>
               <CardContent>
+                <SalesTableFilters
+                  filters={filtersConfirmados}
+                  onFiltersChange={setFiltersConfirmados}
+                  showRegionFilter={true}
+                />
                 {renderTable(pedidosConfirmados, "confirmados")}
               </CardContent>
             </Card>

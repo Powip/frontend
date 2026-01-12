@@ -1,7 +1,7 @@
 "use client";
 import axios from "axios";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -58,11 +58,6 @@ export default function NewCompanyPage() {
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
-  useEffect(() => {
-    if (!auth) router.push("/login");
-  }, [auth, router]);
-
-  if (!auth) return null;
 
   // VALIDATION
   const validateForm = (): boolean => {
@@ -123,6 +118,8 @@ export default function NewCompanyPage() {
 
     setIsLoading(true);
     try {
+      if (!auth) return; // TypeScript guard - AuthGuard garantiza auth
+      
       const body = new FormData();
       body.append("name", formData.companyName);
       body.append("description", formData.description);

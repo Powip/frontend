@@ -46,17 +46,9 @@ export default function EmpresaPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [subscription, setSubscription] = useState<ISubscription | null>(null);
-
-  
-
+  const [subscription, setSubscription] = useState<ISubscription | null>(null)
   const router = useRouter();
   const { auth } = useAuth();
-    
-     
-    useEffect(() => {
-      if (!auth) router.push("/login");
-    }, [auth, router]);
 
   useEffect(() => {
     const fetchData = async () => {

@@ -70,7 +70,6 @@ const adaptPlans = (plans: Plan[]): FrontPlan[] =>
   }));
 
 export default function SubscriptionsPage() {
-  const router = useRouter();
   const [plans, setPlans] = useState<FrontPlan[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,12 +77,6 @@ export default function SubscriptionsPage() {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
 
   const { auth } = useAuth();
-
-  useEffect(() => {
-    if (!auth) {
-      router.push("/login");
-    }
-  }, [auth, router]);
 
   useEffect(() => {
     const fetchPlans = async () => {

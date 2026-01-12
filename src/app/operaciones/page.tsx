@@ -178,14 +178,6 @@ export default function OperacionesPage() {
   const { auth ,selectedStoreId } = useAuth();
   const router = useRouter();
 
-
-  
-   
-  useEffect(() => {
-    if (!auth) router.push("/login");
-  }, [auth, router]);
-
-
   const fetchOrders = useCallback(async () => {
     try {
       const res = await axios.get<OrderHeader[]>(

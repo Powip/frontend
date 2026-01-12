@@ -47,14 +47,6 @@ export default function DatosPersonalesPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
-    const router = useRouter();
-    
-    
-     
-    useEffect(() => {
-      if (!auth) router.push("/login");
-    }, [auth, router]);
-  
   /* ------------------------------------------
       FETCH USER DATA
   ------------------------------------------- */
