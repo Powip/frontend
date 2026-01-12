@@ -9,16 +9,6 @@ import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 export default function ConfiguracionPage() {
-
-    const router = useRouter();
-    const { auth } = useAuth();
-    
-     
-    useEffect(() => {
-      if (!auth) router.push("/login");
-    }, [auth, router]);
-  
-    if (!auth) return null;
   const configSections = [
     {
       title: "Datos Personales",

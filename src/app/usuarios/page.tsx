@@ -35,15 +35,6 @@ export default function UsuariosPage() {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  
-  
-    const router = useRouter();
-  
-    useEffect(() => {
-      if (!auth) router.push("/login");
-    }, [auth, router]);
-      
-
   const fetchUsers = useCallback(async () => {
     if (!auth?.company?.id || !auth?.accessToken) {
       setLoading(false);

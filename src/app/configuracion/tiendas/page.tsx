@@ -55,17 +55,9 @@ export default function TiendasPage() {
   });
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
-
   const { auth, logout } = useAuth();
 
-    const router = useRouter();
   
-    
-     
-    useEffect(() => {
-      if (!auth) router.push("/login");
-    }, [auth, router]);
-
   const fetchStore = useCallback(async () => {
     setLoading(true);
     try {

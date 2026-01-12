@@ -31,6 +31,16 @@ import CancellationModal, { CancellationReason } from "@/components/modals/Cance
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 /* -----------------------------------------
    Types
@@ -135,14 +145,12 @@ export default function VentasPage() {
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<Sale | null>(null);
 
+  // Estado para modal de confirmación de impresión
+  const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
+  const [pendingPrintSales, setPendingPrintSales] = useState<Sale[]>([]);
+
   const { auth,selectedStoreId } = useAuth();
   const router = useRouter();
-
-
-  useEffect(() => {
-    if (!auth) router.push("/login");
-  }, [auth]);
-    
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -346,62 +354,89 @@ Estado: ${sale.status}
 
       // Abrir ventana de impresión
       const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Impresión de Recibos</title>
-              <style>
-                @media print {
-                  body { margin: 0; }
-                }
-              </style>
-            </head>
-            <body>
-              ${printContent}
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
-        printWindow.close();
+      if (!printWindow) {
+        toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.");
+        setIsPrinting(false);
+        return;
       }
 
-      // Después de imprimir, cambiar estados
-      let successCount = 0;
-      let errorCount = 0;
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Impresión de Recibos</title>
+            <style>
+              @media print {
+                body { margin: 0; }
+              }
+            </style>
+          </head>
+          <body>
+            ${printContent}
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
 
-      for (const sale of selectedPendientes) {
-        const newStatus = "PREPARADO"; // Flujo unificado para LIMA y PROVINCIA
-        try {
-          await axios.patch(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
-            { status: newStatus }
-          );
-          successCount++;
-        } catch (error) {
-          console.error(`Error actualizando ${sale.orderNumber}`, error);
-          errorCount++;
-        }
-      }
+      // Pequeño delay para asegurar que el diálogo de impresión se cierre completamente
+      await new Promise(resolve => setTimeout(resolve, 300));
 
-      if (successCount > 0) {
-        toast.success(`${successCount} pedido(s) impresos y actualizados`);
-      }
-      if (errorCount > 0) {
-        toast.error(`${errorCount} pedido(s) no pudieron ser actualizados`);
-      }
+      // Guardar ventas pendientes y mostrar modal de confirmación
+      setPendingPrintSales(selectedPendientes);
+      setPrintConfirmOpen(true);
+      setIsPrinting(false);
       
-      fetchOrders();
-      setSelectedSaleIds(new Set());
     } catch (error) {
       console.error("Error en impresión masiva", error);
       toast.error("Error al preparar los recibos para imprimir");
-    } finally {
       setIsPrinting(false);
     }
+  };
+
+  // Confirmar impresión y cambiar estados
+  const handleConfirmPrint = async () => {
+    if (pendingPrintSales.length === 0) return;
+
+    setIsPrinting(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const sale of pendingPrintSales) {
+      const newStatus = "PREPARADO";
+      try {
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
+          { status: newStatus }
+        );
+        successCount++;
+      } catch (error) {
+        console.error(`Error actualizando ${sale.orderNumber}`, error);
+        errorCount++;
+      }
+    }
+
+    if (successCount > 0) {
+      toast.success(`${successCount} pedido(s) actualizados a PREPARADO`);
+    }
+    if (errorCount > 0) {
+      toast.error(`${errorCount} pedido(s) no pudieron ser actualizados`);
+    }
+
+    fetchOrders();
+    setSelectedSaleIds(new Set());
+    setPendingPrintSales([]);
+    setPrintConfirmOpen(false);
+    setIsPrinting(false);
+  };
+
+  // Cancelar confirmación de impresión
+  const handleCancelPrint = () => {
+    toast.info("Impresión cancelada. Los estados no fueron modificados.");
+    setPendingPrintSales([]);
+    setPrintConfirmOpen(false);
   };
 
   // Impresión masiva genérica (sin cambiar estado)
@@ -961,6 +996,37 @@ Estado: ${sale.status}
         orderNumber={selectedSaleForPayment?.orderNumber || ""}
         onPaymentUpdated={fetchOrders}
       />
+
+      {/* Modal de confirmación de impresión */}
+      <AlertDialog open={printConfirmOpen} onOpenChange={setPrintConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Se imprimieron correctamente los recibos?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-muted-foreground text-sm">
+                <span className="block">
+                  Confirma que los siguientes <strong>{pendingPrintSales.length}</strong> recibo(s) 
+                  se imprimieron correctamente:
+                </span>
+                <span className="block max-h-32 overflow-y-auto bg-muted/50 rounded p-2 text-sm">
+                  {pendingPrintSales.map(s => s.orderNumber).join(", ")}
+                </span>
+                <span className="block text-amber-600 font-medium">
+                  Al confirmar, los estados cambiarán a PREPARADO.
+                </span>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCancelPrint} disabled={isPrinting}>
+              No, cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmPrint} disabled={isPrinting}>
+              {isPrinting ? "Actualizando..." : "Sí, confirmar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

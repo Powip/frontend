@@ -87,18 +87,7 @@ export default function ProveedoresPage() {
     name: "",
     supplierId: "",
   });
-
     
-      const router = useRouter();
-    
-    
-      
-       
-      useEffect(() => {
-        if (!auth) router.push("/login");
-      }, [auth, router]);
-    
-
   useEffect(() => {
     if (companyId) {
       fetchSuppliers();

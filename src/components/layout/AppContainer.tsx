@@ -2,6 +2,7 @@
 
 import { Sidebar } from "@/components/layout/Sidebar";
 import { usePathname } from "next/navigation";
+import AuthGuard from "@/components/auth/AuthGuard";
 
 export default function AppContainer({
   children,
@@ -12,7 +13,7 @@ export default function AppContainer({
 
   const noSidebarRoutes = [
     "/login",
-    "/restablecer-contraseña",
+    "/restablecer-contrasena",
     "/new-company",
     "/subscriptions",
   ];
@@ -20,9 +21,11 @@ export default function AppContainer({
   const hideSidebar = noSidebarRoutes.some((r) => pathname.startsWith(r));
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      {!hideSidebar && <Sidebar />}
-      <main className="flex-1 bg-gray-light overflow-auto">{children}</main>
-    </div>
+    <AuthGuard>
+      <div className="flex h-screen overflow-hidden">
+        {!hideSidebar && <Sidebar />}
+        <main className="flex-1 bg-gray-light overflow-auto">{children}</main>
+      </div>
+    </AuthGuard>
   );
 }

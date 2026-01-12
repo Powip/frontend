@@ -33,7 +33,6 @@ export default function ClientesPage() {
   const [openModal, setOpenModal] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<Client | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const router = useRouter();
   const { auth } = useAuth();
   
   const fetchClients = async (companyId: string) => {
@@ -47,10 +46,6 @@ export default function ClientesPage() {
       setLoading(false);
     }
   };
-
-  useEffect(() => {
-    if (!auth) router.push("/login");
-  }, [auth, router]);
 
   useEffect(() => {
     if (auth?.company?.id) {

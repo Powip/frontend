@@ -644,12 +644,6 @@ Estado: ${sale.status}
     return [...new Set(couriers)];
   }, [sales]);
 
-  useEffect(() => {
-    if (!auth) router.push("/login");
-  }, [auth, router]);
-
-  if (!auth) return null;
-
   return (
     <div className="flex h-screen w-full">
       <main className="flex-1 p-6 space-y-6 overflow-auto">

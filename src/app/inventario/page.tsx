@@ -127,14 +127,6 @@ export default function InventarioPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<ProductWithInventoryDetails | null>(null);
 
-   
-
-  
-   
-  useEffect(() => {
-    if (!auth) router.push("/login");
-  }, [auth, router]);
-
   // ------------------------------------------------------
   // 1) Seleccionar inventario automáticamente
   // ------------------------------------------------------

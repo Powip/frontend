@@ -115,14 +115,6 @@ function RegistrarVentaContent() {
 
   const formEnabled = !isIdle;
 
-      const router = useRouter();
-    
-    
-      
-       
-      useEffect(() => {
-        if (!auth) router.push("/login");
-      }, [auth, router]);
 
   useEffect(() => {
     if (!orderId) return;
@@ -547,12 +539,8 @@ function RegistrarVentaContent() {
 
   const addToCart = (product: InventoryItemForSale) => {
     setCart((prev) => {
-      const usedStock = getUsedStock(prev, product);
-
-      if (usedStock >= product.availableStock) {
-        toast.error("No hay stock suficiente");
-        return prev;
-      }
+      // Permitir ventas bajo pedido (stock negativo)
+      // El badge "Sin stock - Venta bajo pedido" ya se muestra en el listado
 
       const existing = prev.find(
         (p) =>

@@ -161,12 +161,6 @@ export default function SeguimientoPage() {
 
   const {auth ,selectedStoreId } = useAuth();
 
-
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!auth) router.push("/login");
-  }, [auth, router]);
     
 
   // Fetch orders with EN_ENVIO status
