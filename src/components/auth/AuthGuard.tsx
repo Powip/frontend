@@ -3,6 +3,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, ReactNode } from "react";
+import { getRoutePermissions, hasAnyPermission } from "@/config/permissions.config";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -16,9 +17,8 @@ const PUBLIC_ROUTES = [
 ];
 
 /**
- * Componente que protege rutas autenticadas.
+ * Componente que protege rutas autenticadas y verifica permisos.
  * Espera a que el contexto termine de cargar antes de verificar autenticación.
- * Evita redirecciones prematuras durante la rehidratación del estado.
  */
 export default function AuthGuard({ children }: AuthGuardProps) {
   const { auth, loading } = useAuth();
@@ -28,8 +28,15 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   // Verificar si es una ruta pública
   const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route));
 
+  // Obtener permisos requeridos para la ruta actual
+  const requiredPermissions = pathname ? getRoutePermissions(pathname) : [];
+  
+  // Verificar si el usuario tiene acceso
+  const hasAccess = requiredPermissions.length === 0 || 
+    hasAnyPermission(auth?.user?.permissions, requiredPermissions);
+
   useEffect(() => {
-    // Solo redirigir cuando loading es false, auth es null, y NO es ruta pública
+    // Si no está cargando, no hay auth, y NO es ruta pública -> login
     if (!loading && !auth && !isPublicRoute) {
       router.push("/login");
     }
@@ -52,6 +59,28 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   // Si no está autenticado (después de cargar), no renderizar nada
   if (!auth) {
     return null;
+  }
+
+  // Si está autenticado pero no tiene permisos para esta ruta
+  if (!hasAccess) {
+    return (
+      <div className="h-screen w-screen flex flex-col items-center justify-center gap-4">
+        <div className="text-6xl">🚫</div>
+        <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-200">
+          Acceso Denegado
+        </h1>
+        <p className="text-gray-600 dark:text-gray-400">
+          No tienes permisos para acceder a esta página.
+        </p>
+        <button
+
+          onClick={() => router.push("/dashboard")}
+          className="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          Ir al Dashboard
+        </button>
+      </div>
+    );
   }
 
   return <>{children}</>;
