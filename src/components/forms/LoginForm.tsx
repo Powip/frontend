@@ -63,33 +63,31 @@ export default function LoginForm() {
     try {
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_USERS}/auth/login`,
-        loginData
+        loginData,
+        { withCredentials: true } // Para recibir httpOnly cookie
       );
 
-      await login(response.data);
+      // login() retorna AuthData con company, subscription, etc.
+      const authResult = await login(response.data);
 
-      // ⚠️ auth se actualiza async, usamos una referencia segura
-      const updatedAuth =
-        auth ?? JSON.parse(localStorage.getItem("auth-data")!);
-
-      if (!updatedAuth) {
+      if (!authResult) {
         toast.error("Error procesando la sesión del usuario.");
         return;
       }
 
-      // 1️⃣ Prioridad: Si ya tiene compañía, va al dashboard (independiente de suscripción personal - caso staff)
-      if (updatedAuth.company) {
+      // 1️⃣ Si tiene compañía (dueño o staff), va al dashboard
+      if (authResult.company) {
         router.push("/");
         return;
       }
 
       // 2️⃣ Si NO tiene compañía, verificar suscripción para permitir crear una
-      if (!updatedAuth.subscription || updatedAuth.subscription.status !== "ACTIVE") {
+      if (!authResult.subscription || authResult.subscription.status !== "ACTIVE") {
         router.push("/subscriptions");
         return;
       }
 
-      // 3️⃣ Tiene suscripción pero no compañía -> Crear compañía
+      // 3️⃣ Tiene suscripción activa pero no compañía -> Crear compañía
       router.push("/new-company");
     } catch (error: any) {
       console.error("Login Error:", error.response?.data || error.message);

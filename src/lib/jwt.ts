@@ -5,6 +5,7 @@ export interface DecodedToken {
   id: string;
   email: string;
   companyId?: string;
+  permissions?: string[];
   exp: number;
   iat: number;
 }

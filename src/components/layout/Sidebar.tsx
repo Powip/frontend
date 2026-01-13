@@ -34,6 +34,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
+import { SIDEBAR_ITEMS_PERMISSIONS } from "@/config/permissions.config";
 
 interface SidebarProps {
   className?: string;
@@ -47,7 +48,7 @@ interface NavigationItem {
 
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const { auth, logout } = useAuth();
+  const { auth, logout, hasPermission } = useAuth();
   const router = useRouter();
   const { theme, setTheme } = useTheme();
 
@@ -62,14 +63,10 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Inventario", href: "/inventario", icon: Package },
     { name: "Ventas", href: "/ventas", icon: ShoppingCart },
     { name: "Operaciones", href: "/operaciones", icon: Truck },
+    { name: "Atención al cliente", href: "/atencion-cliente", icon: Headphones },
     { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
     { name: "Finanzas", href: "/finanzas", icon: DollarSign },
     { name: "Clientes", href: "/clientes", icon: Users },
-    {
-      name: "Atención al cliente",
-      href: "/atencion-cliente",
-      icon: Headphones,
-    },
     { name: "Proveedores", href: "/proveedores", icon: Building2 },
    /*  { name: "Repartidores", href: "/repartidores", icon: Truck }, */
     { name: "Usuarios", href: "/usuarios", icon: UserCog },
@@ -78,6 +75,13 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Configuración", href: "/configuracion", icon: Settings },
  /*    { name: "Auditoría", href: "/auditoria", icon: FileSearch }, */
   ];
+
+  // Filtrar navegación por permisos del usuario
+  const filteredNavigation = navigation.filter(item => {
+    const requiredPermission = SIDEBAR_ITEMS_PERMISSIONS[item.name];
+    if (!requiredPermission) return true; // Sin restricción
+    return hasPermission(requiredPermission);
+  });
 
   return (
     <div
@@ -146,7 +150,7 @@ export function Sidebar({ className }: SidebarProps) {
         <nav
           className={cn("flex flex-col gap-1", isCollapsed && "items-center")}
         >
-          {navigation.map((item) => {
+          {filteredNavigation.map((item) => {
             const Icon = item.icon;
             return (
               <div

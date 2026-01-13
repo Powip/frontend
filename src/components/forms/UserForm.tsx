@@ -30,7 +30,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
     { id: "1", name: "AGENTES", description: "Personal de agentes" },
     { id: "2", name: "VENTAS", description: "Personal de ventas" },
     { id: "3", name: "OPERACIONES", description: "Personal de operaciones" },
-    { id: "4", name: "CARRERAS", description: "Personal de carreras/courier" },
+    { id: "4", name: "COURIER", description: "Personal de entregas/courier" },
   ]);
 
   const [formData, setFormData] = useState({
@@ -59,9 +59,9 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
       if (!auth?.accessToken) return;
       try {
         const rolesData = await getRoles(auth.accessToken);
-        // Filtrar solo roles permitidos para usuarios de compañía (no ADMINISTRADOR)
+        // Filtrar solo roles permitidos para usuarios de compañía (no ADMINISTRADOR ni USUARIO)
         const allowedRoles = rolesData.filter(r =>
-          ["AGENTES", "VENTAS", "OPERACIONES", "CARRERAS"].includes(r.name.toUpperCase())
+          ["AGENTES", "VENTAS", "OPERACIONES", "COURIER"].includes(r.name.toUpperCase())
         );
         if (allowedRoles.length > 0) {
           setRoles(allowedRoles);
