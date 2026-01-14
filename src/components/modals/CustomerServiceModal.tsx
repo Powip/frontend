@@ -138,6 +138,10 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
   const [newComment, setNewComment] = useState("");
   const [isSendingComment, setIsSendingComment] = useState(false);
 
+  // Notes states
+  const [notes, setNotes] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
+
   const fetchLogs = async () => {
     if (!orderId) return;
     setLogsLoading(true);
