@@ -90,7 +90,7 @@ function RegistrarVentaContent() {
   const [advancePayment, setAdvancePayment] = useState(0);
 
 
-  const [taxMode, setTaxMode] = useState<"AUTOMATICO" | "INCLUIDO">("AUTOMATICO");
+  const [taxMode, setTaxMode] = useState<"AUTOMATICO" | "INCLUIDO">("INCLUIDO");
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
   const [paymentProofPreview, setPaymentProofPreview] = useState<string | null>(null);
   const paymentProofInputRef = useRef<HTMLInputElement>(null);
@@ -198,14 +198,14 @@ function RegistrarVentaContent() {
       const totalPaidApproved = orderData.payments
         .filter((p) => p.status === "PAID")
         .reduce((sum, p) => sum + Number(p.amount), 0);
-      
+
       const totalPending = orderData.payments
         .filter((p) => p.status === "PENDING")
         .reduce((sum, p) => sum + Number(p.amount), 0);
-      
+
       // Mostrar el total de pagos (aprobados + pendientes)
       setAdvancePayment(totalPaidApproved + totalPending);
-      
+
       // Usar el método del primer pago (sea PAID o PENDING)
       const firstPayment = orderData.payments[0];
       if (firstPayment) {
@@ -317,13 +317,13 @@ function RegistrarVentaContent() {
     setSearchState("idle");
     setClientForm(emptyClientForm);
     setOriginalClient(null);
-    
+
     // Productos
     setProductQuery("");
     setProducts([]);
     setProductsMeta(null);
     setCart([]);
-    
+
     // Detalles de orden
     setOrderDetails({
       orderType: undefined,
@@ -335,7 +335,7 @@ function RegistrarVentaContent() {
       notes: "",
     });
     setSalesRegion("LIMA");
-    
+
     // Pagos
     setPaymentMethod("");
     setShippingTotal(0);
@@ -343,8 +343,8 @@ function RegistrarVentaContent() {
     setAdvancePayment(0);
     setPaymentProofFile(null);
     setPaymentProofPreview(null);
-    setTaxMode("AUTOMATICO");
-    
+    setTaxMode("INCLUIDO");
+
     // Order data (para modo edición)
     setOrderData(null);
   };
@@ -426,19 +426,19 @@ function RegistrarVentaContent() {
       // --- Pagos (siempre incluir) ---
       payments: advancePayment > 0
         ? [
-            {
-              paymentMethod,
-              amount: advancePayment,
-              paymentDate: new Date().toISOString(),
-            },
-          ]
+          {
+            paymentMethod,
+            amount: advancePayment,
+            paymentDate: new Date().toISOString(),
+          },
+        ]
         : [
-            {
-              paymentMethod: paymentMethod || "EFECTIVO",
-              amount: 0,
-              paymentDate: new Date().toISOString(),
-            },
-          ],
+          {
+            paymentMethod: paymentMethod || "EFECTIVO",
+            amount: 0,
+            paymentDate: new Date().toISOString(),
+          },
+        ],
 
       // --- Usuario (para log de auditoría) ---
       userId: auth?.user?.id ?? null,
@@ -451,16 +451,16 @@ function RegistrarVentaContent() {
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header`,
           payload
         );
-        
+
         const createdOrderId = response.data.id;
-        
+
         // Si hay comprobante de pago, subirlo al pago recién creado
         if (paymentProofFile && response.data.payments?.length > 0) {
           const firstPaymentId = response.data.payments[0].id;
           try {
             const formData = new FormData();
             formData.append("file", paymentProofFile);
-            
+
             await axios.patch(
               `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${firstPaymentId}/upload-proof`,
               formData,
@@ -475,11 +475,11 @@ function RegistrarVentaContent() {
             toast.warning("Venta creada pero hubo un error al subir el comprobante");
           }
         }
-        
+
         toast.success("Venta registrada");
         setReceiptOrderId(createdOrderId);
         setReceiptOpen(true);
-        
+
         // Limpiar todo el formulario después de venta exitosa
         resetForm();
       } else {
@@ -514,7 +514,7 @@ function RegistrarVentaContent() {
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderData.id}`,
           updatePayload
         );
-        
+
         toast.success("Venta actualizada correctamente");
         setReceiptOrderId(orderData.id);
         setReceiptOpen(true);
@@ -1587,8 +1587,8 @@ function RegistrarVentaContent() {
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                {taxMode === "AUTOMATICO" 
-                  ? "El sistema agregará 18% de IGV al subtotal" 
+                {taxMode === "AUTOMATICO"
+                  ? "El sistema agregará 18% de IGV al subtotal"
                   : "Los precios ya incluyen impuestos"}
               </p>
             </div>

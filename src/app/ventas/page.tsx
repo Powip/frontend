@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
-import OrderReceiptModal from "@/components/modals/orderReceiptModal";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -76,6 +76,9 @@ export interface Sale {
   deliveryType: string;
   salesRegion: "LIMA" | "PROVINCIA";
   district: string;
+  city: string;
+  province: string;
+  zone: string;
   address: string;
   advancePayment: number;
   pendingPayment: number;
@@ -107,6 +110,9 @@ function mapOrderToSale(order: OrderHeader): Sale {
     deliveryType: order.deliveryType.replace("_", " "),
     salesRegion: order.salesRegion,
     district: order.customer.district ?? "",
+    city: order.customer.city ?? "",
+    province: order.customer.province ?? "",
+    zone: order.customer.zone ?? "",
     address: order.customer.address ?? "",
     advancePayment,
     pendingPayment,
@@ -127,6 +133,11 @@ export default function VentasPage() {
   // Filtros avanzados
   const [filtersPendiente, setFiltersPendiente] = useState<SalesFilters>(emptySalesFilters);
   const [filtersAnulado, setFiltersAnulado] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersAll, setFiltersAll] = useState<SalesFilters>(emptySalesFilters);
+
+  // Paginación para Todas las Ventas
+  const [pageAll, setPageAll] = useState(1);
+  const ITEMS_PER_PAGE = 10;
 
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
     new Set()
@@ -149,7 +160,7 @@ export default function VentasPage() {
   const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
   const [pendingPrintSales, setPendingPrintSales] = useState<Sale[]>([]);
 
-  const { auth,selectedStoreId } = useAuth();
+  const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
 
   const fetchOrders = useCallback(async () => {
@@ -179,7 +190,7 @@ export default function VentasPage() {
       if (cancellationReason) {
         payload.cancellationReason = cancellationReason;
       }
-      
+
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
         payload
@@ -194,7 +205,7 @@ export default function VentasPage() {
 
   const handleConfirmCancellation = async (reason: CancellationReason, notes?: string) => {
     if (!saleToCancel) return;
-    
+
     setIsCancelling(true);
     try {
       await axios.patch(
@@ -276,7 +287,7 @@ Estado: ${sale.status}
   // Impresión masiva: obtiene recibos, imprime cada uno en página separada, luego cambia estado
   const handleBulkPrint = async () => {
     const selectedPendientes = pendientes.filter((s) => selectedSaleIds.has(s.id));
-    
+
     if (selectedPendientes.length === 0) {
       toast.warning("No hay pedidos seleccionados para imprimir");
       return;
@@ -388,7 +399,7 @@ Estado: ${sale.status}
       setPendingPrintSales(selectedPendientes);
       setPrintConfirmOpen(true);
       setIsPrinting(false);
-      
+
     } catch (error) {
       console.error("Error en impresión masiva", error);
       toast.error("Error al preparar los recibos para imprimir");
@@ -442,7 +453,7 @@ Estado: ${sale.status}
   // Impresión masiva genérica (sin cambiar estado)
   const handleBulkPrintForStatus = async (salesList: Sale[], statusLabel: string) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
-    
+
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados para imprimir");
       return;
@@ -551,265 +562,277 @@ Estado: ${sale.status}
 
   // Tabla para Pendientes (sin delete)
   const renderPendientesTable = (data: Sale[]) => (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-[40px]">
-            <input
-              type="checkbox"
-              checked={data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedSaleIds((prev) => new Set([...prev, ...data.map((s) => s.id)]));
-                } else {
-                  setSelectedSaleIds((prev) => {
-                    const next = new Set(prev);
-                    data.forEach((s) => next.delete(s.id));
-                    return next;
-                  });
-                }
-              }}
-            />
-          </TableHead>
-          <TableHead>N° Orden</TableHead>
-          <TableHead>Cliente</TableHead>
-          <TableHead>Teléfono</TableHead>
-          <TableHead>Fecha</TableHead>
-          <TableHead>Pago</TableHead>
-          <TableHead>Envío</TableHead>
-          <TableHead>Total</TableHead>
-          <TableHead>Adelanto</TableHead>
-          <TableHead>Por Cobrar</TableHead>
-          <TableHead>Estado</TableHead>
-          <TableHead>Region</TableHead>
-          <TableHead>Resumen</TableHead>
-          <TableHead className="text-right">Acciones</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {data.map((sale) => (
-          <TableRow key={sale.id}>
-            <TableCell>
+    <div className="overflow-x-auto border rounded-md">
+      <Table className="min-w-[1800px]">
+        <TableHeader>
+          <TableRow>
+            {/* Columnas fijas izquierda */}
+            <TableHead className="w-[40px] sticky left-0 z-20 bg-background">
               <input
                 type="checkbox"
-                checked={selectedSaleIds.has(sale.id)}
-                onChange={() => toggleSale(sale.id)}
-              />
-            </TableCell>
-            <TableCell className="font-medium">
-              <div className="flex items-center gap-1">
-                {sale.hasStockIssue && (
-                  <span title="Stock insuficiente - No se puede preparar">
-                    <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  </span>
-                )}
-                {sale.orderNumber}
-              </div>
-            </TableCell>
-            <TableCell>{sale.clientName}</TableCell>
-            <TableCell>{sale.phoneNumber}</TableCell>
-            <TableCell>{sale.date}</TableCell>
-            <TableCell>{sale.paymentMethod}</TableCell>
-            <TableCell>{sale.deliveryType}</TableCell>
-            <TableCell>${sale.total.toFixed(2)}</TableCell>
-            <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
-            <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
-            <TableCell>
-              <select
-                value={sale.status}
-                onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
-                className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
-              >
-                {getAvailableStatuses(sale.status, sale.salesRegion).map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </TableCell>
-            <TableCell>{sale.salesRegion}</TableCell>
-            <TableCell>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setSelectedOrderId(sale.id);
-                  setReceiptOpen(true);
+                checked={data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedSaleIds((prev) => new Set([...prev, ...data.map((s) => s.id)]));
+                  } else {
+                    setSelectedSaleIds((prev) => {
+                      const next = new Set(prev);
+                      data.forEach((s) => next.delete(s.id));
+                      return next;
+                    });
+                  }
                 }}
-              >
-                <FileText className="h-4 w-4 mr-1" />
-                Ver
-              </Button>
-            </TableCell>
-            <TableCell className="text-right">
-              <div className="flex gap-1 justify-end">
-                <Button
-                  size="icon"
-                  variant="outline"
-                  className="bg-amber-50 hover:bg-amber-100 text-amber-600"
-                  onClick={() => {
-                    setSelectedSaleForPayment(sale);
-                    setPaymentModalOpen(true);
-                  }}
-                  title="Gestión de Pagos"
-                >
-                  <DollarSign className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedSaleForComments(sale);
-                    setCommentsModalOpen(true);
-                  }}
-                  title="Comentarios"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
-                  title="Editar"
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              </div>
-            </TableCell>
+              />
+            </TableHead>
+            <TableHead className="sticky left-[40px] z-20 bg-background">N° Orden</TableHead>
+            <TableHead className="sticky left-[140px] z-20 bg-background">Cliente</TableHead>
+            <TableHead className="sticky left-[260px] z-20 bg-background">Teléfono</TableHead>
+            <TableHead className="sticky left-[360px] z-20 bg-background">Distrito</TableHead>
+            <TableHead className="sticky left-[460px] z-20 bg-background border-r">Zona</TableHead>
+            {/* Columnas scrolleables */}
+            <TableHead>Ciudad</TableHead>
+            <TableHead>Provincia</TableHead>
+            <TableHead>Fecha</TableHead>
+            <TableHead>Pago</TableHead>
+            <TableHead>Envío</TableHead>
+            <TableHead>Total</TableHead>
+            <TableHead>Adelanto</TableHead>
+            <TableHead>Por Cobrar</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead>Region</TableHead>
+            {/* Columnas fijas derecha */}
+            <TableHead className="sticky right-[120px] z-20 bg-background border-l">Resumen</TableHead>
+            <TableHead className="sticky right-0 z-20 bg-background text-right">Acciones</TableHead>
           </TableRow>
-        ))}
-        {data.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={14} className="text-center text-muted-foreground py-6">
-              No hay ventas en este estado
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {data.map((sale) => (
+            <TableRow key={sale.id}>
+              {/* Columnas fijas izquierda */}
+              <TableCell className="sticky left-0 z-10 bg-background">
+                <input
+                  type="checkbox"
+                  checked={selectedSaleIds.has(sale.id)}
+                  onChange={() => toggleSale(sale.id)}
+                />
+              </TableCell>
+              <TableCell className="font-medium sticky left-[40px] z-10 bg-background">
+                <div className="flex items-center gap-1">
+                  {sale.hasStockIssue && (
+                    <span title="Stock insuficiente - No se puede preparar">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    </span>
+                  )}
+                  {sale.orderNumber}
+                </div>
+              </TableCell>
+              <TableCell className="sticky left-[140px] z-10 bg-background">{sale.clientName}</TableCell>
+              <TableCell className="sticky left-[260px] z-10 bg-background">{sale.phoneNumber}</TableCell>
+              <TableCell className="sticky left-[360px] z-10 bg-background">{sale.district || "-"}</TableCell>
+              <TableCell className="sticky left-[460px] z-10 bg-background border-r">{sale.zone || "-"}</TableCell>
+              {/* Columnas scrolleables */}
+              <TableCell>{sale.city || "-"}</TableCell>
+              <TableCell>{sale.province || "-"}</TableCell>
+              <TableCell>{sale.date}</TableCell>
+              <TableCell>{sale.paymentMethod}</TableCell>
+              <TableCell>{sale.deliveryType}</TableCell>
+              <TableCell>${sale.total.toFixed(2)}</TableCell>
+              <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
+              <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
+              <TableCell>
+                <select
+                  value={sale.status}
+                  onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
+                  className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
+                >
+                  {getAvailableStatuses(sale.status, sale.salesRegion).map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </TableCell>
+              <TableCell>{sale.salesRegion}</TableCell>
+              {/* Columnas fijas derecha */}
+              <TableCell className="sticky right-[120px] z-10 bg-background border-l">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedOrderId(sale.id);
+                    setReceiptOpen(true);
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  Ver
+                </Button>
+              </TableCell>
+              <TableCell className="sticky right-0 z-10 bg-background text-right">
+                <div className="flex gap-1 justify-end">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="bg-amber-50 hover:bg-amber-100 text-amber-600"
+                    onClick={() => {
+                      setSelectedSaleForPayment(sale);
+                      setPaymentModalOpen(true);
+                    }}
+                    title="Gestión de Pagos"
+                  >
+                    <DollarSign className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
+                    title="Editar"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+          {data.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={18} className="text-center text-muted-foreground py-6">
+                No hay ventas en este estado
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
   );
 
   // Tabla para Anulados (con delete)
   const renderAnuladosTable = (data: Sale[]) => (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-[40px]">
-            <input
-              type="checkbox"
-              checked={data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))}
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedSaleIds((prev) => new Set([...prev, ...data.map((s) => s.id)]));
-                } else {
-                  setSelectedSaleIds((prev) => {
-                    const next = new Set(prev);
-                    data.forEach((s) => next.delete(s.id));
-                    return next;
-                  });
-                }
-              }}
-            />
-          </TableHead>
-          <TableHead>N° Orden</TableHead>
-          <TableHead>Cliente</TableHead>
-          <TableHead>Teléfono</TableHead>
-          <TableHead>Fecha</TableHead>
-          <TableHead>Pago</TableHead>
-          <TableHead>Envío</TableHead>
-          <TableHead>Total</TableHead>
-          <TableHead>Adelanto</TableHead>
-          <TableHead>Por Cobrar</TableHead>
-          <TableHead>Estado</TableHead>
-          <TableHead>Region</TableHead>
-          <TableHead>Resumen</TableHead>
-          <TableHead className="text-right">Acciones</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {data.map((sale) => (
-          <TableRow key={sale.id}>
-            <TableCell>
+    <div className="overflow-x-auto border rounded-md">
+      <Table className="min-w-[1800px]">
+        <TableHeader>
+          <TableRow>
+            {/* Columnas fijas izquierda */}
+            <TableHead className="w-[40px] sticky left-0 z-20 bg-background">
               <input
                 type="checkbox"
-                checked={selectedSaleIds.has(sale.id)}
-                onChange={() => toggleSale(sale.id)}
+                checked={data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedSaleIds((prev) => new Set([...prev, ...data.map((s) => s.id)]));
+                  } else {
+                    setSelectedSaleIds((prev) => {
+                      const next = new Set(prev);
+                      data.forEach((s) => next.delete(s.id));
+                      return next;
+                    });
+                  }
+                }}
               />
-            </TableCell>
-            <TableCell className="font-medium">{sale.orderNumber}</TableCell>
-            <TableCell>{sale.clientName}</TableCell>
-            <TableCell>{sale.phoneNumber}</TableCell>
-            <TableCell>{sale.date}</TableCell>
-            <TableCell>{sale.paymentMethod}</TableCell>
-            <TableCell>{sale.deliveryType}</TableCell>
-            <TableCell>${sale.total.toFixed(2)}</TableCell>
-            <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
-            <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
-            <TableCell>
-              <select
-                value={sale.status}
-                onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
-                className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
-              >
-                {getAvailableStatuses(sale.status, sale.salesRegion).map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
-              </select>
-            </TableCell>
-            <TableCell>{sale.salesRegion}</TableCell>
-            <TableCell>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setSelectedOrderId(sale.id);
-                  setReceiptOpen(true);
-                }}
-              >
-                <FileText className="h-4 w-4 mr-1" />
-                Ver
-              </Button>
-            </TableCell>
-            <TableCell className="text-right space-x-2">
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => {
-                  setSelectedSaleForComments(sale);
-                  setCommentsModalOpen(true);
-                }}
-                title="Ver comentarios / razón de anulación"
-              >
-                <MessageSquare className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="destructive"
-                onClick={() => handleDelete(sale.id)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </TableCell>
+            </TableHead>
+            <TableHead className="sticky left-[40px] z-20 bg-background">N° Orden</TableHead>
+            <TableHead className="sticky left-[140px] z-20 bg-background">Cliente</TableHead>
+            <TableHead className="sticky left-[260px] z-20 bg-background">Teléfono</TableHead>
+            <TableHead className="sticky left-[360px] z-20 bg-background">Distrito</TableHead>
+            <TableHead className="sticky left-[460px] z-20 bg-background border-r">Zona</TableHead>
+            {/* Columnas scrolleables */}
+            <TableHead>Ciudad</TableHead>
+            <TableHead>Provincia</TableHead>
+            <TableHead>Fecha</TableHead>
+            <TableHead>Pago</TableHead>
+            <TableHead>Envío</TableHead>
+            <TableHead>Total</TableHead>
+            <TableHead>Adelanto</TableHead>
+            <TableHead>Por Cobrar</TableHead>
+            <TableHead>Estado</TableHead>
+            <TableHead>Region</TableHead>
+            {/* Columnas fijas derecha */}
+            <TableHead className="sticky right-[120px] z-20 bg-background border-l">Resumen</TableHead>
+            <TableHead className="sticky right-0 z-20 bg-background text-right">Acciones</TableHead>
           </TableRow>
-        ))}
-        {data.length === 0 && (
-          <TableRow>
-            <TableCell colSpan={14} className="text-center text-muted-foreground py-6">
-              No hay ventas en este estado
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+        </TableHeader>
+        <TableBody>
+          {data.map((sale) => (
+            <TableRow key={sale.id}>
+              {/* Columnas fijas izquierda */}
+              <TableCell className="sticky left-0 z-10 bg-background">
+                <input
+                  type="checkbox"
+                  checked={selectedSaleIds.has(sale.id)}
+                  onChange={() => toggleSale(sale.id)}
+                />
+              </TableCell>
+              <TableCell className="font-medium sticky left-[40px] z-10 bg-background">{sale.orderNumber}</TableCell>
+              <TableCell className="sticky left-[140px] z-10 bg-background">{sale.clientName}</TableCell>
+              <TableCell className="sticky left-[260px] z-10 bg-background">{sale.phoneNumber}</TableCell>
+              <TableCell className="sticky left-[360px] z-10 bg-background">{sale.district || "-"}</TableCell>
+              <TableCell className="sticky left-[460px] z-10 bg-background border-r">{sale.zone || "-"}</TableCell>
+              {/* Columnas scrolleables */}
+              <TableCell>{sale.city || "-"}</TableCell>
+              <TableCell>{sale.province || "-"}</TableCell>
+              <TableCell>{sale.date}</TableCell>
+              <TableCell>{sale.paymentMethod}</TableCell>
+              <TableCell>{sale.deliveryType}</TableCell>
+              <TableCell>${sale.total.toFixed(2)}</TableCell>
+              <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
+              <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
+              <TableCell>
+                <select
+                  value={sale.status}
+                  onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
+                  className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
+                >
+                  {getAvailableStatuses(sale.status, sale.salesRegion).map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </TableCell>
+              <TableCell>{sale.salesRegion}</TableCell>
+              {/* Columnas fijas derecha */}
+              <TableCell className="sticky right-[120px] z-10 bg-background border-l">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setSelectedOrderId(sale.id);
+                    setReceiptOpen(true);
+                  }}
+                >
+                  <FileText className="h-4 w-4 mr-1" />
+                  Ver
+                </Button>
+              </TableCell>
+              <TableCell className="sticky right-0 z-10 bg-background text-right">
+                <div className="flex gap-1 justify-end">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="destructive"
+                    onClick={() => handleDelete(sale.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+          {data.length === 0 && (
+            <TableRow>
+              <TableCell colSpan={18} className="text-center text-muted-foreground py-6">
+                No hay ventas en este estado
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
   );
 
   /* -----------------------------------------
@@ -830,6 +853,11 @@ Estado: ${sale.status}
       return applyFilters(statusFiltered, filtersAnulado);
     },
     [sales, filtersAnulado]
+  );
+
+  const todasLasVentas = useMemo(
+    () => applyFilters(sales, filtersAll),
+    [sales, filtersAll]
   );
 
   const selectedPendientesCount = pendientes.filter((s) => selectedSaleIds.has(s.id)).length;
@@ -870,6 +898,9 @@ Estado: ${sale.status}
             <TabsTrigger value="anuladas">
               Ventas Anuladas ({anulados.length})
             </TabsTrigger>
+            <TabsTrigger value="todas">
+              Todas las Ventas ({todasLasVentas.length})
+            </TabsTrigger>
           </TabsList>
 
           {/* Tab Pendientes */}
@@ -908,7 +939,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(pendientes.length / 10) || 1}
                 totalItems={pendientes.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="ventas"
               />
             </Card>
@@ -950,7 +981,74 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(anulados.length / 10) || 1}
                 totalItems={anulados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
+                itemName="ventas"
+              />
+            </Card>
+          </TabsContent>
+
+          {/* Tab Todas las Ventas */}
+          <TabsContent value="todas">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Todas las Ventas</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={todasLasVentas.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    onClick={() => handleBulkPrintForStatus(todasLasVentas, "TODAS")}
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir seleccionados ({todasLasVentas.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={todasLasVentas.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    onClick={() => {
+                      const selected = todasLasVentas.filter((s) => selectedSaleIds.has(s.id));
+                      if (selected.length === 0) {
+                        toast.warning("No hay pedidos seleccionados");
+                        return;
+                      }
+                      const text = selected
+                        .map((sale) => `
+Venta ${sale.orderNumber}
+Cliente: ${sale.clientName}
+Teléfono: ${sale.phoneNumber}
+Distrito: ${sale.district}
+Dirección: ${sale.address}
+Fecha: ${sale.date}
+Total Venta: $${sale.total.toFixed(2)}
+Adelanto: $${sale.advancePayment.toFixed(2)}
+Por Cobrar: $${sale.pendingPayment.toFixed(2)}
+Estado: ${sale.status}
+`.trim())
+                        .join("\n\n--------------------\n\n");
+                      navigator.clipboard.writeText(text);
+                      toast.success(`${selected.length} pedido(s) copiados`);
+                    }}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({todasLasVentas.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersAll}
+                  onFiltersChange={(newFilters) => {
+                    setFiltersAll(newFilters);
+                    setPageAll(1); // Reset page when filters change
+                  }}
+                />
+                {renderPendientesTable(todasLasVentas.slice((pageAll - 1) * ITEMS_PER_PAGE, pageAll * ITEMS_PER_PAGE))}
+              </CardContent>
+              <Pagination
+                currentPage={pageAll}
+                totalPages={Math.ceil(todasLasVentas.length / ITEMS_PER_PAGE) || 1}
+                totalItems={todasLasVentas.length}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setPageAll}
                 itemName="ventas"
               />
             </Card>
@@ -958,11 +1056,12 @@ Estado: ${sale.status}
         </Tabs>
       </main>
 
-      <OrderReceiptModal
+      <CustomerServiceModal
         open={receiptOpen}
         orderId={selectedOrderId || ""}
         onClose={() => setReceiptOpen(false)}
-        onStatusChange={fetchOrders}
+        onOrderUpdated={fetchOrders}
+        hideCallManagement={true}
       />
 
       <CancellationModal
@@ -1005,7 +1104,7 @@ Estado: ${sale.status}
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-muted-foreground text-sm">
                 <span className="block">
-                  Confirma que los siguientes <strong>{pendingPrintSales.length}</strong> recibo(s) 
+                  Confirma que los siguientes <strong>{pendingPrintSales.length}</strong> recibo(s)
                   se imprimieron correctamente:
                 </span>
                 <span className="block max-h-32 overflow-y-auto bg-muted/50 rounded p-2 text-sm">

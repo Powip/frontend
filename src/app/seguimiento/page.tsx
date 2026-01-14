@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Eye, Search, Package, Phone, User, Truck, FileText } from "lucide-react";
+import { Eye, Search, Package, Phone, User, Truck, FileText, AlertTriangle, Clock } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,6 +32,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
 import ProvinciaShipmentModal from "@/components/modals/ProvinciaShipmentModal";
+import CustomerServiceModal, { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
 import { useRouter } from "next/navigation";
 
 
@@ -150,18 +151,23 @@ export default function SeguimientoPage() {
   const [envios, setEnvios] = useState<EnvioItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<SeguimientoFilters>(emptyFilters);
-  
-  // Modal state
+
+  // Modal state for ProvinciaShipmentModal (legacy, keeping for now)
   const [selectedEnvio, setSelectedEnvio] = useState<EnvioItem | null>(null);
-  const [modalOpen, setModalOpen] = useState(false);
-  
+  const [guideModalOpen, setGuideModalOpen] = useState(false);
+
+  // Modal state for order detail (CustomerServiceModal) - includes guide data
+  const [orderModalOpen, setOrderModalOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedGuideData, setSelectedGuideData] = useState<ShippingGuideData | null>(null);
+
   // Notes Modal state
   const [notesModalOpen, setNotesModalOpen] = useState(false);
   const [selectedGuideForNotes, setSelectedGuideForNotes] = useState<{ id: string; notes: string } | null>(null);
 
-  const {auth ,selectedStoreId } = useAuth();
+  const { auth, selectedStoreId } = useAuth();
 
-    
+
 
   // Fetch orders with EN_ENVIO status
   const fetchEnvios = useCallback(async () => {
@@ -169,7 +175,7 @@ export default function SeguimientoPage() {
       setLoading(false);
       return;
     }
-    
+
     setLoading(true);
     try {
       const ordersRes = await axios.get<OrderHeader[]>(
@@ -177,7 +183,7 @@ export default function SeguimientoPage() {
       );
 
       const orders = ordersRes.data.filter(o => o.status === "EN_ENVIO");
-      
+
       const envioItems: EnvioItem[] = await Promise.all(
         orders.map(async (order) => {
           let guide: ShippingGuide | null = null;
@@ -189,7 +195,7 @@ export default function SeguimientoPage() {
                 `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${order.id}`
               );
               guide = guideRes.data;
-              
+
               if (guide?.created_at) {
                 const createdDate = new Date(guide.created_at);
                 const today = new Date();
@@ -229,7 +235,7 @@ export default function SeguimientoPage() {
   const filteredEnvios = useMemo(() => {
     return envios.filter((item) => {
       const { order, guide, daysSinceCreated } = item;
-      
+
       // Search filter
       if (filters.search) {
         const searchLower = filters.search.toLowerCase();
@@ -280,13 +286,53 @@ export default function SeguimientoPage() {
     setFilters(emptyFilters);
   };
 
-  const handleRowClick = (item: EnvioItem) => {
+  const handleOpenGuide = (item: EnvioItem) => {
     setSelectedEnvio(item);
-    setModalOpen(true);
+    setGuideModalOpen(true);
+  };
+
+  const handleOpenOrder = (item: EnvioItem) => {
+    setSelectedOrderId(item.order.id);
+
+    // Map guide data to ShippingGuideData format
+    if (item.guide) {
+      setSelectedGuideData({
+        id: item.guide.id,
+        guideNumber: item.guide.guideNumber,
+        courierName: item.guide.courierName,
+        status: item.guide.status,
+        chargeType: item.guide.chargeType,
+        amountToCollect: item.guide.amountToCollect,
+        scheduledDate: item.guide.scheduledDate?.toString() || null,
+        deliveryZone: item.guide.deliveryZone,
+        deliveryType: item.guide.deliveryType,
+        deliveryAddress: item.guide.deliveryAddress,
+        notes: item.guide.notes,
+        trackingUrl: item.guide.trackingUrl,
+        shippingKey: item.guide.shippingKey,
+        shippingOffice: item.guide.shippingOffice,
+        shippingProofUrl: item.guide.shippingProofUrl,
+        created_at: item.guide.created_at,
+        daysSinceCreated: item.daysSinceCreated,
+      });
+    } else {
+      setSelectedGuideData(null);
+    }
+
+    setOrderModalOpen(true);
   };
 
   const getDaysColor = (days: number) => {
-    return "text-red-600 font-bold";
+    if (days >= 30) return "text-red-600 font-bold";
+    if (days >= 25) return "text-amber-600 font-bold";
+    if (days >= 16) return "text-orange-500 font-medium";
+    return "text-muted-foreground";
+  };
+
+  const getDaysRowClass = (days: number) => {
+    if (days >= 30) return "bg-red-50 dark:bg-red-950/30 border-l-4 border-l-red-500";
+    if (days >= 25) return "bg-amber-50 dark:bg-amber-950/30 border-l-4 border-l-amber-500";
+    return "";
   };
 
   const handleStatusChange = async (guideId: string, newStatus: string, pendingPayment: number) => {
@@ -469,9 +515,16 @@ export default function SeguimientoPage() {
                     return (
                       <TableRow
                         key={order.id}
-                        className={`hover:bg-muted/50 ${isProvincia ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}
+                        className={`hover:bg-muted/50 ${getDaysRowClass(daysSinceCreated)} ${isProvincia && daysSinceCreated < 25 ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}
                       >
-                        <TableCell className="font-medium">{order.orderNumber}</TableCell>
+                        <TableCell className="font-medium">
+                          <div className="flex items-center gap-1">
+                            {daysSinceCreated >= 25 && (
+                              <AlertTriangle className={`h-4 w-4 ${daysSinceCreated >= 30 ? 'text-red-500' : 'text-amber-500'}`} />
+                            )}
+                            {order.orderNumber}
+                          </div>
+                        </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1">
                             <User className="h-3 w-3 text-muted-foreground" />
@@ -496,9 +549,20 @@ export default function SeguimientoPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span className={getDaysColor(daysSinceCreated)}>
-                            {daysSinceCreated} días
-                          </span>
+                          <div className="flex items-center gap-1">
+                            {daysSinceCreated >= 25 && (
+                              <Clock className={`h-3 w-3 ${daysSinceCreated >= 30 ? 'text-red-500' : 'text-amber-500'}`} />
+                            )}
+                            <span className={getDaysColor(daysSinceCreated)}>
+                              {daysSinceCreated} días
+                            </span>
+                            {daysSinceCreated >= 30 && (
+                              <Badge className="ml-1 bg-red-600 text-white text-[10px] px-1 py-0">VENCIDO</Badge>
+                            )}
+                            {daysSinceCreated >= 25 && daysSinceCreated < 30 && (
+                              <Badge className="ml-1 bg-amber-500 text-white text-[10px] px-1 py-0">PRÓXIMO</Badge>
+                            )}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <Select
@@ -506,12 +570,11 @@ export default function SeguimientoPage() {
                             onValueChange={(val) => guide && handleStatusChange(guide.id, val, pendingPayment)}
                             disabled={!guide}
                           >
-                            <SelectTrigger className={`h-8 w-[130px] text-xs font-semibold ${
-                              guide?.status === "ENTREGADA" ? "bg-green-100 text-green-800 border-green-200" : 
+                            <SelectTrigger className={`h-8 w-[130px] text-xs font-semibold ${guide?.status === "ENTREGADA" ? "bg-green-100 text-green-800 border-green-200" :
                               guide?.status === "EN_RUTA" ? "bg-blue-100 text-blue-800 border-blue-200" :
-                              guide?.status === "FALLIDA" || guide?.status === "CANCELADA" ? "bg-red-100 text-red-800 border-red-200" :
-                              "bg-gray-100 text-gray-800 border-gray-200"
-                            }`}>
+                                guide?.status === "FALLIDA" || guide?.status === "CANCELADA" ? "bg-red-100 text-red-800 border-red-200" :
+                                  "bg-gray-100 text-gray-800 border-gray-200"
+                              }`}>
                               <SelectValue placeholder="Estado" />
                             </SelectTrigger>
                             <SelectContent>
@@ -544,7 +607,7 @@ export default function SeguimientoPage() {
                             variant="outline"
                             size="sm"
                             className="h-8 gap-1"
-                            onClick={() => handleRowClick(item)}
+                            onClick={() => handleOpenOrder(item)}
                           >
                             <FileText className="h-4 w-4" />
                             Ver
@@ -561,6 +624,7 @@ export default function SeguimientoPage() {
                                 if (guide) handleOpenNotes(guide);
                               }}
                               disabled={!guide}
+                              title="Notas de Envío"
                             >
                               <MessageSquare className="h-4 w-4 text-muted-foreground" />
                               {getNotesCount(guide?.notes) > 0 && (
@@ -580,11 +644,25 @@ export default function SeguimientoPage() {
           </CardContent>
         </Card>
 
-        {/* Modal for shipment details */}
-        <ProvinciaShipmentModal
-          open={modalOpen}
+        {/* Modal for order details */}
+        <CustomerServiceModal
+          open={orderModalOpen}
+          orderId={selectedOrderId || ""}
           onClose={() => {
-            setModalOpen(false);
+            setOrderModalOpen(false);
+            setSelectedOrderId(null);
+            setSelectedGuideData(null);
+          }}
+          onOrderUpdated={fetchEnvios}
+          hideCallManagement={true}
+          shippingGuide={selectedGuideData}
+        />
+
+        {/* Modal for shipment/guide details */}
+        <ProvinciaShipmentModal
+          open={guideModalOpen}
+          onClose={() => {
+            setGuideModalOpen(false);
             setSelectedEnvio(null);
           }}
           envioItem={selectedEnvio}

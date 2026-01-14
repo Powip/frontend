@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { toast } from "sonner";
-import { Phone, PhoneOff, MessageCircle, DollarSign, Pencil, Plus, MoreVertical, Check, Printer } from "lucide-react";
+import { Phone, PhoneOff, MessageCircle, DollarSign, Pencil, Plus, MoreVertical, Check, Printer, Clock, User, Settings, Send, Copy, Truck } from "lucide-react";
 import { Textarea } from "../ui/textarea";
 import {
   DropdownMenu,
@@ -16,12 +16,64 @@ import CancellationModal, { CancellationReason } from "./CancellationModal";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
+import { useAuth } from "@/contexts/AuthContext";
+
+interface LogEntry {
+  id: number;
+  orderId: string;
+  comentarios: string | null;
+  operacion: string;
+  timestamp: string;
+  userId: string | null;
+  userName?: string | null;
+  isSystemGenerated?: boolean;
+}
+
+const OPERACION_LABELS: Record<string, string> = {
+  CREATE: "Creación",
+  CREATE_ORDER_HEADER: "Orden creada",
+  CREATE_ORDER_WITH_ITEMS: "Orden con items creada",
+  ADD_ORDER_ITEM: "Item agregado",
+  REMOVE_ORDER_ITEM: "Item eliminado",
+  UPDATE: "Actualización",
+  REVERSE_PAYMENT: "Pago reversado",
+  HARDDELETED: "Eliminado",
+  REACTIVATE: "Reactivado",
+  INACTIVATE: "Inactivado",
+  COURIER_ASSIGNED: "Courier asignado",
+  COMMENT: "Comentario",
+};
+
+/** Shipping Guide data for tracking view */
+export interface ShippingGuideData {
+  id: string;
+  guideNumber: string;
+  courierName?: string | null;
+  status: string;
+  chargeType?: string | null;
+  amountToCollect?: number | null;
+  scheduledDate?: string | null;
+  deliveryZone: string;
+  deliveryType: string;
+  deliveryAddress?: string | null;
+  notes?: string | null;
+  trackingUrl?: string | null;
+  shippingKey?: string | null;
+  shippingOffice?: string | null;
+  shippingProofUrl?: string | null;
+  created_at: string;
+  daysSinceCreated?: number;
+}
 
 interface Props {
   open: boolean;
   orderId: string;
   onClose: () => void;
   onOrderUpdated?: () => void;
+  /** Hide call management section for non-customer-service views */
+  hideCallManagement?: boolean;
+  /** Optional shipping guide data to display in the modal */
+  shippingGuide?: ShippingGuideData | null;
 }
 
 interface OrderReceipt {
@@ -71,19 +123,74 @@ interface OrderReceipt {
   };
 }
 
-export default function CustomerServiceModal({ open, orderId, onClose, onOrderUpdated }: Props) {
+export default function CustomerServiceModal({ open, orderId, onClose, onOrderUpdated, hideCallManagement = false, shippingGuide }: Props) {
   const router = useRouter();
+  const { auth } = useAuth();
   const [loading, setLoading] = useState(false);
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
-  const [notes, setNotes] = useState("");
-  const [savingNotes, setSavingNotes] = useState(false);
   const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
 
+  // Comments timeline states
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [isSendingComment, setIsSendingComment] = useState(false);
+
+  const fetchLogs = async () => {
+    if (!orderId) return;
+    setLogsLoading(true);
+    try {
+      const res = await axios.get<LogEntry[]>(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas/${orderId}`
+      );
+      setLogs(res.data);
+    } catch (error) {
+      console.error("Error cargando historial", error);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  const handleSendComment = async () => {
+    if (!newComment.trim() || !orderId) return;
+    setIsSendingComment(true);
+    try {
+      await axios.post(`${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas`, {
+        orderId,
+        comentarios: newComment.trim(),
+        operacion: "COMMENT",
+        userId: auth?.user?.id ?? null,
+        userName: auth?.user?.email ?? null,
+        data: {},
+        isSystemGenerated: false,
+      });
+      setNewComment("");
+      fetchLogs();
+    } catch (error) {
+      console.error("Error enviando comentario", error);
+      toast.error("Error al enviar el comentario");
+    } finally {
+      setIsSendingComment(false);
+    }
+  };
+
+  const formatLogDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleString("es-PE", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   useEffect(() => {
     if (!open || !orderId) return;
     fetchReceipt();
+    fetchLogs();
   }, [open, orderId]);
 
   const fetchReceipt = async () => {
@@ -155,6 +262,26 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
       `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
       "_blank"
     );
+  };
+
+  const handleCopyCustomerData = async () => {
+    if (!receipt) return;
+    const { customer } = receipt;
+    const text = `Nombre: ${customer.fullName || "-"}
+Teléfono: ${customer.phoneNumber || "-"}
+DNI: ${customer.dni || "-"}
+Dirección: ${customer.address || "-"}
+Distrito: ${customer.district || "-"}
+Provincia: ${customer.province || "-"}
+Departamento: ${customer.city || "-"}`;
+
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Datos del cliente copiados");
+    } catch (error) {
+      console.error("Error copiando datos", error);
+      toast.error("Error al copiar los datos");
+    }
   };
 
   const generateQR = async (text: string) => {
@@ -563,6 +690,15 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
                       <Button
                         size="icon"
                         variant="outline"
+                        className="h-9 w-9 bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900"
+                        onClick={handleCopyCustomerData}
+                        title="Copiar datos del cliente"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
                         className="h-9 w-9"
                         onClick={() => router.push(`/registrar-venta?orderId=${orderId}`)}
                         title="Editar Pedido"
@@ -619,143 +755,318 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
                   </div>
                 </div>
 
-                {/* Promo del día */}
-                <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold text-red-700 dark:text-red-400">Promo del día</h3>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-7 text-red-600 dark:text-red-400"
-                      onClick={() => router.push(`/registrar-venta?orderId=${orderId}`)}
-                    >
-                      <Plus className="h-4 w-4 mr-1" />
-                      Agregar productos
-                    </Button>
+                {/* Shipping Guide Section - only shown when shippingGuide data is provided */}
+                {shippingGuide && (
+                  <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50/50 dark:bg-blue-950/30">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2">
+                        <Truck className="h-4 w-4" />
+                        Guía de Envío
+                      </h3>
+                      <div className="flex gap-1">
+                        <span className={`px-2 py-1 rounded text-xs font-medium ${shippingGuide.status === "ENTREGADA" ? "bg-green-100 text-green-800" :
+                          shippingGuide.status === "EN_RUTA" ? "bg-blue-100 text-blue-800" :
+                            shippingGuide.status === "FALLIDA" || shippingGuide.status === "CANCELADA" ? "bg-red-100 text-red-800" :
+                              "bg-gray-100 text-gray-800"
+                          }`}>
+                          {shippingGuide.status}
+                        </span>
+                        {shippingGuide.daysSinceCreated !== undefined && shippingGuide.daysSinceCreated >= 25 && (
+                          <span className={`px-2 py-1 rounded text-xs font-medium ${shippingGuide.daysSinceCreated >= 30 ? "bg-red-600 text-white" : "bg-amber-500 text-white"
+                            }`}>
+                            {shippingGuide.daysSinceCreated >= 30 ? "VENCIDO" : "PRÓXIMO"}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">N° Guía: </span>
+                        <span className="font-medium">{shippingGuide.guideNumber}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Courier: </span>
+                        <span className="font-medium">{shippingGuide.courierName || "-"}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Zona: </span>
+                        <span className="font-medium">{shippingGuide.deliveryZone}</span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Tipo Envío: </span>
+                        <span className="font-medium">{shippingGuide.deliveryType}</span>
+                      </div>
+                      {shippingGuide.shippingKey && (
+                        <div>
+                          <span className="text-muted-foreground">Clave Envío: </span>
+                          <span className="font-medium">{shippingGuide.shippingKey}</span>
+                        </div>
+                      )}
+                      {shippingGuide.shippingOffice && (
+                        <div>
+                          <span className="text-muted-foreground">Oficina: </span>
+                          <span className="font-medium">{shippingGuide.shippingOffice}</span>
+                        </div>
+                      )}
+                      {shippingGuide.chargeType && (
+                        <div>
+                          <span className="text-muted-foreground">Tipo Cobro: </span>
+                          <span className="font-medium">{shippingGuide.chargeType}</span>
+                        </div>
+                      )}
+                      {shippingGuide.amountToCollect != null && shippingGuide.amountToCollect > 0 && (
+                        <div>
+                          <span className="text-muted-foreground">Monto a Cobrar: </span>
+                          <span className="font-medium text-amber-600">S/ {shippingGuide.amountToCollect.toFixed(2)}</span>
+                        </div>
+                      )}
+                      <div>
+                        <span className="text-muted-foreground">Días en tránsito: </span>
+                        <span className={`font-medium ${(shippingGuide.daysSinceCreated || 0) >= 30 ? "text-red-600" :
+                          (shippingGuide.daysSinceCreated || 0) >= 25 ? "text-amber-600" :
+                            ""
+                          }`}>
+                          {shippingGuide.daysSinceCreated || 0} días
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Fecha Creación: </span>
+                        <span className="font-medium">
+                          {new Date(shippingGuide.created_at).toLocaleDateString("es-PE")}
+                        </span>
+                      </div>
+                      {shippingGuide.trackingUrl && (
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground">Tracking: </span>
+                          <a
+                            href={shippingGuide.trackingUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="font-medium text-blue-600 hover:underline"
+                          >
+                            Ver seguimiento →
+                          </a>
+                        </div>
+                      )}
+                      {shippingGuide.deliveryAddress && (
+                        <div className="col-span-2">
+                          <span className="text-muted-foreground">Dirección Envío: </span>
+                          <span className="font-medium">{shippingGuide.deliveryAddress}</span>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-sm text-red-600 dark:text-red-400">Agregar más productos a la venta</p>
-                </div>
+                )}
 
-                {/* Gestión de Llamada */}
-                <div className="border border-border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold">Gestión de llamada</h3>
-                    <span className={`text-sm font-medium px-2 py-1 rounded ${(receipt.callAttempts || 0) >= 3
+                {/* Promo del día - only shown in customer service view */}
+                {!hideCallManagement && (
+                  <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold text-red-700 dark:text-red-400">Promo del día</h3>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 text-red-600 dark:text-red-400"
+                        onClick={() => router.push(`/registrar-venta?orderId=${orderId}`)}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Agregar productos
+                      </Button>
+                    </div>
+                    <p className="text-sm text-red-600 dark:text-red-400">Agregar más productos a la venta</p>
+                  </div>
+                )}
+
+                {/* Gestión de Llamada - only shown in customer service view */}
+                {!hideCallManagement && (
+                  <div className="border border-border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold">Gestión de llamada</h3>
+                      <span className={`text-sm font-medium px-2 py-1 rounded ${(receipt.callAttempts || 0) >= 3
                         ? "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400"
                         : (receipt.callAttempts || 0) >= 2
                           ? "bg-yellow-100 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-400"
                           : "bg-muted text-foreground"
-                      }`}>
-                      Intentos: {receipt.callAttempts || 0}/3
-                    </span>
-                  </div>
-
-                  {isConfirmed ? (
-                    <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-4 text-center">
-                      <div className="flex items-center justify-center gap-2 text-green-700 dark:text-green-400">
-                        <Check className="h-5 w-5" />
-                        <span className="font-semibold">VENTA CONFIRMADA</span>
-                      </div>
-                      <p className="text-sm text-green-600 dark:text-green-400 mt-1">
-                        El cliente confirmó la entrega del pedido
-                      </p>
+                        }`}>
+                        Intentos: {receipt.callAttempts || 0}/3
+                      </span>
                     </div>
-                  ) : (receipt.callAttempts || 0) >= 3 ? (
-                    <div className="space-y-3">
-                      <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4 text-center">
-                        <div className="flex items-center justify-center gap-2 text-red-700 dark:text-red-400">
-                          <PhoneOff className="h-5 w-5" />
-                          <span className="font-semibold">LÍMITE DE INTENTOS ALCANZADO</span>
+
+                    {isConfirmed ? (
+                      <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-4 text-center">
+                        <div className="flex items-center justify-center gap-2 text-green-700 dark:text-green-400">
+                          <Check className="h-5 w-5" />
+                          <span className="font-semibold">VENTA CONFIRMADA</span>
                         </div>
-                        <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                          Se han realizado 3 intentos de llamada sin respuesta.
-                          <br />Se recomienda anular la venta.
+                        <p className="text-sm text-green-600 dark:text-green-400 mt-1">
+                          El cliente confirmó la entrega del pedido
                         </p>
                       </div>
-                      <div className="flex gap-3">
-                        <Button
-                          className="flex-1 bg-green-600 hover:bg-green-700"
-                          onClick={() => handleUpdateCallStatus("CONFIRMED")}
-                        >
-                          <Phone className="h-4 w-4 mr-2" />
-                          CONFIRMA ENTREGA
-                        </Button>
-                        <Button
-                          variant="destructive"
-                          className="flex-1"
-                          onClick={() => setCancellationModalOpen(true)}
-                        >
-                          ANULAR VENTA
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {(receipt.callAttempts || 0) >= 2 && (
-                        <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-2 text-center">
-                          <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                            ⚠️ Último intento antes de sugerir anulación
+                    ) : (receipt.callAttempts || 0) >= 3 ? (
+                      <div className="space-y-3">
+                        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4 text-center">
+                          <div className="flex items-center justify-center gap-2 text-red-700 dark:text-red-400">
+                            <PhoneOff className="h-5 w-5" />
+                            <span className="font-semibold">LÍMITE DE INTENTOS ALCANZADO</span>
+                          </div>
+                          <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                            Se han realizado 3 intentos de llamada sin respuesta.
+                            <br />Se recomienda anular la venta.
                           </p>
                         </div>
-                      )}
-                      <div className="flex gap-3">
-                        <Button
-                          className="flex-1 bg-green-600 hover:bg-green-700"
-                          onClick={() => handleUpdateCallStatus("CONFIRMED")}
-                        >
-                          <Phone className="h-4 w-4 mr-2" />
-                          CONFIRMA ENTREGA
-                        </Button>
-                        <Button
-                          variant="outline"
-                          className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
-                          onClick={() => handleUpdateCallStatus("NO_ANSWER")}
-                        >
-                          <PhoneOff className="h-4 w-4 mr-2" />
-                          NO CONTESTA ({(receipt.callAttempts || 0) + 1}/3)
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Notas y Acciones */}
-                <div className="border border-border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="font-semibold">Notas</h3>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={handleSaveNotes}
-                        disabled={savingNotes}
-                      >
-                        {savingNotes ? "Guardando..." : "Guardar"}
-                      </Button>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="outline" size="sm">
-                            Más acciones
-                            <MoreVertical className="h-4 w-4 ml-1" />
+                        <div className="flex gap-3">
+                          <Button
+                            className="flex-1 bg-green-600 hover:bg-green-700"
+                            onClick={() => handleUpdateCallStatus("CONFIRMED")}
+                          >
+                            <Phone className="h-4 w-4 mr-2" />
+                            CONFIRMA ENTREGA
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            className="text-red-600"
+                          <Button
+                            variant="destructive"
+                            className="flex-1"
                             onClick={() => setCancellationModalOpen(true)}
                           >
-                            Anular Venta
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                            ANULAR VENTA
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {(receipt.callAttempts || 0) >= 2 && (
+                          <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-2 text-center">
+                            <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                              ⚠️ Último intento antes de sugerir anulación
+                            </p>
+                          </div>
+                        )}
+                        <div className="flex gap-3">
+                          <Button
+                            className="flex-1 bg-green-600 hover:bg-green-700"
+                            onClick={() => handleUpdateCallStatus("CONFIRMED")}
+                          >
+                            <Phone className="h-4 w-4 mr-2" />
+                            CONFIRMA ENTREGA
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
+                            onClick={() => handleUpdateCallStatus("NO_ANSWER")}
+                          >
+                            <PhoneOff className="h-4 w-4 mr-2" />
+                            NO CONTESTA ({(receipt.callAttempts || 0) + 1}/3)
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <Textarea
-                    placeholder="Agregar notas o comentarios del pedido..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={3}
-                  />
+                )}
+
+                {/* Comentarios Timeline */}
+                <div className="border border-border rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="font-semibold">Historial / Comentarios</h3>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="outline" size="sm">
+                          Más acciones
+                          <MoreVertical className="h-4 w-4 ml-1" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          className="text-red-600"
+                          onClick={() => setCancellationModalOpen(true)}
+                        >
+                          Anular Venta
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  {/* Timeline */}
+                  <div className="max-h-[200px] overflow-y-auto mb-3 pr-1">
+                    {logsLoading ? (
+                      <div className="text-center text-muted-foreground py-4">Cargando historial...</div>
+                    ) : logs.length === 0 ? (
+                      <div className="text-center text-muted-foreground py-4">No hay registros en el historial</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {logs.map((log, index) => (
+                          <div
+                            key={log.id}
+                            className={`relative pl-5 pb-2 ${index < logs.length - 1 ? "border-l-2 border-muted ml-1.5" : "ml-1.5"
+                              }`}
+                          >
+                            {/* Dot */}
+                            <div
+                              className={`absolute -left-[7px] top-0 w-3 h-3 rounded-full border-2 ${log.isSystemGenerated
+                                ? "bg-muted border-muted-foreground"
+                                : "bg-primary border-primary"
+                                }`}
+                            />
+
+                            {/* Content */}
+                            <div className={`rounded-md p-2 ${log.isSystemGenerated ? 'bg-muted/30 border border-muted' : 'bg-primary/10 border border-primary/20'}`}>
+                              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Clock className="h-3 w-3" />
+                                  <span>{formatLogDate(log.timestamp)}</span>
+                                  <span className={`px-1 py-0.5 rounded text-xs ${log.isSystemGenerated ? 'bg-muted' : 'bg-primary/20 text-primary'}`}>
+                                    {log.isSystemGenerated ? (
+                                      <><Settings className="h-2 w-2 inline mr-0.5" /> Sistema</>
+                                    ) : (
+                                      OPERACION_LABELS[log.operacion] || log.operacion
+                                    )}
+                                  </span>
+                                </div>
+                                {log.userName && (
+                                  <div className="flex items-center gap-1 text-xs font-medium">
+                                    <User className="h-3 w-3" />
+                                    <span>{log.userName}</span>
+                                  </div>
+                                )}
+                              </div>
+                              {log.comentarios && (
+                                <p className="text-sm">{log.comentarios}</p>
+                              )}
+                              {!log.comentarios && log.isSystemGenerated && (
+                                <p className="text-xs text-muted-foreground italic">Acción automática</p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Input para nuevo comentario */}
+                  <div className="border-t pt-3">
+                    <div className="flex gap-2">
+                      <Textarea
+                        value={newComment}
+                        onChange={(e) => setNewComment(e.target.value)}
+                        placeholder="Escribe un comentario..."
+                        rows={2}
+                        className="flex-1 resize-none text-sm"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSendComment();
+                          }
+                        }}
+                      />
+                      <Button
+                        onClick={handleSendComment}
+                        disabled={!newComment.trim() || isSendingComment}
+                        size="sm"
+                        className="self-end"
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Enter para enviar</p>
+                  </div>
                 </div>
               </div>
             </div>

@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
-import OrderReceiptModal from "@/components/modals/orderReceiptModal";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -88,7 +88,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     0
   );
   const pendingPayment = Math.max(total - advancePayment, 0);
-  
+
   // Calcular pagos pendientes de aprobación
   const pendingPayments = order.payments.filter((p) => p.status === "PENDING");
   const pendingPaymentsAmount = pendingPayments.reduce(
@@ -180,7 +180,7 @@ export default function FinanzasPage() {
       if (cancellationReason) {
         payload.cancellationReason = cancellationReason;
       }
-      
+
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
         payload
@@ -195,7 +195,7 @@ export default function FinanzasPage() {
 
   const handleConfirmCancellation = useCallback(async (reason: CancellationReason, notes?: string) => {
     if (!saleToCancel) return;
-    
+
     setIsCancelling(true);
     try {
       await axios.patch(
@@ -264,7 +264,7 @@ Estado: ${sale.status}
   // Impresión masiva genérica
   const handleBulkPrintForStatus = async (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
-    
+
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados para imprimir");
       return;
@@ -473,17 +473,6 @@ Estado: ${sale.status}
                 <Button
                   size="icon"
                   variant="outline"
-                  onClick={() => {
-                    setSelectedSaleForComments(sale);
-                    setCommentsModalOpen(true);
-                  }}
-                  title="Comentarios"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
                   onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
                   title="Editar"
                 >
@@ -581,17 +570,6 @@ Estado: ${sale.status}
             </TableCell>
             <TableCell className="text-right">
               <div className="flex gap-1 justify-end">
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedSaleForComments(sale);
-                    setCommentsModalOpen(true);
-                  }}
-                  title="Comentarios"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </Button>
                 <Button
                   size="icon"
                   variant="outline"
@@ -765,7 +743,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(pagosPendientes.length / 10) || 1}
                 totalItems={pagosPendientes.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="ventas"
               />
             </Card>
@@ -809,7 +787,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(entregados.length / 10) || 1}
                 totalItems={entregados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>
@@ -817,11 +795,12 @@ Estado: ${sale.status}
         </Tabs>
       </main>
 
-      <OrderReceiptModal
+      <CustomerServiceModal
         open={receiptOpen}
         orderId={selectedOrderId || ""}
         onClose={() => setReceiptOpen(false)}
-        onStatusChange={fetchOrders}
+        onOrderUpdated={fetchOrders}
+        hideCallManagement={true}
       />
 
       <CancellationModal
