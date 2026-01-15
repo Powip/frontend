@@ -83,6 +83,7 @@ export interface Sale {
   advancePayment: number;
   pendingPayment: number;
   hasStockIssue?: boolean;
+  hasPendingApprovalPayments: boolean;
 }
 
 /* -----------------------------------------
@@ -91,11 +92,11 @@ export interface Sale {
 
 function mapOrderToSale(order: OrderHeader): Sale {
   const total = Number(order.grandTotal);
-  const advancePayment = order.payments.reduce(
-    (acc, p) => acc + Number(p.amount || 0),
-    0
-  );
+  const advancePayment = order.payments
+    .filter((p) => p.status === "PAID")
+    .reduce((acc, p) => acc + Number(p.amount || 0), 0);
   const pendingPayment = Math.max(total - advancePayment, 0);
+  const hasPendingApprovalPayments = order.payments.some((p) => p.status === "PENDING");
 
   return {
     id: order.id,
@@ -117,6 +118,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     advancePayment,
     pendingPayment,
     hasStockIssue: order.hasStockIssue ?? false,
+    hasPendingApprovalPayments,
   };
 }
 
@@ -671,14 +673,20 @@ Estado: ${sale.status}
                   <Button
                     size="icon"
                     variant="outline"
-                    className="bg-amber-50 hover:bg-amber-100 text-amber-600"
+                    className="relative bg-amber-50 hover:bg-amber-100 text-amber-600"
                     onClick={() => {
                       setSelectedSaleForPayment(sale);
                       setPaymentModalOpen(true);
                     }}
-                    title="Gestión de Pagos"
+                    title={sale.hasPendingApprovalPayments ? "Pagos pendientes de aprobación" : "Gestión de Pagos"}
                   >
                     <DollarSign className="h-4 w-4" />
+                    {sale.hasPendingApprovalPayments && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                      </span>
+                    )}
                   </Button>
                   <Button
                     size="icon"
