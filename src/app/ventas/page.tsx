@@ -254,9 +254,8 @@ export default function VentasPage() {
     }
   };
 
-  const handleCopySelected = async (statusFilter: OrderStatus) => {
-    const visibleSales = sales.filter((s) => s.status === statusFilter);
-    const selectedSales = visibleSales.filter((s) => selectedSaleIds.has(s.id));
+  const handleCopySelected = async (salesList: Sale[]) => {
+    const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados en esta vista");
@@ -920,7 +919,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={selectedPendientesCount === 0}
-                    onClick={() => handleCopySelected("PENDIENTE")}
+                    onClick={() => handleCopySelected(pendientes)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({selectedPendientesCount})
@@ -962,7 +961,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={anulados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("ANULADO")}
+                    onClick={() => handleCopySelected(anulados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({anulados.filter((s) => selectedSaleIds.has(s.id)).length})
@@ -1004,29 +1003,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={todasLasVentas.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => {
-                      const selected = todasLasVentas.filter((s) => selectedSaleIds.has(s.id));
-                      if (selected.length === 0) {
-                        toast.warning("No hay pedidos seleccionados");
-                        return;
-                      }
-                      const text = selected
-                        .map((sale) => `
-Venta ${sale.orderNumber}
-Cliente: ${sale.clientName}
-Teléfono: ${sale.phoneNumber}
-Distrito: ${sale.district}
-Dirección: ${sale.address}
-Fecha: ${sale.date}
-Total Venta: $${sale.total.toFixed(2)}
-Adelanto: $${sale.advancePayment.toFixed(2)}
-Por Cobrar: $${sale.pendingPayment.toFixed(2)}
-Estado: ${sale.status}
-`.trim())
-                        .join("\n\n--------------------\n\n");
-                      navigator.clipboard.writeText(text);
-                      toast.success(`${selected.length} pedido(s) copiados`);
-                    }}
+                    onClick={() => handleCopySelected(todasLasVentas)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({todasLasVentas.filter((s) => selectedSaleIds.has(s.id)).length})

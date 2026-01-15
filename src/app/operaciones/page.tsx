@@ -456,9 +456,8 @@ export default function OperacionesPage() {
     setSales((prev) => prev.filter((sale) => sale.id !== id));
   };
 
-  const handleCopySelected = async (statusFilter: OrderStatus) => {
-    const visibleSales = sales.filter((s) => s.status === statusFilter);
-    const selectedSales = visibleSales.filter((s) => selectedSaleIds.has(s.id));
+  const handleCopySelected = async (salesList: Sale[]) => {
+    const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados en esta vista");
@@ -915,7 +914,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={preparados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("PREPARADO")}
+                    onClick={() => handleCopySelected(preparados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({preparados.filter((s) => selectedSaleIds.has(s.id)).length})
@@ -958,7 +957,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("PREPARADO")}
+                    onClick={() => handleCopySelected(noConfirmados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length})
@@ -1010,7 +1009,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={confirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("LLAMADO")}
+                    onClick={() => handleCopySelected(confirmados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({confirmados.filter((s) => selectedSaleIds.has(s.id)).length})
@@ -1063,7 +1062,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={contactados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("LLAMADO")}
+                    onClick={() => handleCopySelected(contactados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({contactados.filter((s) => selectedSaleIds.has(s.id)).length})
@@ -1108,7 +1107,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={despachados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("EN_ENVIO")}
+                    onClick={() => handleCopySelected(despachados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({despachados.filter((s) => selectedSaleIds.has(s.id)).length})

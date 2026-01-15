@@ -231,9 +231,8 @@ export default function FinanzasPage() {
     fetchOrders();
   }, [selectedStoreId, fetchOrders]);
 
-  const handleCopySelected = async (statusFilter: OrderStatus) => {
-    const visibleSales = sales.filter((s) => s.status === statusFilter);
-    const selectedSales = visibleSales.filter((s) => selectedSaleIds.has(s.id));
+  const handleCopySelected = async (salesList: Sale[]) => {
+    const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados en esta vista");
@@ -766,7 +765,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={entregados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("ENTREGADO")}
+                    onClick={() => handleCopySelected(entregados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({entregados.filter((s) => selectedSaleIds.has(s.id)).length})
