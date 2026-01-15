@@ -27,7 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
-import OrderReceiptModal from "@/components/modals/orderReceiptModal";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -87,6 +87,7 @@ export interface Sale {
   guideNumber?: string | null;
   hasStockIssue?: boolean;
   zone?: string;
+  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
 }
 
 /* -----------------------------------------
@@ -122,6 +123,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     hasStockIssue: order.hasStockIssue ?? false,
     zone: order.customer.zone ?? undefined,
     guideNumber: order.guideNumber ?? null,
+    callStatus: order.callStatus,
   };
 }
 
@@ -142,6 +144,8 @@ export default function OperacionesPage() {
 
   // Filtros avanzados
   const [filtersPreparados, setFiltersPreparados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersNoConfirmados, setFiltersNoConfirmados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersConfirmados, setFiltersConfirmados] = useState<SalesFilters>(emptySalesFilters);
   const [filtersContactados, setFiltersContactados] = useState<SalesFilters>(emptySalesFilters);
   const [filtersDespachados, setFiltersDespachados] = useState<SalesFilters>(emptySalesFilters);
   const [isPrinting, setIsPrinting] = useState(false);
@@ -175,7 +179,7 @@ export default function OperacionesPage() {
   const [guideDetailsModalOpen, setGuideDetailsModalOpen] = useState(false);
   const [selectedSaleForGuide, setSelectedSaleForGuide] = useState<Sale | null>(null);
 
-  const { auth ,selectedStoreId } = useAuth();
+  const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
 
   const fetchOrders = useCallback(async () => {
@@ -452,9 +456,8 @@ export default function OperacionesPage() {
     setSales((prev) => prev.filter((sale) => sale.id !== id));
   };
 
-  const handleCopySelected = async (statusFilter: OrderStatus) => {
-    const visibleSales = sales.filter((s) => s.status === statusFilter);
-    const selectedSales = visibleSales.filter((s) => selectedSaleIds.has(s.id));
+  const handleCopySelected = async (salesList: Sale[]) => {
+    const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados en esta vista");
@@ -763,17 +766,6 @@ Estado: ${sale.status}
               <Button
                 size="icon"
                 variant="outline"
-                onClick={() => {
-                  setSelectedSaleForComments(sale);
-                  setCommentsModalOpen(true);
-                }}
-                title="Comentarios"
-              >
-                <MessageSquare className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon"
-                variant="outline"
                 onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
                 title="Editar"
               >
@@ -797,15 +789,37 @@ Estado: ${sale.status}
      Filters
   ----------------------------------------- */
 
-  // Preparados: Lima y Provincia
+  // Preparados: Lima y Provincia (sin llamar o pendiente de llamada)
   const preparados = useMemo(
     () => {
       const statusFiltered = sales.filter(
-        (s) => s.status === ORDER_STATUS.PREPARADO
+        (s) => s.status === ORDER_STATUS.PREPARADO &&
+          (!s.callStatus || s.callStatus === "PENDING")
       );
       return applyFilters(statusFiltered, filtersPreparados);
     },
     [sales, filtersPreparados]
+  );
+
+  // No Confirmados: status = PREPARADO y callStatus = NO_ANSWER
+  const noConfirmados = useMemo(
+    () => {
+      const statusFiltered = sales.filter(
+        (s) => s.status === ORDER_STATUS.PREPARADO &&
+          s.callStatus === "NO_ANSWER"
+      );
+      return applyFilters(statusFiltered, filtersNoConfirmados);
+    },
+    [sales, filtersNoConfirmados]
+  );
+
+  // Confirmados: status = LLAMADO (ya confirmaron)
+  const confirmados = useMemo(
+    () => {
+      const statusFiltered = sales.filter((s) => s.status === ORDER_STATUS.LLAMADO);
+      return applyFilters(statusFiltered, filtersConfirmados);
+    },
+    [sales, filtersConfirmados]
   );
 
   const contactados = useMemo(
@@ -869,6 +883,12 @@ Estado: ${sale.status}
             <TabsTrigger value="preparados">
               Preparados ({preparados.length})
             </TabsTrigger>
+            <TabsTrigger value="no_confirmados" className="text-red-600">
+              No Confirmados ({noConfirmados.length})
+            </TabsTrigger>
+            <TabsTrigger value="confirmados" className="text-green-600">
+              Confirmados ({confirmados.length})
+            </TabsTrigger>
             <TabsTrigger value="contactados">
               Contactados ({contactados.length})
             </TabsTrigger>
@@ -894,7 +914,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={preparados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("PREPARADO")}
+                    onClick={() => handleCopySelected(preparados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({preparados.filter((s) => selectedSaleIds.has(s.id)).length})
@@ -913,6 +933,102 @@ Estado: ${sale.status}
                 currentPage={1}
                 totalPages={Math.ceil(preparados.length / 10) || 1}
                 totalItems={preparados.length}
+                itemsPerPage={10}
+                onPageChange={() => { }}
+                itemName="pedidos"
+              />
+            </Card>
+          </TabsContent>
+
+          {/* Tab No Confirmados */}
+          <TabsContent value="no_confirmados">
+            <Card className="border-red-200">
+              <CardHeader className="flex flex-row items-center justify-between bg-red-50">
+                <CardTitle className="text-red-700">Pedidos NO CONFIRMADOS</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    onClick={() => handleBulkPrintForStatus(noConfirmados)}
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir seleccionados ({noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    onClick={() => handleCopySelected(noConfirmados)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersNoConfirmados}
+                  onFiltersChange={setFiltersNoConfirmados}
+                  showRegionFilter={true}
+                />
+                {renderTable(noConfirmados, true, false)}
+              </CardContent>
+              <Pagination
+                currentPage={1}
+                totalPages={Math.ceil(noConfirmados.length / 10) || 1}
+                totalItems={noConfirmados.length}
+                itemsPerPage={10}
+                onPageChange={() => { }}
+                itemName="pedidos"
+              />
+            </Card>
+          </TabsContent>
+
+          {/* Tab Confirmados */}
+          <TabsContent value="confirmados">
+            <Card className="border-green-200">
+              <CardHeader className="flex flex-row items-center justify-between bg-green-50">
+                <CardTitle className="text-green-700">Pedidos CONFIRMADOS</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="default"
+                    className="bg-emerald-600 hover:bg-emerald-700"
+                    disabled={confirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isCreatingGuide}
+                    onClick={() => setCreateGuideModalOpen(true)}
+                  >
+                    <PackagePlus className="h-4 w-4 mr-2" />
+                    Generar Guía ({confirmados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={confirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    onClick={() => handleBulkPrintForStatus(confirmados)}
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir seleccionados ({confirmados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={confirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    onClick={() => handleCopySelected(confirmados)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({confirmados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersConfirmados}
+                  onFiltersChange={setFiltersConfirmados}
+                  showRegionFilter={true}
+                  showZoneFilter={true}
+                />
+                {renderTable(confirmados, false, false)}
+              </CardContent>
+              <Pagination
+                currentPage={1}
+                totalPages={Math.ceil(confirmados.length / 10) || 1}
+                totalItems={confirmados.length}
                 itemsPerPage={10}
                 onPageChange={() => { }}
                 itemName="pedidos"
@@ -946,7 +1062,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={contactados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("LLAMADO")}
+                    onClick={() => handleCopySelected(contactados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({contactados.filter((s) => selectedSaleIds.has(s.id)).length})
@@ -991,7 +1107,7 @@ Estado: ${sale.status}
                   <Button
                     variant="outline"
                     disabled={despachados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected("EN_ENVIO")}
+                    onClick={() => handleCopySelected(despachados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({despachados.filter((s) => selectedSaleIds.has(s.id)).length})
@@ -1023,11 +1139,12 @@ Estado: ${sale.status}
         </Tabs>
       </main>
 
-      <OrderReceiptModal
+      <CustomerServiceModal
         open={receiptOpen}
         orderId={selectedOrderId || ""}
         onClose={() => setReceiptOpen(false)}
-        onStatusChange={fetchOrders}
+        onOrderUpdated={fetchOrders}
+        hideCallManagement={true}
       />
 
       {/* Modal de Observaciones */}

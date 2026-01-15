@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { HeaderConfig } from "@/components/header/HeaderConfig"; 
+import { HeaderConfig } from "@/components/header/HeaderConfig";
 import axios from "axios";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { toast } from "sonner";
@@ -29,7 +29,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import { useRouter } from "next/navigation";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal"; 
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { SalesTableFilters, SalesFilters, emptySalesFilters, applyFilters } from "@/components/ventas/SalesTableFilters";
 
@@ -63,9 +63,9 @@ function mapOrderToSale(order: OrderHeader): Sale {
   const totalPaid = order.payments
     ?.filter((p) => p.status === "PAID")
     .reduce((sum, p) => sum + Number(p.amount), 0) ?? 0;
-  
+
   const grandTotal = Number(order.grandTotal);
-  
+
   return {
     id: order.id,
     orderNumber: order.orderNumber,
@@ -92,10 +92,10 @@ function mapOrderToSale(order: OrderHeader): Sale {
 export default function AtencionClientePage() {
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
-  
+
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(false);
-  
+
   // Modals
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -105,7 +105,7 @@ export default function AtencionClientePage() {
   const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<Sale | null>(null);
   const [customerServiceModalOpen, setCustomerServiceModalOpen] = useState(false);
   const [selectedSaleForService, setSelectedSaleForService] = useState<Sale | null>(null);
-  
+
   // Selection
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(new Set());
   const [isPrinting, setIsPrinting] = useState(false);
@@ -114,7 +114,7 @@ export default function AtencionClientePage() {
   const [filtersPreparados, setFiltersPreparados] = useState<SalesFilters>(emptySalesFilters);
   const [filtersNoConfirmados, setFiltersNoConfirmados] = useState<SalesFilters>(emptySalesFilters);
   const [filtersConfirmados, setFiltersConfirmados] = useState<SalesFilters>(emptySalesFilters);
-  
+
   const fetchOrders = useCallback(async () => {
     if (!selectedStoreId) return;
     try {
@@ -139,12 +139,12 @@ export default function AtencionClientePage() {
   const handleWhatsApp = (phoneNumber: string, orderNumber?: string, clientName?: string) => {
     const phone = phoneNumber.replace(/\D/g, "");
     const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
-    
+
     let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
     if (orderNumber) {
       message += `Te contactamos por tu pedido ${orderNumber}.`;
     }
-    
+
     window.open(
       `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
       "_blank"
@@ -161,7 +161,7 @@ export default function AtencionClientePage() {
 
   const handleCopySelected = async (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
-    
+
     if (selectedSales.length === 0) {
       toast.warning("No hay pedidos seleccionados");
       return;
@@ -191,7 +191,7 @@ Estado: ${sale.status}
   /* -----------------------------------------
      Render Table
   ----------------------------------------- */
-  
+
   const renderTable = (data: Sale[], tableType: "preparados" | "no_confirmados" | "confirmados") => (
     <Table>
       <TableHeader>
@@ -249,11 +249,10 @@ Estado: ${sale.status}
             <TableCell className="text-green-600">S/{sale.advancePayment.toFixed(2)}</TableCell>
             <TableCell className="text-red-600">S/{sale.pendingPayment.toFixed(2)}</TableCell>
             <TableCell>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${
-                sale.status === "PREPARADO" ? "bg-yellow-100 text-yellow-800" :
-                sale.status === "LLAMADO" ? "bg-blue-100 text-blue-800" :
-                "bg-gray-100 text-gray-800"
-              }`}>
+              <span className={`px-2 py-1 rounded text-xs font-medium ${sale.status === "PREPARADO" ? "bg-yellow-100 text-yellow-800" :
+                  sale.status === "LLAMADO" ? "bg-blue-100 text-blue-800" :
+                    "bg-gray-100 text-gray-800"
+                }`}>
                 {sale.status}
               </span>
             </TableCell>
@@ -289,17 +288,6 @@ Estado: ${sale.status}
                 <Button
                   size="icon"
                   variant="outline"
-                  onClick={() => {
-                    setSelectedSaleForComments(sale);
-                    setCommentsModalOpen(true);
-                  }}
-                  title="Comentarios"
-                >
-                  <MessageSquare className="h-4 w-4" />
-                </Button>
-                <Button
-                  size="icon"
-                  variant="outline"
                   onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
                   title="Editar"
                 >
@@ -326,8 +314,8 @@ Estado: ${sale.status}
 
   // Pedidos Preparados: status = PREPARADO y (callStatus null o PENDING)
   const pedidosPreparados = useMemo(() => {
-    const statusFiltered = sales.filter((s) => 
-      s.status === "PREPARADO" && 
+    const statusFiltered = sales.filter((s) =>
+      s.status === "PREPARADO" &&
       (!s.callStatus || s.callStatus === "PENDING")
     );
     return applyFilters(statusFiltered, filtersPreparados);
@@ -335,8 +323,8 @@ Estado: ${sale.status}
 
   // Pedidos No Confirmados: status = PREPARADO y callStatus = NO_ANSWER
   const pedidosNoConfirmados = useMemo(() => {
-    const statusFiltered = sales.filter((s) => 
-      s.status === "PREPARADO" && 
+    const statusFiltered = sales.filter((s) =>
+      s.status === "PREPARADO" &&
       s.callStatus === "NO_ANSWER"
     );
     return applyFilters(statusFiltered, filtersNoConfirmados);
