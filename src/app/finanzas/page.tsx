@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, FileText, ArrowLeft } from "lucide-react";
+import { Pencil, FileText, ArrowLeft, MessageCircle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,6 +30,7 @@ import { Copy, Printer, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CancellationModal, { CancellationReason } from "@/components/modals/CancellationModal";
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
+import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 
@@ -75,6 +76,12 @@ export interface Sale {
   hasPendingPayments: boolean;
   pendingPaymentsCount: number;
   pendingPaymentsAmount: number;
+  // Campos de guía de envío (ms-courier)
+  shippingDeliveryType?: string;
+  shippingCourierName?: string;
+  // Nuevos campos para la tabla de pagos
+  city: string;
+  paymentCreatedAt: string | null;
 }
 
 /* -----------------------------------------
@@ -83,10 +90,9 @@ export interface Sale {
 
 function mapOrderToSale(order: OrderHeader): Sale {
   const total = Number(order.grandTotal);
-  const advancePayment = order.payments.reduce(
-    (acc, p) => acc + Number(p.amount || 0),
-    0
-  );
+  const advancePayment = order.payments
+    .filter((p) => p.status === "PAID")
+    .reduce((acc, p) => acc + Number(p.amount || 0), 0);
   const pendingPayment = Math.max(total - advancePayment, 0);
 
   // Calcular pagos pendientes de aprobación
@@ -116,6 +122,10 @@ function mapOrderToSale(order: OrderHeader): Sale {
     hasPendingPayments: pendingPayments.length > 0,
     pendingPaymentsCount: pendingPayments.length,
     pendingPaymentsAmount,
+    city: order.customer.city ?? order.customer.district ?? "",
+    paymentCreatedAt: pendingPayments.length > 0 
+      ? pendingPayments[0].created_at?.toString() ?? null
+      : null,
   };
 }
 
@@ -158,7 +168,40 @@ export default function FinanzasPage() {
       const res = await axios.get<OrderHeader[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
       );
-      setSales(res.data.map(mapOrderToSale));
+      const mappedSales = res.data.map(mapOrderToSale);
+      setSales(mappedSales);
+
+      // Obtener datos de guías de envío para órdenes entregadas
+      const deliveredOrders = mappedSales.filter((s) => s.status === "ENTREGADO");
+      if (deliveredOrders.length > 0) {
+        const guidePromises = deliveredOrders.map(async (sale) => {
+          try {
+            const guideRes = await axios.get(
+              `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`
+            );
+            return { orderId: sale.id, guide: guideRes.data };
+          } catch {
+            return { orderId: sale.id, guide: null };
+          }
+        });
+
+        const guideResults = await Promise.all(guidePromises);
+        const guideMap = new Map(guideResults.map((r) => [r.orderId, r.guide]));
+
+        setSales((prevSales) =>
+          prevSales.map((sale) => {
+            const guide = guideMap.get(sale.id);
+            if (guide) {
+              return {
+                ...sale,
+                shippingDeliveryType: guide.deliveryType || undefined,
+                shippingCourierName: guide.courierName || undefined,
+              };
+            }
+            return sale;
+          })
+        );
+      }
     } catch (error) {
       console.error("Error fetching orders", error);
     }
@@ -231,6 +274,24 @@ export default function FinanzasPage() {
     fetchOrders();
   }, [selectedStoreId, fetchOrders]);
 
+  const handleWhatsApp = (phoneNumber: string, orderNumber?: string, clientName?: string, pendingAmount?: number) => {
+    const phone = phoneNumber.replace(/\D/g, "");
+    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+
+    let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
+    if (orderNumber) {
+      message += `Te contactamos por tu pedido ${orderNumber}. `;
+    }
+    if (pendingAmount && pendingAmount > 0) {
+      message += `Tienes un pago pendiente de S/${pendingAmount.toFixed(2)} por verificar.`;
+    }
+
+    window.open(
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
+      "_blank"
+    );
+  };
+
   const handleCopySelected = async (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
@@ -275,90 +336,15 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          const res = await axios.get(
+          const res = await axios.get<ReceiptData>(
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`
           );
-          return { ...res.data, salesRegion: sale.salesRegion, status: sale.status };
+          return res.data;
         })
       );
 
-      const printContent = receipts.map((receipt, index) => {
-        const totalPaid = receipt.payments?.reduce(
-          (acc: number, p: any) => acc + Number(p.amount || 0),
-          0
-        ) || 0;
-        const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
-
-        return `
-          <div style="page-break-after: ${index < receipts.length - 1 ? 'always' : 'auto'}; padding: 20px; font-family: Arial, sans-serif;">
-            <div style="background: ${receipt.salesRegion === 'PROVINCIA' ? '#7c3aed' : '#dc2626'}; color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
-              <strong>${receipt.salesRegion} - ${receipt.status}</strong>
-            </div>
-            
-            <h2 style="margin: 0 0 8px 0;">Orden #${receipt.orderNumber}</h2>
-            <p style="font-size: 18px; font-weight: bold; margin: 0 0 16px 0;">Total: S/${receipt.totals.grandTotal}</p>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
-              <div><span style="color: #666;">Cliente:</span> ${receipt.customer.fullName}</div>
-              <div><span style="color: #666;">Distrito:</span> ${receipt.customer.district || '-'}</div>
-              <div><span style="color: #666;">Teléfono:</span> ${receipt.customer.phoneNumber}</div>
-              <div><span style="color: #666;">Dirección:</span> ${receipt.customer.address || '-'}</div>
-            </div>
-            
-            <h3 style="margin: 16px 0 8px 0;">Productos</h3>
-            <table style="width: 100%; border-collapse: collapse;">
-              <thead>
-                <tr style="background: #f3f4f6;">
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Producto</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Cant.</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Precio</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${receipt.items.map((item: any) => `
-                  <tr>
-                    <td style="border: 1px solid #ddd; padding: 8px;">${item.productName}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.quantity}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.unitPrice}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.subtotal}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-            
-            <div style="margin-top: 16px; border-top: 2px solid #333; padding-top: 8px;">
-              <div style="display: flex; justify-content: space-between;"><span>Total:</span><strong>S/${receipt.totals.grandTotal}</strong></div>
-              <div style="display: flex; justify-content: space-between; color: #16a34a;"><span>Adelanto:</span><span>S/${totalPaid.toFixed(2)}</span></div>
-              <div style="display: flex; justify-content: space-between; color: #dc2626;"><span>Por Cobrar:</span><span>S/${pendingAmount.toFixed(2)}</span></div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Impresión de Recibos</title>
-              <style>
-                @media print {
-                  body { margin: 0; }
-                }
-              </style>
-            </head>
-            <body>
-              ${printContent}
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
-        printWindow.close();
-      }
+      // Imprimir usando la utilidad compartida (formato compacto con QR)
+      await printReceipts(receipts);
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedSaleIds(new Set());
@@ -460,14 +446,20 @@ Estado: ${sale.status}
                 <Button
                   size="icon"
                   variant="outline"
-                  className="bg-amber-50 hover:bg-amber-100 text-amber-600"
+                  className="relative bg-amber-50 hover:bg-amber-100 text-amber-600"
                   onClick={() => {
                     setSelectedSaleForPayment(sale);
                     setPaymentModalOpen(true);
                   }}
-                  title="Gestión de Pagos"
+                  title={sale.hasPendingPayments ? "Pagos pendientes de aprobación" : "Gestión de Pagos"}
                 >
                   <DollarSign className="h-4 w-4" />
+                  {sale.hasPendingPayments && (
+                    <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                    </span>
+                  )}
                 </Button>
                 <Button
                   size="icon"
@@ -524,6 +516,8 @@ Estado: ${sale.status}
           <TableHead>Adelanto</TableHead>
           <TableHead>Por Cobrar</TableHead>
           <TableHead>Enviado Por</TableHead>
+          <TableHead>Tipo Envío</TableHead>
+          <TableHead>Courier</TableHead>
           <TableHead>Estado</TableHead>
           <TableHead>Region</TableHead>
           <TableHead>Resumen</TableHead>
@@ -550,6 +544,8 @@ Estado: ${sale.status}
             <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
             <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
             <TableCell>{sale.courier || "—"}</TableCell>
+            <TableCell>{sale.shippingDeliveryType || "—"}</TableCell>
+            <TableCell>{sale.shippingCourierName || "—"}</TableCell>
             <TableCell>
               <Badge variant="default" className="bg-green-600">ENTREGADO</Badge>
             </TableCell>
@@ -583,7 +579,7 @@ Estado: ${sale.status}
         ))}
         {data.length === 0 && (
           <TableRow>
-            <TableCell colSpan={15} className="text-center text-muted-foreground py-6">
+            <TableCell colSpan={17} className="text-center text-muted-foreground py-6">
               No hay ventas en este estado
             </TableCell>
           </TableRow>
@@ -667,16 +663,20 @@ Estado: ${sale.status}
                   filters={filtersPagosPendientes}
                   onFiltersChange={setFiltersPagosPendientes}
                 />
-                <Table>
+              <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>N° Orden</TableHead>
                       <TableHead>Cliente</TableHead>
                       <TableHead>Teléfono</TableHead>
+                      <TableHead>Región</TableHead>
+                      <TableHead>Ciudad</TableHead>
+                      <TableHead>Courier</TableHead>
                       <TableHead>Estado Venta</TableHead>
                       <TableHead>Total Venta</TableHead>
                       <TableHead>Pagos Pendientes</TableHead>
                       <TableHead>Monto por Aprobar</TableHead>
+                      <TableHead>Fecha Pago</TableHead>
                       <TableHead>Resumen</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
@@ -688,6 +688,13 @@ Estado: ${sale.status}
                         <TableCell>{sale.clientName}</TableCell>
                         <TableCell>{sale.phoneNumber}</TableCell>
                         <TableCell>
+                          <Badge variant={sale.salesRegion === "LIMA" ? "default" : "secondary"}>
+                            {sale.salesRegion}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{sale.city || "-"}</TableCell>
+                        <TableCell>{sale.courier || "-"}</TableCell>
+                        <TableCell>
                           <Badge variant="outline">{sale.status}</Badge>
                         </TableCell>
                         <TableCell>S/{sale.total.toFixed(2)}</TableCell>
@@ -698,6 +705,11 @@ Estado: ${sale.status}
                         </TableCell>
                         <TableCell className="font-medium text-amber-600">
                           S/{sale.pendingPaymentsAmount.toFixed(2)}
+                        </TableCell>
+                        <TableCell>
+                          {sale.paymentCreatedAt 
+                            ? new Date(sale.paymentCreatedAt).toLocaleDateString("es-PE")
+                            : "-"}
                         </TableCell>
                         <TableCell>
                           <Button
@@ -713,23 +725,39 @@ Estado: ${sale.status}
                           </Button>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button
-                            size="sm"
-                            className="bg-amber-500 hover:bg-amber-600 text-white"
-                            onClick={() => {
-                              setSelectedSaleForPayment(sale);
-                              setPaymentModalOpen(true);
-                            }}
-                          >
-                            <DollarSign className="h-4 w-4 mr-1" />
-                            Gestionar Pagos
-                          </Button>
+                          <div className="flex gap-1 justify-end">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="bg-green-500 hover:bg-green-600 text-white"
+                              title="Contactar por WhatsApp"
+                              onClick={() => handleWhatsApp(
+                                sale.phoneNumber, 
+                                sale.orderNumber, 
+                                sale.clientName,
+                                sale.pendingPaymentsAmount
+                              )}
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              className="bg-amber-500 hover:bg-amber-600 text-white"
+                              onClick={() => {
+                                setSelectedSaleForPayment(sale);
+                                setPaymentModalOpen(true);
+                              }}
+                            >
+                              <DollarSign className="h-4 w-4 mr-1" />
+                              Gestionar Pagos
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
                     {pagosPendientes.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
+                        <TableCell colSpan={13} className="text-center text-muted-foreground py-6">
                           No hay pagos pendientes de aprobación
                         </TableCell>
                       </TableRow>

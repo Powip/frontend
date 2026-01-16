@@ -20,7 +20,7 @@ import { Label } from "@/components/ui/label";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import CustomerServiceModal, { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -29,6 +29,7 @@ import { Copy, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CancellationModal, { CancellationReason } from "@/components/modals/CancellationModal";
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
+import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import {
@@ -83,6 +84,7 @@ export interface Sale {
   advancePayment: number;
   pendingPayment: number;
   hasStockIssue?: boolean;
+  hasPendingApprovalPayments: boolean;
 }
 
 /* -----------------------------------------
@@ -91,11 +93,11 @@ export interface Sale {
 
 function mapOrderToSale(order: OrderHeader): Sale {
   const total = Number(order.grandTotal);
-  const advancePayment = order.payments.reduce(
-    (acc, p) => acc + Number(p.amount || 0),
-    0
-  );
+  const advancePayment = order.payments
+    .filter((p) => p.status === "PAID")
+    .reduce((acc, p) => acc + Number(p.amount || 0), 0);
   const pendingPayment = Math.max(total - advancePayment, 0);
+  const hasPendingApprovalPayments = order.payments.some((p) => p.status === "PENDING");
 
   return {
     id: order.id,
@@ -117,6 +119,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     advancePayment,
     pendingPayment,
     hasStockIssue: order.hasStockIssue ?? false,
+    hasPendingApprovalPayments,
   };
 }
 
@@ -128,6 +131,7 @@ export default function VentasPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedShippingGuide, setSelectedShippingGuide] = useState<ShippingGuideData | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
 
   // Filtros avanzados
@@ -299,100 +303,15 @@ Estado: ${sale.status}
       // Obtener recibos de todas las ventas seleccionadas
       const receipts = await Promise.all(
         selectedPendientes.map(async (sale) => {
-          const res = await axios.get(
+          const res = await axios.get<ReceiptData>(
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`
           );
-          return { ...res.data, salesRegion: sale.salesRegion };
+          return res.data;
         })
       );
 
-      // Generar HTML para impresión con page-break
-      const printContent = receipts.map((receipt, index) => {
-        const totalPaid = receipt.payments?.reduce(
-          (acc: number, p: any) => acc + Number(p.amount || 0),
-          0
-        ) || 0;
-        const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
-        const newStatus = "PREPARADO"; // Flujo unificado para LIMA y PROVINCIA
-
-        return `
-          <div style="page-break-after: ${index < receipts.length - 1 ? 'always' : 'auto'}; padding: 20px; font-family: Arial, sans-serif;">
-            <div style="background: ${receipt.salesRegion === 'PROVINCIA' ? '#7c3aed' : '#dc2626'}; color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
-              <strong>${receipt.salesRegion === 'PROVINCIA' ? 'PROVINCIA → ' + newStatus : 'LIMA → ' + newStatus}</strong>
-            </div>
-            
-            <h2 style="margin: 0 0 8px 0;">Orden #${receipt.orderNumber}</h2>
-            <p style="font-size: 18px; font-weight: bold; margin: 0 0 16px 0;">Total: S/${receipt.totals.grandTotal}</p>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
-              <div><span style="color: #666;">Cliente:</span> ${receipt.customer.fullName}</div>
-              <div><span style="color: #666;">Distrito:</span> ${receipt.customer.district || '-'}</div>
-              <div><span style="color: #666;">Teléfono:</span> ${receipt.customer.phoneNumber}</div>
-              <div><span style="color: #666;">Dirección:</span> ${receipt.customer.address || '-'}</div>
-            </div>
-            
-            <h3 style="margin: 16px 0 8px 0;">Productos</h3>
-            <table style="width: 100%; border-collapse: collapse;">
-              <thead>
-                <tr style="background: #f3f4f6;">
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Producto</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Cant.</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Precio</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${receipt.items.map((item: any) => `
-                  <tr>
-                    <td style="border: 1px solid #ddd; padding: 8px;">${item.productName}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.quantity}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.unitPrice}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.subtotal}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-            
-            <div style="margin-top: 16px; border-top: 2px solid #333; padding-top: 8px;">
-              <div style="display: flex; justify-content: space-between;"><span>Total:</span><strong>S/${receipt.totals.grandTotal}</strong></div>
-              <div style="display: flex; justify-content: space-between; color: #16a34a;"><span>Adelanto:</span><span>S/${totalPaid.toFixed(2)}</span></div>
-              <div style="display: flex; justify-content: space-between; color: #dc2626;"><span>Por Cobrar:</span><span>S/${pendingAmount.toFixed(2)}</span></div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      // Abrir ventana de impresión
-      const printWindow = window.open('', '_blank');
-      if (!printWindow) {
-        toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.");
-        setIsPrinting(false);
-        return;
-      }
-
-      printWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Impresión de Recibos</title>
-            <style>
-              @media print {
-                body { margin: 0; }
-              }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
-      printWindow.close();
-
-      // Pequeño delay para asegurar que el diálogo de impresión se cierre completamente
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Imprimir usando la utilidad compartida (formato compacto con QR)
+      await printReceipts(receipts);
 
       // Guardar ventas pendientes y mostrar modal de confirmación
       setPendingPrintSales(selectedPendientes);
@@ -464,90 +383,15 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          const res = await axios.get(
+          const res = await axios.get<ReceiptData>(
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`
           );
-          return { ...res.data, salesRegion: sale.salesRegion, status: sale.status };
+          return res.data;
         })
       );
 
-      const printContent = receipts.map((receipt, index) => {
-        const totalPaid = receipt.payments?.reduce(
-          (acc: number, p: any) => acc + Number(p.amount || 0),
-          0
-        ) || 0;
-        const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
-
-        return `
-          <div style="page-break-after: ${index < receipts.length - 1 ? 'always' : 'auto'}; padding: 20px; font-family: Arial, sans-serif;">
-            <div style="background: ${receipt.salesRegion === 'PROVINCIA' ? '#7c3aed' : '#dc2626'}; color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
-              <strong>${receipt.salesRegion} - ${receipt.status}</strong>
-            </div>
-            
-            <h2 style="margin: 0 0 8px 0;">Orden #${receipt.orderNumber}</h2>
-            <p style="font-size: 18px; font-weight: bold; margin: 0 0 16px 0;">Total: S/${receipt.totals.grandTotal}</p>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
-              <div><span style="color: #666;">Cliente:</span> ${receipt.customer.fullName}</div>
-              <div><span style="color: #666;">Distrito:</span> ${receipt.customer.district || '-'}</div>
-              <div><span style="color: #666;">Teléfono:</span> ${receipt.customer.phoneNumber}</div>
-              <div><span style="color: #666;">Dirección:</span> ${receipt.customer.address || '-'}</div>
-            </div>
-            
-            <h3 style="margin: 16px 0 8px 0;">Productos</h3>
-            <table style="width: 100%; border-collapse: collapse;">
-              <thead>
-                <tr style="background: #f3f4f6;">
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Producto</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Cant.</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Precio</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${receipt.items.map((item: any) => `
-                  <tr>
-                    <td style="border: 1px solid #ddd; padding: 8px;">${item.productName}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.quantity}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.unitPrice}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.subtotal}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-            
-            <div style="margin-top: 16px; border-top: 2px solid #333; padding-top: 8px;">
-              <div style="display: flex; justify-content: space-between;"><span>Total:</span><strong>S/${receipt.totals.grandTotal}</strong></div>
-              <div style="display: flex; justify-content: space-between; color: #16a34a;"><span>Adelanto:</span><span>S/${totalPaid.toFixed(2)}</span></div>
-              <div style="display: flex; justify-content: space-between; color: #dc2626;"><span>Por Cobrar:</span><span>S/${pendingAmount.toFixed(2)}</span></div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Impresión de Recibos</title>
-              <style>
-                @media print {
-                  body { margin: 0; }
-                }
-              </style>
-            </head>
-            <body>
-              ${printContent}
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
-        printWindow.close();
-      }
+      // Imprimir usando la utilidad compartida (formato compacto con QR)
+      await printReceipts(receipts);
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedSaleIds(new Set());
@@ -557,6 +401,61 @@ Estado: ${sale.status}
     } finally {
       setIsPrinting(false);
     }
+  };
+
+  // Abrir modal de recibo, cargando datos de guía si es EN_ENVIO
+  const handleOpenReceipt = async (sale: Sale) => {
+    setSelectedOrderId(sale.id);
+    
+    // Si es EN_ENVIO, cargar datos de la guía (no tenemos guideNumber en Sale interface de ventas)
+    if (sale.status === "EN_ENVIO") {
+      try {
+        const guideRes = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`
+        );
+        const guide = guideRes.data;
+        
+        if (guide) {
+          // Calcular días desde creación
+          let daysSinceCreated = 0;
+          if (guide?.created_at) {
+            const createdDate = new Date(guide.created_at);
+            const today = new Date();
+            const diffTime = Math.abs(today.getTime() - createdDate.getTime());
+            daysSinceCreated = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          }
+          
+          setSelectedShippingGuide({
+            id: guide.id,
+            guideNumber: guide.guideNumber,
+            courierName: guide.courierName,
+            status: guide.status,
+            chargeType: guide.chargeType,
+            amountToCollect: guide.amountToCollect,
+            scheduledDate: guide.scheduledDate?.toString() || null,
+            deliveryZone: guide.deliveryZone,
+            deliveryType: guide.deliveryType,
+            deliveryAddress: guide.deliveryAddress,
+            notes: guide.notes,
+            trackingUrl: guide.trackingUrl,
+            shippingKey: guide.shippingKey,
+            shippingOffice: guide.shippingOffice,
+            shippingProofUrl: guide.shippingProofUrl,
+            created_at: guide.created_at,
+            daysSinceCreated,
+          });
+        } else {
+          setSelectedShippingGuide(null);
+        }
+      } catch (error) {
+        console.error("Error fetching shipping guide:", error);
+        setSelectedShippingGuide(null);
+      }
+    } else {
+      setSelectedShippingGuide(null);
+    }
+    
+    setReceiptOpen(true);
   };
 
   // Tabla para Pendientes (sin delete)
@@ -657,10 +556,7 @@ Estado: ${sale.status}
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    setSelectedOrderId(sale.id);
-                    setReceiptOpen(true);
-                  }}
+                  onClick={() => handleOpenReceipt(sale)}
                 >
                   <FileText className="h-4 w-4 mr-1" />
                   Ver
@@ -671,14 +567,20 @@ Estado: ${sale.status}
                   <Button
                     size="icon"
                     variant="outline"
-                    className="bg-amber-50 hover:bg-amber-100 text-amber-600"
+                    className="relative bg-amber-50 hover:bg-amber-100 text-amber-600"
                     onClick={() => {
                       setSelectedSaleForPayment(sale);
                       setPaymentModalOpen(true);
                     }}
-                    title="Gestión de Pagos"
+                    title={sale.hasPendingApprovalPayments ? "Pagos pendientes de aprobación" : "Gestión de Pagos"}
                   >
                     <DollarSign className="h-4 w-4" />
+                    {sale.hasPendingApprovalPayments && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                      </span>
+                    )}
                   </Button>
                   <Button
                     size="icon"
@@ -793,10 +695,7 @@ Estado: ${sale.status}
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={() => {
-                    setSelectedOrderId(sale.id);
-                    setReceiptOpen(true);
-                  }}
+                  onClick={() => handleOpenReceipt(sale)}
                 >
                   <FileText className="h-4 w-4 mr-1" />
                   Ver
@@ -1036,9 +935,13 @@ Estado: ${sale.status}
       <CustomerServiceModal
         open={receiptOpen}
         orderId={selectedOrderId || ""}
-        onClose={() => setReceiptOpen(false)}
+        onClose={() => {
+          setReceiptOpen(false);
+          setSelectedShippingGuide(null);
+        }}
         onOrderUpdated={fetchOrders}
         hideCallManagement={true}
+        shippingGuide={selectedShippingGuide}
       />
 
       <CancellationModal

@@ -42,6 +42,11 @@ interface Company {
   id: string;
   name: string;
   stores?: Store[];
+  // Datos adicionales para comprobante de envío
+  cuit?: string;           // RUC/CUIT
+  billingAddress?: string; // Dirección
+  phone?: string;          // Teléfono
+  logoUrl?: string;        // URL del logo (para futuro)
 }
 
 interface AuthData {

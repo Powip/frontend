@@ -27,5 +27,9 @@ export interface Client {
   latitude?: number;
   longitude?: number;
   isActive: boolean;
+  // Estadísticas de compras (opcionales, vienen del backend si disponibles)
+  totalPurchases?: number;        // Número total de compras
+  totalPurchaseAmount?: number;   // Monto total de compras
+  lastPurchaseDate?: string;      // Fecha de última compra
 }
 

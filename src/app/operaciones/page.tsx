@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Pencil, Trash2, FileText, ArrowRight, ArrowLeft, MessageCircle, StickyNote, AlertTriangle, PackagePlus, Eye } from "lucide-react";
+import { Pencil, Trash2, FileText, ArrowRight, ArrowLeft, MessageCircle, StickyNote, AlertTriangle, PackagePlus, Eye, Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +27,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import CustomerServiceModal, { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -37,6 +37,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CancellationModal, { CancellationReason } from "@/components/modals/CancellationModal";
 import CourierAssignmentModal, { CourierType } from "@/components/modals/CourierAssignmentModal";
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
+import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import CreateGuideModal, { CreateGuideData } from "@/components/modals/CreateGuideModal";
@@ -88,6 +89,7 @@ export interface Sale {
   hasStockIssue?: boolean;
   zone?: string;
   callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
+  hasPendingApprovalPayments: boolean;
 }
 
 /* -----------------------------------------
@@ -96,11 +98,11 @@ export interface Sale {
 
 function mapOrderToSale(order: OrderHeader): Sale {
   const total = Number(order.grandTotal);
-  const advancePayment = order.payments.reduce(
-    (acc, p) => acc + Number(p.amount || 0),
-    0
-  );
+  const advancePayment = order.payments
+    .filter((p) => p.status === "PAID")
+    .reduce((acc, p) => acc + Number(p.amount || 0), 0);
   const pendingPayment = Math.max(total - advancePayment, 0);
+  const hasPendingApprovalPayments = order.payments.some((p) => p.status === "PENDING");
 
   return {
     id: order.id,
@@ -124,6 +126,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     zone: order.customer.zone ?? undefined,
     guideNumber: order.guideNumber ?? null,
     callStatus: order.callStatus,
+    hasPendingApprovalPayments,
   };
 }
 
@@ -135,6 +138,8 @@ export default function OperacionesPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [selectedSaleForModal, setSelectedSaleForModal] = useState<Sale | null>(null);
+  const [selectedShippingGuide, setSelectedShippingGuide] = useState<ShippingGuideData | null>(null);
 
   // Modal de observaciones
   const [notesOpen, setNotesOpen] = useState(false);
@@ -148,7 +153,14 @@ export default function OperacionesPage() {
   const [filtersConfirmados, setFiltersConfirmados] = useState<SalesFilters>(emptySalesFilters);
   const [filtersContactados, setFiltersContactados] = useState<SalesFilters>(emptySalesFilters);
   const [filtersDespachados, setFiltersDespachados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersEntregados, setFiltersEntregados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersAnulados, setFiltersAnulados] = useState<SalesFilters>(emptySalesFilters);
   const [isPrinting, setIsPrinting] = useState(false);
+
+  // Paginación
+  const ITEMS_PER_PAGE = 10;
+  const [pageEntregados, setPageEntregados] = useState(1);
+  const [pageAnulados, setPageAnulados] = useState(1);
 
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
     new Set()
@@ -187,7 +199,37 @@ export default function OperacionesPage() {
       const res = await axios.get<OrderHeader[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
       );
-      setSales(res.data.map(mapOrderToSale));
+      
+      const mappedSales = res.data.map(mapOrderToSale);
+      
+      // Enriquecer órdenes con guideNumber que no tienen courier con el courierName de la guía
+      const ordersNeedingCourier = mappedSales.filter(
+        (sale) => sale.guideNumber && !sale.courier
+      );
+      
+      if (ordersNeedingCourier.length > 0) {
+        // Buscar courierName para cada orden que lo necesite
+        const enrichedSales = await Promise.all(
+          mappedSales.map(async (sale) => {
+            if (sale.guideNumber && !sale.courier) {
+              try {
+                const guideRes = await axios.get(
+                  `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`
+                );
+                if (guideRes.data?.courierName) {
+                  return { ...sale, courier: guideRes.data.courierName };
+                }
+              } catch {
+                // Si falla, mantener la venta sin cambios
+              }
+            }
+            return sale;
+          })
+        );
+        setSales(enrichedSales);
+      } else {
+        setSales(mappedSales);
+      }
     } catch (error) {
       console.error("Error fetching orders", error);
     }
@@ -456,6 +498,58 @@ export default function OperacionesPage() {
     setSales((prev) => prev.filter((sale) => sale.id !== id));
   };
 
+  // Abrir modal de recibo, cargando datos de guía si es EN_ENVIO
+  const handleOpenReceipt = async (sale: Sale) => {
+    setSelectedOrderId(sale.id);
+    setSelectedSaleForModal(sale);
+    
+    // Si es EN_ENVIO y tiene guía, cargar datos de la guía
+    if (sale.status === "EN_ENVIO" && sale.guideNumber) {
+      try {
+        const guideRes = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`
+        );
+        const guide = guideRes.data;
+        
+        // Calcular días desde creación
+        let daysSinceCreated = 0;
+        if (guide?.created_at) {
+          const createdDate = new Date(guide.created_at);
+          const today = new Date();
+          const diffTime = Math.abs(today.getTime() - createdDate.getTime());
+          daysSinceCreated = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        }
+        
+        setSelectedShippingGuide({
+          id: guide.id,
+          guideNumber: guide.guideNumber,
+          courierName: guide.courierName,
+          status: guide.status,
+          chargeType: guide.chargeType,
+          amountToCollect: guide.amountToCollect,
+          scheduledDate: guide.scheduledDate?.toString() || null,
+          deliveryZone: guide.deliveryZone,
+          deliveryType: guide.deliveryType,
+          deliveryAddress: guide.deliveryAddress,
+          notes: guide.notes,
+          trackingUrl: guide.trackingUrl,
+          shippingKey: guide.shippingKey,
+          shippingOffice: guide.shippingOffice,
+          shippingProofUrl: guide.shippingProofUrl,
+          created_at: guide.created_at,
+          daysSinceCreated,
+        });
+      } catch (error) {
+        console.error("Error fetching shipping guide:", error);
+        setSelectedShippingGuide(null);
+      }
+    } else {
+      setSelectedShippingGuide(null);
+    }
+    
+    setReceiptOpen(true);
+  };
+
   const handleCopySelected = async (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
@@ -485,7 +579,54 @@ Estado: ${sale.status}
     toast.success(`${selectedSales.length} pedido(s) copiados`);
   };
 
-  // Impresión masiva genérica
+  // Exportar a Excel (CSV)
+  const handleExportExcel = (salesList: Sale[], tabName: string) => {
+    if (salesList.length === 0) {
+      toast.warning("No hay datos para exportar");
+      return;
+    }
+
+    const exportData = salesList.map((s, index) => ({
+      "N°": index + 1,
+      "Orden": s.orderNumber,
+      "Cliente": s.clientName,
+      "Teléfono": s.phoneNumber,
+      "Fecha": s.date,
+      "Total": s.total.toFixed(2),
+      "Adelanto": s.advancePayment.toFixed(2),
+      "Por Cobrar": s.pendingPayment.toFixed(2),
+      "Estado": s.status,
+      "Región": s.salesRegion,
+      "Zona": s.zone || "-",
+      "Distrito": s.district,
+      "Dirección": s.address,
+      "Courier": s.courier || "-",
+      "Guía": s.guideNumber || "-",
+      "Método Pago": s.paymentMethod,
+      "Tipo Entrega": s.deliveryType,
+    }));
+
+    const headers = Object.keys(exportData[0] || {}).join(",");
+    const rows = exportData.map((row) =>
+      Object.values(row)
+        .map((val) => `"${val}"`)
+        .join(",")
+    );
+    const csv = [headers, ...rows].join("\n");
+
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    const today = new Date().toISOString().split("T")[0];
+    link.setAttribute("href", url);
+    link.setAttribute("download", `operaciones_${tabName}_${today}.csv`);
+    link.style.visibility = "hidden";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast.success(`Exportados ${salesList.length} registros`);
+  };
   const handleBulkPrintForStatus = async (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
@@ -500,90 +641,15 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          const res = await axios.get(
+          const res = await axios.get<ReceiptData>(
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`
           );
-          return { ...res.data, salesRegion: sale.salesRegion, status: sale.status };
+          return res.data;
         })
       );
 
-      const printContent = receipts.map((receipt, index) => {
-        const totalPaid = receipt.payments?.reduce(
-          (acc: number, p: any) => acc + Number(p.amount || 0),
-          0
-        ) || 0;
-        const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
-
-        return `
-          <div style="page-break-after: ${index < receipts.length - 1 ? 'always' : 'auto'}; padding: 20px; font-family: Arial, sans-serif;">
-            <div style="background: ${receipt.salesRegion === 'PROVINCIA' ? '#7c3aed' : '#dc2626'}; color: white; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
-              <strong>${receipt.salesRegion} - ${receipt.status}</strong>
-            </div>
-            
-            <h2 style="margin: 0 0 8px 0;">Orden #${receipt.orderNumber}</h2>
-            <p style="font-size: 18px; font-weight: bold; margin: 0 0 16px 0;">Total: S/${receipt.totals.grandTotal}</p>
-            
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 16px;">
-              <div><span style="color: #666;">Cliente:</span> ${receipt.customer.fullName}</div>
-              <div><span style="color: #666;">Distrito:</span> ${receipt.customer.district || '-'}</div>
-              <div><span style="color: #666;">Teléfono:</span> ${receipt.customer.phoneNumber}</div>
-              <div><span style="color: #666;">Dirección:</span> ${receipt.customer.address || '-'}</div>
-            </div>
-            
-            <h3 style="margin: 16px 0 8px 0;">Productos</h3>
-            <table style="width: 100%; border-collapse: collapse;">
-              <thead>
-                <tr style="background: #f3f4f6;">
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Producto</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: center;">Cant.</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Precio</th>
-                  <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Subtotal</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${receipt.items.map((item: any) => `
-                  <tr>
-                    <td style="border: 1px solid #ddd; padding: 8px;">${item.productName}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: center;">${item.quantity}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.unitPrice}</td>
-                    <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">S/${item.subtotal}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-            
-            <div style="margin-top: 16px; border-top: 2px solid #333; padding-top: 8px;">
-              <div style="display: flex; justify-content: space-between;"><span>Total:</span><strong>S/${receipt.totals.grandTotal}</strong></div>
-              <div style="display: flex; justify-content: space-between; color: #16a34a;"><span>Adelanto:</span><span>S/${totalPaid.toFixed(2)}</span></div>
-              <div style="display: flex; justify-content: space-between; color: #dc2626;"><span>Por Cobrar:</span><span>S/${pendingAmount.toFixed(2)}</span></div>
-            </div>
-          </div>
-        `;
-      }).join('');
-
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(`
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Impresión de Recibos</title>
-              <style>
-                @media print {
-                  body { margin: 0; }
-                }
-              </style>
-            </head>
-            <body>
-              ${printContent}
-            </body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
-        printWindow.close();
-      }
+      // Imprimir usando la utilidad compartida (formato compacto con QR)
+      await printReceipts(receipts);
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedSaleIds(new Set());
@@ -627,6 +693,7 @@ Estado: ${sale.status}
           <TableHead>Por Cobrar</TableHead>
           <TableHead>Estado</TableHead>
           {showGuideColumn && <TableHead>Guía</TableHead>}
+          {showGuideColumn && <TableHead>Courier</TableHead>}
           <TableHead>Region</TableHead>
           <TableHead>Distrito</TableHead>
           <TableHead>Zona</TableHead>
@@ -697,6 +764,18 @@ Estado: ${sale.status}
                 )}
               </TableCell>
             )}
+            {showGuideColumn && (
+              <TableCell>
+                {sale.courier ? (
+                  <div className="flex items-center gap-1 text-sm">
+                    <Truck className="h-3 w-3 text-muted-foreground" />
+                    {sale.courier}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground text-xs">-</span>
+                )}
+              </TableCell>
+            )}
             <TableCell>{sale.salesRegion}</TableCell>
             <TableCell>{sale.district}</TableCell>
             <TableCell>
@@ -729,10 +808,7 @@ Estado: ${sale.status}
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => {
-                  setSelectedOrderId(sale.id);
-                  setReceiptOpen(true);
-                }}
+                onClick={() => handleOpenReceipt(sale)}
               >
                 <FileText className="h-4 w-4 mr-1" />
                 Ver
@@ -754,14 +830,20 @@ Estado: ${sale.status}
               <Button
                 size="icon"
                 variant="outline"
-                className="bg-amber-50 hover:bg-amber-100 text-amber-600"
+                className="relative bg-amber-50 hover:bg-amber-100 text-amber-600"
                 onClick={() => {
                   setSelectedSaleForPayment(sale);
                   setPaymentModalOpen(true);
                 }}
-                title="Gestión de Pagos"
+                title={sale.hasPendingApprovalPayments ? "Pagos pendientes de aprobación" : "Gestión de Pagos"}
               >
                 <DollarSign className="h-4 w-4" />
+                {sale.hasPendingApprovalPayments && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  </span>
+                )}
               </Button>
               <Button
                 size="icon"
@@ -842,6 +924,38 @@ Estado: ${sale.status}
     [sales, filtersDespachados]
   );
 
+  // Entregados: status = ENTREGADO
+  const entregadosAll = useMemo(
+    () => {
+      const statusFiltered = sales.filter(
+        (s) => s.status === ORDER_STATUS.ENTREGADO
+      );
+      return applyFilters(statusFiltered, filtersEntregados);
+    },
+    [sales, filtersEntregados]
+  );
+
+  const entregadosPaginated = useMemo(
+    () => entregadosAll.slice((pageEntregados - 1) * ITEMS_PER_PAGE, pageEntregados * ITEMS_PER_PAGE),
+    [entregadosAll, pageEntregados]
+  );
+
+  // Anulados: status = ANULADO
+  const anuladosAll = useMemo(
+    () => {
+      const statusFiltered = sales.filter(
+        (s) => s.status === ORDER_STATUS.ANULADO
+      );
+      return applyFilters(statusFiltered, filtersAnulados);
+    },
+    [sales, filtersAnulados]
+  );
+
+  const anuladosPaginated = useMemo(
+    () => anuladosAll.slice((pageAnulados - 1) * ITEMS_PER_PAGE, pageAnulados * ITEMS_PER_PAGE),
+    [anuladosAll, pageAnulados]
+  );
+
   // Extraer lista de couriers únicos para el filtro
   const availableCouriers = useMemo(() => {
     const couriers = sales
@@ -895,6 +1009,12 @@ Estado: ${sale.status}
             <TabsTrigger value="despachados">
               En Envío ({despachados.length})
             </TabsTrigger>
+            <TabsTrigger value="entregados" className="text-green-700">
+              Entregados ({entregadosAll.length})
+            </TabsTrigger>
+            <TabsTrigger value="anulados" className="text-gray-500">
+              Anulados ({anuladosAll.length})
+            </TabsTrigger>
           </TabsList>
 
           {/* Tab Preparados */}
@@ -918,6 +1038,13 @@ Estado: ${sale.status}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({preparados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleExportExcel(preparados, "preparados")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
@@ -961,6 +1088,13 @@ Estado: ${sale.status}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleExportExcel(noConfirmados, "no_confirmados")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
@@ -1013,6 +1147,13 @@ Estado: ${sale.status}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({confirmados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleExportExcel(confirmados, "confirmados")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
@@ -1067,6 +1208,13 @@ Estado: ${sale.status}
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({contactados.filter((s) => selectedSaleIds.has(s.id)).length})
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleExportExcel(contactados, "contactados")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1112,6 +1260,13 @@ Estado: ${sale.status}
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({despachados.filter((s) => selectedSaleIds.has(s.id)).length})
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleExportExcel(despachados, "despachados")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1136,15 +1291,105 @@ Estado: ${sale.status}
               />
             </Card>
           </TabsContent>
+
+          {/* Tab Entregados */}
+          <TabsContent value="entregados">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-green-700">Pedidos Entregados</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    onClick={() => handleBulkPrintForStatus(entregadosAll)}
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir seleccionados ({entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    onClick={() => handleCopySelected(entregadosAll)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersEntregados}
+                  onFiltersChange={(f) => { setFiltersEntregados(f); setPageEntregados(1); }}
+                  showCourierFilter={true}
+                  showRegionFilter={true}
+                  availableCouriers={availableCouriers}
+                />
+                {renderTable(entregadosPaginated, false, false)}
+              </CardContent>
+              <Pagination
+                currentPage={pageEntregados}
+                totalPages={Math.ceil(entregadosAll.length / ITEMS_PER_PAGE) || 1}
+                totalItems={entregadosAll.length}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setPageEntregados}
+                itemName="pedidos"
+              />
+            </Card>
+          </TabsContent>
+
+          {/* Tab Anulados */}
+          <TabsContent value="anulados">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-gray-500">Pedidos Anulados</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={anuladosAll.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    onClick={() => handleCopySelected(anuladosAll)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({anuladosAll.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersAnulados}
+                  onFiltersChange={(f) => { setFiltersAnulados(f); setPageAnulados(1); }}
+                  showRegionFilter={true}
+                />
+                {renderTable(anuladosPaginated, false, false)}
+              </CardContent>
+              <Pagination
+                currentPage={pageAnulados}
+                totalPages={Math.ceil(anuladosAll.length / ITEMS_PER_PAGE) || 1}
+                totalItems={anuladosAll.length}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setPageAnulados}
+                itemName="pedidos"
+              />
+            </Card>
+          </TabsContent>
         </Tabs>
       </main>
 
       <CustomerServiceModal
         open={receiptOpen}
         orderId={selectedOrderId || ""}
-        onClose={() => setReceiptOpen(false)}
+        onClose={() => {
+          setReceiptOpen(false);
+          setSelectedShippingGuide(null);
+          setSelectedSaleForModal(null);
+        }}
         onOrderUpdated={fetchOrders}
-        hideCallManagement={true}
+        hideCallManagement={
+          // Mostrar gestión de llamada solo para PREPARADO y LLAMADO (no para EN_ENVIO/ASIGNADO_A_GUIA)
+          selectedSaleForModal?.status === "EN_ENVIO" ||
+          selectedSaleForModal?.status === "ASIGNADO_A_GUIA" ||
+          selectedSaleForModal?.status === "ENTREGADO"
+        }
+        shippingGuide={selectedShippingGuide}
       />
 
       {/* Modal de Observaciones */}
