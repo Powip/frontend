@@ -13,12 +13,16 @@ import {
   BarChart,
   Bar,
   Legend,
-  PieChart,
-  Pie,
   Cell,
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Package, Store, TrendingUp, Users } from "lucide-react";
+import { 
+  DollarSign, Package, ShoppingCart, TrendingUp, 
+  CheckCircle, Loader2, Calendar 
+} from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 interface StatCardProps {
   title: string;
@@ -26,6 +30,7 @@ interface StatCardProps {
   icon: React.ReactNode;
   description: string;
   trend?: string;
+  loading?: boolean;
 }
 
 const StatCard: React.FC<StatCardProps> = ({
@@ -34,6 +39,7 @@ const StatCard: React.FC<StatCardProps> = ({
   icon,
   description,
   trend,
+  loading,
 }) => {
   return (
     <Card>
@@ -42,214 +48,257 @@ const StatCard: React.FC<StatCardProps> = ({
         {icon}
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold">{value}</div>
-        <p className="text-xs text-muted-foreground">{description}</p>
-        {trend && (
-          <div className="flex items-center pt-1">
-            <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-            <span className="text-xs text-green-500">{trend}</span>
-          </div>
+        {loading ? (
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        ) : (
+          <>
+            <div className="text-2xl font-bold">{value}</div>
+            <p className="text-xs text-muted-foreground">{description}</p>
+            {trend && (
+              <div className="flex items-center pt-1">
+                <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
+                <span className="text-xs text-green-500">{trend}</span>
+              </div>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
   );
 };
 
-const dailySalesData = [
-  { name: "Lun", ventas: 4000 },
-  { name: "Mar", ventas: 3000 },
-  { name: "Mié", ventas: 5000 },
-  { name: "Jue", ventas: 2780 },
-  { name: "Vie", ventas: 6890 },
-  { name: "Sáb", ventas: 8390 },
-  { name: "Dom", ventas: 3490 },
-];
+// Colores para el gráfico de estados
+const STATUS_COLORS: Record<string, string> = {
+  PENDIENTE: "#6b7280",
+  PREPARADO: "#eab308",
+  LLAMADO: "#3b82f6",
+  ASIGNADO_A_GUIA: "#8b5cf6",
+  EN_ENVIO: "#f59e0b",
+  ENTREGADO: "#22c55e",
+  ANULADO: "#ef4444",
+};
 
-const storeSalesData = [
-  { name: "Tienda Central", value: 5000 },
-  { name: "Tienda Norte", value: 3000 },
-  { name: "Tienda Sur", value: 2000 },
-  { name: "Tienda Este", value: 1500 },
-  { name: "Tienda Oeste", value: 3500 },
-];
+const STATUS_LABELS: Record<string, string> = {
+  PENDIENTE: "Pendiente",
+  PREPARADO: "Preparado",
+  LLAMADO: "Llamado",
+  ASIGNADO_A_GUIA: "Con Guía",
+  EN_ENVIO: "En Envío",
+  ENTREGADO: "Entregado",
+  ANULADO: "Anulado",
+};
 
-const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8"];
-
-// 🧠 Interfaces de datos
-interface SalesData {
-  month: string;
-  total: number;
+interface DashboardData {
+  totalSales: number;
+  totalOrders: number;
+  averageTicket: number;
+  totalDelivered: number;
+  deliveredAmount: number;
+  byStatus: Record<string, { count: number; amount: number }>;
+  dailySales: Array<{ date: string; orders: number; amount: number }>;
 }
 
 export const Stats: React.FC = () => {
-  const [salesData, setSalesData] = useState<SalesData[]>([]);
+  const { selectedStoreId } = useAuth();
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    tiendas: 4,
-    productos: 640,
-    vendedores: 7,
-  });
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+
+  const fetchStats = async () => {
+    if (!selectedStoreId) return;
+
+    setLoading(true);
+    try {
+      const response = await axios.get<DashboardData>(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
+        {
+          params: {
+            storeId: selectedStoreId,
+            ...(fromDate && { fromDate }),
+            ...(toDate && { toDate }),
+          },
+        }
+      );
+      setData(response.data);
+    } catch (error) {
+      console.error("Error al obtener las estadísticas:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchStats = async () => {
-      try {
-        // eEn el futuro: cambiar esta URL por tu endpoint real del backend
-        // const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL}/stats/sales`);
-        // setSalesData(response.data);
-
-        // 🔹 Por ahora: datos simulados (hardcodeados)
-        const fakeData: SalesData[] = [
-          { month: "Enero", total: 1200 },
-          { month: "Febrero", total: 1800 },
-          { month: "Marzo", total: 1500 },
-          { month: "Abril", total: 2100 },
-          { month: "Mayo", total: 2400 },
-          { month: "Junio", total: 1900 },
-        ];
-
-        // Simulamos un pequeño delay de carga
-        setTimeout(() => {
-          setSalesData(fakeData);
-          setLoading(false);
-        }, 800);
-      } catch (error) {
-        console.error("Error al obtener las estadísticas:", error);
-        setLoading(false);
-      }
-    };
-
     fetchStats();
-  }, []);
+  }, [selectedStoreId]);
 
-  if (loading) {
-    return (
-      <div className="flex justify-center items-center h-64">
-        <p className="text-gray-500 animate-pulse">Cargando estadísticas...</p>
-      </div>
-    );
-  }
+  // Preparar datos para gráfico de estados
+  const statusChartData = data
+    ? Object.entries(data.byStatus)
+        .filter(([status]) => status !== "ANULADO")
+        .map(([status, info]) => ({
+          name: STATUS_LABELS[status] || status,
+          cantidad: info.count,
+          monto: info.amount,
+          fill: STATUS_COLORS[status] || "#8884d8",
+        }))
+    : [];
+
+  // Preparar datos para gráfico de ventas diarias
+  const dailyChartData = data?.dailySales.map((d) => ({
+    name: new Date(d.date).toLocaleDateString("es-PE", { weekday: "short", day: "numeric" }),
+    ventas: d.amount,
+    ordenes: d.orders,
+  })) || [];
 
   return (
     <div className="flex flex-col h-full w-full overflow-auto min-h-0">
+      {/* Filtros de fecha */}
+      <div className="px-4 py-3 border-b flex items-center gap-4 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Calendar className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Período:</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <Input
+            type="date"
+            value={fromDate}
+            onChange={(e) => setFromDate(e.target.value)}
+            className="w-auto"
+          />
+          <span className="text-muted-foreground">a</span>
+          <Input
+            type="date"
+            value={toDate}
+            onChange={(e) => setToDate(e.target.value)}
+            className="w-auto"
+          />
+        </div>
+        <Button onClick={fetchStats} size="sm">
+          Actualizar
+        </Button>
+      </div>
+
       {/* Contenido principal */}
-      <div className="flex-1 flex flex-col px-4 py-2 gap-6 min-h-0">
+      <div className="flex-1 flex flex-col px-4 py-4 gap-6 min-h-0">
+        {/* Cards de resumen */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Ventas Totales"
-            value="S/. 15,231.89"
+            value={data ? `S/${data.totalSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}` : "-"}
             icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
-            description="Ventas del mes actual"
-            trend="+20% desde el mes pasado"
+            description="Suma del período seleccionado"
+            loading={loading}
           />
 
           <StatCard
-            title="Tiendas"
-            value={stats.tiendas}
-            icon={<Store className="h-4 w-4 text-muted-foreground" />}
-            description="Tiendas registradas"
-            trend={
-              stats.tiendas > 0 ? `${stats.tiendas} activas` : "Sin tiendas"
-            }
+            title="Órdenes"
+            value={data?.totalOrders || 0}
+            icon={<ShoppingCart className="h-4 w-4 text-muted-foreground" />}
+            description="Cantidad de órdenes"
+            loading={loading}
           />
 
           <StatCard
-            title="Productos"
-            value={stats.productos}
+            title="Ticket Promedio"
+            value={data ? `S/${data.averageTicket.toLocaleString("es-PE", { minimumFractionDigits: 2 })}` : "-"}
             icon={<Package className="h-4 w-4 text-muted-foreground" />}
-            description="Productos en catálogo"
-            trend={
-              stats.productos > 0
-                ? `${stats.productos} registrados`
-                : "Sin productos"
-            }
+            description="Promedio por orden"
+            loading={loading}
           />
 
           <StatCard
-            title="Vendedores"
-            value={stats.vendedores}
-            icon={<Users className="h-4 w-4 text-muted-foreground" />}
-            description="Vendedores activos"
-            trend={
-              stats.vendedores > 0
-                ? `${stats.vendedores} registrados`
-                : "Sin vendedores"
-            }
+            title="Entregados"
+            value={data?.totalDelivered || 0}
+            icon={<CheckCircle className="h-4 w-4 text-green-500" />}
+            description={data ? `S/${data.deliveredAmount.toLocaleString("es-PE", { minimumFractionDigits: 2 })}` : "-"}
+            loading={loading}
           />
         </div>
 
+        {/* Gráficos */}
         <div className="flex-1 grid gap-4 md:grid-cols-2 lg:grid-cols-7 min-h-[350px]">
+          {/* Ventas por día */}
           <Card className="col-span-4">
             <CardHeader>
               <CardTitle>Ventas por Día</CardTitle>
             </CardHeader>
             <CardContent className="flex-1 min-h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={dailySalesData}
-                  margin={{
-                    top: 5,
-                    right: 30,
-                    left: 20,
-                    bottom: 5,
-                  }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="name" />
-                  <YAxis />
-                  <Tooltip
-                    formatter={(value) => [`S/. ${value}`, "Ventas"]}
-                    labelStyle={{ color: "var(--foreground)" }}
-                    contentStyle={{
-                      backgroundColor: "var(--background)",
-                      border: "1px solid var(--border)",
-                    }}
-                  />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="ventas"
-                    stroke="#02a8e1"
-                    activeDot={{ r: 8 }}
-                    strokeWidth={2}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              {loading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={dailyChartData}
+                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="name" />
+                    <YAxis />
+                    <Tooltip
+                      formatter={(value, name) => [
+                        name === "ventas" ? `S/${value}` : value,
+                        name === "ventas" ? "Ventas" : "Órdenes"
+                      ]}
+                      labelStyle={{ color: "var(--foreground)" }}
+                      contentStyle={{
+                        backgroundColor: "var(--background)",
+                        border: "1px solid var(--border)",
+                      }}
+                    />
+                    <Legend />
+                    <Line
+                      type="monotone"
+                      dataKey="ventas"
+                      stroke="#02a8e1"
+                      activeDot={{ r: 8 }}
+                      strokeWidth={2}
+                      name="Ventas (S/)"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
 
+          {/* Distribución por estado */}
           <Card className="col-span-3">
             <CardHeader>
-              <CardTitle>Ventas por Tienda</CardTitle>
+              <CardTitle>Distribución por Estado</CardTitle>
             </CardHeader>
             <CardContent className="flex-1 min-h-[250px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={storeSalesData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
+              {loading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={statusChartData}
+                    layout="vertical"
+                    margin={{ top: 5, right: 30, left: 60, bottom: 5 }}
                   >
-                    {storeSalesData.map((entry, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={COLORS[index % COLORS.length]}
-                      />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value) => [`S/. ${value}`, "Ventas"]}
-                    labelStyle={{ color: "var(--foreground)" }}
-                    contentStyle={{
-                      backgroundColor: "var(--background)",
-                      border: "1px solid var(--border)",
-                    }}
-                  />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis type="number" />
+                    <YAxis dataKey="name" type="category" />
+                    <Tooltip
+                      formatter={(value) => [value, "Cantidad"]}
+                      labelStyle={{ color: "var(--foreground)" }}
+                      contentStyle={{
+                        backgroundColor: "var(--background)",
+                        border: "1px solid var(--border)",
+                      }}
+                    />
+                    <Bar dataKey="cantidad" name="Cantidad">
+                      {statusChartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
             </CardContent>
           </Card>
         </div>
