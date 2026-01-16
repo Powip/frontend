@@ -878,11 +878,17 @@ Departamento: ${customer.city || "-"}`;
                       <Button
                         size="icon"
                         variant="outline"
-                        className="h-9 w-9 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900"
+                        className="relative h-9 w-9 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900"
                         onClick={() => setPaymentModalOpen(true)}
-                        title="Gestionar Pagos"
+                        title={receipt.payments.some((p) => p.status === "PENDING") ? "Pagos pendientes de aprobación" : "Gestionar Pagos"}
                       >
                         <DollarSign className="h-4 w-4" />
+                        {receipt.payments.some((p) => p.status === "PENDING") && (
+                          <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                          </span>
+                        )}
                       </Button>
                       <Button
                         size="icon"

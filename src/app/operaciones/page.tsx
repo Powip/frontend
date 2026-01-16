@@ -89,6 +89,7 @@ export interface Sale {
   hasStockIssue?: boolean;
   zone?: string;
   callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
+  hasPendingApprovalPayments: boolean;
 }
 
 /* -----------------------------------------
@@ -97,11 +98,11 @@ export interface Sale {
 
 function mapOrderToSale(order: OrderHeader): Sale {
   const total = Number(order.grandTotal);
-  const advancePayment = order.payments.reduce(
-    (acc, p) => acc + Number(p.amount || 0),
-    0
-  );
+  const advancePayment = order.payments
+    .filter((p) => p.status === "PAID")
+    .reduce((acc, p) => acc + Number(p.amount || 0), 0);
   const pendingPayment = Math.max(total - advancePayment, 0);
+  const hasPendingApprovalPayments = order.payments.some((p) => p.status === "PENDING");
 
   return {
     id: order.id,
@@ -125,6 +126,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     zone: order.customer.zone ?? undefined,
     guideNumber: order.guideNumber ?? null,
     callStatus: order.callStatus,
+    hasPendingApprovalPayments,
   };
 }
 
@@ -151,7 +153,14 @@ export default function OperacionesPage() {
   const [filtersConfirmados, setFiltersConfirmados] = useState<SalesFilters>(emptySalesFilters);
   const [filtersContactados, setFiltersContactados] = useState<SalesFilters>(emptySalesFilters);
   const [filtersDespachados, setFiltersDespachados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersEntregados, setFiltersEntregados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersAnulados, setFiltersAnulados] = useState<SalesFilters>(emptySalesFilters);
   const [isPrinting, setIsPrinting] = useState(false);
+
+  // Paginación
+  const ITEMS_PER_PAGE = 10;
+  const [pageEntregados, setPageEntregados] = useState(1);
+  const [pageAnulados, setPageAnulados] = useState(1);
 
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
     new Set()
@@ -821,14 +830,20 @@ Estado: ${sale.status}
               <Button
                 size="icon"
                 variant="outline"
-                className="bg-amber-50 hover:bg-amber-100 text-amber-600"
+                className="relative bg-amber-50 hover:bg-amber-100 text-amber-600"
                 onClick={() => {
                   setSelectedSaleForPayment(sale);
                   setPaymentModalOpen(true);
                 }}
-                title="Gestión de Pagos"
+                title={sale.hasPendingApprovalPayments ? "Pagos pendientes de aprobación" : "Gestión de Pagos"}
               >
                 <DollarSign className="h-4 w-4" />
+                {sale.hasPendingApprovalPayments && (
+                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                  </span>
+                )}
               </Button>
               <Button
                 size="icon"
@@ -909,6 +924,38 @@ Estado: ${sale.status}
     [sales, filtersDespachados]
   );
 
+  // Entregados: status = ENTREGADO
+  const entregadosAll = useMemo(
+    () => {
+      const statusFiltered = sales.filter(
+        (s) => s.status === ORDER_STATUS.ENTREGADO
+      );
+      return applyFilters(statusFiltered, filtersEntregados);
+    },
+    [sales, filtersEntregados]
+  );
+
+  const entregadosPaginated = useMemo(
+    () => entregadosAll.slice((pageEntregados - 1) * ITEMS_PER_PAGE, pageEntregados * ITEMS_PER_PAGE),
+    [entregadosAll, pageEntregados]
+  );
+
+  // Anulados: status = ANULADO
+  const anuladosAll = useMemo(
+    () => {
+      const statusFiltered = sales.filter(
+        (s) => s.status === ORDER_STATUS.ANULADO
+      );
+      return applyFilters(statusFiltered, filtersAnulados);
+    },
+    [sales, filtersAnulados]
+  );
+
+  const anuladosPaginated = useMemo(
+    () => anuladosAll.slice((pageAnulados - 1) * ITEMS_PER_PAGE, pageAnulados * ITEMS_PER_PAGE),
+    [anuladosAll, pageAnulados]
+  );
+
   // Extraer lista de couriers únicos para el filtro
   const availableCouriers = useMemo(() => {
     const couriers = sales
@@ -961,6 +1008,12 @@ Estado: ${sale.status}
             </TabsTrigger>
             <TabsTrigger value="despachados">
               En Envío ({despachados.length})
+            </TabsTrigger>
+            <TabsTrigger value="entregados" className="text-green-700">
+              Entregados ({entregadosAll.length})
+            </TabsTrigger>
+            <TabsTrigger value="anulados" className="text-gray-500">
+              Anulados ({anuladosAll.length})
             </TabsTrigger>
           </TabsList>
 
@@ -1234,6 +1287,86 @@ Estado: ${sale.status}
                 totalItems={despachados.length}
                 itemsPerPage={10}
                 onPageChange={() => { }}
+                itemName="pedidos"
+              />
+            </Card>
+          </TabsContent>
+
+          {/* Tab Entregados */}
+          <TabsContent value="entregados">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-green-700">Pedidos Entregados</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    onClick={() => handleBulkPrintForStatus(entregadosAll)}
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir seleccionados ({entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    onClick={() => handleCopySelected(entregadosAll)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersEntregados}
+                  onFiltersChange={(f) => { setFiltersEntregados(f); setPageEntregados(1); }}
+                  showCourierFilter={true}
+                  showRegionFilter={true}
+                  availableCouriers={availableCouriers}
+                />
+                {renderTable(entregadosPaginated, false, false)}
+              </CardContent>
+              <Pagination
+                currentPage={pageEntregados}
+                totalPages={Math.ceil(entregadosAll.length / ITEMS_PER_PAGE) || 1}
+                totalItems={entregadosAll.length}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setPageEntregados}
+                itemName="pedidos"
+              />
+            </Card>
+          </TabsContent>
+
+          {/* Tab Anulados */}
+          <TabsContent value="anulados">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-gray-500">Pedidos Anulados</CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={anuladosAll.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    onClick={() => handleCopySelected(anuladosAll)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({anuladosAll.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersAnulados}
+                  onFiltersChange={(f) => { setFiltersAnulados(f); setPageAnulados(1); }}
+                  showRegionFilter={true}
+                />
+                {renderTable(anuladosPaginated, false, false)}
+              </CardContent>
+              <Pagination
+                currentPage={pageAnulados}
+                totalPages={Math.ceil(anuladosAll.length / ITEMS_PER_PAGE) || 1}
+                totalItems={anuladosAll.length}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setPageAnulados}
                 itemName="pedidos"
               />
             </Card>
