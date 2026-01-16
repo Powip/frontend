@@ -5,10 +5,15 @@ interface Store {
   name: string;
 }
 
-interface Company {
+export interface Company {
   id: string;
   name: string;
   stores?: Store[];
+  // Datos adicionales para comprobante de envío
+  cuit?: string;           // RUC/CUIT
+  billingAddress?: string; // Dirección
+  phone?: string;          // Teléfono
+  logoUrl?: string;        // URL del logo (para futuro)
 }
 
 export const fetchUserCompany = async (
@@ -23,11 +28,15 @@ export const fetchUserCompany = async (
     // Si no trae company
     if (!response.data) return null;
 
-    // Si tu endpoint devuelve la company directamente:
+    // Mapear todos los campos de la company
     return {
       id: response.data.id,
       name: response.data.name,
       stores: response.data.stores || [],
+      cuit: response.data.cuit,
+      billingAddress: response.data.billing_address,
+      phone: response.data.phone,
+      logoUrl: response.data.logo_url,
     };
   } catch (error) {
     // Es normal que falle si el usuario es personal operativo (no es el dueño registrado en ms-company)
@@ -50,9 +59,14 @@ export const fetchCompanyById = async (
       id: response.data.id,
       name: response.data.name,
       stores: response.data.stores || [],
+      cuit: response.data.cuit,
+      billingAddress: response.data.billing_address,
+      phone: response.data.phone,
+      logoUrl: response.data.logo_url,
     };
   } catch (error) {
     console.error("Error al obtener company by id:", error);
     return null;
   }
 };
+

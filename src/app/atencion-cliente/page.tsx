@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, FileText, ArrowLeft, MessageSquare, DollarSign } from "lucide-react";
+import { Pencil, FileText, ArrowLeft, MessageSquare, DollarSign, Calendar, Gift } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +32,8 @@ import { useRouter } from "next/navigation";
 import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { useAuth } from "@/contexts/AuthContext";
 import { SalesTableFilters, SalesFilters, emptySalesFilters, applyFilters } from "@/components/ventas/SalesTableFilters";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 /* -----------------------------------------
    Types
@@ -53,6 +55,23 @@ interface Sale {
   advancePayment: number;
   pendingPayment: number;
   callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
+}
+
+// Interface para items de promo del día
+interface PromoItem {
+  id: string;
+  productName: string;
+  sku: string;
+  quantity: number;
+  unitPrice: number;
+  subtotal: number;
+  addedAt: string;
+  addedByUserId: string | null;
+  orderId: string;
+  orderNumber: string;
+  orderTotal: number;
+  customerName: string;
+  customerPhone: string;
 }
 
 /* -----------------------------------------
@@ -115,6 +134,12 @@ export default function AtencionClientePage() {
   const [filtersNoConfirmados, setFiltersNoConfirmados] = useState<SalesFilters>(emptySalesFilters);
   const [filtersConfirmados, setFiltersConfirmados] = useState<SalesFilters>(emptySalesFilters);
 
+  // Estado para tab de Promos
+  const [promoItems, setPromoItems] = useState<PromoItem[]>([]);
+  const [promoLoading, setPromoLoading] = useState(false);
+  const [promoFromDate, setPromoFromDate] = useState<string>("");
+  const [promoToDate, setPromoToDate] = useState<string>("");
+
   const fetchOrders = useCallback(async () => {
     if (!selectedStoreId) return;
     try {
@@ -135,6 +160,27 @@ export default function AtencionClientePage() {
     if (!selectedStoreId) return;
     fetchOrders();
   }, [selectedStoreId, fetchOrders]);
+
+  // Fetch promo items
+  const fetchPromoItems = useCallback(async () => {
+    if (!selectedStoreId) return;
+    try {
+      setPromoLoading(true);
+      const params = new URLSearchParams({ storeId: selectedStoreId });
+      if (promoFromDate) params.append("fromDate", promoFromDate);
+      if (promoToDate) params.append("toDate", promoToDate);
+      
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-items/promo-items?${params}`
+      );
+      setPromoItems(res.data);
+    } catch (error) {
+      console.error("Error fetching promo items", error);
+      toast.error("Error al cargar promos vendidas");
+    } finally {
+      setPromoLoading(false);
+    }
+  }, [selectedStoreId, promoFromDate, promoToDate]);
 
   const handleWhatsApp = (phoneNumber: string, orderNumber?: string, clientName?: string) => {
     const phone = phoneNumber.replace(/\D/g, "");
@@ -364,6 +410,10 @@ Estado: ${sale.status}
             <TabsTrigger value="confirmados" className="text-green-600">
               Pedidos CONFIRMADOS ({pedidosConfirmados.length})
             </TabsTrigger>
+            <TabsTrigger value="promos" className="text-purple-600">
+              <Gift className="h-4 w-4 mr-1" />
+              Promos Vendidas
+            </TabsTrigger>
           </TabsList>
 
           {/* Tab Pedidos Preparados */}
@@ -443,6 +493,126 @@ Estado: ${sale.status}
                   showRegionFilter={true}
                 />
                 {renderTable(pedidosConfirmados, "confirmados")}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Tab Promos Vendidas */}
+          <TabsContent value="promos">
+            <Card className="border-purple-200">
+              <CardHeader className="flex flex-row items-center justify-between bg-purple-50">
+                <CardTitle className="text-purple-700 flex items-center gap-2">
+                  <Gift className="h-5 w-5" />
+                  Promos del Día Vendidas
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Filtros de fecha */}
+                <div className="flex gap-4 items-end">
+                  <div className="space-y-1">
+                    <Label>Desde</Label>
+                    <Input
+                      type="date"
+                      value={promoFromDate}
+                      onChange={(e) => setPromoFromDate(e.target.value)}
+                      className="w-40"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>Hasta</Label>
+                    <Input
+                      type="date"
+                      value={promoToDate}
+                      onChange={(e) => setPromoToDate(e.target.value)}
+                      className="w-40"
+                    />
+                  </div>
+                  <Button onClick={fetchPromoItems} disabled={promoLoading}>
+                    {promoLoading ? "Cargando..." : "Buscar"}
+                  </Button>
+                </div>
+
+                {/* Tabla de promos */}
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Orden</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>Teléfono</TableHead>
+                      <TableHead>Producto</TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead className="text-center">Cant.</TableHead>
+                      <TableHead className="text-right">P. Unit</TableHead>
+                      <TableHead className="text-right">Subtotal</TableHead>
+                      <TableHead>Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {promoItems.map((promo) => (
+                      <TableRow key={promo.id}>
+                        <TableCell>
+                          {promo.addedAt 
+                            ? new Date(promo.addedAt).toLocaleDateString("es-PE")
+                            : "-"}
+                        </TableCell>
+                        <TableCell className="font-medium">{promo.orderNumber}</TableCell>
+                        <TableCell>{promo.customerName}</TableCell>
+                        <TableCell>{promo.customerPhone}</TableCell>
+                        <TableCell>{promo.productName}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">{promo.sku}</TableCell>
+                        <TableCell className="text-center">{promo.quantity}</TableCell>
+                        <TableCell className="text-right">S/{Number(promo.unitPrice).toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-medium">S/{Number(promo.subtotal).toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              const sale = sales.find(s => s.id === promo.orderId);
+                              if (sale) {
+                                setSelectedSaleForService(sale);
+                                setCustomerServiceModalOpen(true);
+                              } else {
+                                // Si no está en la lista de sales, abrir directamente por orderId
+                                setSelectedSaleForService({ id: promo.orderId } as Sale);
+                                setCustomerServiceModalOpen(true);
+                              }
+                            }}
+                          >
+                            <FileText className="h-4 w-4 mr-1" />
+                            Ver Orden
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {promoItems.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={10} className="text-center text-muted-foreground py-6">
+                          {promoLoading 
+                            ? "Cargando..." 
+                            : "Selecciona un rango de fechas y haz clic en Buscar"}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+
+                {/* Resumen */}
+                {promoItems.length > 0 && (
+                  <div className="flex justify-end gap-6 pt-4 border-t">
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Total productos:</span>{" "}
+                      <span className="font-bold">{promoItems.reduce((sum, p) => sum + p.quantity, 0)}</span>
+                    </div>
+                    <div className="text-sm">
+                      <span className="text-muted-foreground">Total vendido:</span>{" "}
+                      <span className="font-bold text-green-600">
+                        S/{promoItems.reduce((sum, p) => sum + Number(p.subtotal), 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

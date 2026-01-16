@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { toast } from "sonner";
-import { Phone, PhoneOff, MessageCircle, DollarSign, Pencil, Plus, MoreVertical, Check, Printer, Clock, User, Settings, Send, Copy, Truck } from "lucide-react";
+import { Phone, PhoneOff, MessageCircle, DollarSign, Pencil, Plus, MoreVertical, Check, Printer, Clock, User, Settings, Send, Copy, Truck, Package } from "lucide-react";
 import { Textarea } from "../ui/textarea";
 import {
   DropdownMenu,
@@ -547,6 +547,208 @@ Departamento: ${customer.city || "-"}`;
     };
   };
 
+  const handlePrintShippingReceipt = async () => {
+    if (!receipt || !shippingGuide) return;
+
+    // Datos de la company desde el auth context
+    const company = auth?.company;
+    const companyName = company?.name || "MI EMPRESA";
+    const companyCuit = company?.cuit || "";
+    const companyAddress = company?.billingAddress || "";
+    const companyPhone = company?.phone || "";
+    const companyLogo = company?.logoUrl;
+
+    const printWindow = window.open('', '_blank', 'width=500,height=700');
+    if (!printWindow) {
+      toast.error("No se pudo abrir la ventana de impresión");
+      return;
+    }
+
+    // Construir dirección completa del consignado con formato courier
+    const courierName = shippingGuide.courierName || 'COURIER';
+    const customerAddress = shippingGuide.shippingOffice 
+      ? `${courierName} ${shippingGuide.shippingOffice}`
+      : (receipt.customer.address || '-');
+
+    // Logo: usar imagen si existe, sino texto del nombre de la empresa
+    const logoElement = companyLogo 
+      ? `<img src="${companyLogo}" alt="${companyName}" class="brand-logo">`
+      : `<div class="brand-name">${companyName}</div>`;
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Comprobante de Envío - ${receipt.orderNumber}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { 
+            font-family: Arial, sans-serif; 
+            padding: 20px;
+            max-width: 400px;
+            margin: 0 auto;
+          }
+          .container {
+            border: 2px solid #000;
+            padding: 20px;
+          }
+          .row {
+            display: flex;
+            margin-bottom: 15px;
+          }
+          .col-left {
+            width: 45%;
+            font-size: 10px;
+            line-height: 1.4;
+          }
+          .col-right {
+            width: 55%;
+            text-align: right;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+          }
+          .section-title {
+            font-weight: bold;
+            font-size: 10px;
+            margin-bottom: 2px;
+          }
+          .brand-logo {
+            max-height: 40px;
+            max-width: 120px;
+            object-fit: contain;
+          }
+          .brand-name {
+            font-size: 20px;
+            font-weight: bold;
+            letter-spacing: 1px;
+          }
+          .label {
+            font-size: 9px;
+            color: #666;
+          }
+          .consignado-title {
+            font-size: 10px;
+            font-weight: bold;
+            margin-bottom: 4px;
+          }
+          .customer-name {
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+          }
+          .dni-row {
+            margin-bottom: 4px;
+            font-size: 10px;
+          }
+          .dni-label {
+            font-weight: bold;
+          }
+          .info-value {
+            font-size: 11px;
+          }
+          .location {
+            font-size: 11px;
+            margin-bottom: 4px;
+            text-transform: uppercase;
+          }
+          .address-line {
+            font-size: 10px;
+            text-transform: uppercase;
+          }
+          .courier-box {
+            margin-top: 15px;
+            padding-top: 12px;
+            border-top: 1px solid #ccc;
+          }
+          .courier-name {
+            font-size: 24px;
+            font-weight: bold;
+            letter-spacing: 1px;
+          }
+          .order-footer {
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px dashed #999;
+            font-size: 10px;
+            text-align: center;
+            color: #666;
+          }
+          @media print {
+            body { padding: 10px; }
+            @page { margin: 5mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="row">
+            <!-- REMITENTE (lado izquierdo) -->
+            <div class="col-left">
+              <div class="section-title">REMITENTE</div>
+              <div>${companyName}</div>
+              ${companyCuit ? `<div>${companyCuit}</div>` : ''}
+              ${companyAddress ? `<div>${companyAddress}</div>` : ''}
+              ${companyPhone ? `<div>${companyPhone}</div>` : ''}
+            </div>
+            
+            <!-- MARCA/LOGO (lado derecho) -->
+            <div class="col-right">
+              ${logoElement}
+            </div>
+          </div>
+
+          <!-- CONSIGNADO -->
+          <div style="text-align: right; margin-top: 10px;">
+            <div class="consignado-title">CONSIGNADO</div>
+            <div class="customer-name">${receipt.customer.fullName}</div>
+            
+            <div class="dni-row">
+              <span class="dni-label">DNI</span> 
+              <span class="info-value">${receipt.customer.dni || '-'}</span>
+            </div>
+            
+            <div class="dni-row">
+              <span class="dni-label">TELEFONO</span> 
+              <span class="info-value">${receipt.customer.phoneNumber || '-'}</span>
+            </div>
+            
+            <div class="location">
+              ${receipt.customer.province || '-'} - ${receipt.customer.city || receipt.customer.province || '-'} - ${receipt.customer.district || '-'}
+            </div>
+            
+            <div class="address-line">
+              ${customerAddress}
+            </div>
+          </div>
+
+          <!-- COURIER -->
+          <div class="courier-box">
+            <div class="courier-name">${courierName.toUpperCase()}</div>
+          </div>
+
+          <!-- Footer con info de orden -->
+          <div class="order-footer">
+            Orden #${receipt.orderNumber} | Total: S/ ${receipt.totals.grandTotal.toFixed(2)}
+            ${Number(shippingGuide.amountToCollect) > 0 ? ` | <strong>COBRAR: S/ ${Number(shippingGuide.amountToCollect).toFixed(2)}</strong>` : ''}
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+
+    printWindow.onload = () => {
+      printWindow.focus();
+      printWindow.print();
+      printWindow.close();
+    };
+  };
+
   const handleConfirmCancellation = async (reason: CancellationReason, reasonNotes?: string) => {
     setIsCancelling(true);
     try {
@@ -767,7 +969,16 @@ Departamento: ${customer.city || "-"}`;
                         <Truck className="h-4 w-4" />
                         Guía de Envío
                       </h3>
-                      <div className="flex gap-1">
+                      <div className="flex gap-1 items-center">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-7 w-7 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900"
+                          onClick={handlePrintShippingReceipt}
+                          title="Imprimir Comprobante de Envío"
+                        >
+                          <Printer className="h-3.5 w-3.5" />
+                        </Button>
                         <span className={`px-2 py-1 rounded text-xs font-medium ${shippingGuide.status === "ENTREGADA" ? "bg-green-100 text-green-800" :
                           shippingGuide.status === "EN_RUTA" ? "bg-blue-100 text-blue-800" :
                             shippingGuide.status === "FALLIDA" || shippingGuide.status === "CANCELADA" ? "bg-red-100 text-red-800" :
@@ -821,7 +1032,7 @@ Departamento: ${customer.city || "-"}`;
                       {shippingGuide.amountToCollect != null && shippingGuide.amountToCollect > 0 && (
                         <div>
                           <span className="text-muted-foreground">Monto a Cobrar: </span>
-                          <span className="font-medium text-amber-600">S/ {shippingGuide.amountToCollect.toFixed(2)}</span>
+                          <span className="font-medium text-amber-600">S/ {Number(shippingGuide.amountToCollect).toFixed(2)}</span>
                         </div>
                       )}
                       <div>
@@ -871,7 +1082,7 @@ Departamento: ${customer.city || "-"}`;
                         size="sm"
                         variant="ghost"
                         className="h-7 text-red-600 dark:text-red-400"
-                        onClick={() => router.push(`/registrar-venta?orderId=${orderId}`)}
+                        onClick={() => router.push(`/registrar-venta?orderId=${orderId}&isPromo=true`)}
                       >
                         <Plus className="h-4 w-4 mr-1" />
                         Agregar productos

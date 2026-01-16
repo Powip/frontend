@@ -50,6 +50,7 @@ function RegistrarVentaContent() {
   /* ---------------- Params ---------------- */
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId");
+  const isPromo = searchParams.get("isPromo") === "true";
 
   /* ---------------- Cliente ---------------- */
   const [clientFound, setClientFound] = useState<Client | null>(null);
@@ -503,6 +504,10 @@ function RegistrarVentaContent() {
             discountType: item.discount > 0 ? "FIXED" : "NONE",
             discountAmount: item.discount || 0,
             attributes: item.attributes,
+            // Campos de promo del día (solo para items nuevos cuando isPromo=true)
+            isPromoItem: isPromo ? true : undefined,
+            addedByUserId: isPromo ? auth?.user?.id : undefined,
+            addedAt: isPromo ? new Date().toISOString() : undefined,
           })),
           userId: auth?.user?.id ?? null,
           // Datos de pago

@@ -14,7 +14,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Edit, Trash2 } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Download } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import ClienteModal from "@/components/modals/ClienteModal";
 import { Client } from "@/interfaces/ICliente";
@@ -109,6 +109,47 @@ export default function ClientesPage() {
     }
   };
 
+  const handleExportExcel = () => {
+    // Preparar datos para exportar
+    const exportData = filtered.map((c, index) => ({
+      "N°": index + 1,
+      "Nombre": c.fullName,
+      "Teléfono": c.phoneNumber || "-",
+      "Ciudad": c.city || "-",
+      "Distrito": c.district || "-",
+      "Provincia": c.province || "-",
+      "Total Compras": c.totalPurchases || 0,
+      "Monto Total (S/)": Number(c.totalPurchaseAmount ?? 0).toFixed(2),
+      "Última Compra": c.lastPurchaseDate 
+        ? new Date(c.lastPurchaseDate).toLocaleDateString("es-PE")
+        : "-",
+      "Tipo": c.clientType,
+      "Estado": c.isActive ? "Activo" : "Inactivo",
+    }));
+
+    // Crear CSV
+    const headers = Object.keys(exportData[0] || {}).join(",");
+    const rows = exportData.map((row) =>
+      Object.values(row)
+        .map((val) => `"${val}"`)
+        .join(",")
+    );
+    const csv = [headers, ...rows].join("\n");
+
+    // Descargar
+    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `clientes_${new Date().toISOString().split("T")[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    
+    toast.success(`${exportData.length} clientes exportados a Excel`);
+  };
+
   return (
     <div className="flex h-screen  w-full overflow-hidden">
       <main className="flex-1 p-4 md:p-6 flex flex-col overflow-hidden">
@@ -135,8 +176,8 @@ export default function ClientesPage() {
 
         <Card className="flex-1 overflow-hidden">
           <CardContent className="p-4 flex flex-col h-full">
-            {/* Search */}
-            <div className="mb-4">
+            {/* Search and Export */}
+            <div className="mb-4 flex justify-between items-center gap-4">
               <div className="relative w-full md:w-80">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -146,6 +187,15 @@ export default function ClientesPage() {
                   className="pl-9"
                 />
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExportExcel}
+                disabled={filtered.length === 0}
+              >
+                <Download className="h-4 w-4 mr-2" />
+                Exportar Excel
+              </Button>
             </div>
 
             {/* Table - auto height based on content */}
@@ -153,13 +203,16 @@ export default function ClientesPage() {
               <Table className="w-full">
                 <TableHeader className="sticky top-0 bg-background z-10">
                   <TableRow>
-                    <TableHead className="border-r w-16">N°</TableHead>
+                    <TableHead className="border-r w-12">N°</TableHead>
                     <TableHead className="border-r">Nombre</TableHead>
                     <TableHead className="border-r">Teléfono</TableHead>
-                    <TableHead className="border-r w-24">Compras</TableHead>
+                    <TableHead className="border-r">Ciudad</TableHead>
+                    <TableHead className="border-r text-center w-20">Nro Compras</TableHead>
+                    <TableHead className="border-r text-right w-24">Monto Total</TableHead>
+                    <TableHead className="border-r w-28">Última Compra</TableHead>
                     <TableHead className="border-r">Tipo</TableHead>
-                    <TableHead className="border-r w-24">Estado</TableHead>
-                    <TableHead className="text-center w-28">Acciones</TableHead>
+                    <TableHead className="border-r w-20">Estado</TableHead>
+                    <TableHead className="text-center w-24">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
 
@@ -171,8 +224,11 @@ export default function ClientesPage() {
                         <TableCell className="border-r"><Skeleton className="h-4 w-8" /></TableCell>
                         <TableCell className="border-r"><Skeleton className="h-4 w-32" /></TableCell>
                         <TableCell className="border-r"><Skeleton className="h-4 w-24" /></TableCell>
+                        <TableCell className="border-r"><Skeleton className="h-4 w-20" /></TableCell>
                         <TableCell className="border-r"><Skeleton className="h-4 w-10" /></TableCell>
-                        <TableCell className="border-r"><Skeleton className="h-5 w-24" /></TableCell>
+                        <TableCell className="border-r"><Skeleton className="h-4 w-16" /></TableCell>
+                        <TableCell className="border-r"><Skeleton className="h-4 w-20" /></TableCell>
+                        <TableCell className="border-r"><Skeleton className="h-5 w-20" /></TableCell>
                         <TableCell className="border-r"><Skeleton className="h-5 w-16" /></TableCell>
                         <TableCell><Skeleton className="h-8 w-16 mx-auto" /></TableCell>
                       </TableRow>
@@ -180,12 +236,24 @@ export default function ClientesPage() {
                   ) : paginatedClients.length > 0 ? (
                     paginatedClients.map((c, index) => (
                       <TableRow key={c.id} className="hover:bg-muted/50">
-                        <TableCell className="border-r font-medium">
+                        <TableCell className="border-r font-medium text-center">
                           {startIndex + index + 1}
                         </TableCell>
                         <TableCell className="border-r">{c.fullName}</TableCell>
-                        <TableCell className="border-r">{c.phoneNumber}</TableCell>
-                        <TableCell className="border-r">16</TableCell>
+                        <TableCell className="border-r">{c.phoneNumber || "-"}</TableCell>
+                        <TableCell className="border-r">{c.city || "-"}</TableCell>
+                        <TableCell className="border-r text-center">
+                          {c.totalPurchases ?? 0}
+                        </TableCell>
+                        <TableCell className="border-r text-right font-medium">
+                          S/ {Number(c.totalPurchaseAmount ?? 0).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="border-r text-sm">
+                          {c.lastPurchaseDate 
+                            ? new Date(c.lastPurchaseDate).toLocaleDateString("es-PE")
+                            : "-"
+                          }
+                        </TableCell>
                         <TableCell className="border-r">
                           {getClientTypeBadge(c.clientType)}
                         </TableCell>
@@ -232,7 +300,7 @@ export default function ClientesPage() {
                   ) : (
                     <TableRow>
                       <TableCell
-                        colSpan={7}
+                        colSpan={10}
                         className="text-center py-6 text-muted-foreground"
                       >
                         No se encontraron clientes.
