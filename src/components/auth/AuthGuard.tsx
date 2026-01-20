@@ -14,6 +14,7 @@ const PUBLIC_ROUTES = [
   "/login",
   "/restablecer-contrasena",
   "/subscriptions",
+  "/rastreo",
 ];
 
 /**
@@ -30,9 +31,9 @@ export default function AuthGuard({ children }: AuthGuardProps) {
 
   // Obtener permisos requeridos para la ruta actual
   const requiredPermissions = pathname ? getRoutePermissions(pathname) : [];
-  
+
   // Verificar si el usuario tiene acceso
-  const hasAccess = requiredPermissions.length === 0 || 
+  const hasAccess = requiredPermissions.length === 0 ||
     hasAnyPermission(auth?.user?.permissions, requiredPermissions);
 
   useEffect(() => {
