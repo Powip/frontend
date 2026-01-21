@@ -394,13 +394,12 @@ export default function OperacionesPage() {
         createdGuides.push(guideNumber);
         totalOrders += guideData.orderIds.length;
 
-        // Actualizar cada orden con el guideNumber y cambiar estado a ASIGNADO_A_GUIA
+        // Solo guardar el guideNumber en cada orden (sin cambiar estado)
         for (const orderId of guideData.orderIds) {
           await axios.patch(
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
             {
               guideNumber: guideNumber,
-              status: "ASIGNADO_A_GUIA",
             }
           );
         }
@@ -419,6 +418,12 @@ export default function OperacionesPage() {
       setCreateGuideModalOpen(false);
       setSelectedSaleIds(new Set());
       fetchOrders();
+
+      // Abrir modal de detalles de la primera guía creada
+      if (guidesData.length > 0 && guidesData[0].orderIds.length > 0) {
+        setSelectedSaleForGuide({ id: guidesData[0].orderIds[0] } as Sale);
+        setGuideDetailsModalOpen(true);
+      }
     } catch (error: any) {
       const message = error?.response?.data?.message || "Error creando guía";
       toast.error(message);
@@ -976,20 +981,7 @@ Estado: ${sale.status}
           />
         </div>
 
-        <div className="flex justify-between mb-4">
-          <Link href="/ventas">
-            <Button variant="outline">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Volver a Ventas
-            </Button>
-          </Link>
-          <Link href="/finanzas">
-            <Button variant="outline">
-              Ir a Finanzas
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
-          </Link>
-        </div>
+
 
         {/* Tabs para Operaciones */}
         <Tabs defaultValue="preparados" className="w-full">
@@ -1000,10 +992,7 @@ Estado: ${sale.status}
             <TabsTrigger value="no_confirmados" className="text-red-600">
               No Confirmados ({noConfirmados.length})
             </TabsTrigger>
-            <TabsTrigger value="confirmados" className="text-green-600">
-              Confirmados ({confirmados.length})
-            </TabsTrigger>
-            <TabsTrigger value="contactados">
+            <TabsTrigger value="contactados" className="text-green-600">
               Contactados ({contactados.length})
             </TabsTrigger>
             <TabsTrigger value="despachados">
@@ -1117,65 +1106,7 @@ Estado: ${sale.status}
             </Card>
           </TabsContent>
 
-          {/* Tab Confirmados */}
-          <TabsContent value="confirmados">
-            <Card className="border-green-200">
-              <CardHeader className="flex flex-row items-center justify-between bg-green-50">
-                <CardTitle className="text-green-700">Pedidos CONFIRMADOS</CardTitle>
-                <div className="flex gap-2">
-                  <Button
-                    variant="default"
-                    className="bg-emerald-600 hover:bg-emerald-700"
-                    disabled={confirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isCreatingGuide}
-                    onClick={() => setCreateGuideModalOpen(true)}
-                  >
-                    <PackagePlus className="h-4 w-4 mr-2" />
-                    Generar Guía ({confirmados.filter((s) => selectedSaleIds.has(s.id)).length})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={confirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
-                    onClick={() => handleBulkPrintForStatus(confirmados)}
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados ({confirmados.filter((s) => selectedSaleIds.has(s.id)).length})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={confirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
-                    onClick={() => handleCopySelected(confirmados)}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({confirmados.filter((s) => selectedSaleIds.has(s.id)).length})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleExportExcel(confirmados, "confirmados")}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <SalesTableFilters
-                  filters={filtersConfirmados}
-                  onFiltersChange={setFiltersConfirmados}
-                  showRegionFilter={true}
-                  showZoneFilter={true}
-                />
-                {renderTable(confirmados, false, false)}
-              </CardContent>
-              <Pagination
-                currentPage={1}
-                totalPages={Math.ceil(confirmados.length / 10) || 1}
-                totalItems={confirmados.length}
-                itemsPerPage={10}
-                onPageChange={() => { }}
-                itemName="pedidos"
-              />
-            </Card>
-          </TabsContent>
+
 
           {/* Tab Contactados */}
           <TabsContent value="contactados">

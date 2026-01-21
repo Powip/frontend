@@ -26,12 +26,12 @@ import {
 } from "@/components/ui/select";
 import { MessageSquare } from "lucide-react";
 import ShippingNotesModal from "@/components/modals/ShippingNotesModal";
+import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 
 import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
-import ProvinciaShipmentModal from "@/components/modals/ProvinciaShipmentModal";
 import CustomerServiceModal, { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
 import { useRouter } from "next/navigation";
 
@@ -152,7 +152,7 @@ export default function SeguimientoPage() {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<SeguimientoFilters>(emptyFilters);
 
-  // Modal state for ProvinciaShipmentModal (legacy, keeping for now)
+  // Modal state for GuideDetailsModal (unified with operaciones)
   const [selectedEnvio, setSelectedEnvio] = useState<EnvioItem | null>(null);
   const [guideModalOpen, setGuideModalOpen] = useState(false);
 
@@ -600,7 +600,17 @@ export default function SeguimientoPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {guide?.guideNumber || order.guideNumber || "-"}
+                          {(guide?.guideNumber || order.guideNumber) ? (
+                            <Badge
+                              className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
+                              onClick={() => handleOpenGuide(item)}
+                            >
+                              <Truck className="h-3 w-3 mr-1" />
+                              {guide?.guideNumber || order.guideNumber}
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          )}
                         </TableCell>
                         <TableCell>
                           <Button
@@ -658,15 +668,16 @@ export default function SeguimientoPage() {
           shippingGuide={selectedGuideData}
         />
 
-        {/* Modal for shipment/guide details */}
-        <ProvinciaShipmentModal
+        {/* Modal for shipment/guide details (unified with operaciones) */}
+        <GuideDetailsModal
           open={guideModalOpen}
           onClose={() => {
             setGuideModalOpen(false);
             setSelectedEnvio(null);
           }}
-          envioItem={selectedEnvio}
-          onUpdate={fetchEnvios}
+          orderId={selectedEnvio?.order.id || ""}
+          defaultCourier={selectedEnvio?.order.courier}
+          onGuideUpdated={fetchEnvios}
         />
 
         {/* Notes Modal */}

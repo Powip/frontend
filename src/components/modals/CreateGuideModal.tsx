@@ -39,7 +39,7 @@ interface CreateGuideModalProps {
 export interface CreateGuideData {
   storeId: string;
   orderIds: string[];
-  deliveryZone: string;
+  deliveryZones: string[];  // Array de zonas cubiertas
   deliveryType: "MOTO" | "COURIER";
   scheduledDate?: string;
   chargeType?: "PREPAGADO" | "CONTRA_ENTREGA" | "CORTESIA";
@@ -89,49 +89,64 @@ export default function CreateGuideModal({
   onConfirm,
   isLoading = false,
 }: CreateGuideModalProps) {
-  const [scheduledDate, setScheduledDate] = useState("");
   const [chargeType, setChargeType] = useState<"PREPAGADO" | "CONTRA_ENTREGA" | "CORTESIA">("CONTRA_ENTREGA");
   const [notes, setNotes] = useState("");
+  
+  // Fecha de hoy formateada
+  const todayFormatted = new Date().toLocaleDateString("es-PE", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
-  // Agrupar pedidos por zona
-  const ordersByZone = useMemo(() => {
-    const groups: Record<string, SelectedOrder[]> = {};
+  // ⚡ CAMBIO PRINCIPAL: Agrupar pedidos por dispatchType en lugar de por zona
+  const ordersByDispatchType = useMemo(() => {
+    const groups: Record<"MOTO" | "COURIER", { orders: SelectedOrder[]; zones: Set<string> }> = {
+      MOTO: { orders: [], zones: new Set() },
+      COURIER: { orders: [], zones: new Set() },
+    };
 
     selectedOrders.forEach(order => {
       const zone = order.zone || "SIN_ZONA";
-      if (!groups[zone]) {
-        groups[zone] = [];
-      }
-      groups[zone].push(order);
+      const dispatchType = getDeliveryType(zone === "SIN_ZONA" ? "LIMA_CENTRO" : zone);
+      
+      groups[dispatchType].orders.push(order);
+      groups[dispatchType].zones.add(zone === "SIN_ZONA" ? "LIMA_CENTRO" : zone);
     });
 
-    return groups;
+    // Filtrar grupos vacíos
+    return Object.entries(groups)
+      .filter(([, group]) => group.orders.length > 0)
+      .reduce((acc, [type, group]) => {
+        acc[type as "MOTO" | "COURIER"] = group;
+        return acc;
+      }, {} as Record<string, { orders: SelectedOrder[]; zones: Set<string> }>);
   }, [selectedOrders]);
 
-  // Obtener zonas únicas
-  const uniqueZones = useMemo(() => Object.keys(ordersByZone), [ordersByZone]);
-  const hasMultipleZones = uniqueZones.length > 1;
+  // Obtener tipos de despacho únicos
+  const uniqueDispatchTypes = useMemo(() => Object.keys(ordersByDispatchType), [ordersByDispatchType]);
+  const hasMultipleDispatchTypes = uniqueDispatchTypes.length > 1;
 
-  // Calcular monto total a cobrar
-  const totalToCollect = selectedOrders.reduce(
-    (acc, order) => acc + order.pendingPayment,
-    0
-  );
+  // Calcular monto total por grupo (para display)
+  const getGroupTotal = (dispatchType: string) => {
+    const group = ordersByDispatchType[dispatchType];
+    return group?.orders.reduce((acc, o) => acc + o.pendingPayment, 0) || 0;
+  };
 
   const handleSubmit = async () => {
-    // Crear una guía por cada zona
-    const guidesData: CreateGuideData[] = uniqueZones.map(zone => {
-      const ordersInZone = ordersByZone[zone];
-      const zoneTotal = ordersInZone.reduce((acc, o) => acc + o.pendingPayment, 0);
+    // Crear una guía por cada dispatchType (no por zona)
+    const guidesData: CreateGuideData[] = uniqueDispatchTypes.map(dispatchType => {
+      const group = ordersByDispatchType[dispatchType];
+      const groupTotal = group.orders.reduce((acc, o) => acc + o.pendingPayment, 0);
 
       return {
         storeId,
-        orderIds: ordersInZone.map(o => o.id),
-        deliveryZone: zone === "SIN_ZONA" ? "LIMA_CENTRO" : zone,
-        deliveryType: getDeliveryType(zone === "SIN_ZONA" ? "LIMA_CENTRO" : zone),
-        scheduledDate: scheduledDate || undefined,
+        orderIds: group.orders.map(o => o.id),
+        deliveryZones: Array.from(group.zones),  // Todas las zonas cubiertas
+        deliveryType: dispatchType as "MOTO" | "COURIER",
         chargeType,
-        amountToCollect: chargeType === "CONTRA_ENTREGA" ? zoneTotal : undefined,
+        amountToCollect: chargeType === "CONTRA_ENTREGA" ? groupTotal : undefined,
         notes: notes || undefined,
       };
     });
@@ -140,7 +155,6 @@ export default function CreateGuideModal({
   };
 
   const handleClose = () => {
-    setScheduledDate("");
     setChargeType("CONTRA_ENTREGA");
     setNotes("");
     onClose();
@@ -155,10 +169,10 @@ export default function CreateGuideModal({
             Generar Guía de Envío
           </DialogTitle>
           <DialogDescription>
-            {hasMultipleZones ? (
+            {hasMultipleDispatchTypes ? (
               <span className="flex items-center gap-2 text-amber-600">
                 <AlertTriangle className="h-4 w-4" />
-                Se crearán {uniqueZones.length} guías (una para cada zona detectada)
+                Se crearán 2 guías: una para MOTO (Lima) y otra para COURIER (Provincias/Aledañas)
               </span>
             ) : (
               `Se creará una guía con ${selectedOrders.length} pedido(s) seleccionado(s)`
@@ -167,90 +181,95 @@ export default function CreateGuideModal({
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Alerta de múltiples zonas */}
-          {hasMultipleZones && (
+          {/* Alerta de múltiples tipos de despacho */}
+          {hasMultipleDispatchTypes && (
             <div className="border border-amber-200 bg-amber-50 rounded-lg p-3">
               <h4 className="font-medium text-amber-800 mb-2 flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4" />
-                Pedidos en múltiples zonas
+                Pedidos con diferentes tipos de despacho
               </h4>
               <p className="text-sm text-amber-700 mb-2">
-                Los pedidos seleccionados pertenecen a {uniqueZones.length} zonas diferentes.
-                Se creará una guía independiente para cada zona.
+                Los pedidos incluyen zonas de MOTO (Lima urbano) y COURIER (zonas aledañas/provincias).
+                Se creará una guía independiente para cada tipo.
               </p>
               <div className="flex flex-wrap gap-2">
-                {uniqueZones.map(zone => (
+                {uniqueDispatchTypes.map(type => (
                   <Badge
-                    key={zone}
-                    className={ZONE_COLORS[zone] || "bg-muted text-muted-foreground"}
+                    key={type}
+                    className={type === "MOTO" ? "bg-blue-100 text-blue-800" : "bg-orange-100 text-orange-800"}
                   >
-                    {ZONE_LABELS[zone] || zone}: {ordersByZone[zone].length} pedido(s)
+                    {type === "MOTO" ? "🏍️ MOTO" : "📦 COURIER"}: {ordersByDispatchType[type].orders.length} pedido(s)
                   </Badge>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Resumen de pedidos agrupados por zona */}
+          {/* Resumen de pedidos agrupados por dispatchType */}
           <div className="border rounded-lg p-3 bg-muted/30">
             <h4 className="font-medium mb-2">Pedidos incluidos:</h4>
             <div className="space-y-3 max-h-60 overflow-y-auto">
-              {uniqueZones.map(zone => (
-                <div key={zone}>
-                  {hasMultipleZones && (
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge className={ZONE_COLORS[zone] || "bg-muted"}>
-                        {ZONE_LABELS[zone] || zone}
+              {uniqueDispatchTypes.map(dispatchType => {
+                const group = ordersByDispatchType[dispatchType];
+                return (
+                  <div key={dispatchType}>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge className={dispatchType === "MOTO" ? "bg-blue-100 text-blue-800" : "bg-orange-100 text-orange-800"}>
+                        {dispatchType === "MOTO" ? "🏍️ MOTO" : "📦 COURIER"}
                       </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {getDeliveryType(zone) === "MOTO" ? "🏍️ Moto" : "📦 Courier"}
-                      </span>
-                    </div>
-                  )}
-                  <div className="space-y-1 pl-2">
-                    {ordersByZone[zone].map(order => (
-                      <div
-                        key={order.id}
-                        className="flex justify-between items-center text-sm border-b pb-1 last:border-0"
-                      >
-                        <div>
-                          <span className="font-medium">{order.orderNumber}</span>
-                          <span className="text-muted-foreground ml-2">
-                            {order.clientName}
-                          </span>
-                        </div>
-                        <div className="text-right">
-                          <span className="text-muted-foreground text-xs">
-                            {order.district}
-                          </span>
-                          {order.pendingPayment > 0 && (
-                            <span className="ml-2 text-red-600">
-                              S/{order.pendingPayment.toFixed(2)}
-                            </span>
-                          )}
-                        </div>
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from(group.zones).map(zone => (
+                          <Badge key={zone} variant="outline" className="text-xs">
+                            {ZONE_LABELS[zone] || zone}
+                          </Badge>
+                        ))}
                       </div>
-                    ))}
+                    </div>
+                    <div className="space-y-1 pl-2">
+                      {group.orders.map(order => (
+                        <div
+                          key={order.id}
+                          className="flex justify-between items-center text-sm border-b pb-1 last:border-0"
+                        >
+                          <div>
+                            <span className="font-medium">{order.orderNumber}</span>
+                            <span className="text-muted-foreground ml-2">
+                              {order.clientName}
+                            </span>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-muted-foreground text-xs">
+                              {order.district}
+                            </span>
+                            {order.pendingPayment > 0 && (
+                              <span className="ml-2 text-red-600">
+                                S/{order.pendingPayment.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* Subtotal por grupo */}
+                    {getGroupTotal(dispatchType) > 0 && (
+                      <div className="mt-2 pt-2 border-t flex justify-between text-sm font-medium pl-2">
+                        <span>Subtotal {dispatchType === "MOTO" ? "MOTO" : "COURIER"}:</span>
+                        <span className="text-red-600">S/{getGroupTotal(dispatchType).toFixed(2)}</span>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-            {totalToCollect > 0 && (
-              <div className="mt-2 pt-2 border-t flex justify-between font-medium">
-                <span>Total a cobrar:</span>
-                <span className="text-red-600">S/{totalToCollect.toFixed(2)}</span>
-              </div>
-            )}
           </div>
 
-          {/* Fecha programada */}
+          {/* Fecha de hoy (solo display) */}
           <div className="space-y-2">
-            <Label htmlFor="scheduledDate">Fecha de envío programada</Label>
+            <Label>Fecha de creación</Label>
             <Input
-              id="scheduledDate"
-              type="date"
-              value={scheduledDate}
-              onChange={(e) => setScheduledDate(e.target.value)}
+              value={todayFormatted}
+              disabled
+              className="capitalize"
             />
           </div>
 
@@ -303,8 +322,8 @@ export default function CreateGuideModal({
             ) : (
               <>
                 <PackagePlus className="h-4 w-4 mr-2" />
-                {hasMultipleZones
-                  ? `Generar ${uniqueZones.length} Guías`
+                {hasMultipleDispatchTypes
+                  ? `Generar ${uniqueDispatchTypes.length} Guías`
                   : "Generar Guía"}
               </>
             )}

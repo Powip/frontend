@@ -240,7 +240,7 @@ export const Stats: React.FC = () => {
                     <Tooltip
                       formatter={(value, name) => [
                         name === "ventas" ? `S/${value}` : value,
-                        name === "ventas" ? "Ventas" : "Órdenes"
+                        name === "ventas" ? "Ventas" : "Órdenes S/"
                       ]}
                       labelStyle={{ color: "var(--foreground)" }}
                       contentStyle={{

@@ -247,6 +247,15 @@ function RegistrarVentaContent() {
     setProductsMeta(null);
   }, [selectedStoreId]);
 
+  // Auto-calcular salesRegion basándose en el departamento del cliente
+  useEffect(() => {
+    if (clientForm.department) {
+      // Si el departamento es LIMA, la región es LIMA, sino es PROVINCIA
+      const autoRegion = clientForm.department.toUpperCase() === "LIMA" ? "LIMA" : "PROVINCIA";
+      setSalesRegion(autoRegion);
+    }
+  }, [clientForm.department]);
+
   /* ---------------- Actions ---------------- */
 
   const searchProducts = async (page = 1) => {
@@ -937,6 +946,38 @@ function RegistrarVentaContent() {
                 />
               </div>
 
+              {/* Región de Venta - Toggle Pills */}
+              <div className="space-y-2">
+                <Label>Región de venta</Label>
+                <div className="flex gap-1 p-1 bg-muted rounded-lg w-fit">
+                  <button
+                    type="button"
+                    onClick={() => setSalesRegion("LIMA")}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                      salesRegion === "LIMA"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10"
+                    }`}
+                  >
+                    Lima
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSalesRegion("PROVINCIA")}
+                    className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
+                      salesRegion === "PROVINCIA"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted-foreground/10"
+                    }`}
+                  >
+                    Provincia
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Se calcula automáticamente según el departamento, pero puedes cambiarlo manualmente.
+                </p>
+              </div>
+
               {/* Acciones */}
               {isNotFound && (
                 <Button onClick={handleCreateClient}>Crear cliente</Button>
@@ -1361,23 +1402,7 @@ function RegistrarVentaContent() {
               </Select>
             </div>
 
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={salesRegion === "PROVINCIA"}
-                  onCheckedChange={() => setSalesRegion("PROVINCIA")}
-                />
-                <Label>Provincia</Label>
-              </div>
 
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  checked={salesRegion === "LIMA"}
-                  onCheckedChange={() => setSalesRegion("LIMA")}
-                />
-                <Label>Lima</Label>
-              </div>
-            </div>
 
             {/* Método de envío */}
             {orderDetails.deliveryType === DeliveryType.DOMICILIO && (

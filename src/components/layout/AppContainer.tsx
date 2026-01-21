@@ -16,6 +16,7 @@ export default function AppContainer({
     "/restablecer-contrasena",
     "/new-company",
     "/subscriptions",
+    "/rastreo",
   ];
 
   const hideSidebar = noSidebarRoutes.some((r) => pathname.startsWith(r));

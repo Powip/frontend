@@ -13,7 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { 
   Package, Truck, User, Calendar, MapPin, Loader2, ExternalLink, 
-  MessageSquare, Phone, ChevronDown, ChevronRight, DollarSign, ShoppingBag, Printer, FileText 
+  MessageSquare, Phone, ChevronDown, ChevronRight, DollarSign, ShoppingBag, Printer, FileText,
+  Camera, ImageIcon, CheckCircle2
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -28,12 +29,16 @@ export interface ShippingGuide {
   courierName?: string | null;
   courierPhone?: string | null;
   orderIds: string[];
-  status: "CREADA" | "ASIGNADA" | "EN_RUTA" | "ENTREGADA" | "PARCIAL" | "FALLIDA" | "CANCELADA";
+  status: "CREADA" | "APROBADA" | "ASIGNADA" | "EN_RUTA" | "ENTREGADA" | "PARCIAL" | "FALLIDA" | "CANCELADA";
   chargeType?: "PREPAGADO" | "CONTRA_ENTREGA" | "CORTESIA" | null;
   amountToCollect?: number | null;
   scheduledDate?: string | null;
-  deliveryZone?: string | null;
+  deliveryZones?: string[];
+  deliveryType?: "MOTO" | "COURIER";
   deliveryAddress?: string | null;
+  shippingKey?: string | null;
+  shippingOffice?: string | null;
+  shippingProofUrl?: string | null;
   notes?: string | null;
   trackingUrl?: string | null;
   externalCarrierId?: string | null;
@@ -76,12 +81,23 @@ interface GuideDetailsModalProps {
 
 const STATUS_COLORS: Record<string, string> = {
   CREADA: "bg-gray-100 text-gray-800",
+  APROBADA: "bg-teal-100 text-teal-800",
   ASIGNADA: "bg-blue-100 text-blue-800",
   EN_RUTA: "bg-amber-100 text-amber-800",
   ENTREGADA: "bg-green-100 text-green-800",
   PARCIAL: "bg-orange-100 text-orange-800",
   FALLIDA: "bg-red-100 text-red-800",
   CANCELADA: "bg-red-100 text-red-800",
+};
+
+const ZONE_LABELS: Record<string, string> = {
+  LIMA_NORTE: "Lima Norte",
+  CALLAO: "Callao",
+  LIMA_CENTRO: "Lima Centro",
+  LIMA_SUR: "Lima Sur",
+  LIMA_ESTE: "Lima Este",
+  ZONAS_ALEDANAS: "Zonas Aledañas",
+  PROVINCIAS: "Provincias",
 };
 
 const ORDER_STATUS_COLORS: Record<string, string> = {
@@ -136,9 +152,21 @@ export default function GuideDetailsModal({
   const [guide, setGuide] = useState<ShippingGuide | null>(null);
   const [loading, setLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [selectedCourier, setSelectedCourier] = useState("");
   const [ordersDetails, setOrdersDetails] = useState<OrderDetail[]>([]);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  
+  // Campos COURIER editables
+  const [courierFields, setCourierFields] = useState({
+    externalGuideReference: "",
+    shippingKey: "",
+    trackingUrl: "",
+    shippingOffice: "",
+  });
+  
+  // Upload de foto de entrega
+  const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
     if (open && orderId) {
@@ -159,6 +187,16 @@ export default function GuideDetailsModal({
       } else if (defaultCourier) {
         setSelectedCourier(normalizeCourier(defaultCourier));
       }
+      
+      // Inicializar campos COURIER
+      if (res.data) {
+        setCourierFields({
+          externalGuideReference: res.data.externalGuideReference || "",
+          shippingKey: res.data.shippingKey || "",
+          trackingUrl: res.data.trackingUrl || "",
+          shippingOffice: res.data.shippingOffice || "",
+        });
+      }
 
       // Fetch order details for all orders in the guide
       if (res.data?.orderIds?.length) {
@@ -176,11 +214,38 @@ export default function GuideDetailsModal({
     }
   };
 
+  // Guardar campos COURIER
+  const handleSaveCourierFields = async () => {
+    if (!guide) return;
+    
+    setSaving(true);
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`,
+        {
+          externalGuideReference: courierFields.externalGuideReference || null,
+          shippingKey: courierFields.shippingKey || null,
+          trackingUrl: courierFields.trackingUrl || null,
+          shippingOffice: courierFields.shippingOffice || null,
+        }
+      );
+      toast.success("Datos de courier guardados");
+      fetchGuide();
+      onGuideUpdated?.();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleAssignCourier = async () => {
     if (!guide || !selectedCourier) return;
 
     setAssigning(true);
     try {
+      // Solo asignar courier a la guía, NO cambiar estado de órdenes
+      // El estado de las órdenes cambiará cuando se APRUEBE la guía
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/assign-courier`,
         {
@@ -189,17 +254,7 @@ export default function GuideDetailsModal({
         }
       );
 
-      for (const orderId of guide.orderIds) {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-          {
-            status: "EN_ENVIO",
-            courier: selectedCourier,
-          }
-        );
-      }
-
-      toast.success(`Courier ${selectedCourier} asignado y ${guide.orderIds.length} pedido(s) despachados`);
+      toast.success(`Courier ${selectedCourier} asignado a la guía`);
       fetchGuide();
       onGuideUpdated?.();
     } catch (error: any) {
@@ -210,11 +265,94 @@ export default function GuideDetailsModal({
     }
   };
 
+  // Aprobar guía (cambiar status de CREADA a APROBADA) y pasar órdenes a EN_ENVIO
+  const handleApproveGuide = async () => {
+    if (!guide) return;
+    
+    // Verificar que hay courier realmente asignado (no solo seleccionado)
+    if (!guide.courierName) {
+      toast.error("Debes asignar un courier antes de aprobar la guía");
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      // 1. Aprobar la guía
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`,
+        { 
+          status: "APROBADA",
+          courierName: guide.courierName,
+        }
+      );
+      
+      // 2. Cambiar estado de todas las órdenes a EN_ENVIO
+      for (const orderId of guide.orderIds) {
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+          {
+            status: "EN_ENVIO",
+            courier: guide.courierName,
+          }
+        );
+      }
+      
+      toast.success(`Guía aprobada y ${guide.orderIds.length} pedido(s) despachados`);
+      fetchGuide();
+      onGuideUpdated?.();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Error al aprobar guía");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Subir foto de prueba de entrega
+  const handleUploadProof = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !guide) return;
+    
+    // Validar tipo de archivo
+    if (!file.type.startsWith("image/")) {
+      toast.error("Solo se permiten imágenes");
+      return;
+    }
+    
+    // Validar tamaño (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("La imagen no debe superar 5MB");
+      return;
+    }
+    
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/upload-proof`,
+        formData,
+        { headers: { "Content-Type": "multipart/form-data" } }
+      );
+      
+      toast.success("Foto de entrega subida correctamente");
+      fetchGuide();
+      onGuideUpdated?.();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Error al subir la foto");
+    } finally {
+      setUploading(false);
+      // Reset input
+      e.target.value = "";
+    }
+  };
+
   const handleClose = () => {
     setGuide(null);
     setSelectedCourier("");
     setOrdersDetails([]);
     setExpandedOrders(new Set());
+    setCourierFields({ externalGuideReference: "", shippingKey: "", trackingUrl: "", shippingOffice: "" });
     onClose();
   };
 
@@ -279,7 +417,7 @@ export default function GuideDetailsModal({
         <div class="info-grid">
           <div class="info-item">
             <div class="label">Zona</div>
-            <div class="value">${guide.deliveryZone || "-"}</div>
+            <div class="value">${guide.deliveryZones?.join(", ") || "-"}</div>
           </div>
           <div class="info-item">
             <div class="label">Courier</div>
@@ -428,7 +566,7 @@ export default function GuideDetailsModal({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
@@ -457,12 +595,24 @@ export default function GuideDetailsModal({
 
             {/* Resumen de la guía en grilla */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-muted/30 rounded-lg">
-              {/* Zona */}
+              {/* Zona y Tipo */}
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
                   <MapPin className="h-3 w-3" /> Zona
                 </p>
-                <p className="font-medium">{guide.deliveryZone || "-"}</p>
+                <div className="flex flex-wrap gap-1">
+                  {guide.deliveryType && (
+                    <Badge className={guide.deliveryType === "MOTO" ? "bg-blue-100 text-blue-800" : "bg-orange-100 text-orange-800"}>
+                      {guide.deliveryType === "MOTO" ? "🏍️" : "📦"} {guide.deliveryType}
+                    </Badge>
+                  )}
+                  {guide.deliveryZones?.map(zone => (
+                    <Badge key={zone} variant="outline" className="text-xs">
+                      {ZONE_LABELS[zone] || zone}
+                    </Badge>
+                  ))}
+                  {(!guide.deliveryZones || guide.deliveryZones.length === 0) && !guide.deliveryType && "-"}
+                </div>
               </div>
 
               {/* Fecha programada */}
@@ -473,7 +623,9 @@ export default function GuideDetailsModal({
                 <p className="font-medium">
                   {guide.scheduledDate 
                     ? new Date(guide.scheduledDate).toLocaleDateString("es-PE")
-                    : "-"}
+                    : guide.created_at
+                      ? new Date(guide.created_at).toLocaleDateString("es-PE")
+                      : "-"}
                 </p>
               </div>
 
@@ -556,6 +708,70 @@ export default function GuideDetailsModal({
                 </div>
               )}
             </div>
+
+            {/* Datos de Courier Externo (solo para COURIER) */}
+            {guide.deliveryType === "COURIER" && (
+              <div className="border rounded-lg p-3 space-y-3 bg-orange-50/50">
+                <Label className="flex items-center gap-2 text-sm font-medium text-orange-800">
+                  📦 Datos del Courier Externo
+                </Label>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Nro. Guía Courier</Label>
+                    <input
+                      type="text"
+                      className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                      placeholder="Ej: OLV-123456"
+                      value={courierFields.externalGuideReference}
+                      onChange={(e) => setCourierFields(prev => ({ ...prev, externalGuideReference: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Clave de Envío</Label>
+                    <input
+                      type="text"
+                      className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                      placeholder="Ej: ABC123"
+                      value={courierFields.shippingKey}
+                      onChange={(e) => setCourierFields(prev => ({ ...prev, shippingKey: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">URL Tracking</Label>
+                    <input
+                      type="text"
+                      className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                      placeholder="https://..."
+                      value={courierFields.trackingUrl}
+                      onChange={(e) => setCourierFields(prev => ({ ...prev, trackingUrl: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">Oficina de Retiro</Label>
+                    <input
+                      type="text"
+                      className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                      placeholder="Ej: Olva Lima Centro"
+                      value={courierFields.shippingOffice}
+                      onChange={(e) => setCourierFields(prev => ({ ...prev, shippingOffice: e.target.value }))}
+                    />
+                  </div>
+                </div>
+                
+                <Button
+                  size="sm"
+                  className="w-full bg-orange-600 hover:bg-orange-700"
+                  onClick={handleSaveCourierFields}
+                  disabled={saving}
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : null}
+                  Guardar Datos Courier
+                </Button>
+              </div>
+            )}
 
             {/* Lista de pedidos con detalles */}
             <div className="border rounded-lg overflow-hidden">
@@ -651,6 +867,63 @@ export default function GuideDetailsModal({
               </div>
             </div>
 
+            {/* Prueba de entrega */}
+            <div className="border rounded-lg p-3 space-y-2">
+              <Label className="flex items-center gap-2 text-sm font-medium">
+                <Camera className="h-4 w-4" />
+                Prueba de Entrega
+              </Label>
+              
+              {guide.shippingProofUrl ? (
+                <div className="space-y-2">
+                  <div className="relative group">
+                    <img
+                      src={guide.shippingProofUrl}
+                      alt="Prueba de entrega"
+                      className="w-full max-h-[200px] object-contain rounded-lg border bg-muted/20"
+                    />
+                    <a
+                      href={guide.shippingProofUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
+                      title="Ver imagen completa"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                    </a>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-green-600">
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Foto de confirmación cargada</span>
+                  </div>
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-muted-foreground/30 rounded-lg p-4 text-center">
+                  <ImageIcon className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Sin foto de confirmación
+                  </p>
+                  {["APROBADA", "ASIGNADA", "EN_RUTA", "ENTREGADA", "PARCIAL"].includes(guide.status) && (
+                    <label className="inline-flex items-center gap-2 cursor-pointer bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90">
+                      {uploading ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Camera className="h-4 w-4" />
+                      )}
+                      {uploading ? "Subiendo..." : "Subir Foto"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleUploadProof}
+                        disabled={uploading}
+                      />
+                    </label>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Notas */}
             {guide.notes && (
               <div className="border-t pt-3 space-y-2">
@@ -701,22 +974,44 @@ export default function GuideDetailsModal({
           </div>
         )}
 
-        <DialogFooter className="flex gap-2">
-          {guide && (
-            <>
-              <Button variant="outline" onClick={handlePrintGuide}>
-                <Printer className="h-4 w-4 mr-2" />
-                Imprimir Guía
-              </Button>
-              <Button variant="outline" onClick={handlePrintReceipts}>
-                <FileText className="h-4 w-4 mr-2" />
-                Imprimir Comprobantes
-              </Button>
-            </>
+        <DialogFooter className="flex flex-col gap-2">
+          {/* Texto informativo encima de todos los botones */}
+          {guide && (guide.status === "CREADA" || guide.status === "ASIGNADA") && !guide.courierName && (
+            <p className="text-sm text-amber-600 flex items-center gap-1 w-full justify-center">
+              ⚠️ Primero asigna un courier usando el botón &quot;Asignar&quot; antes de aprobar la guía
+            </p>
           )}
-          <Button variant="outline" onClick={handleClose}>
-            Cerrar
-          </Button>
+          
+          {/* Botones en fila */}
+          <div className="flex flex-wrap gap-2 justify-end w-full">
+            {guide && (guide.status === "CREADA" || guide.status === "ASIGNADA") && (
+              <Button 
+                onClick={handleApproveGuide} 
+                disabled={saving || !guide.courierName}
+                className="bg-teal-600 hover:bg-teal-700"
+              >
+                {saving ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : null}
+                ✓ Aprobar Guía
+              </Button>
+            )}
+            {guide && (
+              <>
+                <Button variant="outline" onClick={handlePrintGuide}>
+                  <Printer className="h-4 w-4 mr-2" />
+                  Imprimir Guía
+                </Button>
+                <Button variant="outline" onClick={handlePrintReceipts}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Imprimir Comprobantes
+                </Button>
+              </>
+            )}
+            <Button variant="outline" onClick={handleClose}>
+              Cerrar
+            </Button>
+          </div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

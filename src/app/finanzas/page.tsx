@@ -627,14 +627,7 @@ Estado: ${sale.status}
           />
         </div>
 
-        <div className="flex justify-start mb-4">
-          <Link href="/operaciones">
-            <Button variant="outline">
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Volver a Operaciones
-            </Button>
-          </Link>
-        </div>
+
 
         {/* Tabs para Finanzas */}
         <Tabs defaultValue="pagosPendientes" className="w-full">
