@@ -182,21 +182,6 @@ export default function AtencionClientePage() {
     }
   }, [selectedStoreId, promoFromDate, promoToDate]);
 
-  const handleWhatsApp = (phoneNumber: string, orderNumber?: string, clientName?: string) => {
-    const phone = phoneNumber.replace(/\D/g, "");
-    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
-
-    let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
-    if (orderNumber) {
-      message += `Te contactamos por tu pedido ${orderNumber}.`;
-    }
-
-    window.open(
-      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
-      "_blank"
-    );
-  };
-
   const toggleSale = (id: string) => {
     setSelectedSaleIds((prev) => {
       const next = new Set(prev);

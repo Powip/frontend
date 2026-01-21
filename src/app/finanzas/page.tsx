@@ -280,7 +280,8 @@ export default function FinanzasPage() {
 
     let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
     if (orderNumber) {
-      message += `Te contactamos por tu pedido ${orderNumber}. `;
+      const trackingUrl = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/rastreo/${orderNumber}`;
+      message += `Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}\n\n`;
     }
     if (pendingAmount && pendingAmount > 0) {
       message += `Tienes un pago pendiente de S/${pendingAmount.toFixed(2)} por verificar.`;

@@ -479,7 +479,8 @@ export default function OperacionesPage() {
     // Construir mensaje si tenemos datos de la orden
     let url = `https://api.whatsapp.com/send?phone=${cleanPhone}`;
     if (orderNumber && clientName) {
-      const message = `Hola ${clientName}, acá tenés el resumen de tu compra N° ${orderNumber}`;
+      const trackingUrl = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/rastreo/${orderNumber}`;
+      const message = `Hola ${clientName}, acá tenés el resumen de tu compra N° ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
       url += `&text=${encodeURIComponent(message)}`;
     }
 

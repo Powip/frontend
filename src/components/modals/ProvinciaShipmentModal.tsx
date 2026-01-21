@@ -204,27 +204,11 @@ export default function ProvinciaShipmentModal({
     const phone = order.customer?.phoneNumber?.replace(/\D/g, "") || "";
     const countryCode = phone.startsWith("51") ? "" : "51";
     
-    // Build message with tracking info
+    // Build message with tracking URL
+    const trackingUrl = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/rastreo/${order.orderNumber}`;
     let message = `Hola ${order.customer?.fullName || ""},\n\n`;
     message += `Tu pedido #${order.orderNumber} está en camino.\n\n`;
-    
-    if (guide?.courierName) {
-      message += `📦 Empresa: ${guide.courierName}\n`;
-    }
-    if (shippingOffice || guide?.shippingOffice) {
-      message += `🏢 Oficina: ${shippingOffice || guide?.shippingOffice}\n`;
-    }
-    if (externalGuideReference || guide?.externalGuideReference) {
-      message += `🔢 Tracking: ${externalGuideReference || guide?.externalGuideReference}\n`;
-    }
-    // Only include shipping key if paid
-    if (isPaid && (shippingKey || guide?.shippingKey)) {
-      message += `🔑 Clave de envío: ${shippingKey || guide?.shippingKey}\n`;
-    }
-    
-    if (order.customer?.district) {
-      message += `📍 Distrito: ${order.customer.district}\n`;
-    }
+    message += `📦 Rastrea tu pedido aquí: ${trackingUrl}`;
 
     const whatsappUrl = `https://wa.me/${countryCode}${phone}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, "_blank");
