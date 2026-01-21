@@ -773,12 +773,6 @@ Estado: ${sale.status}
         </div>
 
         <div className="flex justify-end gap-2 mb-4">
-          <Link href="/operaciones">
-            <Button variant="outline">
-              Ir a Operaciones
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
-          </Link>
           <Link href="/registrar-venta">
             <Button className="bg-teal-600 hover:bg-teal-700">
               <Plus className="h-4 w-4 mr-2" />
