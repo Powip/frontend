@@ -221,7 +221,7 @@ export const Stats: React.FC = () => {
           {/* Ventas por día */}
           <Card className="col-span-4">
             <CardHeader>
-              <CardTitle>Ventas por Día</CardTitle>
+              <CardTitle>Ingresos diarios</CardTitle>
             </CardHeader>
             <CardContent className="flex-1 min-h-[250px]">
               {loading ? (
