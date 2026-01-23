@@ -2,15 +2,22 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, FileText, ArrowLeft, MessageSquare, DollarSign, Calendar, Gift } from "lucide-react";
+import { FileDown } from "lucide-react";
+import { exportSalesToExcel } from "@/utils/exportSalesExcel";
+import {
+  Pencil,
+  FileText,
+  ArrowLeft,
+  MessageSquare,
+  DollarSign,
+  Calendar,
+  Gift,
+  Download,
+  MessageCircle,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -31,7 +38,12 @@ import PaymentVerificationModal from "@/components/modals/PaymentVerificationMod
 import { useRouter } from "next/navigation";
 import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { useAuth } from "@/contexts/AuthContext";
-import { SalesTableFilters, SalesFilters, emptySalesFilters, applyFilters } from "@/components/ventas/SalesTableFilters";
+import {
+  SalesTableFilters,
+  SalesFilters,
+  emptySalesFilters,
+  applyFilters,
+} from "@/components/ventas/SalesTableFilters";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
@@ -44,6 +56,8 @@ interface Sale {
   orderNumber: string;
   clientName: string;
   phoneNumber: string;
+  documentType?: string | null;
+  documentNumber?: string | null;
   date: string;
   total: number;
   status: OrderStatus;
@@ -55,6 +69,9 @@ interface Sale {
   advancePayment: number;
   pendingPayment: number;
   callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
+  province?: string;
+  city?: string;
+  zone?: string;
 }
 
 // Interface para items de promo del día
@@ -79,9 +96,10 @@ interface PromoItem {
 ----------------------------------------- */
 
 function mapOrderToSale(order: OrderHeader): Sale {
-  const totalPaid = order.payments
-    ?.filter((p) => p.status === "PAID")
-    .reduce((sum, p) => sum + Number(p.amount), 0) ?? 0;
+  const totalPaid =
+    order.payments
+      ?.filter((p) => p.status === "PAID")
+      .reduce((sum, p) => sum + Number(p.amount), 0) ?? 0;
 
   const grandTotal = Number(order.grandTotal);
 
@@ -90,6 +108,8 @@ function mapOrderToSale(order: OrderHeader): Sale {
     orderNumber: order.orderNumber,
     clientName: order.customer?.fullName ?? "-",
     phoneNumber: order.customer?.phoneNumber ?? "-",
+    documentType: order.customer?.documentType ?? null,
+    documentNumber: order.customer?.documentNumber ?? null,
     date: new Date(order.created_at).toLocaleDateString("es-PE"),
     total: grandTotal,
     status: order.status,
@@ -101,6 +121,9 @@ function mapOrderToSale(order: OrderHeader): Sale {
     advancePayment: totalPaid,
     pendingPayment: Math.max(grandTotal - totalPaid, 0),
     callStatus: order.callStatus,
+    province: order.customer?.province ?? "",
+    city: order.customer?.city ?? "",
+    zone: order.customer?.zone ?? "",
   };
 }
 
@@ -119,20 +142,29 @@ export default function AtencionClientePage() {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
-  const [selectedSaleForComments, setSelectedSaleForComments] = useState<Sale | null>(null);
+  const [selectedSaleForComments, setSelectedSaleForComments] =
+    useState<Sale | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<Sale | null>(null);
-  const [customerServiceModalOpen, setCustomerServiceModalOpen] = useState(false);
-  const [selectedSaleForService, setSelectedSaleForService] = useState<Sale | null>(null);
+  const [selectedSaleForPayment, setSelectedSaleForPayment] =
+    useState<Sale | null>(null);
+  const [customerServiceModalOpen, setCustomerServiceModalOpen] =
+    useState(false);
+  const [selectedSaleForService, setSelectedSaleForService] =
+    useState<Sale | null>(null);
 
   // Selection
-  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(new Set());
+  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [isPrinting, setIsPrinting] = useState(false);
 
   // Filtros para cada tab
-  const [filtersPreparados, setFiltersPreparados] = useState<SalesFilters>(emptySalesFilters);
-  const [filtersNoConfirmados, setFiltersNoConfirmados] = useState<SalesFilters>(emptySalesFilters);
-  const [filtersConfirmados, setFiltersConfirmados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersPreparados, setFiltersPreparados] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersNoConfirmados, setFiltersNoConfirmados] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersConfirmados, setFiltersConfirmados] =
+    useState<SalesFilters>(emptySalesFilters);
 
   // Estado para tab de Promos
   const [promoItems, setPromoItems] = useState<PromoItem[]>([]);
@@ -140,12 +172,33 @@ export default function AtencionClientePage() {
   const [promoFromDate, setPromoFromDate] = useState<string>("");
   const [promoToDate, setPromoToDate] = useState<string>("");
 
+  const handleWhatsApp = (
+    phone: string,
+    orderNumber: string,
+    fullName: string,
+  ) => {
+    const cleanPhone = phone.replace(/\D/g, "");
+    if (!cleanPhone) {
+      toast.error("No hay número de teléfono válido");
+      return;
+    }
+    const finalPhone = cleanPhone.startsWith("51")
+      ? cleanPhone
+      : `51${cleanPhone}`;
+    const trackingUrl = `${window.location.origin}/rastreo/${orderNumber}`;
+    const message = `Hola ${fullName}! Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
+    window.open(
+      `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`,
+      "_blank",
+    );
+  };
+
   const fetchOrders = useCallback(async () => {
     if (!selectedStoreId) return;
     try {
       setLoading(true);
       const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
       const mapped = res.data.map(mapOrderToSale);
       setSales(mapped);
@@ -169,9 +222,9 @@ export default function AtencionClientePage() {
       const params = new URLSearchParams({ storeId: selectedStoreId });
       if (promoFromDate) params.append("fromDate", promoFromDate);
       if (promoToDate) params.append("toDate", promoToDate);
-      
+
       const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-items/promo-items?${params}`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-items/promo-items?${params}`,
       );
       setPromoItems(res.data);
     } catch (error) {
@@ -211,7 +264,7 @@ Total Venta: S/${sale.total.toFixed(2)}
 Adelanto: S/${sale.advancePayment.toFixed(2)}
 Por Cobrar: S/${sale.pendingPayment.toFixed(2)}
 Estado: ${sale.status}
-`.trim()
+`.trim(),
       )
       .join("\n\n--------------------\n\n");
 
@@ -219,21 +272,54 @@ Estado: ${sale.status}
     toast.success(`${selectedSales.length} pedido(s) copiados`);
   };
 
+  const handleExportExcel = (salesList: Sale[], tabName: string) => {
+    const exportData = salesList.map((s) => ({
+      orderNumber: s.orderNumber,
+      clientName: s.clientName,
+      phoneNumber: s.phoneNumber,
+      documentType: s.documentType || "-",
+      documentNumber: s.documentNumber || "-",
+      date: s.date,
+      total: s.total,
+      advancePayment: s.advancePayment,
+      pendingPayment: s.pendingPayment,
+      status: s.status,
+      salesRegion: s.salesRegion,
+      province: s.province || "-",
+      city: s.city || "-",
+      district: s.district,
+      zone: s.zone || "-",
+      address: s.address,
+      paymentMethod: "-",
+      deliveryType: "-",
+      courier: null,
+      guideNumber: null,
+    }));
+    exportSalesToExcel(exportData, `atencion_cliente_${tabName}`);
+  };
+
   /* -----------------------------------------
      Render Table
   ----------------------------------------- */
 
-  const renderTable = (data: Sale[], tableType: "preparados" | "no_confirmados" | "confirmados") => (
+  const renderTable = (
+    data: Sale[],
+    tableType: "preparados" | "no_confirmados" | "confirmados",
+  ) => (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-[40px]">
             <input
               type="checkbox"
-              checked={data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))}
+              checked={
+                data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))
+              }
               onChange={(e) => {
                 if (e.target.checked) {
-                  setSelectedSaleIds((prev) => new Set([...prev, ...data.map((s) => s.id)]));
+                  setSelectedSaleIds(
+                    (prev) => new Set([...prev, ...data.map((s) => s.id)]),
+                  );
                 } else {
                   setSelectedSaleIds((prev) => {
                     const next = new Set(prev);
@@ -277,13 +363,22 @@ Estado: ${sale.status}
             <TableCell>{sale.paymentMethod}</TableCell>
             <TableCell>{sale.deliveryType}</TableCell>
             <TableCell>S/{sale.total.toFixed(2)}</TableCell>
-            <TableCell className="text-green-600">S/{sale.advancePayment.toFixed(2)}</TableCell>
-            <TableCell className="text-red-600">S/{sale.pendingPayment.toFixed(2)}</TableCell>
+            <TableCell className="text-green-600">
+              S/{sale.advancePayment.toFixed(2)}
+            </TableCell>
+            <TableCell className="text-red-600">
+              S/{sale.pendingPayment.toFixed(2)}
+            </TableCell>
             <TableCell>
-              <span className={`px-2 py-1 rounded text-xs font-medium ${sale.status === "PREPARADO" ? "bg-yellow-100 text-yellow-800" :
-                  sale.status === "LLAMADO" ? "bg-blue-100 text-blue-800" :
-                    "bg-gray-100 text-gray-800"
-                }`}>
+              <span
+                className={`px-2 py-1 rounded text-xs font-medium ${
+                  sale.status === "PREPARADO"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : sale.status === "LLAMADO"
+                      ? "bg-blue-100 text-blue-800"
+                      : "bg-gray-100 text-gray-800"
+                }`}
+              >
                 {sale.status}
               </span>
             </TableCell>
@@ -319,10 +414,27 @@ Estado: ${sale.status}
                 <Button
                   size="icon"
                   variant="outline"
-                  onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
+                  onClick={() =>
+                    router.push(`/registrar-venta?orderId=${sale.id}`)
+                  }
                   title="Editar"
                 >
                   <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="bg-green-50 hover:bg-green-100 text-green-600 border-green-200"
+                  onClick={() =>
+                    handleWhatsApp(
+                      sale.phoneNumber,
+                      sale.orderNumber,
+                      sale.clientName,
+                    )
+                  }
+                  title="WhatsApp"
+                >
+                  <MessageCircle className="h-4 w-4" />
                 </Button>
               </div>
             </TableCell>
@@ -330,7 +442,10 @@ Estado: ${sale.status}
         ))}
         {data.length === 0 && (
           <TableRow>
-            <TableCell colSpan={15} className="text-center text-muted-foreground py-6">
+            <TableCell
+              colSpan={15}
+              className="text-center text-muted-foreground py-6"
+            >
               No hay ventas en esta categoría
             </TableCell>
           </TableRow>
@@ -345,18 +460,18 @@ Estado: ${sale.status}
 
   // Pedidos Preparados: status = PREPARADO y (callStatus null o PENDING)
   const pedidosPreparados = useMemo(() => {
-    const statusFiltered = sales.filter((s) =>
-      s.status === "PREPARADO" &&
-      (!s.callStatus || s.callStatus === "PENDING")
+    const statusFiltered = sales.filter(
+      (s) =>
+        s.status === "PREPARADO" &&
+        (!s.callStatus || s.callStatus === "PENDING"),
     );
     return applyFilters(statusFiltered, filtersPreparados);
   }, [sales, filtersPreparados]);
 
   // Pedidos No Confirmados: status = PREPARADO y callStatus = NO_ANSWER
   const pedidosNoConfirmados = useMemo(() => {
-    const statusFiltered = sales.filter((s) =>
-      s.status === "PREPARADO" &&
-      s.callStatus === "NO_ANSWER"
+    const statusFiltered = sales.filter(
+      (s) => s.status === "PREPARADO" && s.callStatus === "NO_ANSWER",
     );
     return applyFilters(statusFiltered, filtersNoConfirmados);
   }, [sales, filtersNoConfirmados]);
@@ -367,9 +482,15 @@ Estado: ${sale.status}
     return applyFilters(statusFiltered, filtersConfirmados);
   }, [sales, filtersConfirmados]);
 
-  const selectedPreparadosCount = pedidosPreparados.filter((s) => selectedSaleIds.has(s.id)).length;
-  const selectedNoConfirmadosCount = pedidosNoConfirmados.filter((s) => selectedSaleIds.has(s.id)).length;
-  const selectedConfirmadosCount = pedidosConfirmados.filter((s) => selectedSaleIds.has(s.id)).length;
+  const selectedPreparadosCount = pedidosPreparados.filter((s) =>
+    selectedSaleIds.has(s.id),
+  ).length;
+  const selectedNoConfirmadosCount = pedidosNoConfirmados.filter((s) =>
+    selectedSaleIds.has(s.id),
+  ).length;
+  const selectedConfirmadosCount = pedidosConfirmados.filter((s) =>
+    selectedSaleIds.has(s.id),
+  ).length;
 
   if (!auth) return null;
 
@@ -415,6 +536,16 @@ Estado: ${sale.status}
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({selectedPreparadosCount})
                   </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleExportExcel(pedidosPreparados, "preparados")
+                    }
+                    disabled={pedidosPreparados.length === 0}
+                  >
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
                 </div>
               </CardHeader>
               <CardContent>
@@ -432,7 +563,9 @@ Estado: ${sale.status}
           <TabsContent value="no_confirmados">
             <Card className="border-red-200">
               <CardHeader className="flex flex-row items-center justify-between bg-red-50">
-                <CardTitle className="text-red-700">Pedidos NO CONFIRMADOS</CardTitle>
+                <CardTitle className="text-red-700">
+                  Pedidos NO CONFIRMADOS
+                </CardTitle>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -441,6 +574,16 @@ Estado: ${sale.status}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({selectedNoConfirmadosCount})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleExportExcel(pedidosNoConfirmados, "no_confirmados")
+                    }
+                    disabled={pedidosNoConfirmados.length === 0}
+                  >
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
@@ -459,7 +602,9 @@ Estado: ${sale.status}
           <TabsContent value="confirmados">
             <Card className="border-green-200">
               <CardHeader className="flex flex-row items-center justify-between bg-green-50">
-                <CardTitle className="text-green-700">Pedidos CONFIRMADOS</CardTitle>
+                <CardTitle className="text-green-700">
+                  Pedidos CONFIRMADOS
+                </CardTitle>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
@@ -468,6 +613,16 @@ Estado: ${sale.status}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({selectedConfirmadosCount})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleExportExcel(pedidosConfirmados, "confirmados")
+                    }
+                    disabled={pedidosConfirmados.length === 0}
+                  >
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
@@ -537,30 +692,46 @@ Estado: ${sale.status}
                     {promoItems.map((promo) => (
                       <TableRow key={promo.id}>
                         <TableCell>
-                          {promo.addedAt 
-                            ? new Date(promo.addedAt).toLocaleDateString("es-PE")
+                          {promo.addedAt
+                            ? new Date(promo.addedAt).toLocaleDateString(
+                                "es-PE",
+                              )
                             : "-"}
                         </TableCell>
-                        <TableCell className="font-medium">{promo.orderNumber}</TableCell>
+                        <TableCell className="font-medium">
+                          {promo.orderNumber}
+                        </TableCell>
                         <TableCell>{promo.customerName}</TableCell>
                         <TableCell>{promo.customerPhone}</TableCell>
                         <TableCell>{promo.productName}</TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{promo.sku}</TableCell>
-                        <TableCell className="text-center">{promo.quantity}</TableCell>
-                        <TableCell className="text-right">S/{Number(promo.unitPrice).toFixed(2)}</TableCell>
-                        <TableCell className="text-right font-medium">S/{Number(promo.subtotal).toFixed(2)}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {promo.sku}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {promo.quantity}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          S/{Number(promo.unitPrice).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          S/{Number(promo.subtotal).toFixed(2)}
+                        </TableCell>
                         <TableCell>
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => {
-                              const sale = sales.find(s => s.id === promo.orderId);
+                              const sale = sales.find(
+                                (s) => s.id === promo.orderId,
+                              );
                               if (sale) {
                                 setSelectedSaleForService(sale);
                                 setCustomerServiceModalOpen(true);
                               } else {
                                 // Si no está en la lista de sales, abrir directamente por orderId
-                                setSelectedSaleForService({ id: promo.orderId } as Sale);
+                                setSelectedSaleForService({
+                                  id: promo.orderId,
+                                } as Sale);
                                 setCustomerServiceModalOpen(true);
                               }
                             }}
@@ -568,14 +739,32 @@ Estado: ${sale.status}
                             <FileText className="h-4 w-4 mr-1" />
                             Ver Orden
                           </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="bg-green-50 hover:bg-green-100 text-green-600 border-green-200"
+                            onClick={() =>
+                              handleWhatsApp(
+                                promo.customerPhone,
+                                promo.orderNumber,
+                                promo.customerName,
+                              )
+                            }
+                          >
+                            <MessageCircle className="h-4 w-4 mr-1" />
+                            WhatsApp
+                          </Button>
                         </TableCell>
                       </TableRow>
                     ))}
                     {promoItems.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-center text-muted-foreground py-6">
-                          {promoLoading 
-                            ? "Cargando..." 
+                        <TableCell
+                          colSpan={10}
+                          className="text-center text-muted-foreground py-6"
+                        >
+                          {promoLoading
+                            ? "Cargando..."
                             : "Selecciona un rango de fechas y haz clic en Buscar"}
                         </TableCell>
                       </TableRow>
@@ -587,13 +776,22 @@ Estado: ${sale.status}
                 {promoItems.length > 0 && (
                   <div className="flex justify-end gap-6 pt-4 border-t">
                     <div className="text-sm">
-                      <span className="text-muted-foreground">Total productos:</span>{" "}
-                      <span className="font-bold">{promoItems.reduce((sum, p) => sum + p.quantity, 0)}</span>
+                      <span className="text-muted-foreground">
+                        Total productos:
+                      </span>{" "}
+                      <span className="font-bold">
+                        {promoItems.reduce((sum, p) => sum + p.quantity, 0)}
+                      </span>
                     </div>
                     <div className="text-sm">
-                      <span className="text-muted-foreground">Total vendido:</span>{" "}
+                      <span className="text-muted-foreground">
+                        Total vendido:
+                      </span>{" "}
                       <span className="font-bold text-green-600">
-                        S/{promoItems.reduce((sum, p) => sum + Number(p.subtotal), 0).toFixed(2)}
+                        S/
+                        {promoItems
+                          .reduce((sum, p) => sum + Number(p.subtotal), 0)
+                          .toFixed(2)}
                       </span>
                     </div>
                   </div>

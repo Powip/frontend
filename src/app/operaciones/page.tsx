@@ -2,7 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Pencil, Trash2, FileText, ArrowRight, ArrowLeft, MessageCircle, StickyNote, AlertTriangle, PackagePlus, Eye, Download } from "lucide-react";
+import {
+  Pencil,
+  Trash2,
+  FileText,
+  ArrowRight,
+  ArrowLeft,
+  MessageCircle,
+  StickyNote,
+  AlertTriangle,
+  PackagePlus,
+  Eye,
+  Download,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,22 +39,36 @@ import { Textarea } from "@/components/ui/textarea";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
-import CustomerServiceModal, { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
+import CustomerServiceModal, {
+  ShippingGuideData,
+} from "@/components/modals/CustomerServiceModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
-import { SalesTableFilters, SalesFilters, emptySalesFilters, applyFilters } from "@/components/ventas/SalesTableFilters";
+import {
+  SalesTableFilters,
+  SalesFilters,
+  emptySalesFilters,
+  applyFilters,
+} from "@/components/ventas/SalesTableFilters";
 import { Copy, Printer, Truck, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import CancellationModal, { CancellationReason } from "@/components/modals/CancellationModal";
-import CourierAssignmentModal, { CourierType } from "@/components/modals/CourierAssignmentModal";
+import CancellationModal, {
+  CancellationReason,
+} from "@/components/modals/CancellationModal";
+import CourierAssignmentModal, {
+  CourierType,
+} from "@/components/modals/CourierAssignmentModal";
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
 import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
-import CreateGuideModal, { CreateGuideData } from "@/components/modals/CreateGuideModal";
+import CreateGuideModal, {
+  CreateGuideData,
+} from "@/components/modals/CreateGuideModal";
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import { Badge } from "@/components/ui/badge";
+import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 
 /* -----------------------------------------
    Types
@@ -73,12 +99,16 @@ export interface Sale {
   orderNumber: string;
   clientName: string;
   phoneNumber: string;
+  documentType?: string | null;
+  documentNumber?: string | null;
   date: string;
   total: number;
   status: OrderStatus;
   paymentMethod: string;
   deliveryType: string;
   salesRegion: "LIMA" | "PROVINCIA";
+  province?: string;
+  city?: string;
   district: string;
   address: string;
   advancePayment: number;
@@ -102,13 +132,17 @@ function mapOrderToSale(order: OrderHeader): Sale {
     .filter((p) => p.status === "PAID")
     .reduce((acc, p) => acc + Number(p.amount || 0), 0);
   const pendingPayment = Math.max(total - advancePayment, 0);
-  const hasPendingApprovalPayments = order.payments.some((p) => p.status === "PENDING");
+  const hasPendingApprovalPayments = order.payments.some(
+    (p) => p.status === "PENDING",
+  );
 
   return {
     id: order.id,
     orderNumber: order.orderNumber,
     clientName: order.customer.fullName,
     phoneNumber: order.customer.phoneNumber ?? "999",
+    documentType: order.customer.documentType ?? null,
+    documentNumber: order.customer.documentNumber ?? null,
     date: new Date(order.created_at).toLocaleDateString("es-AR"),
     total,
     courier: order.courier ?? null,
@@ -117,6 +151,8 @@ function mapOrderToSale(order: OrderHeader): Sale {
       order.payments.length > 0 ? order.payments[0].paymentMethod : "—",
     deliveryType: order.deliveryType.replace("_", " "),
     salesRegion: order.salesRegion,
+    province: order.customer.province ?? "",
+    city: order.customer.city ?? "",
     district: order.customer.district ?? "",
     address: order.customer.address ?? "",
     advancePayment,
@@ -138,23 +174,35 @@ export default function OperacionesPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [selectedSaleForModal, setSelectedSaleForModal] = useState<Sale | null>(null);
-  const [selectedShippingGuide, setSelectedShippingGuide] = useState<ShippingGuideData | null>(null);
+  const [selectedSaleForModal, setSelectedSaleForModal] = useState<Sale | null>(
+    null,
+  );
+  const [selectedShippingGuide, setSelectedShippingGuide] =
+    useState<ShippingGuideData | null>(null);
 
   // Modal de observaciones
   const [notesOpen, setNotesOpen] = useState(false);
-  const [selectedSaleForNotes, setSelectedSaleForNotes] = useState<Sale | null>(null);
+  const [selectedSaleForNotes, setSelectedSaleForNotes] = useState<Sale | null>(
+    null,
+  );
   const [notesText, setNotesText] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
 
   // Filtros avanzados
-  const [filtersPreparados, setFiltersPreparados] = useState<SalesFilters>(emptySalesFilters);
-  const [filtersNoConfirmados, setFiltersNoConfirmados] = useState<SalesFilters>(emptySalesFilters);
-  const [filtersConfirmados, setFiltersConfirmados] = useState<SalesFilters>(emptySalesFilters);
-  const [filtersContactados, setFiltersContactados] = useState<SalesFilters>(emptySalesFilters);
-  const [filtersDespachados, setFiltersDespachados] = useState<SalesFilters>(emptySalesFilters);
-  const [filtersEntregados, setFiltersEntregados] = useState<SalesFilters>(emptySalesFilters);
-  const [filtersAnulados, setFiltersAnulados] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersPreparados, setFiltersPreparados] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersNoConfirmados, setFiltersNoConfirmados] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersConfirmados, setFiltersConfirmados] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersContactados, setFiltersContactados] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersDespachados, setFiltersDespachados] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersEntregados, setFiltersEntregados] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersAnulados, setFiltersAnulados] =
+    useState<SalesFilters>(emptySalesFilters);
   const [isPrinting, setIsPrinting] = useState(false);
 
   // Paginación
@@ -163,7 +211,7 @@ export default function OperacionesPage() {
   const [pageAnulados, setPageAnulados] = useState(1);
 
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   // Estado para modal de cancelación
@@ -177,11 +225,13 @@ export default function OperacionesPage() {
 
   // Estado para modal de comentarios/timeline
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
-  const [selectedSaleForComments, setSelectedSaleForComments] = useState<Sale | null>(null);
+  const [selectedSaleForComments, setSelectedSaleForComments] =
+    useState<Sale | null>(null);
 
   // Estado para modal de pagos
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<Sale | null>(null);
+  const [selectedSaleForPayment, setSelectedSaleForPayment] =
+    useState<Sale | null>(null);
 
   // Estado para modal de crear guía
   const [createGuideModalOpen, setCreateGuideModalOpen] = useState(false);
@@ -189,7 +239,9 @@ export default function OperacionesPage() {
 
   // Estado para modal de ver guía
   const [guideDetailsModalOpen, setGuideDetailsModalOpen] = useState(false);
-  const [selectedSaleForGuide, setSelectedSaleForGuide] = useState<Sale | null>(null);
+  const [selectedSaleForGuide, setSelectedSaleForGuide] = useState<Sale | null>(
+    null,
+  );
 
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
@@ -197,16 +249,16 @@ export default function OperacionesPage() {
   const fetchOrders = useCallback(async () => {
     try {
       const res = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
-      
+
       const mappedSales = res.data.map(mapOrderToSale);
-      
+
       // Enriquecer órdenes con guideNumber que no tienen courier con el courierName de la guía
       const ordersNeedingCourier = mappedSales.filter(
-        (sale) => sale.guideNumber && !sale.courier
+        (sale) => sale.guideNumber && !sale.courier,
       );
-      
+
       if (ordersNeedingCourier.length > 0) {
         // Buscar courierName para cada orden que lo necesite
         const enrichedSales = await Promise.all(
@@ -214,7 +266,7 @@ export default function OperacionesPage() {
             if (sale.guideNumber && !sale.courier) {
               try {
                 const guideRes = await axios.get(
-                  `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`
+                  `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`,
                 );
                 if (guideRes.data?.courierName) {
                   return { ...sale, courier: guideRes.data.courierName };
@@ -224,7 +276,7 @@ export default function OperacionesPage() {
               }
             }
             return sale;
-          })
+          }),
         );
         setSales(enrichedSales);
       } else {
@@ -235,7 +287,11 @@ export default function OperacionesPage() {
     }
   }, [selectedStoreId]);
 
-  const handleChangeStatus = async (saleId: string, newStatus: OrderStatus, cancellationReason?: CancellationReason) => {
+  const handleChangeStatus = async (
+    saleId: string,
+    newStatus: OrderStatus,
+    cancellationReason?: CancellationReason,
+  ) => {
     // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
     if (newStatus === "ANULADO" && !cancellationReason) {
       const sale = sales.find((s) => s.id === saleId);
@@ -256,14 +312,16 @@ export default function OperacionesPage() {
     }
 
     try {
-      const payload: { status: OrderStatus; cancellationReason?: string } = { status: newStatus };
+      const payload: { status: OrderStatus; cancellationReason?: string } = {
+        status: newStatus,
+      };
       if (cancellationReason) {
         payload.cancellationReason = cancellationReason;
       }
 
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
-        payload
+        payload,
       );
       toast.success(`Estado actualizado a ${newStatus}`);
       fetchOrders();
@@ -278,7 +336,10 @@ export default function OperacionesPage() {
     }
   };
 
-  const handleConfirmCancellation = async (reason: CancellationReason, notes?: string) => {
+  const handleConfirmCancellation = async (
+    reason: CancellationReason,
+    notes?: string,
+  ) => {
     if (!saleToCancel) return;
 
     setIsCancelling(true);
@@ -289,7 +350,7 @@ export default function OperacionesPage() {
           status: "ANULADO",
           cancellationReason: reason,
           notes: notes,
-        }
+        },
       );
       toast.success(`Venta ${saleToCancel.orderNumber} anulada`);
       setCancellationModalOpen(false);
@@ -311,7 +372,8 @@ export default function OperacionesPage() {
   // Obtener ventas seleccionadas con guía (ASIGNADO_A_GUIA) para ver
   const getSelectedConGuia = () => {
     return contactados.filter(
-      (s) => selectedSaleIds.has(s.id) && s.status === ORDER_STATUS.ASIGNADO_A_GUIA
+      (s) =>
+        selectedSaleIds.has(s.id) && s.status === ORDER_STATUS.ASIGNADO_A_GUIA,
     );
   };
 
@@ -335,7 +397,7 @@ export default function OperacionesPage() {
             {
               status: "EN_ENVIO",
               courier: courier,
-            }
+            },
           );
           successCount++;
         } catch (error) {
@@ -370,9 +432,10 @@ export default function OperacionesPage() {
   // Obtener ventas seleccionadas en estado LLAMADO para crear guía
   const getSelectedLlamadosForGuide = () => {
     return contactados.filter(
-      (s) => selectedSaleIds.has(s.id) &&
+      (s) =>
+        selectedSaleIds.has(s.id) &&
         s.status === ORDER_STATUS.LLAMADO &&
-        s.deliveryType.toUpperCase() === "DOMICILIO"
+        s.deliveryType.toUpperCase() === "DOMICILIO",
     );
   };
 
@@ -387,7 +450,7 @@ export default function OperacionesPage() {
       for (const guideData of guidesData) {
         const guideResponse = await axios.post(
           `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides`,
-          guideData
+          guideData,
         );
 
         const guideNumber = guideResponse.data.guideNumber;
@@ -400,18 +463,18 @@ export default function OperacionesPage() {
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
             {
               guideNumber: guideNumber,
-            }
+            },
           );
         }
       }
 
       if (createdGuides.length === 1) {
         toast.success(
-          `Guía ${createdGuides[0]} creada con ${totalOrders} pedido(s)`
+          `Guía ${createdGuides[0]} creada con ${totalOrders} pedido(s)`,
         );
       } else {
         toast.success(
-          `${createdGuides.length} guías creadas (${createdGuides.join(", ")}) con ${totalOrders} pedido(s)`
+          `${createdGuides.length} guías creadas (${createdGuides.join(", ")}) con ${totalOrders} pedido(s)`,
         );
       }
 
@@ -432,7 +495,6 @@ export default function OperacionesPage() {
     }
   };
 
-
   const handleOpenNotes = (sale: Sale) => {
     setSelectedSaleForNotes(sale);
     setNotesText(sale.notes || "");
@@ -445,7 +507,7 @@ export default function OperacionesPage() {
     try {
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${selectedSaleForNotes.id}`,
-        { notes: notesText }
+        { notes: notesText },
       );
       toast.success("Observaciones guardadas");
       setNotesOpen(false);
@@ -463,7 +525,11 @@ export default function OperacionesPage() {
     }
   };
 
-  const handleWhatsApp = (phoneNumber: string, orderNumber?: string, clientName?: string) => {
+  const handleWhatsApp = (
+    phoneNumber: string,
+    orderNumber?: string,
+    clientName?: string,
+  ) => {
     // Limpiar el número de caracteres no numéricos
     let cleanPhone = phoneNumber.replace(/\D/g, "");
 
@@ -508,15 +574,15 @@ export default function OperacionesPage() {
   const handleOpenReceipt = async (sale: Sale) => {
     setSelectedOrderId(sale.id);
     setSelectedSaleForModal(sale);
-    
+
     // Si es EN_ENVIO y tiene guía, cargar datos de la guía
     if (sale.status === "EN_ENVIO" && sale.guideNumber) {
       try {
         const guideRes = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`,
         );
         const guide = guideRes.data;
-        
+
         // Calcular días desde creación
         let daysSinceCreated = 0;
         if (guide?.created_at) {
@@ -525,7 +591,7 @@ export default function OperacionesPage() {
           const diffTime = Math.abs(today.getTime() - createdDate.getTime());
           daysSinceCreated = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         }
-        
+
         setSelectedShippingGuide({
           id: guide.id,
           guideNumber: guide.guideNumber,
@@ -552,7 +618,7 @@ export default function OperacionesPage() {
     } else {
       setSelectedShippingGuide(null);
     }
-    
+
     setReceiptOpen(true);
   };
 
@@ -577,7 +643,7 @@ Total Venta: $${sale.total.toFixed(2)}
 Adelanto: $${sale.advancePayment.toFixed(2)}
 Por Cobrar: $${sale.pendingPayment.toFixed(2)}
 Estado: ${sale.status}
-`.trim()
+`.trim(),
       )
       .join("\n\n--------------------\n\n");
 
@@ -585,52 +651,37 @@ Estado: ${sale.status}
     toast.success(`${selectedSales.length} pedido(s) copiados`);
   };
 
-  // Exportar a Excel (CSV)
+  // Exportar a Excel (XLSX)
   const handleExportExcel = (salesList: Sale[], tabName: string) => {
     if (salesList.length === 0) {
       toast.warning("No hay datos para exportar");
       return;
     }
 
-    const exportData = salesList.map((s, index) => ({
-      "N°": index + 1,
-      "Orden": s.orderNumber,
-      "Cliente": s.clientName,
-      "Teléfono": s.phoneNumber,
-      "Fecha": s.date,
-      "Total": s.total.toFixed(2),
-      "Adelanto": s.advancePayment.toFixed(2),
-      "Por Cobrar": s.pendingPayment.toFixed(2),
-      "Estado": s.status,
-      "Región": s.salesRegion,
-      "Zona": s.zone || "-",
-      "Distrito": s.district,
-      "Dirección": s.address,
-      "Courier": s.courier || "-",
-      "Guía": s.guideNumber || "-",
-      "Método Pago": s.paymentMethod,
-      "Tipo Entrega": s.deliveryType,
+    const exportData: SaleExportData[] = salesList.map((s) => ({
+      orderNumber: s.orderNumber,
+      clientName: s.clientName,
+      phoneNumber: s.phoneNumber,
+      documentType: s.documentType,
+      documentNumber: s.documentNumber,
+      date: s.date,
+      total: s.total,
+      advancePayment: s.advancePayment,
+      pendingPayment: s.pendingPayment,
+      status: s.status,
+      salesRegion: s.salesRegion,
+      province: s.province,
+      city: s.city,
+      district: s.district,
+      zone: s.zone,
+      address: s.address,
+      paymentMethod: s.paymentMethod,
+      deliveryType: s.deliveryType,
+      courier: s.courier,
+      guideNumber: s.guideNumber,
     }));
 
-    const headers = Object.keys(exportData[0] || {}).join(",");
-    const rows = exportData.map((row) =>
-      Object.values(row)
-        .map((val) => `"${val}"`)
-        .join(",")
-    );
-    const csv = [headers, ...rows].join("\n");
-
-    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    const today = new Date().toISOString().split("T")[0];
-    link.setAttribute("href", url);
-    link.setAttribute("download", `operaciones_${tabName}_${today}.csv`);
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
+    exportSalesToExcel(exportData, `operaciones_${tabName}`);
     toast.success(`Exportados ${salesList.length} registros`);
   };
   const handleBulkPrintForStatus = async (salesList: Sale[]) => {
@@ -648,10 +699,10 @@ Estado: ${sale.status}
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
           const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
           );
           return res.data;
-        })
+        }),
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
@@ -667,17 +718,25 @@ Estado: ${sale.status}
     }
   };
 
-  const renderTable = (data: Sale[], showWhatsApp: boolean = false, showGuideColumn: boolean = false) => (
+  const renderTable = (
+    data: Sale[],
+    showWhatsApp: boolean = false,
+    showGuideColumn: boolean = false,
+  ) => (
     <Table>
       <TableHeader>
         <TableRow>
           <TableHead className="w-[40px]">
             <input
               type="checkbox"
-              checked={data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))}
+              checked={
+                data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))
+              }
               onChange={(e) => {
                 if (e.target.checked) {
-                  setSelectedSaleIds((prev) => new Set([...prev, ...data.map((s) => s.id)]));
+                  setSelectedSaleIds(
+                    (prev) => new Set([...prev, ...data.map((s) => s.id)]),
+                  );
                 } else {
                   setSelectedSaleIds((prev) => {
                     const next = new Set(prev);
@@ -733,19 +792,27 @@ Estado: ${sale.status}
             <TableCell>{sale.paymentMethod}</TableCell>
             <TableCell>{sale.deliveryType}</TableCell>
             <TableCell>${sale.total.toFixed(2)}</TableCell>
-            <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
-            <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
+            <TableCell className="text-green-600">
+              ${sale.advancePayment.toFixed(2)}
+            </TableCell>
+            <TableCell className="text-red-600">
+              ${sale.pendingPayment.toFixed(2)}
+            </TableCell>
             <TableCell>
               <select
                 value={sale.status}
-                onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
+                onChange={(e) =>
+                  handleChangeStatus(sale.id, e.target.value as OrderStatus)
+                }
                 className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
               >
-                {getAvailableStatuses(sale.status, sale.salesRegion).map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
+                {getAvailableStatuses(sale.status, sale.salesRegion).map(
+                  (status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ),
+                )}
               </select>
             </TableCell>
             {showGuideColumn && (
@@ -787,24 +854,39 @@ Estado: ${sale.status}
             <TableCell>
               {sale.zone ? (
                 <Badge
-                  className={`text-xs whitespace-nowrap ${sale.zone === 'LIMA_NORTE' ? 'bg-blue-100 text-blue-800' :
-                    sale.zone === 'CALLAO' ? 'bg-yellow-100 text-yellow-800' :
-                      sale.zone === 'LIMA_CENTRO' ? 'bg-green-100 text-green-800' :
-                        sale.zone === 'LIMA_SUR' ? 'bg-purple-100 text-purple-800' :
-                          sale.zone === 'LIMA_ESTE' ? 'bg-orange-100 text-orange-800' :
-                            sale.zone === 'ZONAS_ALEDANAS' ? 'bg-gray-100 text-gray-800' :
-                              sale.zone === 'PROVINCIAS' ? 'bg-red-100 text-red-800' :
-                                'bg-muted text-muted-foreground'
-                    }`}
+                  className={`text-xs whitespace-nowrap ${
+                    sale.zone === "LIMA_NORTE"
+                      ? "bg-blue-100 text-blue-800"
+                      : sale.zone === "CALLAO"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : sale.zone === "LIMA_CENTRO"
+                          ? "bg-green-100 text-green-800"
+                          : sale.zone === "LIMA_SUR"
+                            ? "bg-purple-100 text-purple-800"
+                            : sale.zone === "LIMA_ESTE"
+                              ? "bg-orange-100 text-orange-800"
+                              : sale.zone === "ZONAS_ALEDANAS"
+                                ? "bg-gray-100 text-gray-800"
+                                : sale.zone === "PROVINCIAS"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-muted text-muted-foreground"
+                  }`}
                 >
-                  {sale.zone === 'LIMA_NORTE' ? '🟦 L. Norte' :
-                    sale.zone === 'CALLAO' ? '🟨 Callao' :
-                      sale.zone === 'LIMA_CENTRO' ? '🟩 L. Centro' :
-                        sale.zone === 'LIMA_SUR' ? '🟪 L. Sur' :
-                          sale.zone === 'LIMA_ESTE' ? '🟧 L. Este' :
-                            sale.zone === 'ZONAS_ALEDANAS' ? '⛰️ Aledañas' :
-                              sale.zone === 'PROVINCIAS' ? '🧭 Provincias' :
-                                sale.zone}
+                  {sale.zone === "LIMA_NORTE"
+                    ? "🟦 L. Norte"
+                    : sale.zone === "CALLAO"
+                      ? "🟨 Callao"
+                      : sale.zone === "LIMA_CENTRO"
+                        ? "🟩 L. Centro"
+                        : sale.zone === "LIMA_SUR"
+                          ? "🟪 L. Sur"
+                          : sale.zone === "LIMA_ESTE"
+                            ? "🟧 L. Este"
+                            : sale.zone === "ZONAS_ALEDANAS"
+                              ? "⛰️ Aledañas"
+                              : sale.zone === "PROVINCIAS"
+                                ? "🧭 Provincias"
+                                : sale.zone}
                 </Badge>
               ) : (
                 <span className="text-muted-foreground text-xs">-</span>
@@ -828,7 +910,13 @@ Estado: ${sale.status}
                   variant="outline"
                   className="bg-green-500 hover:bg-green-600 text-white"
                   title="Contactar por WhatsApp"
-                  onClick={() => handleWhatsApp(sale.phoneNumber, sale.orderNumber, sale.clientName)}
+                  onClick={() =>
+                    handleWhatsApp(
+                      sale.phoneNumber,
+                      sale.orderNumber,
+                      sale.clientName,
+                    )
+                  }
                 >
                   <MessageCircle className="h-4 w-4" />
                 </Button>
@@ -841,7 +929,11 @@ Estado: ${sale.status}
                   setSelectedSaleForPayment(sale);
                   setPaymentModalOpen(true);
                 }}
-                title={sale.hasPendingApprovalPayments ? "Pagos pendientes de aprobación" : "Gestión de Pagos"}
+                title={
+                  sale.hasPendingApprovalPayments
+                    ? "Pagos pendientes de aprobación"
+                    : "Gestión de Pagos"
+                }
               >
                 <DollarSign className="h-4 w-4" />
                 {sale.hasPendingApprovalPayments && (
@@ -854,7 +946,9 @@ Estado: ${sale.status}
               <Button
                 size="icon"
                 variant="outline"
-                onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
+                onClick={() =>
+                  router.push(`/registrar-venta?orderId=${sale.id}`)
+                }
                 title="Editar"
               >
                 <Pencil className="h-4 w-4" />
@@ -864,7 +958,10 @@ Estado: ${sale.status}
         ))}
         {data.length === 0 && (
           <TableRow>
-            <TableCell colSpan={15} className="text-center text-muted-foreground py-6">
+            <TableCell
+              colSpan={15}
+              className="text-center text-muted-foreground py-6"
+            >
               No hay ventas en este estado
             </TableCell>
           </TableRow>
@@ -878,88 +975,80 @@ Estado: ${sale.status}
   ----------------------------------------- */
 
   // Preparados: Lima y Provincia (sin llamar o pendiente de llamada)
-  const preparados = useMemo(
-    () => {
-      const statusFiltered = sales.filter(
-        (s) => s.status === ORDER_STATUS.PREPARADO &&
-          (!s.callStatus || s.callStatus === "PENDING")
-      );
-      return applyFilters(statusFiltered, filtersPreparados);
-    },
-    [sales, filtersPreparados]
-  );
+  const preparados = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) =>
+        s.status === ORDER_STATUS.PREPARADO &&
+        (!s.callStatus || s.callStatus === "PENDING"),
+    );
+    return applyFilters(statusFiltered, filtersPreparados);
+  }, [sales, filtersPreparados]);
 
   // No Confirmados: status = PREPARADO y callStatus = NO_ANSWER
-  const noConfirmados = useMemo(
-    () => {
-      const statusFiltered = sales.filter(
-        (s) => s.status === ORDER_STATUS.PREPARADO &&
-          s.callStatus === "NO_ANSWER"
-      );
-      return applyFilters(statusFiltered, filtersNoConfirmados);
-    },
-    [sales, filtersNoConfirmados]
-  );
+  const noConfirmados = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) =>
+        s.status === ORDER_STATUS.PREPARADO && s.callStatus === "NO_ANSWER",
+    );
+    return applyFilters(statusFiltered, filtersNoConfirmados);
+  }, [sales, filtersNoConfirmados]);
 
   // Confirmados: status = LLAMADO (ya confirmaron)
-  const confirmados = useMemo(
-    () => {
-      const statusFiltered = sales.filter((s) => s.status === ORDER_STATUS.LLAMADO);
-      return applyFilters(statusFiltered, filtersConfirmados);
-    },
-    [sales, filtersConfirmados]
-  );
+  const confirmados = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) => s.status === ORDER_STATUS.LLAMADO,
+    );
+    return applyFilters(statusFiltered, filtersConfirmados);
+  }, [sales, filtersConfirmados]);
 
-  const contactados = useMemo(
-    () => {
-      const statusFiltered = sales.filter(
-        (s) => s.status === ORDER_STATUS.LLAMADO || s.status === ORDER_STATUS.ASIGNADO_A_GUIA
-      );
-      return applyFilters(statusFiltered, filtersContactados);
-    },
-    [sales, filtersContactados]
-  );
+  const contactados = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) =>
+        s.status === ORDER_STATUS.LLAMADO ||
+        s.status === ORDER_STATUS.ASIGNADO_A_GUIA,
+    );
+    return applyFilters(statusFiltered, filtersContactados);
+  }, [sales, filtersContactados]);
 
-  const despachados = useMemo(
-    () => {
-      const statusFiltered = sales.filter(
-        (s) => s.status === ORDER_STATUS.EN_ENVIO
-      );
-      return applyFilters(statusFiltered, filtersDespachados);
-    },
-    [sales, filtersDespachados]
-  );
+  const despachados = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) => s.status === ORDER_STATUS.EN_ENVIO,
+    );
+    return applyFilters(statusFiltered, filtersDespachados);
+  }, [sales, filtersDespachados]);
 
   // Entregados: status = ENTREGADO
-  const entregadosAll = useMemo(
-    () => {
-      const statusFiltered = sales.filter(
-        (s) => s.status === ORDER_STATUS.ENTREGADO
-      );
-      return applyFilters(statusFiltered, filtersEntregados);
-    },
-    [sales, filtersEntregados]
-  );
+  const entregadosAll = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) => s.status === ORDER_STATUS.ENTREGADO,
+    );
+    return applyFilters(statusFiltered, filtersEntregados);
+  }, [sales, filtersEntregados]);
 
   const entregadosPaginated = useMemo(
-    () => entregadosAll.slice((pageEntregados - 1) * ITEMS_PER_PAGE, pageEntregados * ITEMS_PER_PAGE),
-    [entregadosAll, pageEntregados]
+    () =>
+      entregadosAll.slice(
+        (pageEntregados - 1) * ITEMS_PER_PAGE,
+        pageEntregados * ITEMS_PER_PAGE,
+      ),
+    [entregadosAll, pageEntregados],
   );
 
   // Anulados: status = ANULADO
-  const anuladosAll = useMemo(
-    () => {
-      const statusFiltered = sales.filter(
-        (s) => s.status === ORDER_STATUS.ANULADO
-      );
-      return applyFilters(statusFiltered, filtersAnulados);
-    },
-    [sales, filtersAnulados]
-  );
+  const anuladosAll = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) => s.status === ORDER_STATUS.ANULADO,
+    );
+    return applyFilters(statusFiltered, filtersAnulados);
+  }, [sales, filtersAnulados]);
 
   const anuladosPaginated = useMemo(
-    () => anuladosAll.slice((pageAnulados - 1) * ITEMS_PER_PAGE, pageAnulados * ITEMS_PER_PAGE),
-    [anuladosAll, pageAnulados]
+    () =>
+      anuladosAll.slice(
+        (pageAnulados - 1) * ITEMS_PER_PAGE,
+        pageAnulados * ITEMS_PER_PAGE,
+      ),
+    [anuladosAll, pageAnulados],
   );
 
   // Extraer lista de couriers únicos para el filtro
@@ -981,8 +1070,6 @@ Estado: ${sale.status}
             description="Gestión de pedidos preparados, contactados y despachados"
           />
         </div>
-
-
 
         {/* Tabs para Operaciones */}
         <Tabs defaultValue="preparados" className="w-full">
@@ -1015,19 +1102,29 @@ Estado: ${sale.status}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    disabled={preparados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    disabled={
+                      preparados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0 || isPrinting
+                    }
                     onClick={() => handleBulkPrintForStatus(preparados)}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados ({preparados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Imprimir seleccionados (
+                    {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
+                    )
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={preparados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    disabled={
+                      preparados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
                     onClick={() => handleCopySelected(preparados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({preparados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Copiar seleccionados (
+                    {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
+                    )
                   </Button>
                   <Button
                     variant="outline"
@@ -1051,7 +1148,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(preparados.length / 10) || 1}
                 totalItems={preparados.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="pedidos"
               />
             </Card>
@@ -1061,27 +1158,47 @@ Estado: ${sale.status}
           <TabsContent value="no_confirmados">
             <Card className="border-red-200">
               <CardHeader className="flex flex-row items-center justify-between bg-red-50">
-                <CardTitle className="text-red-700">Pedidos NO CONFIRMADOS</CardTitle>
+                <CardTitle className="text-red-700">
+                  Pedidos NO CONFIRMADOS
+                </CardTitle>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    disabled={noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    disabled={
+                      noConfirmados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0 || isPrinting
+                    }
                     onClick={() => handleBulkPrintForStatus(noConfirmados)}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados ({noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Imprimir seleccionados (
+                    {
+                      noConfirmados.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    disabled={
+                      noConfirmados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
                     onClick={() => handleCopySelected(noConfirmados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Copiar seleccionados (
+                    {
+                      noConfirmados.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => handleExportExcel(noConfirmados, "no_confirmados")}
+                    onClick={() =>
+                      handleExportExcel(noConfirmados, "no_confirmados")
+                    }
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Exportar Excel
@@ -1101,13 +1218,11 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(noConfirmados.length / 10) || 1}
                 totalItems={noConfirmados.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="pedidos"
               />
             </Card>
           </TabsContent>
-
-
 
           {/* Tab Contactados */}
           <TabsContent value="contactados">
@@ -1118,7 +1233,10 @@ Estado: ${sale.status}
                   <Button
                     variant="default"
                     className="bg-emerald-600 hover:bg-emerald-700"
-                    disabled={getSelectedLlamadosForGuide().length === 0 || isCreatingGuide}
+                    disabled={
+                      getSelectedLlamadosForGuide().length === 0 ||
+                      isCreatingGuide
+                    }
                     onClick={() => setCreateGuideModalOpen(true)}
                   >
                     <PackagePlus className="h-4 w-4 mr-2" />
@@ -1126,23 +1244,41 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={contactados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    disabled={
+                      contactados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0 || isPrinting
+                    }
                     onClick={() => handleBulkPrintForStatus(contactados)}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados ({contactados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Imprimir seleccionados (
+                    {
+                      contactados.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={contactados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    disabled={
+                      contactados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
                     onClick={() => handleCopySelected(contactados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({contactados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Copiar seleccionados (
+                    {
+                      contactados.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => handleExportExcel(contactados, "contactados")}
+                    onClick={() =>
+                      handleExportExcel(contactados, "contactados")
+                    }
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Exportar Excel
@@ -1164,7 +1300,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(contactados.length / 10) || 1}
                 totalItems={contactados.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="pedidos"
               />
             </Card>
@@ -1178,23 +1314,41 @@ Estado: ${sale.status}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    disabled={despachados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    disabled={
+                      despachados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0 || isPrinting
+                    }
                     onClick={() => handleBulkPrintForStatus(despachados)}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados ({despachados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Imprimir seleccionados (
+                    {
+                      despachados.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={despachados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    disabled={
+                      despachados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
                     onClick={() => handleCopySelected(despachados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({despachados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Copiar seleccionados (
+                    {
+                      despachados.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => handleExportExcel(despachados, "despachados")}
+                    onClick={() =>
+                      handleExportExcel(despachados, "despachados")
+                    }
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Exportar Excel
@@ -1218,7 +1372,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(despachados.length / 10) || 1}
                 totalItems={despachados.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="pedidos"
               />
             </Card>
@@ -1228,30 +1382,60 @@ Estado: ${sale.status}
           <TabsContent value="entregados">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-green-700">Pedidos Entregados</CardTitle>
+                <CardTitle className="text-green-700">
+                  Pedidos Entregados
+                </CardTitle>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    disabled={entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    disabled={
+                      entregadosAll.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0 || isPrinting
+                    }
                     onClick={() => handleBulkPrintForStatus(entregadosAll)}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados ({entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Imprimir seleccionados (
+                    {
+                      entregadosAll.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    disabled={
+                      entregadosAll.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
                     onClick={() => handleCopySelected(entregadosAll)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Copiar seleccionados (
+                    {
+                      entregadosAll.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleExportExcel(entregadosAll, "entregados")
+                    }
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
                 <SalesTableFilters
                   filters={filtersEntregados}
-                  onFiltersChange={(f) => { setFiltersEntregados(f); setPageEntregados(1); }}
+                  onFiltersChange={(f) => {
+                    setFiltersEntregados(f);
+                    setPageEntregados(1);
+                  }}
                   showCourierFilter={true}
                   showRegionFilter={true}
                   availableCouriers={availableCouriers}
@@ -1260,7 +1444,9 @@ Estado: ${sale.status}
               </CardContent>
               <Pagination
                 currentPage={pageEntregados}
-                totalPages={Math.ceil(entregadosAll.length / ITEMS_PER_PAGE) || 1}
+                totalPages={
+                  Math.ceil(entregadosAll.length / ITEMS_PER_PAGE) || 1
+                }
                 totalItems={entregadosAll.length}
                 itemsPerPage={ITEMS_PER_PAGE}
                 onPageChange={setPageEntregados}
@@ -1273,22 +1459,42 @@ Estado: ${sale.status}
           <TabsContent value="anulados">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="text-gray-500">Pedidos Anulados</CardTitle>
+                <CardTitle className="text-gray-500">
+                  Pedidos Anulados
+                </CardTitle>
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    disabled={anuladosAll.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    disabled={
+                      anuladosAll.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
                     onClick={() => handleCopySelected(anuladosAll)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({anuladosAll.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Copiar seleccionados (
+                    {
+                      anuladosAll.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleExportExcel(anuladosAll, "anulados")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
               <CardContent>
                 <SalesTableFilters
                   filters={filtersAnulados}
-                  onFiltersChange={(f) => { setFiltersAnulados(f); setPageAnulados(1); }}
+                  onFiltersChange={(f) => {
+                    setFiltersAnulados(f);
+                    setPageAnulados(1);
+                  }}
                   showRegionFilter={true}
                 />
                 {renderTable(anuladosPaginated, false, false)}

@@ -1,7 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Eye, Search, Package, Phone, User, Truck, FileText, AlertTriangle, Clock } from "lucide-react";
+import {
+  Eye,
+  Search,
+  Package,
+  Phone,
+  User,
+  Truck,
+  FileText,
+  AlertTriangle,
+  Clock,
+  FileDown,
+} from "lucide-react";
+import { exportSeguimientoToExcel } from "@/utils/exportSalesExcel";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,9 +44,10 @@ import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
-import CustomerServiceModal, { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
+import CustomerServiceModal, {
+  ShippingGuideData,
+} from "@/components/modals/CustomerServiceModal";
 import { useRouter } from "next/navigation";
-
 
 /* -----------------------------------------
    Types
@@ -128,7 +141,7 @@ const calculatePendingPayment = (order: OrderHeader): number => {
   const grandTotal = parseFloat(order.grandTotal) || 0;
   if (!order.payments) return grandTotal;
   const totalPaid = order.payments
-    .filter(p => p && p.status === "PAID")
+    .filter((p) => p && p.status === "PAID")
     .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
   return grandTotal - totalPaid;
 };
@@ -159,15 +172,17 @@ export default function SeguimientoPage() {
   // Modal state for order detail (CustomerServiceModal) - includes guide data
   const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [selectedGuideData, setSelectedGuideData] = useState<ShippingGuideData | null>(null);
+  const [selectedGuideData, setSelectedGuideData] =
+    useState<ShippingGuideData | null>(null);
 
   // Notes Modal state
   const [notesModalOpen, setNotesModalOpen] = useState(false);
-  const [selectedGuideForNotes, setSelectedGuideForNotes] = useState<{ id: string; notes: string } | null>(null);
+  const [selectedGuideForNotes, setSelectedGuideForNotes] = useState<{
+    id: string;
+    notes: string;
+  } | null>(null);
 
   const { auth, selectedStoreId } = useAuth();
-
-
 
   // Fetch orders with EN_ENVIO status
   const fetchEnvios = useCallback(async () => {
@@ -179,10 +194,10 @@ export default function SeguimientoPage() {
     setLoading(true);
     try {
       const ordersRes = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
 
-      const orders = ordersRes.data.filter(o => o.status === "EN_ENVIO");
+      const orders = ordersRes.data.filter((o) => o.status === "EN_ENVIO");
 
       const envioItems: EnvioItem[] = await Promise.all(
         orders.map(async (order) => {
@@ -192,23 +207,28 @@ export default function SeguimientoPage() {
           if (order.guideNumber) {
             try {
               const guideRes = await axios.get<ShippingGuide>(
-                `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${order.id}`
+                `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${order.id}`,
               );
               guide = guideRes.data;
 
               if (guide?.created_at) {
                 const createdDate = new Date(guide.created_at);
                 const today = new Date();
-                const diffTime = Math.abs(today.getTime() - createdDate.getTime());
+                const diffTime = Math.abs(
+                  today.getTime() - createdDate.getTime(),
+                );
                 daysSinceCreated = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
               }
             } catch (error) {
-              console.error(`Error fetching guide for order ${order.id}:`, error);
+              console.error(
+                `Error fetching guide for order ${order.id}:`,
+                error,
+              );
             }
           }
 
           return { order, guide, daysSinceCreated };
-        })
+        }),
       );
 
       setEnvios(envioItems);
@@ -216,7 +236,9 @@ export default function SeguimientoPage() {
       // Actualizar modal si está abierto (usando actualización funcional para evitar loop)
       setSelectedEnvio((prev) => {
         if (!prev) return null;
-        const updated = envioItems.find(item => item.order.id === prev.order.id);
+        const updated = envioItems.find(
+          (item) => item.order.id === prev.order.id,
+        );
         return updated || prev;
       });
     } catch (error) {
@@ -242,14 +264,22 @@ export default function SeguimientoPage() {
         const clientName = order.customer?.fullName?.toLowerCase() || "";
         const phone = order.customer?.phoneNumber || "";
         const orderNumber = order.orderNumber?.toLowerCase() || "";
-        if (!clientName.includes(searchLower) && !phone.includes(filters.search) && !orderNumber.includes(searchLower)) {
+        if (
+          !clientName.includes(searchLower) &&
+          !phone.includes(filters.search) &&
+          !orderNumber.includes(searchLower)
+        ) {
           return false;
         }
       }
 
       // Courier filter (case-insensitive)
       if (filters.courier) {
-        const courierName = (guide?.courierName || order.courier || "").toLowerCase();
+        const courierName = (
+          guide?.courierName ||
+          order.courier ||
+          ""
+        ).toLowerCase();
         if (!courierName.includes(filters.courier.toLowerCase())) {
           return false;
         }
@@ -258,27 +288,41 @@ export default function SeguimientoPage() {
       // Days range filter
       if (filters.daysRange) {
         if (filters.daysRange === "0-7" && daysSinceCreated > 7) return false;
-        if (filters.daysRange === "8-15" && (daysSinceCreated < 8 || daysSinceCreated > 15)) return false;
-        if (filters.daysRange === "16-30" && (daysSinceCreated < 16 || daysSinceCreated > 30)) return false;
+        if (
+          filters.daysRange === "8-15" &&
+          (daysSinceCreated < 8 || daysSinceCreated > 15)
+        )
+          return false;
+        if (
+          filters.daysRange === "16-30" &&
+          (daysSinceCreated < 16 || daysSinceCreated > 30)
+        )
+          return false;
         if (filters.daysRange === "30+" && daysSinceCreated <= 30) return false;
       }
 
       // Pending payment filter
       const pendingPayment = calculatePendingPayment(order);
-      if (filters.hasPendingPayment === "yes" && pendingPayment <= 0) return false;
-      if (filters.hasPendingPayment === "no" && pendingPayment > 0) return false;
+      if (filters.hasPendingPayment === "yes" && pendingPayment <= 0)
+        return false;
+      if (filters.hasPendingPayment === "no" && pendingPayment > 0)
+        return false;
 
       // Region filter
       if (filters.region && order.salesRegion !== filters.region) return false;
 
       // Guide status filter
-      if (filters.guideStatus && guide?.status !== filters.guideStatus) return false;
+      if (filters.guideStatus && guide?.status !== filters.guideStatus)
+        return false;
 
       return true;
     });
   }, [envios, filters]);
 
-  const updateFilter = <K extends keyof SeguimientoFilters>(key: K, value: SeguimientoFilters[K]) => {
+  const updateFilter = <K extends keyof SeguimientoFilters>(
+    key: K,
+    value: SeguimientoFilters[K],
+  ) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
 
@@ -330,12 +374,55 @@ export default function SeguimientoPage() {
   };
 
   const getDaysRowClass = (days: number) => {
-    if (days >= 30) return "bg-red-50 dark:bg-red-950/30 border-l-4 border-l-red-500";
-    if (days >= 25) return "bg-amber-50 dark:bg-amber-950/30 border-l-4 border-l-amber-500";
+    if (days >= 30)
+      return "bg-red-50 dark:bg-red-950/30 border-l-4 border-l-red-500";
+    if (days >= 25)
+      return "bg-amber-50 dark:bg-amber-950/30 border-l-4 border-l-amber-500";
     return "";
   };
 
-  const handleStatusChange = async (guideId: string, newStatus: string, pendingPayment: number) => {
+  const handleExportExcel = () => {
+    const exportData = filteredEnvios.map((item) => {
+      const order = item.order;
+      const guide = item.guide;
+      const pendingPayment = calculatePendingPayment(order);
+      const totalPaid = parseFloat(order.grandTotal || "0") - pendingPayment;
+
+      return {
+        orderNumber: order.orderNumber,
+        clientName: order.customer?.fullName || "-",
+        phoneNumber: order.customer?.phoneNumber || "-",
+        documentType: order.customer?.documentType || "-",
+        documentNumber: order.customer?.documentNumber || "-",
+        date: order.created_at
+          ? new Date(order.created_at).toLocaleDateString("es-PE")
+          : "-",
+        total: parseFloat(order.grandTotal || "0"),
+        advancePayment: totalPaid,
+        pendingPayment: pendingPayment,
+        status: order.status,
+        salesRegion: order.salesRegion,
+        province: order.customer?.province || "-",
+        city: order.customer?.city || "-",
+        district: order.customer?.district || "-",
+        zone: order.customer?.zone || "-",
+        address: order.customer?.address || "-",
+        paymentMethod: "-",
+        deliveryType: order.deliveryType || "-",
+        courier: guide?.courierName || order.courier || "-",
+        guideNumber: guide?.guideNumber || order.guideNumber || "-",
+        guideStatus: guide?.status || "-",
+        daysSinceCreated: item.daysSinceCreated,
+      };
+    });
+    exportSeguimientoToExcel(exportData, "seguimiento_envios");
+  };
+
+  const handleStatusChange = async (
+    guideId: string,
+    newStatus: string,
+    pendingPayment: number,
+  ) => {
     // Validación: No permitir ENTREGADA si hay saldo pendiente
     if (newStatus === "ENTREGADA" && pendingPayment > 0) {
       toast.error("No se puede marcar como ENTREGADA si hay saldo pendiente", {
@@ -348,12 +435,13 @@ export default function SeguimientoPage() {
     try {
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}`,
-        { status: newStatus }
+        { status: newStatus },
       );
       toast.success(`Estado actualizado a ${newStatus}`);
       fetchEnvios();
     } catch (error: any) {
-      const message = error?.response?.data?.message || "Error al cambiar estado";
+      const message =
+        error?.response?.data?.message || "Error al cambiar estado";
       toast.error(message);
     }
   };
@@ -381,6 +469,14 @@ export default function SeguimientoPage() {
               <Package className="h-5 w-5" />
               Pedidos En Envío ({filteredEnvios.length})
             </CardTitle>
+            <Button
+              variant="outline"
+              onClick={handleExportExcel}
+              disabled={filteredEnvios.length === 0}
+            >
+              <FileDown className="h-4 w-4 mr-2" />
+              Exportar Excel
+            </Button>
           </CardHeader>
           <CardContent>
             {/* Filters */}
@@ -388,7 +484,9 @@ export default function SeguimientoPage() {
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                 {/* Search */}
                 <div className="space-y-1 col-span-2">
-                  <Label className="text-xs">Buscar (cliente, teléfono, N° orden)</Label>
+                  <Label className="text-xs">
+                    Buscar (cliente, teléfono, N° orden)
+                  </Label>
                   <Input
                     placeholder="Buscar..."
                     value={filters.search}
@@ -409,7 +507,9 @@ export default function SeguimientoPage() {
                   >
                     <option value="">Todos</option>
                     {COURIERS.map((c) => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -420,10 +520,17 @@ export default function SeguimientoPage() {
                   <select
                     className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                     value={filters.daysRange}
-                    onChange={(e) => updateFilter("daysRange", e.target.value as SeguimientoFilters["daysRange"])}
+                    onChange={(e) =>
+                      updateFilter(
+                        "daysRange",
+                        e.target.value as SeguimientoFilters["daysRange"],
+                      )
+                    }
                   >
                     {DAYS_RANGES.map((r) => (
-                      <option key={r.value} value={r.value}>{r.label}</option>
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -434,7 +541,12 @@ export default function SeguimientoPage() {
                   <select
                     className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                     value={filters.hasPendingPayment}
-                    onChange={(e) => updateFilter("hasPendingPayment", e.target.value as "" | "yes" | "no")}
+                    onChange={(e) =>
+                      updateFilter(
+                        "hasPendingPayment",
+                        e.target.value as "" | "yes" | "no",
+                      )
+                    }
                   >
                     <option value="">Todos</option>
                     <option value="yes">Con saldo</option>
@@ -448,7 +560,12 @@ export default function SeguimientoPage() {
                   <select
                     className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                     value={filters.region}
-                    onChange={(e) => updateFilter("region", e.target.value as "" | "LIMA" | "PROVINCIA")}
+                    onChange={(e) =>
+                      updateFilter(
+                        "region",
+                        e.target.value as "" | "LIMA" | "PROVINCIA",
+                      )
+                    }
                   >
                     <option value="">Todas</option>
                     <option value="LIMA">Lima</option>
@@ -462,18 +579,27 @@ export default function SeguimientoPage() {
                   <select
                     className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                     value={filters.guideStatus}
-                    onChange={(e) => updateFilter("guideStatus", e.target.value)}
+                    onChange={(e) =>
+                      updateFilter("guideStatus", e.target.value)
+                    }
                   >
                     {GUIDE_STATUSES.map((s) => (
-                      <option key={s.value} value={s.value}>{s.label}</option>
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
                     ))}
                   </select>
                 </div>
               </div>
 
-              {Object.values(filters).some(v => v !== "") && (
+              {Object.values(filters).some((v) => v !== "") && (
                 <div className="mt-3">
-                  <Button variant="ghost" size="sm" onClick={clearFilters} className="text-xs">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="text-xs"
+                  >
                     Limpiar filtros
                   </Button>
                 </div>
@@ -520,7 +646,9 @@ export default function SeguimientoPage() {
                         <TableCell className="font-medium">
                           <div className="flex items-center gap-1">
                             {daysSinceCreated >= 25 && (
-                              <AlertTriangle className={`h-4 w-4 ${daysSinceCreated >= 30 ? 'text-red-500' : 'text-amber-500'}`} />
+                              <AlertTriangle
+                                className={`h-4 w-4 ${daysSinceCreated >= 30 ? "text-red-500" : "text-amber-500"}`}
+                              />
                             )}
                             {order.orderNumber}
                           </div>
@@ -538,7 +666,9 @@ export default function SeguimientoPage() {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <Badge variant={isProvincia ? "secondary" : "outline"}>
+                          <Badge
+                            variant={isProvincia ? "secondary" : "outline"}
+                          >
                             {order.salesRegion}
                           </Badge>
                         </TableCell>
@@ -551,40 +681,61 @@ export default function SeguimientoPage() {
                         <TableCell>
                           <div className="flex items-center gap-1">
                             {daysSinceCreated >= 25 && (
-                              <Clock className={`h-3 w-3 ${daysSinceCreated >= 30 ? 'text-red-500' : 'text-amber-500'}`} />
+                              <Clock
+                                className={`h-3 w-3 ${daysSinceCreated >= 30 ? "text-red-500" : "text-amber-500"}`}
+                              />
                             )}
                             <span className={getDaysColor(daysSinceCreated)}>
                               {daysSinceCreated} días
                             </span>
                             {daysSinceCreated >= 30 && (
-                              <Badge className="ml-1 bg-red-600 text-white text-[10px] px-1 py-0">VENCIDO</Badge>
+                              <Badge className="ml-1 bg-red-600 text-white text-[10px] px-1 py-0">
+                                VENCIDO
+                              </Badge>
                             )}
-                            {daysSinceCreated >= 25 && daysSinceCreated < 30 && (
-                              <Badge className="ml-1 bg-amber-500 text-white text-[10px] px-1 py-0">PRÓXIMO</Badge>
-                            )}
+                            {daysSinceCreated >= 25 &&
+                              daysSinceCreated < 30 && (
+                                <Badge className="ml-1 bg-amber-500 text-white text-[10px] px-1 py-0">
+                                  PRÓXIMO
+                                </Badge>
+                              )}
                           </div>
                         </TableCell>
                         <TableCell>
                           <Select
                             value={guide?.status || "CREADA"}
-                            onValueChange={(val) => guide && handleStatusChange(guide.id, val, pendingPayment)}
+                            onValueChange={(val) =>
+                              guide &&
+                              handleStatusChange(guide.id, val, pendingPayment)
+                            }
                             disabled={!guide}
                           >
-                            <SelectTrigger className={`h-8 w-[130px] text-xs font-semibold ${guide?.status === "ENTREGADA" ? "bg-green-100 text-green-800 border-green-200" :
-                              guide?.status === "EN_RUTA" ? "bg-blue-100 text-blue-800 border-blue-200" :
-                                guide?.status === "FALLIDA" || guide?.status === "CANCELADA" ? "bg-red-100 text-red-800 border-red-200" :
-                                  "bg-gray-100 text-gray-800 border-gray-200"
-                              }`}>
+                            <SelectTrigger
+                              className={`h-8 w-[130px] text-xs font-semibold ${
+                                guide?.status === "ENTREGADA"
+                                  ? "bg-green-100 text-green-800 border-green-200"
+                                  : guide?.status === "EN_RUTA"
+                                    ? "bg-blue-100 text-blue-800 border-blue-200"
+                                    : guide?.status === "FALLIDA" ||
+                                        guide?.status === "CANCELADA"
+                                      ? "bg-red-100 text-red-800 border-red-200"
+                                      : "bg-gray-100 text-gray-800 border-gray-200"
+                              }`}
+                            >
                               <SelectValue placeholder="Estado" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="CREADA">Creada</SelectItem>
                               <SelectItem value="ASIGNADA">Asignada</SelectItem>
                               <SelectItem value="EN_RUTA">En Ruta</SelectItem>
-                              <SelectItem value="ENTREGADA">Entregada</SelectItem>
+                              <SelectItem value="ENTREGADA">
+                                Entregada
+                              </SelectItem>
                               <SelectItem value="PARCIAL">Parcial</SelectItem>
                               <SelectItem value="FALLIDA">Fallida</SelectItem>
-                              <SelectItem value="CANCELADA">Cancelada</SelectItem>
+                              <SelectItem value="CANCELADA">
+                                Cancelada
+                              </SelectItem>
                             </SelectContent>
                           </Select>
                         </TableCell>
@@ -600,7 +751,7 @@ export default function SeguimientoPage() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {(guide?.guideNumber || order.guideNumber) ? (
+                          {guide?.guideNumber || order.guideNumber ? (
                             <Badge
                               className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
                               onClick={() => handleOpenGuide(item)}

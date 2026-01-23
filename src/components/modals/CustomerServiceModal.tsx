@@ -4,7 +4,24 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { toast } from "sonner";
-import { Phone, PhoneOff, MessageCircle, DollarSign, Pencil, Plus, MoreVertical, Check, Printer, Clock, User, Settings, Send, Copy, Truck, Package } from "lucide-react";
+import {
+  Phone,
+  PhoneOff,
+  MessageCircle,
+  DollarSign,
+  Pencil,
+  Plus,
+  MoreVertical,
+  Check,
+  Printer,
+  Clock,
+  User,
+  Settings,
+  Send,
+  Copy,
+  Truck,
+  Package,
+} from "lucide-react";
 import { Textarea } from "../ui/textarea";
 import {
   DropdownMenu,
@@ -13,6 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
 import CancellationModal, { CancellationReason } from "./CancellationModal";
+import AddProductsModal from "./AddProductsModal";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
@@ -123,7 +141,14 @@ interface OrderReceipt {
   };
 }
 
-export default function CustomerServiceModal({ open, orderId, onClose, onOrderUpdated, hideCallManagement = false, shippingGuide }: Props) {
+export default function CustomerServiceModal({
+  open,
+  orderId,
+  onClose,
+  onOrderUpdated,
+  hideCallManagement = false,
+  shippingGuide,
+}: Props) {
   const router = useRouter();
   const { auth } = useAuth();
   const [loading, setLoading] = useState(false);
@@ -131,6 +156,7 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
   const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
   const [isCancelling, setIsCancelling] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [addProductsModalOpen, setAddProductsModalOpen] = useState(false);
 
   // Comments timeline states
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -147,7 +173,7 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
     setLogsLoading(true);
     try {
       const res = await axios.get<LogEntry[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas/${orderId}`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas/${orderId}`,
       );
       setLogs(res.data);
     } catch (error) {
@@ -201,12 +227,12 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
     try {
       setLoading(true);
       const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
       );
       setReceipt(res.data);
 
       const orderRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
       );
       setNotes(orderRes.data.notes || "");
     } catch (err) {
@@ -217,7 +243,9 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
     }
   };
 
-  const handleUpdateCallStatus = async (callStatus: "CONFIRMED" | "NO_ANSWER") => {
+  const handleUpdateCallStatus = async (
+    callStatus: "CONFIRMED" | "NO_ANSWER",
+  ) => {
     try {
       const payload: { callStatus: string; status?: string } = { callStatus };
 
@@ -227,10 +255,14 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
 
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        payload
+        payload,
       );
 
-      toast.success(callStatus === "CONFIRMED" ? "Entrega confirmada" : "Registrado como no contesta");
+      toast.success(
+        callStatus === "CONFIRMED"
+          ? "Entrega confirmada"
+          : "Registrado como no contesta",
+      );
       fetchReceipt();
       onOrderUpdated?.();
     } catch (error) {
@@ -244,7 +276,7 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
       setSavingNotes(true);
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        { notes }
+        { notes },
       );
       toast.success("Notas guardadas");
     } catch (error) {
@@ -265,27 +297,18 @@ export default function CustomerServiceModal({ open, orderId, onClose, onOrderUp
 
     window.open(
       `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
-      "_blank"
+      "_blank",
     );
   };
 
-  const handleCopyCustomerData = async () => {
-    if (!receipt) return;
-    const { customer } = receipt;
-    const text = `Nombre: ${customer.fullName || "-"}
-Teléfono: ${customer.phoneNumber || "-"}
-DNI: ${customer.dni || "-"}
-Dirección: ${customer.address || "-"}
-Distrito: ${customer.district || "-"}
-Provincia: ${customer.province || "-"}
-Departamento: ${customer.city || "-"}`;
-
+  const copyField = async (value: string | undefined, fieldName: string) => {
+    if (!value || value === "-") {
+      return;
+    }
     try {
-      await navigator.clipboard.writeText(text);
-      toast.success("Datos del cliente copiados");
+      await navigator.clipboard.writeText(value);
     } catch (error) {
-      console.error("Error copiando datos", error);
-      toast.error("Error al copiar los datos");
+      console.error("Error copiando", error);
     }
   };
 
@@ -308,7 +331,7 @@ Departamento: ${customer.city || "-"}`;
     const pendingAmount = receipt.totals.pendingAmount || 0;
 
     // Crear ventana de impresión con contenido limpio
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    const printWindow = window.open("", "_blank", "width=400,height=600");
     if (!printWindow) {
       toast.error("No se pudo abrir la ventana de impresión");
       return;
@@ -421,7 +444,7 @@ Departamento: ${customer.city || "-"}`;
       </head>
       <body>
         <div class="header">
-          ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" class="qr-code">` : ''}
+          ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" class="qr-code">` : ""}
           <div class="header-info">
             <div class="order-title">Orden # ${receipt.orderNumber}</div>
             <div class="order-total">Total: S/ ${receipt.totals.grandTotal.toFixed(2)}</div>
@@ -436,39 +459,39 @@ Departamento: ${customer.city || "-"}`;
             </div>
             <div class="info-item">
               <span class="info-label">Distrito:</span>
-              <span class="info-value">${receipt.customer.district || '-'}</span>
+              <span class="info-value">${receipt.customer.district || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Teléfono:</span>
-              <span class="info-value">${receipt.customer.phoneNumber || '-'}</span>
+              <span class="info-value">${receipt.customer.phoneNumber || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Tipo:</span>
-              <span class="info-value">${receipt.customer.clientType || '-'}</span>
+              <span class="info-value">${receipt.customer.clientType || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Dirección:</span>
-              <span class="info-value">${receipt.customer.address || '-'}</span>
+              <span class="info-value">${receipt.customer.address || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Referencia:</span>
-              <span class="info-value">${receipt.customer.reference || '-'}</span>
+              <span class="info-value">${receipt.customer.reference || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Departamento:</span>
-              <span class="info-value">${receipt.customer.city || '-'}</span>
+              <span class="info-value">${receipt.customer.city || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Canal:</span>
-              <span class="info-value">${receipt.salesChannel || '-'}</span>
+              <span class="info-value">${receipt.salesChannel || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Provincia:</span>
-              <span class="info-value">${receipt.customer.province || '-'}</span>
+              <span class="info-value">${receipt.customer.province || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">DNI:</span>
-              <span class="info-value">${receipt.customer.dni || '-'}</span>
+              <span class="info-value">${receipt.customer.dni || "-"}</span>
             </div>
           </div>
         </div>
@@ -484,21 +507,27 @@ Departamento: ${customer.city || "-"}`;
               </tr>
             </thead>
             <tbody>
-              ${receipt.items.map((item: any) => {
-      const attrs = item.attributes ? Object.entries(item.attributes).map(([k, v]) => `${v}`).join('/') : '';
-      const discount = Number(item.discountAmount) || 0;
-      const subtotal = Number(item.subtotal);
-      return `
+              ${receipt.items
+                .map((item: any) => {
+                  const attrs = item.attributes
+                    ? Object.entries(item.attributes)
+                        .map(([k, v]) => `${v}`)
+                        .join("/")
+                    : "";
+                  const discount = Number(item.discountAmount) || 0;
+                  const subtotal = Number(item.subtotal);
+                  return `
                   <tr>
                     <td class="qty">${item.quantity}</td>
                     <td>
-                      ${item.productName}${attrs ? ` (${attrs})` : ''}
-                      ${discount > 0 ? `<div class="desc">Dcto: -S/${discount.toFixed(2)}</div>` : ''}
+                      ${item.productName}${attrs ? ` (${attrs})` : ""}
+                      ${discount > 0 ? `<div class="desc">Dcto: -S/${discount.toFixed(2)}</div>` : ""}
                     </td>
                     <td class="price">S/${subtotal.toFixed(2)}</td>
                   </tr>
                 `;
-    }).join('')}
+                })
+                .join("")}
             </tbody>
           </table>
         </div>
@@ -559,20 +588,20 @@ Departamento: ${customer.city || "-"}`;
     const companyPhone = company?.phone || "";
     const companyLogo = company?.logoUrl;
 
-    const printWindow = window.open('', '_blank', 'width=500,height=700');
+    const printWindow = window.open("", "_blank", "width=500,height=700");
     if (!printWindow) {
       toast.error("No se pudo abrir la ventana de impresión");
       return;
     }
 
     // Construir dirección completa del consignado con formato courier
-    const courierName = shippingGuide.courierName || 'COURIER';
-    const customerAddress = shippingGuide.shippingOffice 
+    const courierName = shippingGuide.courierName || "COURIER";
+    const customerAddress = shippingGuide.shippingOffice
       ? `${courierName} ${shippingGuide.shippingOffice}`
-      : (receipt.customer.address || '-');
+      : receipt.customer.address || "-";
 
     // Logo: usar imagen si existe, sino texto del nombre de la empresa
-    const logoElement = companyLogo 
+    const logoElement = companyLogo
       ? `<img src="${companyLogo}" alt="${companyName}" class="brand-logo">`
       : `<div class="brand-name">${companyName}</div>`;
 
@@ -690,9 +719,9 @@ Departamento: ${customer.city || "-"}`;
             <div class="col-left">
               <div class="section-title">REMITENTE</div>
               <div>${companyName}</div>
-              ${companyCuit ? `<div>${companyCuit}</div>` : ''}
-              ${companyAddress ? `<div>${companyAddress}</div>` : ''}
-              ${companyPhone ? `<div>${companyPhone}</div>` : ''}
+              ${companyCuit ? `<div>${companyCuit}</div>` : ""}
+              ${companyAddress ? `<div>${companyAddress}</div>` : ""}
+              ${companyPhone ? `<div>${companyPhone}</div>` : ""}
             </div>
             
             <!-- MARCA/LOGO (lado derecho) -->
@@ -708,16 +737,16 @@ Departamento: ${customer.city || "-"}`;
             
             <div class="dni-row">
               <span class="dni-label">DNI</span> 
-              <span class="info-value">${receipt.customer.dni || '-'}</span>
+              <span class="info-value">${receipt.customer.dni || "-"}</span>
             </div>
             
             <div class="dni-row">
               <span class="dni-label">TELEFONO</span> 
-              <span class="info-value">${receipt.customer.phoneNumber || '-'}</span>
+              <span class="info-value">${receipt.customer.phoneNumber || "-"}</span>
             </div>
             
             <div class="location">
-              ${receipt.customer.province || '-'} - ${receipt.customer.city || receipt.customer.province || '-'} - ${receipt.customer.district || '-'}
+              ${receipt.customer.province || "-"} - ${receipt.customer.city || receipt.customer.province || "-"} - ${receipt.customer.district || "-"}
             </div>
             
             <div class="address-line">
@@ -733,7 +762,7 @@ Departamento: ${customer.city || "-"}`;
           <!-- Footer con info de orden -->
           <div class="order-footer">
             Orden #${receipt.orderNumber} | Total: S/ ${receipt.totals.grandTotal.toFixed(2)}
-            ${Number(shippingGuide.amountToCollect) > 0 ? ` | <strong>COBRAR: S/ ${Number(shippingGuide.amountToCollect).toFixed(2)}</strong>` : ''}
+            ${Number(shippingGuide.amountToCollect) > 0 ? ` | <strong>COBRAR: S/ ${Number(shippingGuide.amountToCollect).toFixed(2)}</strong>` : ""}
           </div>
         </div>
       </body>
@@ -750,7 +779,10 @@ Departamento: ${customer.city || "-"}`;
     };
   };
 
-  const handleConfirmCancellation = async (reason: CancellationReason, reasonNotes?: string) => {
+  const handleConfirmCancellation = async (
+    reason: CancellationReason,
+    reasonNotes?: string,
+  ) => {
     setIsCancelling(true);
     try {
       await axios.patch(
@@ -759,7 +791,7 @@ Departamento: ${customer.city || "-"}`;
           status: "ANULADO",
           cancellationReason: reason,
           notes: reasonNotes,
-        }
+        },
       );
       toast.success("Venta anulada");
       setCancellationModalOpen(false);
@@ -783,515 +815,761 @@ Departamento: ${customer.city || "-"}`;
         <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
           {loading ? (
             <div className="p-8 text-center">Cargando...</div>
-          ) : receipt && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* ================================== */}
-              {/* SECCIÓN IZQUIERDA */}
-              {/* ================================== */}
-              <div className="space-y-4">
-                {/* Header: N° Orden y Total */}
-                <div className="border-b pb-4">
-                  <h2 className="text-2xl font-bold">N° de Orden # {receipt.orderNumber}</h2>
-                  <p className="text-2xl font-bold text-primary">Total: S/{receipt.totals.grandTotal.toFixed(2)}</p>
-                </div>
+          ) : (
+            receipt && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* ================================== */}
+                {/* SECCIÓN IZQUIERDA */}
+                {/* ================================== */}
+                <div className="space-y-4">
+                  {/* Header: N° Orden y Total */}
+                  <div className="border-b pb-4">
+                    <h2 className="text-2xl font-bold">
+                      N° de Orden # {receipt.orderNumber}
+                    </h2>
+                    <p className="text-2xl font-bold text-primary">
+                      Total: S/{receipt.totals.grandTotal.toFixed(2)}
+                    </p>
+                  </div>
 
-                {/* Productos */}
-                <div className="border border-border rounded-lg p-4">
-                  <h3 className="font-semibold mb-3 text-lg">Productos</h3>
-                  <div className="space-y-3 max-h-[250px] overflow-y-auto">
-                    {receipt.items.map((item, i) => (
-                      <div key={i} className="border border-border rounded-md p-3 bg-muted">
-                        <p className="font-medium text-base">{item.productName}</p>
-                        {item.attributes && Object.keys(item.attributes).length > 0 && (
-                          <div className="text-xs text-muted-foreground mt-1">
-                            {Object.entries(item.attributes).map(([k, v]) => (
-                              <span key={k} className="mr-2 bg-secondary px-1 rounded">{k}: {String(v)}</span>
-                            ))}
+                  {/* Productos */}
+                  <div className="border border-border rounded-lg p-4">
+                    <h3 className="font-semibold mb-3 text-lg">Productos</h3>
+                    <div className="space-y-3 max-h-[250px] overflow-y-auto">
+                      {receipt.items.map((item, i) => (
+                        <div
+                          key={i}
+                          className="border border-border rounded-md p-3 bg-muted"
+                        >
+                          <p className="font-medium text-base">
+                            {item.productName}
+                          </p>
+                          {item.attributes &&
+                            Object.keys(item.attributes).length > 0 && (
+                              <div className="text-xs text-muted-foreground mt-1">
+                                {Object.entries(item.attributes).map(
+                                  ([k, v]) => (
+                                    <span
+                                      key={k}
+                                      className="mr-2 bg-secondary px-1 rounded"
+                                    >
+                                      {k}: {String(v)}
+                                    </span>
+                                  ),
+                                )}
+                              </div>
+                            )}
+                          <div className="flex justify-between text-sm mt-2">
+                            <span>
+                              Cantidad: <strong>{item.quantity}</strong>
+                            </span>
+                            <span>
+                              Valor Und:{" "}
+                              <strong>S/{item.unitPrice.toFixed(2)}</strong>
+                            </span>
                           </div>
-                        )}
-                        <div className="flex justify-between text-sm mt-2">
-                          <span>Cantidad: <strong>{item.quantity}</strong></span>
-                          <span>Valor Und: <strong>S/{item.unitPrice.toFixed(2)}</strong></span>
+                          <div className="flex justify-between text-sm font-medium mt-1 pt-1 border-t border-border">
+                            <span>Sub Total:</span>
+                            <span className="text-primary">
+                              S/{item.subtotal.toFixed(2)}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex justify-between text-sm font-medium mt-1 pt-1 border-t border-border">
-                          <span>Sub Total:</span>
-                          <span className="text-primary">S/{item.subtotal.toFixed(2)}</span>
-                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Resumen de Pagos */}
+                  <div className="border border-border rounded-lg p-4 bg-muted">
+                    <h3 className="font-semibold mb-3 text-lg">
+                      Resumen de Pagos
+                    </h3>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Productos:</span>
+                        <span>S/{receipt.totals.productsTotal.toFixed(2)}</span>
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Resumen de Pagos */}
-                <div className="border border-border rounded-lg p-4 bg-muted">
-                  <h3 className="font-semibold mb-3 text-lg">Resumen de Pagos</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span>Productos:</span>
-                      <span>S/{receipt.totals.productsTotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>IGV 18%:</span>
-                      <span>S/{receipt.totals.taxTotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Envío:</span>
-                      <span>S/{receipt.totals.shippingTotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
-                      <span>Total:</span>
-                      <span>S/{receipt.totals.grandTotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-muted-foreground">
-                      <span>Descuentos:</span>
-                      <span>S/{receipt.totals.discountTotal.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-green-600 font-medium">
-                      <span>Adelanto:</span>
-                      <span>S/{receipt.totals.totalPaid.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between text-red-600 font-bold text-base">
-                      <span>Por Cobrar:</span>
-                      <span>S/{receipt.totals.pendingAmount.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* ================================== */}
-              {/* SECCIÓN DERECHA */}
-              {/* ================================== */}
-              <div className="space-y-4">
-                {/* Cliente */}
-                <div className="border border-border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold text-lg">Cliente</h3>
-                    <div className="flex gap-1">
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="h-9 w-9 bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900"
-                        onClick={handleWhatsApp}
-                        title="WhatsApp"
-                      >
-                        <MessageCircle className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="relative h-9 w-9 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900"
-                        onClick={() => setPaymentModalOpen(true)}
-                        title={receipt.payments.some((p) => p.status === "PENDING") ? "Pagos pendientes de aprobación" : "Gestionar Pagos"}
-                      >
-                        <DollarSign className="h-4 w-4" />
-                        {receipt.payments.some((p) => p.status === "PENDING") && (
-                          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                          </span>
-                        )}
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="h-9 w-9 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
-                        onClick={handlePrint}
-                        title="Imprimir"
-                      >
-                        <Printer className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="h-9 w-9 bg-violet-50 dark:bg-violet-950 text-violet-600 dark:text-violet-400 hover:bg-violet-100 dark:hover:bg-violet-900"
-                        onClick={handleCopyCustomerData}
-                        title="Copiar datos del cliente"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="h-9 w-9"
-                        onClick={() => router.push(`/registrar-venta?orderId=${orderId}`)}
-                        title="Editar Pedido"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                    <div>
-                      <span className="text-muted-foreground">Nombre: </span>
-                      <span className="font-medium">{receipt.customer.fullName}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Distrito: </span>
-                      <span className="font-medium">{receipt.customer.district || "-"}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Teléfono: </span>
-                      <span className="font-medium">{receipt.customer.phoneNumber || "-"}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Tipo: </span>
-                      <span className="font-medium">{receipt.customer.clientType || "-"}</span>
-                    </div>
-                    <div className="col-span-2">
-                      <span className="text-muted-foreground">Dirección: </span>
-                      <span className="font-medium">{receipt.customer.address || "-"}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Departamento: </span>
-                      <span className="font-medium">{receipt.customer.city || "-"}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Canal Venta: </span>
-                      <span className="font-medium">{receipt.salesChannel || "-"}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Provincia: </span>
-                      <span className="font-medium">{receipt.customer.province || "-"}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Canal Cierre: </span>
-                      <span className="font-medium">{receipt.closingChannel || "-"}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">DNI: </span>
-                      <span className="font-medium">{receipt.customer.dni || "-"}</span>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground">Referencia: </span>
-                      <span className="font-medium">{receipt.customer.reference || "-"}</span>
+                      <div className="flex justify-between">
+                        <span>IGV 18%:</span>
+                        <span>S/{receipt.totals.taxTotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Envío:</span>
+                        <span>S/{receipt.totals.shippingTotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
+                        <span>Total:</span>
+                        <span>S/{receipt.totals.grandTotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>Descuentos:</span>
+                        <span>S/{receipt.totals.discountTotal.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-green-600 font-medium">
+                        <span>Adelanto:</span>
+                        <span>S/{receipt.totals.totalPaid.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600 font-bold text-base">
+                        <span>Por Cobrar:</span>
+                        <span>S/{receipt.totals.pendingAmount.toFixed(2)}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Shipping Guide Section - only shown when shippingGuide data is provided */}
-                {shippingGuide && (
-                  <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50/50 dark:bg-blue-950/30">
+                {/* ================================== */}
+                {/* SECCIÓN DERECHA */}
+                {/* ================================== */}
+                <div className="space-y-4">
+                  {/* Cliente */}
+                  <div className="border border-border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2">
-                        <Truck className="h-4 w-4" />
-                        Guía de Envío
-                      </h3>
-                      <div className="flex gap-1 items-center">
+                      <h3 className="font-semibold text-lg">Cliente</h3>
+                      <div className="flex gap-1">
                         <Button
                           size="icon"
                           variant="outline"
-                          className="h-7 w-7 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900"
-                          onClick={handlePrintShippingReceipt}
-                          title="Imprimir Comprobante de Envío"
+                          className="h-9 w-9 bg-green-50 dark:bg-green-950 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900"
+                          onClick={handleWhatsApp}
+                          title="WhatsApp"
                         >
-                          <Printer className="h-3.5 w-3.5" />
+                          <MessageCircle className="h-4 w-4" />
                         </Button>
-                        <span className={`px-2 py-1 rounded text-xs font-medium ${shippingGuide.status === "ENTREGADA" ? "bg-green-100 text-green-800" :
-                          shippingGuide.status === "EN_RUTA" ? "bg-blue-100 text-blue-800" :
-                            shippingGuide.status === "FALLIDA" || shippingGuide.status === "CANCELADA" ? "bg-red-100 text-red-800" :
-                              "bg-gray-100 text-gray-800"
-                          }`}>
-                          {shippingGuide.status}
-                        </span>
-                        {shippingGuide.daysSinceCreated !== undefined && shippingGuide.daysSinceCreated >= 25 && (
-                          <span className={`px-2 py-1 rounded text-xs font-medium ${shippingGuide.daysSinceCreated >= 30 ? "bg-red-600 text-white" : "bg-amber-500 text-white"
-                            }`}>
-                            {shippingGuide.daysSinceCreated >= 30 ? "VENCIDO" : "PRÓXIMO"}
-                          </span>
-                        )}
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="relative h-9 w-9 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900"
+                          onClick={() => setPaymentModalOpen(true)}
+                          title={
+                            receipt.payments.some((p) => p.status === "PENDING")
+                              ? "Pagos pendientes de aprobación"
+                              : "Gestionar Pagos"
+                          }
+                        >
+                          <DollarSign className="h-4 w-4" />
+                          {receipt.payments.some(
+                            (p) => p.status === "PENDING",
+                          ) && (
+                            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                            </span>
+                          )}
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-9 w-9 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
+                          onClick={handlePrint}
+                          title="Imprimir"
+                        >
+                          <Printer className="h-4 w-4" />
+                        </Button>
+
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-9 w-9"
+                          onClick={() =>
+                            router.push(`/registrar-venta?orderId=${orderId}`)
+                          }
+                          title="Editar Pedido"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      <div>
-                        <span className="text-muted-foreground">N° Guía: </span>
-                        <span className="font-medium">{shippingGuide.guideNumber}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Courier: </span>
-                        <span className="font-medium">{shippingGuide.courierName || "-"}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Zona: </span>
-                        <span className="font-medium">{shippingGuide.deliveryZone}</span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Tipo Envío: </span>
-                        <span className="font-medium">{shippingGuide.deliveryType}</span>
-                      </div>
-                      {shippingGuide.shippingKey && (
-                        <div>
-                          <span className="text-muted-foreground">Clave Envío: </span>
-                          <span className="font-medium">{shippingGuide.shippingKey}</span>
-                        </div>
-                      )}
-                      {shippingGuide.shippingOffice && (
-                        <div>
-                          <span className="text-muted-foreground">Oficina: </span>
-                          <span className="font-medium">{shippingGuide.shippingOffice}</span>
-                        </div>
-                      )}
-                      {shippingGuide.chargeType && (
-                        <div>
-                          <span className="text-muted-foreground">Tipo Cobro: </span>
-                          <span className="font-medium">{shippingGuide.chargeType}</span>
-                        </div>
-                      )}
-                      {shippingGuide.amountToCollect != null && shippingGuide.amountToCollect > 0 && (
-                        <div>
-                          <span className="text-muted-foreground">Monto a Cobrar: </span>
-                          <span className="font-medium text-amber-600">S/ {Number(shippingGuide.amountToCollect).toFixed(2)}</span>
-                        </div>
-                      )}
-                      <div>
-                        <span className="text-muted-foreground">Días en tránsito: </span>
-                        <span className={`font-medium ${(shippingGuide.daysSinceCreated || 0) >= 30 ? "text-red-600" :
-                          (shippingGuide.daysSinceCreated || 0) >= 25 ? "text-amber-600" :
-                            ""
-                          }`}>
-                          {shippingGuide.daysSinceCreated || 0} días
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-muted-foreground">Fecha Creación: </span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">Nombre: </span>
                         <span className="font-medium">
-                          {new Date(shippingGuide.created_at).toLocaleDateString("es-PE")}
+                          {receipt.customer.fullName}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            copyField(receipt.customer.fullName, "Nombre")
+                          }
+                          title="Copiar nombre"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">
+                          Distrito:{" "}
+                        </span>
+                        <span className="font-medium">
+                          {receipt.customer.district || "-"}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            copyField(receipt.customer.district, "Distrito")
+                          }
+                          title="Copiar distrito"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">
+                          Teléfono:{" "}
+                        </span>
+                        <span className="font-medium">
+                          {receipt.customer.phoneNumber || "-"}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            copyField(receipt.customer.phoneNumber, "Teléfono")
+                          }
+                          title="Copiar teléfono"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Tipo: </span>
+                        <span className="font-medium">
+                          {receipt.customer.clientType || "-"}
                         </span>
                       </div>
-                      {shippingGuide.trackingUrl && (
-                        <div className="col-span-2">
-                          <span className="text-muted-foreground">Tracking: </span>
-                          <a
-                            href={shippingGuide.trackingUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="font-medium text-blue-600 hover:underline"
-                          >
-                            Ver seguimiento →
-                          </a>
-                        </div>
-                      )}
-                      {shippingGuide.deliveryAddress && (
-                        <div className="col-span-2">
-                          <span className="text-muted-foreground">Dirección Envío: </span>
-                          <span className="font-medium">{shippingGuide.deliveryAddress}</span>
-                        </div>
-                      )}
+                      <div className="col-span-2 flex items-center gap-1">
+                        <span className="text-muted-foreground">
+                          Dirección:{" "}
+                        </span>
+                        <span className="font-medium">
+                          {receipt.customer.address || "-"}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            copyField(receipt.customer.address, "Dirección")
+                          }
+                          title="Copiar dirección"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">
+                          Departamento:{" "}
+                        </span>
+                        <span className="font-medium">
+                          {receipt.customer.city || "-"}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            copyField(receipt.customer.city, "Departamento")
+                          }
+                          title="Copiar departamento"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">
+                          Canal Venta:{" "}
+                        </span>
+                        <span className="font-medium">
+                          {receipt.salesChannel || "-"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">
+                          Provincia:{" "}
+                        </span>
+                        <span className="font-medium">
+                          {receipt.customer.province || "-"}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                          onClick={() =>
+                            copyField(receipt.customer.province, "Provincia")
+                          }
+                          title="Copiar provincia"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">
+                          Canal Cierre:{" "}
+                        </span>
+                        <span className="font-medium">
+                          {receipt.closingChannel || "-"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">DNI: </span>
+                        <span className="font-medium">
+                          {receipt.customer.dni || "-"}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                          onClick={() => copyField(receipt.customer.dni, "DNI")}
+                          title="Copiar DNI"
+                        >
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">
+                          Referencia:{" "}
+                        </span>
+                        <span className="font-medium">
+                          {receipt.customer.reference || "-"}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                )}
 
-                {/* Promo del día - only shown in customer service view */}
-                {!hideCallManagement && (
-                  <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h3 className="font-semibold text-red-700 dark:text-red-400">Promo del día</h3>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 text-red-600 dark:text-red-400"
-                        onClick={() => router.push(`/registrar-venta?orderId=${orderId}&isPromo=true`)}
-                      >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Agregar productos
-                      </Button>
-                    </div>
-                    <p className="text-sm text-red-600 dark:text-red-400">Agregar más productos a la venta</p>
-                  </div>
-                )}
-
-                {/* Gestión de Llamada - only shown in customer service view */}
-                {!hideCallManagement && (
-                  <div className="border border-border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold">Gestión de llamada</h3>
-                      <span className={`text-sm font-medium px-2 py-1 rounded ${(receipt.callAttempts || 0) >= 3
-                        ? "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400"
-                        : (receipt.callAttempts || 0) >= 2
-                          ? "bg-yellow-100 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-400"
-                          : "bg-muted text-foreground"
-                        }`}>
-                        Intentos: {receipt.callAttempts || 0}/3
-                      </span>
-                    </div>
-
-                    {isConfirmed ? (
-                      <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-4 text-center">
-                        <div className="flex items-center justify-center gap-2 text-green-700 dark:text-green-400">
-                          <Check className="h-5 w-5" />
-                          <span className="font-semibold">VENTA CONFIRMADA</span>
-                        </div>
-                        <p className="text-sm text-green-600 dark:text-green-400 mt-1">
-                          El cliente confirmó la entrega del pedido
-                        </p>
-                      </div>
-                    ) : (receipt.callAttempts || 0) >= 3 ? (
-                      <div className="space-y-3">
-                        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4 text-center">
-                          <div className="flex items-center justify-center gap-2 text-red-700 dark:text-red-400">
-                            <PhoneOff className="h-5 w-5" />
-                            <span className="font-semibold">LÍMITE DE INTENTOS ALCANZADO</span>
-                          </div>
-                          <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                            Se han realizado 3 intentos de llamada sin respuesta.
-                            <br />Se recomienda anular la venta.
-                          </p>
-                        </div>
-                        <div className="flex gap-3">
+                  {/* Shipping Guide Section - only shown when shippingGuide data is provided */}
+                  {shippingGuide && (
+                    <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50/50 dark:bg-blue-950/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2">
+                          <Truck className="h-4 w-4" />
+                          Guía de Envío
+                        </h3>
+                        <div className="flex gap-1 items-center">
                           <Button
-                            className="flex-1 bg-green-600 hover:bg-green-700"
-                            onClick={() => handleUpdateCallStatus("CONFIRMED")}
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900"
+                            onClick={handlePrintShippingReceipt}
+                            title="Imprimir Comprobante de Envío"
                           >
-                            <Phone className="h-4 w-4 mr-2" />
-                            CONFIRMA ENTREGA
+                            <Printer className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            variant="destructive"
-                            className="flex-1"
-                            onClick={() => setCancellationModalOpen(true)}
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-medium ${
+                              shippingGuide.status === "ENTREGADA"
+                                ? "bg-green-100 text-green-800"
+                                : shippingGuide.status === "EN_RUTA"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : shippingGuide.status === "FALLIDA" ||
+                                      shippingGuide.status === "CANCELADA"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-gray-100 text-gray-800"
+                            }`}
                           >
-                            ANULAR VENTA
-                          </Button>
+                            {shippingGuide.status}
+                          </span>
+                          {shippingGuide.daysSinceCreated !== undefined &&
+                            shippingGuide.daysSinceCreated >= 25 && (
+                              <span
+                                className={`px-2 py-1 rounded text-xs font-medium ${
+                                  shippingGuide.daysSinceCreated >= 30
+                                    ? "bg-red-600 text-white"
+                                    : "bg-amber-500 text-white"
+                                }`}
+                              >
+                                {shippingGuide.daysSinceCreated >= 30
+                                  ? "VENCIDO"
+                                  : "PRÓXIMO"}
+                              </span>
+                            )}
                         </div>
                       </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {(receipt.callAttempts || 0) >= 2 && (
-                          <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-2 text-center">
-                            <p className="text-sm text-yellow-700 dark:text-yellow-400">
-                              ⚠️ Último intento antes de sugerir anulación
-                            </p>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">
+                            N° Guía:{" "}
+                          </span>
+                          <span className="font-medium">
+                            {shippingGuide.guideNumber}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">
+                            Courier:{" "}
+                          </span>
+                          <span className="font-medium">
+                            {shippingGuide.courierName || "-"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Zona: </span>
+                          <span className="font-medium">
+                            {shippingGuide.deliveryZone}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">
+                            Tipo Envío:{" "}
+                          </span>
+                          <span className="font-medium">
+                            {shippingGuide.deliveryType}
+                          </span>
+                        </div>
+                        {shippingGuide.shippingKey && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Clave Envío:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {shippingGuide.shippingKey}
+                            </span>
                           </div>
                         )}
-                        <div className="flex gap-3">
-                          <Button
-                            className="flex-1 bg-green-600 hover:bg-green-700"
-                            onClick={() => handleUpdateCallStatus("CONFIRMED")}
+                        {shippingGuide.shippingOffice && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Oficina:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {shippingGuide.shippingOffice}
+                            </span>
+                          </div>
+                        )}
+                        {shippingGuide.chargeType && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Tipo Cobro:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {shippingGuide.chargeType}
+                            </span>
+                          </div>
+                        )}
+                        {shippingGuide.amountToCollect != null &&
+                          shippingGuide.amountToCollect > 0 && (
+                            <div>
+                              <span className="text-muted-foreground">
+                                Monto a Cobrar:{" "}
+                              </span>
+                              <span className="font-medium text-amber-600">
+                                S/{" "}
+                                {Number(shippingGuide.amountToCollect).toFixed(
+                                  2,
+                                )}
+                              </span>
+                            </div>
+                          )}
+                        <div>
+                          <span className="text-muted-foreground">
+                            Días en tránsito:{" "}
+                          </span>
+                          <span
+                            className={`font-medium ${
+                              (shippingGuide.daysSinceCreated || 0) >= 30
+                                ? "text-red-600"
+                                : (shippingGuide.daysSinceCreated || 0) >= 25
+                                  ? "text-amber-600"
+                                  : ""
+                            }`}
                           >
-                            <Phone className="h-4 w-4 mr-2" />
-                            CONFIRMA ENTREGA
-                          </Button>
-                          <Button
-                            variant="outline"
-                            className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
-                            onClick={() => handleUpdateCallStatus("NO_ANSWER")}
-                          >
-                            <PhoneOff className="h-4 w-4 mr-2" />
-                            NO CONTESTA ({(receipt.callAttempts || 0) + 1}/3)
-                          </Button>
+                            {shippingGuide.daysSinceCreated || 0} días
+                          </span>
                         </div>
+                        <div>
+                          <span className="text-muted-foreground">
+                            Fecha Creación:{" "}
+                          </span>
+                          <span className="font-medium">
+                            {new Date(
+                              shippingGuide.created_at,
+                            ).toLocaleDateString("es-PE")}
+                          </span>
+                        </div>
+                        {shippingGuide.trackingUrl && (
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">
+                              Tracking:{" "}
+                            </span>
+                            <a
+                              href={shippingGuide.trackingUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-blue-600 hover:underline"
+                            >
+                              Ver seguimiento →
+                            </a>
+                          </div>
+                        )}
+                        {shippingGuide.deliveryAddress && (
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">
+                              Dirección Envío:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {shippingGuide.deliveryAddress}
+                            </span>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
 
-                {/* Comentarios Timeline */}
-                <div className="border border-border rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-semibold">Historial / Comentarios</h3>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          Más acciones
-                          <MoreVertical className="h-4 w-4 ml-1" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          className="text-red-600"
-                          onClick={() => setCancellationModalOpen(true)}
+                  {/* Promo del día - only shown in customer service view */}
+                  {!hideCallManagement && (
+                    <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-semibold text-red-700 dark:text-red-400">
+                          Promo del día
+                        </h3>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 text-red-600 dark:text-red-400"
+                          onClick={() => setAddProductsModalOpen(true)}
                         >
-                          Anular Venta
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                          <Plus className="h-4 w-4 mr-1" />
+                          Agregar productos
+                        </Button>
+                      </div>
+                      <p className="text-sm text-red-600 dark:text-red-400">
+                        Agregar más productos a la venta
+                      </p>
+                    </div>
+                  )}
 
-                  {/* Timeline */}
-                  <div className="max-h-[200px] overflow-y-auto mb-3 pr-1">
-                    {logsLoading ? (
-                      <div className="text-center text-muted-foreground py-4">Cargando historial...</div>
-                    ) : logs.length === 0 ? (
-                      <div className="text-center text-muted-foreground py-4">No hay registros en el historial</div>
-                    ) : (
-                      <div className="space-y-3">
-                        {logs.map((log, index) => (
-                          <div
-                            key={log.id}
-                            className={`relative pl-5 pb-2 ${index < logs.length - 1 ? "border-l-2 border-muted ml-1.5" : "ml-1.5"
-                              }`}
+                  {/* Gestión de Llamada - only shown in customer service view */}
+                  {!hideCallManagement && (
+                    <div className="border border-border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold">Gestión de llamada</h3>
+                        <span
+                          className={`text-sm font-medium px-2 py-1 rounded ${
+                            (receipt.callAttempts || 0) >= 3
+                              ? "bg-red-100 dark:bg-red-950 text-red-700 dark:text-red-400"
+                              : (receipt.callAttempts || 0) >= 2
+                                ? "bg-yellow-100 dark:bg-yellow-950 text-yellow-700 dark:text-yellow-400"
+                                : "bg-muted text-foreground"
+                          }`}
+                        >
+                          Intentos: {receipt.callAttempts || 0}/3
+                        </span>
+                      </div>
+
+                      {isConfirmed ? (
+                        <div className="bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg p-4 text-center">
+                          <div className="flex items-center justify-center gap-2 text-green-700 dark:text-green-400">
+                            <Check className="h-5 w-5" />
+                            <span className="font-semibold">
+                              VENTA CONFIRMADA
+                            </span>
+                          </div>
+                          <p className="text-sm text-green-600 dark:text-green-400 mt-1">
+                            El cliente confirmó la entrega del pedido
+                          </p>
+                        </div>
+                      ) : (receipt.callAttempts || 0) >= 3 ? (
+                        <div className="space-y-3">
+                          <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4 text-center">
+                            <div className="flex items-center justify-center gap-2 text-red-700 dark:text-red-400">
+                              <PhoneOff className="h-5 w-5" />
+                              <span className="font-semibold">
+                                LÍMITE DE INTENTOS ALCANZADO
+                              </span>
+                            </div>
+                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                              Se han realizado 3 intentos de llamada sin
+                              respuesta.
+                              <br />
+                              Se recomienda anular la venta.
+                            </p>
+                          </div>
+                          <div className="flex gap-3">
+                            <Button
+                              className="flex-1 bg-green-600 hover:bg-green-700"
+                              onClick={() =>
+                                handleUpdateCallStatus("CONFIRMED")
+                              }
+                            >
+                              <Phone className="h-4 w-4 mr-2" />
+                              CONFIRMA ENTREGA
+                            </Button>
+                            <Button
+                              variant="destructive"
+                              className="flex-1"
+                              onClick={() => setCancellationModalOpen(true)}
+                            >
+                              ANULAR VENTA
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {(receipt.callAttempts || 0) >= 2 && (
+                            <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg p-2 text-center">
+                              <p className="text-sm text-yellow-700 dark:text-yellow-400">
+                                ⚠️ Último intento antes de sugerir anulación
+                              </p>
+                            </div>
+                          )}
+                          <div className="flex gap-3">
+                            <Button
+                              className="flex-1 bg-green-600 hover:bg-green-700"
+                              onClick={() =>
+                                handleUpdateCallStatus("CONFIRMED")
+                              }
+                            >
+                              <Phone className="h-4 w-4 mr-2" />
+                              CONFIRMA ENTREGA
+                            </Button>
+                            <Button
+                              variant="outline"
+                              className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
+                              onClick={() =>
+                                handleUpdateCallStatus("NO_ANSWER")
+                              }
+                            >
+                              <PhoneOff className="h-4 w-4 mr-2" />
+                              NO CONTESTA ({(receipt.callAttempts || 0) + 1}/3)
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Comentarios Timeline */}
+                  <div className="border border-border rounded-lg p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold">Historial / Comentarios</h3>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm">
+                            Más acciones
+                            <MoreVertical className="h-4 w-4 ml-1" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            className="text-red-600"
+                            onClick={() => setCancellationModalOpen(true)}
                           >
-                            {/* Dot */}
-                            <div
-                              className={`absolute -left-[7px] top-0 w-3 h-3 rounded-full border-2 ${log.isSystemGenerated
-                                ? "bg-muted border-muted-foreground"
-                                : "bg-primary border-primary"
-                                }`}
-                            />
+                            Anular Venta
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
 
-                            {/* Content */}
-                            <div className={`rounded-md p-2 ${log.isSystemGenerated ? 'bg-muted/30 border border-muted' : 'bg-primary/10 border border-primary/20'}`}>
-                              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-1">
-                                <div className="flex items-center gap-1.5">
-                                  <Clock className="h-3 w-3" />
-                                  <span>{formatLogDate(log.timestamp)}</span>
-                                  <span className={`px-1 py-0.5 rounded text-xs ${log.isSystemGenerated ? 'bg-muted' : 'bg-primary/20 text-primary'}`}>
-                                    {log.isSystemGenerated ? (
-                                      <><Settings className="h-2 w-2 inline mr-0.5" /> Sistema</>
-                                    ) : (
-                                      OPERACION_LABELS[log.operacion] || log.operacion
-                                    )}
-                                  </span>
-                                </div>
-                                {log.userName && (
-                                  <div className="flex items-center gap-1 text-xs font-medium">
-                                    <User className="h-3 w-3" />
-                                    <span>{log.userName}</span>
+                    {/* Timeline */}
+                    <div className="max-h-[200px] overflow-y-auto mb-3 pr-1">
+                      {logsLoading ? (
+                        <div className="text-center text-muted-foreground py-4">
+                          Cargando historial...
+                        </div>
+                      ) : logs.length === 0 ? (
+                        <div className="text-center text-muted-foreground py-4">
+                          No hay registros en el historial
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          {logs.map((log, index) => (
+                            <div
+                              key={log.id}
+                              className={`relative pl-5 pb-2 ${
+                                index < logs.length - 1
+                                  ? "border-l-2 border-muted ml-1.5"
+                                  : "ml-1.5"
+                              }`}
+                            >
+                              {/* Dot */}
+                              <div
+                                className={`absolute -left-[7px] top-0 w-3 h-3 rounded-full border-2 ${
+                                  log.isSystemGenerated
+                                    ? "bg-muted border-muted-foreground"
+                                    : "bg-primary border-primary"
+                                }`}
+                              />
+
+                              {/* Content */}
+                              <div
+                                className={`rounded-md p-2 ${log.isSystemGenerated ? "bg-muted/30 border border-muted" : "bg-primary/10 border border-primary/20"}`}
+                              >
+                                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-1">
+                                  <div className="flex items-center gap-1.5">
+                                    <Clock className="h-3 w-3" />
+                                    <span>{formatLogDate(log.timestamp)}</span>
+                                    <span
+                                      className={`px-1 py-0.5 rounded text-xs ${log.isSystemGenerated ? "bg-muted" : "bg-primary/20 text-primary"}`}
+                                    >
+                                      {log.isSystemGenerated ? (
+                                        <>
+                                          <Settings className="h-2 w-2 inline mr-0.5" />{" "}
+                                          Sistema
+                                        </>
+                                      ) : (
+                                        OPERACION_LABELS[log.operacion] ||
+                                        log.operacion
+                                      )}
+                                    </span>
                                   </div>
+                                  {log.userName && (
+                                    <div className="flex items-center gap-1 text-xs font-medium">
+                                      <User className="h-3 w-3" />
+                                      <span>{log.userName}</span>
+                                    </div>
+                                  )}
+                                </div>
+                                {log.comentarios && (
+                                  <p className="text-sm">{log.comentarios}</p>
+                                )}
+                                {!log.comentarios && log.isSystemGenerated && (
+                                  <p className="text-xs text-muted-foreground italic">
+                                    Acción automática
+                                  </p>
                                 )}
                               </div>
-                              {log.comentarios && (
-                                <p className="text-sm">{log.comentarios}</p>
-                              )}
-                              {!log.comentarios && log.isSystemGenerated && (
-                                <p className="text-xs text-muted-foreground italic">Acción automática</p>
-                              )}
                             </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Input para nuevo comentario */}
-                  <div className="border-t pt-3">
-                    <div className="flex gap-2">
-                      <Textarea
-                        value={newComment}
-                        onChange={(e) => setNewComment(e.target.value)}
-                        placeholder="Escribe un comentario..."
-                        rows={2}
-                        className="flex-1 resize-none text-sm"
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendComment();
-                          }
-                        }}
-                      />
-                      <Button
-                        onClick={handleSendComment}
-                        disabled={!newComment.trim() || isSendingComment}
-                        size="sm"
-                        className="self-end"
-                      >
-                        <Send className="h-4 w-4" />
-                      </Button>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">Enter para enviar</p>
+
+                    {/* Input para nuevo comentario */}
+                    <div className="border-t pt-3">
+                      <div className="flex gap-2">
+                        <Textarea
+                          value={newComment}
+                          onChange={(e) => setNewComment(e.target.value)}
+                          placeholder="Escribe un comentario..."
+                          rows={2}
+                          className="flex-1 resize-none text-sm"
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSendComment();
+                            }
+                          }}
+                        />
+                        <Button
+                          onClick={handleSendComment}
+                          disabled={!newComment.trim() || isSendingComment}
+                          size="sm"
+                          className="self-end"
+                        >
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Enter para enviar
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
+            )
           )}
         </DialogContent>
       </Dialog>
@@ -1316,6 +1594,17 @@ Departamento: ${customer.city || "-"}`;
           onOrderUpdated?.();
         }}
         canApprove={true}
+      />
+
+      {/* Modal de agregar productos (Promo del día) */}
+      <AddProductsModal
+        open={addProductsModalOpen}
+        orderId={orderId}
+        onClose={() => setAddProductsModalOpen(false)}
+        onProductsAdded={() => {
+          fetchReceipt();
+          onOrderUpdated?.();
+        }}
       />
     </>
   );
