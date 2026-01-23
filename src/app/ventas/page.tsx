@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Plus, Pencil, Trash2, FileText, ArrowRight, Printer, AlertTriangle } from "lucide-react";
+import {
+  Plus,
+  Pencil,
+  Trash2,
+  FileText,
+  ArrowRight,
+  Printer,
+  AlertTriangle,
+  Download,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,14 +29,23 @@ import { Label } from "@/components/ui/label";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
-import CustomerServiceModal, { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
+import CustomerServiceModal, {
+  ShippingGuideData,
+} from "@/components/modals/CustomerServiceModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
-import { SalesTableFilters, SalesFilters, emptySalesFilters, applyFilters } from "@/components/ventas/SalesTableFilters";
+import {
+  SalesTableFilters,
+  SalesFilters,
+  emptySalesFilters,
+  applyFilters,
+} from "@/components/ventas/SalesTableFilters";
 import { Copy, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import CancellationModal, { CancellationReason } from "@/components/modals/CancellationModal";
+import CancellationModal, {
+  CancellationReason,
+} from "@/components/modals/CancellationModal";
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
 import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
@@ -42,6 +60,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 
 /* -----------------------------------------
    Types
@@ -70,6 +89,8 @@ export interface Sale {
   orderNumber: string;
   clientName: string;
   phoneNumber: string;
+  documentType?: string | null;
+  documentNumber?: string | null;
   date: string;
   total: number;
   status: OrderStatus;
@@ -97,13 +118,17 @@ function mapOrderToSale(order: OrderHeader): Sale {
     .filter((p) => p.status === "PAID")
     .reduce((acc, p) => acc + Number(p.amount || 0), 0);
   const pendingPayment = Math.max(total - advancePayment, 0);
-  const hasPendingApprovalPayments = order.payments.some((p) => p.status === "PENDING");
+  const hasPendingApprovalPayments = order.payments.some(
+    (p) => p.status === "PENDING",
+  );
 
   return {
     id: order.id,
     orderNumber: order.orderNumber,
     clientName: order.customer.fullName,
     phoneNumber: order.customer.phoneNumber ?? "999",
+    documentType: order.customer.documentType ?? null,
+    documentNumber: order.customer.documentNumber ?? null,
     date: new Date(order.created_at).toLocaleDateString("es-AR"),
     total,
     status: order.status,
@@ -131,12 +156,15 @@ export default function VentasPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [selectedShippingGuide, setSelectedShippingGuide] = useState<ShippingGuideData | null>(null);
+  const [selectedShippingGuide, setSelectedShippingGuide] =
+    useState<ShippingGuideData | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
 
   // Filtros avanzados
-  const [filtersPendiente, setFiltersPendiente] = useState<SalesFilters>(emptySalesFilters);
-  const [filtersAnulado, setFiltersAnulado] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersPendiente, setFiltersPendiente] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersAnulado, setFiltersAnulado] =
+    useState<SalesFilters>(emptySalesFilters);
   const [filtersAll, setFiltersAll] = useState<SalesFilters>(emptySalesFilters);
 
   // Paginación para Todas las Ventas
@@ -144,7 +172,7 @@ export default function VentasPage() {
   const ITEMS_PER_PAGE = 10;
 
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   // Estado para modal de cancelación
@@ -154,11 +182,13 @@ export default function VentasPage() {
 
   // Estado para modal de comentarios
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
-  const [selectedSaleForComments, setSelectedSaleForComments] = useState<Sale | null>(null);
+  const [selectedSaleForComments, setSelectedSaleForComments] =
+    useState<Sale | null>(null);
 
   // Estado para modal de pagos
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<Sale | null>(null);
+  const [selectedSaleForPayment, setSelectedSaleForPayment] =
+    useState<Sale | null>(null);
 
   // Estado para modal de confirmación de impresión
   const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
@@ -170,7 +200,7 @@ export default function VentasPage() {
   const fetchOrders = useCallback(async () => {
     try {
       const res = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
       setSales(res.data.map(mapOrderToSale));
     } catch (error) {
@@ -178,7 +208,11 @@ export default function VentasPage() {
     }
   }, [selectedStoreId]);
 
-  const handleChangeStatus = async (saleId: string, newStatus: OrderStatus, cancellationReason?: CancellationReason) => {
+  const handleChangeStatus = async (
+    saleId: string,
+    newStatus: OrderStatus,
+    cancellationReason?: CancellationReason,
+  ) => {
     // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
     if (newStatus === "ANULADO" && !cancellationReason) {
       const sale = sales.find((s) => s.id === saleId);
@@ -190,14 +224,16 @@ export default function VentasPage() {
     }
 
     try {
-      const payload: { status: OrderStatus; cancellationReason?: string } = { status: newStatus };
+      const payload: { status: OrderStatus; cancellationReason?: string } = {
+        status: newStatus,
+      };
       if (cancellationReason) {
         payload.cancellationReason = cancellationReason;
       }
 
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
-        payload
+        payload,
       );
       toast.success(`Estado actualizado a ${newStatus}`);
       fetchOrders();
@@ -207,7 +243,10 @@ export default function VentasPage() {
     }
   };
 
-  const handleConfirmCancellation = async (reason: CancellationReason, notes?: string) => {
+  const handleConfirmCancellation = async (
+    reason: CancellationReason,
+    notes?: string,
+  ) => {
     if (!saleToCancel) return;
 
     setIsCancelling(true);
@@ -218,7 +257,7 @@ export default function VentasPage() {
           status: "ANULADO",
           cancellationReason: reason,
           notes: notes,
-        }
+        },
       );
       toast.success(`Venta ${saleToCancel.orderNumber} anulada`);
       setCancellationModalOpen(false);
@@ -248,7 +287,7 @@ export default function VentasPage() {
   const handleDelete = async (id: string) => {
     try {
       await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`,
       );
       toast.success("Venta eliminada");
       fetchOrders();
@@ -279,7 +318,7 @@ Total Venta: $${sale.total.toFixed(2)}
 Adelanto: $${sale.advancePayment.toFixed(2)}
 Por Cobrar: $${sale.pendingPayment.toFixed(2)}
 Estado: ${sale.status}
-`.trim()
+`.trim(),
       )
       .join("\n\n--------------------\n\n");
 
@@ -287,9 +326,43 @@ Estado: ${sale.status}
     toast.success(`${selectedSales.length} pedido(s) copiados`);
   };
 
+  // Exportar a Excel (XLSX)
+  const handleExportExcel = (salesList: Sale[], tabName: string) => {
+    if (salesList.length === 0) {
+      toast.warning("No hay datos para exportar");
+      return;
+    }
+
+    const exportData: SaleExportData[] = salesList.map((s) => ({
+      orderNumber: s.orderNumber,
+      clientName: s.clientName,
+      phoneNumber: s.phoneNumber,
+      documentType: s.documentType,
+      documentNumber: s.documentNumber,
+      date: s.date,
+      total: s.total,
+      advancePayment: s.advancePayment,
+      pendingPayment: s.pendingPayment,
+      status: s.status,
+      salesRegion: s.salesRegion,
+      province: s.province,
+      city: s.city,
+      district: s.district,
+      zone: s.zone,
+      address: s.address,
+      paymentMethod: s.paymentMethod,
+      deliveryType: s.deliveryType,
+    }));
+
+    exportSalesToExcel(exportData, `ventas_${tabName}`);
+    toast.success(`Exportados ${salesList.length} registros`);
+  };
+
   // Impresión masiva: obtiene recibos, imprime cada uno en página separada, luego cambia estado
   const handleBulkPrint = async () => {
-    const selectedPendientes = pendientes.filter((s) => selectedSaleIds.has(s.id));
+    const selectedPendientes = pendientes.filter((s) =>
+      selectedSaleIds.has(s.id),
+    );
 
     if (selectedPendientes.length === 0) {
       toast.warning("No hay pedidos seleccionados para imprimir");
@@ -297,17 +370,19 @@ Estado: ${sale.status}
     }
 
     setIsPrinting(true);
-    toast.info(`Preparando ${selectedPendientes.length} recibo(s) para imprimir...`);
+    toast.info(
+      `Preparando ${selectedPendientes.length} recibo(s) para imprimir...`,
+    );
 
     try {
       // Obtener recibos de todas las ventas seleccionadas
       const receipts = await Promise.all(
         selectedPendientes.map(async (sale) => {
           const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
           );
           return res.data;
-        })
+        }),
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
@@ -317,7 +392,6 @@ Estado: ${sale.status}
       setPendingPrintSales(selectedPendientes);
       setPrintConfirmOpen(true);
       setIsPrinting(false);
-
     } catch (error) {
       console.error("Error en impresión masiva", error);
       toast.error("Error al preparar los recibos para imprimir");
@@ -338,7 +412,7 @@ Estado: ${sale.status}
       try {
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
-          { status: newStatus }
+          { status: newStatus },
         );
         successCount++;
       } catch (error) {
@@ -369,7 +443,10 @@ Estado: ${sale.status}
   };
 
   // Impresión masiva genérica (sin cambiar estado)
-  const handleBulkPrintForStatus = async (salesList: Sale[], statusLabel: string) => {
+  const handleBulkPrintForStatus = async (
+    salesList: Sale[],
+    statusLabel: string,
+  ) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
     if (selectedSales.length === 0) {
@@ -384,10 +461,10 @@ Estado: ${sale.status}
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
           const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
           );
           return res.data;
-        })
+        }),
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
@@ -406,15 +483,15 @@ Estado: ${sale.status}
   // Abrir modal de recibo, cargando datos de guía si es EN_ENVIO
   const handleOpenReceipt = async (sale: Sale) => {
     setSelectedOrderId(sale.id);
-    
+
     // Si es EN_ENVIO, cargar datos de la guía (no tenemos guideNumber en Sale interface de ventas)
     if (sale.status === "EN_ENVIO") {
       try {
         const guideRes = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`,
         );
         const guide = guideRes.data;
-        
+
         if (guide) {
           // Calcular días desde creación
           let daysSinceCreated = 0;
@@ -424,7 +501,7 @@ Estado: ${sale.status}
             const diffTime = Math.abs(today.getTime() - createdDate.getTime());
             daysSinceCreated = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           }
-          
+
           setSelectedShippingGuide({
             id: guide.id,
             guideNumber: guide.guideNumber,
@@ -454,7 +531,7 @@ Estado: ${sale.status}
     } else {
       setSelectedShippingGuide(null);
     }
-    
+
     setReceiptOpen(true);
   };
 
@@ -468,10 +545,15 @@ Estado: ${sale.status}
             <TableHead className="w-[40px] sticky left-0 z-20 bg-background">
               <input
                 type="checkbox"
-                checked={data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))}
+                checked={
+                  data.length > 0 &&
+                  data.every((s) => selectedSaleIds.has(s.id))
+                }
                 onChange={(e) => {
                   if (e.target.checked) {
-                    setSelectedSaleIds((prev) => new Set([...prev, ...data.map((s) => s.id)]));
+                    setSelectedSaleIds(
+                      (prev) => new Set([...prev, ...data.map((s) => s.id)]),
+                    );
                   } else {
                     setSelectedSaleIds((prev) => {
                       const next = new Set(prev);
@@ -482,11 +564,21 @@ Estado: ${sale.status}
                 }}
               />
             </TableHead>
-            <TableHead className="sticky left-[40px] z-20 bg-background">N° Orden</TableHead>
-            <TableHead className="sticky left-[140px] z-20 bg-background">Cliente</TableHead>
-            <TableHead className="sticky left-[260px] z-20 bg-background">Teléfono</TableHead>
-            <TableHead className="sticky left-[360px] z-20 bg-background">Distrito</TableHead>
-            <TableHead className="sticky left-[460px] z-20 bg-background border-r">Zona</TableHead>
+            <TableHead className="sticky left-[40px] z-20 bg-background">
+              N° Orden
+            </TableHead>
+            <TableHead className="sticky left-[140px] z-20 bg-background">
+              Cliente
+            </TableHead>
+            <TableHead className="sticky left-[260px] z-20 bg-background">
+              Teléfono
+            </TableHead>
+            <TableHead className="sticky left-[360px] z-20 bg-background">
+              Distrito
+            </TableHead>
+            <TableHead className="sticky left-[460px] z-20 bg-background border-r">
+              Zona
+            </TableHead>
             {/* Columnas scrolleables */}
             <TableHead>Ciudad</TableHead>
             <TableHead>Provincia</TableHead>
@@ -499,8 +591,12 @@ Estado: ${sale.status}
             <TableHead>Estado</TableHead>
             <TableHead>Region</TableHead>
             {/* Columnas fijas derecha */}
-            <TableHead className="sticky right-[120px] z-20 bg-background border-l">Resumen</TableHead>
-            <TableHead className="sticky right-0 z-20 bg-background text-right">Acciones</TableHead>
+            <TableHead className="sticky right-[120px] z-20 bg-background border-l">
+              Resumen
+            </TableHead>
+            <TableHead className="sticky right-0 z-20 bg-background text-right">
+              Acciones
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -524,10 +620,18 @@ Estado: ${sale.status}
                   {sale.orderNumber}
                 </div>
               </TableCell>
-              <TableCell className="sticky left-[140px] z-10 bg-background">{sale.clientName}</TableCell>
-              <TableCell className="sticky left-[260px] z-10 bg-background">{sale.phoneNumber}</TableCell>
-              <TableCell className="sticky left-[360px] z-10 bg-background">{sale.district || "-"}</TableCell>
-              <TableCell className="sticky left-[460px] z-10 bg-background border-r">{sale.zone || "-"}</TableCell>
+              <TableCell className="sticky left-[140px] z-10 bg-background">
+                {sale.clientName}
+              </TableCell>
+              <TableCell className="sticky left-[260px] z-10 bg-background">
+                {sale.phoneNumber}
+              </TableCell>
+              <TableCell className="sticky left-[360px] z-10 bg-background">
+                {sale.district || "-"}
+              </TableCell>
+              <TableCell className="sticky left-[460px] z-10 bg-background border-r">
+                {sale.zone || "-"}
+              </TableCell>
               {/* Columnas scrolleables */}
               <TableCell>{sale.city || "-"}</TableCell>
               <TableCell>{sale.province || "-"}</TableCell>
@@ -535,19 +639,27 @@ Estado: ${sale.status}
               <TableCell>{sale.paymentMethod}</TableCell>
               <TableCell>{sale.deliveryType}</TableCell>
               <TableCell>${sale.total.toFixed(2)}</TableCell>
-              <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
-              <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
+              <TableCell className="text-green-600">
+                ${sale.advancePayment.toFixed(2)}
+              </TableCell>
+              <TableCell className="text-red-600">
+                ${sale.pendingPayment.toFixed(2)}
+              </TableCell>
               <TableCell>
                 <select
                   value={sale.status}
-                  onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
+                  onChange={(e) =>
+                    handleChangeStatus(sale.id, e.target.value as OrderStatus)
+                  }
                   className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
                 >
-                  {getAvailableStatuses(sale.status, sale.salesRegion).map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
+                  {getAvailableStatuses(sale.status, sale.salesRegion).map(
+                    (status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ),
+                  )}
                 </select>
               </TableCell>
               <TableCell>{sale.salesRegion}</TableCell>
@@ -572,7 +684,11 @@ Estado: ${sale.status}
                       setSelectedSaleForPayment(sale);
                       setPaymentModalOpen(true);
                     }}
-                    title={sale.hasPendingApprovalPayments ? "Pagos pendientes de aprobación" : "Gestión de Pagos"}
+                    title={
+                      sale.hasPendingApprovalPayments
+                        ? "Pagos pendientes de aprobación"
+                        : "Gestión de Pagos"
+                    }
                   >
                     <DollarSign className="h-4 w-4" />
                     {sale.hasPendingApprovalPayments && (
@@ -585,7 +701,9 @@ Estado: ${sale.status}
                   <Button
                     size="icon"
                     variant="outline"
-                    onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
+                    onClick={() =>
+                      router.push(`/registrar-venta?orderId=${sale.id}`)
+                    }
                     title="Editar"
                   >
                     <Pencil className="h-4 w-4" />
@@ -596,7 +714,10 @@ Estado: ${sale.status}
           ))}
           {data.length === 0 && (
             <TableRow>
-              <TableCell colSpan={18} className="text-center text-muted-foreground py-6">
+              <TableCell
+                colSpan={18}
+                className="text-center text-muted-foreground py-6"
+              >
                 No hay ventas en este estado
               </TableCell>
             </TableRow>
@@ -616,10 +737,15 @@ Estado: ${sale.status}
             <TableHead className="w-[40px] sticky left-0 z-20 bg-background">
               <input
                 type="checkbox"
-                checked={data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))}
+                checked={
+                  data.length > 0 &&
+                  data.every((s) => selectedSaleIds.has(s.id))
+                }
                 onChange={(e) => {
                   if (e.target.checked) {
-                    setSelectedSaleIds((prev) => new Set([...prev, ...data.map((s) => s.id)]));
+                    setSelectedSaleIds(
+                      (prev) => new Set([...prev, ...data.map((s) => s.id)]),
+                    );
                   } else {
                     setSelectedSaleIds((prev) => {
                       const next = new Set(prev);
@@ -630,11 +756,21 @@ Estado: ${sale.status}
                 }}
               />
             </TableHead>
-            <TableHead className="sticky left-[40px] z-20 bg-background">N° Orden</TableHead>
-            <TableHead className="sticky left-[140px] z-20 bg-background">Cliente</TableHead>
-            <TableHead className="sticky left-[260px] z-20 bg-background">Teléfono</TableHead>
-            <TableHead className="sticky left-[360px] z-20 bg-background">Distrito</TableHead>
-            <TableHead className="sticky left-[460px] z-20 bg-background border-r">Zona</TableHead>
+            <TableHead className="sticky left-[40px] z-20 bg-background">
+              N° Orden
+            </TableHead>
+            <TableHead className="sticky left-[140px] z-20 bg-background">
+              Cliente
+            </TableHead>
+            <TableHead className="sticky left-[260px] z-20 bg-background">
+              Teléfono
+            </TableHead>
+            <TableHead className="sticky left-[360px] z-20 bg-background">
+              Distrito
+            </TableHead>
+            <TableHead className="sticky left-[460px] z-20 bg-background border-r">
+              Zona
+            </TableHead>
             {/* Columnas scrolleables */}
             <TableHead>Ciudad</TableHead>
             <TableHead>Provincia</TableHead>
@@ -647,8 +783,12 @@ Estado: ${sale.status}
             <TableHead>Estado</TableHead>
             <TableHead>Region</TableHead>
             {/* Columnas fijas derecha */}
-            <TableHead className="sticky right-[120px] z-20 bg-background border-l">Resumen</TableHead>
-            <TableHead className="sticky right-0 z-20 bg-background text-right">Acciones</TableHead>
+            <TableHead className="sticky right-[120px] z-20 bg-background border-l">
+              Resumen
+            </TableHead>
+            <TableHead className="sticky right-0 z-20 bg-background text-right">
+              Acciones
+            </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -662,11 +802,21 @@ Estado: ${sale.status}
                   onChange={() => toggleSale(sale.id)}
                 />
               </TableCell>
-              <TableCell className="font-medium sticky left-[40px] z-10 bg-background">{sale.orderNumber}</TableCell>
-              <TableCell className="sticky left-[140px] z-10 bg-background">{sale.clientName}</TableCell>
-              <TableCell className="sticky left-[260px] z-10 bg-background">{sale.phoneNumber}</TableCell>
-              <TableCell className="sticky left-[360px] z-10 bg-background">{sale.district || "-"}</TableCell>
-              <TableCell className="sticky left-[460px] z-10 bg-background border-r">{sale.zone || "-"}</TableCell>
+              <TableCell className="font-medium sticky left-[40px] z-10 bg-background">
+                {sale.orderNumber}
+              </TableCell>
+              <TableCell className="sticky left-[140px] z-10 bg-background">
+                {sale.clientName}
+              </TableCell>
+              <TableCell className="sticky left-[260px] z-10 bg-background">
+                {sale.phoneNumber}
+              </TableCell>
+              <TableCell className="sticky left-[360px] z-10 bg-background">
+                {sale.district || "-"}
+              </TableCell>
+              <TableCell className="sticky left-[460px] z-10 bg-background border-r">
+                {sale.zone || "-"}
+              </TableCell>
               {/* Columnas scrolleables */}
               <TableCell>{sale.city || "-"}</TableCell>
               <TableCell>{sale.province || "-"}</TableCell>
@@ -674,19 +824,27 @@ Estado: ${sale.status}
               <TableCell>{sale.paymentMethod}</TableCell>
               <TableCell>{sale.deliveryType}</TableCell>
               <TableCell>${sale.total.toFixed(2)}</TableCell>
-              <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
-              <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
+              <TableCell className="text-green-600">
+                ${sale.advancePayment.toFixed(2)}
+              </TableCell>
+              <TableCell className="text-red-600">
+                ${sale.pendingPayment.toFixed(2)}
+              </TableCell>
               <TableCell>
                 <select
                   value={sale.status}
-                  onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
+                  onChange={(e) =>
+                    handleChangeStatus(sale.id, e.target.value as OrderStatus)
+                  }
                   className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
                 >
-                  {getAvailableStatuses(sale.status, sale.salesRegion).map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
+                  {getAvailableStatuses(sale.status, sale.salesRegion).map(
+                    (status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ),
+                  )}
                 </select>
               </TableCell>
               <TableCell>{sale.salesRegion}</TableCell>
@@ -706,7 +864,9 @@ Estado: ${sale.status}
                   <Button
                     size="icon"
                     variant="outline"
-                    onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
+                    onClick={() =>
+                      router.push(`/registrar-venta?orderId=${sale.id}`)
+                    }
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
@@ -723,7 +883,10 @@ Estado: ${sale.status}
           ))}
           {data.length === 0 && (
             <TableRow>
-              <TableCell colSpan={18} className="text-center text-muted-foreground py-6">
+              <TableCell
+                colSpan={18}
+                className="text-center text-muted-foreground py-6"
+              >
                 No hay ventas en este estado
               </TableCell>
             </TableRow>
@@ -737,28 +900,28 @@ Estado: ${sale.status}
      Filters
   ----------------------------------------- */
 
-  const pendientes = useMemo(
-    () => {
-      const statusFiltered = sales.filter((s) => s.status === ORDER_STATUS.PENDIENTE);
-      return applyFilters(statusFiltered, filtersPendiente);
-    },
-    [sales, filtersPendiente]
-  );
+  const pendientes = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) => s.status === ORDER_STATUS.PENDIENTE,
+    );
+    return applyFilters(statusFiltered, filtersPendiente);
+  }, [sales, filtersPendiente]);
 
-  const anulados = useMemo(
-    () => {
-      const statusFiltered = sales.filter((s) => s.status === ORDER_STATUS.ANULADO);
-      return applyFilters(statusFiltered, filtersAnulado);
-    },
-    [sales, filtersAnulado]
-  );
+  const anulados = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) => s.status === ORDER_STATUS.ANULADO,
+    );
+    return applyFilters(statusFiltered, filtersAnulado);
+  }, [sales, filtersAnulado]);
 
   const todasLasVentas = useMemo(
     () => applyFilters(sales, filtersAll),
-    [sales, filtersAll]
+    [sales, filtersAll],
   );
 
-  const selectedPendientesCount = pendientes.filter((s) => selectedSaleIds.has(s.id)).length;
+  const selectedPendientesCount = pendientes.filter((s) =>
+    selectedSaleIds.has(s.id),
+  ).length;
 
   if (!auth) return null;
 
@@ -807,7 +970,9 @@ Estado: ${sale.status}
                     onClick={handleBulkPrint}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    {isPrinting ? "Procesando..." : `Imprimir seleccionados (${selectedPendientesCount})`}
+                    {isPrinting
+                      ? "Procesando..."
+                      : `Imprimir seleccionados (${selectedPendientesCount})`}
                   </Button>
                   <Button
                     variant="outline"
@@ -816,6 +981,13 @@ Estado: ${sale.status}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({selectedPendientesCount})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleExportExcel(pendientes, "pendientes")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
@@ -831,7 +1003,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(pendientes.length / 10) || 1}
                 totalItems={pendientes.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="ventas"
               />
             </Card>
@@ -845,19 +1017,36 @@ Estado: ${sale.status}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    disabled={anulados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
-                    onClick={() => handleBulkPrintForStatus(anulados, "ANULADO")}
+                    disabled={
+                      anulados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0 || isPrinting
+                    }
+                    onClick={() =>
+                      handleBulkPrintForStatus(anulados, "ANULADO")
+                    }
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados ({anulados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Imprimir seleccionados (
+                    {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={anulados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    disabled={
+                      anulados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
                     onClick={() => handleCopySelected(anulados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({anulados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Copiar seleccionados (
+                    {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleExportExcel(anulados, "anuladas")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
@@ -873,7 +1062,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(anulados.length / 10) || 1}
                 totalItems={anulados.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="ventas"
               />
             </Card>
@@ -887,19 +1076,44 @@ Estado: ${sale.status}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    disabled={todasLasVentas.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
-                    onClick={() => handleBulkPrintForStatus(todasLasVentas, "TODAS")}
+                    disabled={
+                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0 || isPrinting
+                    }
+                    onClick={() =>
+                      handleBulkPrintForStatus(todasLasVentas, "TODAS")
+                    }
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados ({todasLasVentas.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Imprimir seleccionados (
+                    {
+                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={todasLasVentas.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    disabled={
+                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
                     onClick={() => handleCopySelected(todasLasVentas)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({todasLasVentas.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Copiar seleccionados (
+                    {
+                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleExportExcel(todasLasVentas, "todas")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
@@ -911,11 +1125,18 @@ Estado: ${sale.status}
                     setPageAll(1); // Reset page when filters change
                   }}
                 />
-                {renderPendientesTable(todasLasVentas.slice((pageAll - 1) * ITEMS_PER_PAGE, pageAll * ITEMS_PER_PAGE))}
+                {renderPendientesTable(
+                  todasLasVentas.slice(
+                    (pageAll - 1) * ITEMS_PER_PAGE,
+                    pageAll * ITEMS_PER_PAGE,
+                  ),
+                )}
               </CardContent>
               <Pagination
                 currentPage={pageAll}
-                totalPages={Math.ceil(todasLasVentas.length / ITEMS_PER_PAGE) || 1}
+                totalPages={
+                  Math.ceil(todasLasVentas.length / ITEMS_PER_PAGE) || 1
+                }
                 totalItems={todasLasVentas.length}
                 itemsPerPage={ITEMS_PER_PAGE}
                 onPageChange={setPageAll}
@@ -974,15 +1195,18 @@ Estado: ${sale.status}
       <AlertDialog open={printConfirmOpen} onOpenChange={setPrintConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>¿Se imprimieron correctamente los recibos?</AlertDialogTitle>
+            <AlertDialogTitle>
+              ¿Se imprimieron correctamente los recibos?
+            </AlertDialogTitle>
             <AlertDialogDescription asChild>
               <div className="space-y-2 text-muted-foreground text-sm">
                 <span className="block">
-                  Confirma que los siguientes <strong>{pendingPrintSales.length}</strong> recibo(s)
-                  se imprimieron correctamente:
+                  Confirma que los siguientes{" "}
+                  <strong>{pendingPrintSales.length}</strong> recibo(s) se
+                  imprimieron correctamente:
                 </span>
                 <span className="block max-h-32 overflow-y-auto bg-muted/50 rounded p-2 text-sm">
-                  {pendingPrintSales.map(s => s.orderNumber).join(", ")}
+                  {pendingPrintSales.map((s) => s.orderNumber).join(", ")}
                 </span>
                 <span className="block text-amber-600 font-medium">
                   Al confirmar, los estados cambiarán a PREPARADO.
@@ -991,10 +1215,16 @@ Estado: ${sale.status}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={handleCancelPrint} disabled={isPrinting}>
+            <AlertDialogCancel
+              onClick={handleCancelPrint}
+              disabled={isPrinting}
+            >
               No, cancelar
             </AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmPrint} disabled={isPrinting}>
+            <AlertDialogAction
+              onClick={handleConfirmPrint}
+              disabled={isPrinting}
+            >
               {isPrinting ? "Actualizando..." : "Sí, confirmar"}
             </AlertDialogAction>
           </AlertDialogFooter>

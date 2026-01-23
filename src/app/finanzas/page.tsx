@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Pencil, FileText, ArrowLeft, MessageCircle } from "lucide-react";
+import {
+  Pencil,
+  FileText,
+  ArrowLeft,
+  MessageCircle,
+  Download,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,14 +31,22 @@ import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
-import { SalesTableFilters, SalesFilters, emptySalesFilters, applyFilters } from "@/components/ventas/SalesTableFilters";
+import {
+  SalesTableFilters,
+  SalesFilters,
+  emptySalesFilters,
+  applyFilters,
+} from "@/components/ventas/SalesTableFilters";
 import { Copy, Printer, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import CancellationModal, { CancellationReason } from "@/components/modals/CancellationModal";
+import CancellationModal, {
+  CancellationReason,
+} from "@/components/modals/CancellationModal";
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
 import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
+import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 
 /* -----------------------------------------
    Types
@@ -61,6 +75,8 @@ export interface Sale {
   orderNumber: string;
   clientName: string;
   phoneNumber: string;
+  documentType?: string | null;
+  documentNumber?: string | null;
   date: string;
   total: number;
   status: OrderStatus;
@@ -81,6 +97,8 @@ export interface Sale {
   shippingCourierName?: string;
   // Nuevos campos para la tabla de pagos
   city: string;
+  province?: string;
+  zone?: string;
   paymentCreatedAt: string | null;
 }
 
@@ -99,7 +117,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
   const pendingPayments = order.payments.filter((p) => p.status === "PENDING");
   const pendingPaymentsAmount = pendingPayments.reduce(
     (acc, p) => acc + Number(p.amount || 0),
-    0
+    0,
   );
 
   return {
@@ -107,6 +125,8 @@ function mapOrderToSale(order: OrderHeader): Sale {
     orderNumber: order.orderNumber,
     clientName: order.customer.fullName,
     phoneNumber: order.customer.phoneNumber ?? "999",
+    documentType: order.customer.documentType ?? null,
+    documentNumber: order.customer.documentNumber ?? null,
     date: new Date(order.created_at).toLocaleDateString("es-AR"),
     total,
     status: order.status,
@@ -123,9 +143,12 @@ function mapOrderToSale(order: OrderHeader): Sale {
     pendingPaymentsCount: pendingPayments.length,
     pendingPaymentsAmount,
     city: order.customer.city ?? order.customer.district ?? "",
-    paymentCreatedAt: pendingPayments.length > 0 
-      ? pendingPayments[0].created_at?.toString() ?? null
-      : null,
+    province: order.customer.province ?? "",
+    zone: order.customer.zone ?? "",
+    paymentCreatedAt:
+      pendingPayments.length > 0
+        ? (pendingPayments[0].created_at?.toString() ?? null)
+        : null,
   };
 }
 
@@ -139,12 +162,14 @@ export default function FinanzasPage() {
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   // Filtros avanzados
-  const [filtersPagosPendientes, setFiltersPagosPendientes] = useState<SalesFilters>(emptySalesFilters);
-  const [filtersEntregado, setFiltersEntregado] = useState<SalesFilters>(emptySalesFilters);
+  const [filtersPagosPendientes, setFiltersPagosPendientes] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersEntregado, setFiltersEntregado] =
+    useState<SalesFilters>(emptySalesFilters);
   const [isPrinting, setIsPrinting] = useState(false);
 
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
-    new Set()
+    new Set(),
   );
 
   // Estado para modal de cancelación
@@ -154,11 +179,13 @@ export default function FinanzasPage() {
 
   // Estado para modal de comentarios
   const [commentsModalOpen, setCommentsModalOpen] = useState(false);
-  const [selectedSaleForComments, setSelectedSaleForComments] = useState<Sale | null>(null);
+  const [selectedSaleForComments, setSelectedSaleForComments] =
+    useState<Sale | null>(null);
 
   // Estado para modal de pagos
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  const [selectedSaleForPayment, setSelectedSaleForPayment] = useState<Sale | null>(null);
+  const [selectedSaleForPayment, setSelectedSaleForPayment] =
+    useState<Sale | null>(null);
 
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
@@ -166,18 +193,20 @@ export default function FinanzasPage() {
   const fetchOrders = useCallback(async () => {
     try {
       const res = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
       const mappedSales = res.data.map(mapOrderToSale);
       setSales(mappedSales);
 
       // Obtener datos de guías de envío para órdenes entregadas
-      const deliveredOrders = mappedSales.filter((s) => s.status === "ENTREGADO");
+      const deliveredOrders = mappedSales.filter(
+        (s) => s.status === "ENTREGADO",
+      );
       if (deliveredOrders.length > 0) {
         const guidePromises = deliveredOrders.map(async (sale) => {
           try {
             const guideRes = await axios.get(
-              `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`
+              `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`,
             );
             return { orderId: sale.id, guide: guideRes.data };
           } catch {
@@ -199,7 +228,7 @@ export default function FinanzasPage() {
               };
             }
             return sale;
-          })
+          }),
         );
       }
     } catch (error) {
@@ -207,58 +236,70 @@ export default function FinanzasPage() {
     }
   }, [selectedStoreId]);
 
-  const handleChangeStatus = useCallback(async (saleId: string, newStatus: OrderStatus, cancellationReason?: CancellationReason) => {
-    // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
-    if (newStatus === "ANULADO" && !cancellationReason) {
-      const sale = sales.find((s) => s.id === saleId);
-      if (sale) {
-        setSaleToCancel(sale);
-        setCancellationModalOpen(true);
-      }
-      return;
-    }
-
-    try {
-      const payload: { status: OrderStatus; cancellationReason?: string } = { status: newStatus };
-      if (cancellationReason) {
-        payload.cancellationReason = cancellationReason;
-      }
-
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
-        payload
-      );
-      toast.success(`Estado actualizado a ${newStatus}`);
-      fetchOrders();
-    } catch (error) {
-      console.error("Error actualizando estado", error);
-      toast.error("No se pudo actualizar el estado");
-    }
-  }, [sales, fetchOrders]);
-
-  const handleConfirmCancellation = useCallback(async (reason: CancellationReason, notes?: string) => {
-    if (!saleToCancel) return;
-
-    setIsCancelling(true);
-    try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
-        {
-          status: "ANULADO",
-          cancellationReason: reason,
+  const handleChangeStatus = useCallback(
+    async (
+      saleId: string,
+      newStatus: OrderStatus,
+      cancellationReason?: CancellationReason,
+    ) => {
+      // Si el nuevo estado es ANULADO y no hay motivo, abrir modal
+      if (newStatus === "ANULADO" && !cancellationReason) {
+        const sale = sales.find((s) => s.id === saleId);
+        if (sale) {
+          setSaleToCancel(sale);
+          setCancellationModalOpen(true);
         }
-      );
-      toast.success(`Venta ${saleToCancel.orderNumber} anulada`);
-      setCancellationModalOpen(false);
-      setSaleToCancel(null);
-      fetchOrders();
-    } catch (error) {
-      console.error("Error anulando venta", error);
-      toast.error("No se pudo anular la venta");
-    } finally {
-      setIsCancelling(false);
-    }
-  }, [saleToCancel, fetchOrders]);
+        return;
+      }
+
+      try {
+        const payload: { status: OrderStatus; cancellationReason?: string } = {
+          status: newStatus,
+        };
+        if (cancellationReason) {
+          payload.cancellationReason = cancellationReason;
+        }
+
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
+          payload,
+        );
+        toast.success(`Estado actualizado a ${newStatus}`);
+        fetchOrders();
+      } catch (error) {
+        console.error("Error actualizando estado", error);
+        toast.error("No se pudo actualizar el estado");
+      }
+    },
+    [sales, fetchOrders],
+  );
+
+  const handleConfirmCancellation = useCallback(
+    async (reason: CancellationReason, notes?: string) => {
+      if (!saleToCancel) return;
+
+      setIsCancelling(true);
+      try {
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
+          {
+            status: "ANULADO",
+            cancellationReason: reason,
+          },
+        );
+        toast.success(`Venta ${saleToCancel.orderNumber} anulada`);
+        setCancellationModalOpen(false);
+        setSaleToCancel(null);
+        fetchOrders();
+      } catch (error) {
+        console.error("Error anulando venta", error);
+        toast.error("No se pudo anular la venta");
+      } finally {
+        setIsCancelling(false);
+      }
+    },
+    [saleToCancel, fetchOrders],
+  );
 
   const toggleSale = useCallback((id: string) => {
     setSelectedSaleIds((prev) => {
@@ -268,13 +309,17 @@ export default function FinanzasPage() {
     });
   }, []);
 
-
   useEffect(() => {
     if (!selectedStoreId) return;
     fetchOrders();
   }, [selectedStoreId, fetchOrders]);
 
-  const handleWhatsApp = (phoneNumber: string, orderNumber?: string, clientName?: string, pendingAmount?: number) => {
+  const handleWhatsApp = (
+    phoneNumber: string,
+    orderNumber?: string,
+    clientName?: string,
+    pendingAmount?: number,
+  ) => {
     const phone = phoneNumber.replace(/\D/g, "");
     const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
 
@@ -289,7 +334,7 @@ export default function FinanzasPage() {
 
     window.open(
       `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
-      "_blank"
+      "_blank",
     );
   };
 
@@ -314,12 +359,45 @@ Total Venta: $${sale.total.toFixed(2)}
 Adelanto: $${sale.advancePayment.toFixed(2)}
 Por Cobrar: $${sale.pendingPayment.toFixed(2)}
 Estado: ${sale.status}
-`.trim()
+`.trim(),
       )
       .join("\n\n--------------------\n\n");
 
     await navigator.clipboard.writeText(text);
     toast.success(`${selectedSales.length} pedido(s) copiados`);
+  };
+
+  // Exportar a Excel (XLSX)
+  const handleExportExcel = (salesList: Sale[], tabName: string) => {
+    if (salesList.length === 0) {
+      toast.warning("No hay datos para exportar");
+      return;
+    }
+
+    const exportData: SaleExportData[] = salesList.map((s) => ({
+      orderNumber: s.orderNumber,
+      clientName: s.clientName,
+      phoneNumber: s.phoneNumber,
+      documentType: s.documentType,
+      documentNumber: s.documentNumber,
+      date: s.date,
+      total: s.total,
+      advancePayment: s.advancePayment,
+      pendingPayment: s.pendingPayment,
+      status: s.status,
+      salesRegion: s.salesRegion,
+      province: s.province,
+      city: s.city,
+      district: s.district,
+      zone: s.zone,
+      address: s.address,
+      paymentMethod: s.paymentMethod,
+      deliveryType: s.deliveryType,
+      courier: s.courier,
+    }));
+
+    exportSalesToExcel(exportData, `finanzas_${tabName}`);
+    toast.success(`Exportados ${salesList.length} registros`);
   };
 
   // Impresión masiva genérica
@@ -338,10 +416,10 @@ Estado: ${sale.status}
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
           const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
           );
           return res.data;
-        })
+        }),
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
@@ -365,10 +443,14 @@ Estado: ${sale.status}
           <TableHead className="w-[40px]">
             <input
               type="checkbox"
-              checked={data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))}
+              checked={
+                data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))
+              }
               onChange={(e) => {
                 if (e.target.checked) {
-                  setSelectedSaleIds((prev) => new Set([...prev, ...data.map((s) => s.id)]));
+                  setSelectedSaleIds(
+                    (prev) => new Set([...prev, ...data.map((s) => s.id)]),
+                  );
                 } else {
                   setSelectedSaleIds((prev) => {
                     const next = new Set(prev);
@@ -412,20 +494,28 @@ Estado: ${sale.status}
             <TableCell>{sale.paymentMethod}</TableCell>
             <TableCell>{sale.deliveryType}</TableCell>
             <TableCell>${sale.total.toFixed(2)}</TableCell>
-            <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
-            <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
+            <TableCell className="text-green-600">
+              ${sale.advancePayment.toFixed(2)}
+            </TableCell>
+            <TableCell className="text-red-600">
+              ${sale.pendingPayment.toFixed(2)}
+            </TableCell>
             <TableCell>{sale.courier || "—"}</TableCell>
             <TableCell>
               <select
                 value={sale.status}
-                onChange={(e) => handleChangeStatus(sale.id, e.target.value as OrderStatus)}
+                onChange={(e) =>
+                  handleChangeStatus(sale.id, e.target.value as OrderStatus)
+                }
                 className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
               >
-                {getAvailableStatuses(sale.status, sale.salesRegion).map((status) => (
-                  <option key={status} value={status}>
-                    {status}
-                  </option>
-                ))}
+                {getAvailableStatuses(sale.status, sale.salesRegion).map(
+                  (status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ),
+                )}
               </select>
             </TableCell>
             <TableCell>{sale.salesRegion}</TableCell>
@@ -452,7 +542,11 @@ Estado: ${sale.status}
                     setSelectedSaleForPayment(sale);
                     setPaymentModalOpen(true);
                   }}
-                  title={sale.hasPendingPayments ? "Pagos pendientes de aprobación" : "Gestión de Pagos"}
+                  title={
+                    sale.hasPendingPayments
+                      ? "Pagos pendientes de aprobación"
+                      : "Gestión de Pagos"
+                  }
                 >
                   <DollarSign className="h-4 w-4" />
                   {sale.hasPendingPayments && (
@@ -465,7 +559,9 @@ Estado: ${sale.status}
                 <Button
                   size="icon"
                   variant="outline"
-                  onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
+                  onClick={() =>
+                    router.push(`/registrar-venta?orderId=${sale.id}`)
+                  }
                   title="Editar"
                 >
                   <Pencil className="h-4 w-4" />
@@ -476,7 +572,10 @@ Estado: ${sale.status}
         ))}
         {data.length === 0 && (
           <TableRow>
-            <TableCell colSpan={15} className="text-center text-muted-foreground py-6">
+            <TableCell
+              colSpan={15}
+              className="text-center text-muted-foreground py-6"
+            >
               No hay ventas en este estado
             </TableCell>
           </TableRow>
@@ -493,10 +592,14 @@ Estado: ${sale.status}
           <TableHead className="w-[40px]">
             <input
               type="checkbox"
-              checked={data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))}
+              checked={
+                data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))
+              }
               onChange={(e) => {
                 if (e.target.checked) {
-                  setSelectedSaleIds((prev) => new Set([...prev, ...data.map((s) => s.id)]));
+                  setSelectedSaleIds(
+                    (prev) => new Set([...prev, ...data.map((s) => s.id)]),
+                  );
                 } else {
                   setSelectedSaleIds((prev) => {
                     const next = new Set(prev);
@@ -542,13 +645,19 @@ Estado: ${sale.status}
             <TableCell>{sale.paymentMethod}</TableCell>
             <TableCell>{sale.deliveryType}</TableCell>
             <TableCell>${sale.total.toFixed(2)}</TableCell>
-            <TableCell className="text-green-600">${sale.advancePayment.toFixed(2)}</TableCell>
-            <TableCell className="text-red-600">${sale.pendingPayment.toFixed(2)}</TableCell>
+            <TableCell className="text-green-600">
+              ${sale.advancePayment.toFixed(2)}
+            </TableCell>
+            <TableCell className="text-red-600">
+              ${sale.pendingPayment.toFixed(2)}
+            </TableCell>
             <TableCell>{sale.courier || "—"}</TableCell>
             <TableCell>{sale.shippingDeliveryType || "—"}</TableCell>
             <TableCell>{sale.shippingCourierName || "—"}</TableCell>
             <TableCell>
-              <Badge variant="default" className="bg-green-600">ENTREGADO</Badge>
+              <Badge variant="default" className="bg-green-600">
+                ENTREGADO
+              </Badge>
             </TableCell>
             <TableCell>{sale.salesRegion}</TableCell>
             <TableCell>
@@ -569,7 +678,9 @@ Estado: ${sale.status}
                 <Button
                   size="icon"
                   variant="outline"
-                  onClick={() => router.push(`/registrar-venta?orderId=${sale.id}`)}
+                  onClick={() =>
+                    router.push(`/registrar-venta?orderId=${sale.id}`)
+                  }
                   title="Editar"
                 >
                   <Pencil className="h-4 w-4" />
@@ -580,7 +691,10 @@ Estado: ${sale.status}
         ))}
         {data.length === 0 && (
           <TableRow>
-            <TableCell colSpan={17} className="text-center text-muted-foreground py-6">
+            <TableCell
+              colSpan={17}
+              className="text-center text-muted-foreground py-6"
+            >
               No hay ventas en este estado
             </TableCell>
           </TableRow>
@@ -594,21 +708,17 @@ Estado: ${sale.status}
   ----------------------------------------- */
 
   // Ventas con pagos pendientes de aprobación
-  const pagosPendientes = useMemo(
-    () => {
-      const filtered = sales.filter((s) => s.hasPendingPayments);
-      return applyFilters(filtered, filtersPagosPendientes);
-    },
-    [sales, filtersPagosPendientes]
-  );
+  const pagosPendientes = useMemo(() => {
+    const filtered = sales.filter((s) => s.hasPendingPayments);
+    return applyFilters(filtered, filtersPagosPendientes);
+  }, [sales, filtersPagosPendientes]);
 
-  const entregados = useMemo(
-    () => {
-      const statusFiltered = sales.filter((s) => s.status === ORDER_STATUS.ENTREGADO);
-      return applyFilters(statusFiltered, filtersEntregado);
-    },
-    [sales, filtersEntregado]
-  );
+  const entregados = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) => s.status === ORDER_STATUS.ENTREGADO,
+    );
+    return applyFilters(statusFiltered, filtersEntregado);
+  }, [sales, filtersEntregado]);
 
   // Extraer lista de couriers únicos para el filtro
   const availableCouriers = useMemo(() => {
@@ -627,8 +737,6 @@ Estado: ${sale.status}
             description="Gestión de pagos pendientes y ventas entregadas"
           />
         </div>
-
-
 
         {/* Tabs para Finanzas */}
         <Tabs defaultValue="pagosPendientes" className="w-full">
@@ -651,13 +759,22 @@ Estado: ${sale.status}
                     Ventas con comprobantes de pago por verificar
                   </p>
                 </div>
+                <Button
+                  variant="outline"
+                  onClick={() =>
+                    handleExportExcel(pagosPendientes, "pagos_pendientes")
+                  }
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar Excel
+                </Button>
               </CardHeader>
               <CardContent>
                 <SalesTableFilters
                   filters={filtersPagosPendientes}
                   onFiltersChange={setFiltersPagosPendientes}
                 />
-              <Table>
+                <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>N° Orden</TableHead>
@@ -678,11 +795,19 @@ Estado: ${sale.status}
                   <TableBody>
                     {pagosPendientes.map((sale) => (
                       <TableRow key={sale.id}>
-                        <TableCell className="font-medium">{sale.orderNumber}</TableCell>
+                        <TableCell className="font-medium">
+                          {sale.orderNumber}
+                        </TableCell>
                         <TableCell>{sale.clientName}</TableCell>
                         <TableCell>{sale.phoneNumber}</TableCell>
                         <TableCell>
-                          <Badge variant={sale.salesRegion === "LIMA" ? "default" : "secondary"}>
+                          <Badge
+                            variant={
+                              sale.salesRegion === "LIMA"
+                                ? "default"
+                                : "secondary"
+                            }
+                          >
                             {sale.salesRegion}
                           </Badge>
                         </TableCell>
@@ -701,8 +826,10 @@ Estado: ${sale.status}
                           S/{sale.pendingPaymentsAmount.toFixed(2)}
                         </TableCell>
                         <TableCell>
-                          {sale.paymentCreatedAt 
-                            ? new Date(sale.paymentCreatedAt).toLocaleDateString("es-PE")
+                          {sale.paymentCreatedAt
+                            ? new Date(
+                                sale.paymentCreatedAt,
+                              ).toLocaleDateString("es-PE")
                             : "-"}
                         </TableCell>
                         <TableCell>
@@ -725,12 +852,14 @@ Estado: ${sale.status}
                               variant="outline"
                               className="bg-green-500 hover:bg-green-600 text-white"
                               title="Contactar por WhatsApp"
-                              onClick={() => handleWhatsApp(
-                                sale.phoneNumber, 
-                                sale.orderNumber, 
-                                sale.clientName,
-                                sale.pendingPaymentsAmount
-                              )}
+                              onClick={() =>
+                                handleWhatsApp(
+                                  sale.phoneNumber,
+                                  sale.orderNumber,
+                                  sale.clientName,
+                                  sale.pendingPaymentsAmount,
+                                )
+                              }
                             >
                               <MessageCircle className="h-4 w-4" />
                             </Button>
@@ -751,7 +880,10 @@ Estado: ${sale.status}
                     ))}
                     {pagosPendientes.length === 0 && (
                       <TableRow>
-                        <TableCell colSpan={13} className="text-center text-muted-foreground py-6">
+                        <TableCell
+                          colSpan={13}
+                          className="text-center text-muted-foreground py-6"
+                        >
                           No hay pagos pendientes de aprobación
                         </TableCell>
                       </TableRow>
@@ -764,7 +896,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(pagosPendientes.length / 10) || 1}
                 totalItems={pagosPendientes.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="ventas"
               />
             </Card>
@@ -778,19 +910,36 @@ Estado: ${sale.status}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
-                    disabled={entregados.filter((s) => selectedSaleIds.has(s.id)).length === 0 || isPrinting}
+                    disabled={
+                      entregados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0 || isPrinting
+                    }
                     onClick={() => handleBulkPrintForStatus(entregados)}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados ({entregados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Imprimir seleccionados (
+                    {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
+                    )
                   </Button>
                   <Button
                     variant="outline"
-                    disabled={entregados.filter((s) => selectedSaleIds.has(s.id)).length === 0}
+                    disabled={
+                      entregados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
                     onClick={() => handleCopySelected(entregados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({entregados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    Copiar seleccionados (
+                    {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => handleExportExcel(entregados, "entregados")}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
                   </Button>
                 </div>
               </CardHeader>
@@ -808,7 +957,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(entregados.length / 10) || 1}
                 totalItems={entregados.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="pedidos"
               />
             </Card>

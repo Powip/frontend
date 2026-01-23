@@ -17,7 +17,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { DollarSign, Upload, Check, AlertCircle, ExternalLink, ImagePlus, Loader2, X } from "lucide-react";
+import {
+  DollarSign,
+  Upload,
+  Check,
+  AlertCircle,
+  ExternalLink,
+  ImagePlus,
+  Loader2,
+  X,
+} from "lucide-react";
 import axios from "axios";
 import { toast } from "sonner";
 
@@ -52,6 +61,10 @@ const PAYMENT_METHODS = [
   { value: "TRANSFERENCIA", label: "Transferencia" },
   { value: "EFECTIVO", label: "Efectivo" },
   { value: "CONTRA_ENTREGA", label: "Contra Entrega" },
+  { value: "BCP", label: "BCP" },
+  { value: "BANCO_NACION", label: "Banco de la Nación" },
+  { value: "MERCADO_PAGO", label: "Mercado Pago" },
+  { value: "POS", label: "POS" },
 ];
 
 export default function PaymentVerificationModal({
@@ -65,7 +78,9 @@ export default function PaymentVerificationModal({
   const [orderData, setOrderData] = useState<OrderData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [uploadingProofForId, setUploadingProofForId] = useState<string | null>(null);
+  const [uploadingProofForId, setUploadingProofForId] = useState<string | null>(
+    null,
+  );
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
 
   // Form states
@@ -79,7 +94,7 @@ export default function PaymentVerificationModal({
     setIsLoading(true);
     try {
       const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
       );
       setOrderData({
         grandTotal: Number(res.data.grandTotal),
@@ -102,11 +117,13 @@ export default function PaymentVerificationModal({
     }
   }, [open, orderId]);
 
-  const totalPaid = orderData?.payments
-    .filter((p) => p.status === "PAID")
-    .reduce((sum, p) => sum + Number(p.amount), 0) || 0;
+  const totalPaid =
+    orderData?.payments
+      .filter((p) => p.status === "PAID")
+      .reduce((sum, p) => sum + Number(p.amount), 0) || 0;
 
-  const pendingPayments = orderData?.payments.filter((p) => p.status === "PENDING") || [];
+  const pendingPayments =
+    orderData?.payments.filter((p) => p.status === "PENDING") || [];
 
   const pendingAmount = (orderData?.grandTotal || 0) - totalPaid;
 
@@ -127,7 +144,7 @@ export default function PaymentVerificationModal({
       const formData = new FormData();
       formData.append("amount", numericAmount.toString());
       formData.append("paymentMethod", paymentMethod);
-      
+
       if (file) {
         formData.append("file", file);
       }
@@ -139,7 +156,7 @@ export default function PaymentVerificationModal({
           headers: {
             "Content-Type": "multipart/form-data",
           },
-        }
+        },
       );
 
       toast.success("Pago registrado correctamente");
@@ -159,7 +176,7 @@ export default function PaymentVerificationModal({
   const handleApprovePayment = async (paymentId: string) => {
     try {
       await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/approve`
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/approve`,
       );
       toast.success("Pago aprobado");
       fetchOrderData();
@@ -171,13 +188,17 @@ export default function PaymentVerificationModal({
   };
 
   const handleRejectPayment = async (paymentId: string) => {
-    if (!confirm("¿Estás seguro de rechazar este pago? El pago quedará marcado como PERDIDO.")) {
+    if (
+      !confirm(
+        "¿Estás seguro de rechazar este pago? El pago quedará marcado como PERDIDO.",
+      )
+    ) {
       return;
     }
     try {
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/reject`,
-        { notes: "Pago rechazado" }
+        { notes: "Pago rechazado" },
       );
       toast.success("Pago rechazado");
       fetchOrderData();
@@ -188,7 +209,10 @@ export default function PaymentVerificationModal({
     }
   };
 
-  const handleUploadProofToPayment = async (paymentId: string, proofFile: File) => {
+  const handleUploadProofToPayment = async (
+    paymentId: string,
+    proofFile: File,
+  ) => {
     setUploadingProofForId(paymentId);
     try {
       const formData = new FormData();
@@ -201,7 +225,7 @@ export default function PaymentVerificationModal({
           headers: {
             "Content-Type": "multipart/form-data",
           },
-        }
+        },
       );
 
       toast.success("Comprobante subido correctamente");
@@ -215,7 +239,10 @@ export default function PaymentVerificationModal({
     }
   };
 
-  const handleProofFileChange = (paymentId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleProofFileChange = (
+    paymentId: string,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
       handleUploadProofToPayment(paymentId, selectedFile);
@@ -250,15 +277,23 @@ export default function PaymentVerificationModal({
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-muted rounded-lg p-3 text-center">
                 <p className="text-xs text-muted-foreground">Total</p>
-                <p className="font-bold text-lg">{formatCurrency(orderData?.grandTotal || 0)}</p>
+                <p className="font-bold text-lg">
+                  {formatCurrency(orderData?.grandTotal || 0)}
+                </p>
               </div>
               <div className="bg-green-50 rounded-lg p-3 text-center">
                 <p className="text-xs text-muted-foreground">Pagado</p>
-                <p className="font-bold text-lg text-green-600">{formatCurrency(totalPaid)}</p>
+                <p className="font-bold text-lg text-green-600">
+                  {formatCurrency(totalPaid)}
+                </p>
               </div>
-              <div className={`rounded-lg p-3 text-center ${pendingAmount > 0 ? "bg-amber-50" : "bg-green-50"}`}>
+              <div
+                className={`rounded-lg p-3 text-center ${pendingAmount > 0 ? "bg-amber-50" : "bg-green-50"}`}
+              >
                 <p className="text-xs text-muted-foreground">Saldo</p>
-                <p className={`font-bold text-lg ${pendingAmount > 0 ? "text-amber-600" : "text-green-600"}`}>
+                <p
+                  className={`font-bold text-lg ${pendingAmount > 0 ? "text-amber-600" : "text-green-600"}`}
+                >
                   {formatCurrency(pendingAmount)}
                 </p>
               </div>
@@ -280,7 +315,8 @@ export default function PaymentVerificationModal({
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-sm font-medium text-amber-900">
-                            {formatCurrency(Number(payment.amount))} - {payment.paymentMethod}
+                            {formatCurrency(Number(payment.amount))} -{" "}
+                            {payment.paymentMethod}
                           </p>
                           {payment.paymentProofUrl ? (
                             <a
@@ -298,7 +334,7 @@ export default function PaymentVerificationModal({
                             </span>
                           )}
                         </div>
-{canApprove && (
+                        {canApprove && (
                           <div className="flex gap-1">
                             <Button
                               size="sm"
@@ -321,23 +357,29 @@ export default function PaymentVerificationModal({
                           </div>
                         )}
                       </div>
-                      
+
                       {/* Botón para subir comprobante si no tiene */}
                       {!payment.paymentProofUrl && (
                         <div className="flex items-center gap-2">
                           <input
                             type="file"
-                            ref={(el) => { fileInputRefs.current[payment.id] = el; }}
+                            ref={(el) => {
+                              fileInputRefs.current[payment.id] = el;
+                            }}
                             accept="image/*"
                             className="hidden"
-                            onChange={(e) => handleProofFileChange(payment.id, e)}
+                            onChange={(e) =>
+                              handleProofFileChange(payment.id, e)
+                            }
                           />
                           <Button
                             size="sm"
                             variant="outline"
                             className="text-xs"
                             disabled={uploadingProofForId === payment.id}
-                            onClick={() => fileInputRefs.current[payment.id]?.click()}
+                            onClick={() =>
+                              fileInputRefs.current[payment.id]?.click()
+                            }
                           >
                             {uploadingProofForId === payment.id ? (
                               <>
@@ -360,11 +402,12 @@ export default function PaymentVerificationModal({
             )}
 
             {/* Lista de pagos aprobados */}
-            {(orderData?.payments.filter((p) => p.status === "PAID").length ?? 0) > 0 && (
+            {(orderData?.payments.filter((p) => p.status === "PAID").length ??
+              0) > 0 && (
               <div className="border rounded-lg p-3">
                 <h4 className="font-medium text-sm mb-2">Pagos Aprobados</h4>
                 <div className="space-y-1">
-  {orderData?.payments
+                  {orderData?.payments
                     .filter((p) => p.status === "PAID")
                     .map((payment) => (
                       <div
@@ -373,7 +416,8 @@ export default function PaymentVerificationModal({
                       >
                         <div className="flex flex-col gap-0.5">
                           <span>
-                            {formatCurrency(Number(payment.amount))} - {payment.paymentMethod}
+                            {formatCurrency(Number(payment.amount))} -{" "}
+                            {payment.paymentMethod}
                           </span>
                           {payment.paymentProofUrl ? (
                             <a
@@ -403,7 +447,9 @@ export default function PaymentVerificationModal({
             {/* Formulario para nuevo pago */}
             {pendingAmount > 0 && (
               <div className="border rounded-lg p-4 bg-muted/30">
-                <h4 className="font-medium text-sm mb-3">Registrar Nuevo Pago</h4>
+                <h4 className="font-medium text-sm mb-3">
+                  Registrar Nuevo Pago
+                </h4>
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
@@ -419,7 +465,10 @@ export default function PaymentVerificationModal({
                     </div>
                     <div className="space-y-1">
                       <Label htmlFor="method">Método *</Label>
-                      <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                      <Select
+                        value={paymentMethod}
+                        onValueChange={setPaymentMethod}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder="Seleccionar..." />
                         </SelectTrigger>
