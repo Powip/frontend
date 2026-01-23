@@ -23,6 +23,7 @@ import {
   FileSearch,
   Tags,
   MapPin,
+  PackagePlus,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -61,6 +62,7 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Crear Productos", href: "/productos", icon: Tags },
     { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
     { name: "Inventario", href: "/inventario", icon: Package },
+    { name: "Compras", href: "/compras", icon: PackagePlus },
     { name: "Ventas", href: "/ventas", icon: ShoppingCart },
     { name: "Operaciones", href: "/operaciones", icon: Truck },
     { name: "Atención al cliente", href: "/atencion-cliente", icon: Headphones },
@@ -68,12 +70,12 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Finanzas", href: "/finanzas", icon: DollarSign },
     { name: "Clientes", href: "/clientes", icon: Users },
     { name: "Proveedores", href: "/proveedores", icon: Building2 },
-   /*  { name: "Repartidores", href: "/repartidores", icon: Truck }, */
+    /*  { name: "Repartidores", href: "/repartidores", icon: Truck }, */
     { name: "Usuarios", href: "/usuarios", icon: UserCog },
- /*    { name: "Reportes", href: "/reportes", icon: BarChart }, */
+    /*    { name: "Reportes", href: "/reportes", icon: BarChart }, */
 
     { name: "Configuración", href: "/configuracion", icon: Settings },
- /*    { name: "Auditoría", href: "/auditoria", icon: FileSearch }, */
+    /*    { name: "Auditoría", href: "/auditoria", icon: FileSearch }, */
   ];
 
   // Filtrar navegación por permisos del usuario
@@ -120,7 +122,7 @@ export function Sidebar({ className }: SidebarProps) {
               <Image
                 src="/logo_powip_white.png"
                 alt="Powip Logo"
-                  width={80}
+                width={80}
                 height={40}
                 className="dark:hidden"
               />

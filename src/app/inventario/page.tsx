@@ -22,7 +22,7 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
 
-import { Download, Loader2, Search, Plus, Pencil, Trash2 } from "lucide-react";
+import { Download, Loader2, Search, Plus, Pencil, Trash2, ShoppingCart } from "lucide-react";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -349,6 +349,12 @@ export default function InventarioPage() {
       <Card>
         <CardContent className="p-6">
           <div className="mb-6 flex justify-end gap-2">
+            <Link href="/compras">
+              <Button variant="outline">
+                <ShoppingCart className="mr-2 h-4 w-4" />
+                Compras
+              </Button>
+            </Link>
             <Link href="/productos">
               <Button variant="outline">
                 <Plus className="mr-2 h-4 w-4" />
