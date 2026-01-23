@@ -284,7 +284,7 @@ export default function ComprasPage() {
                                                         size="icon"
                                                         onClick={() => handleDelete(purchase)}
                                                         title="Eliminar"
-                                                        disabled={purchase.status === "CANCELLED" || isDeleting === purchase.id}
+                                                        disabled={purchase.status === "CANCELLED" || isDeleting}
                                                     >
                                                         <Trash2 className="h-4 w-4 text-red-500" />
                                                     </Button>
