@@ -15,11 +15,13 @@ import {
   PieChart,
   Pie,
 } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, Radio, Tag, Package, Loader2, Calendar } from "lucide-react";
+import { Users, Radio, Tag, Package, Calendar } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { DashboardCard } from "./DashboardCard";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
 
 interface ChannelStats {
   channel: string;
@@ -52,34 +54,37 @@ interface CategoryStats {
   percentage: number;
 }
 
-interface StatCardProps {
+const StatCard: React.FC<{
   title: string;
   value: string | number;
   subValue?: string;
   icon: React.ReactNode;
   loading?: boolean;
-}
-
-const StatCard: React.FC<StatCardProps> = ({ title, value, subValue, icon, loading }) => (
-  <Card>
-    <CardHeader className="flex flex-row items-center justify-between pb-2">
-      <CardTitle className="text-sm font-medium">{title}</CardTitle>
-      {icon}
+}> = ({ title, value, subValue, icon, loading }) => (
+  <Card className="bg-white/50 backdrop-blur-sm border-gray-100 shadow-sm">
+    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+      <CardTitle className="text-xs font-medium text-gray-500 uppercase">
+        {title}
+      </CardTitle>
+      <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
     </CardHeader>
     <CardContent>
       {loading ? (
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-4 w-4 animate-spin text-primary" />
       ) : (
         <>
-          <div className="text-2xl font-bold">{value}</div>
-          {subValue && <p className="text-xs text-muted-foreground">{subValue}</p>}
+          <div className="text-xl font-bold text-gray-800">{value}</div>
+          {subValue && (
+            <p className="text-[10px] font-medium text-primary mt-1">
+              {subValue}
+            </p>
+          )}
         </>
       )}
     </CardContent>
   </Card>
 );
 
-// Colores para canales
 const CHANNEL_COLORS: Record<string, string> = {
   WHATSAPP: "#25D366",
   INSTAGRAM: "#E1306C",
@@ -91,7 +96,16 @@ const CHANNEL_COLORS: Record<string, string> = {
   OTRO: "#9ca3af",
 };
 
-const CHART_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#6366f1", "#14b8a6"];
+const CHART_COLORS = [
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#ec4899",
+  "#6366f1",
+  "#14b8a6",
+];
 
 export const Analysis: React.FC = () => {
   const { selectedStoreId } = useAuth();
@@ -100,9 +114,17 @@ export const Analysis: React.FC = () => {
     salesChannels: ChannelStats[];
     closingChannels: ChannelStats[];
   } | null>(null);
-  const [sellerData, setSellerData] = useState<SellerStats[]>([]);
   const [brandData, setBrandData] = useState<BrandStats[]>([]);
   const [categoryData, setCategoryData] = useState<CategoryStats[]>([]);
+
+  // Local states for filters
+  const [channelDimension, setChannelDimension] = useState<"sales" | "closing">(
+    "sales",
+  );
+  const [productDimension, setProductDimension] = useState<
+    "category" | "brand"
+  >("category");
+
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
@@ -115,15 +137,19 @@ export const Analysis: React.FC = () => {
       if (fromDate) params.fromDate = fromDate;
       if (toDate) params.toDate = toDate;
 
-      const [channelRes, sellerRes, brandRes, categoryRes] = await Promise.all([
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-channel`, { params }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-seller`, { params }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-brand`, { params }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-category`, { params }),
+      const [channelRes, brandRes, categoryRes] = await Promise.all([
+        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-channel`, {
+          params,
+        }),
+        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-brand`, {
+          params,
+        }),
+        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-category`, {
+          params,
+        }),
       ]);
 
       setChannelData(channelRes.data);
-      setSellerData(sellerRes.data);
       setBrandData(brandRes.data);
       setCategoryData(categoryRes.data);
     } catch (error) {
@@ -137,266 +163,256 @@ export const Analysis: React.FC = () => {
     fetchData();
   }, [selectedStoreId]);
 
-  // Top metrics
+  // Derived data for charts
+  const getChannelChartData = () => {
+    const source =
+      channelDimension === "sales"
+        ? channelData?.salesChannels
+        : channelData?.closingChannels;
+    return (
+      source?.map((c) => ({
+        name: c.channel.replace("_", " "),
+        monto: c.totalAmount,
+        ordenes: c.ordersCount,
+        percentage: c.percentage,
+        fill: CHANNEL_COLORS[c.channel] || "#8884d8",
+      })) || []
+    );
+  };
+
+  const getProductChartData = () => {
+    const source = productDimension === "category" ? categoryData : brandData;
+    return source.slice(0, 8).map((item: any, i) => ({
+      name: item.categoryName || item.brandName,
+      monto: item.totalAmount,
+      ordenes: item.ordersCount,
+      percentage: item.percentage,
+      fill: CHART_COLORS[i % CHART_COLORS.length],
+    }));
+  };
+
   const topSalesChannel = channelData?.salesChannels[0];
-  const topClosingChannel = channelData?.closingChannels[0];
-  const topCategory = categoryData.find(c => c.categoryId !== "SIN_CATEGORIA") || categoryData[0];
-  const topBrand = brandData.find(b => b.brandId !== "SIN_MARCA") || brandData[0];
-
-  // Prepare chart data
-  const salesChannelChartData = channelData?.salesChannels.map((c) => ({
-    name: c.channel.replace("_", " "),
-    monto: c.totalAmount,
-    ordenes: c.ordersCount,
-    fill: CHANNEL_COLORS[c.channel] || "#8884d8",
-  })) || [];
-
-  const closingChannelChartData = channelData?.closingChannels.map((c) => ({
-    name: c.channel.replace("_", " "),
-    monto: c.totalAmount,
-    ordenes: c.ordersCount,
-    percentage: c.percentage,
-    fill: CHANNEL_COLORS[c.channel] || "#8884d8",
-  })) || [];
-
-  const categoryChartData = categoryData.slice(0, 6).map((c, i) => ({
-    name: c.categoryName,
-    monto: c.totalAmount,
-    percentage: c.percentage,
-    fill: CHART_COLORS[i % CHART_COLORS.length],
-  }));
-
-  const brandChartData = brandData.slice(0, 6).map((b, i) => ({
-    name: b.brandName,
-    monto: b.totalAmount,
-    percentage: b.percentage,
-    fill: CHART_COLORS[i % CHART_COLORS.length],
-  }));
+  const topCategory =
+    categoryData.find((c) => c.categoryId !== "SIN_CATEGORIA") ||
+    categoryData[0];
 
   return (
-    <div className="flex flex-col h-full w-full overflow-auto min-h-0">
-      {/* Filtros de fecha */}
-      <div className="px-4 py-3 border-b flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Período:</span>
+    <div className="flex flex-col h-full w-full overflow-hidden bg-gray-50/50">
+      {/* Header with Date Filters */}
+      <div className="bg-white border-b px-6 py-4 flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-primary/5 rounded-lg text-primary">
+            <Calendar className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">
+              Análisis de Mercado
+            </h2>
+            <p className="text-xs text-gray-500">
+              Distribución de ventas por canal y producto
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="w-auto"
-          />
-          <span className="text-muted-foreground">a</span>
-          <Input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className="w-auto"
-          />
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+            <Input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="h-8 w-36 bg-transparent border-none focus-visible:ring-0 text-xs"
+            />
+            <span className="text-gray-400 mx-1 px-1">-</span>
+            <Input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="h-8 w-36 bg-transparent border-none focus-visible:ring-0 text-xs"
+            />
+          </div>
+          <Button onClick={fetchData} size="sm" className="h-8 rounded-lg">
+            Filtrar
+          </Button>
         </div>
-        <Button onClick={fetchData} size="sm">
-          Actualizar
-        </Button>
       </div>
 
-      {/* Contenido principal */}
-      <div className="flex-1 flex flex-col px-4 py-4 gap-6 min-h-0">
-        {/* Cards de resumen */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        {/* KPI Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard
-            title="Canal de Venta Principal"
+            title="Canal Top"
             value={topSalesChannel?.channel.replace("_", " ") || "-"}
-            subValue={topSalesChannel ? `S/${topSalesChannel.totalAmount.toLocaleString("es-PE")} (${topSalesChannel.percentage}%)` : undefined}
-            icon={<Radio className="h-4 w-4 text-muted-foreground" />}
+            subValue={
+              topSalesChannel
+                ? `${topSalesChannel.percentage}% del total`
+                : undefined
+            }
+            icon={<Radio className="h-5 w-5 text-primary" />}
             loading={loading}
           />
           <StatCard
-            title="Canal de Cierre Principal"
-            value={topClosingChannel?.channel.replace("_", " ") || "-"}
-            subValue={topClosingChannel ? `S/${topClosingChannel.totalAmount.toLocaleString("es-PE")} (${topClosingChannel.percentage}%)` : undefined}
-            icon={<Users className="h-4 w-4 text-muted-foreground" />}
-            loading={loading}
-          />
-          <StatCard
-            title="Categoría Líder"
+            title="Categoría Top"
             value={topCategory?.categoryName || "-"}
-            subValue={topCategory ? `S/${topCategory.totalAmount.toLocaleString("es-PE")} (${topCategory.percentage}%)` : undefined}
-            icon={<Tag className="h-4 w-4 text-muted-foreground" />}
+            subValue={
+              topCategory ? `${topCategory.percentage}% del total` : undefined
+            }
+            icon={<Tag className="h-5 w-5 text-primary" />}
             loading={loading}
           />
           <StatCard
-            title="Marca Líder"
-            value={topBrand?.brandName || "-"}
-            subValue={topBrand ? `S/${topBrand.totalAmount.toLocaleString("es-PE")} (${topBrand.percentage}%)` : undefined}
-            icon={<Package className="h-4 w-4 text-muted-foreground" />}
+            title="Ventas Totales"
+            value={`S/ ${channelData?.salesChannels.reduce((sum, c) => sum + c.totalAmount, 0).toLocaleString() || 0}`}
+            subValue="Periodo seleccionado"
+            icon={<Package className="h-5 w-5 text-primary" />}
+            loading={loading}
+          />
+          <StatCard
+            title="Total Pedidos"
+            value={`${channelData?.salesChannels.reduce((sum, c) => sum + c.ordersCount, 0) || 0}`}
+            subValue="Ordenes procesadas"
+            icon={<Users className="h-5 w-5 text-primary" />}
             loading={loading}
           />
         </div>
 
-        {/* Gráficos - Fila 1 */}
-        <div className="grid gap-4 md:grid-cols-2 min-h-[300px]">
-          {/* Canales de Venta */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Canales de Venta</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[200px]">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={salesChannelChartData}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="name" type="category" />
-                    <Tooltip
-                      formatter={(value) => [`S/${value}`, "Monto"]}
-                      labelStyle={{ color: "var(--foreground)" }}
-                      contentStyle={{
-                        backgroundColor: "var(--background)",
-                        border: "1px solid var(--border)",
-                      }}
+        {/* Charts Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[500px]">
+          {/* Canales Card */}
+          <DashboardCard
+            title="Rendimiento por Canal"
+            isLoading={loading}
+            data={
+              channelDimension === "sales"
+                ? channelData?.salesChannels || []
+                : channelData?.closingChannels || []
+            }
+            filters={[
+              {
+                label: "Tipo de Canal",
+                value: channelDimension,
+                onChange: (v: any) => setChannelDimension(v),
+                options: [
+                  { label: "Canal de Venta", value: "sales" },
+                  { label: "Canal de Cierre", value: "closing" },
+                ],
+              },
+            ]}
+            summaryStats={[
+              {
+                label: "Top",
+                value:
+                  (channelDimension === "sales"
+                    ? channelData?.salesChannels[0]?.channel
+                    : channelData?.closingChannels[0]?.channel) || "-",
+              },
+            ]}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={getChannelChartData()}
+                layout="vertical"
+                margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  horizontal={true}
+                  vertical={false}
+                  stroke="#f0f0f0"
+                />
+                <XAxis type="number" hide />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={100}
+                  axisLine={false}
+                  tickLine={false}
+                  style={{ fontSize: "12px" }}
+                />
+                <Tooltip
+                  formatter={(value) => [
+                    `S/ ${value.toLocaleString()}`,
+                    "Monto",
+                  ]}
+                  contentStyle={{
+                    borderRadius: "8px",
+                    border: "none",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  }}
+                />
+                <Bar dataKey="monto" radius={[0, 4, 4, 0]} barSize={20}>
+                  {getChannelChartData().map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.fill}
+                      fillOpacity={0.8}
                     />
-                    <Bar dataKey="monto" name="Monto">
-                      {salesChannelChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </DashboardCard>
 
-          {/* Canales de Cierre (Pie Chart) */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Canales de Cierre</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[200px]">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={closingChannelChartData}
-                      dataKey="monto"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={70}
-                      label={({ name, percentage }) => `${name} (${percentage}%)`}
-                    >
-                      {closingChannelChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value) => [`S/${value}`, "Monto"]}
-                      contentStyle={{
-                        backgroundColor: "var(--background)",
-                        border: "1px solid var(--border)",
-                      }}
+          {/* Productos Card */}
+          <DashboardCard
+            title="Distribución de Productos"
+            isLoading={loading}
+            data={productDimension === "category" ? categoryData : brandData}
+            filters={[
+              {
+                label: "Dimension",
+                value: productDimension,
+                onChange: (v: any) => setProductDimension(v),
+                options: [
+                  { label: "Categorías", value: "category" },
+                  { label: "Marcas", value: "brand" },
+                ],
+              },
+            ]}
+            summaryStats={[
+              {
+                label: "Items",
+                value:
+                  productDimension === "category"
+                    ? categoryData.length
+                    : brandData.length,
+              },
+            ]}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={getProductChartData()}
+                  dataKey="monto"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={100}
+                  paddingAngle={5}
+                >
+                  {getProductChartData().map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fill={entry.fill}
+                      stroke="none"
                     />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Gráficos - Fila 2: Categorías y Marcas */}
-        <div className="grid gap-4 md:grid-cols-2 min-h-[300px]">
-          {/* Categorías */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Ventas por Categoría</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[200px]">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={categoryChartData}
-                      dataKey="monto"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={70}
-                      label={({ name, percentage }) => `${name} (${percentage}%)`}
-                    >
-                      {categoryChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value) => [`S/${value}`, "Monto"]}
-                      contentStyle={{
-                        backgroundColor: "var(--background)",
-                        border: "1px solid var(--border)",
-                      }}
-                    />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Marcas */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Ventas por Marca</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[200px]">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={brandChartData}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="name" type="category" />
-                    <Tooltip
-                      formatter={(value) => [`S/${value}`, "Monto"]}
-                      labelStyle={{ color: "var(--foreground)" }}
-                      contentStyle={{
-                        backgroundColor: "var(--background)",
-                        border: "1px solid var(--border)",
-                      }}
-                    />
-                    <Bar dataKey="monto" name="Monto">
-                      {brandChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value) => [
+                    `S/ ${Number(value).toLocaleString()}`,
+                    "Monto",
+                  ]}
+                  contentStyle={{
+                    borderRadius: "8px",
+                    border: "none",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  }}
+                />
+                <Legend iconType="circle" />
+              </PieChart>
+            </ResponsiveContainer>
+          </DashboardCard>
         </div>
       </div>
     </div>

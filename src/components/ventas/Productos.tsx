@@ -19,6 +19,7 @@ import {
 import { AgregarProducto } from "./AgregarProducto";
 import Container from "../ui/container";
 import { useCatalogoProductos } from "@/hooks/useCatalogoProductos";
+import { useAuth } from "@/contexts/AuthContext";
 import { useCreateOrderWithItems } from "@/hooks/useVentas";
 import {
   IAddItem,
@@ -52,6 +53,7 @@ export const Productos = ({
 }: Props) => {
   const [isOpen, setIsOpen] = useState(false);
   const { products } = useCatalogoProductos();
+  const { auth } = useAuth();
   const { mutateAsync: createOrderWithItems, isPending } =
     useCreateOrderWithItems();
 
@@ -60,7 +62,7 @@ export const Productos = ({
     const updated = cartItems.filter((item) => item.productId !== id);
     const totalAmount = updated.reduce(
       (acc, item) => acc + Number(item.unitPrice) * item.quantity,
-      0
+      0,
     );
     onUpdateTotals({
       totalAmount,
@@ -97,9 +99,11 @@ export const Productos = ({
     // Armar items
     const items = cartItems.map((it) => ({
       productId: it.productId,
+      productName: it.productName,
       quantity: it.quantity,
       unitPrice: Number(it.unitPrice ?? Number(it.priceBase ?? 0)),
       discountType: it.discountType?.toUpperCase() ?? "PORCENTAJE",
+      discountValue: Number(it.discountValue ?? 0),
       discountAmount: Number(it.discountAmount ?? it.discountValue ?? 0),
       attributes: Array.isArray(it.attributes)
         ? it.attributes.map((attr) => ({
@@ -113,7 +117,7 @@ export const Productos = ({
 
     const totalAmount = items.reduce(
       (acc, it) => acc + (it.unitPrice ?? 0) * (it.quantity ?? 0),
-      0
+      0,
     );
     const totalVat = parseFloat((totalAmount * 0.18).toFixed(2)); // iva
     const totalShippingCost = header.totalShippingCost ?? 0;
@@ -134,11 +138,15 @@ export const Productos = ({
       totalVat,
       totalShippingCost,
       customerId: header.customerId,
-      status: "PENDIENTE",
-      // @ts-expect-error: Errores temporales
+      // @ts-ignore
+      userId: auth?.user?.id,
+      // @ts-ignore
+      sellerName:
+        auth?.user?.name && auth?.user?.surname
+          ? `${auth?.user?.name} ${auth?.user?.surname}`
+          : auth?.user?.email,
       items,
     };
-
 
     try {
       const response = await createOrderWithItems(payload);
@@ -148,7 +156,7 @@ export const Productos = ({
       if (serverId) {
         localStorage.setItem(
           "currentOrder",
-          JSON.stringify({ ...payload, id: serverId })
+          JSON.stringify({ ...payload, id: serverId }),
         );
         onOrderUpdated(serverId);
         toast.success("Orden creada en servidor");

@@ -1,6 +1,7 @@
 "use client";
 
-import { Suspense, useEffect, useState, useRef } from "react";
+import { Suspense, useEffect, useState, useRef, useMemo } from "react";
+import { cn } from "@/lib/utils";
 import Link from "next/link";
 import { ArrowLeft, Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Combobox } from "@/components/ui/combobox";
 import { Badge } from "@/components/ui/badge";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import {
@@ -87,6 +89,37 @@ function RegistrarVentaContent() {
     notes: "",
   });
   const [salesRegion, setSalesRegion] = useState<"LIMA" | "PROVINCIA">("LIMA");
+
+  /* ---------------- Ubigeo Options ---------------- */
+  const departmentOptions = useMemo(() => {
+    return (ubigeos[0] as any).departments.map((d: any) => ({
+      value: d.name,
+      label: d.name,
+    }));
+  }, []);
+
+  const provinceOptions = useMemo(() => {
+    const dept = (ubigeos[0] as any).departments.find(
+      (d: any) => d.name === clientForm.department,
+    );
+    return (dept?.provinces || []).map((p: any) => ({
+      value: p.name,
+      label: p.name,
+    }));
+  }, [clientForm.department]);
+
+  const districtOptions = useMemo(() => {
+    const dept = (ubigeos[0] as any).departments.find(
+      (d: any) => d.name === clientForm.department,
+    );
+    const prov = dept?.provinces.find(
+      (p: any) => p.name === clientForm.province,
+    );
+    return (prov?.districts || []).map((dist: any) => ({
+      value: dist,
+      label: dist,
+    }));
+  }, [clientForm.department, clientForm.province]);
 
   /* ---------------- Pago ---------------- */
   const [paymentMethod, setPaymentMethod] = useState("");
@@ -254,12 +287,29 @@ function RegistrarVentaContent() {
   // Auto-calcular salesRegion basándose en el departamento del cliente
   useEffect(() => {
     if (clientForm.department) {
-      // Si el departamento es LIMA, la región es LIMA, sino es PROVINCIA
       const autoRegion =
         clientForm.department.toUpperCase() === "LIMA" ? "LIMA" : "PROVINCIA";
       setSalesRegion(autoRegion);
     }
   }, [clientForm.department]);
+
+  // Auto-cargar productos cuando cambia el inventario
+  useEffect(() => {
+    if (selectedInventory) {
+      searchProducts(1);
+    }
+  }, [selectedInventory]);
+
+  // Búsqueda debounced cuando cambia el query del producto
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // Solo buscar si hay un inventario seleccionado
+      if (selectedInventory) {
+        searchProducts(1);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [productQuery, selectedInventory]);
 
   /* ---------------- Actions ---------------- */
 
@@ -867,7 +917,7 @@ function RegistrarVentaContent() {
                 <Label>Dirección</Label>
 
                 <div className="grid grid-cols-3 gap-2">
-                  <Select
+                  <Combobox
                     disabled={!formEnabled}
                     value={clientForm.department}
                     onValueChange={(value) =>
@@ -878,20 +928,12 @@ function RegistrarVentaContent() {
                         district: "",
                       })
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Departamento" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {ubigeos[0].departments.map((d) => (
-                        <SelectItem key={d.name} value={d.name}>
-                          {d.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={departmentOptions}
+                    placeholder="Departamento"
+                    searchPlaceholder="Buscar departamento..."
+                  />
 
-                  <Select
+                  <Combobox
                     disabled={!formEnabled || !clientForm.department}
                     value={clientForm.province}
                     onValueChange={(value) =>
@@ -901,47 +943,21 @@ function RegistrarVentaContent() {
                         district: "",
                       })
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Provincia" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(
-                        ubigeos[0].departments.find(
-                          (d) => d.name === clientForm.department,
-                        )?.provinces || []
-                      ).map((p) => (
-                        <SelectItem key={p.name} value={p.name}>
-                          {p.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={provinceOptions}
+                    placeholder="Provincia"
+                    searchPlaceholder="Buscar provincia..."
+                  />
 
-                  <Select
+                  <Combobox
                     disabled={!formEnabled || !clientForm.province}
                     value={clientForm.district}
                     onValueChange={(value) =>
                       setClientForm({ ...clientForm, district: value })
                     }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Distrito" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {(
-                        ubigeos[0].departments
-                          .find((d) => d.name === clientForm.department)
-                          ?.provinces.find(
-                            (p) => p.name === clientForm.province,
-                          )?.districts || []
-                      ).map((dist) => (
-                        <SelectItem key={dist} value={dist}>
-                          {dist}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    options={districtOptions}
+                    placeholder="Distrito"
+                    searchPlaceholder="Buscar distrito..."
+                  />
                 </div>
 
                 <Input
@@ -1059,84 +1075,103 @@ function RegistrarVentaContent() {
 
               <div className="space-y-1 md:col-span-2">
                 <Label>Buscar producto</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Buscar por nombre o SKU"
-                    value={productQuery}
-                    onChange={(e) => setProductQuery(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        searchProducts(1);
-                      }
-                    }}
-                  />
-
+                <div className="flex gap-2 items-start">
+                  <div className="flex-1 min-w-0">
+                    <Combobox
+                      options={products.map((p) => ({
+                        value: p.variantId,
+                        label: p.productName,
+                        sku: p.sku,
+                        price: p.price,
+                        stock: p.availableStock,
+                        attributes: p.attributes,
+                      }))}
+                      value=""
+                      onValueChange={(variantId) => {
+                        const p = products.find(
+                          (prod) => prod.variantId === variantId,
+                        );
+                        if (p) addToCart(p);
+                      }}
+                      onSearchChange={setProductQuery}
+                      placeholder="Buscar por nombre o SKU..."
+                      searchPlaceholder="Escribe para buscar..."
+                      renderLabel={(option) => (
+                        <div className="flex justify-between items-center w-full py-1">
+                          <div className="flex flex-col gap-0.5 min-w-0 pr-4">
+                            <span className="font-medium text-sm truncate">
+                              {option.label}
+                            </span>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] h-4 px-1"
+                              >
+                                {option.sku}
+                              </Badge>
+                              {option.attributes &&
+                                Object.entries(option.attributes).map(
+                                  ([k, v]) => (
+                                    <span
+                                      key={k}
+                                      className="text-[10px] text-muted-foreground bg-muted px-1 rounded"
+                                    >
+                                      {k}: {v as string}
+                                    </span>
+                                  ),
+                                )}
+                              <span
+                                className={cn(
+                                  "text-[10px]",
+                                  option.stock <= 0
+                                    ? "text-destructive font-bold"
+                                    : "text-muted-foreground",
+                                )}
+                              >
+                                Stock: {option.stock}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end shrink-0">
+                            <span className="font-bold text-sm text-primary">
+                              ${option.price}
+                            </span>
+                            {option.stock <= 0 && (
+                              <span className="text-[9px] text-destructive font-semibold uppercase">
+                                Bajo pedido
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    />
+                  </div>
                   <Button
-                    onClick={() => searchProducts(1)}
-                    disabled={!selectedInventory || productsLoading}
+                    variant="outline"
+                    className="h-9 px-3 shrink-0"
+                    onClick={() => (window.location.href = "/productos")}
                   >
-                    <Search className="h-4 w-4" />
+                    <Plus className="h-4 w-4 mr-1" />
+                    <span className="hidden sm:inline">
+                      Crear producto nuevo
+                    </span>
+                    <span className="sm:hidden">Nuevo</span>
                   </Button>
                 </div>
               </div>
             </div>
 
             {productsLoading && (
-              <p className="text-sm text-muted-foreground">
+              <p className="text-sm text-muted-foreground animate-pulse">
                 Buscando productos...
               </p>
             )}
 
-            {!productsLoading && products.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No se encontraron productos
+            {!productsLoading && products.length === 0 && productQuery && (
+              <p className="text-sm text-muted-foreground italic">
+                No se encontraron productos para "{productQuery}"
               </p>
             )}
-
-            {products.map((p) => (
-              <div
-                key={`${p.inventoryItemId}-${p.price}`}
-                className="flex justify-between items-center border rounded-md p-3"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium">{p.productName}</p>
-                    {p.availableStock <= 0 && (
-                      <Badge variant="destructive" className="text-xs">
-                        Sin stock - Venta bajo pedido
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    SKU: {p.sku} • Stock: {p.availableStock}
-                  </p>
-
-                  {p.attributes && (
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {Object.entries(p.attributes).map(([key, value]) => (
-                        <span
-                          key={key}
-                          className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground"
-                        >
-                          {key}: {value}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <p className="font-semibold text-lg">${p.price}</p>
-                  <Button
-                    onClick={() => addToCart(p)}
-                    size="sm"
-                    disabled={cart.some((c) => c.variantId === p.variantId)}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
 
             <div>
               {cart.length > 0 && (

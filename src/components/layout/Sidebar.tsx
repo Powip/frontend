@@ -24,6 +24,7 @@ import {
   Tags,
   MapPin,
   PackagePlus,
+  ShieldCheck,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -35,7 +36,10 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
-import { SIDEBAR_ITEMS_PERMISSIONS } from "@/config/permissions.config";
+import {
+  SIDEBAR_ITEMS_PERMISSIONS,
+  isSuperadmin,
+} from "@/config/permissions.config";
 
 interface SidebarProps {
   className?: string;
@@ -65,21 +69,29 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Compras", href: "/compras", icon: PackagePlus },
     { name: "Ventas", href: "/ventas", icon: ShoppingCart },
     { name: "Operaciones", href: "/operaciones", icon: Truck },
-    { name: "Atención al cliente", href: "/atencion-cliente", icon: Headphones },
+    {
+      name: "Atención al cliente",
+      href: "/atencion-cliente",
+      icon: Headphones,
+    },
     { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
     { name: "Finanzas", href: "/finanzas", icon: DollarSign },
     { name: "Clientes", href: "/clientes", icon: Users },
     { name: "Proveedores", href: "/proveedores", icon: Building2 },
-    /*  { name: "Repartidores", href: "/repartidores", icon: Truck }, */
     { name: "Usuarios", href: "/usuarios", icon: UserCog },
-    /*    { name: "Reportes", href: "/reportes", icon: BarChart }, */
-
+    { name: "Couriers", href: "/couriers", icon: Truck },
     { name: "Configuración", href: "/configuracion", icon: Settings },
     /*    { name: "Auditoría", href: "/auditoria", icon: FileSearch }, */
+    { name: "Superadmin", href: "/superadmin", icon: ShieldCheck },
   ];
 
   // Filtrar navegación por permisos del usuario
-  const filteredNavigation = navigation.filter(item => {
+  const filteredNavigation = navigation.filter((item) => {
+    // Caso especial para Superadmin
+    if (item.name === "Superadmin") {
+      return isSuperadmin(auth?.user.email);
+    }
+
     const requiredPermission = SIDEBAR_ITEMS_PERMISSIONS[item.name];
     if (!requiredPermission) return true; // Sin restricción
     return hasPermission(requiredPermission);
@@ -90,14 +102,17 @@ export function Sidebar({ className }: SidebarProps) {
       className={cn(
         "flex flex-col px-3 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300",
         isCollapsed ? "w-16" : "w-56",
-        className
+        className,
       )}
     >
       {/* Header */}
       <div className="flex items-center justify-between">
         {isCollapsed ? (
           <div className="flex flex-col items-center w-full">
-            <Link href="/" className="flex h-10 w-10 items-center justify-center">
+            <Link
+              href="/"
+              className="flex h-10 w-10 items-center justify-center"
+            >
               <Image
                 src="/logo_icon.png"
                 alt="Powip Logo"
@@ -169,7 +184,7 @@ export function Sidebar({ className }: SidebarProps) {
                       "flex items-center gap-2 h-9 cursor-pointer",
                       isCollapsed
                         ? "justify-center w-9"
-                        : "justify-start w-full"
+                        : "justify-start w-full",
                     )}
                   >
                     <Icon className="h-4 w-4 text-green" />
@@ -216,13 +231,13 @@ export function Sidebar({ className }: SidebarProps) {
                 onClick={toggleTheme}
                 className={cn(
                   "w-10 h-6 rounded-full relative transition-colors",
-                  theme === "dark" ? "bg-primary" : "bg-gray-300"
+                  theme === "dark" ? "bg-primary" : "bg-gray-300",
                 )}
               >
                 <div
                   className={cn(
                     "w-4 h-4 bg-white rounded-full absolute top-1 transition-all",
-                    theme === "dark" ? "right-1" : "left-1"
+                    theme === "dark" ? "right-1" : "left-1",
                   )}
                 />
               </button>

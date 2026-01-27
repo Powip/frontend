@@ -62,7 +62,9 @@ export default function RegisterForm() {
 
   const provinces = useMemo(() => {
     if (!registerData.department) return [];
-    const dept = departments.find((d: any) => d.name === registerData.department);
+    const dept = departments.find(
+      (d: any) => d.name === registerData.department,
+    );
     return dept?.provinces || [];
   }, [registerData.department, departments]);
 
@@ -121,7 +123,8 @@ export default function RegisterForm() {
     if (registerData.password) {
       const passwordRegex = /^(?=.*[a-z])(?=.*\d).{6,}$/;
       if (!passwordRegex.test(registerData.password)) {
-        newErrors.password = "La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número.";
+        newErrors.password =
+          "La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número.";
       }
     }
 
@@ -151,7 +154,7 @@ export default function RegisterForm() {
     try {
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_USERS}/auth/register`,
-        registerData
+        registerData,
       );
 
       if (response.status === 200) {
@@ -175,16 +178,18 @@ export default function RegisterForm() {
       }
     } catch (error: any) {
       let message = "Error al crear la cuenta. Inténtalo de nuevo.";
-      
+
       if (error?.response?.data) {
         const data = error.response.data;
         if (data.errors && Array.isArray(data.errors)) {
-          message = data.errors.map((e: any) => e.defaultMessage || e.message).join(". ");
+          message = data.errors
+            .map((e: any) => e.defaultMessage || e.message)
+            .join(". ");
         } else if (data.message) {
           message = data.message;
         }
       }
-      
+
       toast.error(message);
       console.error(error);
     } finally {
@@ -193,7 +198,7 @@ export default function RegisterForm() {
   };
 
   return (
-    <div>
+    <div className="w-full">
       <form
         onSubmit={handleOnRegister}
         className="grid grid-cols-1 md:grid-cols-2 gap-4"
@@ -283,7 +288,9 @@ export default function RegisterForm() {
             onValueChange={handleDepartmentChange}
             disabled={isLoading}
           >
-            <SelectTrigger className={errors.department ? "border-red-500" : ""}>
+            <SelectTrigger
+              className={errors.department ? "border-red-500" : ""}
+            >
               <SelectValue placeholder="Selecciona departamento" />
             </SelectTrigger>
             <SelectContent>
@@ -439,7 +446,9 @@ export default function RegisterForm() {
                 })
               }
               disabled={isLoading}
-              className={errors.confirmPassword ? "border-red-500 pr-10" : "pr-10"}
+              className={
+                errors.confirmPassword ? "border-red-500 pr-10" : "pr-10"
+              }
             />
             <button
               type="button"
@@ -466,49 +475,6 @@ export default function RegisterForm() {
           </Button>
         </div>
       </form>
-
-      {/* Separador */}
-      <div className="relative md:col-span-2 p-2">
-        <div className="absolute inset-0 flex items-center">
-          <Separator />
-        </div>
-        <div className="relative flex justify-center text-xs uppercase">
-          <span className="bg-card px-2 text-muted-foreground">
-            O regístrate con
-          </span>
-        </div>
-      </div>
-
-      {/* Login social */}
-      <div className="grid gap-2 md:col-span-2">
-        <Button
-          variant="outline"
-          type="button"
-          onClick={() => handleSocialLogin("google")}
-          disabled={isLoading}
-          className="w-full"
-        >
-          Google
-        </Button>
-        <Button
-          variant="outline"
-          type="button"
-          onClick={() => handleSocialLogin("facebook")}
-          disabled={isLoading}
-          className="w-full"
-        >
-          Facebook
-        </Button>
-        <Button
-          variant="outline"
-          type="button"
-          onClick={() => handleSocialLogin("outlook")}
-          disabled={isLoading}
-          className="w-full"
-        >
-          Outlook
-        </Button>
-      </div>
 
       <p className="text-center text-xs text-muted-foreground md:col-span-2 pt-2">
         Al registrarte, aceptas nuestros{" "}
