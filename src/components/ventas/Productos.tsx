@@ -138,9 +138,7 @@ export const Productos = ({
       totalVat,
       totalShippingCost,
       customerId: header.customerId,
-      // @ts-ignore
       userId: auth?.user?.id,
-      // @ts-ignore
       sellerName:
         auth?.user?.name && auth?.user?.surname
           ? `${auth?.user?.name} ${auth?.user?.surname}`

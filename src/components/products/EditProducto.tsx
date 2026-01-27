@@ -36,7 +36,6 @@ const EditProducto = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
-
   // Listas para selects
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
@@ -165,7 +164,7 @@ const EditProducto = () => {
   };
 
   const handleImageUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>
+    event: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = event.target.files?.[0];
     if (!file) return;

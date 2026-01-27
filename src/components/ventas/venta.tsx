@@ -47,7 +47,6 @@ export const Venta = ({ next, customerId }: Props) => {
     }
 
     // Creamos orden local
-    // @ts-expect-error: Errores temporales
     const localOrder: ICreateOrderHeader = {
       id: `local-${Date.now()}`,
       receiptType: "FACT",

@@ -1169,7 +1169,7 @@ function RegistrarVentaContent() {
 
             {!productsLoading && products.length === 0 && productQuery && (
               <p className="text-sm text-muted-foreground italic">
-                No se encontraron productos para "{productQuery}"
+                No se encontraron productos para &quot;{productQuery}&quot;
               </p>
             )}
 
