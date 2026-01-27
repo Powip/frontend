@@ -27,47 +27,75 @@ export interface FrontPlan extends Plan {
   period: string;
   features: string[];
   popular: boolean;
+  target?: string;
+  limits?: string[];
 }
 
 const adaptPlans = (plans: Plan[]): FrontPlan[] =>
-  plans.map((plan) => ({
-    ...plan,
-    priceFormatted: `$${plan.price.toFixed(2)}`,
-    period:
-      plan.durationInDays === 30
-        ? "/mes"
-        : plan.durationInDays === 90
-        ? "/3 meses"
-        : "/año",
-    features:
-      plan.name === "Basic"
-        ? [
-            "Hasta 100 productos",
-            "1 usuario",
-            "Gestión de inventario básica",
-            "Registro de ventas",
-            "Soporte por email",
-          ]
-        : plan.name === "Medium"
-        ? [
-            "Hasta 500 productos",
-            "5 usuarios",
-            "Gestión completa de inventario",
-            "CRM y facturación",
-            "Reportes avanzados",
-            "Soporte prioritario",
-          ]
-        : [
-            "Productos ilimitados",
-            "Usuarios ilimitados",
-            "Todas las funcionalidades",
-            "Integraciones avanzadas",
-            "API personalizada",
-            "Soporte 24/7",
-            "Capacitación personalizada",
-          ],
-    popular: plan.name === "Medium",
-  }));
+  plans.map((plan) => {
+    let features: string[] = [];
+    let target = "";
+    let limits: string[] = [];
+    let popular = false;
+
+    if (plan.name.toUpperCase().includes("BASIC")) {
+      target = "Emprendedores pequeños, Instagram + WhatsApp.";
+      features = [
+        "Hasta 300 pedidos / mes",
+        "Gestión básica de pedidos",
+        "Estados manuales",
+        "WhatsApp básico",
+        "2 usuarios",
+        "Reportes simples",
+      ];
+      limits = [
+        "Sin automatizaciones",
+        "Sin lógica avanzada",
+        "Sin soporte prioritario",
+      ];
+    } else if (plan.name.toUpperCase().includes("MEDIUM")) {
+      target = "Tiendas Shopify, marcas activas, COD real.";
+      features = [
+        "Hasta 700 pedidos / mes",
+        "Multiusuario",
+        "WhatsApp automatizado",
+        "Estados automáticos",
+        "Rutas y zonas",
+        "Reportes completos",
+        "Soporte estándar",
+      ];
+      popular = true;
+    } else if (plan.name.toUpperCase().includes("SCALE")) {
+      features = [
+        "Hasta 2,000 pedidos / mes",
+        "IA básica (scoring, alertas)",
+        "Reglas automáticas",
+        "Control financiero COD",
+        "Reportes avanzados",
+        "Integraciones",
+        "Soporte prioritario",
+      ];
+    } else if (plan.name.toUpperCase().includes("ENTERPRISE")) {
+      features = [
+        "Pedidos ilimitados",
+        "Usuarios ilimitados",
+        "White label (futuro)",
+        "SLA",
+        "Integraciones custom",
+        "Gerente de cuenta",
+      ];
+    }
+
+    return {
+      ...plan,
+      priceFormatted: `S/ ${plan.price}`,
+      period: plan.name.toUpperCase().includes("ENTERPRISE") ? "" : "/ mes",
+      features,
+      target,
+      limits,
+      popular,
+    };
+  });
 
 export default function SubscriptionsPage() {
   const [plans, setPlans] = useState<FrontPlan[]>([]);
@@ -83,7 +111,7 @@ export default function SubscriptionsPage() {
       try {
         setLoading(true);
         const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_SUBS}/plans`
+          `${process.env.NEXT_PUBLIC_API_SUBS}/plans`,
         );
         if (response.status === 200) {
           const data: Plan[] = response.data;
@@ -139,13 +167,13 @@ export default function SubscriptionsPage() {
           />
         </div>
 
-        <div className="grid gap-6 md:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           {plans.map((plan) => (
             <Card
               key={plan.name}
-              className={`relative shadow-sm transition-all hover:shadow-lg ${
+              className={`relative shadow-sm transition-all hover:shadow-lg flex flex-col ${
                 plan.popular
-                  ? "border-2 border-primary shadow-md md:scale-105"
+                  ? "border-2 border-primary shadow-md lg:scale-105 z-10"
                   : ""
               }`}
             >
@@ -157,28 +185,69 @@ export default function SubscriptionsPage() {
                 </div>
               )}
               <CardHeader>
-                <CardTitle className="text-2xl">{plan.name}</CardTitle>
-                <CardDescription>{plan.description}</CardDescription>
-                <div className="mt-4">
-                  <span className="text-4xl font-bold text-foreground">
-                    ${plan.price}
+                <CardTitle className="text-2xl font-bold uppercase tracking-tight">
+                  PLAN {plan.name}
+                </CardTitle>
+                <CardDescription className="min-h-[40px]">
+                  {plan.description}
+                </CardDescription>
+
+                <div className="mt-4 flex items-baseline gap-1">
+                  <span className="text-3xl font-bold text-foreground">
+                    {plan.name.toUpperCase().includes("ENTERPRISE")
+                      ? "Desde S/ 500"
+                      : `S/ ${plan.price}`}
                   </span>
-                  <span className="text-muted-foreground">{plan.period}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {plan.period}
+                  </span>
                 </div>
+
+                {plan.target && (
+                  <div className="mt-4">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
+                      Para quién:
+                    </p>
+                    <p className="text-sm text-foreground">{plan.target}</p>
+                  </div>
+                )}
               </CardHeader>
-              <CardContent>
-                <ul className="mb-6 space-y-3">
-                  {plan.features.map((feature) => (
-                    <li key={feature} className="flex items-start gap-2">
-                      <Check className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
-                      <span className="text-sm text-muted-foreground">
-                        {feature}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+              <CardContent className="flex-1 flex flex-col">
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                    Incluye:
+                  </p>
+                  <ul className="mb-6 space-y-3">
+                    {plan.features.map((feature) => (
+                      <li key={feature} className="flex items-start gap-2">
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                        <span className="text-sm text-muted-foreground">
+                          {feature}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {plan.limits && plan.limits.length > 0 && (
+                    <div className="mb-6">
+                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                        Límites:
+                      </p>
+                      <ul className="space-y-3">
+                        {plan.limits.map((limit) => (
+                          <li key={limit} className="flex items-start gap-2">
+                            <span className="text-sm text-muted-foreground">
+                              {limit}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+
                 <Button
-                  className="w-full"
+                  className="w-full mt-auto"
                   variant={plan.popular ? "default" : "outline"}
                   onClick={() => {
                     setSelectedPlan(plan);
@@ -194,6 +263,7 @@ export default function SubscriptionsPage() {
       </div>
       <SubscriptionModal
         userId={auth.user?.id}
+        userEmail={auth.user?.email}
         open={isModalOpen}
         onClose={() => {
           setIsModalOpen(false);

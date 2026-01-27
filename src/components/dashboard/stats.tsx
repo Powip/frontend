@@ -18,13 +18,19 @@ import {
 } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  DollarSign, Package, ShoppingCart, TrendingUp,
-  CheckCircle, Loader2, Calendar, PackagePlus, Plus
+  DollarSign,
+  Package,
+  ShoppingCart,
+  TrendingUp,
+  CheckCircle,
+  Loader2,
+  Calendar,
+  PackagePlus,
+  Plus,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-
 
 interface StatCardProps {
   title: string;
@@ -120,7 +126,7 @@ export const Stats: React.FC = () => {
             ...(fromDate && { fromDate }),
             ...(toDate && { toDate }),
           },
-        }
+        },
       );
       setData(response.data);
     } catch (error) {
@@ -137,21 +143,25 @@ export const Stats: React.FC = () => {
   // Preparar datos para gráfico de estados
   const statusChartData = data
     ? Object.entries(data.byStatus)
-      .filter(([status]) => status !== "ANULADO")
-      .map(([status, info]) => ({
-        name: STATUS_LABELS[status] || status,
-        cantidad: info.count,
-        monto: info.amount,
-        fill: STATUS_COLORS[status] || "#8884d8",
-      }))
+        .filter(([status]) => status !== "ANULADO")
+        .map(([status, info]) => ({
+          name: STATUS_LABELS[status] || status,
+          cantidad: info.count,
+          monto: info.amount,
+          fill: STATUS_COLORS[status] || "#8884d8",
+        }))
     : [];
 
   // Preparar datos para gráfico de ventas diarias
-  const dailyChartData = data?.dailySales.map((d) => ({
-    name: new Date(d.date).toLocaleDateString("es-PE", { weekday: "short", day: "numeric" }),
-    ventas: d.amount,
-    ordenes: d.orders,
-  })) || [];
+  const dailyChartData =
+    data?.dailySales.map((d) => ({
+      name: new Date(d.date).toLocaleDateString("es-PE", {
+        weekday: "short",
+        day: "numeric",
+      }),
+      ventas: d.amount,
+      ordenes: d.orders,
+    })) || [];
 
   return (
     <div className="flex flex-col h-full w-full overflow-auto min-h-0">
@@ -187,7 +197,11 @@ export const Stats: React.FC = () => {
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Ventas Totales"
-            value={data ? `S/${data.totalSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}` : "-"}
+            value={
+              data
+                ? `S/${data.totalSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`
+                : "-"
+            }
             icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
             description="Suma del período seleccionado"
             loading={loading}
@@ -203,7 +217,11 @@ export const Stats: React.FC = () => {
 
           <StatCard
             title="Ticket Promedio"
-            value={data ? `S/${data.averageTicket.toLocaleString("es-PE", { minimumFractionDigits: 2 })}` : "-"}
+            value={
+              data
+                ? `S/${data.averageTicket.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`
+                : "-"
+            }
             icon={<Package className="h-4 w-4 text-muted-foreground" />}
             description="Promedio por orden"
             loading={loading}
@@ -213,31 +231,13 @@ export const Stats: React.FC = () => {
             title="Entregados"
             value={data?.totalDelivered || 0}
             icon={<CheckCircle className="h-4 w-4 text-green-500" />}
-            description={data ? `S/${data.deliveredAmount.toLocaleString("es-PE", { minimumFractionDigits: 2 })}` : "-"}
+            description={
+              data
+                ? `S/${data.deliveredAmount.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`
+                : "-"
+            }
             loading={loading}
           />
-        </div>
-
-        {/* Acciones Rápidas */}
-        <div className="flex gap-3 flex-wrap">
-          <Link href="/registrar-venta">
-            <Button variant="outline" className="gap-2">
-              <Plus className="h-4 w-4" />
-              Nueva Venta
-            </Button>
-          </Link>
-          <Link href="/compras">
-            <Button variant="outline" className="gap-2">
-              <PackagePlus className="h-4 w-4" />
-              Compras
-            </Button>
-          </Link>
-          <Link href="/inventario">
-            <Button variant="outline" className="gap-2">
-              <Package className="h-4 w-4" />
-              Inventario
-            </Button>
-          </Link>
         </div>
 
         {/* Gráficos */}
@@ -264,7 +264,7 @@ export const Stats: React.FC = () => {
                     <Tooltip
                       formatter={(value, name) => [
                         name === "ventas" ? `S/${value}` : value,
-                        name === "ventas" ? "Ventas" : "Órdenes S/"
+                        name === "ventas" ? "Ventas" : "Órdenes S/",
                       ]}
                       labelStyle={{ color: "var(--foreground)" }}
                       contentStyle={{

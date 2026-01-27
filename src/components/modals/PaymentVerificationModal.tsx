@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -82,6 +83,12 @@ export default function PaymentVerificationModal({
     null,
   );
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const pathname = usePathname();
+
+  // Determinar si la ruta actual permite aprobar/rechazar pagos
+  const isAllowedRoute =
+    pathname.includes("/operaciones") || pathname.includes("/ventas");
+  const finalCanApprove = canApprove && isAllowedRoute;
 
   // Form states
   const [amount, setAmount] = useState("");
@@ -334,7 +341,7 @@ export default function PaymentVerificationModal({
                             </span>
                           )}
                         </div>
-                        {canApprove && (
+                        {finalCanApprove && (
                           <div className="flex gap-1">
                             <Button
                               size="sm"

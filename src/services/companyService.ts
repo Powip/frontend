@@ -8,21 +8,22 @@ interface Store {
 export interface Company {
   id: string;
   name: string;
+  userId: string;
   stores?: Store[];
   // Datos adicionales para comprobante de envío
-  cuit?: string;           // RUC/CUIT
+  cuit?: string; // RUC/CUIT
   billingAddress?: string; // Dirección
-  phone?: string;          // Teléfono
-  logoUrl?: string;        // URL del logo (para futuro)
+  phone?: string; // Teléfono
+  logoUrl?: string; // URL del logo (para futuro)
 }
 
 export const fetchUserCompany = async (
   userId: string,
-  token: string
+  token: string,
 ): Promise<Company | null> => {
   try {
     const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_COMPANY}/company/user/${userId}`
+      `${process.env.NEXT_PUBLIC_API_COMPANY}/company/user/${userId}`,
     );
 
     // Si no trae company
@@ -32,6 +33,7 @@ export const fetchUserCompany = async (
     return {
       id: response.data.id,
       name: response.data.name,
+      userId: response.data.user_id,
       stores: response.data.stores || [],
       cuit: response.data.cuit,
       billingAddress: response.data.billing_address,
@@ -46,11 +48,11 @@ export const fetchUserCompany = async (
 
 export const fetchCompanyById = async (
   companyId: string,
-  token: string
+  token: string,
 ): Promise<Company | null> => {
   try {
     const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${companyId}/with-stores`
+      `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${companyId}/with-stores`,
     );
 
     if (!response.data) return null;
@@ -58,6 +60,7 @@ export const fetchCompanyById = async (
     return {
       id: response.data.id,
       name: response.data.name,
+      userId: response.data.user_id,
       stores: response.data.stores || [],
       cuit: response.data.cuit,
       billingAddress: response.data.billing_address,
@@ -70,3 +73,41 @@ export const fetchCompanyById = async (
   }
 };
 
+export const getAllCompanies = async (token: string): Promise<Company[]> => {
+  const response = await axios.get(
+    `${process.env.NEXT_PUBLIC_API_COMPANY}/company`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  return response.data.map((c: any) => ({
+    id: c.id,
+    name: c.name,
+    userId: c.user_id,
+    stores: c.stores || [],
+    cuit: c.cuit,
+    billingAddress: c.billing_address,
+    phone: c.phone,
+    logoUrl: c.logo_url,
+  }));
+};
+export const createCompany = async (token: string, data: Partial<Company>) => {
+  const response = await axios.post(
+    `${process.env.NEXT_PUBLIC_API_COMPANY}/company`,
+    {
+      name: data.name,
+      user_id: data.userId,
+      cuit: data.cuit,
+      billing_address: data.billingAddress,
+      phone: data.phone,
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  return response.data;
+};

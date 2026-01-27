@@ -39,6 +39,7 @@ import {
 import { MessageSquare } from "lucide-react";
 import ShippingNotesModal from "@/components/modals/ShippingNotesModal";
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
@@ -64,7 +65,7 @@ interface ShippingGuide {
   chargeType?: string | null;
   amountToCollect?: number | null;
   scheduledDate?: Date | null;
-  deliveryZone: string;
+  deliveryZones: string[];
   deliveryType: string;
   deliveryAddress?: string | null;
   notes?: string | null;
@@ -125,6 +126,7 @@ const DAYS_RANGES = [
 const GUIDE_STATUSES = [
   { value: "", label: "Todos" },
   { value: "CREADA", label: "Creada" },
+  { value: "APROBADA", label: "Aprobada" },
   { value: "ASIGNADA", label: "Asignada" },
   { value: "EN_RUTA", label: "En Ruta" },
   { value: "ENTREGADA", label: "Entregada" },
@@ -132,6 +134,17 @@ const GUIDE_STATUSES = [
   { value: "FALLIDA", label: "Fallida" },
   { value: "CANCELADA", label: "Cancelada" },
 ];
+
+const GUIDE_STATUS_STYLE: Record<string, string> = {
+  CREADA: "bg-gray-100 text-gray-800",
+  APROBADA: "bg-teal-100 text-teal-800",
+  ASIGNADA: "bg-blue-100 text-blue-800",
+  EN_RUTA: "bg-amber-100 text-amber-800",
+  ENTREGADA: "bg-green-100 text-green-800",
+  PARCIAL: "bg-orange-100 text-orange-800",
+  FALLIDA: "bg-red-100 text-red-800",
+  CANCELADA: "bg-red-100 text-red-800",
+};
 
 /* -----------------------------------------
    Helper functions
@@ -162,11 +175,21 @@ const getNotesCount = (notesStr?: string | null) => {
 
 export default function SeguimientoPage() {
   const [envios, setEnvios] = useState<EnvioItem[]>([]);
+  const [guides, setGuides] = useState<ShippingGuide[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingGuides, setLoadingGuides] = useState(false);
   const [filters, setFilters] = useState<SeguimientoFilters>(emptyFilters);
+  const [guideSearch, setGuideSearch] = useState("");
+  const [guideStatusFilter, setGuideStatusFilter] = useState("");
+
+  // Map of orderId -> orderNumber for quick lookup
+  const [orderMap, setOrderMap] = useState<Record<string, string>>({});
 
   // Modal state for GuideDetailsModal (unified with operaciones)
   const [selectedEnvio, setSelectedEnvio] = useState<EnvioItem | null>(null);
+  const [selectedSaleForGuide, setSelectedSaleForGuide] = useState<any | null>(
+    null,
+  );
   const [guideModalOpen, setGuideModalOpen] = useState(false);
 
   // Modal state for order detail (CustomerServiceModal) - includes guide data
@@ -233,6 +256,13 @@ export default function SeguimientoPage() {
 
       setEnvios(envioItems);
 
+      // Update order map
+      const mapping: Record<string, string> = {};
+      ordersRes.data.forEach((o) => {
+        mapping[o.id] = o.orderNumber;
+      });
+      setOrderMap(mapping);
+
       // Actualizar modal si está abierto (usando actualización funcional para evitar loop)
       setSelectedEnvio((prev) => {
         if (!prev) return null;
@@ -249,9 +279,26 @@ export default function SeguimientoPage() {
     }
   }, [selectedStoreId]);
 
+  const fetchGuides = useCallback(async () => {
+    if (!selectedStoreId) return;
+    setLoadingGuides(true);
+    try {
+      const res = await axios.get<ShippingGuide[]>(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
+      );
+      setGuides(res.data);
+    } catch (error) {
+      console.error("Error fetching guides:", error);
+      toast.error("Error al cargar las guías");
+    } finally {
+      setLoadingGuides(false);
+    }
+  }, [selectedStoreId]);
+
   useEffect(() => {
     fetchEnvios();
-  }, [selectedStoreId, fetchEnvios]);
+    fetchGuides();
+  }, [selectedStoreId, fetchEnvios, fetchGuides]);
 
   // Apply filters
   const filteredEnvios = useMemo(() => {
@@ -319,6 +366,33 @@ export default function SeguimientoPage() {
     });
   }, [envios, filters]);
 
+  const filteredGuidesList = useMemo(() => {
+    return guides.filter((guide) => {
+      // Búsqueda por N° Guía o N° Orden
+      if (guideSearch) {
+        const searchLower = guideSearch.toLowerCase();
+        const matchesGuideNumber = guide.guideNumber
+          .toLowerCase()
+          .includes(searchLower);
+
+        // Buscar si algún orderNumber en el mapa coincide con el término
+        const matchesOrderNumber = guide.orderIds.some((id) => {
+          const orderNum = orderMap[id]?.toLowerCase() || "";
+          return orderNum.includes(searchLower);
+        });
+
+        if (!matchesGuideNumber && !matchesOrderNumber) return false;
+      }
+
+      // Filtro por estado
+      if (guideStatusFilter && guide.status !== guideStatusFilter) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [guides, guideSearch, guideStatusFilter, orderMap]);
+
   const updateFilter = <K extends keyof SeguimientoFilters>(
     key: K,
     value: SeguimientoFilters[K],
@@ -348,7 +422,9 @@ export default function SeguimientoPage() {
         chargeType: item.guide.chargeType,
         amountToCollect: item.guide.amountToCollect,
         scheduledDate: item.guide.scheduledDate?.toString() || null,
-        deliveryZone: item.guide.deliveryZone,
+        deliveryZone: item.guide.deliveryZones
+          ? item.guide.deliveryZones[0]
+          : "",
         deliveryType: item.guide.deliveryType,
         deliveryAddress: item.guide.deliveryAddress,
         notes: item.guide.notes,
@@ -418,6 +494,38 @@ export default function SeguimientoPage() {
     exportSeguimientoToExcel(exportData, "seguimiento_envios");
   };
 
+  const handleOpenGuideDetails = (guide: ShippingGuide) => {
+    // Map to EnvioItem format for reuse or create a similar modal handler
+    // Actually GuideDetailsModal takes selectedSaleForGuide as Sale | null
+    // and guide as ShippingGuideData | null.
+    // Let's check its props in GuideDetailsModal.
+    // In operations it's used like:
+    // <GuideDetailsModal open={...} onClose={...} sale={selectedSaleForGuide} guide={selectedGuideData} ... />
+
+    // For this view, we don't necessarily have a single "sale" but many
+    setSelectedGuideData({
+      id: guide.id,
+      guideNumber: guide.guideNumber,
+      courierName: guide.courierName,
+      status: guide.status,
+      chargeType: guide.chargeType,
+      amountToCollect: guide.amountToCollect,
+      scheduledDate: guide.scheduledDate?.toString() || null,
+      deliveryZone: guide.deliveryZones ? guide.deliveryZones[0] : "",
+      deliveryType: guide.deliveryType,
+      deliveryAddress: guide.deliveryAddress,
+      notes: guide.notes,
+      trackingUrl: guide.trackingUrl,
+      shippingKey: guide.shippingKey,
+      shippingOffice: guide.shippingOffice,
+      shippingProofUrl: guide.shippingProofUrl,
+      created_at: guide.created_at,
+      daysSinceCreated: 0, // Not used here
+    });
+    setSelectedOrderId(guide.orderIds[0] || "");
+    setGuideModalOpen(true);
+  };
+
   const handleStatusChange = async (
     guideId: string,
     newStatus: string,
@@ -463,387 +571,578 @@ export default function SeguimientoPage() {
           />
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Package className="h-5 w-5" />
-              Pedidos En Envío ({filteredEnvios.length})
-            </CardTitle>
-            <Button
-              variant="outline"
-              onClick={handleExportExcel}
-              disabled={filteredEnvios.length === 0}
-            >
-              <FileDown className="h-4 w-4 mr-2" />
-              Exportar Excel
-            </Button>
-          </CardHeader>
-          <CardContent>
-            {/* Filters */}
-            <div className="mb-4 p-4 border rounded-lg bg-muted/30">
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-                {/* Search */}
-                <div className="space-y-1 col-span-2">
-                  <Label className="text-xs">
-                    Buscar (cliente, teléfono, N° orden)
-                  </Label>
-                  <Input
-                    placeholder="Buscar..."
-                    value={filters.search}
-                    onChange={(e) => updateFilter("search", e.target.value)}
-                    icon={Search}
-                    iconPosition="left"
-                    className="h-8 text-sm"
-                  />
-                </div>
+        <Tabs defaultValue="pedidos" className="w-full">
+          <TabsList className="mb-4">
+            <TabsTrigger value="pedidos" className="flex items-center gap-2">
+              <Package className="h-4 w-4" />
+              Pedidos en Envío
+            </TabsTrigger>
+            <TabsTrigger value="guias" className="flex items-center gap-2">
+              <Truck className="h-4 w-4" />
+              Guías de Envío
+            </TabsTrigger>
+          </TabsList>
 
-                {/* Courier */}
-                <div className="space-y-1">
-                  <Label className="text-xs">Courier</Label>
-                  <select
-                    className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
-                    value={filters.courier}
-                    onChange={(e) => updateFilter("courier", e.target.value)}
-                  >
-                    <option value="">Todos</option>
-                    {COURIERS.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+          <TabsContent value="pedidos">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Package className="h-5 w-5" />
+                  Pedidos En Envío ({filteredEnvios.length})
+                </CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportExcel}
+                  disabled={filteredEnvios.length === 0}
+                >
+                  <FileDown className="h-4 w-4 mr-2" />
+                  Exportar Excel
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {/* Filters */}
+                <div className="mb-4 p-4 border rounded-lg bg-muted/30">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {/* Search */}
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs">
+                        Buscar (cliente, teléfono, N° orden)
+                      </Label>
+                      <Input
+                        placeholder="Buscar..."
+                        value={filters.search}
+                        onChange={(e) => updateFilter("search", e.target.value)}
+                        icon={Search}
+                        iconPosition="left"
+                        className="h-8 text-sm"
+                      />
+                    </div>
 
-                {/* Days Range */}
-                <div className="space-y-1">
-                  <Label className="text-xs">Días transcurridos</Label>
-                  <select
-                    className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
-                    value={filters.daysRange}
-                    onChange={(e) =>
-                      updateFilter(
-                        "daysRange",
-                        e.target.value as SeguimientoFilters["daysRange"],
-                      )
-                    }
-                  >
-                    {DAYS_RANGES.map((r) => (
-                      <option key={r.value} value={r.value}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Pending Payment */}
-                <div className="space-y-1">
-                  <Label className="text-xs">Saldo pendiente</Label>
-                  <select
-                    className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
-                    value={filters.hasPendingPayment}
-                    onChange={(e) =>
-                      updateFilter(
-                        "hasPendingPayment",
-                        e.target.value as "" | "yes" | "no",
-                      )
-                    }
-                  >
-                    <option value="">Todos</option>
-                    <option value="yes">Con saldo</option>
-                    <option value="no">Sin saldo</option>
-                  </select>
-                </div>
-
-                {/* Region */}
-                <div className="space-y-1">
-                  <Label className="text-xs">Región</Label>
-                  <select
-                    className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
-                    value={filters.region}
-                    onChange={(e) =>
-                      updateFilter(
-                        "region",
-                        e.target.value as "" | "LIMA" | "PROVINCIA",
-                      )
-                    }
-                  >
-                    <option value="">Todas</option>
-                    <option value="LIMA">Lima</option>
-                    <option value="PROVINCIA">Provincia</option>
-                  </select>
-                </div>
-
-                {/* Guide Status */}
-                <div className="space-y-1">
-                  <Label className="text-xs">Estado Envío</Label>
-                  <select
-                    className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
-                    value={filters.guideStatus}
-                    onChange={(e) =>
-                      updateFilter("guideStatus", e.target.value)
-                    }
-                  >
-                    {GUIDE_STATUSES.map((s) => (
-                      <option key={s.value} value={s.value}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {Object.values(filters).some((v) => v !== "") && (
-                <div className="mt-3">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={clearFilters}
-                    className="text-xs"
-                  >
-                    Limpiar filtros
-                  </Button>
-                </div>
-              )}
-            </div>
-
-            {/* Table */}
-            {loading ? (
-              <div className="text-center py-10 text-muted-foreground">
-                Cargando envíos...
-              </div>
-            ) : filteredEnvios.length === 0 ? (
-              <div className="text-center py-10 text-muted-foreground">
-                No hay pedidos en envío
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>N° Orden</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Teléfono</TableHead>
-                    <TableHead>Región</TableHead>
-                    <TableHead>Enviado Por</TableHead>
-                    <TableHead>Días</TableHead>
-                    <TableHead>Estado Envío</TableHead>
-                    <TableHead>Saldo</TableHead>
-                    <TableHead>Guía</TableHead>
-                    <TableHead>Resumen</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredEnvios.map((item) => {
-                    const { order, guide, daysSinceCreated } = item;
-                    const pendingPayment = calculatePendingPayment(order);
-                    const isProvincia = order.salesRegion === "PROVINCIA";
-
-                    return (
-                      <TableRow
-                        key={order.id}
-                        className={`hover:bg-muted/50 ${getDaysRowClass(daysSinceCreated)} ${isProvincia && daysSinceCreated < 25 ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}
+                    {/* Courier */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Courier</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.courier}
+                        onChange={(e) =>
+                          updateFilter("courier", e.target.value)
+                        }
                       >
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-1">
-                            {daysSinceCreated >= 25 && (
-                              <AlertTriangle
-                                className={`h-4 w-4 ${daysSinceCreated >= 30 ? "text-red-500" : "text-amber-500"}`}
-                              />
-                            )}
-                            {order.orderNumber}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <User className="h-3 w-3 text-muted-foreground" />
-                            {order.customer?.fullName || "-"}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Phone className="h-3 w-3 text-muted-foreground" />
-                            {order.customer?.phoneNumber || "-"}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={isProvincia ? "secondary" : "outline"}
+                        <option value="">Todos</option>
+                        {COURIERS.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Days Range */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Días transcurridos</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.daysRange}
+                        onChange={(e) =>
+                          updateFilter(
+                            "daysRange",
+                            e.target.value as SeguimientoFilters["daysRange"],
+                          )
+                        }
+                      >
+                        {DAYS_RANGES.map((r) => (
+                          <option key={r.value} value={r.value}>
+                            {r.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Pending Payment */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Saldo pendiente</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.hasPendingPayment}
+                        onChange={(e) =>
+                          updateFilter(
+                            "hasPendingPayment",
+                            e.target.value as "" | "yes" | "no",
+                          )
+                        }
+                      >
+                        <option value="">Todos</option>
+                        <option value="yes">Con saldo</option>
+                        <option value="no">Sin saldo</option>
+                      </select>
+                    </div>
+
+                    {/* Region */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Región</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.region}
+                        onChange={(e) =>
+                          updateFilter(
+                            "region",
+                            e.target.value as "" | "LIMA" | "PROVINCIA",
+                          )
+                        }
+                      >
+                        <option value="">Todas</option>
+                        <option value="LIMA">Lima</option>
+                        <option value="PROVINCIA">Provincia</option>
+                      </select>
+                    </div>
+
+                    {/* Guide Status */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Estado Envío</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.guideStatus}
+                        onChange={(e) =>
+                          updateFilter("guideStatus", e.target.value)
+                        }
+                      >
+                        {GUIDE_STATUSES.map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {Object.values(filters).some((v) => v !== "") && (
+                    <div className="mt-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearFilters}
+                        className="text-xs"
+                      >
+                        Limpiar filtros
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Table */}
+                {loading ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    Cargando envíos...
+                  </div>
+                ) : filteredEnvios.length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    No hay pedidos en envío
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>N° Orden</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Teléfono</TableHead>
+                        <TableHead>Región</TableHead>
+                        <TableHead>Enviado Por</TableHead>
+                        <TableHead>Días</TableHead>
+                        <TableHead>Estado Envío</TableHead>
+                        <TableHead>Saldo</TableHead>
+                        <TableHead>Guía</TableHead>
+                        <TableHead>Resumen</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredEnvios.map((item) => {
+                        const { order, guide, daysSinceCreated } = item;
+                        const pendingPayment = calculatePendingPayment(order);
+                        const isProvincia = order.salesRegion === "PROVINCIA";
+
+                        return (
+                          <TableRow
+                            key={order.id}
+                            className={`hover:bg-muted/50 ${getDaysRowClass(daysSinceCreated)} ${isProvincia && daysSinceCreated < 25 ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}
                           >
-                            {order.salesRegion}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Truck className="h-3 w-3 text-muted-foreground" />
-                            {guide?.courierName || order.courier || "-"}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            {daysSinceCreated >= 25 && (
-                              <Clock
-                                className={`h-3 w-3 ${daysSinceCreated >= 30 ? "text-red-500" : "text-amber-500"}`}
-                              />
-                            )}
-                            <span className={getDaysColor(daysSinceCreated)}>
-                              {daysSinceCreated} días
-                            </span>
-                            {daysSinceCreated >= 30 && (
-                              <Badge className="ml-1 bg-red-600 text-white text-[10px] px-1 py-0">
-                                VENCIDO
+                            <TableCell className="font-medium">
+                              <div className="flex items-center gap-1">
+                                {daysSinceCreated >= 25 && (
+                                  <AlertTriangle
+                                    className={`h-4 w-4 ${daysSinceCreated >= 30 ? "text-red-500" : "text-amber-500"}`}
+                                  />
+                                )}
+                                {order.orderNumber}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <User className="h-3 w-3 text-muted-foreground" />
+                                {order.customer?.fullName || "-"}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Phone className="h-3 w-3 text-muted-foreground" />
+                                {order.customer?.phoneNumber || "-"}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge
+                                variant={isProvincia ? "secondary" : "outline"}
+                              >
+                                {order.salesRegion}
                               </Badge>
-                            )}
-                            {daysSinceCreated >= 25 &&
-                              daysSinceCreated < 30 && (
-                                <Badge className="ml-1 bg-amber-500 text-white text-[10px] px-1 py-0">
-                                  PRÓXIMO
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                <Truck className="h-3 w-3 text-muted-foreground" />
+                                {guide?.courierName || order.courier || "-"}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-1">
+                                {daysSinceCreated >= 25 && (
+                                  <Clock
+                                    className={`h-3 w-3 ${daysSinceCreated >= 30 ? "text-red-500" : "text-amber-500"}`}
+                                  />
+                                )}
+                                <span
+                                  className={getDaysColor(daysSinceCreated)}
+                                >
+                                  {daysSinceCreated} días
+                                </span>
+                                {daysSinceCreated >= 30 && (
+                                  <Badge className="ml-1 bg-red-600 text-white text-[10px] px-1 py-0">
+                                    VENCIDO
+                                  </Badge>
+                                )}
+                                {daysSinceCreated >= 25 &&
+                                  daysSinceCreated < 30 && (
+                                    <Badge className="ml-1 bg-amber-500 text-white text-[10px] px-1 py-0">
+                                      PRÓXIMO
+                                    </Badge>
+                                  )}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Select
+                                value={guide?.status || "CREADA"}
+                                onValueChange={(val) =>
+                                  guide &&
+                                  handleStatusChange(
+                                    guide.id,
+                                    val,
+                                    pendingPayment,
+                                  )
+                                }
+                                disabled={!guide}
+                              >
+                                <SelectTrigger
+                                  className={`h-8 w-[130px] text-xs font-semibold ${
+                                    (guide?.status &&
+                                      GUIDE_STATUS_STYLE[guide.status]) ||
+                                    "bg-gray-100 text-gray-800 border-gray-200"
+                                  }`}
+                                >
+                                  <SelectValue placeholder="Estado" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="CREADA">Creada</SelectItem>
+                                  <SelectItem value="APROBADA">
+                                    Aprobada
+                                  </SelectItem>
+                                  <SelectItem value="ASIGNADA">
+                                    Asignada
+                                  </SelectItem>
+                                  <SelectItem value="EN_RUTA">
+                                    En Ruta
+                                  </SelectItem>
+                                  <SelectItem value="ENTREGADA">
+                                    Entregada
+                                  </SelectItem>
+                                  <SelectItem value="PARCIAL">
+                                    Parcial
+                                  </SelectItem>
+                                  <SelectItem value="FALLIDA">
+                                    Fallida
+                                  </SelectItem>
+                                  <SelectItem value="CANCELADA">
+                                    Cancelada
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              {pendingPayment > 0 ? (
+                                <Badge className="bg-red-100 text-red-800">
+                                  S/ {pendingPayment.toFixed(2)}
+                                </Badge>
+                              ) : (
+                                <Badge className="bg-green-100 text-green-800">
+                                  Pagado
                                 </Badge>
                               )}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={guide?.status || "CREADA"}
-                            onValueChange={(val) =>
-                              guide &&
-                              handleStatusChange(guide.id, val, pendingPayment)
-                            }
-                            disabled={!guide}
-                          >
-                            <SelectTrigger
-                              className={`h-8 w-[130px] text-xs font-semibold ${
-                                guide?.status === "ENTREGADA"
-                                  ? "bg-green-100 text-green-800 border-green-200"
-                                  : guide?.status === "EN_RUTA"
-                                    ? "bg-blue-100 text-blue-800 border-blue-200"
-                                    : guide?.status === "FALLIDA" ||
-                                        guide?.status === "CANCELADA"
-                                      ? "bg-red-100 text-red-800 border-red-200"
-                                      : "bg-gray-100 text-gray-800 border-gray-200"
+                            </TableCell>
+                            <TableCell>
+                              {guide?.guideNumber || order.guideNumber ? (
+                                <Badge
+                                  className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
+                                  onClick={() => handleOpenGuide(item)}
+                                >
+                                  <Truck className="h-3 w-3 mr-1" />
+                                  {guide?.guideNumber || order.guideNumber}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground">-</span>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 gap-1"
+                                onClick={() => handleOpenOrder(item)}
+                              >
+                                <FileText className="h-4 w-4" />
+                                Ver
+                              </Button>
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="relative h-8 w-8 p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (guide) handleOpenNotes(guide);
+                                  }}
+                                  disabled={!guide}
+                                  title="Notas de Envío"
+                                >
+                                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                                  {getNotesCount(guide?.notes) > 0 && (
+                                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground font-bold border-2 border-background">
+                                      {getNotesCount(guide?.notes)}
+                                    </span>
+                                  )}
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="guias">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Truck className="h-5 w-5" />
+                  Guías de Envío ({filteredGuidesList.length})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {/* Filtros de Guías */}
+                <div className="mb-4 p-4 border rounded-lg bg-muted/30">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">
+                        Buscar (N° Guía o N° Orden)
+                      </Label>
+                      <div className="relative">
+                        <Search className="absolute left-2 top-2 h-4 w-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Buscar..."
+                          value={guideSearch}
+                          onChange={(e) => setGuideSearch(e.target.value)}
+                          className="h-8 pl-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Estado de Guía</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={guideStatusFilter}
+                        onChange={(e) => setGuideStatusFilter(e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        {GUIDE_STATUSES.filter((s) => s.value !== "").map(
+                          (s) => (
+                            <option key={s.value} value={s.value}>
+                              {s.label}
+                            </option>
+                          ),
+                        )}
+                      </select>
+                    </div>
+                    <div className="flex items-end">
+                      {(guideSearch || guideStatusFilter) && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setGuideSearch("");
+                            setGuideStatusFilter("");
+                          }}
+                          className="text-xs"
+                        >
+                          Limpiar filtros
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {loadingGuides ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    Cargando guías...
+                  </div>
+                ) : filteredGuidesList.length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    No se encontraron guías
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>N° Guía</TableHead>
+                        <TableHead>Estado</TableHead>
+                        <TableHead>Courier</TableHead>
+                        <TableHead>Pedidos</TableHead>
+                        <TableHead>Tipo Despacho</TableHead>
+                        <TableHead>Zonas</TableHead>
+                        <TableHead>Fecha</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredGuidesList.map((guide) => (
+                        <TableRow
+                          key={guide.id}
+                          className="hover:bg-muted/50 cursor-pointer"
+                          onClick={() => handleOpenGuideDetails(guide)}
+                        >
+                          <TableCell className="font-bold">
+                            {guide.guideNumber}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              className={`h-6 text-[10px] font-semibold ${
+                                GUIDE_STATUS_STYLE[guide.status] ||
+                                "bg-gray-100 text-gray-800"
                               }`}
                             >
-                              <SelectValue placeholder="Estado" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="CREADA">Creada</SelectItem>
-                              <SelectItem value="ASIGNADA">Asignada</SelectItem>
-                              <SelectItem value="EN_RUTA">En Ruta</SelectItem>
-                              <SelectItem value="ENTREGADA">
-                                Entregada
-                              </SelectItem>
-                              <SelectItem value="PARCIAL">Parcial</SelectItem>
-                              <SelectItem value="FALLIDA">Fallida</SelectItem>
-                              <SelectItem value="CANCELADA">
-                                Cancelada
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          {pendingPayment > 0 ? (
-                            <Badge className="bg-red-100 text-red-800">
-                              S/ {pendingPayment.toFixed(2)}
+                              {guide.status}
                             </Badge>
-                          ) : (
-                            <Badge className="bg-green-100 text-green-800">
-                              Pagado
+                          </TableCell>
+                          <TableCell>{guide.courierName || "-"}</TableCell>
+                          <TableCell>
+                            <div className="flex flex-col gap-1">
+                              <span className="text-xs font-medium">
+                                {guide.orderIds.length} órdenes
+                              </span>
+                              <span className="text-[10px] text-muted-foreground truncate max-w-[150px]">
+                                {guide.orderIds
+                                  .map(
+                                    (id) => orderMap[id] || id.substring(0, 8),
+                                  )
+                                  .join(", ")}
+                              </span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-[10px]">
+                              {guide.deliveryType}
                             </Badge>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {guide?.guideNumber || order.guideNumber ? (
-                            <Badge
-                              className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
-                              onClick={() => handleOpenGuide(item)}
-                            >
-                              <Truck className="h-3 w-3 mr-1" />
-                              {guide?.guideNumber || order.guideNumber}
-                            </Badge>
-                          ) : (
-                            <span className="text-muted-foreground">-</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 gap-1"
-                            onClick={() => handleOpenOrder(item)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-1">
+                              {guide.deliveryZones.map((z) => (
+                                <Badge
+                                  key={z}
+                                  variant="secondary"
+                                  className="text-[9px] h-4 px-1"
+                                >
+                                  {z}
+                                </Badge>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs">
+                            {new Date(guide.created_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell
+                            className="text-right"
+                            onClick={(e) => e.stopPropagation()}
                           >
-                            <FileText className="h-4 w-4" />
-                            Ver
-                          </Button>
-                        </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end items-center gap-1">
                             <Button
                               variant="ghost"
-                              size="sm"
-                              className="relative h-8 w-8 p-0"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (guide) handleOpenNotes(guide);
-                              }}
-                              disabled={!guide}
-                              title="Notas de Envío"
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => handleOpenGuideDetails(guide)}
                             >
-                              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                              {getNotesCount(guide?.notes) > 0 && (
-                                <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground font-bold border-2 border-background">
-                                  {getNotesCount(guide?.notes)}
-                                </span>
-                              )}
+                              <Eye className="h-4 w-4" />
                             </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
 
-        {/* Modal for order details */}
         <CustomerServiceModal
           open={orderModalOpen}
-          orderId={selectedOrderId || ""}
           onClose={() => {
             setOrderModalOpen(false);
             setSelectedOrderId(null);
             setSelectedGuideData(null);
           }}
-          onOrderUpdated={fetchEnvios}
-          hideCallManagement={true}
+          orderId={selectedOrderId || ""}
           shippingGuide={selectedGuideData}
+          onOrderUpdated={() => fetchEnvios()}
+          hideCallManagement={true}
         />
 
-        {/* Modal for shipment/guide details (unified with operaciones) */}
         <GuideDetailsModal
           open={guideModalOpen}
           onClose={() => {
             setGuideModalOpen(false);
             setSelectedEnvio(null);
+            setSelectedGuideData(null);
+            fetchEnvios();
+            fetchGuides();
           }}
-          orderId={selectedEnvio?.order.id || ""}
-          defaultCourier={selectedEnvio?.order.courier}
-          onGuideUpdated={fetchEnvios}
+          orderId={selectedOrderId || selectedEnvio?.order.id || ""}
+          onGuideUpdated={() => {
+            fetchEnvios();
+            fetchGuides();
+          }}
         />
 
-        {/* Notes Modal */}
-        {selectedGuideForNotes && (
-          <ShippingNotesModal
-            open={notesModalOpen}
-            onClose={() => {
-              setNotesModalOpen(false);
-              setSelectedGuideForNotes(null);
-            }}
-            guideId={selectedGuideForNotes.id}
-            initialNotes={selectedGuideForNotes.notes}
-            onNoteAdded={fetchEnvios}
-          />
-        )}
+        <ShippingNotesModal
+          open={notesModalOpen}
+          onClose={() => setNotesModalOpen(false)}
+          guideId={selectedGuideForNotes?.id || ""}
+          initialNotes={selectedGuideForNotes?.notes || "[]"}
+          onNoteAdded={() => {
+            fetchEnvios();
+            fetchGuides();
+          }}
+        />
       </main>
     </div>
   );

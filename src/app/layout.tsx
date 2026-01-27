@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import AppContainer from "@/components/layout/AppContainer";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
+import QueryProvider from "@/components/providers/QueryProvider";
 
 export const metadata: Metadata = {
   title: "Powip Frontend",
@@ -19,10 +20,12 @@ export default function RootLayout({
     <html lang="es" suppressHydrationWarning>
       <body suppressHydrationWarning>
         <ThemeProvider>
-          <AuthProvider>
-            <AppContainer>{children}</AppContainer>
-            <Toaster position="top-right" richColors />
-          </AuthProvider>
+          <QueryProvider>
+            <AuthProvider>
+              <AppContainer>{children}</AppContainer>
+              <Toaster position="top-right" richColors />
+            </AuthProvider>
+          </QueryProvider>
         </ThemeProvider>
       </body>
     </html>

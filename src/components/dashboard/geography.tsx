@@ -15,14 +15,22 @@ import {
   PieChart,
   Pie,
 } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { MapPin, CreditCard, Truck, Receipt, Loader2, Calendar } from "lucide-react";
+import {
+  MapPin,
+  CreditCard,
+  Truck,
+  Receipt,
+  Calendar,
+  Loader2,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { DashboardCard } from "./DashboardCard";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-interface RegionStats {
-  region: string;
+interface LocationStats {
+  name: string;
   ordersCount: number;
   totalAmount: number;
   percentage: number;
@@ -49,39 +57,36 @@ interface BillingStats {
   previousYear: number;
 }
 
-interface StatCardProps {
+const StatCard: React.FC<{
   title: string;
   value: string | number;
   subValue?: string;
   icon: React.ReactNode;
   loading?: boolean;
-}
-
-const StatCard: React.FC<StatCardProps> = ({ title, value, subValue, icon, loading }) => (
-  <Card>
-    <CardHeader className="flex flex-row items-center justify-between pb-2">
-      <CardTitle className="text-sm font-medium">{title}</CardTitle>
-      {icon}
+}> = ({ title, value, subValue, icon, loading }) => (
+  <Card className="bg-white/50 backdrop-blur-sm border-gray-100 shadow-sm">
+    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+      <CardTitle className="text-xs font-medium text-gray-500 uppercase">
+        {title}
+      </CardTitle>
+      <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
     </CardHeader>
     <CardContent>
       {loading ? (
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <Loader2 className="h-4 w-4 animate-spin text-primary" />
       ) : (
         <>
-          <div className="text-2xl font-bold">{value}</div>
-          {subValue && <p className="text-xs text-muted-foreground">{subValue}</p>}
+          <div className="text-xl font-bold text-gray-800">{value}</div>
+          {subValue && (
+            <p className="text-[10px] font-medium text-primary mt-1">
+              {subValue}
+            </p>
+          )}
         </>
       )}
     </CardContent>
   </Card>
 );
-
-// Colores
-const REGION_COLORS: Record<string, string> = {
-  LIMA: "#3b82f6",
-  PROVINCIA: "#10b981",
-  SIN_REGION: "#9ca3af",
-};
 
 const PAYMENT_COLORS: Record<string, string> = {
   YAPE: "#6d28d9",
@@ -94,20 +99,30 @@ const PAYMENT_COLORS: Record<string, string> = {
   OTRO: "#9ca3af",
 };
 
-const DELIVERY_COLORS: Record<string, string> = {
-  DOMICILIO: "#3b82f6",
-  RETIRO_TIENDA: "#10b981",
-  PUNTO_EXTERNO: "#f59e0b",
-  OTRO: "#9ca3af",
-};
+const CHART_COLORS = [
+  "#3b82f6",
+  "#10b981",
+  "#f59e0b",
+  "#ef4444",
+  "#8b5cf6",
+  "#ec4899",
+  "#6366f1",
+  "#14b8a6",
+];
 
 export const Geography: React.FC = () => {
   const { selectedStoreId } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [regionData, setRegionData] = useState<RegionStats[]>([]);
+  const [locationData, setLocationData] = useState<LocationStats[]>([]);
   const [paymentData, setPaymentData] = useState<PaymentStats[]>([]);
   const [deliveryData, setDeliveryData] = useState<DeliveryStats[]>([]);
   const [billingData, setBillingData] = useState<BillingStats[]>([]);
+
+  // Local filters
+  const [geoDimension, setGeoDimension] = useState<
+    "city" | "province" | "district"
+  >("city");
+
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
@@ -120,14 +135,25 @@ export const Geography: React.FC = () => {
       if (fromDate) params.fromDate = fromDate;
       if (toDate) params.toDate = toDate;
 
-      const [regionRes, paymentRes, deliveryRes, billingRes] = await Promise.all([
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-region`, { params }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-payment`, { params }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-delivery`, { params }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, { params: { storeId: selectedStoreId } }),
-      ]);
+      const locationParams = { ...params, dimension: geoDimension };
 
-      setRegionData(regionRes.data);
+      const [locationRes, paymentRes, deliveryRes, billingRes] =
+        await Promise.all([
+          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-location`, {
+            params: locationParams,
+          }),
+          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-payment`, {
+            params,
+          }),
+          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-delivery`, {
+            params,
+          }),
+          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
+            params: { storeId: selectedStoreId },
+          }),
+        ]);
+
+      setLocationData(locationRes.data);
       setPaymentData(paymentRes.data);
       setDeliveryData(deliveryRes.data);
       setBillingData(billingRes.data);
@@ -140,264 +166,277 @@ export const Geography: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-  }, [selectedStoreId]);
+  }, [selectedStoreId, geoDimension]);
 
-  // Top metrics
-  const limaStats = regionData.find((r) => r.region === "LIMA");
-  const provinciaStats = regionData.find((r) => r.region === "PROVINCIA");
-  const topPayment = paymentData[0];
-  const currentMonthBilling = billingData[new Date().getMonth()]?.currentYear || 0;
-
-  // Prepare chart data
-  const regionChartData = regionData.map((r) => ({
-    name: r.region === "SIN_REGION" ? "Sin Región" : r.region,
-    monto: r.totalAmount,
-    ordenes: r.ordersCount,
-    percentage: r.percentage,
-    fill: REGION_COLORS[r.region] || "#8884d8",
-  }));
-
-  const paymentChartData = paymentData.map((p) => ({
-    name: p.method.replace("_", " "),
-    monto: p.totalAmount,
-    ordenes: p.ordersCount,
-    fill: PAYMENT_COLORS[p.method] || "#8884d8",
-  }));
-
-  const deliveryChartData = deliveryData.map((d) => ({
-    name: d.type === "RETIRO_TIENDA" ? "Retiro" : d.type === "PUNTO_EXTERNO" ? "Punto Ext." : d.type.replace("_", " "),
-    monto: d.totalAmount,
-    percentage: d.percentage,
-    fill: DELIVERY_COLORS[d.type] || "#8884d8",
-  }));
-
-  const billingChartData = billingData.map((b) => ({
-    name: b.monthName,
-    [new Date().getFullYear()]: b.currentYear,
-    [new Date().getFullYear() - 1]: b.previousYear,
-  }));
+  const currentMonthBilling =
+    billingData[new Date().getMonth()]?.currentYear || 0;
+  const topLocation = locationData[0];
 
   return (
-    <div className="flex flex-col h-full w-full overflow-auto min-h-0">
-      {/* Filtros de fecha */}
-      <div className="px-4 py-3 border-b flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Período:</span>
+    <div className="flex flex-col h-full w-full overflow-hidden bg-gray-50/50">
+      {/* Header with Date Filters */}
+      <div className="bg-white border-b px-6 py-4 flex items-center justify-between flex-wrap gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-primary/5 rounded-lg text-primary">
+            <MapPin className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">
+              Geografía y Finanzas
+            </h2>
+            <p className="text-xs text-gray-500">
+              Distribución territorial y métodos de pago
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="w-auto"
-          />
-          <span className="text-muted-foreground">a</span>
-          <Input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className="w-auto"
-          />
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center bg-gray-100 rounded-lg p-1">
+            <Input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="h-8 w-36 bg-transparent border-none focus-visible:ring-0 text-xs"
+            />
+            <span className="text-gray-400 mx-1 px-1">-</span>
+            <Input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="h-8 w-36 bg-transparent border-none focus-visible:ring-0 text-xs"
+            />
+          </div>
+          <Button onClick={fetchData} size="sm" className="h-8 rounded-lg">
+            Filtrar
+          </Button>
         </div>
-        <Button onClick={fetchData} size="sm">
-          Actualizar
-        </Button>
       </div>
 
-      {/* Contenido principal */}
-      <div className="flex-1 flex flex-col px-4 py-4 gap-6 min-h-0">
-        {/* Cards de resumen */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        {/* KPI Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard
-            title="Ventas Lima"
-            value={limaStats ? `S/${limaStats.totalAmount.toLocaleString("es-PE")}` : "S/0"}
-            subValue={limaStats ? `${limaStats.ordersCount} órdenes (${limaStats.percentage}%)` : "0 órdenes"}
-            icon={<MapPin className="h-4 w-4 text-blue-500" />}
+            title="Zona Top"
+            value={topLocation?.name || "Sin datos"}
+            subValue={
+              topLocation ? `${topLocation.percentage}% del total` : undefined
+            }
+            icon={<MapPin className="h-5 w-5 text-primary" />}
             loading={loading}
           />
           <StatCard
-            title="Ventas Provincia"
-            value={provinciaStats ? `S/${provinciaStats.totalAmount.toLocaleString("es-PE")}` : "S/0"}
-            subValue={provinciaStats ? `${provinciaStats.ordersCount} órdenes (${provinciaStats.percentage}%)` : "0 órdenes"}
-            icon={<MapPin className="h-4 w-4 text-green-500" />}
+            title="Pago Líder"
+            value={paymentData[0]?.method.replace("_", " ") || "-"}
+            subValue={
+              paymentData[0]
+                ? `${paymentData[0].percentage}% de acogida`
+                : undefined
+            }
+            icon={<CreditCard className="h-5 w-5 text-primary" />}
             loading={loading}
           />
           <StatCard
-            title="Método Pago Líder"
-            value={topPayment?.method.replace("_", " ") || "-"}
-            subValue={topPayment ? `S/${topPayment.totalAmount.toLocaleString("es-PE")} (${topPayment.percentage}%)` : undefined}
-            icon={<CreditCard className="h-4 w-4 text-muted-foreground" />}
+            title="Facturación Mes"
+            value={`S/ ${currentMonthBilling.toLocaleString()}`}
+            subValue="Mes actual"
+            icon={<Receipt className="h-5 w-5 text-primary" />}
             loading={loading}
           />
           <StatCard
-            title="Facturación Mes Actual"
-            value={`S/${currentMonthBilling.toLocaleString("es-PE")}`}
-            subValue={billingData[new Date().getMonth()] ? `${billingData[new Date().getMonth()].monthName} ${new Date().getFullYear()}` : undefined}
-            icon={<Receipt className="h-4 w-4 text-muted-foreground" />}
+            title="Ticket Promedio"
+            value={`S/ ${Math.round(paymentData.reduce((s, p) => s + p.totalAmount, 0) / (paymentData.reduce((s, p) => s + p.ordersCount, 0) || 1))}`}
+            subValue="Promedio general"
+            icon={<Truck className="h-5 w-5 text-primary" />}
             loading={loading}
           />
         </div>
 
-        {/* Gráficos - Fila 1 */}
-        <div className="grid gap-4 md:grid-cols-2 min-h-[300px]">
-          {/* Ventas por Región (Pie) */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Ventas por Región</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[200px]">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={regionChartData}
-                      dataKey="monto"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={70}
-                      label={({ name, percentage }) => `${name} (${percentage}%)`}
-                    >
-                      {regionChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value) => [`S/${value}`, "Monto"]}
-                      contentStyle={{
-                        backgroundColor: "var(--background)",
-                        border: "1px solid var(--border)",
-                      }}
-                    />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+        {/* Charts Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[500px]">
+          {/* Ubicación Card */}
+          <DashboardCard
+            title="Impacto por Territorialidad"
+            isLoading={loading}
+            data={locationData}
+            filters={[
+              {
+                label: "Nivel",
+                value: geoDimension,
+                onChange: (v: any) => setGeoDimension(v),
+                options: [
+                  { label: "Departamento", value: "city" },
+                  { label: "Provincia", value: "province" },
+                  { label: "Distrito", value: "district" },
+                ],
+              },
+            ]}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={locationData
+                  .slice(0, 10)
+                  .map((d, i) => ({
+                    ...d,
+                    fill: CHART_COLORS[i % CHART_COLORS.length],
+                  }))}
+                layout="vertical"
+                margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  horizontal={true}
+                  vertical={false}
+                  stroke="#f0f0f0"
+                />
+                <XAxis type="number" hide />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  width={100}
+                  axisLine={false}
+                  tickLine={false}
+                  style={{ fontSize: "11px" }}
+                />
+                <Tooltip
+                  formatter={(value) => [
+                    `S/ ${value.toLocaleString()}`,
+                    "Monto",
+                  ]}
+                  contentStyle={{
+                    borderRadius: "8px",
+                    border: "none",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  }}
+                />
+                <Bar dataKey="totalAmount" radius={[0, 4, 4, 0]} barSize={20} />
+              </BarChart>
+            </ResponsiveContainer>
+          </DashboardCard>
 
-          {/* Métodos de Pago */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Métodos de Pago</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[200px]">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={paymentChartData}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 80, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis dataKey="name" type="category" />
-                    <Tooltip
-                      formatter={(value) => [`S/${value}`, "Monto"]}
-                      labelStyle={{ color: "var(--foreground)" }}
-                      contentStyle={{
-                        backgroundColor: "var(--background)",
-                        border: "1px solid var(--border)",
-                      }}
+          {/* Pagos Card */}
+          <DashboardCard
+            title="Preferencia de Pago"
+            isLoading={loading}
+            data={paymentData}
+            summaryStats={[
+              { label: "Método Top", value: paymentData[0]?.method || "-" },
+            ]}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={paymentData.map((p, i) => ({
+                    name: p.method,
+                    value: p.totalAmount,
+                    fill:
+                      PAYMENT_COLORS[p.method] ||
+                      CHART_COLORS[i % CHART_COLORS.length],
+                  }))}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  paddingAngle={2}
+                >
+                  {paymentData.map((entry, index) => (
+                    <Cell
+                      key={`cell-${index}`}
+                      fillOpacity={0.8}
+                      stroke="white"
+                      strokeWidth={2}
                     />
-                    <Bar dataKey="monto" name="Monto">
-                      {paymentChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+                  ))}
+                </Pie>
+                <Tooltip
+                  formatter={(value) => [
+                    `S/ ${Number(value).toLocaleString()}`,
+                    "Monto",
+                  ]}
+                />
+                <Legend iconType="circle" />
+              </PieChart>
+            </ResponsiveContainer>
+          </DashboardCard>
         </div>
 
-        {/* Gráficos - Fila 2 */}
-        <div className="grid gap-4 md:grid-cols-2 min-h-[300px]">
-          {/* Tipo de Entrega (Pie) */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Tipo de Entrega</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[200px]">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={deliveryChartData}
-                      dataKey="monto"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={70}
-                      label={({ name, percentage }) => `${name} (${percentage}%)`}
-                    >
-                      {deliveryChartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip
-                      formatter={(value) => [`S/${value}`, "Monto"]}
-                      contentStyle={{
-                        backgroundColor: "var(--background)",
-                        border: "1px solid var(--border)",
-                      }}
-                    />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+        {/* Bottom Row */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[400px]">
+          {/* Entrega Card */}
+          <DashboardCard
+            title="Canales de Entrega"
+            isLoading={loading}
+            data={deliveryData}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={deliveryData.map((d, i) => ({
+                  name: d.type,
+                  monto: d.totalAmount,
+                  fill: CHART_COLORS[i % CHART_COLORS.length],
+                }))}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#f0f0f0"
+                />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  style={{ fontSize: "12px" }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  style={{ fontSize: "12px" }}
+                />
+                <Tooltip />
+                <Bar dataKey="monto" radius={[4, 4, 0, 0]} barSize={40} />
+              </BarChart>
+            </ResponsiveContainer>
+          </DashboardCard>
 
-          {/* Facturación Mensual */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Facturación Mensual (Año Actual vs Anterior)</CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 min-h-[200px]">
-              {loading ? (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={billingChartData}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip
-                      formatter={(value) => [`S/${value}`, ""]}
-                      labelStyle={{ color: "var(--foreground)" }}
-                      contentStyle={{
-                        backgroundColor: "var(--background)",
-                        border: "1px solid var(--border)",
-                      }}
-                    />
-                    <Legend />
-                    <Bar dataKey={new Date().getFullYear()} fill="#3b82f6" name={`${new Date().getFullYear()}`} />
-                    <Bar dataKey={new Date().getFullYear() - 1} fill="#9ca3af" name={`${new Date().getFullYear() - 1}`} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
+          {/* Histórico Card */}
+          <DashboardCard
+            title="Comparativo de Facturación"
+            isLoading={loading}
+            data={billingData}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={billingData.map((b) => ({
+                  name: b.monthName,
+                  Ventas: b.currentYear,
+                  Anterior: b.previousYear,
+                }))}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#f0f0f0"
+                />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  style={{ fontSize: "12px" }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  style={{ fontSize: "12px" }}
+                />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="Ventas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="Anterior" fill="#e2e8f0" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </DashboardCard>
         </div>
       </div>
     </div>

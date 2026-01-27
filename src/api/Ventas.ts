@@ -17,11 +17,11 @@ export const createOrderHeader = async (payload: ICreateOrderHeader) => {
 
 // Crear orden con ítems
 export const createOrderWithItems = async (
-  payload: ICreateOrderHeaderPlusItems
+  payload: ICreateOrderHeaderPlusItems,
 ) => {
   const { data } = await axios.post(
     `${API.ventas}/order-header/orderPlusItems`,
-    payload
+    payload,
   );
   return data;
 };
@@ -41,11 +41,11 @@ export const getOrderById = async (orderId: string) => {
 // Actualizar cabecera
 export const updateOrderHeader = async (
   orderId: string,
-  payload: IUpdateOrderHeaderDto
+  payload: IUpdateOrderHeaderDto,
 ) => {
   const { data } = await axios.patch(
     `${API.ventas}/order-header/${orderId}`,
-    payload
+    payload,
   );
   return data;
 };
@@ -59,7 +59,7 @@ export const deleteOrderHeader = async (orderId: string) => {
 // Recalcular totales de orden
 export const recalculateOrder = async (orderId: string) => {
   const { data } = await axios.post(
-    `${API.ventas}/order-header/${orderId}/recalculate`
+    `${API.ventas}/order-header/${orderId}/recalculate`,
   );
   return data;
 };
@@ -67,11 +67,11 @@ export const recalculateOrder = async (orderId: string) => {
 // Agregar ítem a orden
 export const addOrderItem = async (
   orderId: string,
-  payload: ICreateOrderItemsDto
+  payload: ICreateOrderItemsDto,
 ) => {
   const { data } = await axios.post(
     `${API.ventas}/order/${orderId}/items`,
-    payload
+    payload,
   );
   return data;
 };
@@ -79,7 +79,7 @@ export const addOrderItem = async (
 // Eliminar ítem de orden
 export const deleteOrderItem = async (orderId: string, itemId: string) => {
   const { data } = await axios.delete(
-    `${API.ventas}/order/${orderId}/items/${itemId}`
+    `${API.ventas}/order/${orderId}/items/${itemId}`,
   );
   return data;
 };
@@ -105,11 +105,11 @@ export const getPaymentById = async (paymentId: string) => {
 // Actualizar un pago
 export const updatePayment = async (
   paymentId: string,
-  payload: IUpdatePaymentDto
+  payload: IUpdatePaymentDto,
 ) => {
   const { data } = await axios.patch(
     `${API.ventas}/payment/${paymentId}`,
-    payload
+    payload,
   );
   return data;
 };
@@ -123,11 +123,11 @@ export const deletePayment = async (paymentId: string) => {
 // Crear pago asociado a orden
 export const createPaymentForOrder = async (
   orderId: string,
-  payload: ICreatePaymentDto
+  payload: ICreatePaymentDto,
 ) => {
   const { data } = await axios.post(
     `${API.ventas}/payments/orders/${orderId}`,
-    payload
+    payload,
   );
   return data;
 };
@@ -135,7 +135,7 @@ export const createPaymentForOrder = async (
 // Obtener pagos por orden
 export const getPaymentsByOrder = async (orderId: string) => {
   const { data } = await axios.get(
-    `${API.ventas}/order-header/${orderId}/payment`
+    `${API.ventas}/order-header/${orderId}/payment`,
   );
   return data;
 };
@@ -144,11 +144,11 @@ export const getPaymentsByOrder = async (orderId: string) => {
 export const updatePaymentForOrder = async (
   orderId: string,
   paymentId: string,
-  payload: IUpdatePaymentDto
+  payload: IUpdatePaymentDto,
 ) => {
   const { data } = await axios.patch(
     `${API.ventas}/order-header/${orderId}/payment/${paymentId}`,
-    payload
+    payload,
   );
   return data;
 };
@@ -156,10 +156,10 @@ export const updatePaymentForOrder = async (
 // Eliminar pago de una orden
 export const deletePaymentForOrder = async (
   orderId: string,
-  paymentId: string
+  paymentId: string,
 ) => {
   const { data } = await axios.delete(
-    `${API.ventas}/order-header/${orderId}/payment/${paymentId}`
+    `${API.ventas}/order-header/${orderId}/payment/${paymentId}`,
   );
   return data;
 };
@@ -167,12 +167,20 @@ export const deletePaymentForOrder = async (
 // Revertir un pago
 export const revertPayment = async (paymentId: string) => {
   const { data } = await axios.post(
-    `${API.ventas}/payment/${paymentId}/revert`
+    `${API.ventas}/payment/${paymentId}/revert`,
   );
   return data;
 };
 
 export const getLogVentas = async (orderId: string) => {
   const { data } = await axios.get(`${API.ventas}/log-ventas/${orderId}`);
+  return data;
+};
+
+// Obtener resumen por vendedores
+export const getSellerSummary = async (companyId: string) => {
+  const { data } = await axios.get(
+    `${API.ventas}/order-header/summary/company/${companyId}/sellers`,
+  );
   return data;
 };

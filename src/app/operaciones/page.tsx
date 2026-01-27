@@ -69,6 +69,7 @@ import CreateGuideModal, {
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import { Badge } from "@/components/ui/badge";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
+import AddToExistingGuideModal from "@/components/modals/AddToExistingGuideModal";
 
 /* -----------------------------------------
    Types
@@ -242,6 +243,10 @@ export default function OperacionesPage() {
   const [selectedSaleForGuide, setSelectedSaleForGuide] = useState<Sale | null>(
     null,
   );
+
+  // Estado para modal de agregar a guía existente
+  const [addToGuideModalOpen, setAddToGuideModalOpen] = useState(false);
+  const [isAddingToGuide, setIsAddingToGuide] = useState(false);
 
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
@@ -522,6 +527,48 @@ export default function OperacionesPage() {
       }
     } finally {
       setSavingNotes(false);
+    }
+  };
+
+  const handleAddToExistingGuide = async (
+    guideId: string,
+    guideNumber: string,
+  ) => {
+    const selectedLlamados = getSelectedLlamadosForGuide();
+    if (selectedLlamados.length === 0) {
+      toast.warning("No hay pedidos aptos seleccionados");
+      return;
+    }
+
+    setIsAddingToGuide(true);
+    try {
+      // 1. Agregar órdenes en ms-courier
+      await axios.post(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}/orders`,
+        { orderIds: selectedLlamados.map((s) => s.id) },
+      );
+
+      // 2. Actualizar cada orden en ms-ventas con el número de guía
+      for (const sale of selectedLlamados) {
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
+          { guideNumber: guideNumber },
+        );
+      }
+
+      toast.success(
+        `${selectedLlamados.length} pedido(s) agregados a la guía ${guideNumber}`,
+      );
+      setAddToGuideModalOpen(false);
+      setSelectedSaleIds(new Set());
+      fetchOrders();
+    } catch (error: any) {
+      console.error("Error adding to guide:", error);
+      const message =
+        error?.response?.data?.message || "Error al agregar a la guía";
+      toast.error(message);
+    } finally {
+      setIsAddingToGuide(false);
     }
   };
 
@@ -1244,6 +1291,18 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="border-emerald-600 text-emerald-600 hover:bg-emerald-50"
+                    disabled={
+                      getSelectedLlamadosForGuide().length === 0 ||
+                      isAddingToGuide
+                    }
+                    onClick={() => setAddToGuideModalOpen(true)}
+                  >
+                    <PackagePlus className="h-4 w-4 mr-2" />
+                    Agregar a Guía ({getSelectedLlamadosForGuide().length})
+                  </Button>
+                  <Button
+                    variant="outline"
                     disabled={
                       contactados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0 || isPrinting
@@ -1613,6 +1672,15 @@ Estado: ${sale.status}
         storeId={selectedStoreId || ""}
         onConfirm={handleCreateGuide}
         isLoading={isCreatingGuide}
+      />
+
+      <AddToExistingGuideModal
+        open={addToGuideModalOpen}
+        onClose={() => setAddToGuideModalOpen(false)}
+        selectedOrders={getSelectedLlamadosForGuide()}
+        storeId={selectedStoreId || ""}
+        onConfirm={handleAddToExistingGuide}
+        isLoading={isAddingToGuide}
       />
 
       <GuideDetailsModal

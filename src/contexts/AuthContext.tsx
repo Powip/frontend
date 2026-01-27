@@ -16,7 +16,9 @@ import axios from "axios";
 // Configurar axios para enviar cookies automáticamente (httpOnly cookies)
 axios.defaults.withCredentials = true;
 
-const API_AUTH = process.env.NEXT_PUBLIC_API_USERS?.replace("/api/v1", "") || "http://localhost:8080";
+const API_AUTH =
+  process.env.NEXT_PUBLIC_API_USERS?.replace("/api/v1", "") ||
+  "http://localhost:8080";
 
 interface Subscription {
   id: string;
@@ -43,15 +45,22 @@ interface Company {
   name: string;
   stores?: Store[];
   // Datos adicionales para comprobante de envío
-  cuit?: string;           // RUC/CUIT
+  cuit?: string; // RUC/CUIT
   billingAddress?: string; // Dirección
-  phone?: string;          // Teléfono
-  logoUrl?: string;        // URL del logo (para futuro)
+  phone?: string; // Teléfono
+  logoUrl?: string; // URL del logo (para futuro)
 }
 
 interface AuthData {
   accessToken: string;
-  user: { email: string; id: string; role: string; permissions: string[] };
+  user: {
+    email: string;
+    id: string;
+    role: string;
+    permissions: string[];
+    name?: string;
+    surname?: string;
+  };
   company: Company | null;
   subscription: Subscription | null;
   exp: number;
@@ -88,9 +97,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const silentRefresh = useCallback(async (): Promise<boolean> => {
     try {
       // Llamar al endpoint de refresh - el refreshToken viene en httpOnly cookie
-      const response = await axios.post(`${API_AUTH}/api/v1/auth/refresh`, {}, {
-        withCredentials: true, // Enviar cookies
-      });
+      const response = await axios.post(
+        `${API_AUTH}/api/v1/auth/refresh`,
+        {},
+        {
+          withCredentials: true, // Enviar cookies
+        },
+      );
 
       if (response.data?.accessToken) {
         // Decodificar y establecer auth
@@ -102,14 +115,25 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           id: decoded.id,
           role: decoded.role,
           permissions: decoded.permissions || [],
+          name: decoded.name,
+          surname: decoded.surname,
         };
 
-        let company = await fetchUserCompany(decoded.id, response.data.accessToken);
+        let company = await fetchUserCompany(
+          decoded.id,
+          response.data.accessToken,
+        );
         if (!company && decoded.companyId) {
-          company = await fetchCompanyById(decoded.companyId, response.data.accessToken);
+          company = await fetchCompanyById(
+            decoded.companyId,
+            response.data.accessToken,
+          );
         }
 
-        const subscription = await fetchUserSubscription(decoded.id, response.data.accessToken);
+        const subscription = await fetchUserSubscription(
+          decoded.id,
+          response.data.accessToken,
+        );
 
         const defaultStore = company?.stores?.[0]?.id || null;
 
@@ -150,7 +174,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     try {
       const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${selectedStoreId}`
+        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${selectedStoreId}`,
       );
       setInventories(res.data);
     } catch (err) {
@@ -181,6 +205,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       id: decoded.id,
       role: decoded.role,
       permissions: decoded.permissions || [],
+      name: decoded.name,
+      surname: decoded.surname,
     };
 
     let company = await fetchUserCompany(decoded.id, accessToken);
@@ -202,7 +228,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     setAuth(newAuth);
     setSelectedStore(defaultStore);
-    
+
     // Solo guardamos preferencia de tienda (no sensible)
     if (defaultStore) {
       localStorage.setItem(STORE_PREFERENCE_KEY, defaultStore);
@@ -222,9 +248,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     try {
       // Llamar al backend para borrar la cookie httpOnly
-      await axios.post(`${API_AUTH}/api/v1/auth/logout`, {}, {
-        withCredentials: true,
-      });
+      await axios.post(
+        `${API_AUTH}/api/v1/auth/logout`,
+        {},
+        {
+          withCredentials: true,
+        },
+      );
     } catch (error) {
       console.error("Error en logout:", error);
     }

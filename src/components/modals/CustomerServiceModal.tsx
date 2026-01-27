@@ -1163,11 +1163,15 @@ export default function CustomerServiceModal({
                               shippingGuide.status === "ENTREGADA"
                                 ? "bg-green-100 text-green-800"
                                 : shippingGuide.status === "EN_RUTA"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : shippingGuide.status === "FALLIDA" ||
-                                      shippingGuide.status === "CANCELADA"
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-gray-100 text-gray-800"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : shippingGuide.status === "APROBADA"
+                                    ? "bg-teal-100 text-teal-800"
+                                    : shippingGuide.status === "ASIGNADA"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : shippingGuide.status === "FALLIDA" ||
+                                          shippingGuide.status === "CANCELADA"
+                                        ? "bg-red-100 text-red-800"
+                                        : "bg-gray-100 text-gray-800"
                             }`}
                           >
                             {shippingGuide.status}

@@ -1,89 +1,76 @@
-import { IProductRequest, IProductApiResponse } from "../interfaces/IProduct";
-import { API_URLS } from "@/config/apiConfig";
+import axios from "axios";
 
-const API_URL = API_URLS.productos;
+const API_PRODUCTS =
+  process.env.NEXT_PUBLIC_API_PRODUCTOS || "http://localhost:3005";
+const API_LOGISTICS =
+  process.env.NEXT_PUBLIC_API_INVENTORY || "http://localhost:3004";
 
-//Servicio para Crear Producto
-export const createProduct = async (payload: IProductRequest) => {
-  try {
-    const response = await fetch(`${API_URL}/products`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+export interface ProductSummary {
+  total: number;
+}
 
-    if (!response.ok) {
-      // Intentamos parsear JSON, si no se puede, capturamos como texto
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch {
-        errorData = await response.text();
-      }
+export interface OutOfStockSummary {
+  count: number;
+}
 
-      throw new Error(
-        `Error al crear producto: ${response.status} - ${JSON.stringify(
-          errorData
-        )}`
-      );
-    }
+export interface OutOfStockItem {
+  variantId: string;
+  productName: string;
+  sku: string;
+  availableStock: number;
+  physicalStock: number;
+}
 
-    const result: IProductApiResponse = await response.json();
-    return result.data;
-  } catch (error) {
-    console.error("🔥 Error en createProduct:", error);
-    throw error;
-  }
+export const getProductSummary = async (
+  accessToken: string,
+): Promise<ProductSummary> => {
+  const response = await axios.get(`${API_PRODUCTS}/products/summary`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  return response.data;
 };
 
-// Servicio para Buscar producto por ID
-export async function getProductById(id: string) {
-  const res = await fetch(`${API_URL}/products/${id}`, {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
-  });
+export const getOutOfStockSummary = async (
+  accessToken: string,
+): Promise<OutOfStockSummary> => {
+  const response = await axios.get(
+    `${API_LOGISTICS}/inventory-item/summary/out-of-stock`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  return response.data;
+};
 
-  if (!res.ok) {
-    const err = await res
-      .json()
-      .catch(() => ({ message: `HTTP ${res.status}` }));
-    console.error("Error getProductById:", res.status, err);
-    throw new Error(err.message || "Error al obtener producto");
-  }
+export const getOutOfStockDetails = async (
+  accessToken: string,
+): Promise<OutOfStockItem[]> => {
+  const response = await axios.get(
+    `${API_LOGISTICS}/inventory-item/summary/out-of-stock-details`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  return response.data;
+};
 
-  return res.json(); // según swagger devuelve el objeto del producto directamente
-}
-
-// Servicio para Eliminar producto por ID
-export async function deleteProduct(id: string) {
-  const res = await fetch(`${API_URL}/products/${id}`, {
-    method: "DELETE",
-    headers: { "Content-Type": "application/json" },
-  });
-
-  if (!res.ok) {
-    const err = await res
-      .json()
-      .catch(() => ({ message: `HTTP ${res.status}` }));
-    console.error("Error deleteProduct:", res.status, err);
-    throw new Error(err.message || "Error al eliminar producto");
-  }
-
-  return res.json(); // devuelve message + product en el ejemplo
-}
-
-// Servicio para Actualizar producto por ID
-export async function updateProduct(id: string, productData: IProductRequest) {
-  const res = await fetch(`${API_URL}/products/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(productData),
-  });
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || "Error al actualizar producto");
-  }
-
-  return res.json();
-}
+export const getCompanyProductCount = async (
+  accessToken: string,
+  companyId: string,
+): Promise<number> => {
+  const response = await axios.get(
+    `${API_PRODUCTS}/products/company/${companyId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  return response.data.length;
+};
