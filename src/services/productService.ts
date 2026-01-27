@@ -74,3 +74,22 @@ export const getCompanyProductCount = async (
   );
   return response.data.length;
 };
+export const getProductById = async (id: string): Promise<any> => {
+  const response = await axios.get(`${API_PRODUCTS}/products/${id}`);
+  return response.data;
+};
+
+export const updateProduct = async (id: string, payload: any): Promise<any> => {
+  const response = await axios.patch(`${API_PRODUCTS}/products/${id}`, payload);
+  return response.data;
+};
+
+export const createProduct = async (payload: any): Promise<any> => {
+  const response = await axios.post(`${API_PRODUCTS}/products`, payload);
+  return response.data;
+};
+
+export const deleteProduct = async (id: string): Promise<any> => {
+  const response = await axios.delete(`${API_PRODUCTS}/products/${id}`);
+  return response.data;
+};
