@@ -48,6 +48,7 @@ interface DashboardCardProps {
   summaryStats?: SummaryStat[];
   isLoading?: boolean;
   className?: string;
+  renderRowAction?: (row: any) => React.ReactNode;
 }
 
 export const DashboardCard: React.FC<DashboardCardProps> = ({
@@ -58,6 +59,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
   summaryStats,
   isLoading,
   className,
+  renderRowAction,
 }) => {
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
@@ -156,6 +158,11 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                                 {key.replace(/_/g, " ")}
                               </TableHead>
                             ))}
+                          {renderRowAction && (
+                            <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                              Acciones
+                            </TableHead>
+                          )}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -168,6 +175,11 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                                   : String(val)}
                               </TableCell>
                             ))}
+                            {renderRowAction && (
+                              <TableCell className="text-right py-1">
+                                {renderRowAction(row)}
+                              </TableCell>
+                            )}
                           </TableRow>
                         ))}
                       </TableBody>

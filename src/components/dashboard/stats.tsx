@@ -31,6 +31,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { DashboardCard } from "./DashboardCard";
 
 interface StatCardProps {
   title: string;
@@ -39,6 +40,7 @@ interface StatCardProps {
   description: string;
   trend?: string;
   loading?: boolean;
+  data?: any[]; // Datos para el modal de vista previa
 }
 
 const StatCard: React.FC<StatCardProps> = ({
@@ -48,30 +50,31 @@ const StatCard: React.FC<StatCardProps> = ({
   description,
   trend,
   loading,
+  data = [],
 }) => {
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between pb-2">
-        <CardTitle className="text-sm font-medium">{title}</CardTitle>
-        {icon}
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        ) : (
-          <>
-            <div className="text-2xl font-bold">{value}</div>
-            <p className="text-xs text-muted-foreground">{description}</p>
-            {trend && (
-              <div className="flex items-center pt-1">
-                <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-                <span className="text-xs text-green-500">{trend}</span>
-              </div>
-            )}
-          </>
+    <DashboardCard
+      title={title}
+      isLoading={loading}
+      data={data}
+      className="h-auto"
+    >
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center justify-between">
+          <div className="text-2xl font-bold">{value}</div>
+          <div className="p-2 bg-primary/5 rounded-full text-primary">
+            {icon}
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">{description}</p>
+        {trend && (
+          <div className="flex items-center pt-1">
+            <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
+            <span className="text-xs text-green-500">{trend}</span>
+          </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </DashboardCard>
   );
 };
 
@@ -99,11 +102,17 @@ const STATUS_LABELS: Record<string, string> = {
 interface DashboardData {
   totalSales: number;
   totalOrders: number;
+  totalProducts: number;
   averageTicket: number;
   totalDelivered: number;
   deliveredAmount: number;
   byStatus: Record<string, { count: number; amount: number }>;
-  dailySales: Array<{ date: string; orders: number; amount: number }>;
+  dailySales: Array<{
+    date: string;
+    orders: number;
+    amount: number;
+    products: number;
+  }>;
 }
 
 export const Stats: React.FC = () => {
@@ -161,7 +170,13 @@ export const Stats: React.FC = () => {
       }),
       ventas: d.amount,
       ordenes: d.orders,
+      productos: d.products,
     })) || [];
+
+  const deliveryPercentage =
+    data && data.totalOrders > 0
+      ? Math.round((data.totalDelivered / data.totalOrders) * 100)
+      : 0;
 
   return (
     <div className="flex flex-col h-full w-full overflow-auto min-h-0">
@@ -194,7 +209,7 @@ export const Stats: React.FC = () => {
       {/* Contenido principal */}
       <div className="flex-1 flex flex-col px-4 py-4 gap-6 min-h-0">
         {/* Cards de resumen */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <StatCard
             title="Ventas Totales"
             value={
@@ -202,17 +217,28 @@ export const Stats: React.FC = () => {
                 ? `S/${data.totalSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`
                 : "-"
             }
-            icon={<DollarSign className="h-4 w-4 text-muted-foreground" />}
-            description="Suma del período seleccionado"
+            icon={<DollarSign className="h-4 w-4" />}
+            description="Monto acumulado"
             loading={loading}
+            data={data?.dailySales || []}
           />
 
           <StatCard
             title="Órdenes"
             value={data?.totalOrders || 0}
-            icon={<ShoppingCart className="h-4 w-4 text-muted-foreground" />}
-            description="Cantidad de órdenes"
+            icon={<ShoppingCart className="h-4 w-4" />}
+            description="Total pedidos"
             loading={loading}
+            data={data?.dailySales || []}
+          />
+
+          <StatCard
+            title="Productos"
+            value={data?.totalProducts || 0}
+            icon={<PackagePlus className="h-4 w-4" />}
+            description={`${deliveryPercentage}% pedidos entregados`}
+            loading={loading}
+            data={data?.dailySales || []}
           />
 
           <StatCard
@@ -222,7 +248,7 @@ export const Stats: React.FC = () => {
                 ? `S/${data.averageTicket.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`
                 : "-"
             }
-            icon={<Package className="h-4 w-4 text-muted-foreground" />}
+            icon={<Package className="h-4 w-4" />}
             description="Promedio por orden"
             loading={loading}
           />
@@ -256,30 +282,61 @@ export const Stats: React.FC = () => {
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
                     data={dailyChartData}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" />
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="name" />
-                    <YAxis />
+                    <YAxis
+                      yAxisId="left"
+                      orientation="left"
+                      stroke="#02a8e1"
+                      tickFormatter={(value) => `S/${value}`}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      stroke="#8884d8"
+                    />
                     <Tooltip
-                      formatter={(value, name) => [
-                        name === "ventas" ? `S/${value}` : value,
-                        name === "ventas" ? "Ventas" : "Órdenes S/",
-                      ]}
+                      formatter={(value, name) => {
+                        if (name === "Ventas (S/)") return [`S/${value}`, name];
+                        return [value, name];
+                      }}
                       labelStyle={{ color: "var(--foreground)" }}
                       contentStyle={{
                         backgroundColor: "var(--background)",
                         border: "1px solid var(--border)",
+                        borderRadius: "8px",
                       }}
                     />
-                    <Legend />
+                    <Legend verticalAlign="top" height={36} />
                     <Line
+                      yAxisId="left"
                       type="monotone"
                       dataKey="ventas"
                       stroke="#02a8e1"
                       activeDot={{ r: 8 }}
-                      strokeWidth={2}
+                      strokeWidth={3}
                       name="Ventas (S/)"
+                      dot={{ r: 4 }}
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="ordenes"
+                      stroke="#8884d8"
+                      strokeWidth={2}
+                      name="Órdenes"
+                      dot={{ r: 4 }}
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="productos"
+                      stroke="#ffc658"
+                      strokeWidth={2}
+                      name="Productos"
+                      dot={{ r: 4 }}
                     />
                   </LineChart>
                 </ResponsiveContainer>

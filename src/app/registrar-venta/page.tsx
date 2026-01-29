@@ -1084,10 +1084,11 @@ function RegistrarVentaContent() {
                         sku: p.sku,
                         price: p.price,
                         stock: p.availableStock,
+                        physicalStock: p.physicalStock,
                         attributes: p.attributes,
                       }))}
                       value=""
-                      onValueChange={(variantId) => {
+                      onValueChange={(variantId: string) => {
                         const p = products.find(
                           (prod) => prod.variantId === variantId,
                         );
@@ -1096,7 +1097,7 @@ function RegistrarVentaContent() {
                       onSearchChange={setProductQuery}
                       placeholder="Buscar por nombre o SKU..."
                       searchPlaceholder="Escribe para buscar..."
-                      renderLabel={(option) => (
+                      renderLabel={(option: any) => (
                         <div className="flex justify-between items-center w-full py-1">
                           <div className="flex flex-col gap-0.5 min-w-0 pr-4">
                             <span className="font-medium text-sm truncate">
@@ -1120,16 +1121,21 @@ function RegistrarVentaContent() {
                                     </span>
                                   ),
                                 )}
-                              <span
-                                className={cn(
-                                  "text-[10px]",
-                                  option.stock <= 0
-                                    ? "text-destructive font-bold"
-                                    : "text-muted-foreground",
-                                )}
-                              >
-                                Stock: {option.stock}
-                              </span>
+                              <div className="flex flex-col gap-0.5">
+                                <span
+                                  className={cn(
+                                    "text-[10px]",
+                                    option.stock <= 0
+                                      ? "text-destructive font-bold"
+                                      : "text-muted-foreground",
+                                  )}
+                                >
+                                  Disp: {option.stock}
+                                </span>
+                                <span className="text-[9px] text-muted-foreground/70">
+                                  Físico: {option.physicalStock}
+                                </span>
+                              </div>
                             </div>
                           </div>
                           <div className="flex flex-col items-end shrink-0">

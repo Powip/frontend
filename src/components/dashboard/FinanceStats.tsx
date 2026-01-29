@@ -32,6 +32,10 @@ interface BillingStats {
   monthName: string;
   currentYear: number;
   previousYear: number;
+  currentOrders: number;
+  previousOrders: number;
+  currentProducts: number;
+  previousProducts: number;
 }
 
 const StatCard: React.FC<{
@@ -164,6 +168,8 @@ export const FinanceStats: React.FC = () => {
                   name: b.monthName,
                   Actual: b.currentYear,
                   Anterior: b.previousYear,
+                  ordenes: b.currentOrders,
+                  productos: b.currentProducts,
                 }))}
                 margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
               >
@@ -189,7 +195,57 @@ export const FinanceStats: React.FC = () => {
                   tickLine={false}
                   style={{ fontSize: "12px" }}
                 />
-                <Tooltip />
+                <Tooltip
+                  formatter={(value, name) => {
+                    if (name === "Actual" || name === "Anterior")
+                      return [`S/ ${value.toLocaleString()}`, "Venta"];
+                    return [value, name];
+                  }}
+                  labelStyle={{ fontWeight: "bold", marginBottom: "4px" }}
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-white p-3 border border-gray-100 shadow-lg rounded-lg text-xs">
+                          <p className="font-bold mb-2 text-gray-800 border-b pb-1">
+                            {label}
+                          </p>
+                          <div className="space-y-1">
+                            <div className="flex justify-between gap-4">
+                              <span className="text-blue-600 font-medium italic">
+                                Este Año:
+                              </span>
+                              <span className="font-bold">
+                                S/ {data.Actual.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-gray-400">
+                                Año Anterior:
+                              </span>
+                              <span className="text-gray-500 italic">
+                                S/ {data.Anterior.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="mt-2 pt-2 border-t flex justify-between gap-4">
+                              <span className="text-primary/70">Órdenes:</span>
+                              <span className="font-bold">{data.ordenes}</span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-primary/70">
+                                Productos:
+                              </span>
+                              <span className="font-bold">
+                                {data.productos}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  }}
+                />
                 <Legend />
                 <Area
                   type="monotone"

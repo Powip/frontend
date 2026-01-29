@@ -71,6 +71,7 @@ interface Purchase {
     notes: string | null;
     status: "COMPLETED" | "CANCELLED";
     userEmail: string | null;
+    supplierName: string | null;
     createdAt: string;
     items: PurchaseItem[];
 }
@@ -203,6 +204,7 @@ export default function ComprasPage() {
                                 <TableRow>
                                     <TableHead className="whitespace-nowrap">Número</TableHead>
                                     <TableHead className="whitespace-nowrap">Fecha</TableHead>
+                                    <TableHead className="whitespace-nowrap">Proveedor</TableHead>
                                     <TableHead className="whitespace-nowrap">Usuario</TableHead>
                                     <TableHead className="text-center whitespace-nowrap"># Items</TableHead>
                                     <TableHead className="text-right whitespace-nowrap">Total</TableHead>
@@ -237,6 +239,9 @@ export default function ComprasPage() {
                                             </TableCell>
                                             <TableCell className="whitespace-nowrap">
                                                 {formatDate(purchase.createdAt)}
+                                            </TableCell>
+                                            <TableCell className="max-w-[150px] truncate" title={purchase.supplierName || "—"}>
+                                                {purchase.supplierName || "—"}
                                             </TableCell>
                                             <TableCell className="max-w-[150px] truncate" title={purchase.userEmail || "—"}>
                                                 {purchase.userEmail || "—"}

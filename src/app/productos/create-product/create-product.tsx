@@ -4,14 +4,26 @@ import axios from "axios";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Category {
   id: string;
@@ -83,13 +95,15 @@ interface ProductCreateFormProps {
   editVariantId?: string | null;
 }
 
-export default function ProductCreateForm({ editVariantId }: ProductCreateFormProps) {
+export default function ProductCreateForm({
+  editVariantId,
+}: ProductCreateFormProps) {
   const { auth, inventories } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [editProductId, setEditProductId] = useState<string | null>(null);
-  
+
   const [form, setForm] = useState<CreateProductBase>({
     name: "",
     description: "",
@@ -105,6 +119,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [brands, setBrands] = useState<Brand[]>([]);
   const [filteredBrands, setFilteredBrands] = useState<Brand[]>([]);
+
   const [defaultAttributes, setDefaultAttributes] = useState<
     DefaultAttribute[]
   >([]);
@@ -114,7 +129,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   >({});
 
   const [customAttributes, setCustomAttributes] = useState<CustomAttribute[]>(
-    []
+    [],
   );
 
   const [variants, setVariants] = useState<VariantForm[]>([]);
@@ -139,7 +154,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
     // Cargar proveedores
     axios
-      .get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers`)
+      .get(`${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`)
       .then((res) => setSuppliers(res.data))
       .catch((err) => console.error("Error al cargar proveedores", err));
 
@@ -164,7 +179,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         // Obtener la variante y su producto
         const { data: variants } = await axios.post(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/multiple/by-ids`,
-          { ids: [editVariantId] }
+          { ids: [editVariantId] },
         );
 
         if (variants.length === 0) {
@@ -179,7 +194,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         // Obtener detalles completos del producto CON relaciones (subcategory, etc.)
         const { data: productDetailsArray } = await axios.post(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/details`,
-          { productIds: [product.id] }
+          { productIds: [product.id] },
         );
 
         if (!productDetailsArray || productDetailsArray.length === 0) {
@@ -189,13 +204,15 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         }
 
         const productDetails = productDetailsArray[0];
-        
 
         // Obtener subcategoryId de la relación
         const subcategoryId = productDetails.subcategory?.id;
 
         if (!subcategoryId) {
-          console.error("No se encontró subcategoryId en productDetails:", productDetails);
+          console.error(
+            "No se encontró subcategoryId en productDetails:",
+            productDetails,
+          );
           toast.error("No se pudo obtener la subcategoría del producto");
           setIsLoadingProduct(false);
           return;
@@ -206,17 +223,18 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
         // Cargar subcategorías de la categoría para el select
         const { data: subcategoriesData } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${categoryId}`
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${categoryId}`,
         );
         setSubcategories(subcategoriesData);
 
         // Obtener atributos default de la subcategoría
         const { data: subcategoryData } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${subcategoryId}`
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${subcategoryId}`,
         );
 
         // Cargar atributos default de la subcategoría
-        const attrs: DefaultAttribute[] = subcategoryData.defaultAttributes || [];
+        const attrs: DefaultAttribute[] =
+          subcategoryData.defaultAttributes || [];
         setDefaultAttributes(attrs);
 
         // Llenar el formulario
@@ -279,7 +297,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   useEffect(() => {
     // No resetear en modo edición durante la carga inicial
     if (isEditMode && isLoadingProduct) return;
-    
+
     // Solo resetear si el usuario cambió la categoría manualmente
     if (!isEditMode || (isEditMode && !isLoadingProduct)) {
       setSubcategories([]);
@@ -293,7 +311,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
     axios
       .get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${form.categoryId}`
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${form.categoryId}`,
       )
       .then((res) => setSubcategories(res.data))
       .catch((err) => console.error("Error al cargar subcategorías", err));
@@ -305,7 +323,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   useEffect(() => {
     // No resetear en modo edición durante la carga inicial
     if (isEditMode && isLoadingProduct) return;
-    
+
     // Solo resetear si el usuario cambió la subcategoría manualmente
     if (!isEditMode || (isEditMode && !isLoadingProduct)) {
       setDefaultAttributes([]);
@@ -318,7 +336,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
     axios
       .get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${form.subcategoryId}`
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${form.subcategoryId}`,
       )
       .then((res) => {
         const attrs: DefaultAttribute[] = res.data.defaultAttributes || [];
@@ -340,19 +358,21 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   useEffect(() => {
     if (form.supplierId) {
       const filtered = brands.filter(
-        (brand) => brand.supplier.id === form.supplierId
+        (brand) => brand.supplier.id === form.supplierId,
       );
       setFilteredBrands(filtered);
       // Resetear marca si ya no pertenece al proveedor seleccionado
       if (form.brandId) {
-        const brandBelongsToSupplier = filtered.some(b => b.id === form.brandId);
+        const brandBelongsToSupplier = filtered.some(
+          (b) => b.id === form.brandId,
+        );
         if (!brandBelongsToSupplier) {
-          setForm(prev => ({ ...prev, brandId: "" }));
+          setForm((prev) => ({ ...prev, brandId: "" }));
         }
       }
     } else {
       setFilteredBrands([]);
-      setForm(prev => ({ ...prev, brandId: "" }));
+      setForm((prev) => ({ ...prev, brandId: "" }));
     }
   }, [form.supplierId, brands]);
 
@@ -362,7 +382,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
+    >,
   ) => {
     const { name, value } = e.target;
 
@@ -403,13 +423,13 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
   const handleCustomAttrNameChange = (id: string, name: string) => {
     setCustomAttributes((prev) =>
-      prev.map((attr) => (attr.id === id ? { ...attr, name } : attr))
+      prev.map((attr) => (attr.id === id ? { ...attr, name } : attr)),
     );
   };
 
   const handleCustomAttrValuesChange = (id: string, rawValues: string) => {
     setCustomAttributes((prev) =>
-      prev.map((attr) => (attr.id === id ? { ...attr, rawValues } : attr))
+      prev.map((attr) => (attr.id === id ? { ...attr, rawValues } : attr)),
     );
   };
 
@@ -467,7 +487,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   const updateVariantField = (
     index: number,
     field: keyof Omit<VariantForm, "attributes">,
-    value: any
+    value: any,
   ) => {
     setVariants((prev) =>
       prev.map((v, i) =>
@@ -481,8 +501,8 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
                   ? Number(value)
                   : value,
             }
-          : v
-      )
+          : v,
+      ),
     );
   };
 
@@ -498,21 +518,21 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
     setIsCreatingSupplier(true);
     try {
       const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers`,
-        { name: quickSupplierName.trim() }
+        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
+        { name: quickSupplierName.trim(), companyId: auth?.company?.id },
       );
-      
+
       toast.success("Proveedor creado exitosamente");
-      
+
       // Recargar proveedores
       const suppliersRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers`
+        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
       );
       setSuppliers(suppliersRes.data);
-      
+
       // Seleccionar el nuevo proveedor
-      setForm(prev => ({ ...prev, supplierId: res.data.id }));
-      
+      setForm((prev) => ({ ...prev, supplierId: res.data.id }));
+
       // Cerrar modal y limpiar
       setSupplierModalOpen(false);
       setQuickSupplierName("");
@@ -542,20 +562,20 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         {
           name: quickBrandName.trim(),
           supplierId: form.supplierId,
-        }
+        },
       );
-      
+
       toast.success("Marca creada exitosamente");
-      
+
       // Recargar marcas
       const brandsRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`,
       );
       setBrands(brandsRes.data);
-      
+
       // Seleccionar la nueva marca
-      setForm(prev => ({ ...prev, brandId: res.data.id }));
-      
+      setForm((prev) => ({ ...prev, brandId: res.data.id }));
+
       // Cerrar modal y limpiar
       setBrandModalOpen(false);
       setQuickBrandName("");
@@ -587,7 +607,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
   const handleVariantImageChange = (
     index: number,
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0] || null;
     updateVariantField(index, "imageFile", file);
@@ -623,7 +643,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
     for (const v of variants) {
       if (v.priceBase <= 0 || v.priceVta <= 0) {
         toast.error(
-          "Todas las variantes deben tener precio base y precio venta mayor a 0."
+          "Todas las variantes deben tener precio base y precio venta mayor a 0.",
         );
         return;
       }
@@ -696,7 +716,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         // Actualizar la variante
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${editVariantId}`,
-          variantPayload
+          variantPayload,
         );
 
         // Actualizar el producto (nombre, descripción)
@@ -707,7 +727,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/${editProductId}`,
-          productPayload
+          productPayload,
         );
 
         toast.success("¡Producto actualizado exitosamente!");
@@ -717,15 +737,19 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         // Modo creación
         const res = await axios.post(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/with-variants`,
-          payload
+          payload,
         );
-     
+
         toast.success("¡Producto creado exitosamente!");
         resetForm();
       }
     } catch (error) {
       console.error("❌ Error al guardar producto:", error);
-      toast.error(isEditMode ? "Error al actualizar el producto." : "Error al crear el producto. Intenta nuevamente.");
+      toast.error(
+        isEditMode
+          ? "Error al actualizar el producto."
+          : "Error al crear el producto. Intenta nuevamente.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -734,384 +758,410 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   // =========================
   return (
     <form onSubmit={handleSubmit} className="w-full px-6 pb-6">
-      <HeaderConfig 
-        title="Productos" 
-        description={isEditMode ? "Editar producto" : "Crear nuevo producto"} 
+      <HeaderConfig
+        title="Productos"
+        description={isEditMode ? "Editar producto" : "Crear nuevo producto"}
       />
 
       {isLoadingProduct ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-3 text-muted-foreground">Cargando datos del producto...</span>
+          <span className="ml-3 text-muted-foreground">
+            Cargando datos del producto...
+          </span>
         </div>
       ) : (
-      <div className="space-y-6">
-        {/* Card 1: Información básica */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Información básica</CardTitle>
-            <CardDescription>
-              Completa los datos principales del producto
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Row: Inventario + Categoría */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="inventory_id">Inventario</Label>
-                <select
-                  id="inventory_id"
-                  name="inventory_id"
-                  value={form.inventory_id}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
-                  disabled={inventories.length === 1}
-                  required
-                >
-                  <option value="">Seleccionar inventario...</option>
-                  {inventories.map((inv) => (
-                    <option key={inv.id} value={inv.id}>
-                      {inv.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="categoryId">Categoría</Label>
-                <select
-                  id="categoryId"
-                  name="categoryId"
-                  value={form.categoryId}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
-                  required
-                >
-                  <option value="">Seleccionar categoría...</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {/* Row: Proveedor + Marca */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="supplierId">
-                  Proveedor <span className="text-muted-foreground text-xs">(opcional)</span>
-                </Label>
-                <div className="flex gap-2">
+        <div className="space-y-6">
+          {/* Card 1: Información básica */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Información básica</CardTitle>
+              <CardDescription>
+                Completa los datos principales del producto
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Row: Inventario + Categoría */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="inventory_id">Inventario</Label>
                   <select
-                    id="supplierId"
-                    name="supplierId"
-                    value={form.supplierId}
+                    id="inventory_id"
+                    name="inventory_id"
+                    value={form.inventory_id}
                     onChange={handleChange}
-                    className="flex-1 border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
+                    className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
+                    disabled={inventories.length === 1}
+                    required
                   >
-                    <option value="">Seleccionar proveedor...</option>
-                    {suppliers.map((supplier) => (
-                      <option key={supplier.id} value={supplier.id}>
-                        {supplier.name}
+                    <option value="">Seleccionar inventario...</option>
+                    {inventories.map((inv) => (
+                      <option key={inv.id} value={inv.id}>
+                        {inv.name}
                       </option>
                     ))}
                   </select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setSupplierModalOpen(true)}
-                    title="Crear nuevo proveedor"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="brandId">
-                  Marca <span className="text-muted-foreground text-xs">(opcional)</span>
-                </Label>
-                <div className="flex gap-2">
+                <div className="space-y-2">
+                  <Label htmlFor="categoryId">Categoría</Label>
                   <select
-                    id="brandId"
-                    name="brandId"
-                    value={form.brandId}
+                    id="categoryId"
+                    name="categoryId"
+                    value={form.categoryId}
                     onChange={handleChange}
-                    disabled={!form.supplierId}
-                    className="flex-1 border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600 disabled:bg-gray-200 dark:disabled:bg-gray-700"
+                    className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
+                    required
                   >
-                    {!form.supplierId ? (
-                      <option value="">Selecciona proveedor primero...</option>
-                    ) : (
-                      <>
-                        <option value="">Seleccionar marca...</option>
-                        {filteredBrands.map((brand) => (
-                          <option key={brand.id} value={brand.id}>
-                            {brand.name}
-                          </option>
-                        ))}
-                      </>
-                    )}
-                  </select>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setBrandModalOpen(true)}
-                    disabled={!form.supplierId}
-                    title="Crear nueva marca"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Nombre */}
-            <div className="space-y-2">
-              <Label htmlFor="name">Nombre</Label>
-              <Input
-                id="name"
-                name="name"
-                value={form.name}
-                onChange={handleChange}
-                placeholder="Ej: Remera Oversize Premium"
-                required
-              />
-            </div>
-
-            {/* Subcategoría */}
-            <div className="space-y-2">
-              <Label htmlFor="subcategoryId">Subcategoría</Label>
-              <select
-                id="subcategoryId"
-                name="subcategoryId"
-                value={form.subcategoryId}
-                onChange={handleChange}
-                disabled={!form.categoryId}
-                className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600 disabled:bg-gray-200 dark:disabled:bg-gray-700"
-                required
-              >
-                {!form.categoryId ? (
-                  <option value="">Selecciona categoría primero...</option>
-                ) : (
-                  <>
-                    <option value="">Seleccionar subcategoría...</option>
-                    {subcategories.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
+                    <option value="">Seleccionar categoría...</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
                       </option>
                     ))}
-                  </>
-                )}
-              </select>
-            </div>
-
-            {/* Descripción */}
-            <div className="space-y-2">
-              <Label htmlFor="description">Descripción</Label>
-              <Textarea
-                id="description"
-                name="description"
-                value={form.description}
-                onChange={handleChange}
-                rows={3}
-                placeholder="Ej: Remera unisex de algodón premium, modelo oversize."
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Card 2: Atributos del producto */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Atributos del producto</CardTitle>
-            <CardDescription>
-              Selecciona una subcategoría para ver los atributos por defecto.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Default attributes */}
-            {defaultAttributes.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {defaultAttributes.map((attr) => (
-                  <div key={attr.id} className="space-y-2">
-                    <Label>
-                      {attr.name} {attr.required && "*"}{" "}
-                      <span className="text-xs text-muted-foreground">
-                        (separa valores con coma)
-                      </span>
-                    </Label>
-                    <Input
-                      value={attributeValues[attr.id] || ""}
-                      onChange={(e) =>
-                        handleAttributeChange(attr.id, e.target.value)
-                      }
-                    />
-                  </div>
-                ))}
+                  </select>
+                </div>
               </div>
-            )}
 
-            {/* Botón generar variantes */}
-            {(defaultAttributes.length > 0 || customAttributes.length > 0) && (
-              <Button
-                type="button"
-                onClick={handleGenerateVariants}
-                className="bg-blue-600 hover:bg-blue-700"
-              >
-                Generar variantes
-              </Button>
-            )}
-
-            {/* Custom attributes header */}
-            <div className="flex items-center justify-between pt-2">
-              <Label className="text-base">Atributos personalizados</Label>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleAddCustomAttribute}
-                className="gap-1"
-              >
-                <Plus className="h-4 w-4" />
-                Agregar atributo
-              </Button>
-            </div>
-
-            {customAttributes.length === 0 && (
-              <div className="rounded-lg border border-dashed p-6 text-center">
-                <p className="text-sm text-muted-foreground">
-                  No hay atributos personalizados. Haz clic en &quot;Agregar atributo&quot; para añadir uno.
-                </p>
-              </div>
-            )}
-            
-
-            {customAttributes.length > 0 && (
+              {/* Row: Proveedor + Marca */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {customAttributes.map((attr) => (
-                  <div
-                    key={attr.id}
-                    className="border rounded-lg p-4 space-y-3 bg-muted/30"
-                  >
-                    <div className="space-y-2">
-                      <Label>Nombre del atributo</Label>
-                      <Input
-                        value={attr.name}
-                        onChange={(e) =>
-                          handleCustomAttrNameChange(attr.id, e.target.value)
-                        }
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Valores (separados por coma)</Label>
-                      <Input
-                        value={attr.rawValues}
-                        onChange={(e) =>
-                          handleCustomAttrValuesChange(attr.id, e.target.value)
-                        }
-                        placeholder="Ej: S, M, L, XL"
-                      />
-                    </div>
-
+                <div className="space-y-2">
+                  <Label htmlFor="supplierId">
+                    Proveedor{" "}
+                    <span className="text-muted-foreground text-xs">
+                      (opcional)
+                    </span>
+                  </Label>
+                  <div className="flex gap-2">
+                    <select
+                      id="supplierId"
+                      name="supplierId"
+                      value={form.supplierId}
+                      onChange={handleChange}
+                      className="flex-1 border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
+                    >
+                      <option value="">Seleccionar proveedor...</option>
+                      {suppliers.map((supplier) => (
+                        <option key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </option>
+                      ))}
+                    </select>
                     <Button
                       type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
-                      onClick={() => handleRemoveCustomAttr(attr.id)}
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setSupplierModalOpen(true)}
+                      title="Crear nuevo proveedor"
                     >
-                      Eliminar atributo
+                      <Plus className="h-4 w-4" />
                     </Button>
                   </div>
-                ))}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="brandId">
+                    Marca{" "}
+                    <span className="text-muted-foreground text-xs">
+                      (opcional)
+                    </span>
+                  </Label>
+                  <div className="flex gap-2">
+                    <select
+                      id="brandId"
+                      name="brandId"
+                      value={form.brandId}
+                      onChange={handleChange}
+                      disabled={!form.supplierId}
+                      className="flex-1 border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600 disabled:bg-gray-200 dark:disabled:bg-gray-700"
+                    >
+                      {!form.supplierId ? (
+                        <option value="">
+                          Selecciona proveedor primero...
+                        </option>
+                      ) : (
+                        <>
+                          <option value="">Seleccionar marca...</option>
+                          {filteredBrands.map((brand) => (
+                            <option key={brand.id} value={brand.id}>
+                              {brand.name}
+                            </option>
+                          ))}
+                        </>
+                      )}
+                    </select>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setBrandModalOpen(true)}
+                      disabled={!form.supplierId}
+                      title="Crear nueva marca"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
               </div>
-            )}
 
-            
+              {/* Nombre */}
+              <div className="space-y-2">
+                <Label htmlFor="name">Nombre</Label>
+                <Input
+                  id="name"
+                  name="name"
+                  value={form.name}
+                  onChange={handleChange}
+                  placeholder="Ej: Remera Oversize Premium"
+                  required
+                />
+              </div>
 
-            {/* Variantes generadas */}
-            {variants.length > 0 && (
-              <div className="border-t pt-4 space-y-3">
-                <h3 className="font-semibold">Variantes generadas</h3>
+              {/* Subcategoría */}
+              <div className="space-y-2">
+                <Label htmlFor="subcategoryId">Subcategoría</Label>
+                <select
+                  id="subcategoryId"
+                  name="subcategoryId"
+                  value={form.subcategoryId}
+                  onChange={handleChange}
+                  disabled={!form.categoryId}
+                  className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600 disabled:bg-gray-200 dark:disabled:bg-gray-700"
+                  required
+                >
+                  {!form.categoryId ? (
+                    <option value="">Selecciona categoría primero...</option>
+                  ) : (
+                    <>
+                      <option value="">Seleccionar subcategoría...</option>
+                      {subcategories.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </>
+                  )}
+                </select>
+              </div>
 
-                {variants.map((variant, index) => (
-                  <div
-                    key={index}
-                    className="border rounded-lg p-4 bg-muted/30 space-y-3"
-                  >
-                    <div className="flex items-center justify-between">
-                      <p className="font-semibold text-sm">Variante {index + 1}</p>
+              {/* Descripción */}
+              <div className="space-y-2">
+                <Label htmlFor="description">Descripción</Label>
+                <Textarea
+                  id="description"
+                  name="description"
+                  value={form.description}
+                  onChange={handleChange}
+                  rows={3}
+                  placeholder="Ej: Remera unisex de algodón premium, modelo oversize."
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Card 2: Atributos del producto */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Atributos del producto</CardTitle>
+              <CardDescription>
+                Selecciona una subcategoría para ver los atributos por defecto.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Default attributes */}
+              {defaultAttributes.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {defaultAttributes.map((attr) => (
+                    <div key={attr.id} className="space-y-2">
+                      <Label>
+                        {attr.name} {attr.required && "*"}{" "}
+                        <span className="text-xs text-muted-foreground">
+                          (separa valores con coma)
+                        </span>
+                      </Label>
+                      <Input
+                        value={attributeValues[attr.id] || ""}
+                        onChange={(e) =>
+                          handleAttributeChange(attr.id, e.target.value)
+                        }
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Botón generar variantes */}
+              {(defaultAttributes.length > 0 ||
+                customAttributes.length > 0) && (
+                <Button
+                  type="button"
+                  onClick={handleGenerateVariants}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  Generar variantes
+                </Button>
+              )}
+
+              {/* Custom attributes header */}
+              <div className="flex items-center justify-between pt-2">
+                <Label className="text-base">Atributos personalizados</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddCustomAttribute}
+                  className="gap-1"
+                >
+                  <Plus className="h-4 w-4" />
+                  Agregar atributo
+                </Button>
+              </div>
+
+              {customAttributes.length === 0 && (
+                <div className="rounded-lg border border-dashed p-6 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    No hay atributos personalizados. Haz clic en &quot;Agregar
+                    atributo&quot; para añadir uno.
+                  </p>
+                </div>
+              )}
+
+              {customAttributes.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {customAttributes.map((attr) => (
+                    <div
+                      key={attr.id}
+                      className="border rounded-lg p-4 space-y-3 bg-muted/30"
+                    >
+                      <div className="space-y-2">
+                        <Label>Nombre del atributo</Label>
+                        <Input
+                          value={attr.name}
+                          onChange={(e) =>
+                            handleCustomAttrNameChange(attr.id, e.target.value)
+                          }
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Valores (separados por coma)</Label>
+                        <Input
+                          value={attr.rawValues}
+                          onChange={(e) =>
+                            handleCustomAttrValuesChange(
+                              attr.id,
+                              e.target.value,
+                            )
+                          }
+                          placeholder="Ej: S, M, L, XL"
+                        />
+                      </div>
+
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="text-red-600 hover:text-red-700"
-                        onClick={() => handleRemoveVariant(index)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950"
+                        onClick={() => handleRemoveCustomAttr(attr.id)}
                       >
-                        Eliminar
+                        Eliminar atributo
                       </Button>
                     </div>
+                  ))}
+                </div>
+              )}
 
-                    {/* Atributos de la variante */}
-                    <p className="text-s text-muted-foreground">
-                      {Object.entries(variant.attributes)
-                        .map(([name, value]) => `${name}: ${value}`)
-                        .join(" | ")}
-                    </p>
+              {/* Variantes generadas */}
+              {variants.length > 0 && (
+                <div className="border-t pt-4 space-y-3">
+                  <h3 className="font-semibold">Variantes generadas</h3>
 
-                    {/* Datos de la variante */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-                      <div className="space-y-1">
-                        <Label className="text-xs">Precio base</Label>
-                        <Input
-                          type="number"
-                          value={variant.priceBase || ""}
-                          onChange={(e) =>
-                            updateVariantField(index, "priceBase", e.target.value)
-                          }
-                        />
+                  {variants.map((variant, index) => (
+                    <div
+                      key={index}
+                      className="border rounded-lg p-4 bg-muted/30 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <p className="font-semibold text-sm">
+                          Variante {index + 1}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-600 hover:text-red-700"
+                          onClick={() => handleRemoveVariant(index)}
+                        >
+                          Eliminar
+                        </Button>
                       </div>
 
-                      <div className="space-y-1">
-                        <Label className="text-xs">Precio venta</Label>
-                        <Input
-                          type="number"
-                          value={variant.priceVta || ""}
-                          onChange={(e) =>
-                            updateVariantField(index, "priceVta", e.target.value)
-                          }
-                        />
-                      </div>
+                      {/* Atributos de la variante */}
+                      <p className="text-s text-muted-foreground">
+                        {Object.entries(variant.attributes)
+                          .map(([name, value]) => `${name}: ${value}`)
+                          .join(" | ")}
+                      </p>
 
-                      <div className="space-y-1">
-                        <Label className="text-xs">Stock</Label>
-                        <Input
-                          type="number"
-                          value={variant.stock || ""}
-                          onChange={(e) =>
-                            updateVariantField(index, "stock", e.target.value)
-                          }
-                        />
-                      </div>
+                      {/* Datos de la variante */}
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Precio base</Label>
+                          <Input
+                            type="number"
+                            value={variant.priceBase || ""}
+                            onChange={(e) =>
+                              updateVariantField(
+                                index,
+                                "priceBase",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </div>
 
-                      <div className="space-y-1">
-                        <Label className="text-xs">Stock mínimo</Label>
-                        <Input
-                          type="number"
-                          value={variant.minStock || ""}
-                          onChange={(e) =>
-                            updateVariantField(index, "minStock", e.target.value)
-                          }
-                        />
-                      </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Precio venta</Label>
+                          <Input
+                            type="number"
+                            value={variant.priceVta || ""}
+                            onChange={(e) =>
+                              updateVariantField(
+                                index,
+                                "priceVta",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </div>
 
-                     {/*  <div className="space-y-1">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Stock</Label>
+                          <Input
+                            type="number"
+                            value={variant.stock || ""}
+                            onChange={(e) =>
+                              updateVariantField(index, "stock", e.target.value)
+                            }
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <Label className="text-xs">Stock mínimo</Label>
+                          <Input
+                            type="number"
+                            value={variant.minStock || ""}
+                            onChange={(e) =>
+                              updateVariantField(
+                                index,
+                                "minStock",
+                                e.target.value,
+                              )
+                            }
+                          />
+                        </div>
+
+                        {/*  <div className="space-y-1">
                         <Label className="text-xs">Imagen (opcional)</Label>
                         <input
                           type="file"
@@ -1125,14 +1175,14 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
                           </p>
                         )}
                       </div> */}
+                      </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Submit buttons */}
@@ -1161,7 +1211,6 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         </Button>
       </div>
 
-
       {/* Modal: Crear Proveedor Rápido */}
       <Dialog open={supplierModalOpen} onOpenChange={setSupplierModalOpen}>
         <DialogContent>
@@ -1170,7 +1219,9 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="quick-supplier-name">Nombre del Proveedor *</Label>
+              <Label htmlFor="quick-supplier-name">
+                Nombre del Proveedor *
+              </Label>
               <Input
                 id="quick-supplier-name"
                 value={quickSupplierName}

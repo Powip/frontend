@@ -8,7 +8,7 @@ export async function getProvidersByCompany(
   companyId: string
 ): Promise<Provider[]> {
   try {
-    const response = await fetch(`${API_URL}/supplier/company/${companyId}`);
+    const response = await fetch(`${API_URL}/suppliers/company/${companyId}`);
     if (!response.ok) throw new Error("Error al obtener proveedores");
     return await response.json();
   } catch (error) {
@@ -19,7 +19,7 @@ export async function getProvidersByCompany(
 
 //Servicio para Crear Proveedor
 export async function createProvider(provider: Provider): Promise<Provider> {
-  const response = await fetch(`${API_URL}/supplier`, {
+  const response = await fetch(`${API_URL}/suppliers`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(provider),
@@ -43,7 +43,7 @@ export async function createProvider(provider: Provider): Promise<Provider> {
 
 // Servicio para Buscar Proveedor por ID
 export async function getProviderById(id: string) {
-  const res = await fetch(`${API_URL}/supplier/${id}`, {
+  const res = await fetch(`${API_URL}/suppliers/${id}`, {
     method: "GET",
     headers: { "Content-Type": "application/json" },
   });
@@ -61,7 +61,7 @@ export async function getProviderById(id: string) {
 
 // Servicio para Eliminar (desactivar) proveedor por ID utilizando PATCH
 export async function inactivateProvider(id: string) {
-  const res = await fetch(`${API_URL}/supplier/disabled/${id}`, {
+  const res = await fetch(`${API_URL}/suppliers/disabled/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
   });
@@ -79,7 +79,7 @@ export async function updateProvider(
   id: string,
   providerData: ProviderRequest
 ) {
-  const res = await fetch(`${API_URL}/supplier/${id}`, {
+  const res = await fetch(`${API_URL}/suppliers/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(providerData),
