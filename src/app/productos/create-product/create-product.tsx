@@ -4,14 +4,26 @@ import axios from "axios";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Category {
   id: string;
@@ -83,7 +95,9 @@ interface ProductCreateFormProps {
   editVariantId?: string | null;
 }
 
-export default function ProductCreateForm({ editVariantId }: ProductCreateFormProps) {
+export default function ProductCreateForm({
+  editVariantId,
+}: ProductCreateFormProps) {
   const { auth, inventories } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -115,7 +129,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   >({});
 
   const [customAttributes, setCustomAttributes] = useState<CustomAttribute[]>(
-    []
+    [],
   );
 
   const [variants, setVariants] = useState<VariantForm[]>([]);
@@ -165,7 +179,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         // Obtener la variante y su producto
         const { data: variants } = await axios.post(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/multiple/by-ids`,
-          { ids: [editVariantId] }
+          { ids: [editVariantId] },
         );
 
         if (variants.length === 0) {
@@ -180,7 +194,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         // Obtener detalles completos del producto CON relaciones (subcategory, etc.)
         const { data: productDetailsArray } = await axios.post(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/details`,
-          { productIds: [product.id] }
+          { productIds: [product.id] },
         );
 
         if (!productDetailsArray || productDetailsArray.length === 0) {
@@ -191,12 +205,14 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
         const productDetails = productDetailsArray[0];
 
-
         // Obtener subcategoryId de la relación
         const subcategoryId = productDetails.subcategory?.id;
 
         if (!subcategoryId) {
-          console.error("No se encontró subcategoryId en productDetails:", productDetails);
+          console.error(
+            "No se encontró subcategoryId en productDetails:",
+            productDetails,
+          );
           toast.error("No se pudo obtener la subcategoría del producto");
           setIsLoadingProduct(false);
           return;
@@ -207,17 +223,18 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
         // Cargar subcategorías de la categoría para el select
         const { data: subcategoriesData } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${categoryId}`
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${categoryId}`,
         );
         setSubcategories(subcategoriesData);
 
         // Obtener atributos default de la subcategoría
         const { data: subcategoryData } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${subcategoryId}`
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${subcategoryId}`,
         );
 
         // Cargar atributos default de la subcategoría
-        const attrs: DefaultAttribute[] = subcategoryData.defaultAttributes || [];
+        const attrs: DefaultAttribute[] =
+          subcategoryData.defaultAttributes || [];
         setDefaultAttributes(attrs);
 
         // Llenar el formulario
@@ -294,7 +311,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
     axios
       .get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${form.categoryId}`
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${form.categoryId}`,
       )
       .then((res) => setSubcategories(res.data))
       .catch((err) => console.error("Error al cargar subcategorías", err));
@@ -319,7 +336,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
     axios
       .get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${form.subcategoryId}`
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${form.subcategoryId}`,
       )
       .then((res) => {
         const attrs: DefaultAttribute[] = res.data.defaultAttributes || [];
@@ -341,22 +358,23 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   useEffect(() => {
     if (form.supplierId) {
       const filtered = brands.filter(
-        (brand) => brand.supplierId === form.supplierId
+        (brand) => brand.supplier.id === form.supplierId,
       );
       setFilteredBrands(filtered);
       // Resetear marca si ya no pertenece al proveedor seleccionado
       if (form.brandId) {
-        const brandBelongsToSupplier = filtered.some(b => b.id === form.brandId);
+        const brandBelongsToSupplier = filtered.some(
+          (b) => b.id === form.brandId,
+        );
         if (!brandBelongsToSupplier) {
-          setForm(prev => ({ ...prev, brandId: "" }));
+          setForm((prev) => ({ ...prev, brandId: "" }));
         }
       }
     } else {
       setFilteredBrands([]);
-      setForm(prev => ({ ...prev, brandId: "" }));
+      setForm((prev) => ({ ...prev, brandId: "" }));
     }
   }, [form.supplierId, brands]);
-
 
   // =========================
   // Manejo inputs base
@@ -364,7 +382,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   const handleChange = (
     e: React.ChangeEvent<
       HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >
+    >,
   ) => {
     const { name, value } = e.target;
 
@@ -405,13 +423,13 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
   const handleCustomAttrNameChange = (id: string, name: string) => {
     setCustomAttributes((prev) =>
-      prev.map((attr) => (attr.id === id ? { ...attr, name } : attr))
+      prev.map((attr) => (attr.id === id ? { ...attr, name } : attr)),
     );
   };
 
   const handleCustomAttrValuesChange = (id: string, rawValues: string) => {
     setCustomAttributes((prev) =>
-      prev.map((attr) => (attr.id === id ? { ...attr, rawValues } : attr))
+      prev.map((attr) => (attr.id === id ? { ...attr, rawValues } : attr)),
     );
   };
 
@@ -469,22 +487,22 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
   const updateVariantField = (
     index: number,
     field: keyof Omit<VariantForm, "attributes">,
-    value: any
+    value: any,
   ) => {
     setVariants((prev) =>
       prev.map((v, i) =>
         i === index
           ? {
-            ...v,
-            [field]:
-              field === "priceBase" ||
+              ...v,
+              [field]:
+                field === "priceBase" ||
                 field === "priceVta" ||
                 field === "stock"
-                ? Number(value)
-                : value,
-          }
-          : v
-      )
+                  ? Number(value)
+                  : value,
+            }
+          : v,
+      ),
     );
   };
 
@@ -501,19 +519,19 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
     try {
       const res = await axios.post(
         `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
-        { name: quickSupplierName.trim(), companyId: auth?.company?.id }
+        { name: quickSupplierName.trim(), companyId: auth?.company?.id },
       );
 
       toast.success("Proveedor creado exitosamente");
 
       // Recargar proveedores
       const suppliersRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`
+        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
       );
       setSuppliers(suppliersRes.data);
 
       // Seleccionar el nuevo proveedor
-      setForm(prev => ({ ...prev, supplierId: res.data.id }));
+      setForm((prev) => ({ ...prev, supplierId: res.data.id }));
 
       // Cerrar modal y limpiar
       setSupplierModalOpen(false);
@@ -544,19 +562,19 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         {
           name: quickBrandName.trim(),
           supplierId: form.supplierId,
-        }
+        },
       );
 
       toast.success("Marca creada exitosamente");
 
       // Recargar marcas
       const brandsRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`,
       );
       setBrands(brandsRes.data);
 
       // Seleccionar la nueva marca
-      setForm(prev => ({ ...prev, brandId: res.data.id }));
+      setForm((prev) => ({ ...prev, brandId: res.data.id }));
 
       // Cerrar modal y limpiar
       setBrandModalOpen(false);
@@ -589,7 +607,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
   const handleVariantImageChange = (
     index: number,
-    e: React.ChangeEvent<HTMLInputElement>
+    e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0] || null;
     updateVariantField(index, "imageFile", file);
@@ -625,7 +643,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
     for (const v of variants) {
       if (v.priceBase <= 0 || v.priceVta <= 0) {
         toast.error(
-          "Todas las variantes deben tener precio base y precio venta mayor a 0."
+          "Todas las variantes deben tener precio base y precio venta mayor a 0.",
         );
         return;
       }
@@ -698,7 +716,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         // Actualizar la variante
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${editVariantId}`,
-          variantPayload
+          variantPayload,
         );
 
         // Actualizar el producto (nombre, descripción)
@@ -709,7 +727,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/${editProductId}`,
-          productPayload
+          productPayload,
         );
 
         toast.success("¡Producto actualizado exitosamente!");
@@ -719,7 +737,7 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         // Modo creación
         const res = await axios.post(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/with-variants`,
-          payload
+          payload,
         );
 
         toast.success("¡Producto creado exitosamente!");
@@ -727,7 +745,11 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
       }
     } catch (error) {
       console.error("❌ Error al guardar producto:", error);
-      toast.error(isEditMode ? "Error al actualizar el producto." : "Error al crear el producto. Intenta nuevamente.");
+      toast.error(
+        isEditMode
+          ? "Error al actualizar el producto."
+          : "Error al crear el producto. Intenta nuevamente.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -744,7 +766,9 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
       {isLoadingProduct ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <span className="ml-3 text-muted-foreground">Cargando datos del producto...</span>
+          <span className="ml-3 text-muted-foreground">
+            Cargando datos del producto...
+          </span>
         </div>
       ) : (
         <div className="space-y-6">
@@ -803,7 +827,10 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="supplierId">
-                    Proveedor <span className="text-muted-foreground text-xs">(opcional)</span>
+                    Proveedor{" "}
+                    <span className="text-muted-foreground text-xs">
+                      (opcional)
+                    </span>
                   </Label>
                   <div className="flex gap-2">
                     <select
@@ -834,7 +861,10 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
 
                 <div className="space-y-2">
                   <Label htmlFor="brandId">
-                    Marca <span className="text-muted-foreground text-xs">(opcional)</span>
+                    Marca{" "}
+                    <span className="text-muted-foreground text-xs">
+                      (opcional)
+                    </span>
                   </Label>
                   <div className="flex gap-2">
                     <select
@@ -846,7 +876,9 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
                       className="flex-1 border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600 disabled:bg-gray-200 dark:disabled:bg-gray-700"
                     >
                       {!form.supplierId ? (
-                        <option value="">Selecciona proveedor primero...</option>
+                        <option value="">
+                          Selecciona proveedor primero...
+                        </option>
                       ) : (
                         <>
                           <option value="">Seleccionar marca...</option>
@@ -959,7 +991,8 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
               )}
 
               {/* Botón generar variantes */}
-              {(defaultAttributes.length > 0 || customAttributes.length > 0) && (
+              {(defaultAttributes.length > 0 ||
+                customAttributes.length > 0) && (
                 <Button
                   type="button"
                   onClick={handleGenerateVariants}
@@ -987,11 +1020,11 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
               {customAttributes.length === 0 && (
                 <div className="rounded-lg border border-dashed p-6 text-center">
                   <p className="text-sm text-muted-foreground">
-                    No hay atributos personalizados. Haz clic en &quot;Agregar atributo&quot; para añadir uno.
+                    No hay atributos personalizados. Haz clic en &quot;Agregar
+                    atributo&quot; para añadir uno.
                   </p>
                 </div>
               )}
-
 
               {customAttributes.length > 0 && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1015,7 +1048,10 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
                         <Input
                           value={attr.rawValues}
                           onChange={(e) =>
-                            handleCustomAttrValuesChange(attr.id, e.target.value)
+                            handleCustomAttrValuesChange(
+                              attr.id,
+                              e.target.value,
+                            )
                           }
                           placeholder="Ej: S, M, L, XL"
                         />
@@ -1035,8 +1071,6 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
                 </div>
               )}
 
-
-
               {/* Variantes generadas */}
               {variants.length > 0 && (
                 <div className="border-t pt-4 space-y-3">
@@ -1048,7 +1082,9 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
                       className="border rounded-lg p-4 bg-muted/30 space-y-3"
                     >
                       <div className="flex items-center justify-between">
-                        <p className="font-semibold text-sm">Variante {index + 1}</p>
+                        <p className="font-semibold text-sm">
+                          Variante {index + 1}
+                        </p>
                         <Button
                           type="button"
                           variant="ghost"
@@ -1075,7 +1111,11 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
                             type="number"
                             value={variant.priceBase || ""}
                             onChange={(e) =>
-                              updateVariantField(index, "priceBase", e.target.value)
+                              updateVariantField(
+                                index,
+                                "priceBase",
+                                e.target.value,
+                              )
                             }
                           />
                         </div>
@@ -1086,7 +1126,11 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
                             type="number"
                             value={variant.priceVta || ""}
                             onChange={(e) =>
-                              updateVariantField(index, "priceVta", e.target.value)
+                              updateVariantField(
+                                index,
+                                "priceVta",
+                                e.target.value,
+                              )
                             }
                           />
                         </div>
@@ -1108,7 +1152,11 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
                             type="number"
                             value={variant.minStock || ""}
                             onChange={(e) =>
-                              updateVariantField(index, "minStock", e.target.value)
+                              updateVariantField(
+                                index,
+                                "minStock",
+                                e.target.value,
+                              )
                             }
                           />
                         </div>
@@ -1163,7 +1211,6 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
         </Button>
       </div>
 
-
       {/* Modal: Crear Proveedor Rápido */}
       <Dialog open={supplierModalOpen} onOpenChange={setSupplierModalOpen}>
         <DialogContent>
@@ -1172,7 +1219,9 @@ export default function ProductCreateForm({ editVariantId }: ProductCreateFormPr
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="quick-supplier-name">Nombre del Proveedor *</Label>
+              <Label htmlFor="quick-supplier-name">
+                Nombre del Proveedor *
+              </Label>
               <Input
                 id="quick-supplier-name"
                 value={quickSupplierName}

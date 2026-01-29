@@ -287,12 +287,16 @@ export const Stats: React.FC = () => {
                     <CartesianGrid strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="name" />
                     <YAxis
-                      yId="left"
+                      yAxisId="left"
                       orientation="left"
                       stroke="#02a8e1"
                       tickFormatter={(value) => `S/${value}`}
                     />
-                    <YAxis yId="right" orientation="right" stroke="#8884d8" />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      stroke="#8884d8"
+                    />
                     <Tooltip
                       formatter={(value, name) => {
                         if (name === "Ventas (S/)") return [`S/${value}`, name];
@@ -307,7 +311,7 @@ export const Stats: React.FC = () => {
                     />
                     <Legend verticalAlign="top" height={36} />
                     <Line
-                      yId="left"
+                      yAxisId="left"
                       type="monotone"
                       dataKey="ventas"
                       stroke="#02a8e1"
@@ -317,7 +321,7 @@ export const Stats: React.FC = () => {
                       dot={{ r: 4 }}
                     />
                     <Line
-                      yId="right"
+                      yAxisId="right"
                       type="monotone"
                       dataKey="ordenes"
                       stroke="#8884d8"
@@ -326,7 +330,7 @@ export const Stats: React.FC = () => {
                       dot={{ r: 4 }}
                     />
                     <Line
-                      yId="right"
+                      yAxisId="right"
                       type="monotone"
                       dataKey="productos"
                       stroke="#ffc658"
