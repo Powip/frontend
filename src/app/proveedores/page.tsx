@@ -70,7 +70,7 @@ export default function ProveedoresPage() {
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [selectedSupplierForBrand, setSelectedSupplierForBrand] =
     useState<Supplier | null>(null);
-  
+
   // Loading states for save buttons
   const [isSavingSupplier, setIsSavingSupplier] = useState(false);
   const [isSavingBrand, setIsSavingBrand] = useState(false);
@@ -87,7 +87,7 @@ export default function ProveedoresPage() {
     name: "",
     supplierId: "",
   });
-    
+
   useEffect(() => {
     if (companyId) {
       fetchSuppliers();
@@ -99,7 +99,7 @@ export default function ProveedoresPage() {
     setIsLoading(true);
     try {
       const res = await axios.get<Supplier[]>(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers/company/${companyId}`
+        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/company/${companyId}`
       );
       setSuppliers(res.data);
     } catch (error) {
@@ -147,13 +147,13 @@ export default function ProveedoresPage() {
     try {
       if (editingSupplier) {
         await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers/${editingSupplier.id}`,
+          `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/${editingSupplier.id}`,
           supplierForm
         );
         toast.success("Proveedor actualizado");
       } else {
         await axios.post(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers`,
+          `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
           { ...supplierForm, companyId }
         );
         toast.success("Proveedor creado");
@@ -173,7 +173,7 @@ export default function ProveedoresPage() {
 
     try {
       await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/suppliers/${supplier.id}`
+        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/${supplier.id}`
       );
       toast.success("Proveedor eliminado");
       fetchSuppliers();
@@ -186,7 +186,7 @@ export default function ProveedoresPage() {
   // ==================== BRAND CRUD ====================
   const handleOpenBrandModal = (supplier: Supplier, brand?: Brand) => {
     setSelectedSupplierForBrand(supplier);
-    
+
     if (brand) {
       setEditingBrand(brand);
       setBrandForm({
