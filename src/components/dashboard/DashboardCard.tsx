@@ -150,14 +150,37 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                       <TableHeader className="bg-gray-50 sticky top-0">
                         <TableRow>
                           {data.length > 0 &&
-                            Object.keys(data[0]).map((key) => (
-                              <TableHead
-                                key={key}
-                                className="text-xs uppercase font-bold text-gray-600"
-                              >
-                                {key.replace(/_/g, " ")}
-                              </TableHead>
-                            ))}
+                            Object.keys(data[0]).map((key) => {
+                              // Mapeo simple de headers a español
+                              const headerLabel =
+                                {
+                                  orderNumber: "N° Orden",
+                                  customerName: "Cliente",
+                                  grandTotal: "Monto Total",
+                                  createdAt: "Fecha",
+                                  status: "Estado",
+                                  salesChannel: "Canal",
+                                  producto: "Producto",
+                                  cantidad: "Cant.",
+                                  precio_unit: "Precio Unit.",
+                                  subtotal: "Subtotal",
+                                  fecha: "Fecha",
+                                  n_orden: "N° Orden",
+                                  date: "Fecha",
+                                  orders: "Órdenes",
+                                  amount: "Monto",
+                                  products: "Productos",
+                                }[key] || key.replace(/_/g, " ").toUpperCase();
+
+                              return (
+                                <TableHead
+                                  key={key}
+                                  className="text-xs uppercase font-bold text-gray-600"
+                                >
+                                  {headerLabel}
+                                </TableHead>
+                              );
+                            })}
                           {renderRowAction && (
                             <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
                               Acciones
@@ -168,13 +191,57 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                       <TableBody>
                         {data.map((row, i) => (
                           <TableRow key={i}>
-                            {Object.values(row).map((val: any, j) => (
-                              <TableCell key={j} className="text-xs py-2">
-                                {typeof val === "object"
-                                  ? JSON.stringify(val)
-                                  : String(val)}
-                              </TableCell>
-                            ))}
+                            {Object.entries(row).map(
+                              ([key, val]: [string, any], j) => {
+                                let displayValue = val;
+
+                                // Formateo inteligente basado en la clave o tipo
+                                if (
+                                  typeof val === "number" &&
+                                  (key.toLowerCase().includes("total") ||
+                                    key.toLowerCase().includes("monto") ||
+                                    key.toLowerCase().includes("precio") ||
+                                    key.toLowerCase().includes("amount") ||
+                                    key.toLowerCase().includes("subtotal"))
+                                ) {
+                                  displayValue = `S/ ${val.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                                } else if (
+                                  key.toLowerCase().includes("fecha") ||
+                                  key.toLowerCase().includes("date") ||
+                                  key.toLowerCase().includes("createdat")
+                                ) {
+                                  try {
+                                    displayValue = new Date(
+                                      val,
+                                    ).toLocaleDateString("es-PE", {
+                                      day: "2-digit",
+                                      month: "2-digit",
+                                      year: "numeric",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    });
+                                  } catch (e) {
+                                    displayValue = String(val);
+                                  }
+                                } else if (
+                                  key === "status" ||
+                                  key === "estado"
+                                ) {
+                                  displayValue = String(val).toUpperCase();
+                                }
+
+                                return (
+                                  <TableCell
+                                    key={j}
+                                    className="text-xs py-2 whitespace-nowrap"
+                                  >
+                                    {typeof val === "object" && val !== null
+                                      ? JSON.stringify(val)
+                                      : String(displayValue)}
+                                  </TableCell>
+                                );
+                              },
+                            )}
                             {renderRowAction && (
                               <TableCell className="text-right py-1">
                                 {renderRowAction(row)}

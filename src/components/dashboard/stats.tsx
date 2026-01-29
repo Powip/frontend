@@ -122,22 +122,43 @@ export const Stats: React.FC = () => {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
+  const [recentOrders, setRecentOrders] = useState<any[]>([]);
+  const [recentProducts, setRecentProducts] = useState<any[]>([]);
+
   const fetchStats = async () => {
     if (!selectedStoreId) return;
 
     setLoading(true);
     try {
-      const response = await axios.get<DashboardData>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
-        {
-          params: {
-            storeId: selectedStoreId,
-            ...(fromDate && { fromDate }),
-            ...(toDate && { toDate }),
-          },
-        },
-      );
-      setData(response.data);
+      const [summaryRes, recentOrdersRes, recentProductsRes] =
+        await Promise.all([
+          axios.get<DashboardData>(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
+            {
+              params: {
+                storeId: selectedStoreId,
+                ...(fromDate && { fromDate }),
+                ...(toDate && { toDate }),
+              },
+            },
+          ),
+          axios.get(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/recent-orders`,
+            {
+              params: { storeId: selectedStoreId, limit: 20 },
+            },
+          ),
+          axios.get(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/recent-products`,
+            {
+              params: { storeId: selectedStoreId, limit: 20 },
+            },
+          ),
+        ]);
+
+      setData(summaryRes.data);
+      setRecentOrders(recentOrdersRes.data || []);
+      setRecentProducts(recentProductsRes.data || []);
     } catch (error) {
       console.error("Error al obtener las estadísticas:", error);
     } finally {
@@ -220,7 +241,7 @@ export const Stats: React.FC = () => {
             icon={<DollarSign className="h-4 w-4" />}
             description="Monto acumulado"
             loading={loading}
-            data={data?.dailySales || []}
+            data={recentOrders}
           />
 
           <StatCard
@@ -229,7 +250,7 @@ export const Stats: React.FC = () => {
             icon={<ShoppingCart className="h-4 w-4" />}
             description="Total pedidos"
             loading={loading}
-            data={data?.dailySales || []}
+            data={recentOrders}
           />
 
           <StatCard
@@ -238,7 +259,7 @@ export const Stats: React.FC = () => {
             icon={<PackagePlus className="h-4 w-4" />}
             description={`${deliveryPercentage}% pedidos entregados`}
             loading={loading}
-            data={data?.dailySales || []}
+            data={recentProducts}
           />
 
           <StatCard

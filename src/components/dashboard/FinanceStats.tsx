@@ -126,21 +126,21 @@ export const FinanceStats: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Valor Inventario"
-          value={`S/ ${inventoryValue.toLocaleString()}`}
+          value={`S/ ${inventoryValue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue="Costo de reposición est."
           icon={<Package className="h-5 w-5 text-primary" />}
           loading={loading}
         />
         <StatCard
           title="Ingresos Totales (YTD)"
-          value={`S/ ${currentYearSales.toLocaleString()}`}
+          value={`S/ ${currentYearSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue={`${growth >= 0 ? "+" : ""}${growth.toFixed(1)}% vs año anterior`}
           icon={<Wallet className="h-5 w-5 text-primary" />}
           loading={loading}
         />
         <StatCard
           title="Facturación Media"
-          value={`S/ ${Math.round(currentYearSales / (billing.filter((b) => b.currentYear > 0).length || 1)).toLocaleString()}`}
+          value={`S/ ${Math.round(currentYearSales / (billing.filter((b) => b.currentYear > 0).length || 1)).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue="Mensual"
           icon={<Landmark className="h-5 w-5 text-primary" />}
           loading={loading}
@@ -196,9 +196,12 @@ export const FinanceStats: React.FC = () => {
                   style={{ fontSize: "12px" }}
                 />
                 <Tooltip
-                  formatter={(value, name) => {
+                  formatter={(value: any, name) => {
                     if (name === "Actual" || name === "Anterior")
-                      return [`S/ ${value.toLocaleString()}`, "Venta"];
+                      return [
+                        `S/ ${value.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+                        "Venta",
+                      ];
                     return [value, name];
                   }}
                   labelStyle={{ fontWeight: "bold", marginBottom: "4px" }}
@@ -212,11 +215,14 @@ export const FinanceStats: React.FC = () => {
                           </p>
                           <div className="space-y-1">
                             <div className="flex justify-between gap-4">
-                              <span className="text-blue-600 font-medium italic">
+                              <span className="text-blue-600 font-medium">
                                 Este Año:
                               </span>
                               <span className="font-bold">
-                                S/ {data.Actual.toLocaleString()}
+                                S/{" "}
+                                {data.Actual.toLocaleString("es-PE", {
+                                  minimumFractionDigits: 2,
+                                })}
                               </span>
                             </div>
                             <div className="flex justify-between gap-4">
@@ -224,7 +230,10 @@ export const FinanceStats: React.FC = () => {
                                 Año Anterior:
                               </span>
                               <span className="text-gray-500 italic">
-                                S/ {data.Anterior.toLocaleString()}
+                                S/{" "}
+                                {data.Anterior.toLocaleString("es-PE", {
+                                  minimumFractionDigits: 2,
+                                })}
                               </span>
                             </div>
                             <div className="mt-2 pt-2 border-t flex justify-between gap-4">
@@ -292,7 +301,10 @@ export const FinanceStats: React.FC = () => {
                     </span>
                   </div>
                   <span className="font-bold text-gray-900">
-                    S/ {b.currentYear.toLocaleString()}
+                    S/{" "}
+                    {b.currentYear.toLocaleString("es-PE", {
+                      minimumFractionDigits: 2,
+                    })}
                   </span>
                 </div>
               ))}
