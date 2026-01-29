@@ -73,3 +73,47 @@ export const getCompanySalesSummary = async (
   );
   return response.data;
 };
+
+export interface BillingStats {
+  month: string;
+  currentYear: number;
+  previousYear: number;
+  ordersCount: number;
+  previousOrdersCount: number;
+}
+
+export const getCompanyBilling = async (
+  accessToken: string,
+  companyId: string,
+  year?: number,
+): Promise<BillingStats[]> => {
+  const params: any = {};
+  if (year) params.year = year;
+
+  const response = await axios.get(`${API_VENTAS}/stats/billing`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    params: {
+      storeId: companyId,
+      ...params,
+    },
+  });
+  return response.data;
+};
+
+export const getGlobalBilling = async (
+  accessToken: string,
+  year?: number,
+): Promise<BillingStats[]> => {
+  const params: any = {};
+  if (year) params.year = year;
+
+  const response = await axios.get(`${API_VENTAS}/stats/billing/global`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    params,
+  });
+  return response.data;
+};

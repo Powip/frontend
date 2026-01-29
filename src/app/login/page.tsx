@@ -13,10 +13,6 @@ import RegisterForm from "@/components/forms/RegisterForm";
 import LoginForm from "@/components/forms/LoginForm";
 import Image from "next/image";
 
-/* 
-validar contraseña fuerte
-redirigir en registerform
-*/
 export default function LoginPage() {
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950 py-12">

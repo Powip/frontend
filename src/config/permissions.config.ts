@@ -3,6 +3,8 @@
 export const SUPERADMIN_EMAILS = [
   "powipsystem@gmail.com",
   "maurimartine01@gmail.com",
+  "joel@aranni.com.pe",
+  "octatoledo7@gmail.com",
 ];
 
 export const isSuperadmin = (email?: string): boolean => {

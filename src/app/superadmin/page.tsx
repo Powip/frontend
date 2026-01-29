@@ -61,7 +61,10 @@ import {
   getOutOfStockDetails,
   OutOfStockItem,
 } from "@/services/productService";
-import { getGlobalSalesSummary } from "@/services/salesService";
+import {
+  getGlobalSalesSummary,
+  getGlobalBilling,
+} from "@/services/salesService";
 import {
   getExpiringSubscriptionsAlert,
   getSubscriptionByUserId,
@@ -75,11 +78,16 @@ import {
   Role,
 } from "@/services/userService";
 import { getCompanyProductCount } from "@/services/productService";
-import { getCompanySalesSummary } from "@/services/salesService";
+import {
+  getCompanySalesSummary,
+  getCompanyBilling,
+  BillingStats,
+} from "@/services/salesService";
 import {
   Company,
   createCompany as createCompanyService,
 } from "@/services/companyService";
+import StatsChart from "@/components/superadmin/StatsChart";
 import {
   updateSubscription,
   cancelSubscription,
@@ -113,6 +121,8 @@ export default function SuperadminPage() {
   const [expiringSubscriptions, setExpiringSubscriptions] = useState<
     SubscriptionDetail[]
   >([]);
+  const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [globalBilling, setGlobalBilling] = useState<any[]>([]);
 
   const [companies, setCompanies] = useState<any[]>([]);
 
@@ -186,6 +196,7 @@ export default function SuperadminPage() {
             sales,
             outOfStockList,
             expiringAlert,
+            globalBillingData,
           ] = await Promise.all([
             getAllUsers(token),
             getAllCompanies(token),
@@ -198,7 +209,8 @@ export default function SuperadminPage() {
               }),
             ),
             getOutOfStockDetails(token).catch(() => []),
-            getExpiringSubscriptionsAlert(token, 7).catch(() => []),
+            getExpiringSubscriptionsAlert(token).catch(() => []),
+            getGlobalBilling(token).catch(() => []),
           ]);
 
           setMetrics({
@@ -211,6 +223,14 @@ export default function SuperadminPage() {
             orderCount: sales.orderCount,
           });
 
+          setAllUsers(users);
+          setGlobalBilling(
+            globalBillingData.map((b: any) => ({
+              ...b,
+              "2025": b.currentYear,
+              "2024": b.previousYear,
+            })),
+          );
           setOutOfStockItems(outOfStockList);
           setExpiringSubscriptions(expiringAlert);
 
@@ -257,7 +277,7 @@ export default function SuperadminPage() {
 
       fetchData();
     }
-  }, [auth, loading, mounted, router]);
+  }, [auth, loading, mounted, router, dateRange]);
 
   const handleCompanyClick = async (company: Company) => {
     setSelectedCompany(company);
@@ -319,221 +339,337 @@ export default function SuperadminPage() {
         </div>
       </div>
 
-      {/* Metrics Grid */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <MetricCard
-          title="Total Compañías"
-          value={metrics.totalCompanies.toString()}
-          icon={Building2}
-          description="Empresas registradas"
-        />
-        <MetricCard
-          title="Usuarios Totales"
-          value={metrics.totalUsers.toString()}
-          icon={Users}
-          description="En toda la plataforma"
-        />
-        <MetricCard
-          title="Ventas Totales (App Powip)"
-          value={`S/ ${metrics.totalSales.toLocaleString()}`}
-          icon={CreditCard}
-          description={`${metrics.orderCount} órdenes en toda la app`}
-          tooltip="Monto total acumulado de todas las compañías registradas en Powip."
-        />
-        <MetricCard
-          title="Sin Stock"
-          value={metrics.outOfStockCount.toString()}
-          icon={TrendingUp}
-          description="Variantes con stock cero"
-          status={metrics.outOfStockCount > 0 ? "warning" : "success"}
-        />
-      </div>
+      {/* Tabbed Content */}
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 h-auto p-1 bg-muted/50 border">
+          <TabsTrigger value="overview" className="gap-2 py-2">
+            <TrendingUp className="h-4 w-4" />
+            Vista General
+          </TabsTrigger>
+          <TabsTrigger value="companies" className="gap-2 py-2">
+            <Building2 className="h-4 w-4" />
+            Empresas
+          </TabsTrigger>
+          <TabsTrigger value="users" className="gap-2 py-2">
+            <Users className="h-4 w-4" />
+            Usuarios
+          </TabsTrigger>
+          <TabsTrigger value="inventory" className="gap-2 py-2">
+            <AlertTriangle className="h-4 w-4" />
+            Inventario
+          </TabsTrigger>
+          <TabsTrigger value="system" className="gap-2 py-2">
+            <ShieldCheck className="h-4 w-4" />
+            Sistema
+          </TabsTrigger>
+        </TabsList>
 
-      {/* Main Content Sections */}
-      <div className="grid gap-6 md:grid-cols-7">
-        {/* Companies List */}
-        <Card className="md:col-span-12 lg:col-span-5">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Compañías Registradas</CardTitle>
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <MetricCard
+              title="Total Compañías"
+              value={metrics.totalCompanies.toString()}
+              icon={Building2}
+              description="Empresas registradas"
+            />
+            <MetricCard
+              title="Usuarios Totales"
+              value={metrics.totalUsers.toString()}
+              icon={Users}
+              description="En toda la plataforma"
+            />
+            <MetricCard
+              title="Ventas Totales (App Powip)"
+              value={`S/ ${metrics.totalSales.toLocaleString()}`}
+              icon={CreditCard}
+              description={`${metrics.orderCount} órdenes en toda la app`}
+              tooltip="Monto total acumulado de todas las compañías registradas en Powip."
+            />
+            <MetricCard
+              title="Sin Stock"
+              value={metrics.outOfStockCount.toString()}
+              icon={TrendingUp}
+              description="Variantes con stock cero"
+              status={metrics.outOfStockCount > 0 ? "warning" : "success"}
+            />
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-7">
+            <div className="md:col-span-4">
+              <StatsChart
+                title="Rendimiento de Ventas Globales (S/)"
+                data={globalBilling}
+                xKey="month"
+                lines={[
+                  { key: "2025", name: "Año Actual", color: "var(--primary)" },
+                  { key: "2024", name: "Año Previo", color: "#94a3b8" },
+                ]}
+              />
+            </div>
+            <Card className="md:col-span-3">
+              <CardHeader>
+                <CardTitle>Próximos Vencimientos</CardTitle>
                 <CardDescription>
-                  Detalle de suscripciones y vigencia.
+                  Suscripciones que expiran este mes.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {expiringSubscriptions.length > 0 ? (
+                    expiringSubscriptions.map((sub) => (
+                      <div
+                        key={sub.id}
+                        className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
+                      >
+                        <div>
+                          <p className="text-sm font-medium">
+                            {sub.userId.substring(0, 8)}...
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Plan: {sub.plan?.name}
+                          </p>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className="text-amber-600 border-amber-200"
+                        >
+                          {new Date(sub.endDate).toLocaleDateString()}
+                        </Badge>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="py-8 text-center text-muted-foreground text-sm">
+                      No hay vencimientos próximos.
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="companies" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
+              <div>
+                <CardTitle>Gestión de Empresas</CardTitle>
+                <CardDescription>
+                  Listado y administración de clientes corporativos.
                 </CardDescription>
               </div>
-              <div className="flex gap-2">
-                <div className="relative">
+              <Button
+                onClick={() => setIsCreateCompanyOpen(true)}
+                className="gap-2 shadow-md"
+              >
+                <Plus className="h-4 w-4" /> Nueva Empresa
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="relative flex-1">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar empresa..."
-                    className="pl-8 h-9 w-[200px]"
+                    placeholder="Buscar por nombre, ID o dueño..."
+                    className="pl-8"
                   />
                 </div>
+                <Select defaultValue="all">
+                  <SelectTrigger className="w-[150px]">
+                    <SelectValue placeholder="Estado" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Ver Todos</SelectItem>
+                    <SelectItem value="active">Activos</SelectItem>
+                    <SelectItem value="inactive">Inactivos</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Empresa</TableHead>
-                  <TableHead>Plan</TableHead>
-                  <TableHead>Monto</TableHead>
-                  <TableHead>Vencimiento</TableHead>
-                  <TableHead>Estado</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {companies.map((company) => (
-                  <TableRow
-                    key={company.id}
-                    className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleCompanyClick(company)}
-                  >
-                    <TableCell className="font-medium">
-                      <div className="flex flex-col">
-                        <span className="flex items-center gap-1">
-                          {company.name}
-                          <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          ID: {company.id}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] font-bold"
-                      >
-                        {company.plan || "N/A"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>S/ {company.price || 0}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1.5 text-xs">
-                        <Calendar className="h-3.3 w-3.5 text-muted-foreground" />
-                        {company.expiry || "N/A"}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <StatusBadge status={company.status || "ACTIVE"} />
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {companies.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="text-center py-4 text-muted-foreground"
-                    >
-                      No hay compañías registradas.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
 
-        {/* Subscriptions Card */}
-        <Card className="md:col-span-12 lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-amber-500" />
-              <CardTitle className="text-lg">Próximos Vencimientos</CardTitle>
-            </div>
-            <CardDescription>Vencen en los próximos 7 días.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {expiringSubscriptions.length > 0 ? (
-                expiringSubscriptions.map((s) => (
-                  <div
-                    key={s.id}
-                    className="flex flex-col gap-1 p-2 rounded-lg border bg-muted/30"
-                  >
-                    <div className="flex justify-between items-start">
-                      <span
-                        className="text-xs font-mono truncate max-w-[120px]"
-                        title={s.userId}
-                      >
-                        ID: {s.userId.substring(0, 8)}...
-                      </span>
-                      <Badge variant="outline" className="text-[10px]">
-                        {s.plan?.name}
-                      </Badge>
-                    </div>
-                    <div className="flex justify-between items-center mt-1">
-                      <span className="text-[10px] text-muted-foreground">
-                        Vence:
-                      </span>
-                      <span className="text-[10px] font-bold text-amber-600">
-                        {s.endDate}
-                      </span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="py-8 text-center text-muted-foreground text-xs">
-                  No hay vencimientos próximos.
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Empresa</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Monto</TableHead>
+                    <TableHead>Vencimiento</TableHead>
+                    <TableHead>Estado</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {companies.map((company) => (
+                    <TableRow
+                      key={company.id}
+                      className="group cursor-pointer hover:bg-muted/50"
+                      onClick={() => handleCompanyClick(company)}
+                    >
+                      <TableCell className="font-medium">
+                        <div className="flex flex-col">
+                          <span className="flex items-center gap-1 group-hover:text-primary transition-colors">
+                            {company.name}
+                            <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100" />
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            ID: {company.id}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-bold"
+                        >
+                          {company.plan || "N/A"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-semibold text-primary">
+                        S/ {company.price || 0}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5 text-xs">
+                          <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+                          {company.expiry || "N/A"}
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={company.status || "ACTIVE"} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="users" className="space-y-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 text-balance">
+              <div>
+                <CardTitle>Usuarios de la Plataforma</CardTitle>
+                <CardDescription>
+                  Control de acceso global y gestión de perfiles.
+                </CardDescription>
+              </div>
+              <Button
+                onClick={() => setIsCreateUserOpen(true)}
+                variant="outline"
+                className="gap-2"
+              >
+                <Plus className="h-4 w-4" /> Nuevo Usuario
+              </Button>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Empresa ID</TableHead>
+                    <TableHead>Creado</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {allUsers.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-medium">{u.email}</TableCell>
+                      <TableCell className="text-xs font-mono">
+                        {u.companyId || "N/A"}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {new Date(u.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" className="h-8">
+                          Ver
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="inventory" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Estado Global de Inventario</CardTitle>
+              <CardDescription>
+                Resumen de existencias en todas las compañías.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Empresa</TableHead>
+                    <TableHead>Producto</TableHead>
+                    <TableHead>SKU</TableHead>
+                    <TableHead className="text-right">Stock</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {outOfStockItems.map((item) => (
+                    <TableRow key={item.variantId}>
+                      <TableCell className="font-medium text-xs">
+                        Empresa ID: {item.variantId.substring(0, 8)}
+                      </TableCell>
+                      <TableCell className="text-sm">
+                        {item.productName}
+                      </TableCell>
+                      <TableCell className="font-mono text-[10px]">
+                        {item.sku}
+                      </TableCell>
+                      <TableCell className="text-right text-red-600 font-black">
+                        {item.availableStock}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="system" className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-3">
+            <Card className="border-l-4 border-l-green-500">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold">ms-auth</span>
+                  <Badge className="bg-green-500">ONLINE</Badge>
                 </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Row with Out of Stock table */}
-      <div className="grid gap-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-amber-500" />
-              <CardTitle>Productos sin Stock</CardTitle>
-            </div>
-            <CardDescription>
-              Detalle de variantes que requieren reposición inmediata.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Producto</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead className="text-right">Disponible</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {outOfStockItems.map((item) => (
-                  <TableRow key={item.variantId}>
-                    <TableCell className="font-medium text-sm">
-                      {item.productName}
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">
-                      {item.sku}
-                    </TableCell>
-                    <TableCell className="text-right text-red-600 font-bold">
-                      {item.availableStock}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {outOfStockItems.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={4}
-                      className="text-center py-8 text-muted-foreground"
-                    >
-                      No hay productos sin stock.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      </div>
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  v1.2.4 - Respondido en 45ms
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-l-4 border-l-green-500">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold">ms-ventas</span>
+                  <Badge className="bg-green-500">ONLINE</Badge>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  v2.1.0 - Respondido en 112ms
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="border-l-4 border-l-amber-500">
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold">ms-subscription</span>
+                  <Badge className="bg-amber-500">LAGGING</Badge>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  Reintentando conexión con Mercado Pago...
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       <CompanyDetailModal
         isOpen={isCompanyModalOpen}
@@ -547,7 +683,7 @@ export default function SuperadminPage() {
         isOpen={isCreateCompanyOpen}
         onOpenChange={setIsCreateCompanyOpen}
         auth={auth}
-        users={metrics.totalUsers > 0 ? [] : []} // Placeholder for existing users if needed
+        users={metrics.totalUsers > 0 ? [] : []}
       />
 
       <CreateUserModal
@@ -621,6 +757,7 @@ function CompanyDetailModal({
     users: [],
     productCount: 0,
     sales: { totalSales: 0, orderCount: 0 },
+    billing: [],
     loading: true,
   });
   const [period, setPeriod] = useState("all");
@@ -652,7 +789,7 @@ function CompanyDetailModal({
           break;
       }
 
-      const [users, productCount, sales] = await Promise.all([
+      const [users, productCount, sales, billing] = await Promise.all([
         getUsersByCompany(company.id, token).catch(() => []),
         getCompanyProductCount(token, company.id).catch(() => 0),
         getCompanySalesSummary(
@@ -664,12 +801,18 @@ function CompanyDetailModal({
           totalSales: 0,
           orderCount: 0,
         })),
+        getCompanyBilling(token, company.id).catch(() => []),
       ]);
 
       setDetails({
         users,
         productCount,
         sales,
+        billing: billing.map((b: any) => ({
+          ...b,
+          "2025": b.ordersCount, // Simplificado para el gráfico
+          "2024": b.previousOrdersCount,
+        })),
         loading: false,
       });
     } catch (err) {
@@ -746,6 +889,17 @@ function CompanyDetailModal({
                 </CardContent>
               </Card>
             </div>
+
+            {/* Performance Chart */}
+            <StatsChart
+              title="Comparativa de Órdenes Mensuales (Año Actual vs Previo)"
+              data={details.billing}
+              xKey="month"
+              lines={[
+                { key: "2025", name: "Año Actual", color: "var(--primary)" },
+                { key: "2024", name: "Año Previo", color: "#94a3b8" },
+              ]}
+            />
 
             {/* Subscription Section */}
             <div className="space-y-4 rounded-lg border p-4 bg-muted/20">
