@@ -64,5 +64,6 @@ export interface InventoryItemForSale {
   sku: string;
   price: number;
   availableStock: number;
+  physicalStock: number;
   attributes?: Record<string, string>;
 }

@@ -87,7 +87,10 @@ export default function PaymentVerificationModal({
 
   // Determinar si la ruta actual permite aprobar/rechazar pagos
   const isAllowedRoute =
-    pathname.includes("/operaciones") || pathname.includes("/ventas");
+    pathname.includes("/operaciones") ||
+    pathname.includes("/ventas") ||
+    pathname.includes("/finanzas") ||
+    pathname.includes("/atencion-cliente");
   const finalCanApprove = canApprove && isAllowedRoute;
 
   // Form states

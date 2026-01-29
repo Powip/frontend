@@ -24,6 +24,7 @@ interface SellerStats {
   sellerName: string;
   totalSales: number;
   orderCount: number;
+  productsCount: number;
   averageTicket: number;
   monthlySales: number;
   weeklySales: number;
@@ -207,14 +208,52 @@ export const TeamManagement: React.FC = () => {
                   style={{ fontSize: "12px" }}
                 />
                 <Tooltip
-                  formatter={(value) => [
-                    `S/ ${Number(value).toLocaleString()}`,
-                    "Ventas",
-                  ]}
-                  contentStyle={{
-                    borderRadius: "8px",
-                    border: "none",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  content={({ active, payload, label }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      const prodPerOrder =
+                        data.orderCount > 0
+                          ? (data.productsCount / data.orderCount).toFixed(1)
+                          : 0;
+                      return (
+                        <div className="bg-white p-3 border border-gray-100 shadow-lg rounded-lg text-xs">
+                          <p className="font-bold mb-2 text-gray-800 border-b pb-1">
+                            {label}
+                          </p>
+                          <div className="space-y-1">
+                            <div className="flex justify-between gap-4">
+                              <span className="text-blue-600 font-medium">
+                                Ventas:
+                              </span>
+                              <span className="font-bold">
+                                S/ {data.totalSales.toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-gray-500">Órdenes:</span>
+                              <span className="font-bold">
+                                {data.orderCount}
+                              </span>
+                            </div>
+                            <div className="flex justify-between gap-4">
+                              <span className="text-gray-500">Productos:</span>
+                              <span className="font-bold">
+                                {data.productsCount}
+                              </span>
+                            </div>
+                            <div className="mt-1 pt-1 border-t flex justify-between gap-4">
+                              <span className="text-primary italic">
+                                Prod/Orden:
+                              </span>
+                              <span className="font-bold text-primary">
+                                {prodPerOrder}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
                   }}
                 />
                 <Bar dataKey="totalSales" radius={[4, 4, 0, 0]} barSize={40} />
@@ -241,6 +280,7 @@ export const TeamManagement: React.FC = () => {
                 <th className="px-6 py-3">Vendedor</th>
                 <th className="px-6 py-3">Monto Total</th>
                 <th className="px-6 py-3"># Órdenes</th>
+                <th className="px-6 py-3"># Productos</th>
                 <th className="px-6 py-3">Ticket Prom.</th>
                 <th className="px-6 py-3">Semana Actual</th>
               </tr>
@@ -265,6 +305,7 @@ export const TeamManagement: React.FC = () => {
                       S/ {s.totalSales.toLocaleString()}
                     </td>
                     <td className="px-6 py-4">{s.orderCount}</td>
+                    <td className="px-6 py-4">{s.productsCount}</td>
                     <td className="px-6 py-4">
                       S/ {s.averageTicket.toLocaleString()}
                     </td>

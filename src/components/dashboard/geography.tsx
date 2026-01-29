@@ -22,7 +22,24 @@ import {
   Receipt,
   Calendar,
   Loader2,
+  Eye,
+  Download,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { exportToExcel } from "@/lib/excel";
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -118,6 +135,12 @@ export const Geography: React.FC = () => {
   const [deliveryData, setDeliveryData] = useState<DeliveryStats[]>([]);
   const [billingData, setBillingData] = useState<BillingStats[]>([]);
 
+  // Detalle para modal anidado
+  const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
+  const [detailedOrders, setDetailedOrders] = useState<any[]>([]);
+  const [loadingDetails, setLoadingDetails] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
   // Local filters
   const [geoDimension, setGeoDimension] = useState<
     "city" | "province" | "district"
@@ -161,6 +184,34 @@ export const Geography: React.FC = () => {
       console.error("Error al obtener datos geográficos:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLocationDetails = async (location: string) => {
+    if (!selectedStoreId) return;
+
+    setLoadingDetails(true);
+    setSelectedLocation(location);
+    setIsDetailsOpen(true);
+
+    try {
+      const params: any = {
+        storeId: selectedStoreId,
+        dimension: geoDimension,
+        value: location,
+      };
+      if (fromDate) params.fromDate = fromDate;
+      if (toDate) params.toDate = toDate;
+
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-location/details`,
+        { params },
+      );
+      setDetailedOrders(res.data);
+    } catch (error) {
+      console.error("Error al obtener detalle por ubicación:", error);
+    } finally {
+      setLoadingDetails(false);
     }
   };
 
@@ -258,6 +309,17 @@ export const Geography: React.FC = () => {
             title="Impacto por Territorialidad"
             isLoading={loading}
             data={locationData}
+            renderRowAction={(row) => (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 flex items-center gap-1 text-[10px] text-primary hover:text-primary/80"
+                onClick={() => fetchLocationDetails(row.name)}
+              >
+                <Eye className="h-3 w-3" />
+                Ver más
+              </Button>
+            )}
             filters={[
               {
                 label: "Nivel",
@@ -273,12 +335,10 @@ export const Geography: React.FC = () => {
           >
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
-                data={locationData
-                  .slice(0, 10)
-                  .map((d, i) => ({
-                    ...d,
-                    fill: CHART_COLORS[i % CHART_COLORS.length],
-                  }))}
+                data={locationData.slice(0, 10).map((d, i) => ({
+                  ...d,
+                  fill: CHART_COLORS[i % CHART_COLORS.length],
+                }))}
                 layout="vertical"
                 margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
               >
@@ -439,6 +499,98 @@ export const Geography: React.FC = () => {
           </DashboardCard>
         </div>
       </div>
+
+      {/* Modal de Detalle de Órdenes por Ubicación */}
+      <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
+        <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col p-6">
+          <DialogHeader className="flex flex-row items-center justify-between pb-4 border-b">
+            <div>
+              <DialogTitle className="text-lg">
+                Órdenes en {selectedLocation}
+              </DialogTitle>
+              <p className="text-xs text-muted-foreground uppercase">
+                {geoDimension === "city"
+                  ? "Departamento"
+                  : geoDimension === "province"
+                    ? "Provincia"
+                    : "Distrito"}
+              </p>
+            </div>
+            <Button
+              onClick={() =>
+                exportToExcel(
+                  detailedOrders,
+                  `ordenes-${selectedLocation?.toLowerCase()}`,
+                )
+              }
+              size="sm"
+              className="gap-2"
+              disabled={detailedOrders.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              Exportar Excel
+            </Button>
+          </DialogHeader>
+
+          <div className="flex-1 overflow-auto mt-4 rounded-md border">
+            {loadingDetails ? (
+              <div className="h-40 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : detailedOrders.length === 0 ? (
+              <div className="h-40 flex items-center justify-center text-muted-foreground italic">
+                No se encontraron órdenes para este periodo.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader className="bg-gray-50 sticky top-0">
+                  <TableRow>
+                    <TableHead className="text-xs uppercase font-bold">
+                      Orden
+                    </TableHead>
+                    <TableHead className="text-xs uppercase font-bold">
+                      Cliente
+                    </TableHead>
+                    <TableHead className="text-xs uppercase font-bold text-right">
+                      Monto
+                    </TableHead>
+                    <TableHead className="text-xs uppercase font-bold">
+                      Fecha
+                    </TableHead>
+                    <TableHead className="text-xs uppercase font-bold">
+                      Estado
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {detailedOrders.map((order, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-xs font-medium">
+                        {order.n_orden}
+                      </TableCell>
+                      <TableCell className="text-xs">{order.cliente}</TableCell>
+                      <TableCell className="text-xs text-right font-bold">
+                        S/ {order.monto.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-xs text-gray-500">
+                        {new Date(order.fecha).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-medium 
+                          ${order.estado === "ENTREGADO" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"}`}
+                        >
+                          {order.estado}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
