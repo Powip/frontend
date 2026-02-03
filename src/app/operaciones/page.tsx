@@ -592,7 +592,7 @@ export default function OperacionesPage() {
     // Construir mensaje si tenemos datos de la orden
     let url = `https://api.whatsapp.com/send?phone=${cleanPhone}`;
     if (orderNumber && clientName) {
-      const trackingUrl = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/rastreo/${orderNumber}`;
+      const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${orderNumber}`;
       const message = `Hola ${clientName}, acá tenés el resumen de tu compra N° ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
       url += `&text=${encodeURIComponent(message)}`;
     }
@@ -770,251 +770,282 @@ Estado: ${sale.status}
     showWhatsApp: boolean = false,
     showGuideColumn: boolean = false,
   ) => (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead className="w-[40px]">
-            <input
-              type="checkbox"
-              checked={
-                data.length > 0 && data.every((s) => selectedSaleIds.has(s.id))
-              }
-              onChange={(e) => {
-                if (e.target.checked) {
-                  setSelectedSaleIds(
-                    (prev) => new Set([...prev, ...data.map((s) => s.id)]),
-                  );
-                } else {
-                  setSelectedSaleIds((prev) => {
-                    const next = new Set(prev);
-                    data.forEach((s) => next.delete(s.id));
-                    return next;
-                  });
-                }
-              }}
-            />
-          </TableHead>
-          <TableHead>N° Orden</TableHead>
-          <TableHead>Cliente</TableHead>
-          <TableHead>Teléfono</TableHead>
-          <TableHead>Fecha</TableHead>
-          <TableHead>Pago</TableHead>
-          <TableHead>Envío</TableHead>
-          <TableHead>Total</TableHead>
-          <TableHead>Adelanto</TableHead>
-          <TableHead>Por Cobrar</TableHead>
-          <TableHead>Estado</TableHead>
-          {showGuideColumn && <TableHead>Guía</TableHead>}
-          {showGuideColumn && <TableHead>Courier</TableHead>}
-          <TableHead>Region</TableHead>
-          <TableHead>Distrito</TableHead>
-          <TableHead>Zona</TableHead>
-          <TableHead>Resumen</TableHead>
-          <TableHead className="text-right">Acciones</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {data.map((sale) => (
-          <TableRow key={sale.id}>
-            <TableCell>
+    <div className="overflow-x-auto border rounded-md">
+      <Table className="min-w-[1800px]">
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[45px] min-w-[45px] sticky left-0 z-20 bg-background">
               <input
                 type="checkbox"
-                checked={selectedSaleIds.has(sale.id)}
-                onChange={() => toggleSale(sale.id)}
-              />
-            </TableCell>
-            <TableCell className="font-medium">
-              <div className="flex items-center gap-1">
-                {sale.hasStockIssue && (
-                  <span title="Stock insuficiente - No se puede preparar">
-                    <AlertTriangle className="h-4 w-4 text-amber-500" />
-                  </span>
-                )}
-                {sale.orderNumber}
-              </div>
-            </TableCell>
-            <TableCell>{sale.clientName}</TableCell>
-            <TableCell>{sale.phoneNumber}</TableCell>
-            <TableCell>{sale.date}</TableCell>
-            <TableCell>{sale.paymentMethod}</TableCell>
-            <TableCell>{sale.deliveryType}</TableCell>
-            <TableCell>${sale.total.toFixed(2)}</TableCell>
-            <TableCell className="text-green-600">
-              ${sale.advancePayment.toFixed(2)}
-            </TableCell>
-            <TableCell className="text-red-600">
-              ${sale.pendingPayment.toFixed(2)}
-            </TableCell>
-            <TableCell>
-              <select
-                value={sale.status}
-                onChange={(e) =>
-                  handleChangeStatus(sale.id, e.target.value as OrderStatus)
+                checked={
+                  data.length > 0 &&
+                  data.every((s) => selectedSaleIds.has(s.id))
                 }
-                className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
-              >
-                {getAvailableStatuses(sale.status, sale.salesRegion).map(
-                  (status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ),
-                )}
-              </select>
-            </TableCell>
-            {showGuideColumn && (
-              <TableCell>
-                {sale.guideNumber ? (
-                  <Badge
-                    className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
-                    onClick={() => {
-                      setSelectedSaleForGuide(sale);
-                      setGuideDetailsModalOpen(true);
-                    }}
-                  >
-                    <Truck className="h-3 w-3 mr-1" />
-                    Ver Guía
-                  </Badge>
-                ) : sale.deliveryType.toUpperCase() === "DOMICILIO" ? (
-                  <Badge className="bg-amber-100 text-amber-800">
-                    Sin guía
-                  </Badge>
-                ) : (
-                  <span className="text-muted-foreground text-xs">N/A</span>
-                )}
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedSaleIds(
+                      (prev) => new Set([...prev, ...data.map((s) => s.id)]),
+                    );
+                  } else {
+                    setSelectedSaleIds((prev) => {
+                      const next = new Set(prev);
+                      data.forEach((s) => next.delete(s.id));
+                      return next;
+                    });
+                  }
+                }}
+              />
+            </TableHead>
+            <TableHead className="sticky left-[45px] w-[100px] min-w-[100px] z-20 bg-background">
+              N° Orden
+            </TableHead>
+            <TableHead className="sticky left-[145px] w-[150px] min-w-[150px] z-20 bg-background">
+              Cliente
+            </TableHead>
+            <TableHead className="sticky left-[295px] w-[120px] min-w-[120px] z-20 bg-background">
+              Teléfono
+            </TableHead>
+            <TableHead className="sticky left-[415px] w-[100px] min-w-[100px] z-20 bg-background">
+              Fecha
+            </TableHead>
+            <TableHead className="sticky left-[515px] w-[100px] min-w-[100px] z-20 bg-background">
+              Pago
+            </TableHead>
+            <TableHead className="sticky left-[615px] w-[120px] min-w-[120px] z-20 bg-background border-r">
+              Envío
+            </TableHead>
+            <TableHead>Total</TableHead>
+            <TableHead>Adelanto</TableHead>
+            <TableHead>Por Cobrar</TableHead>
+            <TableHead>Estado</TableHead>
+            {showGuideColumn && <TableHead>Guía</TableHead>}
+            {showGuideColumn && <TableHead>Courier</TableHead>}
+            <TableHead>Region</TableHead>
+            <TableHead>Distrito</TableHead>
+            <TableHead>Zona</TableHead>
+            <TableHead className="sticky right-[140px] w-[100px] min-w-[100px] z-20 bg-background border-l">
+              Resumen
+            </TableHead>
+            <TableHead className="sticky right-0 w-[140px] min-w-[140px] z-20 bg-background text-right">
+              Acciones
+            </TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {data.map((sale) => (
+            <TableRow key={sale.id}>
+              <TableCell className="sticky left-0 w-[45px] min-w-[45px] z-10 bg-background">
+                <input
+                  type="checkbox"
+                  checked={selectedSaleIds.has(sale.id)}
+                  onChange={() => toggleSale(sale.id)}
+                />
               </TableCell>
-            )}
-            {showGuideColumn && (
+              <TableCell className="font-medium sticky left-[45px] w-[100px] min-w-[100px] z-10 bg-background text-xs">
+                <div className="flex items-center gap-1">
+                  {sale.hasStockIssue && (
+                    <span title="Stock insuficiente - No se puede preparar">
+                      <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    </span>
+                  )}
+                  {sale.orderNumber}
+                </div>
+              </TableCell>
+              <TableCell className="sticky left-[145px] w-[150px] min-w-[150px] z-10 bg-background text-xs truncate max-w-[150px]">
+                {sale.clientName}
+              </TableCell>
+              <TableCell className="sticky left-[295px] w-[120px] min-w-[120px] z-10 bg-background text-xs">
+                {sale.phoneNumber}
+              </TableCell>
+              <TableCell className="sticky left-[415px] w-[100px] min-w-[100px] z-10 bg-background text-xs">
+                {sale.date}
+              </TableCell>
+              <TableCell className="sticky left-[515px] w-[100px] min-w-[100px] z-10 bg-background text-xs truncate max-w-[100px]">
+                {sale.paymentMethod}
+              </TableCell>
+              <TableCell className="sticky left-[615px] w-[120px] min-w-[120px] z-10 bg-background border-r text-xs truncate max-w-[120px]">
+                {sale.deliveryType}
+              </TableCell>
+              <TableCell>${sale.total.toFixed(2)}</TableCell>
+              <TableCell className="text-green-600">
+                ${sale.advancePayment.toFixed(2)}
+              </TableCell>
+              <TableCell className="text-red-600">
+                ${sale.pendingPayment.toFixed(2)}
+              </TableCell>
               <TableCell>
-                {sale.courier ? (
-                  <div className="flex items-center gap-1 text-sm">
-                    <Truck className="h-3 w-3 text-muted-foreground" />
-                    {sale.courier}
-                  </div>
+                <select
+                  value={sale.status}
+                  onChange={(e) =>
+                    handleChangeStatus(sale.id, e.target.value as OrderStatus)
+                  }
+                  className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
+                >
+                  {getAvailableStatuses(sale.status, sale.salesRegion).map(
+                    (status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </TableCell>
+              {showGuideColumn && (
+                <TableCell>
+                  {sale.guideNumber ? (
+                    <Badge
+                      className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
+                      onClick={() => {
+                        setSelectedSaleForGuide(sale);
+                        setGuideDetailsModalOpen(true);
+                      }}
+                    >
+                      <Truck className="h-3 w-3 mr-1" />
+                      Ver Guía
+                    </Badge>
+                  ) : sale.deliveryType.toUpperCase() === "DOMICILIO" ? (
+                    <Badge className="bg-amber-100 text-amber-800">
+                      Sin guía
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">N/A</span>
+                  )}
+                </TableCell>
+              )}
+              {showGuideColumn && (
+                <TableCell>
+                  {sale.courier ? (
+                    <div className="flex items-center gap-1 text-sm">
+                      <Truck className="h-3 w-3 text-muted-foreground" />
+                      {sale.courier}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">-</span>
+                  )}
+                </TableCell>
+              )}
+              <TableCell>{sale.salesRegion}</TableCell>
+              <TableCell>{sale.district}</TableCell>
+              <TableCell>
+                {sale.zone ? (
+                  <Badge
+                    className={`text-xs whitespace-nowrap ${
+                      sale.zone === "LIMA_NORTE"
+                        ? "bg-blue-100 text-blue-800"
+                        : sale.zone === "CALLAO"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : sale.zone === "LIMA_CENTRO"
+                            ? "bg-green-100 text-green-800"
+                            : sale.zone === "LIMA_SUR"
+                              ? "bg-purple-100 text-purple-800"
+                              : sale.zone === "LIMA_ESTE"
+                                ? "bg-orange-100 text-orange-800"
+                                : sale.zone === "ZONAS_ALEDANAS"
+                                  ? "bg-gray-100 text-gray-800"
+                                  : sale.zone === "PROVINCIAS"
+                                    ? "bg-red-100 text-red-800"
+                                    : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {sale.zone === "LIMA_NORTE"
+                      ? "🟦 L. Norte"
+                      : sale.zone === "CALLAO"
+                        ? "🟨 Callao"
+                        : sale.zone === "LIMA_CENTRO"
+                          ? "🟩 L. Centro"
+                          : sale.zone === "LIMA_SUR"
+                            ? "🟪 L. Sur"
+                            : sale.zone === "LIMA_ESTE"
+                              ? "🟧 L. Este"
+                              : sale.zone === "ZONAS_ALEDANAS"
+                                ? "⛰️ Aledañas"
+                                : sale.zone === "PROVINCIAS"
+                                  ? "🧭 Provincias"
+                                  : sale.zone}
+                  </Badge>
                 ) : (
                   <span className="text-muted-foreground text-xs">-</span>
                 )}
               </TableCell>
-            )}
-            <TableCell>{sale.salesRegion}</TableCell>
-            <TableCell>{sale.district}</TableCell>
-            <TableCell>
-              {sale.zone ? (
-                <Badge
-                  className={`text-xs whitespace-nowrap ${
-                    sale.zone === "LIMA_NORTE"
-                      ? "bg-blue-100 text-blue-800"
-                      : sale.zone === "CALLAO"
-                        ? "bg-yellow-100 text-yellow-800"
-                        : sale.zone === "LIMA_CENTRO"
-                          ? "bg-green-100 text-green-800"
-                          : sale.zone === "LIMA_SUR"
-                            ? "bg-purple-100 text-purple-800"
-                            : sale.zone === "LIMA_ESTE"
-                              ? "bg-orange-100 text-orange-800"
-                              : sale.zone === "ZONAS_ALEDANAS"
-                                ? "bg-gray-100 text-gray-800"
-                                : sale.zone === "PROVINCIAS"
-                                  ? "bg-red-100 text-red-800"
-                                  : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {sale.zone === "LIMA_NORTE"
-                    ? "🟦 L. Norte"
-                    : sale.zone === "CALLAO"
-                      ? "🟨 Callao"
-                      : sale.zone === "LIMA_CENTRO"
-                        ? "🟩 L. Centro"
-                        : sale.zone === "LIMA_SUR"
-                          ? "🟪 L. Sur"
-                          : sale.zone === "LIMA_ESTE"
-                            ? "🟧 L. Este"
-                            : sale.zone === "ZONAS_ALEDANAS"
-                              ? "⛰️ Aledañas"
-                              : sale.zone === "PROVINCIAS"
-                                ? "🧭 Provincias"
-                                : sale.zone}
-                </Badge>
-              ) : (
-                <span className="text-muted-foreground text-xs">-</span>
-              )}
-            </TableCell>
-            <TableCell>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => handleOpenReceipt(sale)}
-              >
-                <FileText className="h-4 w-4 mr-1" />
-                Ver
-              </Button>
-            </TableCell>
-            <TableCell className="text-right space-x-1">
-              {/* WhatsApp */}
-              {showWhatsApp && (
+              <TableCell className="sticky right-[140px] w-[100px] min-w-[100px] z-10 bg-background border-l">
                 <Button
-                  size="icon"
+                  size="sm"
                   variant="outline"
-                  className="bg-green-500 hover:bg-green-600 text-white"
-                  title="Contactar por WhatsApp"
-                  onClick={() =>
-                    handleWhatsApp(
-                      sale.phoneNumber,
-                      sale.orderNumber,
-                      sale.clientName,
-                    )
-                  }
+                  onClick={() => handleOpenReceipt(sale)}
                 >
-                  <MessageCircle className="h-4 w-4" />
+                  <FileText className="h-4 w-4 mr-1" />
+                  Ver
                 </Button>
-              )}
-              <Button
-                size="icon"
-                variant="outline"
-                className="relative bg-amber-50 hover:bg-amber-100 text-amber-600"
-                onClick={() => {
-                  setSelectedSaleForPayment(sale);
-                  setPaymentModalOpen(true);
-                }}
-                title={
-                  sale.hasPendingApprovalPayments
-                    ? "Pagos pendientes de aprobación"
-                    : "Gestión de Pagos"
-                }
+              </TableCell>
+              <TableCell className="text-right space-x-1 sticky right-0 w-[140px] min-w-[140px] z-10 bg-background">
+                <div className="flex gap-1 justify-end">
+                  {/* WhatsApp */}
+                  {showWhatsApp && (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="bg-green-500 hover:bg-green-600 text-white"
+                      title="Contactar por WhatsApp"
+                      onClick={() =>
+                        handleWhatsApp(
+                          sale.phoneNumber,
+                          sale.orderNumber,
+                          sale.clientName,
+                        )
+                      }
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                    </Button>
+                  )}
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="relative bg-amber-50 hover:bg-amber-100 text-amber-600"
+                    onClick={() => {
+                      setSelectedSaleForPayment(sale);
+                      setPaymentModalOpen(true);
+                    }}
+                    title={
+                      sale.hasPendingApprovalPayments
+                        ? "Pagos pendientes de aprobación"
+                        : "Gestión de Pagos"
+                    }
+                  >
+                    <DollarSign className="h-4 w-4" />
+                    {sale.hasPendingApprovalPayments && (
+                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                      </span>
+                    )}
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={() =>
+                      router.push(`/registrar-venta?orderId=${sale.id}`)
+                    }
+                    title="Editar"
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          ))}
+          {data.length === 0 && (
+            <TableRow>
+              <TableCell
+                colSpan={15}
+                className="text-center text-muted-foreground py-6"
               >
-                <DollarSign className="h-4 w-4" />
-                {sale.hasPendingApprovalPayments && (
-                  <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                  </span>
-                )}
-              </Button>
-              <Button
-                size="icon"
-                variant="outline"
-                onClick={() =>
-                  router.push(`/registrar-venta?orderId=${sale.id}`)
-                }
-                title="Editar"
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-            </TableCell>
-          </TableRow>
-        ))}
-        {data.length === 0 && (
-          <TableRow>
-            <TableCell
-              colSpan={15}
-              className="text-center text-muted-foreground py-6"
-            >
-              No hay ventas en este estado
-            </TableCell>
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+                No hay ventas en este estado
+              </TableCell>
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
   );
 
   /* -----------------------------------------

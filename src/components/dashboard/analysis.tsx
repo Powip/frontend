@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { toast } from "sonner";
 import {
   BarChart,
   Bar,
@@ -15,13 +16,39 @@ import {
   PieChart,
   Pie,
 } from "recharts";
-import { Users, Radio, Tag, Package, Calendar } from "lucide-react";
+import {
+  Users,
+  Radio,
+  Tag,
+  Package,
+  Calendar,
+  Download,
+  Eye,
+  ChevronRight,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DashboardCard } from "./DashboardCard";
+import { PeriodSelector } from "./PeriodSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import * as XLSX from "xlsx";
 
 interface ChannelStats {
   channel: string;
@@ -60,13 +87,21 @@ const StatCard: React.FC<{
   subValue?: string;
   icon: React.ReactNode;
   loading?: boolean;
-}> = ({ title, value, subValue, icon, loading }) => (
-  <Card className="bg-white/50 backdrop-blur-sm border-gray-100 shadow-sm">
+  onClick?: () => void;
+  clickable?: boolean;
+}> = ({ title, value, subValue, icon, loading, onClick, clickable }) => (
+  <Card
+    className={`bg-white/50 backdrop-blur-sm border-gray-100 shadow-sm transition-all ${clickable ? "cursor-pointer hover:shadow-md hover:border-primary/20" : ""}`}
+    onClick={clickable ? onClick : undefined}
+  >
     <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
       <CardTitle className="text-xs font-medium text-gray-500 uppercase">
         {title}
       </CardTitle>
-      <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
+      <div className="flex items-center gap-2">
+        {clickable && <ChevronRight className="h-3 w-3 text-gray-400" />}
+        <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
+      </div>
     </CardHeader>
     <CardContent>
       {loading ? (
@@ -116,6 +151,8 @@ export const Analysis: React.FC = () => {
   } | null>(null);
   const [brandData, setBrandData] = useState<BrandStats[]>([]);
   const [categoryData, setCategoryData] = useState<CategoryStats[]>([]);
+  const [categoryModalOpen, setCategoryModalOpen] = useState(false);
+  const [productsModalOpen, setProductsModalOpen] = useState(false);
 
   // Local states for filters
   const [channelDimension, setChannelDimension] = useState<"sales" | "closing">(
@@ -128,14 +165,14 @@ export const Analysis: React.FC = () => {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  const fetchData = async () => {
+  const fetchData = async (from?: string, to?: string) => {
     if (!selectedStoreId) return;
 
     setLoading(true);
     try {
       const params: Record<string, string> = { storeId: selectedStoreId };
-      if (fromDate) params.fromDate = fromDate;
-      if (toDate) params.toDate = toDate;
+      if (from) params.fromDate = from;
+      if (to) params.toDate = to;
 
       const [channelRes, brandRes, categoryRes] = await Promise.all([
         axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-channel`, {
@@ -160,8 +197,15 @@ export const Analysis: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [selectedStoreId]);
+    if (fromDate && toDate) {
+      fetchData(fromDate, toDate);
+    }
+  }, [selectedStoreId, fromDate, toDate]);
+
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
 
   // Derived data for charts
   const getChannelChartData = () => {
@@ -191,10 +235,137 @@ export const Analysis: React.FC = () => {
     }));
   };
 
-  const topSalesChannel = channelData?.salesChannels[0];
+  const topSalesChannel = channelData?.salesChannels?.[0];
   const topCategory =
-    categoryData.find((c) => c.categoryId !== "SIN_CATEGORIA") ||
-    categoryData[0];
+    categoryData?.find((c) => c.categoryId !== "SIN_CATEGORIA") ||
+    categoryData?.[0];
+
+  // Computed category totals
+  const categoryTotals = {
+    totalBilling:
+      categoryData?.reduce((sum, c) => sum + (c.totalAmount || 0), 0) || 0,
+    totalOrders:
+      categoryData?.reduce((sum, c) => sum + (c.ordersCount || 0), 0) || 0,
+    totalProducts:
+      categoryData?.reduce(
+        (sum, c) => sum + (Number((c as any).productsCount) || 0),
+        0,
+      ) || 0,
+  };
+  const avgTicket =
+    categoryTotals.totalOrders > 0
+      ? categoryTotals.totalBilling / categoryTotals.totalOrders
+      : 0;
+
+  // Export Facturación function
+  const handleExportFacturacion = async () => {
+    try {
+      // Use the correct singular endpoint that exists in the controller
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+      );
+
+      // Get all orders and filter manually since the backend doesn't support these filters on this endpoint
+      const allOrders = response.data || [];
+
+      // Parse dates for comparison
+      const start = fromDate ? new Date(fromDate + "T00:00:00") : null;
+      const end = toDate ? new Date(toDate + "T23:59:59") : null;
+
+      const orders = allOrders.filter((o: any) => {
+        // Filter by state (ENTREGADO for billing)
+        if (o.status !== "ENTREGADO") return false;
+
+        // Filter by date range
+        const orderDate = new Date(o.created_at);
+        if (start && orderDate < start) return false;
+        if (end && orderDate > end) return false;
+
+        return true;
+      });
+
+      if (orders.length === 0) {
+        toast.error("No hay datos para exportar en este período");
+        return;
+      }
+
+      // Create professional Excel with summary and detail
+      const wb = XLSX.utils.book_new();
+
+      // Summary sheet
+      const summaryData = [
+        ["REPORTE DE FACTURACIÓN"],
+        [""],
+        ["Período:", `${fromDate} a ${toDate}`],
+        ["Generado:", new Date().toLocaleString("es-PE")],
+        [""],
+        ["RESUMEN"],
+        ["Total Órdenes:", orders.length],
+        [
+          "Total Facturación:",
+          `S/ ${orders.reduce((s: number, o: any) => s + (o.grandTotal || 0), 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+        ],
+        [
+          "Ticket Promedio:",
+          `S/ ${(orders.length > 0 ? orders.reduce((s: number, o: any) => s + (o.grandTotal || 0), 0) / orders.length : 0).toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+        ],
+        [""],
+        ["POR CANAL DE VENTA"],
+        ...Object.entries(
+          orders.reduce((acc: any, o: any) => {
+            const ch = o.salesChannel || "OTRO";
+            if (!acc[ch]) acc[ch] = { count: 0, total: 0 };
+            acc[ch].count++;
+            acc[ch].total += o.grandTotal || 0;
+            return acc;
+          }, {}),
+        ).map(([ch, v]: [string, any]) => [
+          `  ${ch}:`,
+          `${v.count} órdenes - S/ ${v.total.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+        ]),
+        [""],
+        ["POR MÉTODO DE PAGO"],
+        ...Object.entries(
+          orders.reduce((acc: any, o: any) => {
+            const pm = o.paymentMethod || "OTRO";
+            if (!acc[pm]) acc[pm] = { count: 0, total: 0 };
+            acc[pm].count++;
+            acc[pm].total += o.grandTotal || 0;
+            return acc;
+          }, {}),
+        ).map(([pm, v]: [string, any]) => [
+          `  ${pm}:`,
+          `${v.count} órdenes - S/ ${v.total.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+        ]),
+      ];
+      const summaryWs = XLSX.utils.aoa_to_sheet(summaryData);
+      XLSX.utils.book_append_sheet(wb, summaryWs, "Resumen");
+
+      // Detail sheet
+      const detailData = orders.map((o: any) => ({
+        "N° Orden": o.orderNumber,
+        Fecha: new Date(o.createdAt).toLocaleDateString("es-PE"),
+        Hora: new Date(o.createdAt).toLocaleTimeString("es-PE"),
+        Cliente: o.customerName || "Sin nombre",
+        Teléfono: o.customerPhone || "-",
+        "Canal Venta": o.salesChannel,
+        "Método Pago": o.paymentMethod,
+        Subtotal: o.subtotal || 0,
+        Envío: o.shippingCost || 0,
+        Descuento: o.discount || 0,
+        Total: o.grandTotal || 0,
+        Adelanto: o.advancePayment || 0,
+        Pendiente: o.pendingPayment || 0,
+        Estado: o.status,
+      }));
+      const detailWs = XLSX.utils.json_to_sheet(detailData);
+      XLSX.utils.book_append_sheet(wb, detailWs, "Detalle");
+
+      XLSX.writeFile(wb, `facturacion_${fromDate}_${toDate}.xlsx`);
+    } catch (error) {
+      console.error("Error exporting:", error);
+    }
+  };
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden bg-gray-50/50">
@@ -215,23 +386,16 @@ export const Analysis: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <Input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="h-8 w-36 bg-transparent border-none focus-visible:ring-0 text-xs"
-            />
-            <span className="text-gray-400 mx-1 px-1">-</span>
-            <Input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="h-8 w-36 bg-transparent border-none focus-visible:ring-0 text-xs"
-            />
-          </div>
-          <Button onClick={fetchData} size="sm" className="h-8 rounded-lg">
-            Filtrar
+          <PeriodSelector onPeriodChange={handlePeriodChange} />
+          <Button
+            onClick={handleExportFacturacion}
+            variant="outline"
+            size="sm"
+            className="gap-2 border-primary/20 hover:bg-primary/5"
+            disabled={!fromDate || !toDate}
+          >
+            <Download className="h-4 w-4" />
+            Facturación
           </Button>
         </div>
       </div>
@@ -258,6 +422,8 @@ export const Analysis: React.FC = () => {
             }
             icon={<Tag className="h-5 w-5 text-primary" />}
             loading={loading}
+            clickable={!!topCategory}
+            onClick={() => setCategoryModalOpen(true)}
           />
           <StatCard
             title="Ventas Totales"
@@ -415,6 +581,163 @@ export const Analysis: React.FC = () => {
           </DashboardCard>
         </div>
       </div>
+
+      {/* Categoría Top Modal */}
+      <Dialog open={categoryModalOpen} onOpenChange={setCategoryModalOpen}>
+        <DialogContent className="sm:max-w-7xl w-[90vw] max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">
+              Detalle por Categorías
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Summary Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-b">
+            <div className="text-center p-3 bg-blue-50 rounded-lg">
+              <p className="text-xs text-gray-500 uppercase">
+                Facturación Total
+              </p>
+              <p className="text-lg font-bold text-blue-600">
+                S/{" "}
+                {categoryTotals.totalBilling.toLocaleString("es-PE", {
+                  minimumFractionDigits: 2,
+                })}
+              </p>
+            </div>
+            <div className="text-center p-3 bg-green-50 rounded-lg">
+              <p className="text-xs text-gray-500 uppercase">Nro. Órdenes</p>
+              <p className="text-lg font-bold text-green-600">
+                {categoryTotals.totalOrders.toLocaleString()}
+              </p>
+            </div>
+            <div className="text-center p-3 bg-purple-50 rounded-lg">
+              <p className="text-xs text-gray-500 uppercase">Nro. Productos</p>
+              <p className="text-lg font-bold text-purple-600">
+                {categoryTotals.totalProducts.toLocaleString()}
+              </p>
+            </div>
+            <div className="text-center p-3 bg-amber-50 rounded-lg">
+              <p className="text-xs text-gray-500 uppercase">Ticket Promedio</p>
+              <p className="text-lg font-bold text-amber-600">
+                S/{" "}
+                {avgTicket.toLocaleString("es-PE", {
+                  minimumFractionDigits: 2,
+                })}
+              </p>
+            </div>
+          </div>
+
+          {/* Categories Table */}
+          <div className="flex-1 overflow-auto mt-4 rounded-md border">
+            <Table>
+              <TableHeader className="bg-gray-50 sticky top-0">
+                <TableRow>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                    #
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                    Categoría
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                    Monto Total
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                    Órdenes
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                    % Participación
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {categoryData.map((cat, idx) => (
+                  <TableRow key={cat.categoryId}>
+                    <TableCell className="font-medium">{idx + 1}</TableCell>
+                    <TableCell className="font-medium">
+                      {cat.categoryName}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      S/{" "}
+                      {cat.totalAmount.toLocaleString("es-PE", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {cat.ordersCount}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                        {cat.percentage}%
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Productos Más Vendidos Modal */}
+      <Dialog open={productsModalOpen} onOpenChange={setProductsModalOpen}>
+        <DialogContent className="sm:max-w-7xl w-[90vw] max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">
+              Productos Más Vendidos
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto mt-4 rounded-md border">
+            <Table>
+              <TableHeader className="bg-gray-50 sticky top-0">
+                <TableRow>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                    #
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                    {productDimension === "category" ? "Categoría" : "Marca"}
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                    Monto Total
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                    Órdenes
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                    % del Total
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(productDimension === "category"
+                  ? categoryData
+                  : brandData
+                ).map((item: any, idx) => (
+                  <TableRow key={item.categoryId || item.brandId}>
+                    <TableCell className="font-medium">{idx + 1}</TableCell>
+                    <TableCell className="font-medium">
+                      {item.categoryName || item.brandName}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      S/{" "}
+                      {item.totalAmount.toLocaleString("es-PE", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {item.ordersCount}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                        {item.percentage}%
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

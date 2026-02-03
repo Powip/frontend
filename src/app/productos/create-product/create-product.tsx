@@ -268,8 +268,6 @@ export default function ProductCreateForm({
           }
         });
         setAttributeValues(attrVals);
-
-        toast.success("Producto cargado para edición");
       } catch (error) {
         console.error("Error cargando producto para editar:", error);
         toast.error("Error al cargar el producto");
@@ -358,7 +356,7 @@ export default function ProductCreateForm({
   useEffect(() => {
     if (form.supplierId) {
       const filtered = brands.filter(
-        (brand) => brand.supplier.id === form.supplierId,
+        (brand) => brand.supplier?.id === form.supplierId,
       );
       setFilteredBrands(filtered);
       // Resetear marca si ya no pertenece al proveedor seleccionado

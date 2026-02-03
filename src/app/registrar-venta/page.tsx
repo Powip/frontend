@@ -449,6 +449,10 @@ function RegistrarVentaContent() {
       return;
     }
 
+    const sellerDisplayName = `${auth?.user?.name || ""} ${
+      auth?.user?.surname || ""
+    }`.trim();
+
     const payload = {
       // --- Comprobante ---
       receiptType: "BOLETA",
@@ -466,6 +470,7 @@ function RegistrarVentaContent() {
       // --- Envío ---
       shippingTotal: shippingTotal ?? 0,
       courier: orderDetails.enviaPor ?? null,
+      sellerName: sellerDisplayName || null,
 
       // --- Modo de impuestos ---
       taxMode: taxMode,
@@ -552,7 +557,15 @@ function RegistrarVentaContent() {
         resetForm();
       } else {
         // Actualizar orden existente
+        // El status solo se resetea a PENDIENTE si el usuario seleccionó manualmente el tipo CAMBIO
+        const newStatus =
+          orderDetails.orderType === OrderType.CAMBIO
+            ? "PENDIENTE"
+            : orderData.status;
+
         const updatePayload = {
+          orderType: orderDetails.orderType,
+          status: newStatus,
           salesChannel: orderDetails.salesChannel,
           closingChannel: orderDetails.closingChannel,
           deliveryType: orderDetails.deliveryType,
@@ -580,6 +593,7 @@ function RegistrarVentaContent() {
           // Datos de pago
           paymentMethod: paymentMethod || null,
           paymentAmount: advancePayment,
+          sellerName: sellerDisplayName || null,
         };
 
         await axios.put(
@@ -741,7 +755,8 @@ function RegistrarVentaContent() {
   const canSubmit =
     !!clientFound &&
     hasValidCart &&
-    orderDetails.orderType === OrderType.VENTA &&
+    (orderDetails.orderType === OrderType.VENTA ||
+      orderDetails.orderType === OrderType.CAMBIO) &&
     !!orderDetails.salesChannel &&
     !!orderDetails.closingChannel &&
     hasValidDelivery &&
@@ -1378,6 +1393,7 @@ function RegistrarVentaContent() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={OrderType.VENTA}>Venta</SelectItem>
+                  <SelectItem value={OrderType.CAMBIO}>Cambio</SelectItem>
                   <SelectItem value={OrderType.RESERVA} disabled>
                     Reserva
                   </SelectItem>

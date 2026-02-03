@@ -117,7 +117,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
         )}
       </CardHeader>
 
-      <CardContent className="p-4 pt-0 flex-1 relative min-h-[250px] flex flex-col">
+      <CardContent className="p-4 pt-0 pb-4 flex-1 relative min-h-[120px] flex flex-col">
         {isLoading ? (
           <div className="flex-1 flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
@@ -126,144 +126,187 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
           <>
             <div className="flex-1">{children}</div>
 
-            <div className="absolute bottom-2 right-2 flex gap-2">
-              <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500"
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col p-6">
-                  <DialogHeader className="flex flex-row items-center justify-between pb-4 border-b">
-                    <DialogTitle>{title} - Detalle de Datos</DialogTitle>
-                    <Button onClick={handleExport} size="sm" className="gap-2">
-                      <Download className="h-4 w-4" />
-                      Exportar Excel
+            {data && data.length > 0 && (
+              <div className="absolute bottom-2 right-2 flex gap-2">
+                <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500"
+                    >
+                      <Eye className="h-4 w-4" />
                     </Button>
-                  </DialogHeader>
-                  <div className="flex-1 overflow-auto mt-4 rounded-md border">
-                    <Table>
-                      <TableHeader className="bg-gray-50 sticky top-0">
-                        <TableRow>
-                          {data.length > 0 &&
-                            Object.keys(data[0]).map((key) => {
-                              // Mapeo simple de headers a español
-                              const headerLabel =
-                                {
-                                  orderNumber: "N° Orden",
-                                  customerName: "Cliente",
-                                  grandTotal: "Monto Total",
-                                  createdAt: "Fecha",
-                                  status: "Estado",
-                                  salesChannel: "Canal",
-                                  producto: "Producto",
-                                  cantidad: "Cant.",
-                                  precio_unit: "Precio Unit.",
-                                  subtotal: "Subtotal",
-                                  fecha: "Fecha",
-                                  n_orden: "N° Orden",
-                                  date: "Fecha",
-                                  orders: "Órdenes",
-                                  amount: "Monto",
-                                  products: "Productos",
-                                }[key] || key.replace(/_/g, " ").toUpperCase();
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-7xl w-[95vw] max-h-[85vh] flex flex-col p-6">
+                    <DialogHeader className="flex flex-row items-center justify-between pb-4 border-b">
+                      <DialogTitle>{title} - Detalle de Datos</DialogTitle>
+                      <Button
+                        onClick={handleExport}
+                        size="sm"
+                        className="gap-2"
+                      >
+                        <Download className="h-4 w-4" />
+                        Exportar Excel
+                      </Button>
+                    </DialogHeader>
+                    <div className="flex-1 overflow-auto mt-4 rounded-md border">
+                      <Table>
+                        <TableHeader className="bg-gray-50 sticky top-0">
+                          <TableRow>
+                            {data.length > 0 &&
+                              Object.keys(data[0])
+                                .filter(
+                                  (key) =>
+                                    ![
+                                      "id",
+                                      "_id",
+                                      "tenant_id",
+                                      "tenantid",
+                                    ].includes(key.toLowerCase()) &&
+                                    !key.toLowerCase().endsWith("_id"),
+                                )
+                                .map((key) => {
+                                  // Mapeo simple de headers a español
+                                  const headerLabel =
+                                    {
+                                      orderNumber: "N° Orden",
+                                      customerName: "Cliente",
+                                      grandTotal: "Monto Total",
+                                      createdAt: "Fecha",
+                                      status: "Estado",
+                                      salesChannel: "Canal",
+                                      producto: "Producto",
+                                      cantidad: "Cant.",
+                                      precio_unit: "Precio Unit.",
+                                      subtotal: "Subtotal",
+                                      fecha: "Fecha",
+                                      n_orden: "N° Orden",
+                                      date: "Fecha",
+                                      orders: "Órdenes",
+                                      amount: "Monto",
+                                      products: "Productos",
+                                      sellerName: "Vendedor",
+                                      totalSales: "Ventas Totales",
+                                      orderCount: "N° Órdenes",
+                                      productsCount: "Productos",
+                                      averageTicket: "Ticket Promedio",
+                                      monthlySales: "Venta Mes",
+                                      weeklySales: "Venta Sem.",
+                                      deliveredCount: "Entregados",
+                                      createdCount: "Total Órdenes",
+                                      deliveryEffectiveness: "% Efectividad",
+                                    }[key] ||
+                                    key.replace(/_/g, " ").toUpperCase();
 
-                              return (
-                                <TableHead
-                                  key={key}
-                                  className="text-xs uppercase font-bold text-gray-600"
-                                >
-                                  {headerLabel}
-                                </TableHead>
-                              );
-                            })}
-                          {renderRowAction && (
-                            <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
-                              Acciones
-                            </TableHead>
-                          )}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {data.map((row, i) => (
-                          <TableRow key={i}>
-                            {Object.entries(row).map(
-                              ([key, val]: [string, any], j) => {
-                                let displayValue = val;
-
-                                // Formateo inteligente basado en la clave o tipo
-                                if (
-                                  typeof val === "number" &&
-                                  (key.toLowerCase().includes("total") ||
-                                    key.toLowerCase().includes("monto") ||
-                                    key.toLowerCase().includes("precio") ||
-                                    key.toLowerCase().includes("amount") ||
-                                    key.toLowerCase().includes("subtotal"))
-                                ) {
-                                  displayValue = `S/ ${val.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                                } else if (
-                                  key.toLowerCase().includes("fecha") ||
-                                  key.toLowerCase().includes("date") ||
-                                  key.toLowerCase().includes("createdat")
-                                ) {
-                                  try {
-                                    displayValue = new Date(
-                                      val,
-                                    ).toLocaleDateString("es-PE", {
-                                      day: "2-digit",
-                                      month: "2-digit",
-                                      year: "numeric",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    });
-                                  } catch (e) {
-                                    displayValue = String(val);
-                                  }
-                                } else if (
-                                  key === "status" ||
-                                  key === "estado"
-                                ) {
-                                  displayValue = String(val).toUpperCase();
-                                }
-
-                                return (
-                                  <TableCell
-                                    key={j}
-                                    className="text-xs py-2 whitespace-nowrap"
-                                  >
-                                    {typeof val === "object" && val !== null
-                                      ? JSON.stringify(val)
-                                      : String(displayValue)}
-                                  </TableCell>
-                                );
-                              },
-                            )}
+                                  return (
+                                    <TableHead
+                                      key={key}
+                                      className="text-xs uppercase font-bold text-gray-600"
+                                    >
+                                      {headerLabel}
+                                    </TableHead>
+                                  );
+                                })}
                             {renderRowAction && (
-                              <TableCell className="text-right py-1">
-                                {renderRowAction(row)}
-                              </TableCell>
+                              <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                                Acciones
+                              </TableHead>
                             )}
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                        </TableHeader>
+                        <TableBody>
+                          {data.map((row, i) => (
+                            <TableRow key={i}>
+                              {Object.entries(row)
+                                .filter(
+                                  ([key]) =>
+                                    ![
+                                      "id",
+                                      "_id",
+                                      "tenant_id",
+                                      "tenantid",
+                                    ].includes(key.toLowerCase()) &&
+                                    !key.toLowerCase().endsWith("_id"),
+                                )
+                                .map(([key, val]: [string, any], j) => {
+                                  let displayValue = val;
 
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500"
-                onClick={handleExport}
-              >
-                <Download className="h-4 w-4" />
-              </Button>
-            </div>
+                                  // Formateo inteligente basado en la clave o tipo
+                                  if (
+                                    typeof val === "number" &&
+                                    (key.toLowerCase().includes("total") ||
+                                      key.toLowerCase().includes("monto") ||
+                                      key.toLowerCase().includes("precio") ||
+                                      key.toLowerCase().includes("amount") ||
+                                      key.toLowerCase().includes("subtotal"))
+                                  ) {
+                                    displayValue = `S/ ${val.toLocaleString(
+                                      "es-PE",
+                                      {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      },
+                                    )}`;
+                                  } else if (
+                                    key.toLowerCase().includes("fecha") ||
+                                    key.toLowerCase().includes("date") ||
+                                    key.toLowerCase().includes("createdat")
+                                  ) {
+                                    try {
+                                      displayValue = new Date(
+                                        val,
+                                      ).toLocaleDateString("es-PE", {
+                                        day: "2-digit",
+                                        month: "2-digit",
+                                        year: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      });
+                                    } catch (e) {
+                                      displayValue = String(val);
+                                    }
+                                  } else if (
+                                    key === "status" ||
+                                    key === "estado"
+                                  ) {
+                                    displayValue = String(val).toUpperCase();
+                                  }
+
+                                  return (
+                                    <TableCell
+                                      key={j}
+                                      className="text-xs py-2 whitespace-nowrap"
+                                    >
+                                      {typeof val === "object" && val !== null
+                                        ? JSON.stringify(val)
+                                        : String(displayValue)}
+                                    </TableCell>
+                                  );
+                                })}
+                              {renderRowAction && (
+                                <TableCell className="text-right py-1">
+                                  {renderRowAction(row)}
+                                </TableCell>
+                              )}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500"
+                  onClick={handleExport}
+                >
+                  <Download className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
           </>
         )}
       </CardContent>

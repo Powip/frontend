@@ -17,11 +17,18 @@ interface Props {
   onClose: () => void;
   onStatusChange?: () => void;
 }
-export default function OrderReceiptModal({ open, orderId, onClose, onStatusChange }: Props) {
+export default function OrderReceiptModal({
+  open,
+  orderId,
+  onClose,
+  onStatusChange,
+}: Props) {
   const [loading, setLoading] = useState(false);
   const [receipt, setReceipt] = useState<any>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!open || !orderId) return;
@@ -30,7 +37,7 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
       try {
         setLoading(true);
         const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
         );
 
         setReceipt(res.data);
@@ -62,7 +69,7 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
       try {
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-          { status: newStatus }
+          { status: newStatus },
         );
         toast.success(`Estado actualizado a ${newStatus}`);
         onStatusChange?.();
@@ -83,19 +90,20 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
     // Calcular adelanto y monto por cobrar
     const totalPaid = Array.isArray(receipt.payments)
       ? receipt.payments.reduce(
-        (acc: number, payment: any) => acc + Number(payment.amount || 0),
-        0
-      )
+          (acc: number, payment: any) => acc + Number(payment.amount || 0),
+          0,
+        )
       : 0;
     const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
 
     // Generar items expandidos para la impresión
     const expandedItems = receipt.items.flatMap((item: any) => {
-      const discountPerUnit = item.quantity > 0 
-        ? (Number(item.discountAmount) || 0) / item.quantity 
-        : 0;
+      const discountPerUnit =
+        item.quantity > 0
+          ? (Number(item.discountAmount) || 0) / item.quantity
+          : 0;
       const subtotalWithDiscount = item.unitPrice - discountPerUnit;
-      
+
       return Array.from({ length: item.quantity }, () => ({
         ...item,
         originalQuantity: item.quantity,
@@ -106,7 +114,7 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
     });
 
     // Crear ventana de impresión con contenido limpio
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    const printWindow = window.open("", "_blank", "width=400,height=600");
     if (!printWindow) {
       toast.error("No se pudo abrir la ventana de impresión");
       return;
@@ -219,7 +227,7 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
       </head>
       <body>
         <div class="header">
-          ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" class="qr-code">` : ''}
+          ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" class="qr-code">` : ""}
           <div class="header-info">
             <div class="order-title">Orden # ${receipt.orderNumber}</div>
             <div class="order-total">Total: S/ ${receipt.totals.grandTotal.toFixed(2)}</div>
@@ -234,7 +242,7 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
             </div>
             <div class="info-item">
               <span class="info-label">Distrito:</span>
-              <span class="info-value">${receipt.customer.district || '-'}</span>
+              <span class="info-value">${receipt.customer.district || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Teléfono:</span>
@@ -242,31 +250,31 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
             </div>
             <div class="info-item">
               <span class="info-label">Tipo:</span>
-              <span class="info-value">${receipt.customer.clientType || '-'}</span>
+              <span class="info-value">${receipt.customer.clientType || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Dirección:</span>
-              <span class="info-value">${receipt.customer.address || '-'}</span>
+              <span class="info-value">${receipt.customer.address || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Referencia:</span>
-              <span class="info-value">${receipt.customer.reference || '-'}</span>
+              <span class="info-value">${receipt.customer.reference || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Departamento:</span>
-              <span class="info-value">${receipt.customer.city || '-'}</span>
+              <span class="info-value">${receipt.customer.city || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Canal:</span>
-              <span class="info-value">${receipt.salesChannel || '-'}</span>
+              <span class="info-value">${receipt.salesChannel || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">Provincia:</span>
-              <span class="info-value">${receipt.customer.province || '-'}</span>
+              <span class="info-value">${receipt.customer.province || "-"}</span>
             </div>
             <div class="info-item">
               <span class="info-label">DNI:</span>
-              <span class="info-value">${receipt.customer.dni || receipt.customer.documentNumber || '-'}</span>
+              <span class="info-value">${receipt.customer.dni || receipt.customer.documentNumber || "-"}</span>
             </div>
           </div>
         </div>
@@ -282,21 +290,27 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
               </tr>
             </thead>
             <tbody>
-              ${receipt.items.map((item: any) => {
-                const attrs = item.attributes ? Object.entries(item.attributes).map(([k, v]) => `${v}`).join('/') : '';
-                const discount = Number(item.discountAmount) || 0;
-                const subtotal = Number(item.subtotal);
-                return `
+              ${receipt.items
+                .map((item: any) => {
+                  const attrs = item.attributes
+                    ? Object.entries(item.attributes)
+                        .map(([k, v]) => `${v}`)
+                        .join("/")
+                    : "";
+                  const discount = Number(item.discountAmount) || 0;
+                  const subtotal = Number(item.subtotal);
+                  return `
                   <tr>
                     <td class="qty">${item.quantity}</td>
                     <td>
-                      ${item.productName}${attrs ? ` (${attrs})` : ''}
-                      ${discount > 0 ? `<div class="desc">Dcto: -S/${discount.toFixed(2)}</div>` : ''}
+                      ${item.productName}${attrs ? ` (${attrs})` : ""}
+                      ${discount > 0 ? `<div class="desc">Dcto: -S/${discount.toFixed(2)}</div>` : ""}
                     </td>
                     <td class="price">S/${subtotal.toFixed(2)}</td>
                   </tr>
                 `;
-              }).join('')}
+                })
+                .join("")}
             </tbody>
           </table>
         </div>
@@ -376,7 +390,7 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
     doc.text(
       `Dirección: ${receipt.customer.address}, ${receipt.customer.district}, ${receipt.customer.province}`,
       14,
-      70
+      70,
     );
 
     // Items
@@ -405,49 +419,41 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
     // Calcular adelanto y monto por cobrar
     const totalPaid = Array.isArray(receipt.payments)
       ? receipt.payments.reduce(
-        (acc: number, payment: any) => acc + Number(payment.amount || 0),
-        0
-      )
+          (acc: number, payment: any) => acc + Number(payment.amount || 0),
+          0,
+        )
       : 0;
     const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
 
     doc.text(
       `Productos: S/${receipt.totals.productsTotal.toFixed(2)}`,
       14,
-      finalY + 10
+      finalY + 10,
     );
     doc.text(
       `IGV 18%: S/${receipt.totals.taxTotal.toFixed(2)}`,
       14,
-      finalY + 16
+      finalY + 16,
     );
     doc.text(
       `Envío: S/${receipt.totals.shippingTotal.toFixed(2)}`,
       14,
-      finalY + 22
+      finalY + 22,
     );
     doc.setFontSize(14);
     doc.text(
       `Total: S/${receipt.totals.grandTotal.toFixed(2)}`,
       14,
-      finalY + 32
+      finalY + 32,
     );
     doc.setFontSize(12);
     doc.text(
       `Descuentos: S/${receipt.totals.discountTotal.toFixed(2)}`,
       14,
-      finalY + 42
+      finalY + 42,
     );
-    doc.text(
-      `Adelanto: S/${totalPaid.toFixed(2)}`,
-      14,
-      finalY + 48
-    );
-    doc.text(
-      `Por Cobrar: S/${pendingAmount.toFixed(2)}`,
-      14,
-      finalY + 54
-    );
+    doc.text(`Adelanto: S/${totalPaid.toFixed(2)}`, 14, finalY + 48);
+    doc.text(`Por Cobrar: S/${pendingAmount.toFixed(2)}`, 14, finalY + 54);
 
     doc.save(`Comprobante_${receipt.orderNumber}.pdf`);
   };
@@ -458,12 +464,12 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
     const phone = receipt.customer.phoneNumber.replace(/\D/g, "");
     const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
 
-    const trackingUrl = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/rastreo/${receipt.orderNumber}`;
+    const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
     const message = `Hola ${receipt.customer.fullName}, tu pedido N° ${receipt.orderNumber} se está procesando. A la brevedad se te enviará el comprobante de venta por este medio.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
 
     window.open(
       `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
-      "_blank"
+      "_blank",
     );
   };
 
@@ -506,9 +512,12 @@ export default function OrderReceiptModal({ open, orderId, onClose, onStatusChan
         onSuccess={() => {
           // Recargar el recibo para ver el comprobante actualizado
           if (orderId) {
-            axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`)
-              .then(res => setReceipt(res.data))
-              .catch(err => console.error(err));
+            axios
+              .get(
+                `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
+              )
+              .then((res) => setReceipt(res.data))
+              .catch((err) => console.error(err));
           }
         }}
       />

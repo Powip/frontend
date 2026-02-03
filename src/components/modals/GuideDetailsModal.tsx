@@ -92,6 +92,12 @@ interface OrderDetail {
     unitPrice: number;
     attributes?: Record<string, string>;
   }>;
+  // Campos de tracking por pedido
+  externalTrackingNumber?: string | null;
+  shippingKey?: string | null;
+  trackingUrl?: string | null;
+  shippingOffice?: string | null;
+  shippingCode?: string | null;
 }
 
 interface GuideDetailsModalProps {
@@ -175,19 +181,24 @@ export default function GuideDetailsModal({
   const [guide, setGuide] = useState<ShippingGuide | null>(null);
   const [loading, setLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [selectedCourier, setSelectedCourier] = useState("");
   const [ordersDetails, setOrdersDetails] = useState<OrderDetail[]>([]);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
 
-  // Campos COURIER editables
-  const [courierFields, setCourierFields] = useState({
-    externalGuideReference: "",
-    shippingKey: "",
-    trackingUrl: "",
-    shippingOffice: "",
-  });
-
+  // Estado para tracking por pedido (key = orderId)
+  const [orderTrackingFields, setOrderTrackingFields] = useState<
+    Record<
+      string,
+      {
+        externalTrackingNumber: string;
+        shippingKey: string;
+        trackingUrl: string;
+        shippingOffice: string;
+        shippingCode: string;
+      }
+    >
+  >({});
+  const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   // Upload de foto de entrega
   const [uploading, setUploading] = useState(false);
 
@@ -211,16 +222,6 @@ export default function GuideDetailsModal({
         setSelectedCourier(normalizeCourier(defaultCourier));
       }
 
-      // Inicializar campos COURIER
-      if (res.data) {
-        setCourierFields({
-          externalGuideReference: res.data.externalGuideReference || "",
-          shippingKey: res.data.shippingKey || "",
-          trackingUrl: res.data.trackingUrl || "",
-          shippingOffice: res.data.shippingOffice || "",
-        });
-      }
-
       // Fetch order details for all orders in the guide
       if (res.data?.orderIds?.length) {
         const ordersPromises = res.data.orderIds.map((id) =>
@@ -229,7 +230,30 @@ export default function GuideDetailsModal({
           ),
         );
         const ordersResponses = await Promise.all(ordersPromises);
-        setOrdersDetails(ordersResponses.map((r) => r.data));
+        const orders = ordersResponses.map((r) => r.data);
+        setOrdersDetails(orders);
+
+        // Inicializar tracking fields por cada pedido
+        const trackingByOrder: Record<
+          string,
+          {
+            externalTrackingNumber: string;
+            shippingKey: string;
+            trackingUrl: string;
+            shippingOffice: string;
+            shippingCode: string;
+          }
+        > = {};
+        orders.forEach((order) => {
+          trackingByOrder[order.id] = {
+            externalTrackingNumber: order.externalTrackingNumber || "",
+            shippingKey: order.shippingKey || "",
+            trackingUrl: order.trackingUrl || "",
+            shippingOffice: order.shippingOffice || "",
+            shippingCode: order.shippingCode || "",
+          };
+        });
+        setOrderTrackingFields(trackingByOrder);
       }
     } catch (error) {
       console.error("Error fetching guide:", error);
@@ -239,29 +263,47 @@ export default function GuideDetailsModal({
     }
   };
 
-  // Guardar campos COURIER
-  const handleSaveCourierFields = async () => {
-    if (!guide) return;
+  // Guardar tracking de un pedido individual
+  const handleSaveOrderTracking = async (orderId: string) => {
+    const trackingData = orderTrackingFields[orderId];
+    if (!trackingData) return;
 
-    setSaving(true);
+    setSavingOrderId(orderId);
     try {
       await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`,
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
         {
-          externalGuideReference: courierFields.externalGuideReference || null,
-          shippingKey: courierFields.shippingKey || null,
-          trackingUrl: courierFields.trackingUrl || null,
-          shippingOffice: courierFields.shippingOffice || null,
+          externalTrackingNumber: trackingData.externalTrackingNumber || null,
+          shippingKey: trackingData.shippingKey || null,
+          trackingUrl: trackingData.trackingUrl || null,
+          shippingOffice: trackingData.shippingOffice || null,
+          shippingCode: trackingData.shippingCode || null,
         },
       );
-      toast.success("Datos de courier guardados");
-      fetchGuide();
+      toast.success("Datos de tracking guardados");
       onGuideUpdated?.();
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || "Error al guardar");
+      toast.error(
+        error?.response?.data?.message || "Error al guardar tracking",
+      );
     } finally {
-      setSaving(false);
+      setSavingOrderId(null);
     }
+  };
+
+  // Actualizar campo de tracking para un pedido
+  const updateOrderTrackingField = (
+    orderId: string,
+    field: keyof (typeof orderTrackingFields)[string],
+    value: string,
+  ) => {
+    setOrderTrackingFields((prev) => ({
+      ...prev,
+      [orderId]: {
+        ...prev[orderId],
+        [field]: value,
+      },
+    }));
   };
 
   const handleAssignCourier = async () => {
@@ -301,7 +343,7 @@ export default function GuideDetailsModal({
       return;
     }
 
-    setSaving(true);
+    setAssigning(true);
     try {
       // 1. Aprobar la guía
       await axios.patch(
@@ -331,7 +373,7 @@ export default function GuideDetailsModal({
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Error al aprobar guía");
     } finally {
-      setSaving(false);
+      setAssigning(false);
     }
   };
 
@@ -380,12 +422,7 @@ export default function GuideDetailsModal({
     setSelectedCourier("");
     setOrdersDetails([]);
     setExpandedOrders(new Set());
-    setCourierFields({
-      externalGuideReference: "",
-      shippingKey: "",
-      trackingUrl: "",
-      shippingOffice: "",
-    });
+    setOrderTrackingFields({});
     onClose();
   };
 
@@ -782,90 +819,6 @@ export default function GuideDetailsModal({
               )}
             </div>
 
-            {/* Datos de Courier Externo (solo para COURIER) */}
-            {guide.deliveryType === "COURIER" && (
-              <div className="border rounded-lg p-3 space-y-3 bg-orange-50/50">
-                <Label className="flex items-center gap-2 text-sm font-medium text-orange-800">
-                  📦 Datos del Courier Externo
-                </Label>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Nro. Guía Courier</Label>
-                    <input
-                      type="text"
-                      className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                      placeholder="Ej: OLV-123456"
-                      value={courierFields.externalGuideReference}
-                      onChange={(e) =>
-                        setCourierFields((prev) => ({
-                          ...prev,
-                          externalGuideReference: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Clave de Envío</Label>
-                    <input
-                      type="text"
-                      className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                      placeholder="Ej: ABC123"
-                      value={courierFields.shippingKey}
-                      onChange={(e) =>
-                        setCourierFields((prev) => ({
-                          ...prev,
-                          shippingKey: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">URL Tracking</Label>
-                    <input
-                      type="text"
-                      className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                      placeholder="https://..."
-                      value={courierFields.trackingUrl}
-                      onChange={(e) =>
-                        setCourierFields((prev) => ({
-                          ...prev,
-                          trackingUrl: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Oficina de Retiro</Label>
-                    <input
-                      type="text"
-                      className="w-full border rounded-md px-3 py-2 text-sm bg-background"
-                      placeholder="Ej: Olva Lima Centro"
-                      value={courierFields.shippingOffice}
-                      onChange={(e) =>
-                        setCourierFields((prev) => ({
-                          ...prev,
-                          shippingOffice: e.target.value,
-                        }))
-                      }
-                    />
-                  </div>
-                </div>
-
-                <Button
-                  size="sm"
-                  className="w-full bg-orange-600 hover:bg-orange-700"
-                  onClick={handleSaveCourierFields}
-                  disabled={saving}
-                >
-                  {saving ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : null}
-                  Guardar Datos Courier
-                </Button>
-              </div>
-            )}
-
             {/* Lista de pedidos con detalles */}
             <div className="border rounded-lg overflow-hidden">
               <div className="bg-muted/50 px-3 py-2 border-b">
@@ -970,6 +923,139 @@ export default function GuideDetailsModal({
                                 {order.customer.address}
                               </p>
                             )}
+                          </div>
+
+                          {/* Tracking del pedido */}
+                          <div className="pt-2 border-t mt-2">
+                            <p className="text-xs font-medium text-orange-700 mb-2 flex items-center gap-1">
+                              📦 Datos de Tracking
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                              <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">
+                                  Nro. Guía Courier
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                  placeholder="Ej: OLV-123456"
+                                  value={
+                                    orderTrackingFields[order.id]
+                                      ?.externalTrackingNumber || ""
+                                  }
+                                  onChange={(e) =>
+                                    updateOrderTrackingField(
+                                      order.id,
+                                      "externalTrackingNumber",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">
+                                  Clave de Envío
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                  placeholder="Ej: ABC123"
+                                  value={
+                                    orderTrackingFields[order.id]
+                                      ?.shippingKey || ""
+                                  }
+                                  onChange={(e) =>
+                                    updateOrderTrackingField(
+                                      order.id,
+                                      "shippingKey",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">
+                                  URL Tracking
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                  placeholder="https://..."
+                                  value={
+                                    orderTrackingFields[order.id]
+                                      ?.trackingUrl || ""
+                                  }
+                                  onChange={(e) =>
+                                    updateOrderTrackingField(
+                                      order.id,
+                                      "trackingUrl",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">
+                                  Oficina de Retiro
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                  placeholder="Ej: Olva Lima Centro"
+                                  value={
+                                    orderTrackingFields[order.id]
+                                      ?.shippingOffice || ""
+                                  }
+                                  onChange={(e) =>
+                                    updateOrderTrackingField(
+                                      order.id,
+                                      "shippingOffice",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-xs text-muted-foreground">
+                                  Código
+                                </label>
+                                <input
+                                  type="text"
+                                  className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                  placeholder="Ej: COD-001"
+                                  value={
+                                    orderTrackingFields[order.id]
+                                      ?.shippingCode || ""
+                                  }
+                                  onChange={(e) =>
+                                    updateOrderTrackingField(
+                                      order.id,
+                                      "shippingCode",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                            </div>
+                            <Button
+                              size="sm"
+                              className="mt-2 w-full bg-orange-600 hover:bg-orange-700 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSaveOrderTracking(order.id);
+                              }}
+                              disabled={savingOrderId === order.id}
+                            >
+                              {savingOrderId === order.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                              ) : null}
+                              Guardar Tracking
+                            </Button>
                           </div>
                         </div>
                       )}
@@ -1126,10 +1212,10 @@ export default function GuideDetailsModal({
               (guide.status === "CREADA" || guide.status === "ASIGNADA") && (
                 <Button
                   onClick={handleApproveGuide}
-                  disabled={saving || !guide.courierName}
+                  disabled={assigning || !guide.courierName}
                   className="bg-teal-600 hover:bg-teal-700"
                 >
-                  {saving ? (
+                  {assigning ? (
                     <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   ) : null}
                   ✓ Aprobar Guía

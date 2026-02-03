@@ -185,7 +185,7 @@ export default function AtencionClientePage() {
     const finalPhone = cleanPhone.startsWith("51")
       ? cleanPhone
       : `51${cleanPhone}`;
-    const trackingUrl = `${window.location.origin}/rastreo/${orderNumber}`;
+    const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${orderNumber}`;
     const message = `Hola ${fullName}! Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
     window.open(
       `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`,
