@@ -22,7 +22,15 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
 
-import { Download, Loader2, Search, Plus, Pencil, Trash2, ShoppingCart } from "lucide-react";
+import {
+  Download,
+  Loader2,
+  Search,
+  Plus,
+  Pencil,
+  Trash2,
+  ShoppingCart,
+} from "lucide-react";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -106,7 +114,7 @@ export default function InventarioPage() {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(
-    null
+    null,
   );
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
   const [productsWithDetails, setProductsWithDetails] = useState<any[]>([]);
@@ -125,7 +133,8 @@ export default function InventarioPage() {
   // Estados para modales de acciones
   const [addStockOpen, setAddStockOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<ProductWithInventoryDetails | null>(null);
+  const [selectedItem, setSelectedItem] =
+    useState<ProductWithInventoryDetails | null>(null);
 
   // ------------------------------------------------------
   // 1) Seleccionar inventario automáticamente
@@ -160,7 +169,7 @@ export default function InventarioPage() {
 
       try {
         const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`
+          `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`,
         );
 
         setInventoryItems(response.data);
@@ -193,7 +202,7 @@ export default function InventarioPage() {
         // 📌 LLAMADA REAL AL NUEVO ENDPOINT
         const { data: variants } = await axios.post<VariantBatchItem[]>(
           `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/multiple/by-ids`,
-          { ids: variantIds }
+          { ids: variantIds },
         );
         // VARIABLE: unir items + variants
         const merged = inventoryItems.map((item) => {
@@ -234,7 +243,7 @@ export default function InventarioPage() {
 
       const attributesString = Object.entries(item.attributes || {})
         .map(
-          ([k, v]) => `${String(k).toLowerCase()} ${String(v).toLowerCase()}`
+          ([k, v]) => `${String(k).toLowerCase()} ${String(v).toLowerCase()}`,
         )
         .join(" ");
 
@@ -336,7 +345,6 @@ export default function InventarioPage() {
   // RENDER
   // ------------------------------------------------------
 
-
   if (!auth) return null;
 
   return (
@@ -371,7 +379,9 @@ export default function InventarioPage() {
               {isLoadingInventories ? (
                 <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted">
                   <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">Cargando inventarios...</span>
+                  <span className="text-sm text-muted-foreground">
+                    Cargando inventarios...
+                  </span>
                 </div>
               ) : (
                 <Select
@@ -441,23 +451,42 @@ export default function InventarioPage() {
               </TableHeader>
 
               <TableBody>
-                {(isLoading || isLoadingVariants) ? (
+                {isLoading || isLoadingVariants ? (
                   // Skeleton rows
                   [...Array(5)].map((_, i) => (
                     <TableRow key={i}>
-                      <TableCell className="border-r"><Skeleton className="h-4 w-20" /></TableCell>
-                      <TableCell className="border-r"><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell className="border-r"><Skeleton className="h-4 w-40" /></TableCell>
-                      <TableCell className="border-r"><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell className="border-r"><Skeleton className="h-4 w-12" /></TableCell>
-                      <TableCell className="border-r"><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell className="border-r"><Skeleton className="h-4 w-16" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+                      <TableCell className="border-r">
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell className="border-r">
+                        <Skeleton className="h-4 w-32" />
+                      </TableCell>
+                      <TableCell className="border-r">
+                        <Skeleton className="h-4 w-40" />
+                      </TableCell>
+                      <TableCell className="border-r">
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell className="border-r">
+                        <Skeleton className="h-4 w-12" />
+                      </TableCell>
+                      <TableCell className="border-r">
+                        <Skeleton className="h-4 w-16" />
+                      </TableCell>
+                      <TableCell className="border-r">
+                        <Skeleton className="h-4 w-16" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
                     </TableRow>
                   ))
                 ) : filteredProducts.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-6 text-muted-foreground">
+                    <TableCell
+                      colSpan={8}
+                      className="text-center py-6 text-muted-foreground"
+                    >
                       No hay productos en este inventario
                     </TableCell>
                   </TableRow>
@@ -466,27 +495,24 @@ export default function InventarioPage() {
                     <TableRow key={prod.inventoryItemId}>
                       <TableCell className="border-r">{prod.sku}</TableCell>
                       <TableCell className="border-r">{prod.name}</TableCell>
-                      <TableCell className="border-r">{prod.descripcion}</TableCell>
+                      <TableCell className="border-r">
+                        {prod.descripcion}
+                      </TableCell>
                       <TableCell className="border-r">
                         {Object.entries(prod.attributes)
                           .map(([k, v]) => `${k}: ${v}`)
                           .join(" / ")}
                       </TableCell>
-                      <TableCell className="border-r">{prod.quantity}</TableCell>
-                      <TableCell className="border-r">${prod.priceBase}</TableCell>
-                      <TableCell className="border-r">${prod.priceVta}</TableCell>
+                      <TableCell className="border-r">
+                        {prod.quantity}
+                      </TableCell>
+                      <TableCell className="border-r">
+                        ${prod.priceBase}
+                      </TableCell>
+                      <TableCell className="border-r">
+                        ${prod.priceVta}
+                      </TableCell>
                       <TableCell className="text-right space-x-1">
-                        <Button
-                          size="icon"
-                          variant="outline"
-                          title="Agregar Stock"
-                          onClick={() => {
-                            setSelectedItem(prod);
-                            setAddStockOpen(true);
-                          }}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </Button>
                         <Button
                           size="icon"
                           variant="outline"
@@ -548,10 +574,12 @@ export default function InventarioPage() {
         onSuccess={() => {
           // Recargar items del inventario
           if (selectedInventoryId) {
-            axios.get(
-              `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`
-            ).then(res => setInventoryItems(res.data))
-              .catch(err => console.error(err));
+            axios
+              .get(
+                `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`,
+              )
+              .then((res) => setInventoryItems(res.data))
+              .catch((err) => console.error(err));
           }
         }}
       />
@@ -565,10 +593,12 @@ export default function InventarioPage() {
         onSuccess={() => {
           // Recargar items del inventario
           if (selectedInventoryId) {
-            axios.get(
-              `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`
-            ).then(res => setInventoryItems(res.data))
-              .catch(err => console.error(err));
+            axios
+              .get(
+                `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`,
+              )
+              .then((res) => setInventoryItems(res.data))
+              .catch((err) => console.error(err));
           }
         }}
       />

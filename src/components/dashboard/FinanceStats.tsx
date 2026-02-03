@@ -13,6 +13,8 @@ import {
   Legend,
   AreaChart,
   Area,
+  BarChart,
+  Bar,
 } from "recharts";
 import {
   Wallet,
@@ -21,11 +23,29 @@ import {
   BarChart3,
   Receipt,
   Package,
+  CreditCard,
+  DollarSign,
+  PieChart,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardCard } from "./DashboardCard";
+import { PeriodSelector } from "./PeriodSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
 interface BillingStats {
   month: number;
@@ -74,25 +94,97 @@ export const FinanceStats: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [billing, setBilling] = useState<BillingStats[]>([]);
   const [inventoryValue, setInventoryValue] = useState(0);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
 
-  const fetchData = async () => {
+  // Receivables state
+  const [receivables, setReceivables] = useState<{
+    pendingOrders: any[];
+    pendingTotal: number;
+    paidTotal: number;
+    limaCount: number;
+    provinciaCount: number;
+    avgTicket: number;
+  }>({
+    pendingOrders: [],
+    pendingTotal: 0,
+    paidTotal: 0,
+    limaCount: 0,
+    provinciaCount: 0,
+    avgTicket: 0,
+  });
+  const [receivablesModalOpen, setReceivablesModalOpen] = useState(false);
+
+  // Courier stats
+  const [courierStats, setCourierStats] = useState<
+    Array<{
+      courierName: string;
+      ordersCount: number;
+      shippingRevenue: number;
+      percentage: number;
+    }>
+  >([]);
+
+  const fetchData = async (from?: string, to?: string) => {
     if (!selectedStoreId) return;
     setLoading(true);
     try {
-      const [billingRes, invRes] = await Promise.all([
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
-          params: { storeId: selectedStoreId },
-        }),
-        axios.get(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/stats/inventory-value`,
-          {
-            params: { storeId: selectedStoreId },
-          },
-        ),
-      ]);
+      const params: Record<string, string> = { storeId: selectedStoreId };
+      if (from) params.fromDate = from;
+      if (to) params.toDate = to;
+
+      const [billingRes, invRes, receivablesRes, courierRes] =
+        await Promise.all([
+          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
+            params,
+          }),
+          axios.get(
+            `${process.env.NEXT_PUBLIC_API_INVENTORY}/stats/inventory-value`,
+            {
+              params: { storeId: selectedStoreId },
+            },
+          ),
+          // Fetch receivables (pending payments)
+          axios
+            .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/receivables`, {
+              params,
+            })
+            .catch(() => ({
+              data: {
+                pendingTotal: 0,
+                limaCount: 0,
+                provinciaCount: 0,
+                avgTicket: 0,
+                pendingOrders: [],
+              },
+            })),
+          // Fetch courier stats
+          axios
+            .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-courier`, {
+              params,
+            })
+            .catch(() => ({ data: [] })),
+        ]);
 
       setBilling(billingRes.data || []);
       setInventoryValue(invRes.data?.totalValue || 0);
+
+      // Process receivables
+      const receivablesData = receivablesRes.data || {
+        pendingTotal: 0,
+        limaCount: 0,
+        provinciaCount: 0,
+        avgTicket: 0,
+        pendingOrders: [],
+      };
+
+      setReceivables({
+        ...receivablesData,
+        paidTotal: 0, // Will be calculated from billing
+      });
+
+      // Process courier stats
+      setCourierStats(courierRes.data || []);
     } catch (error) {
       console.error("Error fetching finance stats:", error);
     } finally {
@@ -101,8 +193,15 @@ export const FinanceStats: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [selectedStoreId]);
+    if (fromDate && toDate) {
+      fetchData(fromDate, toDate);
+    }
+  }, [selectedStoreId, fromDate, toDate]);
+
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
 
   const currentYearSales = billing.reduce((sum, b) => sum + b.currentYear, 0);
   const previousYearSales = billing.reduce((sum, b) => sum + b.previousYear, 0);
@@ -120,36 +219,60 @@ export const FinanceStats: React.FC = () => {
             Estado de ingresos, egresos y valorización de activos
           </p>
         </div>
+        <PeriodSelector onPeriodChange={handlePeriodChange} />
       </div>
 
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Valor Inventario"
-          value={`S/ ${inventoryValue.toLocaleString()}`}
+          value={`S/ ${inventoryValue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue="Costo de reposición est."
           icon={<Package className="h-5 w-5 text-primary" />}
           loading={loading}
         />
         <StatCard
           title="Ingresos Totales (YTD)"
-          value={`S/ ${currentYearSales.toLocaleString()}`}
+          value={`S/ ${currentYearSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue={`${growth >= 0 ? "+" : ""}${growth.toFixed(1)}% vs año anterior`}
           icon={<Wallet className="h-5 w-5 text-primary" />}
           loading={loading}
         />
+        <div
+          className="cursor-pointer hover:scale-[1.02] transition-transform"
+          onClick={() => setReceivablesModalOpen(true)}
+        >
+          <StatCard
+            title="Cuentas por Cobrar"
+            value={`S/ ${receivables.pendingTotal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
+            subValue={`${receivables.pendingOrders.length} pedidos pendientes`}
+            icon={<CreditCard className="h-5 w-5 text-orange-500" />}
+            loading={loading}
+          />
+        </div>
+      </div>
+
+      {/* Second KPI Row - Receivables Breakdown */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard
-          title="Facturación Media"
-          value={`S/ ${Math.round(currentYearSales / (billing.filter((b) => b.currentYear > 0).length || 1)).toLocaleString()}`}
-          subValue="Mensual"
-          icon={<Landmark className="h-5 w-5 text-primary" />}
+          title="Lima / Callao"
+          value={receivables.limaCount}
+          subValue="Pedidos pendientes"
+          icon={<Receipt className="h-5 w-5 text-primary" />}
           loading={loading}
         />
         <StatCard
-          title="Margen Estimado"
-          value="32.4%"
-          subValue="Bruto antes de operativos"
-          icon={<TrendingDown className="h-5 w-5 text-primary" />}
+          title="Provincia"
+          value={receivables.provinciaCount}
+          subValue="Pedidos pendientes"
+          icon={<Receipt className="h-5 w-5 text-primary" />}
+          loading={loading}
+        />
+        <StatCard
+          title="Ticket Promedio Pendiente"
+          value={`S/ ${receivables.avgTicket.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
+          subValue="Por cobrar"
+          icon={<BarChart3 className="h-5 w-5 text-primary" />}
           loading={loading}
         />
       </div>
@@ -196,9 +319,12 @@ export const FinanceStats: React.FC = () => {
                   style={{ fontSize: "12px" }}
                 />
                 <Tooltip
-                  formatter={(value, name) => {
+                  formatter={(value: any, name) => {
                     if (name === "Actual" || name === "Anterior")
-                      return [`S/ ${value.toLocaleString()}`, "Venta"];
+                      return [
+                        `S/ ${value.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+                        "Venta",
+                      ];
                     return [value, name];
                   }}
                   labelStyle={{ fontWeight: "bold", marginBottom: "4px" }}
@@ -212,11 +338,14 @@ export const FinanceStats: React.FC = () => {
                           </p>
                           <div className="space-y-1">
                             <div className="flex justify-between gap-4">
-                              <span className="text-blue-600 font-medium italic">
+                              <span className="text-blue-600 font-medium">
                                 Este Año:
                               </span>
                               <span className="font-bold">
-                                S/ {data.Actual.toLocaleString()}
+                                S/{" "}
+                                {data.Actual.toLocaleString("es-PE", {
+                                  minimumFractionDigits: 2,
+                                })}
                               </span>
                             </div>
                             <div className="flex justify-between gap-4">
@@ -224,7 +353,10 @@ export const FinanceStats: React.FC = () => {
                                 Año Anterior:
                               </span>
                               <span className="text-gray-500 italic">
-                                S/ {data.Anterior.toLocaleString()}
+                                S/{" "}
+                                {data.Anterior.toLocaleString("es-PE", {
+                                  minimumFractionDigits: 2,
+                                })}
                               </span>
                             </div>
                             <div className="mt-2 pt-2 border-t flex justify-between gap-4">
@@ -292,13 +424,255 @@ export const FinanceStats: React.FC = () => {
                     </span>
                   </div>
                   <span className="font-bold text-gray-900">
-                    S/ {b.currentYear.toLocaleString()}
+                    S/{" "}
+                    {b.currentYear.toLocaleString("es-PE", {
+                      minimumFractionDigits: 2,
+                    })}
                   </span>
                 </div>
               ))}
           </div>
         </DashboardCard>
       </div>
+
+      {/* Courier Revenue Chart */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <DashboardCard
+          title="Ingresos por Courier"
+          isLoading={loading}
+          data={courierStats}
+        >
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart
+              data={courierStats}
+              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <XAxis
+                dataKey="courierName"
+                tick={{ fontSize: 12 }}
+                tickFormatter={(v) =>
+                  v.length > 10 ? v.substring(0, 10) + "..." : v
+                }
+              />
+              <YAxis
+                tick={{ fontSize: 12 }}
+                tickFormatter={(v) => `S/ ${v.toLocaleString()}`}
+              />
+              <Tooltip
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                      <div className="bg-white p-3 rounded-lg shadow-lg border">
+                        <p className="font-bold text-gray-800">
+                          {data.courierName}
+                        </p>
+                        <div className="mt-2 space-y-1 text-sm">
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-500">
+                              Ingresos Envío:
+                            </span>
+                            <span className="font-bold text-green-600">
+                              S/{" "}
+                              {data.shippingRevenue.toLocaleString("es-PE", {
+                                minimumFractionDigits: 2,
+                              })}
+                            </span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-500">Órdenes:</span>
+                            <span className="font-bold">
+                              {data.ordersCount}
+                            </span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-gray-500">
+                              Participación:
+                            </span>
+                            <span className="font-bold">
+                              {data.percentage}%
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Bar
+                dataKey="shippingRevenue"
+                fill="#10b981"
+                radius={[4, 4, 0, 0]}
+                name="Ingresos Envío"
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </DashboardCard>
+
+        {/* Courier Summary Table */}
+        <DashboardCard
+          title="Resumen por Courier"
+          isLoading={loading}
+          data={courierStats}
+        >
+          <div className="space-y-3 max-h-[280px] overflow-y-auto">
+            {courierStats.length === 0 ? (
+              <div className="text-center text-gray-400 py-8">
+                Sin datos de courier
+              </div>
+            ) : (
+              courierStats.map((c) => (
+                <div
+                  key={c.courierName}
+                  className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-green-50 text-green-600 rounded-lg">
+                      <Package className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <span className="font-medium text-gray-700 block">
+                        {c.courierName}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {c.ordersCount} órdenes
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-bold text-gray-900 block">
+                      S/{" "}
+                      {c.shippingRevenue.toLocaleString("es-PE", {
+                        minimumFractionDigits: 2,
+                      })}
+                    </span>
+                    <span className="text-xs text-green-600">
+                      {c.percentage}%
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </DashboardCard>
+      </div>
+
+      {/* Receivables Modal */}
+      <Dialog
+        open={receivablesModalOpen}
+        onOpenChange={setReceivablesModalOpen}
+      >
+        <DialogContent className="sm:max-w-7xl w-[90vw] max-h-[85vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">
+              Cuentas por Cobrar - Detalle
+            </DialogTitle>
+          </DialogHeader>
+
+          {/* Summary Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-b">
+            <div className="text-center p-3 bg-orange-50 rounded-lg">
+              <p className="text-xs text-gray-500 uppercase">Total Pendiente</p>
+              <p className="text-lg font-bold text-orange-600">
+                S/{" "}
+                {receivables.pendingTotal.toLocaleString("es-PE", {
+                  minimumFractionDigits: 2,
+                })}
+              </p>
+            </div>
+            <div className="text-center p-3 bg-blue-50 rounded-lg">
+              <p className="text-xs text-gray-500 uppercase">
+                Pedidos Lima/Callao
+              </p>
+              <p className="text-lg font-bold text-blue-600">
+                {receivables.limaCount}
+              </p>
+            </div>
+            <div className="text-center p-3 bg-purple-50 rounded-lg">
+              <p className="text-xs text-gray-500 uppercase">
+                Pedidos Provincia
+              </p>
+              <p className="text-lg font-bold text-purple-600">
+                {receivables.provinciaCount}
+              </p>
+            </div>
+            <div className="text-center p-3 bg-green-50 rounded-lg">
+              <p className="text-xs text-gray-500 uppercase">Ticket Promedio</p>
+              <p className="text-lg font-bold text-green-600">
+                S/{" "}
+                {receivables.avgTicket.toLocaleString("es-PE", {
+                  minimumFractionDigits: 2,
+                })}
+              </p>
+            </div>
+          </div>
+
+          {/* Pending Orders Table */}
+          <div className="flex-1 overflow-auto mt-4 rounded-md border">
+            <Table>
+              <TableHeader className="bg-gray-50 sticky top-0">
+                <TableRow>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                    N° Orden
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                    Cliente
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                    Distrito
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                    Zona
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                    Pendiente
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {receivables.pendingOrders.map((order: any) => (
+                  <TableRow key={order.id || order.orderNumber}>
+                    <TableCell className="font-medium">
+                      {order.orderNumber}
+                    </TableCell>
+                    <TableCell>{order.customerName || "Sin nombre"}</TableCell>
+                    <TableCell>{order.district || "-"}</TableCell>
+                    <TableCell>
+                      <span
+                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          ["LIMA", "CALLAO"].some((d) =>
+                            (order.district || "").toUpperCase().includes(d),
+                          )
+                            ? "bg-blue-100 text-blue-700"
+                            : "bg-purple-100 text-purple-700"
+                        }`}
+                      >
+                        {["LIMA", "CALLAO"].some((d) =>
+                          (order.district || "").toUpperCase().includes(d),
+                        )
+                          ? "Lima"
+                          : "Provincia"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right font-bold">
+                      S/{" "}
+                      {(
+                        order.pendingPayment ||
+                        order.grandTotal ||
+                        0
+                      ).toLocaleString("es-PE", { minimumFractionDigits: 2 })}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Profitability Modal Removed */}
     </div>
   );
 };

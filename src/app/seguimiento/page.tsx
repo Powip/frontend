@@ -12,6 +12,8 @@ import {
   AlertTriangle,
   Clock,
   FileDown,
+  Loader2,
+  Check,
 } from "lucide-react";
 import { exportSeguimientoToExcel } from "@/utils/exportSalesExcel";
 
@@ -205,6 +207,20 @@ export default function SeguimientoPage() {
     notes: string;
   } | null>(null);
 
+  // State for inline tracking field editing
+  const [trackingEdits, setTrackingEdits] = useState<
+    Record<
+      string,
+      {
+        externalTrackingNumber: string;
+        shippingCode: string;
+        shippingKey: string;
+        shippingOffice: string;
+      }
+    >
+  >({});
+  const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+
   const { auth, selectedStoreId } = useAuth();
 
   // Fetch orders with EN_ENVIO status
@@ -255,6 +271,27 @@ export default function SeguimientoPage() {
       );
 
       setEnvios(envioItems);
+
+      // Initialize tracking edits from order data
+      const edits: Record<
+        string,
+        {
+          externalTrackingNumber: string;
+          shippingCode: string;
+          shippingKey: string;
+          shippingOffice: string;
+        }
+      > = {};
+      envioItems.forEach((item) => {
+        const o = item.order;
+        edits[o.id] = {
+          externalTrackingNumber: (o as any).externalTrackingNumber || "",
+          shippingCode: (o as any).shippingCode || "",
+          shippingKey: (o as any).shippingKey || "",
+          shippingOffice: (o as any).shippingOffice || "",
+        };
+      });
+      setTrackingEdits(edits);
 
       // Update order map
       const mapping: Record<string, string> = {};
@@ -402,6 +439,88 @@ export default function SeguimientoPage() {
 
   const clearFilters = () => {
     setFilters(emptyFilters);
+  };
+
+  // Update tracking field locally
+  const updateTrackingField = (
+    orderId: string,
+    field: keyof (typeof trackingEdits)[string],
+    value: string,
+  ) => {
+    setTrackingEdits((prev) => ({
+      ...prev,
+      [orderId]: {
+        ...prev[orderId],
+        [field]: value,
+      },
+    }));
+  };
+
+  // Check if tracking data has changed for an order
+  const hasTrackingChanges = (orderId: string): boolean => {
+    const current = trackingEdits[orderId];
+    const envioItem = envios.find((e) => e.order.id === orderId);
+    if (!current || !envioItem) return false;
+
+    const original = {
+      externalTrackingNumber:
+        (envioItem.order as any).externalTrackingNumber || "",
+      shippingCode: (envioItem.order as any).shippingCode || "",
+      shippingKey: (envioItem.order as any).shippingKey || "",
+      shippingOffice: (envioItem.order as any).shippingOffice || "",
+    };
+
+    return (
+      current.externalTrackingNumber !== original.externalTrackingNumber ||
+      current.shippingCode !== original.shippingCode ||
+      current.shippingKey !== original.shippingKey ||
+      current.shippingOffice !== original.shippingOffice
+    );
+  };
+
+  // Save tracking fields for an order - only if changed
+  const handleSaveTracking = async (orderId: string) => {
+    // Only save if there are actual changes
+    if (!hasTrackingChanges(orderId)) return;
+
+    const data = trackingEdits[orderId];
+    if (!data) return;
+
+    setSavingOrderId(orderId);
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+        {
+          externalTrackingNumber: data.externalTrackingNumber || null,
+          shippingCode: data.shippingCode || null,
+          shippingKey: data.shippingKey || null,
+          shippingOffice: data.shippingOffice || null,
+        },
+      );
+      // Update local state to sync original values (avoids table refresh)
+      setEnvios((prev) =>
+        prev.map((item) =>
+          item.order.id === orderId
+            ? {
+                ...item,
+                order: {
+                  ...item.order,
+                  externalTrackingNumber: data.externalTrackingNumber || null,
+                  shippingCode: data.shippingCode || null,
+                  shippingKey: data.shippingKey || null,
+                  shippingOffice: data.shippingOffice || null,
+                } as any,
+              }
+            : item,
+        ),
+      );
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "Error al guardar tracking",
+      );
+    } finally {
+      setSavingOrderId(null);
+    }
   };
 
   const handleOpenGuide = (item: EnvioItem) => {
@@ -750,9 +869,12 @@ export default function SeguimientoPage() {
                         <TableHead>Enviado Por</TableHead>
                         <TableHead>Días</TableHead>
                         <TableHead>Estado Envío</TableHead>
+                        <TableHead>Nro Tracking</TableHead>
+                        <TableHead>Código</TableHead>
+                        <TableHead>Clave</TableHead>
+                        <TableHead>Oficina</TableHead>
                         <TableHead>Saldo</TableHead>
                         <TableHead>Guía</TableHead>
-                        <TableHead>Resumen</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -875,6 +997,115 @@ export default function SeguimientoPage() {
                                 </SelectContent>
                               </Select>
                             </TableCell>
+                            {/* Nro Tracking */}
+                            <TableCell>
+                              <div className="relative flex items-center">
+                                <input
+                                  type="text"
+                                  className={`w-24 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                    savingOrderId === order.id
+                                      ? "opacity-50 border-orange-400 pr-6"
+                                      : "focus:border-orange-500"
+                                  }`}
+                                  placeholder="Nro..."
+                                  value={
+                                    trackingEdits[order.id]
+                                      ?.externalTrackingNumber || ""
+                                  }
+                                  onChange={(e) =>
+                                    updateTrackingField(
+                                      order.id,
+                                      "externalTrackingNumber",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onBlur={() => handleSaveTracking(order.id)}
+                                  disabled={savingOrderId === order.id}
+                                />
+                                {savingOrderId === order.id && (
+                                  <Loader2 className="absolute right-1.5 h-3 w-3 animate-spin text-orange-500" />
+                                )}
+                              </div>
+                            </TableCell>
+                            {/* Código */}
+                            <TableCell>
+                              <div className="relative flex items-center">
+                                <input
+                                  type="text"
+                                  className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                    savingOrderId === order.id
+                                      ? "opacity-50 border-orange-400 pr-5"
+                                      : "focus:border-orange-500"
+                                  }`}
+                                  placeholder="Código"
+                                  value={
+                                    trackingEdits[order.id]?.shippingCode || ""
+                                  }
+                                  onChange={(e) =>
+                                    updateTrackingField(
+                                      order.id,
+                                      "shippingCode",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onBlur={() => handleSaveTracking(order.id)}
+                                  disabled={savingOrderId === order.id}
+                                />
+                              </div>
+                            </TableCell>
+                            {/* Clave */}
+                            <TableCell>
+                              <div className="relative flex items-center">
+                                <input
+                                  type="text"
+                                  className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                    savingOrderId === order.id
+                                      ? "opacity-50 border-orange-400 pr-5"
+                                      : "focus:border-orange-500"
+                                  }`}
+                                  placeholder="Clave"
+                                  value={
+                                    trackingEdits[order.id]?.shippingKey || ""
+                                  }
+                                  onChange={(e) =>
+                                    updateTrackingField(
+                                      order.id,
+                                      "shippingKey",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onBlur={() => handleSaveTracking(order.id)}
+                                  disabled={savingOrderId === order.id}
+                                />
+                              </div>
+                            </TableCell>
+                            {/* Oficina */}
+                            <TableCell>
+                              <div className="relative flex items-center">
+                                <input
+                                  type="text"
+                                  className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                    savingOrderId === order.id
+                                      ? "opacity-50 border-orange-400 pr-6"
+                                      : "focus:border-orange-500"
+                                  }`}
+                                  placeholder="Oficina..."
+                                  value={
+                                    trackingEdits[order.id]?.shippingOffice ||
+                                    ""
+                                  }
+                                  onChange={(e) =>
+                                    updateTrackingField(
+                                      order.id,
+                                      "shippingOffice",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onBlur={() => handleSaveTracking(order.id)}
+                                  disabled={savingOrderId === order.id}
+                                />
+                              </div>
+                            </TableCell>
                             <TableCell>
                               {pendingPayment > 0 ? (
                                 <Badge className="bg-red-100 text-red-800">
@@ -899,19 +1130,17 @@ export default function SeguimientoPage() {
                                 <span className="text-muted-foreground">-</span>
                               )}
                             </TableCell>
-                            <TableCell>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 gap-1"
-                                onClick={() => handleOpenOrder(item)}
-                              >
-                                <FileText className="h-4 w-4" />
-                                Ver
-                              </Button>
-                            </TableCell>
                             <TableCell className="text-right">
                               <div className="flex justify-end items-center gap-1">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => handleOpenOrder(item)}
+                                  title="Ver Detalle"
+                                >
+                                  <Eye className="h-4 w-4 text-muted-foreground" />
+                                </Button>
                                 <Button
                                   variant="ghost"
                                   size="sm"

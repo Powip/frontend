@@ -80,7 +80,7 @@ const calculatePendingPayment = (order: OrderHeader): number => {
   const grandTotal = parseFloat(order.grandTotal) || 0;
   if (!order.payments) return grandTotal;
   const totalPaid = order.payments
-    .filter(p => p && p.status === "PAID")
+    .filter((p) => p && p.status === "PAID")
     .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
   return grandTotal - totalPaid;
 };
@@ -93,19 +93,19 @@ export default function ProvinciaShipmentModal({
 }: ProvinciaShipmentModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  
+
   // Editable fields
   const [externalGuideReference, setExternalGuideReference] = useState("");
   const [shippingKey, setShippingKey] = useState("");
   const [shippingOffice, setShippingOffice] = useState("");
   const [shippingProofUrl, setShippingProofUrl] = useState("");
-  
+
   // Payment modal state
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
-  
+
   // Receipt modal state (for printing order label)
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
-  
+
   // File upload state
   const [uploadingProof, setUploadingProof] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -139,7 +139,7 @@ export default function ProvinciaShipmentModal({
           shippingKey,
           shippingOffice,
           shippingProofUrl,
-        }
+        },
       );
       toast.success("Datos de envío actualizados");
       setIsEditing(false);
@@ -167,13 +167,14 @@ export default function ProvinciaShipmentModal({
           headers: {
             "Content-Type": "multipart/form-data",
           },
-        }
+        },
       );
 
       toast.success("Comprobante subido correctamente");
       onUpdate();
     } catch (error: any) {
-      const message = error?.response?.data?.message || "Error al subir comprobante";
+      const message =
+        error?.response?.data?.message || "Error al subir comprobante";
       toast.error(message);
     } finally {
       setUploadingProof(false);
@@ -190,7 +191,11 @@ export default function ProvinciaShipmentModal({
   const formatDate = (dateStr?: string | Date) => {
     if (!dateStr) return "-";
     const date = new Date(dateStr);
-    return date.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" });
+    return date.toLocaleDateString("es-PE", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    });
   };
 
   const getDaysColor = (days: number) => {
@@ -203,9 +208,9 @@ export default function ProvinciaShipmentModal({
   const handleWhatsApp = () => {
     const phone = order.customer?.phoneNumber?.replace(/\D/g, "") || "";
     const countryCode = phone.startsWith("51") ? "" : "51";
-    
+
     // Build message with tracking URL
-    const trackingUrl = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/rastreo/${order.orderNumber}`;
+    const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${order.orderNumber}`;
     let message = `Hola ${order.customer?.fullName || ""},\n\n`;
     message += `Tu pedido #${order.orderNumber} está en camino.\n\n`;
     message += `📦 Rastrea tu pedido aquí: ${trackingUrl}`;
@@ -230,7 +235,7 @@ export default function ProvinciaShipmentModal({
 
   const handlePrintShippingLabel = () => {
     // Print a simple shipping label with client and tracking info
-    const printWindow = window.open('', '_blank', 'width=400,height=600');
+    const printWindow = window.open("", "_blank", "width=400,height=600");
     if (!printWindow) {
       toast.error("No se pudo abrir la ventana de impresión");
       return;
@@ -291,30 +296,34 @@ export default function ProvinciaShipmentModal({
 
         <div class="section">
           <div class="section-title">Destinatario</div>
-          <div class="field"><span class="label">Nombre:</span> <span class="value">${order.customer?.fullName || '-'}</span></div>
-          <div class="field"><span class="label">Teléfono:</span> <span class="value">${order.customer?.phoneNumber || '-'}</span></div>
-          <div class="field"><span class="label">DNI:</span> <span class="value">${order.customer?.documentNumber || '-'}</span></div>
+          <div class="field"><span class="label">Nombre:</span> <span class="value">${order.customer?.fullName || "-"}</span></div>
+          <div class="field"><span class="label">Teléfono:</span> <span class="value">${order.customer?.phoneNumber || "-"}</span></div>
+          <div class="field"><span class="label">DNI:</span> <span class="value">${order.customer?.documentNumber || "-"}</span></div>
         </div>
 
         <div class="section">
           <div class="section-title">Dirección de Entrega</div>
-          <div class="field"><span class="value">${order.customer?.address || '-'}</span></div>
-          <div class="field">${order.customer?.district || '-'}, ${order.customer?.city || '-'}</div>
-          <div class="field">${order.customer?.province || '-'}</div>
+          <div class="field"><span class="value">${order.customer?.address || "-"}</span></div>
+          <div class="field">${order.customer?.district || "-"}, ${order.customer?.city || "-"}</div>
+          <div class="field">${order.customer?.province || "-"}</div>
         </div>
 
-        ${guide ? `
+        ${
+          guide
+            ? `
         <div class="section">
           <div class="section-title">Transporte</div>
-          <div class="field"><span class="label">Empresa:</span> <span class="value">${guide.courierName || order.courier || '-'}</span></div>
-          <div class="field"><span class="label">Oficina:</span> <span class="value">${guide.shippingOffice || '-'}</span></div>
+          <div class="field"><span class="label">Empresa:</span> <span class="value">${guide.courierName || order.courier || "-"}</span></div>
+          <div class="field"><span class="label">Oficina:</span> <span class="value">${guide.shippingOffice || "-"}</span></div>
         </div>
 
         <div class="tracking-box">
           <div class="label">TRACKING</div>
-          <div class="tracking-num">${guide.externalGuideReference || '-'}</div>
+          <div class="tracking-num">${guide.externalGuideReference || "-"}</div>
         </div>
-        ` : ''}
+        `
+            : ""
+        }
       </body>
       </html>
     `;
@@ -349,22 +358,55 @@ export default function ProvinciaShipmentModal({
               <div className="space-y-2 text-sm">
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Nombre:</span>
-                  <span className="font-medium">{order.customer?.fullName || "-"}</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToClipboard(order.customer?.fullName || "", "Nombre")}>
+                  <span className="font-medium">
+                    {order.customer?.fullName || "-"}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() =>
+                      copyToClipboard(order.customer?.fullName || "", "Nombre")
+                    }
+                  >
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">DNI:</span>
-                  <span className="font-medium">{order.customer?.documentNumber || "-"}</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToClipboard(order.customer?.documentNumber || "", "DNI")}>
+                  <span className="font-medium">
+                    {order.customer?.documentNumber || "-"}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() =>
+                      copyToClipboard(
+                        order.customer?.documentNumber || "",
+                        "DNI",
+                      )
+                    }
+                  >
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Teléfono:</span>
-                  <span className="font-medium">{order.customer?.phoneNumber || "-"}</span>
-                  <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => copyToClipboard(order.customer?.phoneNumber || "", "Teléfono")}>
+                  <span className="font-medium">
+                    {order.customer?.phoneNumber || "-"}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() =>
+                      copyToClipboard(
+                        order.customer?.phoneNumber || "",
+                        "Teléfono",
+                      )
+                    }
+                  >
                     <Copy className="h-3 w-3" />
                   </Button>
                 </div>
@@ -377,10 +419,30 @@ export default function ProvinciaShipmentModal({
                 Dirección:
               </h4>
               <div className="space-y-2 text-sm">
-                <div><span className="text-muted-foreground">Departamento:</span> <span className="font-medium">{order.customer?.province || "-"}</span></div>
-                <div><span className="text-muted-foreground">Provincia:</span> <span className="font-medium">{order.customer?.city || "-"}</span></div>
-                <div><span className="text-muted-foreground">Distrito:</span> <span className="font-medium">{order.customer?.district || "-"}</span></div>
-                <div><span className="text-muted-foreground">Dirección:</span> <span className="font-medium">{order.customer?.address || "-"}</span></div>
+                <div>
+                  <span className="text-muted-foreground">Departamento:</span>{" "}
+                  <span className="font-medium">
+                    {order.customer?.province || "-"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Provincia:</span>{" "}
+                  <span className="font-medium">
+                    {order.customer?.city || "-"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Distrito:</span>{" "}
+                  <span className="font-medium">
+                    {order.customer?.district || "-"}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Dirección:</span>{" "}
+                  <span className="font-medium">
+                    {order.customer?.address || "-"}
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -391,15 +453,19 @@ export default function ProvinciaShipmentModal({
               <Package className="h-4 w-4" />
               Datos de transporte:
             </h4>
-            
+
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">Fecha de envío:</span>{" "}
-                <span className="font-medium">{formatDate(guide?.created_at)}</span>
+                <span className="font-medium">
+                  {formatDate(guide?.created_at)}
+                </span>
               </div>
               <div>
                 <span className="text-muted-foreground">Empresa:</span>{" "}
-                <span className="font-medium">{guide?.courierName || order.courier || "-"}</span>
+                <span className="font-medium">
+                  {guide?.courierName || order.courier || "-"}
+                </span>
               </div>
               <div>
                 <span className="text-muted-foreground">Orden:</span>{" "}
@@ -407,16 +473,24 @@ export default function ProvinciaShipmentModal({
               </div>
               <div>
                 <span className="text-muted-foreground">Guía:</span>{" "}
-                <span className="font-medium">{guide?.guideNumber || order.guideNumber || "-"}</span>
+                <span className="font-medium">
+                  {guide?.guideNumber || order.guideNumber || "-"}
+                </span>
               </div>
               <div>
                 <span className="text-muted-foreground">Estado:</span>{" "}
-                <Badge 
+                <Badge
                   variant="outline"
-                  className={guide?.status === "ENTREGADA" ? "bg-green-100 text-green-800" : 
-                             guide?.status === "EN_RUTA" ? "bg-blue-100 text-blue-800" :
-                             guide?.status === "FALLIDA" || guide?.status === "CANCELADA" ? "bg-red-100 text-red-800" :
-                             "bg-gray-100 text-gray-800"}
+                  className={
+                    guide?.status === "ENTREGADA"
+                      ? "bg-green-100 text-green-800"
+                      : guide?.status === "EN_RUTA"
+                        ? "bg-blue-100 text-blue-800"
+                        : guide?.status === "FALLIDA" ||
+                            guide?.status === "CANCELADA"
+                          ? "bg-red-100 text-red-800"
+                          : "bg-gray-100 text-gray-800"
+                  }
                 >
                   {guide?.status || "-"}
                 </Badge>
@@ -440,11 +514,13 @@ export default function ProvinciaShipmentModal({
                       />
                     ) : (
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{guide?.shippingOffice || "-"}</span>
+                        <span className="font-medium">
+                          {guide?.shippingOffice || "-"}
+                        </span>
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-1">
                     <Label className="text-xs flex items-center gap-1">
                       <FileText className="h-3 w-3" /> Tracking / Referencia
@@ -452,13 +528,17 @@ export default function ProvinciaShipmentModal({
                     {isEditing ? (
                       <Input
                         value={externalGuideReference}
-                        onChange={(e) => setExternalGuideReference(e.target.value)}
+                        onChange={(e) =>
+                          setExternalGuideReference(e.target.value)
+                        }
                         placeholder="Ej: FRE-444"
                         className="h-8"
                       />
                     ) : (
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{guide?.externalGuideReference || "-"}</span>
+                        <span className="font-medium">
+                          {guide?.externalGuideReference || "-"}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -479,7 +559,9 @@ export default function ProvinciaShipmentModal({
                     ) : (
                       <div className="flex items-center gap-2">
                         {isPaid ? (
-                          <span className="font-medium text-lg">{guide?.shippingKey || "-"}</span>
+                          <span className="font-medium text-lg">
+                            {guide?.shippingKey || "-"}
+                          </span>
                         ) : (
                           <Badge className="bg-amber-100 text-amber-800">
                             Pago pendiente - Clave oculta
@@ -500,7 +582,8 @@ export default function ProvinciaShipmentModal({
                         </Badge>
                       ) : uploadingProof ? (
                         <Badge className="bg-blue-100 text-blue-800 border-blue-200 flex items-center gap-1 px-3 py-1">
-                          <Loader2 className="h-3 w-3 animate-spin" /> Subiendo...
+                          <Loader2 className="h-3 w-3 animate-spin" />{" "}
+                          Subiendo...
                         </Badge>
                       ) : (
                         <Badge className="bg-red-100 text-red-800 border-red-200 flex items-center gap-1 px-3 py-1">
@@ -519,8 +602,12 @@ export default function ProvinciaShipmentModal({
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">DÍAS TRANSCURRIDOS:</span>
-                <span className={`text-lg font-bold ${getDaysColor(daysSinceCreated)}`}>
+                <span className="text-sm text-muted-foreground">
+                  DÍAS TRANSCURRIDOS:
+                </span>
+                <span
+                  className={`text-lg font-bold ${getDaysColor(daysSinceCreated)}`}
+                >
                   {daysSinceCreated} DÍAS
                 </span>
               </div>
@@ -552,16 +639,17 @@ export default function ProvinciaShipmentModal({
               <MessageCircle className="h-4 w-4 mr-1" /> WhatsApp
             </Button>
 
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className={isPaid 
-                ? "bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
-                : "bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200"
+            <Button
+              variant="outline"
+              size="sm"
+              className={
+                isPaid
+                  ? "bg-green-50 hover:bg-green-100 text-green-700 border-green-200"
+                  : "bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200"
               }
               onClick={() => setPaymentModalOpen(true)}
             >
-              <DollarSign className="h-4 w-4 mr-1" /> 
+              <DollarSign className="h-4 w-4 mr-1" />
               {isPaid ? "Ver Pagos" : "Gestionar Pagos"}
             </Button>
 
@@ -576,7 +664,9 @@ export default function ProvinciaShipmentModal({
                 <Eye className="h-4 w-4 mr-1" /> Ver Comprobante
               </Button>
               {!guide?.shippingProofUrl && (
-                <span className="text-[10px] text-muted-foreground mt-0.5 leading-none">Sin comprobante</span>
+                <span className="text-[10px] text-muted-foreground mt-0.5 leading-none">
+                  Sin comprobante
+                </span>
               )}
             </div>
           </div>
@@ -629,11 +719,17 @@ export default function ProvinciaShipmentModal({
               <>
                 {isEditing ? (
                   <div className="flex gap-2">
-                    <Button variant="outline" onClick={() => setIsEditing(false)} disabled={saving}>
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsEditing(false)}
+                      disabled={saving}
+                    >
                       Cancelar
                     </Button>
                     <Button onClick={handleSave} disabled={saving}>
-                      {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+                      {saving ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      ) : null}
                       Guardar
                     </Button>
                   </div>

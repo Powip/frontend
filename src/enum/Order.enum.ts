@@ -9,6 +9,7 @@ export enum OrderType {
   VENTA = "VENTA",
   RESERVA = "RESERVA",
   PREVENTA = "PREVENTA",
+  CAMBIO = "CAMBIO",
 }
 
 export enum SalesChannel {

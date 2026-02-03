@@ -43,7 +43,7 @@ export interface CartItem {
 ----------------------------------------- */
 export type ReceiptType = "BOLETA" | "FACTURA";
 
-export type OrderType = "VENTA" | "RESERVA" | "PREVENTA";
+export type OrderType = "VENTA" | "RESERVA" | "PREVENTA" | "CAMBIO";
 
 export type SalesChannel =
   | "TIENDA_FISICA"

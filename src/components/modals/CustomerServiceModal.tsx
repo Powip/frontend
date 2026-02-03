@@ -292,7 +292,7 @@ export default function CustomerServiceModal({
     const phone = receipt.customer.phoneNumber?.replace(/\D/g, "") || "";
     const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
 
-    const trackingUrl = `${process.env.NEXT_PUBLIC_FRONTEND_URL}/rastreo/${receipt.orderNumber}`;
+    const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
     const message = `Hola ${receipt.customer.fullName}! Te contactamos por tu pedido ${receipt.orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
 
     window.open(

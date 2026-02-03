@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import axios from "axios";
+import { toast } from "sonner";
 import {
   BarChart,
   Bar,
@@ -24,6 +25,7 @@ import {
   Loader2,
   Eye,
   Download,
+  ChevronRight,
 } from "lucide-react";
 import {
   Dialog,
@@ -80,13 +82,27 @@ const StatCard: React.FC<{
   subValue?: string;
   icon: React.ReactNode;
   loading?: boolean;
-}> = ({ title, value, subValue, icon, loading }) => (
-  <Card className="bg-white/50 backdrop-blur-sm border-gray-100 shadow-sm">
+  onClick?: () => void;
+  clickable?: boolean;
+}> = ({ title, value, subValue, icon, loading, onClick, clickable }) => (
+  <Card className="bg-white/50 backdrop-blur-sm border-gray-100 shadow-sm transition-all">
     <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
       <CardTitle className="text-xs font-medium text-gray-500 uppercase">
         {title}
       </CardTitle>
-      <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
+      <div className="flex items-center gap-2">
+        {clickable && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 text-primary hover:bg-primary/5 mt-[-4px]"
+            onClick={onClick}
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+        )}
+        <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
+      </div>
     </CardHeader>
     <CardContent>
       {loading ? (
@@ -134,12 +150,22 @@ export const Geography: React.FC = () => {
   const [paymentData, setPaymentData] = useState<PaymentStats[]>([]);
   const [deliveryData, setDeliveryData] = useState<DeliveryStats[]>([]);
   const [billingData, setBillingData] = useState<BillingStats[]>([]);
+  const [summaryData, setSummaryData] = useState({
+    deliveredAmount: 0,
+    totalDelivered: 0,
+  });
 
   // Detalle para modal anidado
   const [selectedLocation, setSelectedLocation] = useState<string | null>(null);
   const [detailedOrders, setDetailedOrders] = useState<any[]>([]);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+
+  // Modales de KPI
+  const [isZonesModalOpen, setIsZonesModalOpen] = useState(false);
+  const [isPaymentsModalOpen, setIsPaymentsModalOpen] = useState(false);
+  const [isBillingModalOpen, setIsBillingModalOpen] = useState(false);
+  const [billingOrders, setBillingOrders] = useState<any[]>([]);
 
   // Local filters
   const [geoDimension, setGeoDimension] = useState<
@@ -160,7 +186,7 @@ export const Geography: React.FC = () => {
 
       const locationParams = { ...params, dimension: geoDimension };
 
-      const [locationRes, paymentRes, deliveryRes, billingRes] =
+      const [locationRes, paymentRes, deliveryRes, billingRes, summaryRes] =
         await Promise.all([
           axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-location`, {
             params: locationParams,
@@ -174,12 +200,19 @@ export const Geography: React.FC = () => {
           axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
             params: { storeId: selectedStoreId },
           }),
+          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`, {
+            params,
+          }),
         ]);
 
       setLocationData(locationRes.data);
       setPaymentData(paymentRes.data);
       setDeliveryData(deliveryRes.data);
       setBillingData(billingRes.data);
+      setSummaryData({
+        deliveredAmount: summaryRes.data.deliveredAmount || 0,
+        totalDelivered: summaryRes.data.totalDelivered || 0,
+      });
     } catch (error) {
       console.error("Error al obtener datos geográficos:", error);
     } finally {
@@ -215,12 +248,58 @@ export const Geography: React.FC = () => {
     }
   };
 
+  const fetchBillingOrders = async () => {
+    if (!selectedStoreId) return;
+    setLoadingDetails(true);
+    setIsBillingModalOpen(true);
+    try {
+      // Use the correct singular endpoint that exists in the controller
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+      );
+
+      // Get all orders and filter manually since the backend doesn't support these filters on this endpoint
+      const allOrders = res.data || [];
+
+      // Parse dates for comparison
+      const start = fromDate ? new Date(fromDate + "T00:00:00") : null;
+      const end = toDate ? new Date(toDate + "T23:59:59") : null;
+
+      const filteredOrders = allOrders.filter((o: any) => {
+        // Filter by state (ENTREGADO for billing)
+        if (o.status !== "ENTREGADO") return false;
+
+        // Filter by date range
+        const orderDate = new Date(o.created_at);
+        if (start && orderDate < start) return false;
+        if (end && orderDate > end) return false;
+
+        return true;
+      });
+
+      // Map data for modal display
+      const mappedOrders = filteredOrders.map((o: any) => ({
+        ...o,
+        customerName: o.customer?.fullName || "Sin nombre",
+        paymentMethod:
+          o.payments?.length > 0 ? o.payments[0].paymentMethod : "-",
+        createdAt: o.created_at, // Map for table field
+      }));
+
+      setBillingOrders(mappedOrders);
+    } catch (error) {
+      console.error("Error fetching billing orders:", error);
+      toast.error("No se pudieron obtener las órdenes de facturación");
+    } finally {
+      setLoadingDetails(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, [selectedStoreId, geoDimension]);
 
-  const currentMonthBilling =
-    billingData[new Date().getMonth()]?.currentYear || 0;
+  const periodBilling = summaryData.deliveredAmount;
   const topLocation = locationData[0];
 
   return (
@@ -274,6 +353,8 @@ export const Geography: React.FC = () => {
             }
             icon={<MapPin className="h-5 w-5 text-primary" />}
             loading={loading}
+            clickable
+            onClick={() => setIsZonesModalOpen(true)}
           />
           <StatCard
             title="Pago Líder"
@@ -285,13 +366,17 @@ export const Geography: React.FC = () => {
             }
             icon={<CreditCard className="h-5 w-5 text-primary" />}
             loading={loading}
+            clickable
+            onClick={() => setIsPaymentsModalOpen(true)}
           />
           <StatCard
-            title="Facturación Mes"
-            value={`S/ ${currentMonthBilling.toLocaleString()}`}
-            subValue="Mes actual"
+            title="Facturación del Periodo"
+            value={`S/ ${periodBilling.toLocaleString()}`}
+            subValue="Basado en el filtro seleccionado"
             icon={<Receipt className="h-5 w-5 text-primary" />}
             loading={loading}
+            clickable
+            onClick={fetchBillingOrders}
           />
           <StatCard
             title="Ticket Promedio"
@@ -299,6 +384,8 @@ export const Geography: React.FC = () => {
             subValue="Promedio general"
             icon={<Truck className="h-5 w-5 text-primary" />}
             loading={loading}
+            clickable
+            onClick={() => setIsPaymentsModalOpen(true)}
           />
         </div>
 
@@ -500,9 +587,192 @@ export const Geography: React.FC = () => {
         </div>
       </div>
 
+      {/* Modal Genérico para KPI (Zonas o Pagos) */}
+      <Dialog open={isZonesModalOpen} onOpenChange={setIsZonesModalOpen}>
+        <DialogContent className="sm:max-w-4xl w-[90vw]">
+          <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
+            <DialogTitle>Detalle de Zonas</DialogTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => exportToExcel(locationData, "detalle_zonas")}
+              disabled={locationData.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              Exportar
+            </Button>
+          </DialogHeader>
+          <div className="rounded-md border overflow-hidden">
+            <Table>
+              <TableHeader className="bg-gray-50">
+                <TableRow>
+                  <TableHead className="text-xs font-bold">ZONA</TableHead>
+                  <TableHead className="text-xs font-bold text-right">
+                    ÓRDENES
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-right">
+                    MONTO
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-right">
+                    %
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {locationData.map((item, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="text-xs font-medium">
+                      {item.name}
+                    </TableCell>
+                    <TableCell className="text-xs text-right">
+                      {item.ordersCount}
+                    </TableCell>
+                    <TableCell className="text-xs text-right font-bold">
+                      S/ {item.totalAmount.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-xs text-right text-primary font-medium">
+                      {item.percentage}%
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isPaymentsModalOpen} onOpenChange={setIsPaymentsModalOpen}>
+        <DialogContent className="sm:max-w-4xl w-[90vw]">
+          <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
+            <DialogTitle>Detalle de Métodos de Pago</DialogTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() => exportToExcel(paymentData, "detalle_pagos")}
+              disabled={paymentData.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              Exportar
+            </Button>
+          </DialogHeader>
+          <div className="rounded-md border overflow-hidden">
+            <Table>
+              <TableHeader className="bg-gray-50">
+                <TableRow>
+                  <TableHead className="text-xs font-bold">MÉTODO</TableHead>
+                  <TableHead className="text-xs font-bold text-right">
+                    ÓRDENES
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-right">
+                    MONTO
+                  </TableHead>
+                  <TableHead className="text-xs font-bold text-right">
+                    %
+                  </TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paymentData.map((item, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="text-xs font-medium">
+                      {item.method.replace("_", " ")}
+                    </TableCell>
+                    <TableCell className="text-xs text-right">
+                      {item.ordersCount}
+                    </TableCell>
+                    <TableCell className="text-xs text-right font-bold">
+                      S/ {item.totalAmount.toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-xs text-right text-primary font-medium">
+                      {item.percentage}%
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal de Detalle de Facturación */}
+      <Dialog open={isBillingModalOpen} onOpenChange={setIsBillingModalOpen}>
+        <DialogContent className="sm:max-w-7xl w-[95vw] max-h-[85vh] flex flex-col">
+          <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
+            <div>
+              <DialogTitle>Detalle de Facturación</DialogTitle>
+              <p className="text-xs text-gray-500">
+                Órdenes entregadas en el periodo seleccionado
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-2"
+              onClick={() =>
+                exportToExcel(billingOrders, "detalle_facturacion")
+              }
+              disabled={billingOrders.length === 0}
+            >
+              <Download className="h-4 w-4" />
+              Exportar
+            </Button>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto mt-4 rounded-md border">
+            {loadingDetails ? (
+              <div className="h-60 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <Table>
+                <TableHeader className="bg-gray-50 sticky top-0">
+                  <TableRow>
+                    <TableHead className="text-xs font-bold">
+                      N° ORDEN
+                    </TableHead>
+                    <TableHead className="text-xs font-bold">CLIENTE</TableHead>
+                    <TableHead className="text-xs font-bold">CANAL</TableHead>
+                    <TableHead className="text-xs font-bold">PAGO</TableHead>
+                    <TableHead className="text-xs font-bold text-right">
+                      MONTO
+                    </TableHead>
+                    <TableHead className="text-xs font-bold">FECHA</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {billingOrders.map((order, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-xs font-medium">
+                        {order.orderNumber}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {order.customerName}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {order.salesChannel}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {order.paymentMethod}
+                      </TableCell>
+                      <TableCell className="text-xs text-right font-bold">
+                        S/ {order.grandTotal.toLocaleString()}
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {new Date(order.createdAt).toLocaleDateString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Modal de Detalle de Órdenes por Ubicación */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col p-6">
+        <DialogContent className="sm:max-w-7xl w-[90vw] max-h-[80vh] flex flex-col p-6">
           <DialogHeader className="flex flex-row items-center justify-between pb-4 border-b">
             <div>
               <DialogTitle className="text-lg">
