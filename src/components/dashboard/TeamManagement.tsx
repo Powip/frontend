@@ -49,19 +49,19 @@ const StatCard: React.FC<{
   icon: React.ReactNode;
   loading?: boolean;
 }> = ({ title, value, subValue, icon, loading }) => (
-  <Card className="bg-white/50 backdrop-blur-sm border-gray-100 shadow-sm">
+  <Card className="bg-card/50 backdrop-blur-sm border-border shadow-sm">
     <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-      <CardTitle className="text-xs font-medium text-gray-500 uppercase">
+      <CardTitle className="text-xs font-medium text-muted-foreground uppercase">
         {title}
       </CardTitle>
-      <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
+      <div className="p-2 bg-primary/5 rounded-full text-primary">{icon}</div>
     </CardHeader>
     <CardContent>
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin text-primary" />
       ) : (
         <>
-          <div className="text-xl font-bold text-gray-800">{value}</div>
+          <div className="text-xl font-bold text-foreground">{value}</div>
           {subValue && (
             <p className="text-[10px] font-medium text-primary mt-1">
               {subValue}
@@ -207,11 +207,13 @@ export const TeamManagement: React.FC = () => {
   const currentUserStats = sellers.find((s) => s.sellerId === currentUserId);
 
   return (
-    <div className="flex flex-col h-full w-full overflow-auto bg-gray-50/50 p-6 space-y-6">
+    <div className="flex flex-col h-full w-full overflow-auto bg-muted/30 p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Gestión de Equipo</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-xl font-bold text-foreground">
+            Gestión de Equipo
+          </h2>
+          <p className="text-sm text-muted-foreground">
             Monitoreo de desempeño y tiempos de respuesta
           </p>
         </div>
@@ -270,31 +272,31 @@ export const TeamManagement: React.FC = () => {
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div>
-                <p className="text-xs text-gray-500">Facturación</p>
+                <p className="text-xs text-muted-foreground">Facturación</p>
                 <p className="text-lg font-bold">
                   S/ {currentUserStats.totalSales.toLocaleString()}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Órdenes</p>
+                <p className="text-xs text-muted-foreground">Órdenes</p>
                 <p className="text-lg font-bold">
                   {currentUserStats.orderCount}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Productos</p>
+                <p className="text-xs text-muted-foreground">Productos</p>
                 <p className="text-lg font-bold">
                   {currentUserStats.productsCount}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Ticket Promedio</p>
+                <p className="text-xs text-muted-foreground">Ticket Promedio</p>
                 <p className="text-lg font-bold">
                   S/ {currentUserStats.averageTicket.toLocaleString()}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-gray-500">Efectividad</p>
+                <p className="text-xs text-muted-foreground">Efectividad</p>
                 <p className="text-lg font-bold text-primary">
                   {currentUserStats.deliveryEffectiveness || 0}%
                 </p>
@@ -329,18 +331,24 @@ export const TeamManagement: React.FC = () => {
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
-                  stroke="#f0f0f0"
+                  stroke="hsl(var(--border))"
                 />
                 <XAxis
                   dataKey="sellerName"
                   axisLine={false}
                   tickLine={false}
-                  style={{ fontSize: "12px" }}
+                  style={{
+                    fontSize: "12px",
+                    fill: "hsl(var(--muted-foreground))",
+                  }}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  style={{ fontSize: "12px" }}
+                  style={{
+                    fontSize: "12px",
+                    fill: "hsl(var(--muted-foreground))",
+                  }}
                 />
                 <Tooltip
                   content={({ active, payload, label }) => {
@@ -351,8 +359,8 @@ export const TeamManagement: React.FC = () => {
                           ? (data.productsCount / data.orderCount).toFixed(1)
                           : 0;
                       return (
-                        <div className="bg-white p-3 border border-gray-100 shadow-lg rounded-lg text-xs">
-                          <p className="font-bold mb-2 text-gray-800 border-b pb-1">
+                        <div className="bg-card p-3 border border-border shadow-lg rounded-lg text-xs">
+                          <p className="font-bold mb-2 text-foreground border-b pb-1">
                             {label}
                           </p>
                           <div className="space-y-1">
@@ -365,13 +373,17 @@ export const TeamManagement: React.FC = () => {
                               </span>
                             </div>
                             <div className="flex justify-between gap-4">
-                              <span className="text-gray-500">Órdenes:</span>
+                              <span className="text-muted-foreground">
+                                Órdenes:
+                              </span>
                               <span className="font-bold">
                                 {data.orderCount}
                               </span>
                             </div>
                             <div className="flex justify-between gap-4">
-                              <span className="text-gray-500">Productos:</span>
+                              <span className="text-muted-foreground">
+                                Productos:
+                              </span>
                               <span className="font-bold">
                                 {data.productsCount}
                               </span>
@@ -414,8 +426,8 @@ export const TeamManagement: React.FC = () => {
         className="h-auto min-h-[400px]"
       >
         <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left text-gray-500">
-            <thead className="text-xs text-gray-700 uppercase bg-gray-50">
+          <table className="w-full text-sm text-left text-muted-foreground">
+            <thead className="text-xs text-muted-foreground uppercase bg-muted">
               <tr>
                 <th className="px-6 py-3">Vendedor</th>
                 <th className="px-6 py-3">Monto Total</th>
@@ -436,9 +448,9 @@ export const TeamManagement: React.FC = () => {
                 activeSellers.map((s) => (
                   <tr
                     key={s.sellerId}
-                    className="bg-white border-b hover:bg-gray-50"
+                    className="bg-card border-b border-border hover:bg-muted/50"
                   >
-                    <td className="px-6 py-4 font-medium text-gray-900">
+                    <td className="px-6 py-4 font-medium text-foreground">
                       {s.sellerName}
                     </td>
                     <td className="px-6 py-4">

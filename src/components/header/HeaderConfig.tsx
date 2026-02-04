@@ -24,10 +24,10 @@ export function HeaderConfig({ title, description, children }: Props) {
   const shouldShowBackButton = showBackButtonRoutes.includes(pathname);
 
   return (
-    <div className="p-6">
-      <div className="grid grid-cols-3 items-center">
+    <div className="p-4 md:p-6">
+      <div className="flex flex-col gap-4 md:grid md:grid-cols-3 items-center">
         {/* --- IZQUIERDA --- */}
-        <div>
+        <div className="flex justify-start w-full md:w-auto">
           {shouldShowBackButton && (
             <Link href="/configuracion">
               <Button variant="outline" size="sm" className="gap-2">
@@ -39,18 +39,22 @@ export function HeaderConfig({ title, description, children }: Props) {
         </div>
 
         {/* --- CENTRO (Título + Descripción) --- */}
-        <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">
+        <div className="text-center w-full">
+          <h1 className="text-xl md:text-3xl font-bold tracking-tight text-foreground">
             {title}
           </h1>
 
           {description && (
-            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+            <p className="mt-1 text-xs md:text-sm text-muted-foreground whitespace-normal">
+              {description}
+            </p>
           )}
         </div>
 
         {/* --- DERECHA (Children si existieran) --- */}
-        <div className="flex justify-end gap-2">{children}</div>
+        <div className="flex justify-center md:justify-end gap-2 w-full">
+          {children}
+        </div>
       </div>
     </div>
   );

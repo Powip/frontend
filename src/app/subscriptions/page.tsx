@@ -1,5 +1,6 @@
 "use client";
 import SubscriptionModal from "@/components/modals/subscriptionsModal";
+import EnterpriseContactModal from "@/components/modals/EnterpriseContactModal";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -10,7 +11,7 @@ import {
 } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
-import { Check } from "lucide-react";
+import { Check, Building2 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -39,50 +40,46 @@ const adaptPlans = (plans: Plan[]): FrontPlan[] =>
     let popular = false;
 
     if (plan.name.toUpperCase().includes("BASIC")) {
-      target = "Emprendedores pequeños, Instagram + WhatsApp.";
+      target = "Emprendedores pequeños (IG + WA)";
       features = [
         "Hasta 300 pedidos / mes",
-        "Gestión básica de pedidos",
-        "Estados manuales",
-        "WhatsApp básico",
         "2 usuarios",
-        "Reportes simples",
+        "WhatsApp Básico",
+        "Reportes Simples",
+        "Soporte Estándar",
+        "Gestión básica de pedidos",
       ];
-      limits = [
-        "Sin automatizaciones",
-        "Sin lógica avanzada",
-        "Sin soporte prioritario",
-      ];
+      limits = ["No incluye automatización"];
     } else if (plan.name.toUpperCase().includes("MEDIUM")) {
-      target = "Tiendas Shopify, marcas activas, COD real.";
+      target = "Tiendas Shopify, marcas activas, COD";
       features = [
         "Hasta 700 pedidos / mes",
         "Multiusuario",
-        "WhatsApp automatizado",
+        "WhatsApp Automatizado",
         "Estados automáticos",
-        "Rutas y zonas",
-        "Reportes completos",
-        "Soporte estándar",
+        "Reportes Completos",
+        "Soporte Estándar",
       ];
       popular = true;
     } else if (plan.name.toUpperCase().includes("SCALE")) {
+      target = "Empresas en crecimiento";
       features = [
         "Hasta 2,000 pedidos / mes",
-        "IA básica (scoring, alertas)",
-        "Reglas automáticas",
-        "Control financiero COD",
-        "Reportes avanzados",
-        "Integraciones",
-        "Soporte prioritario",
+        "Multiusuario",
+        "WhatsApp Automatizado",
+        "Reglas automáticas e IA básica",
+        "Reportes Avanzados",
+        "Soporte Prioritario",
       ];
     } else if (plan.name.toUpperCase().includes("ENTERPRISE")) {
+      target = "Grandes corporaciones";
       features = [
-        "Pedidos ilimitados",
-        "Usuarios ilimitados",
-        "White label (futuro)",
-        "SLA",
-        "Integraciones custom",
-        "Gerente de cuenta",
+        "Pedidos Ilimitados",
+        "Usuarios Ilimitados",
+        "WhatsApp Automatizado",
+        "Integraciones custom y White label",
+        "Gerente de cuenta dedicado",
+        "Reportes avanzados y personalizados",
       ];
     }
 
@@ -103,6 +100,8 @@ export default function SubscriptionsPage() {
   const [error, setError] = useState<string | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<FrontPlan | null>(null);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [isEnterpriseModalOpen, setIsEnterpriseModalOpen] =
+    useState<boolean>(false);
 
   const { auth } = useAuth();
 
@@ -192,21 +191,25 @@ export default function SubscriptionsPage() {
                   {plan.description}
                 </CardDescription>
 
-                <div className="mt-4 flex items-baseline gap-1">
-                  <span className="text-3xl font-bold text-foreground">
-                    {plan.name.toUpperCase().includes("ENTERPRISE")
-                      ? "Desde S/ 500"
-                      : `S/ ${plan.price}`}
-                  </span>
-                  <span className="text-sm text-muted-foreground">
-                    {plan.period}
-                  </span>
-                </div>
+                {plan.name.toUpperCase().includes("ENTERPRISE") ? (
+                  <div className="mt-4 flex items-center justify-center p-4 bg-muted rounded-lg">
+                    <Building2 className="h-12 w-12 text-muted-foreground" />
+                  </div>
+                ) : (
+                  <div className="mt-4 flex items-baseline gap-1">
+                    <span className="text-3xl font-bold text-foreground">
+                      S/ {plan.price}
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {plan.period}
+                    </span>
+                  </div>
+                )}
 
                 {plan.target && (
                   <div className="mt-4">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-                      Para quién:
+                      Público Objetivo:
                     </p>
                     <p className="text-sm text-foreground">{plan.target}</p>
                   </div>
@@ -215,7 +218,7 @@ export default function SubscriptionsPage() {
               <CardContent className="flex-1 flex flex-col">
                 <div className="flex-1">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-                    Incluye:
+                    Características:
                   </p>
                   <ul className="mb-6 space-y-3">
                     {plan.features.map((feature) => (
@@ -246,16 +249,26 @@ export default function SubscriptionsPage() {
                   )}
                 </div>
 
-                <Button
-                  className="w-full mt-auto"
-                  variant={plan.popular ? "default" : "outline"}
-                  onClick={() => {
-                    setSelectedPlan(plan);
-                    setIsModalOpen(true);
-                  }}
-                >
-                  Comprar
-                </Button>
+                {plan.name.toUpperCase().includes("ENTERPRISE") ? (
+                  <Button
+                    className="w-full mt-auto"
+                    variant="outline"
+                    onClick={() => setIsEnterpriseModalOpen(true)}
+                  >
+                    Contactar con ventas
+                  </Button>
+                ) : (
+                  <Button
+                    className="w-full mt-auto"
+                    variant={plan.popular ? "default" : "outline"}
+                    onClick={() => {
+                      setSelectedPlan(plan);
+                      setIsModalOpen(true);
+                    }}
+                  >
+                    Comprar
+                  </Button>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -270,6 +283,10 @@ export default function SubscriptionsPage() {
           setSelectedPlan(null);
         }}
         plan={selectedPlan}
+      />
+      <EnterpriseContactModal
+        open={isEnterpriseModalOpen}
+        onClose={() => setIsEnterpriseModalOpen(false)}
       />
     </div>
   );

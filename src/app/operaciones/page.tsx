@@ -462,12 +462,13 @@ export default function OperacionesPage() {
         createdGuides.push(guideNumber);
         totalOrders += guideData.orderIds.length;
 
-        // Solo guardar el guideNumber en cada orden (sin cambiar estado)
+        // Guardar el guideNumber y cambiar el estado a EN_ENVIO
         for (const orderId of guideData.orderIds) {
           await axios.patch(
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
             {
               guideNumber: guideNumber,
+              status: "EN_ENVIO",
             },
           );
         }
@@ -548,11 +549,14 @@ export default function OperacionesPage() {
         { orderIds: selectedLlamados.map((s) => s.id) },
       );
 
-      // 2. Actualizar cada orden en ms-ventas con el número de guía
+      // 2. Actualizar cada orden en ms-ventas con el número de guía y nuevo estado
       for (const sale of selectedLlamados) {
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
-          { guideNumber: guideNumber },
+          {
+            guideNumber: guideNumber,
+            status: "EN_ENVIO",
+          },
         );
       }
 
@@ -774,7 +778,7 @@ Estado: ${sale.status}
       <Table className="min-w-[1800px]">
         <TableHeader>
           <TableRow>
-            <TableHead className="w-[45px] min-w-[45px] sticky left-0 z-20 bg-background">
+            <TableHead className="w-[45px] min-w-[45px] lg:sticky lg:left-0 lg:z-20 bg-background">
               <input
                 type="checkbox"
                 checked={
@@ -796,24 +800,16 @@ Estado: ${sale.status}
                 }}
               />
             </TableHead>
-            <TableHead className="sticky left-[45px] w-[100px] min-w-[100px] z-20 bg-background">
+            <TableHead className="lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
               N° Orden
             </TableHead>
-            <TableHead className="sticky left-[145px] w-[150px] min-w-[150px] z-20 bg-background">
+            <TableHead className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-20 bg-background border-r text-xs">
               Cliente
             </TableHead>
-            <TableHead className="sticky left-[295px] w-[120px] min-w-[120px] z-20 bg-background">
-              Teléfono
-            </TableHead>
-            <TableHead className="sticky left-[415px] w-[100px] min-w-[100px] z-20 bg-background">
-              Fecha
-            </TableHead>
-            <TableHead className="sticky left-[515px] w-[100px] min-w-[100px] z-20 bg-background">
-              Pago
-            </TableHead>
-            <TableHead className="sticky left-[615px] w-[120px] min-w-[120px] z-20 bg-background border-r">
-              Envío
-            </TableHead>
+            <TableHead>Teléfono</TableHead>
+            <TableHead>Fecha</TableHead>
+            <TableHead>Pago</TableHead>
+            <TableHead>Envío</TableHead>
             <TableHead>Total</TableHead>
             <TableHead>Adelanto</TableHead>
             <TableHead>Por Cobrar</TableHead>
@@ -823,10 +819,10 @@ Estado: ${sale.status}
             <TableHead>Region</TableHead>
             <TableHead>Distrito</TableHead>
             <TableHead>Zona</TableHead>
-            <TableHead className="sticky right-[140px] w-[100px] min-w-[100px] z-20 bg-background border-l">
+            <TableHead className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-20 bg-background border-l">
               Resumen
             </TableHead>
-            <TableHead className="sticky right-0 w-[140px] min-w-[140px] z-20 bg-background text-right">
+            <TableHead className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-20 bg-background text-right">
               Acciones
             </TableHead>
           </TableRow>
@@ -834,14 +830,14 @@ Estado: ${sale.status}
         <TableBody>
           {data.map((sale) => (
             <TableRow key={sale.id}>
-              <TableCell className="sticky left-0 w-[45px] min-w-[45px] z-10 bg-background">
+              <TableCell className="lg:sticky lg:left-0 w-[45px] min-w-[45px] lg:z-10 bg-background">
                 <input
                   type="checkbox"
                   checked={selectedSaleIds.has(sale.id)}
                   onChange={() => toggleSale(sale.id)}
                 />
               </TableCell>
-              <TableCell className="font-medium sticky left-[45px] w-[100px] min-w-[100px] z-10 bg-background text-xs">
+              <TableCell className="font-medium lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-10 bg-background text-xs">
                 <div className="flex items-center gap-1">
                   {sale.hasStockIssue && (
                     <span title="Stock insuficiente - No se puede preparar">
@@ -851,19 +847,15 @@ Estado: ${sale.status}
                   {sale.orderNumber}
                 </div>
               </TableCell>
-              <TableCell className="sticky left-[145px] w-[150px] min-w-[150px] z-10 bg-background text-xs truncate max-w-[150px]">
+              <TableCell className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-10 bg-background text-xs truncate max-w-[150px] border-r">
                 {sale.clientName}
               </TableCell>
-              <TableCell className="sticky left-[295px] w-[120px] min-w-[120px] z-10 bg-background text-xs">
-                {sale.phoneNumber}
-              </TableCell>
-              <TableCell className="sticky left-[415px] w-[100px] min-w-[100px] z-10 bg-background text-xs">
-                {sale.date}
-              </TableCell>
-              <TableCell className="sticky left-[515px] w-[100px] min-w-[100px] z-10 bg-background text-xs truncate max-w-[100px]">
+              <TableCell className="text-xs">{sale.phoneNumber}</TableCell>
+              <TableCell className="text-xs">{sale.date}</TableCell>
+              <TableCell className="text-xs truncate max-w-[100px]">
                 {sale.paymentMethod}
               </TableCell>
-              <TableCell className="sticky left-[615px] w-[120px] min-w-[120px] z-10 bg-background border-r text-xs truncate max-w-[120px]">
+              <TableCell className="text-xs truncate max-w-[120px]">
                 {sale.deliveryType}
               </TableCell>
               <TableCell>${sale.total.toFixed(2)}</TableCell>
@@ -967,7 +959,7 @@ Estado: ${sale.status}
                   <span className="text-muted-foreground text-xs">-</span>
                 )}
               </TableCell>
-              <TableCell className="sticky right-[140px] w-[100px] min-w-[100px] z-10 bg-background border-l">
+              <TableCell className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
                 <Button
                   size="sm"
                   variant="outline"
@@ -977,7 +969,7 @@ Estado: ${sale.status}
                   Ver
                 </Button>
               </TableCell>
-              <TableCell className="text-right space-x-1 sticky right-0 w-[140px] min-w-[140px] z-10 bg-background">
+              <TableCell className="text-right space-x-1 lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-10 bg-background">
                 <div className="flex gap-1 justify-end">
                   {/* WhatsApp */}
                   {showWhatsApp && (
@@ -1175,11 +1167,12 @@ Estado: ${sale.status}
           {/* Tab Preparados */}
           <TabsContent value="preparados">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle>Pedidos Preparados</CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       preparados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0 || isPrinting
@@ -1193,6 +1186,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       preparados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1206,6 +1200,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     onClick={() => handleExportExcel(preparados, "preparados")}
                   >
                     <Download className="h-4 w-4 mr-2" />
@@ -1235,13 +1230,14 @@ Estado: ${sale.status}
           {/* Tab No Confirmados */}
           <TabsContent value="no_confirmados">
             <Card className="border-red-200">
-              <CardHeader className="flex flex-row items-center justify-between bg-red-50">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-red-50">
                 <CardTitle className="text-red-700">
                   Pedidos NO CONFIRMADOS
                 </CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       noConfirmados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0 || isPrinting
@@ -1258,6 +1254,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       noConfirmados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1274,6 +1271,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     onClick={() =>
                       handleExportExcel(noConfirmados, "no_confirmados")
                     }
@@ -1305,12 +1303,12 @@ Estado: ${sale.status}
           {/* Tab Contactados */}
           <TabsContent value="contactados">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
                 <CardTitle>Pedidos Contactados</CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full xl:w-auto">
                   <Button
                     variant="default"
-                    className="bg-emerald-600 hover:bg-emerald-700"
+                    className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700"
                     disabled={
                       getSelectedLlamadosForGuide().length === 0 ||
                       isCreatingGuide
@@ -1322,7 +1320,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
-                    className="border-emerald-600 text-emerald-600 hover:bg-emerald-50"
+                    className="w-full sm:w-auto border-emerald-600 text-emerald-600 hover:bg-emerald-50"
                     disabled={
                       getSelectedLlamadosForGuide().length === 0 ||
                       isAddingToGuide
@@ -1334,6 +1332,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full sm:w-auto"
                     disabled={
                       contactados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0 || isPrinting
@@ -1341,7 +1340,7 @@ Estado: ${sale.status}
                     onClick={() => handleBulkPrintForStatus(contactados)}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados (
+                    Imprimir (
                     {
                       contactados.filter((s) => selectedSaleIds.has(s.id))
                         .length
@@ -1350,6 +1349,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full sm:w-auto"
                     disabled={
                       contactados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1357,7 +1357,7 @@ Estado: ${sale.status}
                     onClick={() => handleCopySelected(contactados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados (
+                    Copiar (
                     {
                       contactados.filter((s) => selectedSaleIds.has(s.id))
                         .length
@@ -1366,12 +1366,13 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full sm:w-auto"
                     onClick={() =>
                       handleExportExcel(contactados, "contactados")
                     }
                   >
                     <Download className="h-4 w-4 mr-2" />
-                    Exportar Excel
+                    Excel
                   </Button>
                 </div>
               </CardHeader>
@@ -1399,11 +1400,12 @@ Estado: ${sale.status}
           {/* Tab Despachados */}
           <TabsContent value="despachados">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle>Pedidos En Envío</CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       despachados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0 || isPrinting
@@ -1411,7 +1413,7 @@ Estado: ${sale.status}
                     onClick={() => handleBulkPrintForStatus(despachados)}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados (
+                    Imprimir (
                     {
                       despachados.filter((s) => selectedSaleIds.has(s.id))
                         .length
@@ -1420,6 +1422,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       despachados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1427,7 +1430,7 @@ Estado: ${sale.status}
                     onClick={() => handleCopySelected(despachados)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados (
+                    Copiar (
                     {
                       despachados.filter((s) => selectedSaleIds.has(s.id))
                         .length
@@ -1436,6 +1439,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     onClick={() =>
                       handleExportExcel(despachados, "despachados")
                     }
@@ -1471,13 +1475,14 @@ Estado: ${sale.status}
           {/* Tab Entregados */}
           <TabsContent value="entregados">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle className="text-green-700">
                   Pedidos Entregados
                 </CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       entregadosAll.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0 || isPrinting
@@ -1485,7 +1490,7 @@ Estado: ${sale.status}
                     onClick={() => handleBulkPrintForStatus(entregadosAll)}
                   >
                     <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados (
+                    Imprimir (
                     {
                       entregadosAll.filter((s) => selectedSaleIds.has(s.id))
                         .length
@@ -1494,6 +1499,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       entregadosAll.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1501,7 +1507,7 @@ Estado: ${sale.status}
                     onClick={() => handleCopySelected(entregadosAll)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados (
+                    Copiar (
                     {
                       entregadosAll.filter((s) => selectedSaleIds.has(s.id))
                         .length
@@ -1510,6 +1516,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     onClick={() =>
                       handleExportExcel(entregadosAll, "entregados")
                     }
@@ -1548,13 +1555,14 @@ Estado: ${sale.status}
           {/* Tab Anulados */}
           <TabsContent value="anulados">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle className="text-gray-500">
                   Pedidos Anulados
                 </CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       anuladosAll.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1562,7 +1570,7 @@ Estado: ${sale.status}
                     onClick={() => handleCopySelected(anuladosAll)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados (
+                    Copiar (
                     {
                       anuladosAll.filter((s) => selectedSaleIds.has(s.id))
                         .length
@@ -1571,6 +1579,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     onClick={() => handleExportExcel(anuladosAll, "anulados")}
                   >
                     <Download className="h-4 w-4 mr-2" />

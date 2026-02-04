@@ -43,9 +43,9 @@ import {
 } from "@/components/ui/table";
 import { exportToExcel } from "@/lib/excel";
 import { useAuth } from "@/contexts/AuthContext";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DashboardCard } from "./DashboardCard";
+import { PeriodSelector } from "./PeriodSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface LocationStats {
@@ -85,9 +85,9 @@ const StatCard: React.FC<{
   onClick?: () => void;
   clickable?: boolean;
 }> = ({ title, value, subValue, icon, loading, onClick, clickable }) => (
-  <Card className="bg-white/50 backdrop-blur-sm border-gray-100 shadow-sm transition-all">
+  <Card className="bg-card/50 backdrop-blur-sm border-border shadow-sm transition-all">
     <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-      <CardTitle className="text-xs font-medium text-gray-500 uppercase">
+      <CardTitle className="text-xs font-medium text-muted-foreground uppercase">
         {title}
       </CardTitle>
       <div className="flex items-center gap-2">
@@ -109,7 +109,7 @@ const StatCard: React.FC<{
         <Loader2 className="h-4 w-4 animate-spin text-primary" />
       ) : (
         <>
-          <div className="text-xl font-bold text-gray-800">{value}</div>
+          <div className="text-xl font-bold text-foreground">{value}</div>
           {subValue && (
             <p className="text-[10px] font-medium text-primary mt-1">
               {subValue}
@@ -296,49 +296,39 @@ export const Geography: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [selectedStoreId, geoDimension]);
+    if (fromDate && toDate) {
+      fetchData();
+    }
+  }, [selectedStoreId, geoDimension, fromDate, toDate]);
+
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
 
   const periodBilling = summaryData.deliveredAmount;
   const topLocation = locationData[0];
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-gray-50/50">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-muted/30">
       {/* Header with Date Filters */}
-      <div className="bg-white border-b px-6 py-4 flex items-center justify-between flex-wrap gap-4">
+      <div className="bg-card border-b px-6 py-4 flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/5 rounded-lg text-primary">
             <MapPin className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-gray-800">
+            <h2 className="text-lg font-bold text-foreground">
               Geografía y Finanzas
             </h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Distribución territorial y métodos de pago
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center bg-gray-100 rounded-lg p-1">
-            <Input
-              type="date"
-              value={fromDate}
-              onChange={(e) => setFromDate(e.target.value)}
-              className="h-8 w-36 bg-transparent border-none focus-visible:ring-0 text-xs"
-            />
-            <span className="text-gray-400 mx-1 px-1">-</span>
-            <Input
-              type="date"
-              value={toDate}
-              onChange={(e) => setToDate(e.target.value)}
-              className="h-8 w-36 bg-transparent border-none focus-visible:ring-0 text-xs"
-            />
-          </div>
-          <Button onClick={fetchData} size="sm" className="h-8 rounded-lg">
-            Filtrar
-          </Button>
+          <PeriodSelector onPeriodChange={handlePeriodChange} />
         </div>
       </div>
 
@@ -605,7 +595,7 @@ export const Geography: React.FC = () => {
           </DialogHeader>
           <div className="rounded-md border overflow-hidden">
             <Table>
-              <TableHeader className="bg-gray-50">
+              <TableHeader className="bg-muted">
                 <TableRow>
                   <TableHead className="text-xs font-bold">ZONA</TableHead>
                   <TableHead className="text-xs font-bold text-right">
@@ -659,7 +649,7 @@ export const Geography: React.FC = () => {
           </DialogHeader>
           <div className="rounded-md border overflow-hidden">
             <Table>
-              <TableHeader className="bg-gray-50">
+              <TableHeader className="bg-muted">
                 <TableRow>
                   <TableHead className="text-xs font-bold">MÉTODO</TableHead>
                   <TableHead className="text-xs font-bold text-right">
@@ -726,7 +716,7 @@ export const Geography: React.FC = () => {
               </div>
             ) : (
               <Table>
-                <TableHeader className="bg-gray-50 sticky top-0">
+                <TableHeader className="bg-muted sticky top-0">
                   <TableRow>
                     <TableHead className="text-xs font-bold">
                       N° ORDEN

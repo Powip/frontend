@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RegisterForm from "@/components/forms/RegisterForm";
 import LoginForm from "@/components/forms/LoginForm";
 import Image from "next/image";
+import { ArrowLeft } from "lucide-react";
+import Link from "next/link";
 
 export default function LoginPage() {
   return (
@@ -56,6 +58,16 @@ export default function LoginPage() {
                 <RegisterForm />
               </TabsContent>
             </Tabs>
+
+            <div className="mt-6 pt-4 border-t border-border flex justify-center">
+              <Link
+                href="https://powip.lat"
+                className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Volver a la página principal
+              </Link>
+            </div>
           </CardContent>
         </Card>
       </div>

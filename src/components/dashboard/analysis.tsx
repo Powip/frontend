@@ -91,15 +91,17 @@ const StatCard: React.FC<{
   clickable?: boolean;
 }> = ({ title, value, subValue, icon, loading, onClick, clickable }) => (
   <Card
-    className={`bg-white/50 backdrop-blur-sm border-gray-100 shadow-sm transition-all ${clickable ? "cursor-pointer hover:shadow-md hover:border-primary/20" : ""}`}
+    className={`bg-card/50 backdrop-blur-sm border-border shadow-sm transition-all ${clickable ? "cursor-pointer hover:shadow-md hover:border-primary/20" : ""}`}
     onClick={clickable ? onClick : undefined}
   >
     <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-      <CardTitle className="text-xs font-medium text-gray-500 uppercase">
+      <CardTitle className="text-xs font-medium text-muted-foreground uppercase">
         {title}
       </CardTitle>
       <div className="flex items-center gap-2">
-        {clickable && <ChevronRight className="h-3 w-3 text-gray-400" />}
+        {clickable && (
+          <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
+        )}
         <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
       </div>
     </CardHeader>
@@ -108,7 +110,7 @@ const StatCard: React.FC<{
         <Loader2 className="h-4 w-4 animate-spin text-primary" />
       ) : (
         <>
-          <div className="text-xl font-bold text-gray-800">{value}</div>
+          <div className="text-xl font-bold text-foreground">{value}</div>
           {subValue && (
             <p className="text-[10px] font-medium text-primary mt-1">
               {subValue}
@@ -368,18 +370,18 @@ export const Analysis: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-gray-50/50">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-muted/30">
       {/* Header with Date Filters */}
-      <div className="bg-white border-b px-6 py-4 flex items-center justify-between flex-wrap gap-4">
+      <div className="bg-card border-b px-6 py-4 flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
           <div className="p-2 bg-primary/5 rounded-lg text-primary">
             <Calendar className="h-5 w-5" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-gray-800">
-              Análisis de Mercado
+            <h2 className="text-lg font-bold text-foreground">
+              Análisis Comercial
             </h2>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted-foreground">
               Distribución de ventas por canal y producto
             </p>
           </div>
@@ -593,32 +595,38 @@ export const Analysis: React.FC = () => {
 
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-b">
-            <div className="text-center p-3 bg-blue-50 rounded-lg">
-              <p className="text-xs text-gray-500 uppercase">
+            <div className="text-center p-3 bg-blue-500/10 rounded-lg">
+              <p className="text-xs text-muted-foreground uppercase">
                 Facturación Total
               </p>
-              <p className="text-lg font-bold text-blue-600">
+              <p className="text-lg font-bold text-blue-500">
                 S/{" "}
                 {categoryTotals.totalBilling.toLocaleString("es-PE", {
                   minimumFractionDigits: 2,
                 })}
               </p>
             </div>
-            <div className="text-center p-3 bg-green-50 rounded-lg">
-              <p className="text-xs text-gray-500 uppercase">Nro. Órdenes</p>
-              <p className="text-lg font-bold text-green-600">
+            <div className="text-center p-3 bg-green-500/10 rounded-lg">
+              <p className="text-xs text-muted-foreground uppercase">
+                Nro. Órdenes
+              </p>
+              <p className="text-lg font-bold text-green-500">
                 {categoryTotals.totalOrders.toLocaleString()}
               </p>
             </div>
-            <div className="text-center p-3 bg-purple-50 rounded-lg">
-              <p className="text-xs text-gray-500 uppercase">Nro. Productos</p>
-              <p className="text-lg font-bold text-purple-600">
+            <div className="text-center p-3 bg-purple-500/10 rounded-lg">
+              <p className="text-xs text-muted-foreground uppercase">
+                Nro. Productos
+              </p>
+              <p className="text-lg font-bold text-purple-500">
                 {categoryTotals.totalProducts.toLocaleString()}
               </p>
             </div>
-            <div className="text-center p-3 bg-amber-50 rounded-lg">
-              <p className="text-xs text-gray-500 uppercase">Ticket Promedio</p>
-              <p className="text-lg font-bold text-amber-600">
+            <div className="text-center p-3 bg-amber-500/10 rounded-lg">
+              <p className="text-xs text-muted-foreground uppercase">
+                Ticket Promedio
+              </p>
+              <p className="text-lg font-bold text-amber-500">
                 S/{" "}
                 {avgTicket.toLocaleString("es-PE", {
                   minimumFractionDigits: 2,
@@ -630,9 +638,9 @@ export const Analysis: React.FC = () => {
           {/* Categories Table */}
           <div className="flex-1 overflow-auto mt-4 rounded-md border">
             <Table>
-              <TableHeader className="bg-gray-50 sticky top-0">
+              <TableHeader className="bg-muted sticky top-0">
                 <TableRow>
-                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                  <TableHead className="text-xs uppercase font-bold text-muted-foreground">
                     #
                   </TableHead>
                   <TableHead className="text-xs uppercase font-bold text-gray-600">
@@ -688,9 +696,9 @@ export const Analysis: React.FC = () => {
           </DialogHeader>
           <div className="flex-1 overflow-auto mt-4 rounded-md border">
             <Table>
-              <TableHeader className="bg-gray-50 sticky top-0">
+              <TableHeader className="bg-muted sticky top-0">
                 <TableRow>
-                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                  <TableHead className="text-xs uppercase font-bold text-muted-foreground">
                     #
                   </TableHead>
                   <TableHead className="text-xs uppercase font-bold text-gray-600">

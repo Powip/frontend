@@ -24,16 +24,18 @@ import {
   TrendingUp,
   CheckCircle,
   Loader2,
-  Calendar,
+  BarChart3,
   PackagePlus,
   Plus,
   ChevronDown,
   ChevronRight,
+  Eye,
+  FileText,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DashboardCard } from "./DashboardCard";
+import { PeriodSelector } from "./PeriodSelector";
 import {
   Dialog,
   DialogContent,
@@ -148,6 +150,19 @@ export const Stats: React.FC = () => {
   const [dailyDetails, setDailyDetails] = useState<any>(null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+
+  // Generar todos los días entre fromDate y toDate
+  const getDatesInRange = (start: string, end: string) => {
+    const dates = [];
+    const curr = new Date(start + "T12:00:00");
+    const last = new Date(end + "T12:00:00");
+    while (curr <= last) {
+      dates.push(new Date(curr).toISOString().split("T")[0]);
+      curr.setDate(curr.getDate() + 1);
+    }
+    return dates;
+  };
 
   const fetchStats = async () => {
     if (!selectedStoreId) return;
@@ -196,8 +211,15 @@ export const Stats: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchStats();
-  }, [selectedStoreId]);
+    if (fromDate && toDate) {
+      fetchStats();
+    }
+  }, [selectedStoreId, fromDate, toDate]);
+
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
 
   // Fetch daily details when clicking on the chart
   const fetchDailyDetails = async (date: string) => {
@@ -250,17 +272,32 @@ export const Stats: React.FC = () => {
     : [];
 
   // Preparar datos para gráfico de ventas diarias
-  const dailyChartData =
-    data?.dailySales.map((d) => ({
-      date: d.date, // Keep original date for click handler
-      name: new Date(d.date + "T12:00:00").toLocaleDateString("es-PE", {
+  const allPeriodDates =
+    fromDate && toDate ? getDatesInRange(fromDate, toDate) : [];
+
+  const fullPeriodData = allPeriodDates.map((date) => {
+    const existingData = data?.dailySales.find((d) => d.date === date);
+    return {
+      date,
+      name: new Date(date + "T12:00:00").toLocaleDateString("es-PE", {
         weekday: "short",
         day: "numeric",
       }),
-      ventas: d.amount,
-      ordenes: d.orders,
-      productos: d.products,
-    })) || [];
+      ventas: existingData?.amount || 0,
+      ordenes: existingData?.orders || 0,
+      productos: existingData?.products || 0,
+    };
+  });
+
+  // Para el gráfico principal, si hay pocos días con data, mostramos los últimos de la selección
+  const chartDisplayData =
+    fullPeriodData.length > 7
+      ? fullPeriodData.filter((d) => d.ventas > 0 || d.ordenes > 0).length < 5
+        ? fullPeriodData.slice(-7) // Si casi no hay data, los últimos 7 días
+        : fullPeriodData // Si hay data, mostramos todo el mes
+      : fullPeriodData;
+
+  const dailyChartData = chartDisplayData;
 
   const deliveryPercentage =
     data && data.totalOrders > 0
@@ -269,34 +306,26 @@ export const Stats: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full w-full overflow-auto min-h-0">
-      {/* Filtros de fecha */}
-      <div className="px-4 py-3 border-b flex items-center gap-4 flex-wrap">
-        <div className="flex items-center gap-2">
-          <Calendar className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-medium">Período:</span>
+      {/* Header con selector de periodo */}
+      <div className="bg-card border-b px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-primary/5 rounded-lg text-primary">
+            <BarChart3 className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-foreground">
+              Resumen General
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              Vista general de ventas y métricas
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Input
-            type="date"
-            value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
-            className="w-auto"
-          />
-          <span className="text-muted-foreground">a</span>
-          <Input
-            type="date"
-            value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
-            className="w-auto"
-          />
-        </div>
-        <Button onClick={fetchStats} size="sm">
-          Actualizar
-        </Button>
+        <PeriodSelector onPeriodChange={handlePeriodChange} />
       </div>
 
       {/* Contenido principal */}
-      <div className="flex-1 flex flex-col px-4 py-4 gap-6 min-h-0">
+      <div className="flex-1 flex flex-col px-4 py-4 gap-6 min-h-0 bg-muted/30">
         {/* Cards de resumen */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <StatCard
@@ -361,11 +390,22 @@ export const Stats: React.FC = () => {
         <div className="flex-1 grid gap-4 md:grid-cols-2 lg:grid-cols-7 min-h-[350px]">
           {/* Ventas por día */}
           <Card className="col-span-4">
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
               <CardTitle>Ingresos diarios</CardTitle>
-              <span className="text-xs text-muted-foreground">
-                Click en una barra para ver detalle
-              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-2"
+                  onClick={() => setShowPreviewModal(true)}
+                >
+                  <Eye className="h-4 w-4" />
+                  Ver mes completo
+                </Button>
+                <span className="text-xs text-muted-foreground hidden sm:inline-block">
+                  Click en una barra para ver detalle
+                </span>
+              </div>
             </CardHeader>
             <CardContent className="flex-1 min-h-[250px]">
               {loading ? (
@@ -396,10 +436,10 @@ export const Stats: React.FC = () => {
                         if (name === "Ventas (S/)") return [`S/${value}`, name];
                         return [value, name];
                       }}
-                      labelStyle={{ color: "var(--foreground)" }}
+                      labelStyle={{ color: "hsl(var(--foreground))" }}
                       contentStyle={{
-                        backgroundColor: "var(--background)",
-                        border: "1px solid var(--border)",
+                        backgroundColor: "hsl(var(--background))",
+                        border: "1px solid hsl(var(--border))",
                         borderRadius: "8px",
                       }}
                     />
@@ -458,10 +498,10 @@ export const Stats: React.FC = () => {
                     <YAxis dataKey="name" type="category" />
                     <Tooltip
                       formatter={(value) => [value, "Cantidad"]}
-                      labelStyle={{ color: "var(--foreground)" }}
+                      labelStyle={{ color: "hsl(var(--foreground))" }}
                       contentStyle={{
-                        backgroundColor: "var(--background)",
-                        border: "1px solid var(--border)",
+                        backgroundColor: "hsl(var(--background))",
+                        border: "1px solid hsl(var(--border))",
                       }}
                     />
                     <Bar dataKey="cantidad" name="Cantidad">
@@ -504,24 +544,30 @@ export const Stats: React.FC = () => {
             <>
               {/* Summary Stats */}
               <div className="grid grid-cols-3 gap-4 py-4 border-b">
-                <div className="text-center p-3 bg-blue-50 rounded-lg">
-                  <p className="text-xs text-gray-500 uppercase">Órdenes</p>
-                  <p className="text-2xl font-bold text-blue-600">
+                <div className="text-center p-3 bg-blue-500/10 rounded-lg">
+                  <p className="text-xs text-muted-foreground uppercase">
+                    Órdenes
+                  </p>
+                  <p className="text-2xl font-bold text-blue-500">
                     {dailyDetails.totalOrders}
                   </p>
                 </div>
-                <div className="text-center p-3 bg-green-50 rounded-lg">
-                  <p className="text-xs text-gray-500 uppercase">Facturación</p>
-                  <p className="text-2xl font-bold text-green-600">
+                <div className="text-center p-3 bg-green-500/10 rounded-lg">
+                  <p className="text-xs text-muted-foreground uppercase">
+                    Facturación
+                  </p>
+                  <p className="text-2xl font-bold text-green-500">
                     S/{" "}
                     {dailyDetails.totalAmount.toLocaleString("es-PE", {
                       minimumFractionDigits: 2,
                     })}
                   </p>
                 </div>
-                <div className="text-center p-3 bg-purple-50 rounded-lg">
-                  <p className="text-xs text-gray-500 uppercase">Productos</p>
-                  <p className="text-2xl font-bold text-purple-600">
+                <div className="text-center p-3 bg-purple-500/10 rounded-lg">
+                  <p className="text-xs text-muted-foreground uppercase">
+                    Productos
+                  </p>
+                  <p className="text-2xl font-bold text-purple-500">
                     {dailyDetails.totalProducts}
                   </p>
                 </div>
@@ -540,20 +586,20 @@ export const Stats: React.FC = () => {
                     >
                       {/* Order Header - Clickable */}
                       <div
-                        className="flex items-center justify-between p-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors"
+                        className="flex items-center justify-between p-3 bg-muted/50 cursor-pointer hover:bg-muted transition-colors"
                         onClick={() => toggleOrderExpand(order.id)}
                       >
                         <div className="flex items-center gap-3">
                           {expandedOrders.has(order.id) ? (
-                            <ChevronDown className="h-4 w-4 text-gray-500" />
+                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
                           ) : (
-                            <ChevronRight className="h-4 w-4 text-gray-500" />
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
                           )}
                           <div>
-                            <span className="font-medium text-gray-800">
+                            <span className="font-medium text-foreground">
                               #{order.orderNumber}
                             </span>
-                            <span className="text-sm text-gray-500 ml-2">
+                            <span className="text-sm text-muted-foreground ml-2">
                               {order.customerName}
                             </span>
                           </div>
@@ -562,15 +608,15 @@ export const Stats: React.FC = () => {
                           <span
                             className={`text-xs px-2 py-1 rounded-full ${
                               order.status === "ENTREGADO"
-                                ? "bg-green-100 text-green-700"
+                                ? "bg-green-500/20 text-green-500"
                                 : order.status === "EN_ENVIO"
-                                  ? "bg-yellow-100 text-yellow-700"
-                                  : "bg-gray-100 text-gray-700"
+                                  ? "bg-yellow-500/20 text-yellow-500"
+                                  : "bg-muted text-muted-foreground"
                             }`}
                           >
                             {STATUS_LABELS[order.status] || order.status}
                           </span>
-                          <span className="font-bold text-gray-800">
+                          <span className="font-bold text-foreground">
                             S/{" "}
                             {order.grandTotal.toLocaleString("es-PE", {
                               minimumFractionDigits: 2,
@@ -585,7 +631,7 @@ export const Stats: React.FC = () => {
                           <div className="border-t bg-white">
                             <Table>
                               <TableHeader>
-                                <TableRow className="bg-gray-50/50">
+                                <TableRow className="bg-muted/50">
                                   <TableHead className="text-xs">
                                     Producto
                                   </TableHead>
@@ -645,6 +691,66 @@ export const Stats: React.FC = () => {
               No hay datos para este día
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+      {/* Modal de Vista Previa del Mes */}
+      <Dialog open={showPreviewModal} onOpenChange={setShowPreviewModal}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              Ventas del Mes Completo
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto mt-4 border rounded-lg">
+            <Table>
+              <TableHeader className="sticky top-0 bg-card shadow-sm">
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead className="text-right">Ventas (S/)</TableHead>
+                  <TableHead className="text-right">Órdenes</TableHead>
+                  <TableHead className="text-right">Productos</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {fullPeriodData.length > 0 ? (
+                  fullPeriodData.map((d) => (
+                    <TableRow key={d.date}>
+                      <TableCell className="font-medium">
+                        {new Date(d.date + "T12:00:00").toLocaleDateString(
+                          "es-PE",
+                          {
+                            weekday: "long",
+                            day: "numeric",
+                            month: "long",
+                          },
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        S/{" "}
+                        {d.ventas.toLocaleString("es-PE", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </TableCell>
+                      <TableCell className="text-right">{d.ordenes}</TableCell>
+                      <TableCell className="text-right">
+                        {d.productos}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell
+                      colSpan={4}
+                      className="text-center py-8 text-muted-foreground"
+                    >
+                      No hay datos para este periodo
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -542,7 +542,7 @@ Estado: ${sale.status}
         <TableHeader>
           <TableRow>
             {/* Columnas fijas izquierda */}
-            <TableHead className="w-[45px] min-w-[45px] sticky left-0 z-20 bg-background">
+            <TableHead className="w-[45px] min-w-[45px] lg:sticky lg:left-0 lg:z-20 bg-background">
               <input
                 type="checkbox"
                 checked={
@@ -564,21 +564,15 @@ Estado: ${sale.status}
                 }}
               />
             </TableHead>
-            <TableHead className="sticky left-[45px] w-[100px] min-w-[100px] z-20 bg-background">
+            <TableHead className="lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
               N° Orden
             </TableHead>
-            <TableHead className="sticky left-[145px] w-[150px] min-w-[150px] z-20 bg-background">
+            <TableHead className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-20 bg-background border-r">
               Cliente
             </TableHead>
-            <TableHead className="sticky left-[295px] w-[120px] min-w-[120px] z-20 bg-background">
-              Teléfono
-            </TableHead>
-            <TableHead className="sticky left-[415px] w-[120px] min-w-[120px] z-20 bg-background">
-              Distrito
-            </TableHead>
-            <TableHead className="sticky left-[535px] w-[120px] min-w-[120px] z-20 bg-background border-r">
-              Zona
-            </TableHead>
+            <TableHead>Teléfono</TableHead>
+            <TableHead>Distrito</TableHead>
+            <TableHead className="border-r">Zona</TableHead>
             {/* Columnas scrolleables */}
             <TableHead>Ciudad</TableHead>
             <TableHead>Provincia</TableHead>
@@ -591,10 +585,10 @@ Estado: ${sale.status}
             <TableHead>Estado</TableHead>
             <TableHead>Region</TableHead>
             {/* Columnas fijas derecha */}
-            <TableHead className="sticky right-[140px] w-[100px] min-w-[100px] z-20 bg-background border-l">
+            <TableHead className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-20 bg-background border-l">
               Resumen
             </TableHead>
-            <TableHead className="sticky right-0 w-[140px] min-w-[140px] z-20 bg-background text-right">
+            <TableHead className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-20 bg-background text-right">
               Acciones
             </TableHead>
           </TableRow>
@@ -603,14 +597,14 @@ Estado: ${sale.status}
           {data.map((sale) => (
             <TableRow key={sale.id}>
               {/* Columnas fijas izquierda */}
-              <TableCell className="sticky left-0 w-[45px] min-w-[45px] z-10 bg-background">
+              <TableCell className="lg:sticky lg:left-0 w-[45px] min-w-[45px] lg:z-10 bg-background">
                 <input
                   type="checkbox"
                   checked={selectedSaleIds.has(sale.id)}
                   onChange={() => toggleSale(sale.id)}
                 />
               </TableCell>
-              <TableCell className="font-medium sticky left-[45px] w-[100px] min-w-[100px] z-10 bg-background text-xs">
+              <TableCell className="font-medium lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-10 bg-background text-xs">
                 <div className="flex items-center gap-1">
                   {sale.hasStockIssue && (
                     <span title="Stock insuficiente - No se puede preparar">
@@ -620,19 +614,17 @@ Estado: ${sale.status}
                   {sale.orderNumber}
                 </div>
               </TableCell>
-              <TableCell className="sticky left-[145px] w-[150px] min-w-[150px] z-10 bg-background text-xs truncate max-w-[150px]">
+              <TableCell className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-10 bg-background text-xs truncate max-w-[150px] border-r">
                 {sale.clientName}
               </TableCell>
-              <TableCell className="sticky left-[295px] w-[120px] min-w-[120px] z-10 bg-background text-xs">
-                {sale.phoneNumber}
-              </TableCell>
-              <TableCell className="sticky left-[415px] w-[120px] min-w-[120px] z-10 bg-background text-xs truncate max-w-[120px]">
+              {/* Columnas scrolleables */}
+              <TableCell className="text-xs">{sale.phoneNumber}</TableCell>
+              <TableCell className="text-xs truncate max-w-[120px]">
                 {sale.district || "-"}
               </TableCell>
-              <TableCell className="sticky left-[535px] w-[120px] min-w-[120px] z-10 bg-background border-r text-xs truncate max-w-[120px]">
+              <TableCell className="text-xs truncate max-w-[120px]">
                 {sale.zone || "-"}
               </TableCell>
-              {/* Columnas scrolleables */}
               <TableCell>{sale.city || "-"}</TableCell>
               <TableCell>{sale.province || "-"}</TableCell>
               <TableCell>{sale.date}</TableCell>
@@ -664,7 +656,7 @@ Estado: ${sale.status}
               </TableCell>
               <TableCell>{sale.salesRegion}</TableCell>
               {/* Columnas fijas derecha */}
-              <TableCell className="sticky right-[140px] w-[100px] min-w-[100px] z-10 bg-background border-l">
+              <TableCell className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
                 <Button
                   size="sm"
                   variant="outline"
@@ -674,7 +666,7 @@ Estado: ${sale.status}
                   Ver
                 </Button>
               </TableCell>
-              <TableCell className="sticky right-0 w-[140px] min-w-[140px] z-10 bg-background text-right">
+              <TableCell className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-10 bg-background text-right">
                 <div className="flex gap-1 justify-end">
                   <Button
                     size="icon"
@@ -734,7 +726,7 @@ Estado: ${sale.status}
         <TableHeader>
           <TableRow>
             {/* Columnas fijas izquierda */}
-            <TableHead className="w-[45px] min-w-[45px] sticky left-0 z-20 bg-background">
+            <TableHead className="w-[45px] min-w-[45px] lg:sticky lg:left-0 lg:z-20 bg-background">
               <input
                 type="checkbox"
                 checked={
@@ -756,21 +748,15 @@ Estado: ${sale.status}
                 }}
               />
             </TableHead>
-            <TableHead className="sticky left-[45px] w-[100px] min-w-[100px] z-20 bg-background">
+            <TableHead className="lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
               N° Orden
             </TableHead>
-            <TableHead className="sticky left-[145px] w-[150px] min-w-[150px] z-20 bg-background">
+            <TableHead className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-20 bg-background border-r">
               Cliente
             </TableHead>
-            <TableHead className="sticky left-[295px] w-[120px] min-w-[120px] z-20 bg-background">
-              Teléfono
-            </TableHead>
-            <TableHead className="sticky left-[415px] w-[120px] min-w-[120px] z-20 bg-background">
-              Distrito
-            </TableHead>
-            <TableHead className="sticky left-[535px] w-[120px] min-w-[120px] z-20 bg-background border-r">
-              Zona
-            </TableHead>
+            <TableHead>Teléfono</TableHead>
+            <TableHead>Distrito</TableHead>
+            <TableHead className="border-r">Zona</TableHead>
             {/* Columnas scrolleables */}
             <TableHead>Ciudad</TableHead>
             <TableHead>Provincia</TableHead>
@@ -783,10 +769,10 @@ Estado: ${sale.status}
             <TableHead>Estado</TableHead>
             <TableHead>Region</TableHead>
             {/* Columnas fijas derecha */}
-            <TableHead className="sticky right-[140px] w-[100px] min-w-[100px] z-20 bg-background border-l">
+            <TableHead className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-20 bg-background border-l">
               Resumen
             </TableHead>
-            <TableHead className="sticky right-0 w-[140px] min-w-[140px] z-20 bg-background text-right">
+            <TableHead className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-20 bg-background text-right">
               Acciones
             </TableHead>
           </TableRow>
@@ -795,29 +781,27 @@ Estado: ${sale.status}
           {data.map((sale) => (
             <TableRow key={sale.id}>
               {/* Columnas fijas izquierda */}
-              <TableCell className="sticky left-0 w-[45px] min-w-[45px] z-10 bg-background">
+              <TableCell className="lg:sticky lg:left-0 w-[45px] min-w-[45px] lg:z-10 bg-background">
                 <input
                   type="checkbox"
                   checked={selectedSaleIds.has(sale.id)}
                   onChange={() => toggleSale(sale.id)}
                 />
               </TableCell>
-              <TableCell className="font-medium sticky left-[45px] w-[100px] min-w-[100px] z-10 bg-background text-xs">
+              <TableCell className="font-medium lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-10 bg-background text-xs">
                 {sale.orderNumber}
               </TableCell>
-              <TableCell className="sticky left-[145px] w-[150px] min-w-[150px] z-10 bg-background text-xs truncate max-w-[150px]">
+              <TableCell className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-10 bg-background text-xs truncate max-w-[150px] border-r">
                 {sale.clientName}
               </TableCell>
-              <TableCell className="sticky left-[295px] w-[120px] min-w-[120px] z-10 bg-background text-xs">
-                {sale.phoneNumber}
-              </TableCell>
-              <TableCell className="sticky left-[415px] w-[120px] min-w-[120px] z-10 bg-background text-xs truncate max-w-[120px]">
+              {/* Columnas scrolleables */}
+              <TableCell className="text-xs">{sale.phoneNumber}</TableCell>
+              <TableCell className="text-xs truncate max-w-[120px]">
                 {sale.district || "-"}
               </TableCell>
-              <TableCell className="sticky left-[535px] w-[120px] min-w-[120px] z-10 bg-background border-r text-xs truncate max-w-[120px]">
+              <TableCell className="text-xs truncate max-w-[120px]">
                 {sale.zone || "-"}
               </TableCell>
-              {/* Columnas scrolleables */}
               <TableCell>{sale.city || "-"}</TableCell>
               <TableCell>{sale.province || "-"}</TableCell>
               <TableCell>{sale.date}</TableCell>
@@ -849,7 +833,7 @@ Estado: ${sale.status}
               </TableCell>
               <TableCell>{sale.salesRegion}</TableCell>
               {/* Columnas fijas derecha */}
-              <TableCell className="sticky right-[140px] w-[100px] min-w-[100px] z-10 bg-background border-l">
+              <TableCell className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
                 <Button
                   size="sm"
                   variant="outline"
@@ -859,7 +843,7 @@ Estado: ${sale.status}
                   Ver
                 </Button>
               </TableCell>
-              <TableCell className="sticky right-0 w-[140px] min-w-[140px] z-10 bg-background text-right">
+              <TableCell className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-10 bg-background text-right">
                 <div className="flex gap-1 justify-end">
                   <Button
                     size="icon"
@@ -935,9 +919,9 @@ Estado: ${sale.status}
           />
         </div>
 
-        <div className="flex justify-end gap-2 mb-4">
-          <Link href="/registrar-venta">
-            <Button className="bg-teal-600 hover:bg-teal-700">
+        <div className="flex flex-col lg:flex-row justify-end gap-2 mb-4">
+          <Link href="/registrar-venta" className="w-full lg:w-auto">
+            <Button className="w-full lg:w-auto bg-teal-600 hover:bg-teal-700">
               <Plus className="h-4 w-4 mr-2" />
               Nueva venta
             </Button>
@@ -961,11 +945,12 @@ Estado: ${sale.status}
           {/* Tab Pendientes */}
           <TabsContent value="pendientes">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle>Ventas Pendientes</CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={selectedPendientesCount === 0 || isPrinting}
                     onClick={handleBulkPrint}
                   >
@@ -976,6 +961,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={selectedPendientesCount === 0}
                     onClick={() => handleCopySelected(pendientes)}
                   >
@@ -984,6 +970,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     onClick={() => handleExportExcel(pendientes, "pendientes")}
                   >
                     <Download className="h-4 w-4 mr-2" />
@@ -1012,11 +999,12 @@ Estado: ${sale.status}
           {/* Tab Anuladas */}
           <TabsContent value="anuladas">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle>Ventas Anuladas</CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       anulados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0 || isPrinting
@@ -1031,6 +1019,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       anulados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1043,6 +1032,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     onClick={() => handleExportExcel(anulados, "anuladas")}
                   >
                     <Download className="h-4 w-4 mr-2" />
@@ -1071,11 +1061,12 @@ Estado: ${sale.status}
           {/* Tab Todas las Ventas */}
           <TabsContent value="todas">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle>Todas las Ventas</CardTitle>
-                <div className="flex gap-2">
+                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0 || isPrinting
@@ -1094,6 +1085,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto"
                     disabled={
                       todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1110,7 +1102,10 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => handleExportExcel(todasLasVentas, "todas")}
+                    className="w-full lg:w-auto"
+                    onClick={() =>
+                      handleExportExcel(todasLasVentas, "todas_las_ventas")
+                    }
                   >
                     <Download className="h-4 w-4 mr-2" />
                     Exportar Excel

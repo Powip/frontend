@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "next-themes";
 import {
   Menu,
@@ -57,6 +57,23 @@ export function Sidebar({ className }: SidebarProps) {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
 
+  // Auto-colapsar en móviles
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setIsCollapsed(true);
+      } else {
+        setIsCollapsed(false);
+      }
+    };
+
+    // Ejecutar al montar
+    handleResize();
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark");
   };
@@ -100,7 +117,7 @@ export function Sidebar({ className }: SidebarProps) {
   return (
     <div
       className={cn(
-        "flex flex-col px-3 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300",
+        "flex flex-col px-3 pb-6 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 transition-all duration-300",
         isCollapsed ? "w-16" : "w-56",
         className,
       )}
@@ -265,14 +282,25 @@ export function Sidebar({ className }: SidebarProps) {
                 <Avatar className="h-8 w-8">
                   <AvatarImage
                     src="https://www.svgrepo.com/show/17068/user.svg"
-                    alt="Usuario"
+                    alt={auth?.user.name || "Usuario"}
                   />
-                  <AvatarFallback>US</AvatarFallback>
+                  <AvatarFallback>
+                    {auth?.user.name
+                      ? auth.user.name.substring(0, 1).toUpperCase() +
+                        (auth.user.surname
+                          ? auth.user.surname.substring(0, 1).toUpperCase()
+                          : "")
+                      : "US"}
+                  </AvatarFallback>
                 </Avatar>
-                <div className="ml-2">
-                  <div className="text-sm font-medium">Usuario</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
-                    {auth?.user.role}
+                <div className="ml-2 overflow-hidden">
+                  <div className="text-sm font-medium truncate">
+                    {auth?.user.name
+                      ? `${auth.user.name} ${auth.user.surname || ""}`.trim()
+                      : "Usuario"}
+                  </div>
+                  <div className="text-[10px] text-gray-500 dark:text-gray-400 capitalize">
+                    {auth?.user.role?.toLowerCase()}
                   </div>
                 </div>
               </div>
