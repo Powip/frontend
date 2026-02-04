@@ -110,11 +110,11 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
 
   return (
     <div className={`flex items-center gap-2 ${className || ""}`}>
-      <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+      <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-1">
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 rounded-md hover:bg-gray-200"
+          className="h-8 w-8 rounded-md hover:bg-muted"
           onClick={handlePrevMonth}
         >
           <ChevronLeft className="h-4 w-4" />
@@ -133,7 +133,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
               <SelectValue />
             </div>
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-[200px] overflow-y-auto">
             {availableMonths.map((item) => (
               <SelectItem
                 key={`${item.month}-${item.year}`}
@@ -149,7 +149,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
         <Button
           variant="ghost"
           size="icon"
-          className="h-8 w-8 rounded-md hover:bg-gray-200"
+          className="h-8 w-8 rounded-md hover:bg-muted"
           onClick={handleNextMonth}
           disabled={isCurrentMonth}
         >

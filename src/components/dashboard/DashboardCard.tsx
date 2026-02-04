@@ -69,21 +69,21 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
 
   return (
     <Card
-      className={`w-full shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden bg-white/50 backdrop-blur-sm border-gray-100 flex flex-col ${className || "h-full"}`}
+      className={`w-full shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden bg-card/50 backdrop-blur-sm border-border flex flex-col ${className || "h-full"}`}
     >
       <CardHeader className="p-4 pb-2">
         <div className="flex justify-between items-start">
-          <CardTitle className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+          <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
             {title}
           </CardTitle>
           {summaryStats && (
             <div className="flex gap-4">
               {summaryStats.map((stat, idx) => (
                 <div key={idx} className="text-right">
-                  <p className="text-[10px] text-gray-400 uppercase">
+                  <p className="text-[10px] text-muted-foreground uppercase">
                     {stat.label}
                   </p>
-                  <p className="text-sm font-bold text-gray-800">
+                  <p className="text-sm font-bold text-foreground">
                     {stat.value}
                   </p>
                 </div>
@@ -96,7 +96,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
             {filters.map((filter, idx) => (
               <div key={idx} className="flex-1 min-w-[100px]">
                 <Select value={filter.value} onValueChange={filter.onChange}>
-                  <SelectTrigger className="h-8 text-xs bg-gray-50 border-gray-200">
+                  <SelectTrigger className="h-8 text-xs bg-muted/50 border-border">
                     <SelectValue placeholder={filter.label} />
                   </SelectTrigger>
                   <SelectContent>
@@ -133,7 +133,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-8 w-8 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500"
+                      className="h-8 w-8 rounded-full bg-muted hover:bg-muted/80 text-muted-foreground"
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
@@ -152,7 +152,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                     </DialogHeader>
                     <div className="flex-1 overflow-auto mt-4 rounded-md border">
                       <Table>
-                        <TableHeader className="bg-gray-50 sticky top-0">
+                        <TableHeader className="bg-muted sticky top-0">
                           <TableRow>
                             {data.length > 0 &&
                               Object.keys(data[0])
@@ -202,7 +202,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                                   return (
                                     <TableHead
                                       key={key}
-                                      className="text-xs uppercase font-bold text-gray-600"
+                                      className="text-xs uppercase font-bold text-muted-foreground"
                                     >
                                       {headerLabel}
                                     </TableHead>

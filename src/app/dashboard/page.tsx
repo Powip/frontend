@@ -17,39 +17,39 @@ export default function DashboardPage() {
       <Header />
       <div className="flex-1 overflow-hidden">
         <Tabs defaultValue="general" className="h-full flex flex-col">
-          <div className="border-b px-4 py-2 bg-white">
-            <TabsList className="bg-gray-100/50 p-1">
+          <div className="border-b px-4 py-2 bg-card">
+            <TabsList className="bg-muted/50 p-1">
               <TabsTrigger
                 value="general"
-                className="gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <BarChart3 className="h-4 w-4 text-primary" />
                 Resumen General
               </TabsTrigger>
               <TabsTrigger
                 value="analysis"
-                className="gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <TrendingUp className="h-4 w-4 text-primary" />
                 Análisis Comercial
               </TabsTrigger>
               <TabsTrigger
                 value="geography"
-                className="gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <MapPin className="h-4 w-4 text-primary" />
                 Geografía & Clientes
               </TabsTrigger>
               <TabsTrigger
                 value="team"
-                className="gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <Users className="h-4 w-4 text-primary" />
                 Gestión de Equipo
               </TabsTrigger>
               <TabsTrigger
                 value="finance"
-                className="gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
               >
                 <Wallet className="h-4 w-4 text-primary" />
                 Finanzas

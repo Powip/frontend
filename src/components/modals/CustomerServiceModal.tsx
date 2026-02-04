@@ -29,6 +29,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../ui/alert-dialog";
 import CancellationModal, { CancellationReason } from "./CancellationModal";
 import AddProductsModal from "./AddProductsModal";
 import PaymentVerificationModal from "./PaymentVerificationModal";
@@ -167,6 +177,10 @@ export default function CustomerServiceModal({
   // Notes states
   const [notes, setNotes] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+
+  // Print confirmation state
+  const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
   const fetchLogs = async () => {
     if (!orderId) return;
@@ -574,7 +588,31 @@ export default function CustomerServiceModal({
       printWindow.focus();
       printWindow.print();
       printWindow.close();
+
+      // Si el pedido está en PENDIENTE, mostrar confirmación para pasar a PREPARADO
+      if (receipt.status === "PENDIENTE") {
+        setPrintConfirmOpen(true);
+      }
     };
+  };
+
+  const handleConfirmPrintStatus = async () => {
+    try {
+      setIsUpdatingStatus(true);
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+        { status: "PREPARADO" },
+      );
+      toast.success("Pedido actualizado a PREPARADO");
+      fetchReceipt();
+      onOrderUpdated?.();
+      setPrintConfirmOpen(false);
+    } catch (error) {
+      console.error("Error updating status to PREPARADO", error);
+      toast.error("No se pudo actualizar el estado del pedido");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
   };
 
   const handlePrintShippingReceipt = async () => {
@@ -1577,6 +1615,40 @@ export default function CustomerServiceModal({
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Modal de confirmación de impresión */}
+      <AlertDialog open={printConfirmOpen} onOpenChange={setPrintConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              ¿Se imprimió correctamente el recibo?
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-2 text-muted-foreground text-sm">
+                <span className="block">
+                  Confirma que el recibo de la orden{" "}
+                  <strong>{receipt?.orderNumber}</strong> se imprimió
+                  correctamente:
+                </span>
+                <span className="block text-amber-600 font-medium">
+                  Al confirmar, el estado cambiará a <strong>PREPARADO</strong>.
+                </span>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isUpdatingStatus}>
+              No, cancelar
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmPrintStatus}
+              disabled={isUpdatingStatus}
+            >
+              {isUpdatingStatus ? "Actualizando..." : "Sí, confirmar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Modal de Cancelación */}
       <CancellationModal

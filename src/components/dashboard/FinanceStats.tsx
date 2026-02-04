@@ -65,19 +65,19 @@ const StatCard: React.FC<{
   icon: React.ReactNode;
   loading?: boolean;
 }> = ({ title, value, subValue, icon, loading }) => (
-  <Card className="bg-white/50 backdrop-blur-sm border-gray-100 shadow-sm">
+  <Card className="bg-card/50 backdrop-blur-sm border-border shadow-sm">
     <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-      <CardTitle className="text-xs font-medium text-gray-500 uppercase">
+      <CardTitle className="text-xs font-medium text-muted-foreground uppercase">
         {title}
       </CardTitle>
-      <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
+      <div className="p-2 bg-primary/5 rounded-full text-primary">{icon}</div>
     </CardHeader>
     <CardContent>
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin text-primary" />
       ) : (
         <>
-          <div className="text-xl font-bold text-gray-800">{value}</div>
+          <div className="text-xl font-bold text-foreground">{value}</div>
           {subValue && (
             <p className="text-[10px] font-medium text-primary mt-1">
               {subValue}
@@ -211,11 +211,13 @@ export const FinanceStats: React.FC = () => {
       : 0;
 
   return (
-    <div className="flex flex-col h-full w-full overflow-auto bg-gray-50/50 p-6 space-y-6">
+    <div className="flex flex-col h-full w-full overflow-auto bg-muted/30 p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-bold text-gray-800">Panel Financiero</h2>
-          <p className="text-sm text-gray-500">
+          <h2 className="text-xl font-bold text-foreground">
+            Panel Financiero
+          </h2>
+          <p className="text-sm text-muted-foreground">
             Estado de ingresos, egresos y valorización de activos
           </p>
         </div>
@@ -305,18 +307,24 @@ export const FinanceStats: React.FC = () => {
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
-                  stroke="#f0f0f0"
+                  stroke="hsl(var(--border))"
                 />
                 <XAxis
                   dataKey="name"
                   axisLine={false}
                   tickLine={false}
-                  style={{ fontSize: "12px" }}
+                  style={{
+                    fontSize: "12px",
+                    fill: "hsl(var(--muted-foreground))",
+                  }}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  style={{ fontSize: "12px" }}
+                  style={{
+                    fontSize: "12px",
+                    fill: "hsl(var(--muted-foreground))",
+                  }}
                 />
                 <Tooltip
                   formatter={(value: any, name) => {
@@ -332,8 +340,8 @@ export const FinanceStats: React.FC = () => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload;
                       return (
-                        <div className="bg-white p-3 border border-gray-100 shadow-lg rounded-lg text-xs">
-                          <p className="font-bold mb-2 text-gray-800 border-b pb-1">
+                        <div className="bg-card p-3 border border-border shadow-lg rounded-lg text-xs">
+                          <p className="font-bold mb-2 text-foreground border-b pb-1">
                             {label}
                           </p>
                           <div className="space-y-1">
@@ -349,10 +357,10 @@ export const FinanceStats: React.FC = () => {
                               </span>
                             </div>
                             <div className="flex justify-between gap-4">
-                              <span className="text-gray-400">
+                              <span className="text-muted-foreground/70">
                                 Año Anterior:
                               </span>
-                              <span className="text-gray-500 italic">
+                              <span className="text-muted-foreground italic">
                                 S/{" "}
                                 {data.Anterior.toLocaleString("es-PE", {
                                   minimumFractionDigits: 2,
@@ -413,17 +421,17 @@ export const FinanceStats: React.FC = () => {
               .map((b) => (
                 <div
                   key={b.month}
-                  className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"
+                  className="flex items-center justify-between p-3 bg-card rounded-lg border border-border"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                    <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
                       <Receipt className="h-4 w-4" />
                     </div>
-                    <span className="font-medium text-gray-700">
+                    <span className="font-medium text-foreground">
                       {b.monthName}
                     </span>
                   </div>
-                  <span className="font-bold text-gray-900">
+                  <span className="font-bold text-foreground">
                     S/{" "}
                     {b.currentYear.toLocaleString("es-PE", {
                       minimumFractionDigits: 2,
@@ -464,13 +472,13 @@ export const FinanceStats: React.FC = () => {
                   if (active && payload && payload.length) {
                     const data = payload[0].payload;
                     return (
-                      <div className="bg-white p-3 rounded-lg shadow-lg border">
-                        <p className="font-bold text-gray-800">
+                      <div className="bg-card p-3 rounded-lg shadow-lg border border-border">
+                        <p className="font-bold text-foreground">
                           {data.courierName}
                         </p>
                         <div className="mt-2 space-y-1 text-sm">
                           <div className="flex justify-between gap-4">
-                            <span className="text-gray-500">
+                            <span className="text-muted-foreground">
                               Ingresos Envío:
                             </span>
                             <span className="font-bold text-green-600">
@@ -481,13 +489,15 @@ export const FinanceStats: React.FC = () => {
                             </span>
                           </div>
                           <div className="flex justify-between gap-4">
-                            <span className="text-gray-500">Órdenes:</span>
+                            <span className="text-muted-foreground">
+                              Órdenes:
+                            </span>
                             <span className="font-bold">
                               {data.ordersCount}
                             </span>
                           </div>
                           <div className="flex justify-between gap-4">
-                            <span className="text-gray-500">
+                            <span className="text-muted-foreground">
                               Participación:
                             </span>
                             <span className="font-bold">
@@ -526,29 +536,29 @@ export const FinanceStats: React.FC = () => {
               courierStats.map((c) => (
                 <div
                   key={c.courierName}
-                  className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-100"
+                  className="flex items-center justify-between p-3 bg-card rounded-lg border border-border"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-green-50 text-green-600 rounded-lg">
+                    <div className="p-2 bg-green-500/10 text-green-500 rounded-lg">
                       <Package className="h-4 w-4" />
                     </div>
                     <div>
-                      <span className="font-medium text-gray-700 block">
+                      <span className="font-medium text-foreground block">
                         {c.courierName}
                       </span>
-                      <span className="text-xs text-gray-400">
+                      <span className="text-xs text-muted-foreground">
                         {c.ordersCount} órdenes
                       </span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <span className="font-bold text-gray-900 block">
+                    <span className="font-bold text-foreground block">
                       S/{" "}
                       {c.shippingRevenue.toLocaleString("es-PE", {
                         minimumFractionDigits: 2,
                       })}
                     </span>
-                    <span className="text-xs text-green-600">
+                    <span className="text-xs text-green-500">
                       {c.percentage}%
                     </span>
                   </div>
@@ -573,34 +583,38 @@ export const FinanceStats: React.FC = () => {
 
           {/* Summary Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-b">
-            <div className="text-center p-3 bg-orange-50 rounded-lg">
-              <p className="text-xs text-gray-500 uppercase">Total Pendiente</p>
-              <p className="text-lg font-bold text-orange-600">
+            <div className="text-center p-3 bg-orange-500/10 rounded-lg">
+              <p className="text-xs text-muted-foreground uppercase">
+                Total Pendiente
+              </p>
+              <p className="text-lg font-bold text-orange-500">
                 S/{" "}
                 {receivables.pendingTotal.toLocaleString("es-PE", {
                   minimumFractionDigits: 2,
                 })}
               </p>
             </div>
-            <div className="text-center p-3 bg-blue-50 rounded-lg">
-              <p className="text-xs text-gray-500 uppercase">
+            <div className="text-center p-3 bg-blue-500/10 rounded-lg">
+              <p className="text-xs text-muted-foreground uppercase">
                 Pedidos Lima/Callao
               </p>
-              <p className="text-lg font-bold text-blue-600">
+              <p className="text-lg font-bold text-blue-500">
                 {receivables.limaCount}
               </p>
             </div>
-            <div className="text-center p-3 bg-purple-50 rounded-lg">
-              <p className="text-xs text-gray-500 uppercase">
+            <div className="text-center p-3 bg-purple-500/10 rounded-lg">
+              <p className="text-xs text-muted-foreground uppercase">
                 Pedidos Provincia
               </p>
-              <p className="text-lg font-bold text-purple-600">
+              <p className="text-lg font-bold text-purple-500">
                 {receivables.provinciaCount}
               </p>
             </div>
-            <div className="text-center p-3 bg-green-50 rounded-lg">
-              <p className="text-xs text-gray-500 uppercase">Ticket Promedio</p>
-              <p className="text-lg font-bold text-green-600">
+            <div className="text-center p-3 bg-green-500/10 rounded-lg">
+              <p className="text-xs text-muted-foreground uppercase">
+                Ticket Promedio
+              </p>
+              <p className="text-lg font-bold text-green-500">
                 S/{" "}
                 {receivables.avgTicket.toLocaleString("es-PE", {
                   minimumFractionDigits: 2,
@@ -612,21 +626,21 @@ export const FinanceStats: React.FC = () => {
           {/* Pending Orders Table */}
           <div className="flex-1 overflow-auto mt-4 rounded-md border">
             <Table>
-              <TableHeader className="bg-gray-50 sticky top-0">
+              <TableHeader className="bg-muted sticky top-0">
                 <TableRow>
-                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                  <TableHead className="text-xs uppercase font-bold text-muted-foreground">
                     N° Orden
                   </TableHead>
-                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                  <TableHead className="text-xs uppercase font-bold text-muted-foreground">
                     Cliente
                   </TableHead>
-                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                  <TableHead className="text-xs uppercase font-bold text-muted-foreground">
                     Distrito
                   </TableHead>
-                  <TableHead className="text-xs uppercase font-bold text-gray-600">
+                  <TableHead className="text-xs uppercase font-bold text-muted-foreground">
                     Zona
                   </TableHead>
-                  <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                  <TableHead className="text-xs uppercase font-bold text-muted-foreground text-right">
                     Pendiente
                   </TableHead>
                 </TableRow>
