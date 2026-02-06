@@ -440,7 +440,7 @@ Estado: ${sale.status}
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[40px]">
+          <TableHead className="w-[40px] min-w-[40px]">
             <input
               type="checkbox"
               checked={
@@ -461,53 +461,75 @@ Estado: ${sale.status}
               }}
             />
           </TableHead>
-          <TableHead>N° Orden</TableHead>
-          <TableHead>Cliente</TableHead>
-          <TableHead>Teléfono</TableHead>
-          <TableHead>Fecha</TableHead>
-          <TableHead>Pago</TableHead>
-          <TableHead>Envío</TableHead>
-          <TableHead>Total</TableHead>
-          <TableHead>Adelanto</TableHead>
-          <TableHead>Por Cobrar</TableHead>
-          <TableHead>Enviado Por</TableHead>
-          <TableHead>Estado</TableHead>
-          <TableHead>Region</TableHead>
-          <TableHead>Resumen</TableHead>
-          <TableHead className="text-right">Acciones</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">N° Orden</TableHead>
+          <TableHead className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-20 bg-background border-r">
+            Cliente
+          </TableHead>
+          <TableHead className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-20 bg-background border-r">
+            Teléfono
+          </TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Fecha</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Pago</TableHead>
+          <TableHead className="w-[120px] min-w-[120px]">Envío</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Total</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Adelanto</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Por Cobrar</TableHead>
+          <TableHead className="w-[120px] min-w-[120px]">Enviado Por</TableHead>
+          <TableHead className="w-[120px] min-w-[120px]">Estado</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Region</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Resumen</TableHead>
+          <TableHead className="lg:sticky lg:right-0 w-[100px] min-w-[100px] lg:z-20 bg-background text-right border-l">
+            Acciones
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {data.map((sale) => (
           <TableRow key={sale.id}>
-            <TableCell>
+            <TableCell className="w-[40px] min-w-[40px]">
               <input
                 type="checkbox"
                 checked={selectedSaleIds.has(sale.id)}
                 onChange={() => toggleSale(sale.id)}
               />
             </TableCell>
-            <TableCell className="font-medium">{sale.orderNumber}</TableCell>
-            <TableCell>{sale.clientName}</TableCell>
-            <TableCell>{sale.phoneNumber}</TableCell>
-            <TableCell>{sale.date}</TableCell>
-            <TableCell>{sale.paymentMethod}</TableCell>
-            <TableCell>{sale.deliveryType}</TableCell>
-            <TableCell>${sale.total.toFixed(2)}</TableCell>
-            <TableCell className="text-green-600">
+            <TableCell className="font-medium w-[100px] min-w-[100px]">
+              {sale.orderNumber}
+            </TableCell>
+            <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
+              {sale.clientName}
+            </TableCell>
+            <TableCell className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-10 bg-background border-r">
+              {sale.phoneNumber}
+            </TableCell>
+            <TableCell className="w-[100px] min-w-[100px]">
+              {sale.date}
+            </TableCell>
+            <TableCell className="w-[100px] min-w-[100px]">
+              {sale.paymentMethod}
+            </TableCell>
+            <TableCell className="w-[120px] min-w-[120px]">
+              {sale.deliveryType}
+            </TableCell>
+            <TableCell className="w-[100px] min-w-[100px]">
+              ${sale.total.toFixed(2)}
+            </TableCell>
+            <TableCell className="text-green-600 w-[100px] min-w-[100px]">
               ${sale.advancePayment.toFixed(2)}
             </TableCell>
-            <TableCell className="text-red-600">
+            <TableCell className="text-red-600 w-[100px] min-w-[100px]">
               ${sale.pendingPayment.toFixed(2)}
             </TableCell>
-            <TableCell>{sale.courier || "—"}</TableCell>
-            <TableCell>
+            <TableCell className="w-[120px] min-w-[120px]">
+              {sale.courier || "—"}
+            </TableCell>
+            <TableCell className="w-[120px] min-w-[120px]">
               <select
                 value={sale.status}
                 onChange={(e) =>
                   handleChangeStatus(sale.id, e.target.value as OrderStatus)
                 }
-                className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
+                className="border rounded-md px-2 py-1 text-sm bg-background text-foreground w-full"
               >
                 {getAvailableStatuses(sale.status, sale.salesRegion).map(
                   (status) => (
@@ -518,8 +540,10 @@ Estado: ${sale.status}
                 )}
               </select>
             </TableCell>
-            <TableCell>{sale.salesRegion}</TableCell>
-            <TableCell>
+            <TableCell className="w-[100px] min-w-[100px]">
+              {sale.salesRegion}
+            </TableCell>
+            <TableCell className="w-[100px] min-w-[100px]">
               <Button
                 size="sm"
                 variant="outline"
@@ -532,8 +556,23 @@ Estado: ${sale.status}
                 Ver
               </Button>
             </TableCell>
-            <TableCell className="text-right">
+            <TableCell className="text-right lg:sticky lg:right-0 w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
               <div className="flex gap-1 justify-end">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                  title="WhatsApp"
+                  onClick={() =>
+                    handleWhatsApp(
+                      sale.phoneNumber,
+                      sale.orderNumber,
+                      sale.clientName,
+                    )
+                  }
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </Button>
                 <Button
                   size="icon"
                   variant="outline"
@@ -589,7 +628,7 @@ Estado: ${sale.status}
     <Table>
       <TableHeader>
         <TableRow>
-          <TableHead className="w-[40px]">
+          <TableHead className="w-[40px] min-w-[40px]">
             <input
               type="checkbox"
               checked={
@@ -610,57 +649,85 @@ Estado: ${sale.status}
               }}
             />
           </TableHead>
-          <TableHead>N° Orden</TableHead>
-          <TableHead>Cliente</TableHead>
-          <TableHead>Teléfono</TableHead>
-          <TableHead>Fecha</TableHead>
-          <TableHead>Pago</TableHead>
-          <TableHead>Envío</TableHead>
-          <TableHead>Total</TableHead>
-          <TableHead>Adelanto</TableHead>
-          <TableHead>Por Cobrar</TableHead>
-          <TableHead>Enviado Por</TableHead>
-          <TableHead>Tipo Envío</TableHead>
-          <TableHead>Courier</TableHead>
-          <TableHead>Estado</TableHead>
-          <TableHead>Region</TableHead>
-          <TableHead>Resumen</TableHead>
-          <TableHead className="text-right">Acciones</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">N° Orden</TableHead>
+          <TableHead className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-20 bg-background border-r">
+            Cliente
+          </TableHead>
+          <TableHead className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-20 bg-background border-r">
+            Teléfono
+          </TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Fecha</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Pago</TableHead>
+          <TableHead className="w-[120px] min-w-[120px]">Envío</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Total</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Adelanto</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Por Cobrar</TableHead>
+          <TableHead className="w-[120px] min-w-[120px]">Enviado Por</TableHead>
+          <TableHead className="w-[120px] min-w-[120px]">Tipo Envío</TableHead>
+          <TableHead className="w-[120px] min-w-[120px]">Courier</TableHead>
+          <TableHead className="w-[120px] min-w-[120px]">Estado</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Region</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">Resumen</TableHead>
+          <TableHead className="lg:sticky lg:right-0 w-[100px] min-w-[100px] lg:z-20 bg-background text-right border-l">
+            Acciones
+          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
         {data.map((sale) => (
           <TableRow key={sale.id}>
-            <TableCell>
+            <TableCell className="w-[40px] min-w-[40px]">
               <input
                 type="checkbox"
                 checked={selectedSaleIds.has(sale.id)}
                 onChange={() => toggleSale(sale.id)}
               />
             </TableCell>
-            <TableCell className="font-medium">{sale.orderNumber}</TableCell>
-            <TableCell>{sale.clientName}</TableCell>
-            <TableCell>{sale.phoneNumber}</TableCell>
-            <TableCell>{sale.date}</TableCell>
-            <TableCell>{sale.paymentMethod}</TableCell>
-            <TableCell>{sale.deliveryType}</TableCell>
-            <TableCell>${sale.total.toFixed(2)}</TableCell>
-            <TableCell className="text-green-600">
+            <TableCell className="font-medium w-[100px] min-w-[100px]">
+              {sale.orderNumber}
+            </TableCell>
+            <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
+              {sale.clientName}
+            </TableCell>
+            <TableCell className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-10 bg-background border-r">
+              {sale.phoneNumber}
+            </TableCell>
+            <TableCell className="w-[100px] min-w-[100px]">
+              {sale.date}
+            </TableCell>
+            <TableCell className="w-[100px] min-w-[100px]">
+              {sale.paymentMethod}
+            </TableCell>
+            <TableCell className="w-[120px] min-w-[120px]">
+              {sale.deliveryType}
+            </TableCell>
+            <TableCell className="w-[100px] min-w-[100px]">
+              ${sale.total.toFixed(2)}
+            </TableCell>
+            <TableCell className="text-green-600 w-[100px] min-w-[100px]">
               ${sale.advancePayment.toFixed(2)}
             </TableCell>
-            <TableCell className="text-red-600">
+            <TableCell className="text-red-600 w-[100px] min-w-[100px]">
               ${sale.pendingPayment.toFixed(2)}
             </TableCell>
-            <TableCell>{sale.courier || "—"}</TableCell>
-            <TableCell>{sale.shippingDeliveryType || "—"}</TableCell>
-            <TableCell>{sale.shippingCourierName || "—"}</TableCell>
-            <TableCell>
+            <TableCell className="w-[120px] min-w-[120px]">
+              {sale.courier || "—"}
+            </TableCell>
+            <TableCell className="w-[120px] min-w-[120px]">
+              {sale.shippingDeliveryType || "—"}
+            </TableCell>
+            <TableCell className="w-[120px] min-w-[120px]">
+              {sale.shippingCourierName || "—"}
+            </TableCell>
+            <TableCell className="w-[120px] min-w-[120px]">
               <Badge variant="default" className="bg-green-600">
                 ENTREGADO
               </Badge>
             </TableCell>
-            <TableCell>{sale.salesRegion}</TableCell>
-            <TableCell>
+            <TableCell className="w-[100px] min-w-[100px]">
+              {sale.salesRegion}
+            </TableCell>
+            <TableCell className="w-[100px] min-w-[100px]">
               <Button
                 size="sm"
                 variant="outline"
@@ -673,8 +740,23 @@ Estado: ${sale.status}
                 Ver
               </Button>
             </TableCell>
-            <TableCell className="text-right">
+            <TableCell className="text-right lg:sticky lg:right-0 w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
               <div className="flex gap-1 justify-end">
+                <Button
+                  size="icon"
+                  variant="outline"
+                  className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                  title="WhatsApp"
+                  onClick={() =>
+                    handleWhatsApp(
+                      sale.phoneNumber,
+                      sale.orderNumber,
+                      sale.clientName,
+                    )
+                  }
+                >
+                  <MessageCircle className="h-4 w-4" />
+                </Button>
                 <Button
                   size="icon"
                   variant="outline"
@@ -777,30 +859,60 @@ Estado: ${sale.status}
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>N° Orden</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Teléfono</TableHead>
-                      <TableHead>Región</TableHead>
-                      <TableHead>Ciudad</TableHead>
-                      <TableHead>Courier</TableHead>
-                      <TableHead>Estado Venta</TableHead>
-                      <TableHead>Total Venta</TableHead>
-                      <TableHead>Pagos Pendientes</TableHead>
-                      <TableHead>Monto por Aprobar</TableHead>
-                      <TableHead>Fecha Pago</TableHead>
-                      <TableHead>Resumen</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
+                      <TableHead className="w-[100px] min-w-[100px]">
+                        N° Orden
+                      </TableHead>
+                      <TableHead className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-20 bg-background border-r">
+                        Cliente
+                      </TableHead>
+                      <TableHead className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-20 bg-background border-r">
+                        Teléfono
+                      </TableHead>
+                      <TableHead className="w-[100px] min-w-[100px]">
+                        Región
+                      </TableHead>
+                      <TableHead className="w-[120px] min-w-[120px]">
+                        Ciudad
+                      </TableHead>
+                      <TableHead className="w-[120px] min-w-[120px]">
+                        Courier
+                      </TableHead>
+                      <TableHead className="w-[120px] min-w-[120px]">
+                        Estado Venta
+                      </TableHead>
+                      <TableHead className="w-[100px] min-w-[100px]">
+                        Total Venta
+                      </TableHead>
+                      <TableHead className="w-[140px] min-w-[140px]">
+                        Pagos Pendientes
+                      </TableHead>
+                      <TableHead className="w-[140px] min-w-[140px]">
+                        Monto por Aprobar
+                      </TableHead>
+                      <TableHead className="w-[100px] min-w-[100px]">
+                        Fecha Pago
+                      </TableHead>
+                      <TableHead className="w-[100px] min-w-[100px]">
+                        Resumen
+                      </TableHead>
+                      <TableHead className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-20 bg-background text-right border-l">
+                        Acciones
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {pagosPendientes.map((sale) => (
                       <TableRow key={sale.id}>
-                        <TableCell className="font-medium">
+                        <TableCell className="font-medium w-[100px] min-w-[100px]">
                           {sale.orderNumber}
                         </TableCell>
-                        <TableCell>{sale.clientName}</TableCell>
-                        <TableCell>{sale.phoneNumber}</TableCell>
-                        <TableCell>
+                        <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
+                          {sale.clientName}
+                        </TableCell>
+                        <TableCell className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-10 bg-background border-r">
+                          {sale.phoneNumber}
+                        </TableCell>
+                        <TableCell className="w-[100px] min-w-[100px]">
                           <Badge
                             variant={
                               sale.salesRegion === "LIMA"
@@ -811,28 +923,34 @@ Estado: ${sale.status}
                             {sale.salesRegion}
                           </Badge>
                         </TableCell>
-                        <TableCell>{sale.city || "-"}</TableCell>
-                        <TableCell>{sale.courier || "-"}</TableCell>
-                        <TableCell>
+                        <TableCell className="w-[120px] min-w-[120px]">
+                          {sale.city || "-"}
+                        </TableCell>
+                        <TableCell className="w-[120px] min-w-[120px]">
+                          {sale.courier || "-"}
+                        </TableCell>
+                        <TableCell className="w-[120px] min-w-[120px]">
                           <Badge variant="outline">{sale.status}</Badge>
                         </TableCell>
-                        <TableCell>S/{sale.total.toFixed(2)}</TableCell>
-                        <TableCell>
+                        <TableCell className="w-[100px] min-w-[100px]">
+                          S/{sale.total.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="w-[140px] min-w-[140px]">
                           <Badge className="bg-amber-100 text-amber-800">
                             {sale.pendingPaymentsCount} pago(s)
                           </Badge>
                         </TableCell>
-                        <TableCell className="font-medium text-amber-600">
+                        <TableCell className="font-medium text-amber-600 w-[140px] min-w-[140px]">
                           S/{sale.pendingPaymentsAmount.toFixed(2)}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-[100px] min-w-[100px]">
                           {sale.paymentCreatedAt
                             ? new Date(
                                 sale.paymentCreatedAt,
                               ).toLocaleDateString("es-PE")
                             : "-"}
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="w-[100px] min-w-[100px]">
                           <Button
                             size="sm"
                             variant="outline"
@@ -845,13 +963,13 @@ Estado: ${sale.status}
                             Ver
                           </Button>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-10 bg-background border-l">
                           <div className="flex gap-1 justify-end">
                             <Button
                               size="icon"
                               variant="outline"
-                              className="bg-green-500 hover:bg-green-600 text-white"
-                              title="Contactar por WhatsApp"
+                              className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                              title="WhatsApp"
                               onClick={() =>
                                 handleWhatsApp(
                                   sale.phoneNumber,

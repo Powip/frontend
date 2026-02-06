@@ -133,15 +133,23 @@ export const FinanceStats: React.FC = () => {
       if (from) params.fromDate = from;
       if (to) params.toDate = to;
 
+      const billingParams = { ...params };
+      if (from) {
+        billingParams.year = from.split("-")[0];
+      }
+
       const [billingRes, invRes, receivablesRes, courierRes] =
         await Promise.all([
           axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
-            params,
+            params: billingParams,
           }),
           axios.get(
             `${process.env.NEXT_PUBLIC_API_INVENTORY}/stats/inventory-value`,
             {
-              params: { storeId: selectedStoreId },
+              params: {
+                storeId: selectedStoreId,
+                date: to,
+              },
             },
           ),
           // Fetch receivables (pending payments)
@@ -203,8 +211,26 @@ export const FinanceStats: React.FC = () => {
     setToDate(to);
   };
 
-  const currentYearSales = billing.reduce((sum, b) => sum + b.currentYear, 0);
-  const previousYearSales = billing.reduce((sum, b) => sum + b.previousYear, 0);
+  const getMonthFromDate = (dateStr: string) => {
+    if (!dateStr) return 0;
+    return parseInt(dateStr.split("-")[1], 10);
+  };
+
+  const startMonth = fromDate ? getMonthFromDate(fromDate) : 1;
+  const endMonth = toDate ? getMonthFromDate(toDate) : 12;
+
+  const filteredBilling = billing.filter(
+    (b) => b.month >= startMonth && b.month <= endMonth,
+  );
+
+  const currentYearSales = filteredBilling.reduce(
+    (sum, b) => sum + b.currentYear,
+    0,
+  );
+  const previousYearSales = filteredBilling.reduce(
+    (sum, b) => sum + b.previousYear,
+    0,
+  );
   const growth =
     previousYearSales > 0
       ? ((currentYearSales - previousYearSales) / previousYearSales) * 100
@@ -234,7 +260,7 @@ export const FinanceStats: React.FC = () => {
           loading={loading}
         />
         <StatCard
-          title="Ingresos Totales (YTD)"
+          title="Ingresos Totales"
           value={`S/ ${currentYearSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue={`${growth >= 0 ? "+" : ""}${growth.toFixed(1)}% vs año anterior`}
           icon={<Wallet className="h-5 w-5 text-primary" />}

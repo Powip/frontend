@@ -14,7 +14,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Edit, Trash2, Download } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Download,
+  MessageCircle,
+} from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import ClienteModal from "@/components/modals/ClienteModal";
 import { Client } from "@/interfaces/ICliente";
@@ -34,7 +41,7 @@ export default function ClientesPage() {
   const [selectedCliente, setSelectedCliente] = useState<Client | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
   const { auth } = useAuth();
-  
+
   const fetchClients = async (companyId: string) => {
     setLoading(true);
     try {
@@ -88,7 +95,6 @@ export default function ClientesPage() {
     try {
       const res = await toggleClienteActivo(cliente.id);
 
-
       toast.success("Cliente actualizado correctamente");
       fetchClients(auth!.company!.id);
     } catch (error) {
@@ -97,15 +103,39 @@ export default function ClientesPage() {
     }
   };
 
+  const handleWhatsApp = (phoneNumber: string, clientName?: string) => {
+    const phone = phoneNumber.replace(/\D/g, "");
+    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+
+    let message = `Hola${clientName ? ` ${clientName}` : ""}! Te contactamos de Powip.`;
+
+    window.open(
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
+      "_blank",
+    );
+  };
+
   const getClientTypeBadge = (type: string) => {
     const typeUpper = type.toUpperCase();
     switch (typeUpper) {
       case "VIP":
-        return <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">VIP</Badge>;
+        return (
+          <Badge className="bg-purple-100 text-purple-700 hover:bg-purple-100">
+            VIP
+          </Badge>
+        );
       case "PREMIUM":
-        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">PREMIUM</Badge>;
+        return (
+          <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">
+            PREMIUM
+          </Badge>
+        );
       default:
-        return <Badge variant="outline" className="text-muted-foreground">TRADICIONAL</Badge>;
+        return (
+          <Badge variant="outline" className="text-muted-foreground">
+            TRADICIONAL
+          </Badge>
+        );
     }
   };
 
@@ -113,18 +143,18 @@ export default function ClientesPage() {
     // Preparar datos para exportar
     const exportData = filtered.map((c, index) => ({
       "N°": index + 1,
-      "Nombre": c.fullName,
-      "Teléfono": c.phoneNumber || "-",
-      "Ciudad": c.city || "-",
-      "Distrito": c.district || "-",
-      "Provincia": c.province || "-",
+      Nombre: c.fullName,
+      Teléfono: c.phoneNumber || "-",
+      Ciudad: c.city || "-",
+      Distrito: c.district || "-",
+      Provincia: c.province || "-",
       "Total Compras": c.totalPurchases || 0,
       "Monto Total (S/)": Number(c.totalPurchaseAmount ?? 0).toFixed(2),
-      "Última Compra": c.lastPurchaseDate 
+      "Última Compra": c.lastPurchaseDate
         ? new Date(c.lastPurchaseDate).toLocaleDateString("es-PE")
         : "-",
-      "Tipo": c.clientType,
-      "Estado": c.isActive ? "Activo" : "Inactivo",
+      Tipo: c.clientType,
+      Estado: c.isActive ? "Activo" : "Inactivo",
     }));
 
     // Crear CSV
@@ -132,21 +162,26 @@ export default function ClientesPage() {
     const rows = exportData.map((row) =>
       Object.values(row)
         .map((val) => `"${val}"`)
-        .join(",")
+        .join(","),
     );
     const csv = [headers, ...rows].join("\n");
 
     // Descargar
-    const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8;" });
+    const blob = new Blob(["\ufeff" + csv], {
+      type: "text/csv;charset=utf-8;",
+    });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `clientes_${new Date().toISOString().split("T")[0]}.csv`);
+    link.setAttribute(
+      "download",
+      `clientes_${new Date().toISOString().split("T")[0]}.csv`,
+    );
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    
+
     toast.success(`${exportData.length} clientes exportados a Excel`);
   };
 
@@ -207,9 +242,15 @@ export default function ClientesPage() {
                     <TableHead className="border-r">Nombre</TableHead>
                     <TableHead className="border-r">Teléfono</TableHead>
                     <TableHead className="border-r">Ciudad</TableHead>
-                    <TableHead className="border-r text-center w-20">Nro Compras</TableHead>
-                    <TableHead className="border-r text-right w-24">Monto Total</TableHead>
-                    <TableHead className="border-r w-28">Última Compra</TableHead>
+                    <TableHead className="border-r text-center w-20">
+                      Nro Compras
+                    </TableHead>
+                    <TableHead className="border-r text-right w-24">
+                      Monto Total
+                    </TableHead>
+                    <TableHead className="border-r w-28">
+                      Última Compra
+                    </TableHead>
                     <TableHead className="border-r">Tipo</TableHead>
                     <TableHead className="border-r w-20">Estado</TableHead>
                     <TableHead className="text-center w-24">Acciones</TableHead>
@@ -221,16 +262,36 @@ export default function ClientesPage() {
                     // Skeleton rows
                     [...Array(8)].map((_, i) => (
                       <TableRow key={i}>
-                        <TableCell className="border-r"><Skeleton className="h-4 w-8" /></TableCell>
-                        <TableCell className="border-r"><Skeleton className="h-4 w-32" /></TableCell>
-                        <TableCell className="border-r"><Skeleton className="h-4 w-24" /></TableCell>
-                        <TableCell className="border-r"><Skeleton className="h-4 w-20" /></TableCell>
-                        <TableCell className="border-r"><Skeleton className="h-4 w-10" /></TableCell>
-                        <TableCell className="border-r"><Skeleton className="h-4 w-16" /></TableCell>
-                        <TableCell className="border-r"><Skeleton className="h-4 w-20" /></TableCell>
-                        <TableCell className="border-r"><Skeleton className="h-5 w-20" /></TableCell>
-                        <TableCell className="border-r"><Skeleton className="h-5 w-16" /></TableCell>
-                        <TableCell><Skeleton className="h-8 w-16 mx-auto" /></TableCell>
+                        <TableCell className="border-r">
+                          <Skeleton className="h-4 w-8" />
+                        </TableCell>
+                        <TableCell className="border-r">
+                          <Skeleton className="h-4 w-32" />
+                        </TableCell>
+                        <TableCell className="border-r">
+                          <Skeleton className="h-4 w-24" />
+                        </TableCell>
+                        <TableCell className="border-r">
+                          <Skeleton className="h-4 w-20" />
+                        </TableCell>
+                        <TableCell className="border-r">
+                          <Skeleton className="h-4 w-10" />
+                        </TableCell>
+                        <TableCell className="border-r">
+                          <Skeleton className="h-4 w-16" />
+                        </TableCell>
+                        <TableCell className="border-r">
+                          <Skeleton className="h-4 w-20" />
+                        </TableCell>
+                        <TableCell className="border-r">
+                          <Skeleton className="h-5 w-20" />
+                        </TableCell>
+                        <TableCell className="border-r">
+                          <Skeleton className="h-5 w-16" />
+                        </TableCell>
+                        <TableCell>
+                          <Skeleton className="h-8 w-16 mx-auto" />
+                        </TableCell>
                       </TableRow>
                     ))
                   ) : paginatedClients.length > 0 ? (
@@ -240,8 +301,12 @@ export default function ClientesPage() {
                           {startIndex + index + 1}
                         </TableCell>
                         <TableCell className="border-r">{c.fullName}</TableCell>
-                        <TableCell className="border-r">{c.phoneNumber || "-"}</TableCell>
-                        <TableCell className="border-r">{c.city || "-"}</TableCell>
+                        <TableCell className="border-r">
+                          {c.phoneNumber || "-"}
+                        </TableCell>
+                        <TableCell className="border-r">
+                          {c.city || "-"}
+                        </TableCell>
                         <TableCell className="border-r text-center">
                           {c.totalPurchases ?? 0}
                         </TableCell>
@@ -249,20 +314,21 @@ export default function ClientesPage() {
                           S/ {Number(c.totalPurchaseAmount ?? 0).toFixed(2)}
                         </TableCell>
                         <TableCell className="border-r text-sm">
-                          {c.lastPurchaseDate 
-                            ? new Date(c.lastPurchaseDate).toLocaleDateString("es-PE")
-                            : "-"
-                          }
+                          {c.lastPurchaseDate
+                            ? new Date(c.lastPurchaseDate).toLocaleDateString(
+                                "es-PE",
+                              )
+                            : "-"}
                         </TableCell>
                         <TableCell className="border-r">
                           {getClientTypeBadge(c.clientType)}
                         </TableCell>
 
                         <TableCell className="border-r">
-                          <Badge 
+                          <Badge
                             className={
-                              c.isActive 
-                                ? "bg-green-100 text-green-700 hover:bg-green-100" 
+                              c.isActive
+                                ? "bg-green-100 text-green-700 hover:bg-green-100"
                                 : "bg-gray-100 text-gray-600 hover:bg-gray-100"
                             }
                           >
@@ -272,6 +338,23 @@ export default function ClientesPage() {
 
                         <TableCell>
                           <div className="flex justify-center gap-1">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8 bg-green-500 hover:bg-green-600 text-white border-green-600"
+                              onClick={() => {
+                                if (c.phoneNumber) {
+                                  handleWhatsApp(c.phoneNumber, c.fullName);
+                                } else {
+                                  toast.error(
+                                    "El cliente no tiene un teléfono registrado",
+                                  );
+                                }
+                              }}
+                              title="WhatsApp"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </Button>
                             <Button
                               variant="ghost"
                               size="icon"
@@ -311,7 +394,7 @@ export default function ClientesPage() {
               </Table>
             </div>
           </CardContent>
-          
+
           {/* Pagination - fixed at bottom */}
           {!loading && (
             <Pagination

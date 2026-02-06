@@ -173,22 +173,18 @@ export default function AtencionClientePage() {
   const [promoToDate, setPromoToDate] = useState<string>("");
 
   const handleWhatsApp = (
-    phone: string,
+    phoneNumber: string,
     orderNumber: string,
-    fullName: string,
+    clientName: string,
   ) => {
-    const cleanPhone = phone.replace(/\D/g, "");
-    if (!cleanPhone) {
-      toast.error("No hay número de teléfono válido");
-      return;
-    }
-    const finalPhone = cleanPhone.startsWith("51")
-      ? cleanPhone
-      : `51${cleanPhone}`;
+    const phone = phoneNumber.replace(/\D/g, "");
+    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+
     const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${orderNumber}`;
-    const message = `Hola ${fullName}! Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
+    const message = `Hola ${clientName}! Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
+
     window.open(
-      `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`,
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
       "_blank",
     );
   };
@@ -424,7 +420,7 @@ Estado: ${sale.status}
                 <Button
                   size="icon"
                   variant="outline"
-                  className="bg-green-50 hover:bg-green-100 text-green-600 border-green-200"
+                  className="bg-green-500 hover:bg-green-600 text-white border-green-600"
                   onClick={() =>
                     handleWhatsApp(
                       sale.phoneNumber,
@@ -740,9 +736,9 @@ Estado: ${sale.status}
                             Ver Orden
                           </Button>
                           <Button
-                            size="sm"
+                            size="icon"
                             variant="outline"
-                            className="bg-green-50 hover:bg-green-100 text-green-600 border-green-200"
+                            className="bg-green-500 hover:bg-green-600 text-white border-green-600"
                             onClick={() =>
                               handleWhatsApp(
                                 promo.customerPhone,
@@ -750,9 +746,9 @@ Estado: ${sale.status}
                                 promo.customerName,
                               )
                             }
+                            title="WhatsApp"
                           >
-                            <MessageCircle className="h-4 w-4 mr-1" />
-                            WhatsApp
+                            <MessageCircle className="h-4 w-4" />
                           </Button>
                         </TableCell>
                       </TableRow>
