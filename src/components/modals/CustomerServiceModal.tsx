@@ -3,6 +3,7 @@ import axios from "axios";
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { toast } from "sonner";
 import {
   Phone,
@@ -21,6 +22,7 @@ import {
   Copy,
   Truck,
   Package,
+  Loader2,
 } from "lucide-react";
 import { Textarea } from "../ui/textarea";
 import {
@@ -102,6 +104,8 @@ interface Props {
   hideCallManagement?: boolean;
   /** Optional shipping guide data to display in the modal */
   shippingGuide?: ShippingGuideData | null;
+  /** Mostrar campos de tracking editables */
+  showTracking?: boolean;
 }
 
 interface OrderReceipt {
@@ -149,6 +153,10 @@ interface OrderReceipt {
     totalPaid: number;
     pendingAmount: number;
   };
+  externalTrackingNumber?: string | null;
+  shippingCode?: string | null;
+  shippingKey?: string | null;
+  shippingOffice?: string | null;
 }
 
 export default function CustomerServiceModal({
@@ -158,6 +166,7 @@ export default function CustomerServiceModal({
   onOrderUpdated,
   hideCallManagement = false,
   shippingGuide,
+  showTracking = false,
 }: Props) {
   const router = useRouter();
   const { auth } = useAuth();
@@ -292,13 +301,70 @@ export default function CustomerServiceModal({
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
         { notes },
       );
-      toast.success("Notas guardadas");
-    } catch (error) {
-      console.error("Error saving notes", error);
       toast.error("Error al guardar las notas");
     } finally {
       setSavingNotes(false);
     }
+  };
+
+  const [savingTracking, setSavingTracking] = useState(false);
+  const [originalTracking, setOriginalTracking] = useState<any>(null);
+
+  useEffect(() => {
+    if (receipt && !originalTracking) {
+      setOriginalTracking({
+        externalTrackingNumber: receipt.externalTrackingNumber || "",
+        shippingCode: receipt.shippingCode || "",
+        shippingKey: receipt.shippingKey || "",
+        shippingOffice: receipt.shippingOffice || "",
+      });
+    }
+  }, [receipt, originalTracking]);
+
+  const handleSaveTracking = async () => {
+    if (!receipt || !orderId || !originalTracking) return;
+
+    // Detect if there are actual changes
+    const hasChanges =
+      (receipt.externalTrackingNumber || "") !==
+        originalTracking.externalTrackingNumber ||
+      (receipt.shippingCode || "") !== originalTracking.shippingCode ||
+      (receipt.shippingKey || "") !== originalTracking.shippingKey ||
+      (receipt.shippingOffice || "") !== originalTracking.shippingOffice;
+
+    if (!hasChanges) return;
+
+    try {
+      setSavingTracking(true);
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+        {
+          externalTrackingNumber: receipt.externalTrackingNumber,
+          shippingCode: receipt.shippingCode,
+          shippingKey: receipt.shippingKey,
+          shippingOffice: receipt.shippingOffice,
+        },
+      );
+      toast.success("Tracking actualizado");
+      // Update original tracking to match new saved state
+      setOriginalTracking({
+        externalTrackingNumber: receipt.externalTrackingNumber || "",
+        shippingCode: receipt.shippingCode || "",
+        shippingKey: receipt.shippingKey || "",
+        shippingOffice: receipt.shippingOffice || "",
+      });
+      onOrderUpdated?.();
+    } catch (error) {
+      console.error("Error saving tracking:", error);
+      toast.error("Error al actualizar tracking");
+    } finally {
+      setSavingTracking(false);
+    }
+  };
+
+  const updateTrackingField = (field: keyof OrderReceipt, value: string) => {
+    if (!receipt) return;
+    setReceipt({ ...receipt, [field]: value });
   };
 
   const handleWhatsApp = () => {
@@ -450,6 +516,20 @@ export default function CustomerServiceModal({
             font-weight: bold;
             color: #333333ff;
           }
+          .tracking-section {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px dashed #333;
+            font-size: 10px;
+          }
+          .tracking-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px;
+          }
+          .tracking-item { line-height: 1.2; }
+          .tracking-label { color: #666; font-size: 8px; text-decoration: underline; }
+          .tracking-value { font-weight: bold; display: block; }
           @media print {
             body { padding: 10px; }
             @page { margin: 5mm; size: 80mm auto; }
@@ -571,11 +651,60 @@ export default function CustomerServiceModal({
             <span>Adelanto:</span>
             <span>S/ ${totalPaid.toFixed(2)}</span>
           </div>
-          <div class="total-row pending">
             <span>Por Cobrar:</span>
             <span>S/ ${pendingAmount.toFixed(2)}</span>
           </div>
         </div>
+
+        ${
+          receipt.externalTrackingNumber ||
+          receipt.shippingCode ||
+          receipt.shippingKey ||
+          receipt.shippingOffice
+            ? `
+        <div class="tracking-section">
+          <div class="tracking-grid">
+            ${
+              receipt.externalTrackingNumber
+                ? `
+            <div class="tracking-item">
+              <span class="tracking-label">Tracking:</span>
+              <span class="tracking-value">${receipt.externalTrackingNumber}</span>
+            </div>`
+                : ""
+            }
+            ${
+              receipt.shippingOffice
+                ? `
+            <div class="tracking-item">
+              <span class="tracking-label">Oficina:</span>
+              <span class="tracking-value">${receipt.shippingOffice}</span>
+            </div>`
+                : ""
+            }
+            ${
+              receipt.shippingCode
+                ? `
+            <div class="tracking-item">
+              <span class="tracking-label">Código:</span>
+              <span class="tracking-value">${receipt.shippingCode}</span>
+            </div>`
+                : ""
+            }
+            ${
+              receipt.shippingKey
+                ? `
+            <div class="tracking-item">
+              <span class="tracking-label">Clave:</span>
+              <span class="tracking-value">${receipt.shippingKey}</span>
+            </div>`
+                : ""
+            }
+          </div>
+        </div>
+        `
+            : ""
+        }
       </body>
       </html>
     `;
@@ -1175,6 +1304,179 @@ export default function CustomerServiceModal({
                           {receipt.customer.reference || "-"}
                         </span>
                       </div>
+
+                      {/* New Tracking Info Section in Modal */}
+                      {showTracking && receipt && (
+                        <div className="mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
+                          <label className="text-xs font-bold text-muted-foreground mb-3 block uppercase tracking-wider">
+                            Información de Seguimiento
+                          </label>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                                Nro Tracking
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  size={1}
+                                  className="h-8 text-xs"
+                                  placeholder="Nro Tracking..."
+                                  value={receipt.externalTrackingNumber || ""}
+                                  onChange={(
+                                    e: React.ChangeEvent<HTMLInputElement>,
+                                  ) =>
+                                    updateTrackingField(
+                                      "externalTrackingNumber",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onBlur={handleSaveTracking}
+                                />
+                                {receipt.externalTrackingNumber && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                                    onClick={() =>
+                                      copyField(
+                                        receipt.externalTrackingNumber || "",
+                                        "Tracking",
+                                      )
+                                    }
+                                    title="Copiar Tracking"
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                                Oficina
+                              </span>
+                              <Input
+                                className="h-8 text-xs"
+                                placeholder="Oficina..."
+                                value={receipt.shippingOffice || ""}
+                                onChange={(
+                                  e: React.ChangeEvent<HTMLInputElement>,
+                                ) =>
+                                  updateTrackingField(
+                                    "shippingOffice",
+                                    e.target.value,
+                                  )
+                                }
+                                onBlur={handleSaveTracking}
+                              />
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                                Código
+                              </span>
+                              <Input
+                                className="h-8 text-xs"
+                                placeholder="Código..."
+                                value={receipt.shippingCode || ""}
+                                onChange={(
+                                  e: React.ChangeEvent<HTMLInputElement>,
+                                ) =>
+                                  updateTrackingField(
+                                    "shippingCode",
+                                    e.target.value,
+                                  )
+                                }
+                                onBlur={handleSaveTracking}
+                              />
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                                Clave
+                              </span>
+                              <Input
+                                className="h-8 text-xs"
+                                placeholder="Clave..."
+                                value={receipt.shippingKey || ""}
+                                onChange={(
+                                  e: React.ChangeEvent<HTMLInputElement>,
+                                ) =>
+                                  updateTrackingField(
+                                    "shippingKey",
+                                    e.target.value,
+                                  )
+                                }
+                                onBlur={handleSaveTracking}
+                              />
+                            </div>
+                          </div>
+                          {savingTracking && (
+                            <div className="mt-2 flex items-center gap-2 text-[10px] text-orange-500 animate-pulse">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Guardando cambios...
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {!showTracking &&
+                        (receipt.externalTrackingNumber ||
+                          receipt.shippingCode ||
+                          receipt.shippingKey ||
+                          receipt.shippingOffice) && (
+                          <div className="mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <span className="text-muted-foreground block text-xs underline mb-1">
+                                  Nro Tracking
+                                </span>
+                                <div className="flex items-center gap-1">
+                                  <span className="text-sm font-semibold truncate">
+                                    {receipt.externalTrackingNumber || "-"}
+                                  </span>
+                                  {receipt.externalTrackingNumber && (
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                                      onClick={() =>
+                                        copyField(
+                                          receipt.externalTrackingNumber || "",
+                                          "Tracking",
+                                        )
+                                      }
+                                      title="Copiar Tracking"
+                                    >
+                                      <Copy className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground block text-xs underline mb-1">
+                                  Oficina
+                                </span>
+                                <span className="text-sm font-semibold truncate">
+                                  {receipt.shippingOffice || "-"}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground block text-xs underline mb-1">
+                                  Código
+                                </span>
+                                <span className="text-sm font-semibold">
+                                  {receipt.shippingCode || "-"}
+                                </span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground block text-xs underline mb-1">
+                                  Clave
+                                </span>
+                                <span className="text-sm font-semibold">
+                                  {receipt.shippingKey || "-"}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                     </div>
                   </div>
 

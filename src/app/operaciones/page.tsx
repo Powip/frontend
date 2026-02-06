@@ -593,15 +593,16 @@ export default function OperacionesPage() {
       cleanPhone = `51${cleanPhone}`;
     }
 
-    // Construir mensaje si tenemos datos de la orden
-    let url = `https://api.whatsapp.com/send?phone=${cleanPhone}`;
-    if (orderNumber && clientName) {
+    let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
+    if (orderNumber) {
       const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${orderNumber}`;
-      const message = `Hola ${clientName}, acá tenés el resumen de tu compra N° ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
-      url += `&text=${encodeURIComponent(message)}`;
+      message += `Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
     }
 
-    window.open(url, "_blank");
+    window.open(
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
+      "_blank",
+    );
   };
 
   const toggleSale = (id: string) => {
@@ -1384,7 +1385,7 @@ Estado: ${sale.status}
                   showRegionFilter={true}
                   showGuideFilter={true}
                 />
-                {renderTable(contactados, false, true)}
+                {renderTable(contactados, true, true)}
               </CardContent>
               <Pagination
                 currentPage={1}
@@ -1459,7 +1460,7 @@ Estado: ${sale.status}
                   showGuideFilter={true}
                   availableCouriers={availableCouriers}
                 />
-                {renderTable(despachados, false, true)}
+                {renderTable(despachados, true, true)}
               </CardContent>
               <Pagination
                 currentPage={1}
@@ -1537,7 +1538,7 @@ Estado: ${sale.status}
                   showRegionFilter={true}
                   availableCouriers={availableCouriers}
                 />
-                {renderTable(entregadosPaginated, false, false)}
+                {renderTable(entregadosPaginated, true, false)}
               </CardContent>
               <Pagination
                 currentPage={pageEntregados}
@@ -1596,7 +1597,7 @@ Estado: ${sale.status}
                   }}
                   showRegionFilter={true}
                 />
-                {renderTable(anuladosPaginated, false, false)}
+                {renderTable(anuladosPaginated, true, false)}
               </CardContent>
               <Pagination
                 currentPage={pageAnulados}

@@ -148,6 +148,10 @@ export interface OrderHeader {
   items: OrderItem[];
   payments: OrderPayment[];
   hasStockIssue?: boolean;
+  externalTrackingNumber?: string | null;
+  shippingCode?: string | null;
+  shippingKey?: string | null;
+  shippingOffice?: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -90,7 +90,8 @@ export default function PaymentVerificationModal({
     pathname.includes("/operaciones") ||
     pathname.includes("/ventas") ||
     pathname.includes("/finanzas") ||
-    pathname.includes("/atencion-cliente");
+    pathname.includes("/atencion-cliente") ||
+    pathname.includes("/seguimiento");
   const finalCanApprove = canApprove && isAllowedRoute;
 
   // Form states

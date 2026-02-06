@@ -7,8 +7,24 @@ import { ThemeProvider } from "@/components/providers/ThemeProvider";
 import QueryProvider from "@/components/providers/QueryProvider";
 
 export const metadata: Metadata = {
-  title: "Powip Frontend",
-  description: "Frontend básico para Powip",
+  title: "Powip",
+  description: "Gestión de ventas para negocios digitales",
+  keywords: [
+    "ERP",
+    "WhatsApp",
+    "Instagram",
+    "TikTok",
+    "ventas",
+    "pedidos",
+    "inventario",
+    "cobranzas",
+  ],
+  openGraph: {
+    title: "POWIP - Gestión de ventas para negocios digitales",
+    description:
+      "Centraliza tus pedidos, gestiona tu inventario y haz seguimiento a tus cobranzas.",
+    type: "website",
+  },
 };
 
 export default function RootLayout({

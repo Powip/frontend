@@ -11,6 +11,8 @@ import {
   Printer,
   AlertTriangle,
   Download,
+  MessageCircle,
+  Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -106,6 +108,10 @@ export interface Sale {
   pendingPayment: number;
   hasStockIssue?: boolean;
   hasPendingApprovalPayments: boolean;
+  externalTrackingNumber: string;
+  shippingCode: string;
+  shippingKey: string;
+  shippingOffice: string;
 }
 
 /* -----------------------------------------
@@ -145,6 +151,10 @@ function mapOrderToSale(order: OrderHeader): Sale {
     pendingPayment,
     hasStockIssue: order.hasStockIssue ?? false,
     hasPendingApprovalPayments,
+    externalTrackingNumber: order.externalTrackingNumber || "",
+    shippingCode: order.shippingCode || "",
+    shippingKey: order.shippingKey || "",
+    shippingOffice: order.shippingOffice || "",
   };
 }
 
@@ -171,10 +181,6 @@ export default function VentasPage() {
   const [pageAll, setPageAll] = useState(1);
   const ITEMS_PER_PAGE = 10;
 
-  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
-    new Set(),
-  );
-
   // Estado para modal de cancelación
   const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
   const [saleToCancel, setSaleToCancel] = useState<Sale | null>(null);
@@ -194,6 +200,24 @@ export default function VentasPage() {
   const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
   const [pendingPrintSales, setPendingPrintSales] = useState<Sale[]>([]);
 
+  // State for inline tracking field editing
+  const [trackingEdits, setTrackingEdits] = useState<
+    Record<
+      string,
+      {
+        externalTrackingNumber: string;
+        shippingCode: string;
+        shippingKey: string;
+        shippingOffice: string;
+      }
+    >
+  >({});
+  const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("pendientes");
+  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
+    new Set(),
+  );
+
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
 
@@ -202,7 +226,28 @@ export default function VentasPage() {
       const res = await axios.get<OrderHeader[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
-      setSales(res.data.map(mapOrderToSale));
+      const mappedSales = res.data.map(mapOrderToSale);
+      setSales(mappedSales);
+
+      // Initialize tracking edits
+      const edits: Record<
+        string,
+        {
+          externalTrackingNumber: string;
+          shippingCode: string;
+          shippingKey: string;
+          shippingOffice: string;
+        }
+      > = {};
+      mappedSales.forEach((s) => {
+        edits[s.id] = {
+          externalTrackingNumber: s.externalTrackingNumber,
+          shippingCode: s.shippingCode,
+          shippingKey: s.shippingKey,
+          shippingOffice: s.shippingOffice,
+        };
+      });
+      setTrackingEdits(edits);
     } catch (error) {
       console.error("Error fetching orders", error);
     }
@@ -480,6 +525,97 @@ Estado: ${sale.status}
     }
   };
 
+  const handleWhatsApp = (
+    phoneNumber: string,
+    orderNumber?: string,
+    clientName?: string,
+  ) => {
+    const phone = phoneNumber.replace(/\D/g, "");
+    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+
+    let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
+    if (orderNumber) {
+      const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${orderNumber}`;
+      message += `Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
+    }
+
+    window.open(
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
+      "_blank",
+    );
+  };
+
+  // Update tracking field locally
+  const updateTrackingField = (
+    orderId: string,
+    field: keyof (typeof trackingEdits)[string],
+    value: string,
+  ) => {
+    setTrackingEdits((prev) => ({
+      ...prev,
+      [orderId]: {
+        ...prev[orderId],
+        [field]: value,
+      },
+    }));
+  };
+
+  // Check if tracking data has changed for an order
+  const hasTrackingChanges = (orderId: string): boolean => {
+    const current = trackingEdits[orderId];
+    const original = sales.find((s) => s.id === orderId);
+    if (!current || !original) return false;
+
+    return (
+      current.externalTrackingNumber !== original.externalTrackingNumber ||
+      current.shippingCode !== original.shippingCode ||
+      current.shippingKey !== original.shippingKey ||
+      current.shippingOffice !== original.shippingOffice
+    );
+  };
+
+  // Save tracking fields for an order - only if changed
+  const handleSaveTracking = async (orderId: string) => {
+    if (!hasTrackingChanges(orderId)) return;
+
+    const data = trackingEdits[orderId];
+    if (!data) return;
+
+    setSavingOrderId(orderId);
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+        {
+          externalTrackingNumber: data.externalTrackingNumber,
+          shippingCode: data.shippingCode,
+          shippingKey: data.shippingKey,
+          shippingOffice: data.shippingOffice,
+        },
+      );
+      toast.success("Información de tracking actualizada");
+
+      // Update local sales state
+      setSales((prev) =>
+        prev.map((s) =>
+          s.id === orderId
+            ? {
+                ...s,
+                externalTrackingNumber: data.externalTrackingNumber,
+                shippingCode: data.shippingCode,
+                shippingKey: data.shippingKey,
+                shippingOffice: data.shippingOffice,
+              }
+            : s,
+        ),
+      );
+    } catch (error) {
+      console.error("Error saving tracking data:", error);
+      toast.error("Error al guardar información de tracking");
+    } finally {
+      setSavingOrderId(null);
+    }
+  };
+
   // Abrir modal de recibo, cargando datos de guía si es EN_ENVIO
   const handleOpenReceipt = async (sale: Sale) => {
     setSelectedOrderId(sale.id);
@@ -536,9 +672,12 @@ Estado: ${sale.status}
   };
 
   // Tabla para Pendientes (sin delete)
-  const renderPendientesTable = (data: Sale[]) => (
+  const renderPendientesTable = (
+    data: Sale[],
+    showTracking: boolean = false,
+  ) => (
     <div className="overflow-x-auto border rounded-md">
-      <Table className="min-w-[1800px]">
+      <Table className={showTracking ? "min-w-[2200px]" : "min-w-[1600px]"}>
         <TableHeader>
           <TableRow>
             {/* Columnas fijas izquierda */}
@@ -584,6 +723,14 @@ Estado: ${sale.status}
             <TableHead>Por Cobrar</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead>Region</TableHead>
+            {showTracking && (
+              <>
+                <TableHead>Nro Tracking</TableHead>
+                <TableHead>Código</TableHead>
+                <TableHead>Clave</TableHead>
+                <TableHead>Oficina</TableHead>
+              </>
+            )}
             {/* Columnas fijas derecha */}
             <TableHead className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-20 bg-background border-l">
               Resumen
@@ -655,6 +802,105 @@ Estado: ${sale.status}
                 </select>
               </TableCell>
               <TableCell>{sale.salesRegion}</TableCell>
+              {showTracking && (
+                <>
+                  {/* Nro Tracking */}
+                  <TableCell>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                          savingOrderId === sale.id
+                            ? "opacity-50 border-orange-400 pr-5"
+                            : "focus:border-orange-500"
+                        }`}
+                        placeholder="Nro..."
+                        value={
+                          trackingEdits[sale.id]?.externalTrackingNumber || ""
+                        }
+                        onChange={(e) =>
+                          updateTrackingField(
+                            sale.id,
+                            "externalTrackingNumber",
+                            e.target.value,
+                          )
+                        }
+                        onBlur={() => handleSaveTracking(sale.id)}
+                        disabled={savingOrderId === sale.id}
+                      />
+                      {savingOrderId === sale.id && (
+                        <Loader2 className="absolute right-1.5 h-3 w-3 animate-spin text-orange-500" />
+                      )}
+                    </div>
+                  </TableCell>
+                  {/* Código */}
+                  <TableCell>
+                    <input
+                      type="text"
+                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
+                      placeholder="Código"
+                      value={trackingEdits[sale.id]?.shippingCode || ""}
+                      onChange={(e) =>
+                        updateTrackingField(
+                          sale.id,
+                          "shippingCode",
+                          e.target.value,
+                        )
+                      }
+                      onBlur={() => handleSaveTracking(sale.id)}
+                      disabled={savingOrderId === sale.id}
+                    />
+                  </TableCell>
+                  {/* Clave */}
+                  <TableCell>
+                    <input
+                      type="text"
+                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
+                      placeholder="Clave"
+                      value={trackingEdits[sale.id]?.shippingKey || ""}
+                      onChange={(e) =>
+                        updateTrackingField(
+                          sale.id,
+                          "shippingKey",
+                          e.target.value,
+                        )
+                      }
+                      onBlur={() => handleSaveTracking(sale.id)}
+                      disabled={savingOrderId === sale.id}
+                    />
+                  </TableCell>
+                  {/* Oficina */}
+                  <TableCell>
+                    <input
+                      type="text"
+                      className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
+                      placeholder="Oficina..."
+                      value={trackingEdits[sale.id]?.shippingOffice || ""}
+                      onChange={(e) =>
+                        updateTrackingField(
+                          sale.id,
+                          "shippingOffice",
+                          e.target.value,
+                        )
+                      }
+                      onBlur={() => handleSaveTracking(sale.id)}
+                      disabled={savingOrderId === sale.id}
+                    />
+                  </TableCell>
+                </>
+              )}
               {/* Columnas fijas derecha */}
               <TableCell className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
                 <Button
@@ -693,6 +939,21 @@ Estado: ${sale.status}
                   <Button
                     size="icon"
                     variant="outline"
+                    className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                    title="WhatsApp"
+                    onClick={() =>
+                      handleWhatsApp(
+                        sale.phoneNumber,
+                        sale.orderNumber,
+                        sale.clientName,
+                      )
+                    }
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="outline"
                     onClick={() =>
                       router.push(`/registrar-venta?orderId=${sale.id}`)
                     }
@@ -707,7 +968,7 @@ Estado: ${sale.status}
           {data.length === 0 && (
             <TableRow>
               <TableCell
-                colSpan={18}
+                colSpan={22}
                 className="text-center text-muted-foreground py-6"
               >
                 No hay ventas en este estado
@@ -720,9 +981,9 @@ Estado: ${sale.status}
   );
 
   // Tabla para Anulados (con delete)
-  const renderAnuladosTable = (data: Sale[]) => (
+  const renderAnuladosTable = (data: Sale[], showTracking: boolean = false) => (
     <div className="overflow-x-auto border rounded-md">
-      <Table className="min-w-[1800px]">
+      <Table className={showTracking ? "min-w-[2200px]" : "min-w-[1600px]"}>
         <TableHeader>
           <TableRow>
             {/* Columnas fijas izquierda */}
@@ -768,6 +1029,14 @@ Estado: ${sale.status}
             <TableHead>Por Cobrar</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead>Region</TableHead>
+            {showTracking && (
+              <>
+                <TableHead>Nro Tracking</TableHead>
+                <TableHead>Código</TableHead>
+                <TableHead>Clave</TableHead>
+                <TableHead>Oficina</TableHead>
+              </>
+            )}
             {/* Columnas fijas derecha */}
             <TableHead className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-20 bg-background border-l">
               Resumen
@@ -832,6 +1101,105 @@ Estado: ${sale.status}
                 </select>
               </TableCell>
               <TableCell>{sale.salesRegion}</TableCell>
+              {showTracking && (
+                <>
+                  {/* Nro Tracking */}
+                  <TableCell>
+                    <div className="relative flex items-center">
+                      <input
+                        type="text"
+                        className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                          savingOrderId === sale.id
+                            ? "opacity-50 border-orange-400 pr-5"
+                            : "focus:border-orange-500"
+                        }`}
+                        placeholder="Nro..."
+                        value={
+                          trackingEdits[sale.id]?.externalTrackingNumber || ""
+                        }
+                        onChange={(e) =>
+                          updateTrackingField(
+                            sale.id,
+                            "externalTrackingNumber",
+                            e.target.value,
+                          )
+                        }
+                        onBlur={() => handleSaveTracking(sale.id)}
+                        disabled={savingOrderId === sale.id}
+                      />
+                      {savingOrderId === sale.id && (
+                        <Loader2 className="absolute right-1.5 h-3 w-3 animate-spin text-orange-500" />
+                      )}
+                    </div>
+                  </TableCell>
+                  {/* Código */}
+                  <TableCell>
+                    <input
+                      type="text"
+                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
+                      placeholder="Código"
+                      value={trackingEdits[sale.id]?.shippingCode || ""}
+                      onChange={(e) =>
+                        updateTrackingField(
+                          sale.id,
+                          "shippingCode",
+                          e.target.value,
+                        )
+                      }
+                      onBlur={() => handleSaveTracking(sale.id)}
+                      disabled={savingOrderId === sale.id}
+                    />
+                  </TableCell>
+                  {/* Clave */}
+                  <TableCell>
+                    <input
+                      type="text"
+                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
+                      placeholder="Clave"
+                      value={trackingEdits[sale.id]?.shippingKey || ""}
+                      onChange={(e) =>
+                        updateTrackingField(
+                          sale.id,
+                          "shippingKey",
+                          e.target.value,
+                        )
+                      }
+                      onBlur={() => handleSaveTracking(sale.id)}
+                      disabled={savingOrderId === sale.id}
+                    />
+                  </TableCell>
+                  {/* Oficina */}
+                  <TableCell>
+                    <input
+                      type="text"
+                      className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
+                      placeholder="Oficina..."
+                      value={trackingEdits[sale.id]?.shippingOffice || ""}
+                      onChange={(e) =>
+                        updateTrackingField(
+                          sale.id,
+                          "shippingOffice",
+                          e.target.value,
+                        )
+                      }
+                      onBlur={() => handleSaveTracking(sale.id)}
+                      disabled={savingOrderId === sale.id}
+                    />
+                  </TableCell>
+                </>
+              )}
               {/* Columnas fijas derecha */}
               <TableCell className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
                 <Button
@@ -845,6 +1213,21 @@ Estado: ${sale.status}
               </TableCell>
               <TableCell className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-10 bg-background text-right">
                 <div className="flex gap-1 justify-end">
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                    title="WhatsApp"
+                    onClick={() =>
+                      handleWhatsApp(
+                        sale.phoneNumber,
+                        sale.orderNumber,
+                        sale.clientName,
+                      )
+                    }
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
                   <Button
                     size="icon"
                     variant="outline"
@@ -868,7 +1251,7 @@ Estado: ${sale.status}
           {data.length === 0 && (
             <TableRow>
               <TableCell
-                colSpan={18}
+                colSpan={22}
                 className="text-center text-muted-foreground py-6"
               >
                 No hay ventas en este estado
@@ -929,7 +1312,11 @@ Estado: ${sale.status}
         </div>
 
         {/* Tabs para Ventas */}
-        <Tabs defaultValue="pendientes" className="w-full">
+        <Tabs
+          defaultValue="pendientes"
+          className="w-full"
+          onValueChange={setActiveTab}
+        >
           <TabsList className="mb-4">
             <TabsTrigger value="pendientes">
               Ventas Pendientes ({pendientes.length})
@@ -983,7 +1370,7 @@ Estado: ${sale.status}
                   filters={filtersPendiente}
                   onFiltersChange={setFiltersPendiente}
                 />
-                {renderPendientesTable(pendientes)}
+                {renderPendientesTable(pendientes, activeTab === "todas")}
               </CardContent>
               <Pagination
                 currentPage={1}
@@ -1045,7 +1432,7 @@ Estado: ${sale.status}
                   filters={filtersAnulado}
                   onFiltersChange={setFiltersAnulado}
                 />
-                {renderAnuladosTable(anulados)}
+                {renderAnuladosTable(anulados, activeTab === "todas")}
               </CardContent>
               <Pagination
                 currentPage={1}
@@ -1125,6 +1512,7 @@ Estado: ${sale.status}
                     (pageAll - 1) * ITEMS_PER_PAGE,
                     pageAll * ITEMS_PER_PAGE,
                   ),
+                  activeTab === "todas",
                 )}
               </CardContent>
               <Pagination
@@ -1152,6 +1540,7 @@ Estado: ${sale.status}
         onOrderUpdated={fetchOrders}
         hideCallManagement={true}
         shippingGuide={selectedShippingGuide}
+        showTracking={activeTab === "todas"}
       />
 
       <CancellationModal

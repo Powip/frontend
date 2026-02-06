@@ -14,6 +14,8 @@ import {
   FileDown,
   Loader2,
   Check,
+  DollarSign,
+  MessageCircle,
 } from "lucide-react";
 import { exportSeguimientoToExcel } from "@/utils/exportSalesExcel";
 
@@ -51,6 +53,7 @@ import CustomerServiceModal, {
   ShippingGuideData,
 } from "@/components/modals/CustomerServiceModal";
 import { useRouter } from "next/navigation";
+import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 
 /* -----------------------------------------
    Types
@@ -77,6 +80,8 @@ interface ShippingGuide {
   shippingKey?: string | null;
   shippingOffice?: string | null;
   shippingProofUrl?: string | null;
+  phoneNumber?: string | null;
+  clientName?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -205,6 +210,13 @@ export default function SeguimientoPage() {
   const [selectedGuideForNotes, setSelectedGuideForNotes] = useState<{
     id: string;
     notes: string;
+  } | null>(null);
+
+  // Payment Modal state
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedOrderForPayment, setSelectedOrderForPayment] = useState<{
+    id: string;
+    orderNumber: string;
   } | null>(null);
 
   // State for inline tracking field editing
@@ -678,6 +690,31 @@ export default function SeguimientoPage() {
     setNotesModalOpen(true);
   };
 
+  const handleOpenPaymentModal = (orderId: string, orderNumber: string) => {
+    setSelectedOrderForPayment({ id: orderId, orderNumber });
+    setPaymentModalOpen(true);
+  };
+
+  const handleWhatsApp = (
+    phoneNumber: string,
+    orderNumber?: string,
+    clientName?: string,
+  ) => {
+    const phone = phoneNumber.replace(/\D/g, "");
+    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+
+    let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
+    if (orderNumber) {
+      const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${orderNumber}`;
+      message += `Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
+    }
+
+    window.open(
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
+      "_blank",
+    );
+  };
+
   if (!auth) return null;
 
   return (
@@ -862,19 +899,51 @@ export default function SeguimientoPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>N° Orden</TableHead>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Teléfono</TableHead>
-                        <TableHead>Región</TableHead>
-                        <TableHead>Enviado Por</TableHead>
-                        <TableHead>Días</TableHead>
-                        <TableHead>Estado Envío</TableHead>
-                        <TableHead>Nro Tracking</TableHead>
-                        <TableHead>Código</TableHead>
-                        <TableHead>Clave</TableHead>
-                        <TableHead>Oficina</TableHead>
-                        <TableHead>Saldo</TableHead>
-                        <TableHead>Guía</TableHead>
+                        <TableHead className="w-[110px] min-w-[110px]">
+                          N° Orden
+                        </TableHead>
+                        <TableHead className="w-[160px] min-w-[160px]">
+                          Cliente
+                        </TableHead>
+                        <TableHead className="w-[120px] min-w-[120px]">
+                          Teléfono
+                        </TableHead>
+                        <TableHead className="w-[100px] min-w-[100px]">
+                          Región
+                        </TableHead>
+                        <TableHead className="w-[120px] min-w-[120px]">
+                          Enviado Por
+                        </TableHead>
+                        <TableHead className="w-[100px] min-w-[100px]">
+                          Fecha
+                        </TableHead>
+                        <TableHead className="w-[100px] min-w-[100px]">
+                          Días
+                        </TableHead>
+                        <TableHead className="w-[140px] min-w-[140px]">
+                          Estado Envío
+                        </TableHead>
+                        <TableHead className="w-[120px] min-w-[120px]">
+                          Nro Tracking
+                        </TableHead>
+                        <TableHead className="w-[80px] min-w-[80px]">
+                          Código
+                        </TableHead>
+                        <TableHead className="w-[80px] min-w-[80px]">
+                          Clave
+                        </TableHead>
+                        <TableHead className="w-[130px] min-w-[130px]">
+                          Oficina
+                        </TableHead>
+                        <TableHead className="w-[100px] min-w-[100px]">
+                          Saldo
+                        </TableHead>
+                        <TableHead className="w-[60px] min-w-[60px]">
+                          Pagos
+                        </TableHead>
+                        <TableHead className="w-[120px] min-w-[120px]">
+                          Guía
+                        </TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -889,7 +958,7 @@ export default function SeguimientoPage() {
                             key={order.id}
                             className={`hover:bg-muted/50 ${getDaysRowClass(daysSinceCreated)} ${isProvincia && daysSinceCreated < 25 ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}
                           >
-                            <TableCell className="font-medium">
+                            <TableCell className="font-medium w-[110px] min-w-[110px]">
                               <div className="flex items-center gap-1">
                                 {daysSinceCreated >= 25 && (
                                   <AlertTriangle
@@ -899,32 +968,72 @@ export default function SeguimientoPage() {
                                 {order.orderNumber}
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                <User className="h-3 w-3 text-muted-foreground" />
-                                {order.customer?.fullName || "-"}
+                            <TableCell className="w-[160px] min-w-[160px]">
+                              <div className="flex items-center gap-1 group relative">
+                                <User className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                <span
+                                  className="truncate max-w-[130px]"
+                                  title={order.customer?.fullName || "-"}
+                                >
+                                  {order.customer?.fullName || "-"}
+                                </span>
                               </div>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                <Phone className="h-3 w-3 text-muted-foreground" />
-                                {order.customer?.phoneNumber || "-"}
+                            <TableCell className="w-[120px] min-w-[120px]">
+                              <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1">
+                                  <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                  <span className="text-sm truncate">
+                                    {order.customer?.phoneNumber || "-"}
+                                  </span>
+                                </div>
+                                {order.customer?.phoneNumber && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-sm transition-all flex-shrink-0"
+                                    onClick={() =>
+                                      handleWhatsApp(
+                                        order.customer.phoneNumber || "",
+                                        order.orderNumber,
+                                        order.customer.fullName,
+                                      )
+                                    }
+                                    title="WhatsApp"
+                                  >
+                                    <MessageCircle className="h-3 w-3" />
+                                  </Button>
+                                )}
                               </div>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="w-[100px] min-w-[100px]">
                               <Badge
                                 variant={isProvincia ? "secondary" : "outline"}
                               >
                                 {order.salesRegion}
                               </Badge>
                             </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                <Truck className="h-3 w-3 text-muted-foreground" />
-                                {guide?.courierName || order.courier || "-"}
+                            <TableCell className="w-[120px] min-w-[120px]">
+                              <div className="flex items-center gap-1 truncate">
+                                <Truck className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                <span
+                                  className="truncate"
+                                  title={
+                                    guide?.courierName || order.courier || "-"
+                                  }
+                                >
+                                  {guide?.courierName || order.courier || "-"}
+                                </span>
                               </div>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="w-[100px] min-w-[100px]">
+                              {guide?.created_at
+                                ? new Date(guide.created_at).toLocaleDateString(
+                                    "es-PE",
+                                  )
+                                : "-"}
+                            </TableCell>
+                            <TableCell className="w-[100px] min-w-[100px]">
                               <div className="flex items-center gap-1">
                                 {daysSinceCreated >= 25 && (
                                   <Clock
@@ -949,7 +1058,7 @@ export default function SeguimientoPage() {
                                   )}
                               </div>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="w-[140px] min-w-[140px]">
                               <Select
                                 value={guide?.status || "CREADA"}
                                 onValueChange={(val) =>
@@ -998,11 +1107,11 @@ export default function SeguimientoPage() {
                               </Select>
                             </TableCell>
                             {/* Nro Tracking */}
-                            <TableCell>
+                            <TableCell className="w-[120px] min-w-[120px]">
                               <div className="relative flex items-center">
                                 <input
                                   type="text"
-                                  className={`w-24 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                  className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
                                     savingOrderId === order.id
                                       ? "opacity-50 border-orange-400 pr-6"
                                       : "focus:border-orange-500"
@@ -1028,11 +1137,11 @@ export default function SeguimientoPage() {
                               </div>
                             </TableCell>
                             {/* Código */}
-                            <TableCell>
+                            <TableCell className="w-[80px] min-w-[80px]">
                               <div className="relative flex items-center">
                                 <input
                                   type="text"
-                                  className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                  className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
                                     savingOrderId === order.id
                                       ? "opacity-50 border-orange-400 pr-5"
                                       : "focus:border-orange-500"
@@ -1054,11 +1163,11 @@ export default function SeguimientoPage() {
                               </div>
                             </TableCell>
                             {/* Clave */}
-                            <TableCell>
+                            <TableCell className="w-[80px] min-w-[80px]">
                               <div className="relative flex items-center">
                                 <input
                                   type="text"
-                                  className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                  className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
                                     savingOrderId === order.id
                                       ? "opacity-50 border-orange-400 pr-5"
                                       : "focus:border-orange-500"
@@ -1080,11 +1189,11 @@ export default function SeguimientoPage() {
                               </div>
                             </TableCell>
                             {/* Oficina */}
-                            <TableCell>
+                            <TableCell className="w-[130px] min-w-[130px]">
                               <div className="relative flex items-center">
                                 <input
                                   type="text"
-                                  className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                  className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
                                     savingOrderId === order.id
                                       ? "opacity-50 border-orange-400 pr-6"
                                       : "focus:border-orange-500"
@@ -1106,7 +1215,7 @@ export default function SeguimientoPage() {
                                 />
                               </div>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="w-[100px] min-w-[100px]">
                               {pendingPayment > 0 ? (
                                 <Badge className="bg-red-100 text-red-800">
                                   S/ {pendingPayment.toFixed(2)}
@@ -1117,7 +1226,23 @@ export default function SeguimientoPage() {
                                 </Badge>
                               )}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="w-[60px] min-w-[60px]">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 w-8 p-0 bg-white border-amber-200 hover:bg-amber-50 hover:border-amber-300 shadow-sm transition-all"
+                                onClick={() =>
+                                  handleOpenPaymentModal(
+                                    order.id,
+                                    order.orderNumber,
+                                  )
+                                }
+                                title="Gestionar Pagos"
+                              >
+                                <DollarSign className="h-4 w-4 text-amber-600" />
+                              </Button>
+                            </TableCell>
+                            <TableCell className="w-[120px] min-w-[120px]">
                               {guide?.guideNumber || order.guideNumber ? (
                                 <Badge
                                   className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
@@ -1315,6 +1440,21 @@ export default function SeguimientoPage() {
                             onClick={(e) => e.stopPropagation()}
                           >
                             <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8 bg-green-500 hover:bg-green-600 text-white border-green-600"
+                              onClick={() =>
+                                handleWhatsApp(
+                                  guide.phoneNumber || "",
+                                  guide.guideNumber,
+                                  guide.clientName || "",
+                                )
+                              }
+                              title="WhatsApp"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </Button>
+                            <Button
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
@@ -1371,6 +1511,18 @@ export default function SeguimientoPage() {
             fetchEnvios();
             fetchGuides();
           }}
+        />
+
+        <PaymentVerificationModal
+          open={paymentModalOpen}
+          onClose={() => setPaymentModalOpen(false)}
+          orderId={selectedOrderForPayment?.id || ""}
+          orderNumber={selectedOrderForPayment?.orderNumber || ""}
+          onPaymentUpdated={() => {
+            fetchEnvios();
+            fetchGuides();
+          }}
+          canApprove={true}
         />
       </main>
     </div>
