@@ -107,7 +107,7 @@ export default function ClientesPage() {
     const phone = phoneNumber.replace(/\D/g, "");
     const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
 
-    let message = `Hola${clientName ? ` ${clientName}` : ""}! Te contactamos de Powip.`;
+    const message = `Hola${clientName ? ` ${clientName}` : ""}! Te contactamos de Powip.`;
 
     window.open(
       `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
