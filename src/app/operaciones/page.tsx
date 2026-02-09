@@ -56,9 +56,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CancellationModal, {
   CancellationReason,
 } from "@/components/modals/CancellationModal";
-import CourierAssignmentModal, {
-  CourierType,
-} from "@/components/modals/CourierAssignmentModal";
+import CourierAssignmentModal from "@/components/modals/CourierAssignmentModal";
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
 import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
@@ -116,6 +114,7 @@ export interface Sale {
   pendingPayment: number;
   notes: string;
   courier?: string | null;
+  courierId?: string | null;
   guideNumber?: string | null;
   hasStockIssue?: boolean;
   zone?: string;
@@ -147,6 +146,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     date: new Date(order.created_at).toLocaleDateString("es-AR"),
     total,
     courier: order.courier ?? null,
+    courierId: order.courierId ?? null,
     status: order.status,
     paymentMethod:
       order.payments.length > 0 ? order.payments[0].paymentMethod : "—",
@@ -382,7 +382,7 @@ export default function OperacionesPage() {
     );
   };
 
-  const handleAssignCourier = async (courier: string) => {
+  const handleAssignCourier = async (courier: string, courierId?: string) => {
     const eligibleSales = getSelectedConGuia();
 
     if (eligibleSales.length === 0) {
@@ -402,6 +402,7 @@ export default function OperacionesPage() {
             {
               status: "EN_ENVIO",
               courier: courier,
+              courierId: courierId || null,
             },
           );
           successCount++;
@@ -469,6 +470,8 @@ export default function OperacionesPage() {
             {
               guideNumber: guideNumber,
               status: "EN_ENVIO",
+              courier: guideData.courierName,
+              courierId: guideData.courierId || null,
             },
           );
         }

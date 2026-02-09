@@ -1518,7 +1518,10 @@ function RegistrarVentaContent() {
                 <Select
                   value={orderDetails.enviaPor}
                   onValueChange={(v) =>
-                    setOrderDetails({ ...orderDetails, enviaPor: v as any })
+                    setOrderDetails({
+                      ...orderDetails,
+                      enviaPor: v,
+                    })
                   }
                 >
                   <SelectTrigger>
@@ -1528,10 +1531,6 @@ function RegistrarVentaContent() {
                     <SelectItem value="MOTORIZADO_PROPIO">
                       Motorizado Propio
                     </SelectItem>
-                    <SelectItem value="SHALOM">Shalom</SelectItem>
-                    <SelectItem value="OLVA_COURIER">Olva Courier</SelectItem>
-                    <SelectItem value="MARVISUR">Marvisur</SelectItem>
-                    <SelectItem value="FLORES">Flores</SelectItem>
                     <SelectItem value="OTROS">Otros</SelectItem>
                   </SelectContent>
                 </Select>

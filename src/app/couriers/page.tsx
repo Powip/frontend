@@ -47,6 +47,7 @@ import {
   Courier,
   ShippingGuide,
 } from "@/services/courierService";
+import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 
 const STATUS_VARIANTS: Record<
   string,
@@ -80,6 +81,10 @@ export default function CouriersPage() {
   const [courierModalOpen, setCourierModalOpen] = useState(false);
   const [editingCourier, setEditingCourier] = useState<Courier | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Guide details modal
+  const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
+  const [isGuideModalOpen, setIsGuideModalOpen] = useState(false);
 
   // Form
   const [form, setForm] = useState({
@@ -188,6 +193,11 @@ export default function CouriersPage() {
       console.error("Error deleting courier", error);
       toast.error("Error al desactivar courier");
     }
+  };
+
+  const handleGuideClick = (guideId: string) => {
+    setSelectedGuideId(guideId);
+    setIsGuideModalOpen(true);
   };
 
   return (
@@ -348,7 +358,14 @@ export default function CouriersPage() {
                                           className="hover:bg-muted/20"
                                         >
                                           <TableCell className="py-2 text-xs font-medium">
-                                            {guide.guideNumber}
+                                            <button
+                                              onClick={() =>
+                                                handleGuideClick(guide.id)
+                                              }
+                                              className="text-primary hover:underline"
+                                            >
+                                              {guide.guideNumber}
+                                            </button>
                                           </TableCell>
                                           <TableCell className="py-2 text-xs">
                                             {new Date(
@@ -448,6 +465,23 @@ export default function CouriersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal Detalles de Guía */}
+      <GuideDetailsModal
+        open={isGuideModalOpen}
+        onClose={() => {
+          setIsGuideModalOpen(false);
+          setSelectedGuideId(null);
+        }}
+        guideId={selectedGuideId || undefined}
+        onGuideUpdated={() => {
+          // Recargar guías de los couriers expandidos
+          expandedCouriers.forEach((courierId) => {
+            loadGuides(courierId);
+          });
+        }}
+        isCourierView={true}
+      />
     </div>
   );
 }

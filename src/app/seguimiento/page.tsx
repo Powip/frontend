@@ -16,6 +16,7 @@ import {
   Check,
   DollarSign,
   MessageCircle,
+  Lock,
 } from "lucide-react";
 import { exportSeguimientoToExcel } from "@/utils/exportSalesExcel";
 
@@ -1165,27 +1166,39 @@ export default function SeguimientoPage() {
                             {/* Clave */}
                             <TableCell className="w-[80px] min-w-[80px]">
                               <div className="relative flex items-center">
-                                <input
-                                  type="text"
-                                  className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                                    savingOrderId === order.id
-                                      ? "opacity-50 border-orange-400 pr-5"
-                                      : "focus:border-orange-500"
-                                  }`}
-                                  placeholder="Clave"
-                                  value={
-                                    trackingEdits[order.id]?.shippingKey || ""
-                                  }
-                                  onChange={(e) =>
-                                    updateTrackingField(
-                                      order.id,
-                                      "shippingKey",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onBlur={() => handleSaveTracking(order.id)}
-                                  disabled={savingOrderId === order.id}
-                                />
+                                {pendingPayment > 0 ? (
+                                  <div className="w-full h-7 px-1.5 text-xs border rounded bg-red-50 text-red-600 flex items-center gap-1.5">
+                                    <Lock className="h-3 w-3 flex-shrink-0" />
+                                    <span
+                                      className="font-medium truncate"
+                                      title="Pago Pendiente - Clave oculta"
+                                    >
+                                      Oculta
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                      savingOrderId === order.id
+                                        ? "opacity-50 border-orange-400 pr-5"
+                                        : "focus:border-orange-500"
+                                    }`}
+                                    placeholder="Clave"
+                                    value={
+                                      trackingEdits[order.id]?.shippingKey || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateTrackingField(
+                                        order.id,
+                                        "shippingKey",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onBlur={() => handleSaveTracking(order.id)}
+                                    disabled={savingOrderId === order.id}
+                                  />
+                                )}
                               </div>
                             </TableCell>
                             {/* Oficina */}

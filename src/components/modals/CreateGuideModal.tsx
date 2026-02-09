@@ -14,7 +14,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { PackagePlus, Loader2, AlertTriangle } from "lucide-react";
+import { PackagePlus, Loader2, AlertTriangle, Truck } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
+import { fetchCouriers, Courier } from "@/services/courierService";
 
 interface SelectedOrder {
   id: string;
@@ -39,12 +48,14 @@ interface CreateGuideModalProps {
 export interface CreateGuideData {
   storeId: string;
   orderIds: string[];
-  deliveryZones: string[];  // Array de zonas cubiertas
+  deliveryZones: string[]; // Array de zonas cubiertas
   deliveryType: "MOTO" | "COURIER";
   scheduledDate?: string;
   chargeType?: "PREPAGADO" | "CONTRA_ENTREGA" | "CORTESIA";
   amountToCollect?: number;
   notes?: string;
+  courierId?: string;
+  courierName?: string;
 }
 
 const CHARGE_TYPE_OPTIONS = [
@@ -89,9 +100,18 @@ export default function CreateGuideModal({
   onConfirm,
   isLoading = false,
 }: CreateGuideModalProps) {
-  const [chargeType, setChargeType] = useState<"PREPAGADO" | "CONTRA_ENTREGA" | "CORTESIA">("CONTRA_ENTREGA");
+  const { auth } = useAuth();
+  const [couriers, setCouriers] = useState<Courier[]>([]);
+  const [selectedCourierId, setSelectedCourierId] = useState<string>("");
+  const [deliveryType, setDeliveryType] = useState<"MOTO" | "COURIER">(
+    "COURIER",
+  );
+
+  const [chargeType, setChargeType] = useState<
+    "PREPAGADO" | "CONTRA_ENTREGA" | "CORTESIA"
+  >("CONTRA_ENTREGA");
   const [notes, setNotes] = useState("");
-  
+
   // Fecha de hoy formateada
   const todayFormatted = new Date().toLocaleDateString("es-PE", {
     weekday: "long",
@@ -100,63 +120,55 @@ export default function CreateGuideModal({
     day: "numeric",
   });
 
-  // ⚡ CAMBIO PRINCIPAL: Agrupar pedidos por dispatchType en lugar de por zona
-  const ordersByDispatchType = useMemo(() => {
-    const groups: Record<"MOTO" | "COURIER", { orders: SelectedOrder[]; zones: Set<string> }> = {
-      MOTO: { orders: [], zones: new Set() },
-      COURIER: { orders: [], zones: new Set() },
-    };
+  // Cargar couriers
+  useState(() => {
+    if (auth?.company?.id) {
+      fetchCouriers(auth.company.id).then(setCouriers).catch(console.error);
+    }
+  });
 
-    selectedOrders.forEach(order => {
-      const zone = order.zone || "SIN_ZONA";
-      const dispatchType = getDeliveryType(zone === "SIN_ZONA" ? "LIMA_CENTRO" : zone);
-      
-      groups[dispatchType].orders.push(order);
-      groups[dispatchType].zones.add(zone === "SIN_ZONA" ? "LIMA_CENTRO" : zone);
-    });
-
-    // Filtrar grupos vacíos
-    return Object.entries(groups)
-      .filter(([, group]) => group.orders.length > 0)
-      .reduce((acc, [type, group]) => {
-        acc[type as "MOTO" | "COURIER"] = group;
-        return acc;
-      }, {} as Record<string, { orders: SelectedOrder[]; zones: Set<string> }>);
+  const totalAmount = useMemo(() => {
+    return selectedOrders.reduce((acc, o) => acc + o.pendingPayment, 0);
   }, [selectedOrders]);
 
-  // Obtener tipos de despacho únicos
-  const uniqueDispatchTypes = useMemo(() => Object.keys(ordersByDispatchType), [ordersByDispatchType]);
-  const hasMultipleDispatchTypes = uniqueDispatchTypes.length > 1;
-
-  // Calcular monto total por grupo (para display)
-  const getGroupTotal = (dispatchType: string) => {
-    const group = ordersByDispatchType[dispatchType];
-    return group?.orders.reduce((acc, o) => acc + o.pendingPayment, 0) || 0;
-  };
-
   const handleSubmit = async () => {
-    // Crear una guía por cada dispatchType (no por zona)
-    const guidesData: CreateGuideData[] = uniqueDispatchTypes.map(dispatchType => {
-      const group = ordersByDispatchType[dispatchType];
-      const groupTotal = group.orders.reduce((acc, o) => acc + o.pendingPayment, 0);
+    let courierId: string | undefined = undefined;
+    let courierName: string | undefined = undefined;
 
-      return {
-        storeId,
-        orderIds: group.orders.map(o => o.id),
-        deliveryZones: Array.from(group.zones),  // Todas las zonas cubiertas
-        deliveryType: dispatchType as "MOTO" | "COURIER",
-        chargeType,
-        amountToCollect: chargeType === "CONTRA_ENTREGA" ? groupTotal : undefined,
-        notes: notes || undefined,
-      };
-    });
+    if (selectedCourierId === "MOTORIZADO_PROPIO") {
+      courierName = "Motorizado Propio";
+    } else if (selectedCourierId === "OTROS") {
+      courierName = "Otros";
+    } else {
+      const selected = couriers.find((c) => c.id === selectedCourierId);
+      if (selected) {
+        courierId = selected.id;
+        courierName = selected.name;
+      }
+    }
 
-    await onConfirm(guidesData);
+    const guideData: CreateGuideData = {
+      storeId,
+      orderIds: selectedOrders.map((o) => o.id),
+      deliveryZones: Array.from(
+        new Set(selectedOrders.map((o) => o.zone || "SIN_ZONA")),
+      ),
+      deliveryType,
+      chargeType,
+      amountToCollect:
+        chargeType === "CONTRA_ENTREGA" ? totalAmount : undefined,
+      notes: notes || undefined,
+      courierId,
+      courierName,
+    };
+
+    await onConfirm([guideData]);
   };
 
   const handleClose = () => {
     setChargeType("CONTRA_ENTREGA");
     setNotes("");
+    setSelectedCourierId("");
     onClose();
   };
 
@@ -169,108 +181,91 @@ export default function CreateGuideModal({
             Generar Guía de Envío
           </DialogTitle>
           <DialogDescription>
-            {hasMultipleDispatchTypes ? (
-              <span className="flex items-center gap-2 text-amber-600">
-                <AlertTriangle className="h-4 w-4" />
-                Se crearán 2 guías: una para MOTO (Lima) y otra para COURIER (Provincias/Aledañas)
-              </span>
-            ) : (
-              `Se creará una guía con ${selectedOrders.length} pedido(s) seleccionado(s)`
-            )}
+            {`Se creará una guía para ${selectedOrders.length} pedido(s)`}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Alerta de múltiples tipos de despacho */}
-          {hasMultipleDispatchTypes && (
-            <div className="border border-amber-200 bg-amber-50 rounded-lg p-3">
-              <h4 className="font-medium text-amber-800 mb-2 flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4" />
-                Pedidos con diferentes tipos de despacho
-              </h4>
-              <p className="text-sm text-amber-700 mb-2">
-                Los pedidos incluyen zonas de MOTO (Lima urbano) y COURIER (zonas aledañas/provincias).
-                Se creará una guía independiente para cada tipo.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {uniqueDispatchTypes.map(type => (
-                  <Badge
-                    key={type}
-                    className={type === "MOTO" ? "bg-blue-100 text-blue-800" : "bg-orange-100 text-orange-800"}
-                  >
-                    {type === "MOTO" ? "🏍️ MOTO" : "📦 COURIER"}: {ordersByDispatchType[type].orders.length} pedido(s)
-                  </Badge>
-                ))}
-              </div>
+          <div className="space-y-4">
+            {/* Selector de Courier */}
+            <div className="space-y-2">
+              <Label>Courier / Método de Envío</Label>
+              <Select
+                value={selectedCourierId}
+                onValueChange={(v) => {
+                  setSelectedCourierId(v);
+                  if (v === "MOTORIZADO_PROPIO") {
+                    setDeliveryType("MOTO");
+                  } else {
+                    setDeliveryType("COURIER");
+                  }
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar courier" />
+                </SelectTrigger>
+                <SelectContent>
+                  {couriers.map((courier) => (
+                    <SelectItem key={courier.id} value={courier.id}>
+                      {courier.name}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="MOTORIZADO_PROPIO">
+                    Motorizado Propio
+                  </SelectItem>
+                  <SelectItem value="OTROS">Otros</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          )}
+          </div>
 
-          {/* Resumen de pedidos agrupados por dispatchType */}
+          {/* Resumen de pedidos (Lista simple) */}
           <div className="border rounded-lg p-3 bg-muted/30">
-            <h4 className="font-medium mb-2">Pedidos incluidos:</h4>
-            <div className="space-y-3 max-h-60 overflow-y-auto">
-              {uniqueDispatchTypes.map(dispatchType => {
-                const group = ordersByDispatchType[dispatchType];
-                return (
-                  <div key={dispatchType}>
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className={dispatchType === "MOTO" ? "bg-blue-100 text-blue-800" : "bg-orange-100 text-orange-800"}>
-                        {dispatchType === "MOTO" ? "🏍️ MOTO" : "📦 COURIER"}
-                      </Badge>
-                      <div className="flex flex-wrap gap-1">
-                        {Array.from(group.zones).map(zone => (
-                          <Badge key={zone} variant="outline" className="text-xs">
-                            {ZONE_LABELS[zone] || zone}
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="space-y-1 pl-2">
-                      {group.orders.map(order => (
-                        <div
-                          key={order.id}
-                          className="flex justify-between items-center text-sm border-b pb-1 last:border-0"
-                        >
-                          <div>
-                            <span className="font-medium">{order.orderNumber}</span>
-                            <span className="text-muted-foreground ml-2">
-                              {order.clientName}
-                            </span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-muted-foreground text-xs">
-                              {order.district}
-                            </span>
-                            {order.pendingPayment > 0 && (
-                              <span className="ml-2 text-red-600">
-                                S/{order.pendingPayment.toFixed(2)}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Subtotal por grupo */}
-                    {getGroupTotal(dispatchType) > 0 && (
-                      <div className="mt-2 pt-2 border-t flex justify-between text-sm font-medium pl-2">
-                        <span>Subtotal {dispatchType === "MOTO" ? "MOTO" : "COURIER"}:</span>
-                        <span className="text-red-600">S/{getGroupTotal(dispatchType).toFixed(2)}</span>
-                      </div>
+            <h4 className="font-medium mb-2">
+              Pedidos a incluir ({selectedOrders.length}):
+            </h4>
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+              {selectedOrders.map((order) => (
+                <div
+                  key={order.id}
+                  className="flex justify-between items-center text-sm border-b pb-2 last:border-0"
+                >
+                  <div>
+                    <span className="font-medium">{order.orderNumber}</span>
+                    <span className="text-muted-foreground ml-2">
+                      {order.clientName}
+                    </span>
+                    <Badge variant="outline" className="ml-2 text-xs">
+                      {ZONE_LABELS[order.zone || ""] ||
+                        order.zone ||
+                        "Sin Zona"}
+                    </Badge>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-muted-foreground text-xs block">
+                      {order.district}
+                    </span>
+                    {order.pendingPayment > 0 && (
+                      <span className="text-red-600 font-medium">
+                        Pendiente: S/{order.pendingPayment.toFixed(2)}
+                      </span>
                     )}
                   </div>
-                );
-              })}
+                </div>
+              ))}
             </div>
+            {totalAmount > 0 && (
+              <div className="mt-3 pt-2 border-t flex justify-between font-semibold">
+                <span>Total a cobrar:</span>
+                <span className="text-red-600">S/{totalAmount.toFixed(2)}</span>
+              </div>
+            )}
           </div>
 
           {/* Fecha de hoy (solo display) */}
           <div className="space-y-2">
             <Label>Fecha de creación</Label>
-            <Input
-              value={todayFormatted}
-              disabled
-              className="capitalize"
-            />
+            <Input value={todayFormatted} disabled className="capitalize" />
           </div>
 
           {/* Tipo de cobro */}
@@ -311,7 +306,9 @@ export default function CreateGuideModal({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isLoading || selectedOrders.length === 0}
+            disabled={
+              isLoading || selectedOrders.length === 0 || !selectedCourierId
+            }
             className="bg-teal-600 hover:bg-teal-700"
           >
             {isLoading ? (
@@ -322,9 +319,7 @@ export default function CreateGuideModal({
             ) : (
               <>
                 <PackagePlus className="h-4 w-4 mr-2" />
-                {hasMultipleDispatchTypes
-                  ? `Generar ${uniqueDispatchTypes.length} Guías`
-                  : "Generar Guía"}
+                Generar Guía
               </>
             )}
           </Button>
@@ -333,4 +328,3 @@ export default function CreateGuideModal({
     </Dialog>
   );
 }
-
