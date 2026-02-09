@@ -346,26 +346,21 @@ export default function CouriersPage() {
                                         <TableHead className="h-8 text-xs">
                                           Estado
                                         </TableHead>
-                                        <TableHead className="h-8 text-xs">
-                                          Dirección
-                                        </TableHead>
                                       </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                       {guides.map((guide) => (
                                         <TableRow
                                           key={guide.id}
-                                          className="hover:bg-muted/20"
+                                          className="hover:bg-muted/20 cursor-pointer"
+                                          onClick={() =>
+                                            handleGuideClick(guide.id)
+                                          }
                                         >
                                           <TableCell className="py-2 text-xs font-medium">
-                                            <button
-                                              onClick={() =>
-                                                handleGuideClick(guide.id)
-                                              }
-                                              className="text-primary hover:underline"
-                                            >
+                                            <span className="text-primary">
                                               {guide.guideNumber}
-                                            </button>
+                                            </span>
                                           </TableCell>
                                           <TableCell className="py-2 text-xs">
                                             {new Date(
@@ -382,9 +377,6 @@ export default function CouriersPage() {
                                             >
                                               {guide.status}
                                             </Badge>
-                                          </TableCell>
-                                          <TableCell className="py-2 text-xs truncate max-w-[200px]">
-                                            {guide.deliveryAddress || "N/A"}
                                           </TableCell>
                                         </TableRow>
                                       ))}
