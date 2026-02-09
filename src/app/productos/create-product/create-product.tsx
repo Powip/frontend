@@ -491,14 +491,14 @@ export default function ProductCreateForm({
       prev.map((v, i) =>
         i === index
           ? {
-              ...v,
-              [field]:
-                field === "priceBase" ||
+            ...v,
+            [field]:
+              field === "priceBase" ||
                 field === "priceVta" ||
                 field === "stock"
-                  ? Number(value)
-                  : value,
-            }
+                ? Number(value)
+                : value,
+          }
           : v,
       ),
     );
@@ -821,86 +821,7 @@ export default function ProductCreateForm({
                 </div>
               </div>
 
-              {/* Row: Proveedor + Marca */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="supplierId">
-                    Proveedor{" "}
-                    <span className="text-muted-foreground text-xs">
-                      (opcional)
-                    </span>
-                  </Label>
-                  <div className="flex gap-2">
-                    <select
-                      id="supplierId"
-                      name="supplierId"
-                      value={form.supplierId}
-                      onChange={handleChange}
-                      className="flex-1 border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
-                    >
-                      <option value="">Seleccionar proveedor...</option>
-                      {suppliers.map((supplier) => (
-                        <option key={supplier.id} value={supplier.id}>
-                          {supplier.name}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setSupplierModalOpen(true)}
-                      title="Crear nuevo proveedor"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="brandId">
-                    Marca{" "}
-                    <span className="text-muted-foreground text-xs">
-                      (opcional)
-                    </span>
-                  </Label>
-                  <div className="flex gap-2">
-                    <select
-                      id="brandId"
-                      name="brandId"
-                      value={form.brandId}
-                      onChange={handleChange}
-                      disabled={!form.supplierId}
-                      className="flex-1 border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600 disabled:bg-gray-200 dark:disabled:bg-gray-700"
-                    >
-                      {!form.supplierId ? (
-                        <option value="">
-                          Selecciona proveedor primero...
-                        </option>
-                      ) : (
-                        <>
-                          <option value="">Seleccionar marca...</option>
-                          {filteredBrands.map((brand) => (
-                            <option key={brand.id} value={brand.id}>
-                              {brand.name}
-                            </option>
-                          ))}
-                        </>
-                      )}
-                    </select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="icon"
-                      onClick={() => setBrandModalOpen(true)}
-                      disabled={!form.supplierId}
-                      title="Crear nueva marca"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              </div>
 
               {/* Nombre */}
               <div className="space-y-2">
@@ -991,14 +912,14 @@ export default function ProductCreateForm({
               {/* Botón generar variantes */}
               {(defaultAttributes.length > 0 ||
                 customAttributes.length > 0) && (
-                <Button
-                  type="button"
-                  onClick={handleGenerateVariants}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  Generar variantes
-                </Button>
-              )}
+                  <Button
+                    type="button"
+                    onClick={handleGenerateVariants}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    Generar variantes
+                  </Button>
+                )}
 
               {/* Custom attributes header */}
               <div className="flex items-center justify-between pt-2">
