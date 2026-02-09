@@ -12,23 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Truck } from "lucide-react";
-
-export type CourierType =
-  | "MOTORIZADO_PROPIO"
-  | "SHALOM"
-  | "OLVA_COURIER"
-  | "MARVISUR"
-  | "FLORES"
-  | "OTROS";
-
-const COURIER_OPTIONS: { value: CourierType; label: string }[] = [
-  { value: "MOTORIZADO_PROPIO", label: "Motorizado Propio" },
-  { value: "SHALOM", label: "Shalom" },
-  { value: "OLVA_COURIER", label: "Olva Courier" },
-  { value: "MARVISUR", label: "Marvisur" },
-  { value: "FLORES", label: "Flores" },
-  { value: "OTROS", label: "Otros" },
-];
+import { fetchCouriers, Courier } from "@/services/courierService";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface CourierAssignmentModalProps {
   open: boolean;
@@ -36,7 +21,8 @@ interface CourierAssignmentModalProps {
   selectedCount?: number; // Si viene, es asignación masiva
   orderNumber?: string; // Si viene, es edición individual
   currentCourier?: string | null; // Courier actual para pre-seleccionar
-  onConfirm: (courier: string) => void; // Ahora acepta string (puede ser custom)
+  currentCourierId?: string | null; // ID de courier actual
+  onConfirm: (courier: string, courierId?: string) => void; // Acepta nombre e ID
   isLoading?: boolean;
 }
 
@@ -46,48 +32,84 @@ export default function CourierAssignmentModal({
   selectedCount,
   orderNumber,
   currentCourier,
+  currentCourierId,
   onConfirm,
   isLoading = false,
 }: CourierAssignmentModalProps) {
-  const [selectedCourier, setSelectedCourier] = useState<CourierType | "">("" );
+  const { auth } = useAuth();
+  const companyId = auth?.company?.id;
+
+  const [couriers, setCouriers] = useState<Courier[]>([]);
+  const [selectedCourierId, setSelectedCourierId] = useState<string>("");
   const [customCourier, setCustomCourier] = useState("");
+
+  // Cargar couriers
+  useEffect(() => {
+    if (open && companyId) {
+      fetchCouriers(companyId).then(setCouriers).catch(console.error);
+    }
+  }, [open, companyId]);
 
   // Pre-seleccionar courier actual si está editando
   useEffect(() => {
-    if (open && currentCourier) {
-      const option = COURIER_OPTIONS.find(
-        (opt) => opt.value === currentCourier || opt.label === currentCourier
-      );
-      if (option) {
-        setSelectedCourier(option.value);
-      } else {
-        // Es un courier personalizado
-        setSelectedCourier("OTROS");
-        setCustomCourier(currentCourier);
+    if (open) {
+      if (currentCourierId) {
+        setSelectedCourierId(currentCourierId);
+      } else if (currentCourier) {
+        // Buscar por nombre si no hay ID
+        const existing = couriers.find((c) => c.name === currentCourier);
+        if (existing) {
+          setSelectedCourierId(existing.id);
+        } else {
+          // Caso legacy o manual
+          if (
+            [
+              "MOTORIZADO_PROPIO",
+              "SHALOM",
+              "OLVA_COURIER",
+              "MARVISUR",
+              "FLORES",
+            ].includes(currentCourier)
+          ) {
+            setSelectedCourierId(currentCourier);
+          } else {
+            setSelectedCourierId("OTROS");
+            setCustomCourier(currentCourier);
+          }
+        }
       }
     } else {
-      setSelectedCourier("");
+      setSelectedCourierId("");
       setCustomCourier("");
     }
-  }, [open, currentCourier]);
+  }, [open, currentCourier, currentCourierId, couriers]);
 
   const handleConfirm = () => {
-    const finalCourier =
-      selectedCourier === "OTROS" && customCourier.trim()
-        ? customCourier.trim()
-        : selectedCourier;
-    if (!finalCourier) return;
-    onConfirm(finalCourier);
+    if (selectedCourierId === "OTROS") {
+      if (customCourier.trim()) {
+        onConfirm(customCourier.trim());
+      }
+    } else {
+      const selected = couriers.find((c) => c.id === selectedCourierId);
+      if (selected) {
+        onConfirm(selected.name, selected.id);
+      } else if (selectedCourierId) {
+        // Caso MOTORIZADO_PROPIO u otros legacy que no están en la lista dinámica
+        onConfirm(selectedCourierId);
+      }
+    }
   };
 
   const handleClose = () => {
-    setSelectedCourier("");
+    setSelectedCourierId("");
     setCustomCourier("");
     onClose();
   };
 
-  const isOtros = selectedCourier === "OTROS";
-  const canConfirm = selectedCourier && (!isOtros || customCourier.trim());
+  const isOtros = selectedCourierId === "OTROS";
+  const canConfirm =
+    selectedCourierId &&
+    (selectedCourierId !== "OTROS" || customCourier.trim());
   const isBulk = selectedCount !== undefined;
 
   return (
@@ -118,24 +140,52 @@ export default function CourierAssignmentModal({
 
           <div className="space-y-2">
             <Label htmlFor="courier">Seleccione el courier *</Label>
-            <div className="grid grid-cols-2 gap-2">
-              {COURIER_OPTIONS.map((courier) => (
+            <div className="grid grid-cols-2 gap-2 max-h-[200px] overflow-y-auto pr-1">
+              {couriers.map((courier) => (
                 <button
-                  key={courier.value}
+                  key={courier.id}
                   type="button"
-                  onClick={() => setSelectedCourier(courier.value)}
+                  onClick={() => setSelectedCourierId(courier.id)}
                   className={`
                     p-3 rounded-lg border text-sm font-medium transition-all
                     ${
-                      selectedCourier === courier.value
+                      selectedCourierId === courier.id
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border hover:border-primary/50 hover:bg-muted"
                     }
                   `}
                 >
-                  {courier.label}
+                  {courier.name}
                 </button>
               ))}
+              <button
+                type="button"
+                onClick={() => setSelectedCourierId("MOTORIZADO_PROPIO")}
+                className={`
+                  p-3 rounded-lg border text-sm font-medium transition-all
+                  ${
+                    selectedCourierId === "MOTORIZADO_PROPIO"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:border-primary/50 hover:bg-muted"
+                  }
+                `}
+              >
+                Motorizado Propio
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedCourierId("OTROS")}
+                className={`
+                  p-3 rounded-lg border text-sm font-medium transition-all
+                  ${
+                    selectedCourierId === "OTROS"
+                      ? "border-primary bg-primary/10 text-primary"
+                      : "border-border hover:border-primary/50 hover:bg-muted"
+                  }
+                `}
+              >
+                Otros
+              </button>
             </div>
           </div>
 
@@ -161,8 +211,8 @@ export default function CourierAssignmentModal({
             {isLoading
               ? "Procesando..."
               : isBulk
-              ? "Asignar y Despachar"
-              : "Guardar"}
+                ? "Asignar y Despachar"
+                : "Guardar"}
           </Button>
         </DialogFooter>
       </DialogContent>

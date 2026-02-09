@@ -30,6 +30,7 @@ import {
   Camera,
   ImageIcon,
   CheckCircle2,
+  Lock,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -98,14 +99,17 @@ interface OrderDetail {
   trackingUrl?: string | null;
   shippingOffice?: string | null;
   shippingCode?: string | null;
+  shippingProofUrl?: string | null;
 }
 
 interface GuideDetailsModalProps {
   open: boolean;
   onClose: () => void;
-  orderId: string;
+  orderId?: string; // Ahora opcional
+  guideId?: string; // Nuevo prop
   defaultCourier?: string | null;
   onGuideUpdated?: () => void;
+  isCourierView?: boolean;
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -175,8 +179,10 @@ export default function GuideDetailsModal({
   open,
   onClose,
   orderId,
+  guideId,
   defaultCourier,
   onGuideUpdated,
+  isCourierView = false,
 }: GuideDetailsModalProps) {
   const [guide, setGuide] = useState<ShippingGuide | null>(null);
   const [loading, setLoading] = useState(false);
@@ -200,20 +206,27 @@ export default function GuideDetailsModal({
   >({});
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   // Upload de foto de entrega
-  const [uploading, setUploading] = useState(false);
+  const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (open && orderId) {
+    if (open && (orderId || guideId)) {
       fetchGuide();
     }
-  }, [open, orderId]);
+  }, [open, orderId, guideId]);
 
   const fetchGuide = async () => {
     setLoading(true);
     try {
-      const res = await axios.get<ShippingGuide | null>(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderId}`,
-      );
+      let url = "";
+      if (guideId) {
+        url = `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}`;
+      } else if (orderId) {
+        url = `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderId}`;
+      } else {
+        return;
+      }
+
+      const res = await axios.get<ShippingGuide | null>(url);
       setGuide(res.data);
 
       if (res.data?.courierName) {
@@ -377,10 +390,13 @@ export default function GuideDetailsModal({
     }
   };
 
-  // Subir foto de prueba de entrega
-  const handleUploadProof = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Subir foto de prueba de entrega por pedido
+  const handleUploadOrderProof = async (
+    orderId: string,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = e.target.files?.[0];
-    if (!file || !guide) return;
+    if (!file) return;
 
     // Validar tipo de archivo
     if (!file.type.startsWith("image/")) {
@@ -394,25 +410,35 @@ export default function GuideDetailsModal({
       return;
     }
 
-    setUploading(true);
+    setUploadingOrderId(orderId);
     try {
+      // 1. Subir imagen a ms-courier (Cloudinary)
       const formData = new FormData();
       formData.append("file", file);
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/upload-proof`,
+      const uploadRes = await axios.post<{ url: string }>(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/upload-proof`,
         formData,
         { headers: { "Content-Type": "multipart/form-data" } },
       );
 
-      toast.success("Foto de entrega subida correctamente");
-      fetchGuide();
+      const proofUrl = uploadRes.data.url;
+
+      // 2. Actualizar pedido en ms-ventas
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+        {
+          shippingProofUrl: proofUrl,
+        },
+      );
+
+      toast.success("Prueba de entrega subida correctamente");
+      fetchGuide(); // Recargar datos para mostrar la imagen/link
       onGuideUpdated?.();
     } catch (error: any) {
-      toast.error(error?.response?.data?.message || "Error al subir la foto");
+      toast.error(error?.response?.data?.message || "Error al subir la prueba");
     } finally {
-      setUploading(false);
-      // Reset input
+      setUploadingOrderId(null);
       e.target.value = "";
     }
   };
@@ -424,6 +450,8 @@ export default function GuideDetailsModal({
     setExpandedOrders(new Set());
     setOrderTrackingFields({});
     onClose();
+    // No reseteamos el guideId u orderId aquí porque vienen de props,
+    // pero si el modal se cierra, el padre debería limpiar esos estados si es necesario.
   };
 
   const toggleOrderExpand = (orderId: string) => {
@@ -957,23 +985,35 @@ export default function GuideDetailsModal({
                                 <label className="text-xs text-muted-foreground">
                                   Clave de Envío
                                 </label>
-                                <input
-                                  type="text"
-                                  className="w-full border rounded px-2 py-1 text-xs bg-background"
-                                  placeholder="Ej: ABC123"
-                                  value={
-                                    orderTrackingFields[order.id]
-                                      ?.shippingKey || ""
-                                  }
-                                  onChange={(e) =>
-                                    updateOrderTrackingField(
-                                      order.id,
-                                      "shippingKey",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onClick={(e) => e.stopPropagation()}
-                                />
+                                {pending > 0 ? (
+                                  <div className="flex items-center gap-2 px-2 py-1.5 border rounded bg-red-50 text-red-600 text-xs h-[34px]">
+                                    <Lock className="h-3 w-3 flex-shrink-0" />
+                                    <span
+                                      className="font-medium truncate"
+                                      title="Pago Pendiente - Clave oculta"
+                                    >
+                                      Clave Oculta
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    className="w-full border rounded px-2 py-1 text-xs bg-background h-[34px]"
+                                    placeholder="Ej: ABC123"
+                                    value={
+                                      orderTrackingFields[order.id]
+                                        ?.shippingKey || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateOrderTrackingField(
+                                        order.id,
+                                        "shippingKey",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                )}
                               </div>
                               <div className="space-y-1">
                                 <label className="text-xs text-muted-foreground">
@@ -1057,6 +1097,71 @@ export default function GuideDetailsModal({
                               Guardar Tracking
                             </Button>
                           </div>
+
+                          {/* Prueba de Entrega por Pedido */}
+                          <div className="pt-2 border-t mt-2">
+                            <p className="text-xs font-medium text-green-700 mb-2 flex items-center gap-1">
+                              <Camera className="h-3 w-3" /> Prueba de Entrega
+                            </p>
+                            {order.shippingProofUrl ? (
+                              <div className="relative group w-fit">
+                                <img
+                                  src={order.shippingProofUrl}
+                                  alt="Prueba"
+                                  className="h-24 w-auto object-contain rounded border bg-muted"
+                                />
+                                <a
+                                  href={order.shippingProofUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white rounded"
+                                >
+                                  <ExternalLink className="h-4 w-4" />
+                                </a>
+                                <div className="absolute top-1 right-1 bg-green-500 text-white p-0.5 rounded-full">
+                                  <CheckCircle2 className="h-3 w-3" />
+                                </div>
+                              </div>
+                            ) : (
+                              <div>
+                                {isCourierView &&
+                                [
+                                  "CREADA",
+                                  "ASIGNADA",
+                                  "APROBADA",
+                                  "EN_RUTA",
+                                  "ENTREGADA",
+                                  "PARCIAL",
+                                  "FALLIDA",
+                                ].includes(guide?.status || "") ? (
+                                  <label className="inline-flex items-center gap-2 cursor-pointer bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs hover:bg-primary/90 transition-colors">
+                                    {uploadingOrderId === order.id ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <Camera className="h-3 w-3" />
+                                    )}
+                                    {uploadingOrderId === order.id
+                                      ? "Subiendo..."
+                                      : "Subir Foto"}
+                                    <input
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={(e) =>
+                                        handleUploadOrderProof(order.id, e)
+                                      }
+                                      disabled={!!uploadingOrderId}
+                                    />
+                                  </label>
+                                ) : (
+                                  <p className="text-xs text-muted-foreground italic flex items-center gap-1">
+                                    <ImageIcon className="h-3 w-3" /> Sin prueba
+                                    de entrega
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1068,69 +1173,6 @@ export default function GuideDetailsModal({
                   </div>
                 )}
               </div>
-            </div>
-
-            {/* Prueba de entrega */}
-            <div className="border rounded-lg p-3 space-y-2">
-              <Label className="flex items-center gap-2 text-sm font-medium">
-                <Camera className="h-4 w-4" />
-                Prueba de Entrega
-              </Label>
-
-              {guide.shippingProofUrl ? (
-                <div className="space-y-2">
-                  <div className="relative group">
-                    <img
-                      src={guide.shippingProofUrl}
-                      alt="Prueba de entrega"
-                      className="w-full max-h-[200px] object-contain rounded-lg border bg-muted/20"
-                    />
-                    <a
-                      href={guide.shippingProofUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="absolute top-2 right-2 bg-black/50 text-white p-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity"
-                      title="Ver imagen completa"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-green-600">
-                    <CheckCircle2 className="h-4 w-4" />
-                    <span>Foto de confirmación cargada</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="border-2 border-dashed border-muted-foreground/30 rounded-lg p-4 text-center">
-                  <ImageIcon className="h-8 w-8 mx-auto text-muted-foreground/50 mb-2" />
-                  <p className="text-sm text-muted-foreground mb-2">
-                    Sin foto de confirmación
-                  </p>
-                  {[
-                    "APROBADA",
-                    "ASIGNADA",
-                    "EN_RUTA",
-                    "ENTREGADA",
-                    "PARCIAL",
-                  ].includes(guide.status) && (
-                    <label className="inline-flex items-center gap-2 cursor-pointer bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90">
-                      {uploading ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Camera className="h-4 w-4" />
-                      )}
-                      {uploading ? "Subiendo..." : "Subir Foto"}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={handleUploadProof}
-                        disabled={uploading}
-                      />
-                    </label>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Notas */}

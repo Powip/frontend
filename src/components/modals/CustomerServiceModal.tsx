@@ -23,6 +23,7 @@ import {
   Truck,
   Package,
   Loader2,
+  Lock,
 } from "lucide-react";
 import { Textarea } from "../ui/textarea";
 import {
@@ -696,7 +697,11 @@ export default function CustomerServiceModal({
                 ? `
             <div class="tracking-item">
               <span class="tracking-label">Clave:</span>
-              <span class="tracking-value">${receipt.shippingKey}</span>
+              <span class="tracking-value">${
+                pendingAmount > 0
+                  ? '<span style="color:red; font-weight:bold;">CLAVE OCULTA (Pago Pendiente)</span>'
+                  : receipt.shippingKey
+              }</span>
             </div>`
                 : ""
             }
@@ -1392,20 +1397,32 @@ export default function CustomerServiceModal({
                               <span className="text-muted-foreground block text-[10px] uppercase mb-1">
                                 Clave
                               </span>
-                              <Input
-                                className="h-8 text-xs"
-                                placeholder="Clave..."
-                                value={receipt.shippingKey || ""}
-                                onChange={(
-                                  e: React.ChangeEvent<HTMLInputElement>,
-                                ) =>
-                                  updateTrackingField(
-                                    "shippingKey",
-                                    e.target.value,
-                                  )
-                                }
-                                onBlur={handleSaveTracking}
-                              />
+                              {receipt.totals.pendingAmount > 0 ? (
+                                <div className="flex items-center gap-2 px-2 py-1 border rounded bg-red-50 text-red-600 text-xs h-8">
+                                  <Lock className="h-3 w-3 flex-shrink-0" />
+                                  <span
+                                    className="font-medium truncate"
+                                    title="Pago Pendiente - Clave oculta"
+                                  >
+                                    Oculta
+                                  </span>
+                                </div>
+                              ) : (
+                                <Input
+                                  className="h-8 text-xs"
+                                  placeholder="Clave..."
+                                  value={receipt.shippingKey || ""}
+                                  onChange={(
+                                    e: React.ChangeEvent<HTMLInputElement>,
+                                  ) =>
+                                    updateTrackingField(
+                                      "shippingKey",
+                                      e.target.value,
+                                    )
+                                  }
+                                  onBlur={handleSaveTracking}
+                                />
+                              )}
                             </div>
                           </div>
                           {savingTracking && (
