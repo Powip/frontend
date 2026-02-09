@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   Dialog,
   DialogContent,
@@ -61,6 +62,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
   className,
   renderRowAction,
 }) => {
+  const { auth } = useAuth();
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const handleExport = () => {
@@ -141,14 +143,16 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                   <DialogContent className="sm:max-w-7xl w-[95vw] max-h-[85vh] flex flex-col p-6">
                     <DialogHeader className="flex flex-row items-center justify-between pb-4 border-b">
                       <DialogTitle>{title} - Detalle de Datos</DialogTitle>
-                      <Button
-                        onClick={handleExport}
-                        size="sm"
-                        className="gap-2"
-                      >
-                        <Download className="h-4 w-4" />
-                        Exportar Excel
-                      </Button>
+                      {auth?.user?.role === "ADMIN" && (
+                        <Button
+                          onClick={handleExport}
+                          size="sm"
+                          className="gap-2"
+                        >
+                          <Download className="h-4 w-4" />
+                          Exportar Excel
+                        </Button>
+                      )}
                     </DialogHeader>
                     <div className="flex-1 overflow-auto mt-4 rounded-md border">
                       <Table>
@@ -297,14 +301,16 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                   </DialogContent>
                 </Dialog>
 
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500"
-                  onClick={handleExport}
-                >
-                  <Download className="h-4 w-4" />
-                </Button>
+                {auth?.user?.role === "ADMIN" && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 rounded-full bg-gray-50 hover:bg-gray-100 text-gray-500"
+                    onClick={handleExport}
+                  >
+                    <Download className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             )}
           </>

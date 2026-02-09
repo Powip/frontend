@@ -17,8 +17,12 @@ import {
   DollarSign,
   MessageCircle,
   Lock,
+  Pencil,
 } from "lucide-react";
-import { exportSeguimientoToExcel } from "@/utils/exportSalesExcel";
+import {
+  exportSeguimientoToExcel,
+  SeguimientoExportData,
+} from "@/utils/exportSalesExcel";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,7 +104,8 @@ export interface EnvioItem {
 interface SeguimientoFilters {
   search: string;
   courier: string;
-  daysRange: "" | "0-7" | "8-15" | "16-30" | "30+";
+  startDate: string;
+  endDate: string;
   hasPendingPayment: "" | "yes" | "no";
   region: "" | "LIMA" | "PROVINCIA";
   guideStatus: string;
@@ -109,7 +114,8 @@ interface SeguimientoFilters {
 const emptyFilters: SeguimientoFilters = {
   search: "",
   courier: "",
-  daysRange: "",
+  startDate: "",
+  endDate: "",
   hasPendingPayment: "",
   region: "",
   guideStatus: "",
@@ -121,14 +127,6 @@ const COURIERS = [
   "Olva Courier",
   "Marvisur",
   "Flores",
-];
-
-const DAYS_RANGES = [
-  { value: "", label: "Todos" },
-  { value: "0-7", label: "0-7 días" },
-  { value: "8-15", label: "8-15 días" },
-  { value: "16-30", label: "16-30 días" },
-  { value: "30+", label: "Más de 30 días" },
 ];
 
 const GUIDE_STATUSES = [
@@ -182,7 +180,9 @@ const getNotesCount = (notesStr?: string | null) => {
 ----------------------------------------- */
 
 export default function SeguimientoPage() {
+  const router = useRouter();
   const [envios, setEnvios] = useState<EnvioItem[]>([]);
+  const [entregados, setEntregados] = useState<EnvioItem[]>([]);
   const [guides, setGuides] = useState<ShippingGuide[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingGuides, setLoadingGuides] = useState(false);
@@ -249,43 +249,58 @@ export default function SeguimientoPage() {
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
 
-      const orders = ordersRes.data.filter((o) => o.status === "EN_ENVIO");
-
-      const envioItems: EnvioItem[] = await Promise.all(
-        orders.map(async (order) => {
-          let guide: ShippingGuide | null = null;
-          let daysSinceCreated = 0;
-
-          if (order.guideNumber) {
-            try {
-              const guideRes = await axios.get<ShippingGuide>(
-                `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${order.id}`,
-              );
-              guide = guideRes.data;
-
-              if (guide?.created_at) {
-                const createdDate = new Date(guide.created_at);
-                const today = new Date();
-                const diffTime = Math.abs(
-                  today.getTime() - createdDate.getTime(),
-                );
-                daysSinceCreated = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-              }
-            } catch (error) {
-              console.error(
-                `Error fetching guide for order ${order.id}:`,
-                error,
-              );
-            }
-          }
-
-          return { order, guide, daysSinceCreated };
-        }),
+      const ordersEnEnvio = ordersRes.data.filter(
+        (o) => o.status === "EN_ENVIO",
+      );
+      const ordersEntregado = ordersRes.data.filter(
+        (o) => o.status === "ENTREGADO",
       );
 
-      setEnvios(envioItems);
+      const processOrders = async (orders: OrderHeader[]) => {
+        return await Promise.all(
+          orders.map(async (order) => {
+            let guide: ShippingGuide | null = null;
+            let daysSinceCreated = 0;
 
-      // Initialize tracking edits from order data
+            if (order.guideNumber) {
+              try {
+                const guideRes = await axios.get<ShippingGuide>(
+                  `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${order.id}`,
+                );
+                guide = guideRes.data;
+
+                if (guide?.created_at) {
+                  const createdDate = new Date(guide.created_at);
+                  const today = new Date();
+                  const diffTime = Math.abs(
+                    today.getTime() - createdDate.getTime(),
+                  );
+                  daysSinceCreated = Math.ceil(
+                    diffTime / (1000 * 60 * 60 * 24),
+                  );
+                }
+              } catch (error) {
+                console.error(
+                  `Error fetching guide for order ${order.id}:`,
+                  error,
+                );
+              }
+            }
+
+            return { order, guide, daysSinceCreated };
+          }),
+        );
+      };
+
+      const [envioItems, entregadoItems] = await Promise.all([
+        processOrders(ordersEnEnvio),
+        processOrders(ordersEntregado),
+      ]);
+
+      setEnvios(envioItems);
+      setEntregados(entregadoItems);
+
+      // Initialize tracking edits from all orders
       const edits: Record<
         string,
         {
@@ -295,7 +310,7 @@ export default function SeguimientoPage() {
           shippingOffice: string;
         }
       > = {};
-      envioItems.forEach((item) => {
+      [...envioItems, ...entregadoItems].forEach((item) => {
         const o = item.order;
         edits[o.id] = {
           externalTrackingNumber: (o as any).externalTrackingNumber || "",
@@ -382,20 +397,21 @@ export default function SeguimientoPage() {
         }
       }
 
-      // Days range filter
-      if (filters.daysRange) {
-        if (filters.daysRange === "0-7" && daysSinceCreated > 7) return false;
-        if (
-          filters.daysRange === "8-15" &&
-          (daysSinceCreated < 8 || daysSinceCreated > 15)
-        )
-          return false;
-        if (
-          filters.daysRange === "16-30" &&
-          (daysSinceCreated < 16 || daysSinceCreated > 30)
-        )
-          return false;
-        if (filters.daysRange === "30+" && daysSinceCreated <= 30) return false;
+      // Date range filter
+      if (filters.startDate || filters.endDate) {
+        const itemDate = new Date(guide?.created_at || order.created_at);
+
+        if (filters.startDate) {
+          const start = new Date(filters.startDate);
+          start.setHours(0, 0, 0, 0);
+          if (itemDate < start) return false;
+        }
+
+        if (filters.endDate) {
+          const end = new Date(filters.endDate);
+          end.setHours(23, 59, 59, 999);
+          if (itemDate > end) return false;
+        }
       }
 
       // Pending payment filter
@@ -415,6 +431,72 @@ export default function SeguimientoPage() {
       return true;
     });
   }, [envios, filters]);
+
+  const filteredEntregados = useMemo(() => {
+    return entregados.filter((item) => {
+      const { order, guide } = item;
+
+      // Search filter
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        const clientName = order.customer?.fullName?.toLowerCase() || "";
+        const phone = order.customer?.phoneNumber || "";
+        const orderNumber = order.orderNumber?.toLowerCase() || "";
+        if (
+          !clientName.includes(searchLower) &&
+          !phone.includes(filters.search) &&
+          !orderNumber.includes(searchLower)
+        ) {
+          return false;
+        }
+      }
+
+      // Courier filter (case-insensitive)
+      if (filters.courier) {
+        const courierName = (
+          guide?.courierName ||
+          order.courier ||
+          ""
+        ).toLowerCase();
+        if (!courierName.includes(filters.courier.toLowerCase())) {
+          return false;
+        }
+      }
+
+      // Date range filter
+      if (filters.startDate || filters.endDate) {
+        const itemDate = new Date(guide?.created_at || order.created_at);
+
+        if (filters.startDate) {
+          const start = new Date(filters.startDate);
+          start.setHours(0, 0, 0, 0);
+          if (itemDate < start) return false;
+        }
+
+        if (filters.endDate) {
+          const end = new Date(filters.endDate);
+          end.setHours(23, 59, 59, 999);
+          if (itemDate > end) return false;
+        }
+      }
+
+      // Pending payment filter
+      const pendingPayment = calculatePendingPayment(order);
+      if (filters.hasPendingPayment === "yes" && pendingPayment <= 0)
+        return false;
+      if (filters.hasPendingPayment === "no" && pendingPayment > 0)
+        return false;
+
+      // Region filter
+      if (filters.region && order.salesRegion !== filters.region) return false;
+
+      // Guide status filter
+      if (filters.guideStatus && guide?.status !== filters.guideStatus)
+        return false;
+
+      return true;
+    });
+  }, [entregados, filters]);
 
   const filteredGuidesList = useMemo(() => {
     return guides.filter((guide) => {
@@ -589,10 +671,14 @@ export default function SeguimientoPage() {
     return "";
   };
 
-  const handleExportExcel = () => {
-    const exportData = filteredEnvios.map((item) => {
-      const order = item.order;
-      const guide = item.guide;
+  const handleExportExcel = (dataList: EnvioItem[], tabTitle: string) => {
+    if (dataList.length === 0) {
+      toast.warning("No hay datos para exportar");
+      return;
+    }
+
+    const flatData: SeguimientoExportData[] = dataList.map((item) => {
+      const { order, guide, daysSinceCreated } = item;
       const pendingPayment = calculatePendingPayment(order);
       const totalPaid = parseFloat(order.grandTotal || "0") - pendingPayment;
 
@@ -620,10 +706,12 @@ export default function SeguimientoPage() {
         courier: guide?.courierName || order.courier || "-",
         guideNumber: guide?.guideNumber || order.guideNumber || "-",
         guideStatus: guide?.status || "-",
-        daysSinceCreated: item.daysSinceCreated,
+        daysSinceCreated: daysSinceCreated,
       };
     });
-    exportSeguimientoToExcel(exportData, "seguimiento_envios");
+
+    exportSeguimientoToExcel(flatData, `seguimiento_${tabTitle}`);
+    toast.success(`Exportados ${flatData.length} registros`);
   };
 
   const handleOpenGuideDetails = (guide: ShippingGuide) => {
@@ -734,6 +822,10 @@ export default function SeguimientoPage() {
               <Package className="h-4 w-4" />
               Pedidos en Envío
             </TabsTrigger>
+            <TabsTrigger value="entregados" className="flex items-center gap-2">
+              <Check className="h-4 w-4" />
+              Entregados
+            </TabsTrigger>
             <TabsTrigger value="guias" className="flex items-center gap-2">
               <Truck className="h-4 w-4" />
               Guías de Envío
@@ -747,15 +839,17 @@ export default function SeguimientoPage() {
                   <Package className="h-5 w-5" />
                   Pedidos En Envío ({filteredEnvios.length})
                 </CardTitle>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleExportExcel}
-                  disabled={filteredEnvios.length === 0}
-                >
-                  <FileDown className="h-4 w-4 mr-2" />
-                  Exportar Excel
-                </Button>
+                {auth?.user?.role === "ADMIN" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportExcel(filteredEnvios, "pedidos")}
+                    disabled={filteredEnvios.length === 0}
+                  >
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 {/* Filters */}
@@ -768,7 +862,7 @@ export default function SeguimientoPage() {
                       </Label>
                       <Input
                         placeholder="Buscar..."
-                        value={filters.search}
+                        value={filters.search || ""}
                         onChange={(e) => updateFilter("search", e.target.value)}
                         icon={Search}
                         iconPosition="left"
@@ -796,24 +890,30 @@ export default function SeguimientoPage() {
                     </div>
 
                     {/* Days Range */}
+                    {/* Fecha: Desde */}
                     <div className="space-y-1">
-                      <Label className="text-xs">Días transcurridos</Label>
-                      <select
-                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
-                        value={filters.daysRange}
+                      <Label className="text-xs">Desde</Label>
+                      <Input
+                        type="date"
+                        value={filters.startDate || ""}
                         onChange={(e) =>
-                          updateFilter(
-                            "daysRange",
-                            e.target.value as SeguimientoFilters["daysRange"],
-                          )
+                          updateFilter("startDate", e.target.value)
                         }
-                      >
-                        {DAYS_RANGES.map((r) => (
-                          <option key={r.value} value={r.value}>
-                            {r.label}
-                          </option>
-                        ))}
-                      </select>
+                        className="h-8 text-sm"
+                      />
+                    </div>
+
+                    {/* Fecha: Hasta */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Hasta</Label>
+                      <Input
+                        type="date"
+                        value={filters.endDate || ""}
+                        onChange={(e) =>
+                          updateFilter("endDate", e.target.value)
+                        }
+                        className="h-8 text-sm"
+                      />
                     </div>
 
                     {/* Pending Payment */}
@@ -897,286 +997,267 @@ export default function SeguimientoPage() {
                     No hay pedidos en envío
                   </div>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead className="w-[110px] min-w-[110px]">
-                          N° Orden
-                        </TableHead>
-                        <TableHead className="w-[160px] min-w-[160px]">
-                          Cliente
-                        </TableHead>
-                        <TableHead className="w-[120px] min-w-[120px]">
-                          Teléfono
-                        </TableHead>
-                        <TableHead className="w-[100px] min-w-[100px]">
-                          Región
-                        </TableHead>
-                        <TableHead className="w-[120px] min-w-[120px]">
-                          Enviado Por
-                        </TableHead>
-                        <TableHead className="w-[100px] min-w-[100px]">
-                          Fecha
-                        </TableHead>
-                        <TableHead className="w-[100px] min-w-[100px]">
-                          Días
-                        </TableHead>
-                        <TableHead className="w-[140px] min-w-[140px]">
-                          Estado Envío
-                        </TableHead>
-                        <TableHead className="w-[120px] min-w-[120px]">
-                          Nro Tracking
-                        </TableHead>
-                        <TableHead className="w-[80px] min-w-[80px]">
-                          Código
-                        </TableHead>
-                        <TableHead className="w-[80px] min-w-[80px]">
-                          Clave
-                        </TableHead>
-                        <TableHead className="w-[130px] min-w-[130px]">
-                          Oficina
-                        </TableHead>
-                        <TableHead className="w-[100px] min-w-[100px]">
-                          Saldo
-                        </TableHead>
-                        <TableHead className="w-[60px] min-w-[60px]">
-                          Pagos
-                        </TableHead>
-                        <TableHead className="w-[120px] min-w-[120px]">
-                          Guía
-                        </TableHead>
-                        <TableHead className="text-right">Acciones</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredEnvios.map((item) => {
-                        const { order, guide, daysSinceCreated } = item;
-                        const pendingPayment = calculatePendingPayment(order);
-                        const isProvincia = order.salesRegion === "PROVINCIA";
+                  <div className="overflow-x-auto border rounded-md relative scrollbar-thin scrollbar-thumb-muted-foreground/20">
+                    <Table className="min-w-[1500px]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-30 bg-background border-r">
+                            N° Orden
+                          </TableHead>
+                          <TableHead className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-30 bg-background border-r">
+                            Cliente
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-30 bg-background border-r">
+                            Teléfono
+                          </TableHead>
+                          <TableHead className="w-[100px] min-w-[100px]">
+                            Región
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px]">
+                            Enviado Por
+                          </TableHead>
+                          <TableHead className="w-[100px] min-w-[100px]">
+                            Fecha
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px]">
+                            Vendedor
+                          </TableHead>
+                          <TableHead className="w-[100px] min-w-[100px]">
+                            Días
+                          </TableHead>
+                          <TableHead className="w-[140px] min-w-[140px]">
+                            Estado Envío
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px]">
+                            Nro Tracking
+                          </TableHead>
+                          <TableHead className="w-[80px] min-w-[80px]">
+                            Código
+                          </TableHead>
+                          <TableHead className="w-[80px] min-w-[80px]">
+                            Clave
+                          </TableHead>
+                          <TableHead className="w-[130px] min-w-[130px]">
+                            Oficina
+                          </TableHead>
+                          <TableHead className="w-[100px] min-w-[100px] lg:sticky lg:right-[180px] lg:z-30 bg-background border-l">
+                            Saldo
+                          </TableHead>
+                          <TableHead className="w-[60px] min-w-[60px] lg:sticky lg:right-[120px] lg:z-30 bg-background border-l">
+                            Pagos
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:right-[60px] lg:z-30 bg-background border-l">
+                            Guía
+                          </TableHead>
+                          <TableHead className="text-right lg:sticky lg:right-0 lg:z-40 bg-background border-l">
+                            Acciones
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredEnvios.map((item) => {
+                          const { order, guide, daysSinceCreated } = item;
+                          const pendingPayment = calculatePendingPayment(order);
+                          const isProvincia = order.salesRegion === "PROVINCIA";
 
-                        return (
-                          <TableRow
-                            key={order.id}
-                            className={`hover:bg-muted/50 ${getDaysRowClass(daysSinceCreated)} ${isProvincia && daysSinceCreated < 25 ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}
-                          >
-                            <TableCell className="font-medium w-[110px] min-w-[110px]">
-                              <div className="flex items-center gap-1">
-                                {daysSinceCreated >= 25 && (
-                                  <AlertTriangle
-                                    className={`h-4 w-4 ${daysSinceCreated >= 30 ? "text-red-500" : "text-amber-500"}`}
-                                  />
-                                )}
-                                {order.orderNumber}
-                              </div>
-                            </TableCell>
-                            <TableCell className="w-[160px] min-w-[160px]">
-                              <div className="flex items-center gap-1 group relative">
-                                <User className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                <span
-                                  className="truncate max-w-[130px]"
-                                  title={order.customer?.fullName || "-"}
-                                >
-                                  {order.customer?.fullName || "-"}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="w-[120px] min-w-[120px]">
-                              <div className="flex items-center gap-2">
+                          return (
+                            <TableRow
+                              key={order.id}
+                              className={`hover:bg-muted/50 ${getDaysRowClass(daysSinceCreated)} ${isProvincia && daysSinceCreated < 25 ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}
+                            >
+                              <TableCell className="font-medium w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-20 bg-background border-r">
                                 <div className="flex items-center gap-1">
-                                  <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                  <span className="text-sm truncate">
-                                    {order.customer?.phoneNumber || "-"}
+                                  {daysSinceCreated >= 25 && (
+                                    <AlertTriangle
+                                      className={`h-4 w-4 ${daysSinceCreated >= 30 ? "text-red-500" : "text-amber-500"}`}
+                                    />
+                                  )}
+                                  {order.orderNumber}
+                                </div>
+                              </TableCell>
+                              <TableCell className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-20 bg-background border-r">
+                                <div className="flex items-center gap-1 group relative">
+                                  <User className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                  <span
+                                    className="truncate max-w-[130px]"
+                                    title={order.customer?.fullName || "-"}
+                                  >
+                                    {order.customer?.fullName || "-"}
                                   </span>
                                 </div>
-                                {order.customer?.phoneNumber && (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-6 w-6 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-sm transition-all flex-shrink-0"
-                                    onClick={() =>
-                                      handleWhatsApp(
-                                        order.customer.phoneNumber || "",
-                                        order.orderNumber,
-                                        order.customer.fullName,
-                                      )
-                                    }
-                                    title="WhatsApp"
-                                  >
-                                    <MessageCircle className="h-3 w-3" />
-                                  </Button>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="w-[100px] min-w-[100px]">
-                              <Badge
-                                variant={isProvincia ? "secondary" : "outline"}
-                              >
-                                {order.salesRegion}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="w-[120px] min-w-[120px]">
-                              <div className="flex items-center gap-1 truncate">
-                                <Truck className="h-3 w-3 text-muted-foreground flex-shrink-0" />
-                                <span
-                                  className="truncate"
-                                  title={
-                                    guide?.courierName || order.courier || "-"
-                                  }
-                                >
-                                  {guide?.courierName || order.courier || "-"}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell className="w-[100px] min-w-[100px]">
-                              {guide?.created_at
-                                ? new Date(guide.created_at).toLocaleDateString(
-                                    "es-PE",
-                                  )
-                                : "-"}
-                            </TableCell>
-                            <TableCell className="w-[100px] min-w-[100px]">
-                              <div className="flex items-center gap-1">
-                                {daysSinceCreated >= 25 && (
-                                  <Clock
-                                    className={`h-3 w-3 ${daysSinceCreated >= 30 ? "text-red-500" : "text-amber-500"}`}
-                                  />
-                                )}
-                                <span
-                                  className={getDaysColor(daysSinceCreated)}
-                                >
-                                  {daysSinceCreated} días
-                                </span>
-                                {daysSinceCreated >= 30 && (
-                                  <Badge className="ml-1 bg-red-600 text-white text-[10px] px-1 py-0">
-                                    VENCIDO
-                                  </Badge>
-                                )}
-                                {daysSinceCreated >= 25 &&
-                                  daysSinceCreated < 30 && (
-                                    <Badge className="ml-1 bg-amber-500 text-white text-[10px] px-1 py-0">
-                                      PRÓXIMO
-                                    </Badge>
-                                  )}
-                              </div>
-                            </TableCell>
-                            <TableCell className="w-[140px] min-w-[140px]">
-                              <Select
-                                value={guide?.status || "CREADA"}
-                                onValueChange={(val) =>
-                                  guide &&
-                                  handleStatusChange(
-                                    guide.id,
-                                    val,
-                                    pendingPayment,
-                                  )
-                                }
-                                disabled={!guide}
-                              >
-                                <SelectTrigger
-                                  className={`h-8 w-[130px] text-xs font-semibold ${
-                                    (guide?.status &&
-                                      GUIDE_STATUS_STYLE[guide.status]) ||
-                                    "bg-gray-100 text-gray-800 border-gray-200"
-                                  }`}
-                                >
-                                  <SelectValue placeholder="Estado" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="CREADA">Creada</SelectItem>
-                                  <SelectItem value="APROBADA">
-                                    Aprobada
-                                  </SelectItem>
-                                  <SelectItem value="ASIGNADA">
-                                    Asignada
-                                  </SelectItem>
-                                  <SelectItem value="EN_RUTA">
-                                    En Ruta
-                                  </SelectItem>
-                                  <SelectItem value="ENTREGADA">
-                                    Entregada
-                                  </SelectItem>
-                                  <SelectItem value="PARCIAL">
-                                    Parcial
-                                  </SelectItem>
-                                  <SelectItem value="FALLIDA">
-                                    Fallida
-                                  </SelectItem>
-                                  <SelectItem value="CANCELADA">
-                                    Cancelada
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            {/* Nro Tracking */}
-                            <TableCell className="w-[120px] min-w-[120px]">
-                              <div className="relative flex items-center">
-                                <input
-                                  type="text"
-                                  className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                                    savingOrderId === order.id
-                                      ? "opacity-50 border-orange-400 pr-6"
-                                      : "focus:border-orange-500"
-                                  }`}
-                                  placeholder="Nro..."
-                                  value={
-                                    trackingEdits[order.id]
-                                      ?.externalTrackingNumber || ""
-                                  }
-                                  onChange={(e) =>
-                                    updateTrackingField(
-                                      order.id,
-                                      "externalTrackingNumber",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onBlur={() => handleSaveTracking(order.id)}
-                                  disabled={savingOrderId === order.id}
-                                />
-                                {savingOrderId === order.id && (
-                                  <Loader2 className="absolute right-1.5 h-3 w-3 animate-spin text-orange-500" />
-                                )}
-                              </div>
-                            </TableCell>
-                            {/* Código */}
-                            <TableCell className="w-[80px] min-w-[80px]">
-                              <div className="relative flex items-center">
-                                <input
-                                  type="text"
-                                  className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                                    savingOrderId === order.id
-                                      ? "opacity-50 border-orange-400 pr-5"
-                                      : "focus:border-orange-500"
-                                  }`}
-                                  placeholder="Código"
-                                  value={
-                                    trackingEdits[order.id]?.shippingCode || ""
-                                  }
-                                  onChange={(e) =>
-                                    updateTrackingField(
-                                      order.id,
-                                      "shippingCode",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onBlur={() => handleSaveTracking(order.id)}
-                                  disabled={savingOrderId === order.id}
-                                />
-                              </div>
-                            </TableCell>
-                            {/* Clave */}
-                            <TableCell className="w-[80px] min-w-[80px]">
-                              <div className="relative flex items-center">
-                                {pendingPayment > 0 ? (
-                                  <div className="w-full h-7 px-1.5 text-xs border rounded bg-red-50 text-red-600 flex items-center gap-1.5">
-                                    <Lock className="h-3 w-3 flex-shrink-0" />
-                                    <span
-                                      className="font-medium truncate"
-                                      title="Pago Pendiente - Clave oculta"
-                                    >
-                                      Oculta
+                              </TableCell>
+                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-20 bg-background border-r">
+                                <div className="flex items-center gap-2">
+                                  <div className="flex items-center gap-1">
+                                    <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                    <span className="text-sm truncate">
+                                      {order.customer?.phoneNumber || "-"}
                                     </span>
                                   </div>
-                                ) : (
+                                  {order.customer?.phoneNumber && (
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-6 w-6 bg-green-500 hover:bg-green-600 text-white rounded-full shadow-sm transition-all flex-shrink-0"
+                                      onClick={() =>
+                                        handleWhatsApp(
+                                          order.customer.phoneNumber || "",
+                                          order.orderNumber,
+                                          order.customer.fullName,
+                                        )
+                                      }
+                                      title="WhatsApp"
+                                    >
+                                      <MessageCircle className="h-3 w-3" />
+                                    </Button>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px]">
+                                <Badge
+                                  variant={
+                                    isProvincia ? "secondary" : "outline"
+                                  }
+                                >
+                                  {order.salesRegion}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="w-[120px] min-w-[120px]">
+                                <div className="flex items-center gap-1 truncate">
+                                  <Truck className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                                  <span
+                                    className="truncate"
+                                    title={
+                                      guide?.courierName || order.courier || "-"
+                                    }
+                                  >
+                                    {guide?.courierName || order.courier || "-"}
+                                  </span>
+                                </div>
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px]">
+                                {guide?.created_at
+                                  ? new Date(
+                                      guide.created_at,
+                                    ).toLocaleDateString("es-PE")
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className="w-[120px] min-w-[120px]">
+                                <span
+                                  className="text-xs truncate"
+                                  title={order.sellerName || "-"}
+                                >
+                                  {order.sellerName || "-"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px]">
+                                <div className="flex items-center gap-1">
+                                  {daysSinceCreated >= 25 && (
+                                    <Clock
+                                      className={`h-3 w-3 ${daysSinceCreated >= 30 ? "text-red-500" : "text-amber-500"}`}
+                                    />
+                                  )}
+                                  <span
+                                    className={getDaysColor(daysSinceCreated)}
+                                  >
+                                    {daysSinceCreated} días
+                                  </span>
+                                  {daysSinceCreated >= 30 && (
+                                    <Badge className="ml-1 bg-red-600 text-white text-[10px] px-1 py-0">
+                                      VENCIDO
+                                    </Badge>
+                                  )}
+                                  {daysSinceCreated >= 25 &&
+                                    daysSinceCreated < 30 && (
+                                      <Badge className="ml-1 bg-amber-500 text-white text-[10px] px-1 py-0">
+                                        PRÓXIMO
+                                      </Badge>
+                                    )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="w-[140px] min-w-[140px]">
+                                <Select
+                                  value={guide?.status || "CREADA"}
+                                  onValueChange={(val) =>
+                                    guide &&
+                                    handleStatusChange(
+                                      guide.id,
+                                      val,
+                                      pendingPayment,
+                                    )
+                                  }
+                                  disabled={!guide}
+                                >
+                                  <SelectTrigger
+                                    className={`h-8 w-[130px] text-xs font-semibold ${
+                                      (guide?.status &&
+                                        GUIDE_STATUS_STYLE[guide.status]) ||
+                                      "bg-gray-100 text-gray-800 border-gray-200"
+                                    }`}
+                                  >
+                                    <SelectValue placeholder="Estado" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="CREADA">
+                                      Creada
+                                    </SelectItem>
+                                    <SelectItem value="APROBADA">
+                                      Aprobada
+                                    </SelectItem>
+                                    <SelectItem value="ASIGNADA">
+                                      Asignada
+                                    </SelectItem>
+                                    <SelectItem value="EN_RUTA">
+                                      En Ruta
+                                    </SelectItem>
+                                    <SelectItem value="ENTREGADA">
+                                      Entregada
+                                    </SelectItem>
+                                    <SelectItem value="PARCIAL">
+                                      Parcial
+                                    </SelectItem>
+                                    <SelectItem value="FALLIDA">
+                                      Fallida
+                                    </SelectItem>
+                                    <SelectItem value="CANCELADA">
+                                      Cancelada
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              {/* Nro Tracking */}
+                              <TableCell className="w-[120px] min-w-[120px]">
+                                <div className="relative flex items-center">
+                                  <input
+                                    type="text"
+                                    className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                      savingOrderId === order.id
+                                        ? "opacity-50 border-orange-400 pr-6"
+                                        : "focus:border-orange-500"
+                                    }`}
+                                    placeholder="Nro..."
+                                    value={
+                                      trackingEdits[order.id]
+                                        ?.externalTrackingNumber || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateTrackingField(
+                                        order.id,
+                                        "externalTrackingNumber",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onBlur={() => handleSaveTracking(order.id)}
+                                    disabled={savingOrderId === order.id}
+                                  />
+                                  {savingOrderId === order.id && (
+                                    <Loader2 className="absolute right-1.5 h-3 w-3 animate-spin text-orange-500" />
+                                  )}
+                                </div>
+                              </TableCell>
+                              {/* Código */}
+                              <TableCell className="w-[80px] min-w-[80px]">
+                                <div className="relative flex items-center">
                                   <input
                                     type="text"
                                     className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
@@ -1184,131 +1265,382 @@ export default function SeguimientoPage() {
                                         ? "opacity-50 border-orange-400 pr-5"
                                         : "focus:border-orange-500"
                                     }`}
-                                    placeholder="Clave"
+                                    placeholder="Código"
                                     value={
-                                      trackingEdits[order.id]?.shippingKey || ""
+                                      trackingEdits[order.id]?.shippingCode ||
+                                      ""
                                     }
                                     onChange={(e) =>
                                       updateTrackingField(
                                         order.id,
-                                        "shippingKey",
+                                        "shippingCode",
                                         e.target.value,
                                       )
                                     }
                                     onBlur={() => handleSaveTracking(order.id)}
                                     disabled={savingOrderId === order.id}
                                   />
+                                </div>
+                              </TableCell>
+                              {/* Clave */}
+                              <TableCell className="w-[80px] min-w-[80px]">
+                                <div className="relative flex items-center">
+                                  {pendingPayment > 0 ? (
+                                    <div className="w-full h-7 px-1.5 text-xs border rounded bg-red-50 text-red-600 flex items-center gap-1.5">
+                                      <Lock className="h-3 w-3 flex-shrink-0" />
+                                      <span
+                                        className="font-medium truncate"
+                                        title="Pago Pendiente - Clave oculta"
+                                      >
+                                        Oculta
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                        savingOrderId === order.id
+                                          ? "opacity-50 border-orange-400 pr-5"
+                                          : "focus:border-orange-500"
+                                      }`}
+                                      placeholder="Clave"
+                                      value={
+                                        trackingEdits[order.id]?.shippingKey ||
+                                        ""
+                                      }
+                                      onChange={(e) =>
+                                        updateTrackingField(
+                                          order.id,
+                                          "shippingKey",
+                                          e.target.value,
+                                        )
+                                      }
+                                      onBlur={() =>
+                                        handleSaveTracking(order.id)
+                                      }
+                                      disabled={savingOrderId === order.id}
+                                    />
+                                  )}
+                                </div>
+                              </TableCell>
+                              {/* Oficina */}
+                              <TableCell className="w-[130px] min-w-[130px]">
+                                <div className="relative flex items-center">
+                                  <input
+                                    type="text"
+                                    className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                      savingOrderId === order.id
+                                        ? "opacity-50 border-orange-400 pr-6"
+                                        : "focus:border-orange-500"
+                                    }`}
+                                    placeholder="Oficina..."
+                                    value={
+                                      trackingEdits[order.id]?.shippingOffice ||
+                                      ""
+                                    }
+                                    onChange={(e) =>
+                                      updateTrackingField(
+                                        order.id,
+                                        "shippingOffice",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onBlur={() => handleSaveTracking(order.id)}
+                                    disabled={savingOrderId === order.id}
+                                  />
+                                </div>
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px] lg:sticky lg:right-[180px] lg:z-20 bg-background border-l">
+                                {pendingPayment > 0 ? (
+                                  <Badge className="bg-red-100 text-red-800">
+                                    S/ {pendingPayment.toFixed(2)}
+                                  </Badge>
+                                ) : (
+                                  <Badge className="bg-green-100 text-green-800">
+                                    Pagado
+                                  </Badge>
                                 )}
-                              </div>
-                            </TableCell>
-                            {/* Oficina */}
-                            <TableCell className="w-[130px] min-w-[130px]">
-                              <div className="relative flex items-center">
-                                <input
-                                  type="text"
-                                  className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                                    savingOrderId === order.id
-                                      ? "opacity-50 border-orange-400 pr-6"
-                                      : "focus:border-orange-500"
-                                  }`}
-                                  placeholder="Oficina..."
-                                  value={
-                                    trackingEdits[order.id]?.shippingOffice ||
-                                    ""
-                                  }
-                                  onChange={(e) =>
-                                    updateTrackingField(
+                              </TableCell>
+                              <TableCell className="w-[60px] min-w-[60px] lg:sticky lg:right-[120px] lg:z-20 bg-background border-l text-center">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 w-8 p-0 bg-white border-amber-200 hover:bg-amber-50 hover:border-amber-300 shadow-sm transition-all mx-auto"
+                                  onClick={() =>
+                                    handleOpenPaymentModal(
                                       order.id,
-                                      "shippingOffice",
-                                      e.target.value,
+                                      order.orderNumber,
                                     )
                                   }
-                                  onBlur={() => handleSaveTracking(order.id)}
-                                  disabled={savingOrderId === order.id}
-                                />
-                              </div>
-                            </TableCell>
-                            <TableCell className="w-[100px] min-w-[100px]">
-                              {pendingPayment > 0 ? (
-                                <Badge className="bg-red-100 text-red-800">
-                                  S/ {pendingPayment.toFixed(2)}
-                                </Badge>
-                              ) : (
-                                <Badge className="bg-green-100 text-green-800">
-                                  Pagado
-                                </Badge>
-                              )}
-                            </TableCell>
-                            <TableCell className="w-[60px] min-w-[60px]">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 w-8 p-0 bg-white border-amber-200 hover:bg-amber-50 hover:border-amber-300 shadow-sm transition-all"
-                                onClick={() =>
-                                  handleOpenPaymentModal(
-                                    order.id,
-                                    order.orderNumber,
-                                  )
-                                }
-                                title="Gestionar Pagos"
-                              >
-                                <DollarSign className="h-4 w-4 text-amber-600" />
-                              </Button>
-                            </TableCell>
-                            <TableCell className="w-[120px] min-w-[120px]">
-                              {guide?.guideNumber || order.guideNumber ? (
-                                <Badge
-                                  className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
-                                  onClick={() => handleOpenGuide(item)}
+                                  title="Gestionar Pagos"
                                 >
-                                  <Truck className="h-3 w-3 mr-1" />
-                                  {guide?.guideNumber || order.guideNumber}
-                                </Badge>
-                              ) : (
-                                <span className="text-muted-foreground">-</span>
-                              )}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end items-center gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  onClick={() => handleOpenOrder(item)}
-                                  title="Ver Detalle"
-                                >
-                                  <Eye className="h-4 w-4 text-muted-foreground" />
+                                  <DollarSign className="h-4 w-4 text-amber-600" />
                                 </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="relative h-8 w-8 p-0"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (guide) handleOpenNotes(guide);
-                                  }}
-                                  disabled={!guide}
-                                  title="Notas de Envío"
-                                >
-                                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
-                                  {getNotesCount(guide?.notes) > 0 && (
-                                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground font-bold border-2 border-background">
-                                      {getNotesCount(guide?.notes)}
-                                    </span>
-                                  )}
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                              </TableCell>
+                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:right-[60px] lg:z-20 bg-background border-l">
+                                {guide?.guideNumber || order.guideNumber ? (
+                                  <Badge
+                                    className="bg-green-100 text-green-800 cursor-pointer hover:bg-green-200"
+                                    onClick={() => handleOpenGuide(item)}
+                                  >
+                                    <Truck className="h-3 w-3 mr-1" />
+                                    {guide?.guideNumber || order.guideNumber}
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">
+                                    -
+                                  </span>
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right lg:sticky lg:right-0 lg:z-30 bg-background border-l">
+                                <div className="flex justify-end items-center gap-1">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-8 w-8 p-0"
+                                    onClick={() => handleOpenOrder(item)}
+                                    title="Ver Detalle"
+                                  >
+                                    <Eye className="h-4 w-4 text-muted-foreground" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="relative h-8 w-8 p-0"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (guide) handleOpenNotes(guide);
+                                    }}
+                                    disabled={!guide}
+                                    title="Notas de Envío"
+                                  >
+                                    <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                                    {getNotesCount(guide?.notes) > 0 && (
+                                      <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] text-primary-foreground font-bold border-2 border-background">
+                                        {getNotesCount(guide?.notes)}
+                                      </span>
+                                    )}
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
                 )}
               </CardContent>
             </Card>
           </TabsContent>
 
+          <TabsContent value="entregados">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="flex items-center gap-2">
+                  <Check className="h-5 w-5 text-green-600" />
+                  Pedidos Entregados ({filteredEntregados.length})
+                </CardTitle>
+                {auth?.user?.role === "ADMIN" && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      handleExportExcel(filteredEntregados, "entregados")
+                    }
+                    disabled={filteredEntregados.length === 0}
+                  >
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
+                )}
+              </CardHeader>
+              <CardContent>
+                {loading ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    Cargando entregados...
+                  </div>
+                ) : filteredEntregados.length === 0 ? (
+                  <div className="text-center py-10 text-muted-foreground">
+                    No hay pedidos entregados para los filtros seleccionados
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto border rounded-md relative scrollbar-thin scrollbar-thumb-muted-foreground/20">
+                    <Table className="min-w-[1500px]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-30 bg-background border-r">
+                            N° Orden
+                          </TableHead>
+                          <TableHead className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-30 bg-background border-r">
+                            Cliente
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-30 bg-background border-r">
+                            Teléfono
+                          </TableHead>
+                          <TableHead className="w-[100px] min-w-[100px]">
+                            Fecha
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px]">
+                            Pago
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px]">
+                            Envío
+                          </TableHead>
+                          <TableHead className="w-[100px] min-w-[100px]">
+                            Total
+                          </TableHead>
+                          <TableHead className="w-[100px] min-w-[100px]">
+                            Adelanto
+                          </TableHead>
+                          <TableHead className="w-[100px] min-w-[100px]">
+                            Por Cobrar
+                          </TableHead>
+                          <TableHead className="w-[100px] min-w-[100px]">
+                            Estado
+                          </TableHead>
+                          <TableHead className="w-[100px] min-w-[100px]">
+                            Region
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px]">
+                            Distrito
+                          </TableHead>
+                          <TableHead className="w-[150px] min-w-[150px]">
+                            Resumen
+                          </TableHead>
+                          <TableHead className="text-right lg:sticky lg:right-0 lg:z-40 bg-background border-l">
+                            Acciones
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {filteredEntregados.map((item) => {
+                          const { order, guide } = item;
+                          const pendingPayment = calculatePendingPayment(order);
+                          const isProvincia = order.salesRegion === "PROVINCIA";
+
+                          return (
+                            <TableRow
+                              key={order.id}
+                              className="hover:bg-muted/50"
+                            >
+                              <TableCell className="font-medium w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-20 bg-background border-r">
+                                {order.orderNumber}
+                              </TableCell>
+                              <TableCell className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-20 bg-background border-r">
+                                <span
+                                  className="truncate max-w-[130px]"
+                                  title={order.customer?.fullName || "-"}
+                                >
+                                  {order.customer?.fullName || "-"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-20 bg-background border-r">
+                                <span className="text-sm">
+                                  {order.customer?.phoneNumber || "-"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px] text-xs">
+                                {order.created_at
+                                  ? new Date(
+                                      order.created_at,
+                                    ).toLocaleDateString()
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className="w-[120px] min-w-[120px] text-xs">
+                                <span
+                                  className="truncate"
+                                  title={order.sellerName || "-"}
+                                >
+                                  {order.sellerName || "-"}
+                                </span>
+                              </TableCell>
+                              <TableCell className="w-[120px] min-w-[120px] text-xs">
+                                {order.payments && order.payments.length > 0
+                                  ? order.payments
+                                      .map((p) => p.paymentMethod)
+                                      .filter((v, i, a) => a.indexOf(v) === i)
+                                      .join(", ")
+                                  : "-"}
+                              </TableCell>
+                              <TableCell className="w-[120px] min-w-[120px] text-xs">
+                                {guide?.courierName || order.courier || "-"}
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px] font-medium">
+                                S/{" "}
+                                {parseFloat(order.grandTotal || "0").toFixed(2)}
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px] text-green-600 font-medium">
+                                S/{" "}
+                                {(
+                                  parseFloat(order.grandTotal || "0") -
+                                  pendingPayment
+                                ).toFixed(2)}
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px] text-red-600 font-medium">
+                                S/ {pendingPayment.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px]">
+                                <Badge className="text-[10px]">
+                                  {order.status}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px]">
+                                {order.salesRegion}
+                              </TableCell>
+                              <TableCell className="w-[120px] min-w-[120px] text-xs">
+                                {order.customer?.district || "-"}
+                              </TableCell>
+                              <TableCell className="w-[100px] min-w-[100px]">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-[10px] w-full"
+                                  onClick={() => handleOpenOrder(item)}
+                                >
+                                  <Eye className="h-3 w-3 mr-1" />
+                                  Ver
+                                </Button>
+                              </TableCell>
+                              <TableCell className="text-right lg:sticky lg:right-0 lg:z-30 bg-background border-l">
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8 bg-amber-50 hover:bg-amber-100 text-amber-600 border-amber-200"
+                                    onClick={() => {
+                                      setSelectedOrderForPayment(order);
+                                      setPaymentModalOpen(true);
+                                    }}
+                                    title="Gestión de Pagos"
+                                  >
+                                    <DollarSign className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8"
+                                    onClick={() =>
+                                      router.push(
+                                        `/registrar-venta?orderId=${order.id}`,
+                                      )
+                                    }
+                                    title="Editar"
+                                  >
+                                    <Pencil className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
           <TabsContent value="guias">
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

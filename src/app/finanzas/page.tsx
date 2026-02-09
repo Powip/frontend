@@ -100,6 +100,7 @@ export interface Sale {
   province?: string;
   zone?: string;
   paymentCreatedAt: string | null;
+  sellerName: string | null;
 }
 
 /* -----------------------------------------
@@ -149,6 +150,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
       pendingPayments.length > 0
         ? (pendingPayments[0].created_at?.toString() ?? null)
         : null,
+    sellerName: order.sellerName ?? null,
   };
 }
 
@@ -524,6 +526,9 @@ Estado: ${sale.status}
             <TableCell className="text-red-600 w-[100px] min-w-[100px]">
               ${sale.pendingPayment.toFixed(2)}
             </TableCell>
+            <TableCell className="text-xs w-[120px] min-w-[120px]">
+              {sale.sellerName || "—"}
+            </TableCell>
             <TableCell className="w-[120px] min-w-[120px]">
               {sale.courier || "—"}
             </TableCell>
@@ -666,6 +671,7 @@ Estado: ${sale.status}
           <TableHead className="w-[100px] min-w-[100px]">Total</TableHead>
           <TableHead className="w-[100px] min-w-[100px]">Adelanto</TableHead>
           <TableHead className="w-[100px] min-w-[100px]">Por Cobrar</TableHead>
+          <TableHead className="w-[120px] min-w-[120px]">Vendedor</TableHead>
           <TableHead className="w-[120px] min-w-[120px]">Enviado Por</TableHead>
           <TableHead className="w-[120px] min-w-[120px]">Tipo Envío</TableHead>
           <TableHead className="w-[120px] min-w-[120px]">Courier</TableHead>
@@ -713,6 +719,9 @@ Estado: ${sale.status}
             </TableCell>
             <TableCell className="text-red-600 w-[100px] min-w-[100px]">
               ${sale.pendingPayment.toFixed(2)}
+            </TableCell>
+            <TableCell className="text-xs w-[120px] min-w-[120px]">
+              {sale.sellerName || "—"}
             </TableCell>
             <TableCell className="w-[120px] min-w-[120px]">
               {sale.courier || "—"}
@@ -845,15 +854,17 @@ Estado: ${sale.status}
                     Ventas con comprobantes de pago por verificar
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  onClick={() =>
-                    handleExportExcel(pagosPendientes, "pagos_pendientes")
-                  }
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Exportar Excel
-                </Button>
+                {auth?.user?.role === "ADMIN" && (
+                  <Button
+                    variant="outline"
+                    onClick={() =>
+                      handleExportExcel(pagosPendientes, "pagos_pendientes")
+                    }
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 <SalesTableFilters
@@ -892,6 +903,9 @@ Estado: ${sale.status}
                       </TableHead>
                       <TableHead className="w-[140px] min-w-[140px]">
                         Monto por Aprobar
+                      </TableHead>
+                      <TableHead className="w-[120px] min-w-[120px]">
+                        Vendedor
                       </TableHead>
                       <TableHead className="w-[100px] min-w-[100px]">
                         Fecha Pago
@@ -946,6 +960,9 @@ Estado: ${sale.status}
                         </TableCell>
                         <TableCell className="font-medium text-amber-600 w-[140px] min-w-[140px]">
                           S/{sale.pendingPaymentsAmount.toFixed(2)}
+                        </TableCell>
+                        <TableCell className="w-[120px] min-w-[120px] text-xs">
+                          {sale.sellerName || "—"}
                         </TableCell>
                         <TableCell className="w-[100px] min-w-[100px]">
                           {sale.paymentCreatedAt
@@ -1056,13 +1073,17 @@ Estado: ${sale.status}
                     {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
                     )
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => handleExportExcel(entregados, "entregados")}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleExportExcel(entregados, "entregados")
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>

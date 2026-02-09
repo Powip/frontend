@@ -72,6 +72,7 @@ interface Sale {
   province?: string;
   city?: string;
   zone?: string;
+  sellerName: string | null;
 }
 
 // Interface para items de promo del día
@@ -124,6 +125,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     province: order.customer?.province ?? "",
     city: order.customer?.city ?? "",
     zone: order.customer?.zone ?? "",
+    sellerName: order.sellerName ?? null,
   };
 }
 
@@ -339,6 +341,7 @@ Estado: ${sale.status}
           <TableHead>Total</TableHead>
           <TableHead>Adelanto</TableHead>
           <TableHead>Por Cobrar</TableHead>
+          <TableHead>Vendedor</TableHead>
           <TableHead>Estado</TableHead>
           <TableHead>Region</TableHead>
           <TableHead>Distrito</TableHead>
@@ -369,6 +372,7 @@ Estado: ${sale.status}
             <TableCell className="text-red-600">
               S/{sale.pendingPayment.toFixed(2)}
             </TableCell>
+            <TableCell className="text-xs">{sale.sellerName || "—"}</TableCell>
             <TableCell>
               <span
                 className={`px-2 py-1 rounded text-xs font-medium ${
@@ -536,16 +540,18 @@ Estado: ${sale.status}
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({selectedPreparadosCount})
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      handleExportExcel(pedidosPreparados, "preparados")
-                    }
-                    disabled={pedidosPreparados.length === 0}
-                  >
-                    <FileDown className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleExportExcel(pedidosPreparados, "preparados")
+                      }
+                      disabled={pedidosPreparados.length === 0}
+                    >
+                      <FileDown className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -575,16 +581,21 @@ Estado: ${sale.status}
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({selectedNoConfirmadosCount})
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      handleExportExcel(pedidosNoConfirmados, "no_confirmados")
-                    }
-                    disabled={pedidosNoConfirmados.length === 0}
-                  >
-                    <FileDown className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleExportExcel(
+                          pedidosNoConfirmados,
+                          "no_confirmados",
+                        )
+                      }
+                      disabled={pedidosNoConfirmados.length === 0}
+                    >
+                      <FileDown className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -614,16 +625,18 @@ Estado: ${sale.status}
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados ({selectedConfirmadosCount})
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() =>
-                      handleExportExcel(pedidosConfirmados, "confirmados")
-                    }
-                    disabled={pedidosConfirmados.length === 0}
-                  >
-                    <FileDown className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleExportExcel(pedidosConfirmados, "confirmados")
+                      }
+                      disabled={pedidosConfirmados.length === 0}
+                    >
+                      <FileDown className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>

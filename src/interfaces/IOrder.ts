@@ -153,6 +153,7 @@ export interface OrderHeader {
   shippingKey?: string | null;
   shippingOffice?: string | null;
   shippingProofUrl?: string | null;
+  sellerName?: string | null;
   created_at: string;
   updated_at: string;
 }

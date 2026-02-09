@@ -144,7 +144,7 @@ const CHART_COLORS = [
 ];
 
 export const Geography: React.FC = () => {
-  const { selectedStoreId } = useAuth();
+  const { auth, selectedStoreId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [locationData, setLocationData] = useState<LocationStats[]>([]);
   const [paymentData, setPaymentData] = useState<PaymentStats[]>([]);
@@ -582,16 +582,18 @@ export const Geography: React.FC = () => {
         <DialogContent className="sm:max-w-4xl w-[90vw]">
           <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
             <DialogTitle>Detalle de Zonas</DialogTitle>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-2"
-              onClick={() => exportToExcel(locationData, "detalle_zonas")}
-              disabled={locationData.length === 0}
-            >
-              <Download className="h-4 w-4" />
-              Exportar
-            </Button>
+            {auth?.user?.role === "ADMIN" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                onClick={() => exportToExcel(locationData, "detalle_zonas")}
+                disabled={locationData.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Exportar
+              </Button>
+            )}
           </DialogHeader>
           <div className="rounded-md border overflow-hidden">
             <Table>
@@ -636,16 +638,18 @@ export const Geography: React.FC = () => {
         <DialogContent className="sm:max-w-4xl w-[90vw]">
           <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
             <DialogTitle>Detalle de Métodos de Pago</DialogTitle>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-2"
-              onClick={() => exportToExcel(paymentData, "detalle_pagos")}
-              disabled={paymentData.length === 0}
-            >
-              <Download className="h-4 w-4" />
-              Exportar
-            </Button>
+            {auth?.user?.role === "ADMIN" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                onClick={() => exportToExcel(paymentData, "detalle_pagos")}
+                disabled={paymentData.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Exportar
+              </Button>
+            )}
           </DialogHeader>
           <div className="rounded-md border overflow-hidden">
             <Table>
@@ -696,18 +700,20 @@ export const Geography: React.FC = () => {
                 Órdenes entregadas en el periodo seleccionado
               </p>
             </div>
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-2"
-              onClick={() =>
-                exportToExcel(billingOrders, "detalle_facturacion")
-              }
-              disabled={billingOrders.length === 0}
-            >
-              <Download className="h-4 w-4" />
-              Exportar
-            </Button>
+            {auth?.user?.role === "ADMIN" && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="gap-2"
+                onClick={() =>
+                  exportToExcel(billingOrders, "detalle_facturacion")
+                }
+                disabled={billingOrders.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Exportar
+              </Button>
+            )}
           </DialogHeader>
           <div className="flex-1 overflow-auto mt-4 rounded-md border">
             {loadingDetails ? (
@@ -776,20 +782,22 @@ export const Geography: React.FC = () => {
                     : "Distrito"}
               </p>
             </div>
-            <Button
-              onClick={() =>
-                exportToExcel(
-                  detailedOrders,
-                  `ordenes-${selectedLocation?.toLowerCase()}`,
-                )
-              }
-              size="sm"
-              className="gap-2"
-              disabled={detailedOrders.length === 0}
-            >
-              <Download className="h-4 w-4" />
-              Exportar Excel
-            </Button>
+            {auth?.user?.role === "ADMIN" && (
+              <Button
+                onClick={() =>
+                  exportToExcel(
+                    detailedOrders,
+                    `ordenes-${selectedLocation?.toLowerCase()}`,
+                  )
+                }
+                size="sm"
+                className="gap-2"
+                disabled={detailedOrders.length === 0}
+              >
+                <Download className="h-4 w-4" />
+                Exportar Excel
+              </Button>
+            )}
           </DialogHeader>
 
           <div className="flex-1 overflow-auto mt-4 rounded-md border">

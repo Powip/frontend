@@ -222,15 +222,17 @@ export default function ClientesPage() {
                   className="pl-9"
                 />
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleExportExcel}
-                disabled={filtered.length === 0}
-              >
-                <Download className="h-4 w-4 mr-2" />
-                Exportar Excel
-              </Button>
+              {auth?.user?.role === "ADMIN" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleExportExcel}
+                  disabled={filtered.length === 0}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar Excel
+                </Button>
+              )}
             </div>
 
             {/* Table - auto height based on content */}
