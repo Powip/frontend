@@ -642,6 +642,18 @@ export default function ProvinciaShipmentModal({
             <Button
               variant="outline"
               size="sm"
+              onClick={() => {
+                const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${order.orderNumber}`;
+                window.open(trackingUrl, "_blank");
+              }}
+              className="bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200"
+            >
+              <Truck className="h-4 w-4 mr-1" /> Rastreo
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
               className={
                 isPaid
                   ? "bg-green-50 hover:bg-green-100 text-green-700 border-green-200"

@@ -120,6 +120,7 @@ export interface Sale {
   zone?: string;
   callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
   hasPendingApprovalPayments: boolean;
+  sellerName: string | null;
 }
 
 /* -----------------------------------------
@@ -164,6 +165,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     guideNumber: order.guideNumber ?? null,
     callStatus: order.callStatus,
     hasPendingApprovalPayments,
+    sellerName: order.sellerName ?? null,
   };
 }
 
@@ -821,6 +823,7 @@ Estado: ${sale.status}
             <TableHead>Total</TableHead>
             <TableHead>Adelanto</TableHead>
             <TableHead>Por Cobrar</TableHead>
+            <TableHead>Vendedor</TableHead>
             <TableHead>Estado</TableHead>
             {showGuideColumn && <TableHead>Guía</TableHead>}
             {showGuideColumn && <TableHead>Courier</TableHead>}
@@ -872,6 +875,9 @@ Estado: ${sale.status}
               </TableCell>
               <TableCell className="text-red-600">
                 ${sale.pendingPayment.toFixed(2)}
+              </TableCell>
+              <TableCell className="text-xs">
+                {sale.sellerName || "—"}
               </TableCell>
               <TableCell>
                 <select
@@ -1206,14 +1212,18 @@ Estado: ${sale.status}
                     {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
                     )
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    onClick={() => handleExportExcel(preparados, "preparados")}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      onClick={() =>
+                        handleExportExcel(preparados, "preparados")
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -1277,16 +1287,18 @@ Estado: ${sale.status}
                     }
                     )
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    onClick={() =>
-                      handleExportExcel(noConfirmados, "no_confirmados")
-                    }
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      onClick={() =>
+                        handleExportExcel(noConfirmados, "no_confirmados")
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -1372,16 +1384,18 @@ Estado: ${sale.status}
                     }
                     )
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                    onClick={() =>
-                      handleExportExcel(contactados, "contactados")
-                    }
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Excel
-                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      onClick={() =>
+                        handleExportExcel(contactados, "contactados")
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Excel
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -1445,16 +1459,18 @@ Estado: ${sale.status}
                     }
                     )
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    onClick={() =>
-                      handleExportExcel(despachados, "despachados")
-                    }
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      onClick={() =>
+                        handleExportExcel(despachados, "despachados")
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -1522,16 +1538,18 @@ Estado: ${sale.status}
                     }
                     )
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    onClick={() =>
-                      handleExportExcel(entregadosAll, "entregados")
-                    }
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      onClick={() =>
+                        handleExportExcel(entregadosAll, "entregados")
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -1585,14 +1603,16 @@ Estado: ${sale.status}
                     }
                     )
                   </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    onClick={() => handleExportExcel(anuladosAll, "anulados")}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      onClick={() => handleExportExcel(anuladosAll, "anulados")}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>

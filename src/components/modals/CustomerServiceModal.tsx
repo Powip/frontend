@@ -1110,6 +1110,18 @@ export default function CustomerServiceModal({
                         <Button
                           size="icon"
                           variant="outline"
+                          className="h-9 w-9 bg-orange-50 dark:bg-orange-950 text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900"
+                          onClick={() => {
+                            const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
+                            window.open(trackingUrl, "_blank");
+                          }}
+                          title="Rastreo"
+                        >
+                          <Truck className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
                           className="relative h-9 w-9 bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900"
                           onClick={() => setPaymentModalOpen(true)}
                           title={

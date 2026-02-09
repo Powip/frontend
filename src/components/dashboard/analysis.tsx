@@ -145,7 +145,7 @@ const CHART_COLORS = [
 ];
 
 export const Analysis: React.FC = () => {
-  const { selectedStoreId } = useAuth();
+  const { auth, selectedStoreId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [channelData, setChannelData] = useState<{
     salesChannels: ChannelStats[];
@@ -389,16 +389,18 @@ export const Analysis: React.FC = () => {
 
         <div className="flex items-center gap-3">
           <PeriodSelector onPeriodChange={handlePeriodChange} />
-          <Button
-            onClick={handleExportFacturacion}
-            variant="outline"
-            size="sm"
-            className="gap-2 border-primary/20 hover:bg-primary/5"
-            disabled={!fromDate || !toDate}
-          >
-            <Download className="h-4 w-4" />
-            Facturación
-          </Button>
+          {auth?.user?.role === "ADMIN" && (
+            <Button
+              onClick={handleExportFacturacion}
+              variant="outline"
+              size="sm"
+              className="gap-2 border-primary/20 hover:bg-primary/5"
+              disabled={!fromDate || !toDate}
+            >
+              <Download className="h-4 w-4" />
+              Facturación
+            </Button>
+          )}
         </div>
       </div>
 

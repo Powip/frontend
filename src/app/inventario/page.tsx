@@ -427,10 +427,12 @@ export default function InventarioPage() {
 
             {/* EXTRA ACTIONS (EXPORTAR, FILTROS, ETC) */}
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={handleExportExcel}>
-                <Download className="mr-2 h-4 w-4" />
-                Exportar en Excel
-              </Button>
+              {auth?.user?.role === "ADMIN" && (
+                <Button variant="outline" size="sm" onClick={handleExportExcel}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Exportar en Excel
+                </Button>
+              )}
             </div>
           </div>
 

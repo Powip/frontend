@@ -9,7 +9,7 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import QRCode from "qrcode";
 import { toast } from "sonner";
-import { Upload } from "lucide-react";
+import { Upload, Truck } from "lucide-react";
 
 interface Props {
   open: boolean;
@@ -495,6 +495,15 @@ export default function OrderReceiptModal({
         {!loading && receipt && <OrderReceiptView data={receipt} />}
 
         <div className="flex justify-end gap-2 mt-4">
+          <Button
+            variant="outline"
+            onClick={() => {
+              const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
+              window.open(trackingUrl, "_blank");
+            }}
+          >
+            <Truck className="h-4 w-4 mr-1" /> Rastreo
+          </Button>
           <Button variant="outline" onClick={handlePrint}>
             Imprimir
           </Button>

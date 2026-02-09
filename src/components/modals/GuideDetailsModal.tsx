@@ -36,6 +36,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import axios from "axios";
 import { toast } from "sonner";
+import PaymentVerificationModal from "./PaymentVerificationModal";
 
 export interface ShippingGuide {
   id: string;
@@ -190,6 +191,11 @@ export default function GuideDetailsModal({
   const [selectedCourier, setSelectedCourier] = useState("");
   const [ordersDetails, setOrdersDetails] = useState<OrderDetail[]>([]);
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [selectedPaymentOrder, setSelectedPaymentOrder] = useState<{
+    id: string;
+    number: string;
+  } | null>(null);
 
   // Estado para tracking por pedido (key = orderId)
   const [orderTrackingFields, setOrderTrackingFields] = useState<
@@ -898,13 +904,32 @@ export default function GuideDetailsModal({
                               </p>
                             )}
                           </div>
-                          <Badge
-                            className={
-                              ORDER_STATUS_COLORS[order.status] || "bg-gray-100"
-                            }
-                          >
-                            {order.status.replace("_", " ")}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              size="icon"
+                              variant="outline"
+                              className="h-8 w-8 text-green-600 border-green-200 hover:bg-green-50"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedPaymentOrder({
+                                  id: order.id,
+                                  number: order.orderNumber,
+                                });
+                                setPaymentModalOpen(true);
+                              }}
+                              title="Gestión de Pagos"
+                            >
+                              <DollarSign className="h-4 w-4" />
+                            </Button>
+                            <Badge
+                              className={
+                                ORDER_STATUS_COLORS[order.status] ||
+                                "bg-gray-100"
+                              }
+                            >
+                              {order.status.replace("_", " ")}
+                            </Badge>
+                          </div>
                         </div>
                       </div>
 
@@ -1281,6 +1306,19 @@ export default function GuideDetailsModal({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {selectedPaymentOrder && (
+        <PaymentVerificationModal
+          open={paymentModalOpen}
+          onClose={() => {
+            setPaymentModalOpen(false);
+            fetchGuide(); // Refrescar para ver nuevos estados de pago si es necesario
+          }}
+          orderId={selectedPaymentOrder.id}
+          orderNumber={selectedPaymentOrder.number}
+          canApprove={false}
+        />
+      )}
     </Dialog>
   );
 }

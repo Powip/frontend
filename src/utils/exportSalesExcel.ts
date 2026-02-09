@@ -24,6 +24,7 @@ export interface SaleExportData {
   paymentMethod: string;
   deliveryType: string;
   courier?: string | null;
+  sellerName?: string | null;
   guideNumber?: string | null;
 }
 
@@ -61,6 +62,7 @@ export function exportSalesToExcel(
     Dirección: s.address || "-",
     "Método Pago": s.paymentMethod,
     "Tipo Entrega": s.deliveryType,
+    Vendedor: s.sellerName || "-",
     Courier: s.courier || "-",
     "N° Guía": s.guideNumber || "-",
   }));
@@ -122,6 +124,7 @@ export function exportSeguimientoToExcel(
     Distrito: s.district || "-",
     Zona: s.zone || "-",
     Dirección: s.address || "-",
+    Vendedor: s.sellerName || "-",
     Courier: s.courier || "-",
     "N° Guía": s.guideNumber || "-",
     "Estado Envío": s.guideStatus || "-",
