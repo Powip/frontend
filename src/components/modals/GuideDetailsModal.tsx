@@ -473,14 +473,28 @@ export default function GuideDetailsModal({
   };
 
   // Calcular totales
-  const totalCobranza = ordersDetails.reduce((sum, order) => {
-    const paid =
-      order.payments
-        ?.filter((p) => p.status === "PAID")
-        .reduce((s, p) => s + Number(p.amount), 0) || 0;
-    const pending = Number(order.grandTotal) - paid;
-    return sum + Math.max(pending, 0);
-  }, 0);
+  const cobranzaStats = ordersDetails.reduce(
+    (acc, order) => {
+      const paid =
+        order.payments
+          ?.filter((p) => p.status === "PAID")
+          .reduce((s, p) => s + Number(p.amount), 0) || 0;
+      const pendingApproval =
+        order.payments
+          ?.filter((p) => p.status === "PENDING_APPROVAL")
+          .reduce((s, p) => s + Number(p.amount), 0) || 0;
+      const totalPending = Number(order.grandTotal) - paid - pendingApproval;
+
+      return {
+        totalPending: acc.totalPending + Math.max(totalPending, 0),
+        pendingApproval: acc.pendingApproval + pendingApproval,
+      };
+    },
+    { totalPending: 0, pendingApproval: 0 },
+  );
+
+  const totalCobranza =
+    cobranzaStats.totalPending + cobranzaStats.pendingApproval;
 
   // Imprimir guía
   const handlePrintGuide = () => {
@@ -777,12 +791,35 @@ export default function GuideDetailsModal({
               {/* Cobranza total */}
               <div className="space-y-1">
                 <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <DollarSign className="h-3 w-3" /> Cobranza
+                  <DollarSign className="h-3 w-3" /> Cobranza Total
                 </p>
                 <p className="font-medium text-red-600">
                   S/{totalCobranza.toFixed(2)}
                 </p>
               </div>
+
+              {/* Desglose de cobranza */}
+              {cobranzaStats.totalPending > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    Pendiente Pago
+                  </p>
+                  <p className="font-medium text-amber-600">
+                    S/{cobranzaStats.totalPending.toFixed(2)}
+                  </p>
+                </div>
+              )}
+
+              {cobranzaStats.pendingApproval > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    Pend. Aprobación
+                  </p>
+                  <p className="font-medium text-blue-600">
+                    S/{cobranzaStats.pendingApproval.toFixed(2)}
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Cobro */}

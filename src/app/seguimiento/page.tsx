@@ -236,6 +236,10 @@ export default function SeguimientoPage() {
 
   const { auth, selectedStoreId } = useAuth();
 
+  // Helper function to check if user is admin
+  const isAdmin =
+    auth?.user?.role === "ADMIN" || auth?.user?.role === "ADMINISTRADOR";
+
   // Fetch orders with EN_ENVIO status
   const fetchEnvios = useCallback(async () => {
     if (!selectedStoreId) {
@@ -839,7 +843,7 @@ export default function SeguimientoPage() {
                   <Package className="h-5 w-5" />
                   Pedidos En Envío ({filteredEnvios.length})
                 </CardTitle>
-                {auth?.user?.role === "ADMIN" && (
+                {isAdmin && (
                   <Button
                     variant="outline"
                     size="sm"
@@ -1441,7 +1445,7 @@ export default function SeguimientoPage() {
                   <Check className="h-5 w-5 text-green-600" />
                   Pedidos Entregados ({filteredEntregados.length})
                 </CardTitle>
-                {auth?.user?.role === "ADMIN" && (
+                {isAdmin && (
                   <Button
                     variant="outline"
                     size="sm"

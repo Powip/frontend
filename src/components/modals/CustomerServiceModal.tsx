@@ -24,6 +24,8 @@ import {
   Package,
   Loader2,
   Lock,
+  AlertCircle,
+  Eye,
 } from "lucide-react";
 import { Textarea } from "../ui/textarea";
 import {
@@ -45,6 +47,7 @@ import {
 import CancellationModal, { CancellationReason } from "./CancellationModal";
 import AddProductsModal from "./AddProductsModal";
 import PaymentVerificationModal from "./PaymentVerificationModal";
+import GuideDetailsModal from "./GuideDetailsModal";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { useAuth } from "@/contexts/AuthContext";
@@ -177,6 +180,7 @@ export default function CustomerServiceModal({
   const [isCancelling, setIsCancelling] = useState(false);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [addProductsModalOpen, setAddProductsModalOpen] = useState(false);
+  const [guideDetailsModalOpen, setGuideDetailsModalOpen] = useState(false);
 
   // Comments timeline states
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -1519,6 +1523,16 @@ export default function CustomerServiceModal({
                         </h3>
                         <div className="flex gap-1 items-center">
                           <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
+                            onClick={() => setGuideDetailsModalOpen(true)}
+                            title="Ver Guía Completa"
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1" />
+                            Ver Guía
+                          </Button>
+                          <Button
                             size="icon"
                             variant="outline"
                             className="h-7 w-7 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900"
@@ -1545,6 +1559,16 @@ export default function CustomerServiceModal({
                           >
                             {shippingGuide.status}
                           </span>
+                          {receipt?.totals.pendingAmount != null &&
+                            receipt.totals.pendingAmount > 0 && (
+                              <span
+                                className="px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800 flex items-center gap-1"
+                                title="Pago pendiente"
+                              >
+                                <AlertCircle className="h-3 w-3" />
+                                Pago Pendiente
+                              </span>
+                            )}
                           {shippingGuide.daysSinceCreated !== undefined &&
                             shippingGuide.daysSinceCreated >= 25 && (
                               <span
@@ -1622,20 +1646,7 @@ export default function CustomerServiceModal({
                             </span>
                           </div>
                         )}
-                        {shippingGuide.amountToCollect != null &&
-                          shippingGuide.amountToCollect > 0 && (
-                            <div>
-                              <span className="text-muted-foreground">
-                                Monto a Cobrar:{" "}
-                              </span>
-                              <span className="font-medium text-amber-600">
-                                S/{" "}
-                                {Number(shippingGuide.amountToCollect).toFixed(
-                                  2,
-                                )}
-                              </span>
-                            </div>
-                          )}
+
                         <div>
                           <span className="text-muted-foreground">
                             Días en tránsito:{" "}
@@ -2013,6 +2024,15 @@ export default function CustomerServiceModal({
           onOrderUpdated?.();
         }}
       />
+
+      {/* Guide Details Modal */}
+      {shippingGuide && (
+        <GuideDetailsModal
+          open={guideDetailsModalOpen}
+          onClose={() => setGuideDetailsModalOpen(false)}
+          guideId={shippingGuide.id}
+        />
+      )}
     </>
   );
 }
