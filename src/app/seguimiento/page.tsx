@@ -688,6 +688,7 @@ export default function SeguimientoPage() {
 
       return {
         orderNumber: order.orderNumber,
+        trackingLink: `https://www.powip.lat/rastreo/${order.orderNumber}`,
         clientName: order.customer?.fullName || "-",
         phoneNumber: order.customer?.phoneNumber || "-",
         documentType: order.customer?.documentType || "-",
@@ -710,6 +711,11 @@ export default function SeguimientoPage() {
         courier: guide?.courierName || order.courier || "-",
         guideNumber: guide?.guideNumber || order.guideNumber || "-",
         guideStatus: guide?.status || "-",
+        externalTrackingNumber: (order as any).externalTrackingNumber || "-",
+        shippingCode: (order as any).shippingCode || "-",
+        shippingKey: (order as any).shippingKey || "",
+        shippingOffice: (order as any).shippingOffice || "-",
+        sellerName: order.sellerName || "-",
         daysSinceCreated: daysSinceCreated,
       };
     });
