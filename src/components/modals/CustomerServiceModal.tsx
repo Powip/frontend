@@ -26,6 +26,7 @@ import {
   Lock,
   AlertCircle,
   Eye,
+  EyeOff,
 } from "lucide-react";
 import { Textarea } from "../ui/textarea";
 import {
@@ -313,6 +314,7 @@ export default function CustomerServiceModal({
   };
 
   const [savingTracking, setSavingTracking] = useState(false);
+  const [revealKey, setRevealKey] = useState(false);
   const [originalTracking, setOriginalTracking] = useState<any>(null);
 
   useEffect(() => {
@@ -935,11 +937,6 @@ export default function CustomerServiceModal({
             <div class="courier-name">${courierName.toUpperCase()}</div>
           </div>
 
-          <!-- Footer con info de orden -->
-          <div class="order-footer">
-            Orden #${receipt.orderNumber} | Total: S/ ${receipt.totals.grandTotal.toFixed(2)}
-            ${Number(shippingGuide.amountToCollect) > 0 ? ` | <strong>COBRAR: S/ ${Number(shippingGuide.amountToCollect).toFixed(2)}</strong>` : ""}
-          </div>
         </div>
       </body>
       </html>
@@ -1413,19 +1410,19 @@ export default function CustomerServiceModal({
                               <span className="text-muted-foreground block text-[10px] uppercase mb-1">
                                 Clave
                               </span>
-                              {receipt.totals.pendingAmount > 0 ? (
-                                <div className="flex items-center gap-2 px-2 py-1 border rounded bg-red-50 text-red-600 text-xs h-8">
-                                  <Lock className="h-3 w-3 flex-shrink-0" />
-                                  <span
-                                    className="font-medium truncate"
-                                    title="Pago Pendiente - Clave oculta"
-                                  >
-                                    Oculta
-                                  </span>
-                                </div>
-                              ) : (
+                              <div className="relative">
                                 <Input
-                                  className="h-8 text-xs"
+                                  type={
+                                    receipt.totals.pendingAmount > 0 &&
+                                    !revealKey
+                                      ? "password"
+                                      : "text"
+                                  }
+                                  className={`h-8 text-xs pr-8 ${
+                                    receipt.totals.pendingAmount > 0
+                                      ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
+                                      : "focus:border-orange-500"
+                                  }`}
                                   placeholder="Clave..."
                                   value={receipt.shippingKey || ""}
                                   onChange={(
@@ -1438,7 +1435,25 @@ export default function CustomerServiceModal({
                                   }
                                   onBlur={handleSaveTracking}
                                 />
-                              )}
+                                {receipt.totals.pendingAmount > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRevealKey(!revealKey)}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-red-400 hover:text-red-600 focus:outline-none"
+                                    title={
+                                      revealKey
+                                        ? "Ocultar clave"
+                                        : "Revelar clave"
+                                    }
+                                  >
+                                    {revealKey ? (
+                                      <EyeOff className="h-3.5 w-3.5" />
+                                    ) : (
+                                      <Eye className="h-3.5 w-3.5" />
+                                    )}
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           </div>
                           {savingTracking && (
