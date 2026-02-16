@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Eye,
+  EyeOff,
   Search,
   Package,
   Phone,
@@ -233,6 +234,14 @@ export default function SeguimientoPage() {
     >
   >({});
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
+
+  const toggleKeyReveal = (orderId: string) => {
+    setRevealedKeys((prev) => ({
+      ...prev,
+      [orderId]: !prev[orderId],
+    }));
+  };
 
   const { auth, selectedStoreId } = useAuth();
 
@@ -1293,44 +1302,60 @@ export default function SeguimientoPage() {
                                 </div>
                               </TableCell>
                               {/* Clave */}
-                              <TableCell className="w-[80px] min-w-[80px]">
-                                <div className="relative flex items-center">
-                                  {pendingPayment > 0 ? (
-                                    <div className="w-full h-7 px-1.5 text-xs border rounded bg-red-50 text-red-600 flex items-center gap-1.5">
-                                      <Lock className="h-3 w-3 flex-shrink-0" />
-                                      <span
-                                        className="font-medium truncate"
-                                        title="Pago Pendiente - Clave oculta"
-                                      >
-                                        Oculta
-                                      </span>
-                                    </div>
-                                  ) : (
-                                    <input
-                                      type="text"
-                                      className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                                        savingOrderId === order.id
-                                          ? "opacity-50 border-orange-400 pr-5"
-                                          : "focus:border-orange-500"
-                                      }`}
-                                      placeholder="Clave"
-                                      value={
-                                        trackingEdits[order.id]?.shippingKey ||
-                                        ""
+                              <TableCell className="w-[100px] min-w-[100px]">
+                                <div className="relative flex items-center group">
+                                  <input
+                                    type={
+                                      pendingPayment > 0 &&
+                                      !revealedKeys[order.id]
+                                        ? "password"
+                                        : "text"
+                                    }
+                                    className={`w-full h-7 px-1.5 pr-7 text-xs border rounded bg-background transition-all ${
+                                      pendingPayment > 0
+                                        ? "border-red-300 focus:border-red-500 bg-red-50/30"
+                                        : "focus:border-orange-500"
+                                    } ${
+                                      savingOrderId === order.id
+                                        ? "opacity-50 border-orange-400"
+                                        : ""
+                                    }`}
+                                    placeholder="Clave"
+                                    value={
+                                      trackingEdits[order.id]?.shippingKey || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateTrackingField(
+                                        order.id,
+                                        "shippingKey",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onBlur={() => handleSaveTracking(order.id)}
+                                    disabled={savingOrderId === order.id}
+                                  />
+                                  {pendingPayment > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleKeyReveal(order.id)}
+                                      className="absolute right-1 text-red-400 hover:text-red-600 focus:outline-none"
+                                      title={
+                                        revealedKeys[order.id]
+                                          ? "Ocultar clave"
+                                          : "Revelar clave"
                                       }
-                                      onChange={(e) =>
-                                        updateTrackingField(
-                                          order.id,
-                                          "shippingKey",
-                                          e.target.value,
-                                        )
-                                      }
-                                      onBlur={() =>
-                                        handleSaveTracking(order.id)
-                                      }
-                                      disabled={savingOrderId === order.id}
-                                    />
+                                    >
+                                      {revealedKeys[order.id] ? (
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <Eye className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
                                   )}
+                                  {savingOrderId === order.id &&
+                                    pendingPayment <= 0 && (
+                                      <Loader2 className="absolute right-1 h-3 w-3 animate-spin text-orange-500" />
+                                    )}
                                 </div>
                               </TableCell>
                               {/* Oficina */}

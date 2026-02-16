@@ -31,6 +31,8 @@ import {
   ImageIcon,
   CheckCircle2,
   Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -213,6 +215,14 @@ export default function GuideDetailsModal({
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   // Upload de foto de entrega
   const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
+
+  const toggleKeyReveal = (orderId: string) => {
+    setRevealedKeys((prev) => ({
+      ...prev,
+      [orderId]: !prev[orderId],
+    }));
+  };
 
   useEffect(() => {
     if (open && (orderId || guideId)) {
@@ -1047,20 +1057,18 @@ export default function GuideDetailsModal({
                                 <label className="text-xs text-muted-foreground">
                                   Clave de Envío
                                 </label>
-                                {pending > 0 ? (
-                                  <div className="flex items-center gap-2 px-2 py-1.5 border rounded bg-red-50 text-red-600 text-xs h-[34px]">
-                                    <Lock className="h-3 w-3 flex-shrink-0" />
-                                    <span
-                                      className="font-medium truncate"
-                                      title="Pago Pendiente - Clave oculta"
-                                    >
-                                      Clave Oculta
-                                    </span>
-                                  </div>
-                                ) : (
+                                <div className="relative">
                                   <input
-                                    type="text"
-                                    className="w-full border rounded px-2 py-1 text-xs bg-background h-[34px]"
+                                    type={
+                                      pending > 0 && !revealedKeys[order.id]
+                                        ? "password"
+                                        : "text"
+                                    }
+                                    className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 ${
+                                      pending > 0
+                                        ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
+                                        : "focus:border-orange-500"
+                                    }`}
                                     placeholder="Ej: ABC123"
                                     value={
                                       orderTrackingFields[order.id]
@@ -1075,7 +1083,28 @@ export default function GuideDetailsModal({
                                     }
                                     onClick={(e) => e.stopPropagation()}
                                   />
-                                )}
+                                  {pending > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleKeyReveal(order.id);
+                                      }}
+                                      className="absolute right-2 top-1/2 -translate-y-1/2 text-red-400 hover:text-red-600 focus:outline-none"
+                                      title={
+                                        revealedKeys[order.id]
+                                          ? "Ocultar clave"
+                                          : "Revelar clave"
+                                      }
+                                    >
+                                      {revealedKeys[order.id] ? (
+                                        <EyeOff className="h-3.5 w-3.5" />
+                                      ) : (
+                                        <Eye className="h-3.5 w-3.5" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                               <div className="space-y-1">
                                 <label className="text-xs text-muted-foreground">
