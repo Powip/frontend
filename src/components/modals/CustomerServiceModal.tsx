@@ -986,6 +986,7 @@ export default function CustomerServiceModal({
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          <DialogTitle className="sr-only">Detalle del Pedido</DialogTitle>
           {loading ? (
             <div className="p-8 text-center">Cargando...</div>
           ) : (

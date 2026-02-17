@@ -402,9 +402,6 @@ export const Stats: React.FC = () => {
                   <Eye className="h-4 w-4" />
                   Ver mes completo
                 </Button>
-                <span className="text-xs text-muted-foreground hidden sm:inline-block">
-                  Click en una barra para ver detalle
-                </span>
               </div>
             </CardHeader>
             <CardContent className="flex-1 min-h-[250px]">

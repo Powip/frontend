@@ -1491,6 +1491,140 @@ export default function SeguimientoPage() {
                 )}
               </CardHeader>
               <CardContent>
+                {/* Filters */}
+                <div className="mb-4 p-4 border rounded-lg bg-muted/30">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+                    {/* Search */}
+                    <div className="space-y-1 col-span-2">
+                      <Label className="text-xs">
+                        Buscar (cliente, teléfono, N° orden)
+                      </Label>
+                      <Input
+                        placeholder="Buscar..."
+                        value={filters.search || ""}
+                        onChange={(e) => updateFilter("search", e.target.value)}
+                        icon={Search}
+                        iconPosition="left"
+                        className="h-8 text-sm"
+                      />
+                    </div>
+
+                    {/* Courier */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Courier</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.courier}
+                        onChange={(e) =>
+                          updateFilter("courier", e.target.value)
+                        }
+                      >
+                        <option value="">Todos</option>
+                        {COURIERS.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Fecha: Desde */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Desde</Label>
+                      <Input
+                        type="date"
+                        value={filters.startDate || ""}
+                        onChange={(e) =>
+                          updateFilter("startDate", e.target.value)
+                        }
+                        className="h-8 text-sm"
+                      />
+                    </div>
+
+                    {/* Fecha: Hasta */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Hasta</Label>
+                      <Input
+                        type="date"
+                        value={filters.endDate || ""}
+                        onChange={(e) =>
+                          updateFilter("endDate", e.target.value)
+                        }
+                        className="h-8 text-sm"
+                      />
+                    </div>
+
+                    {/* Pending Payment */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Saldo pendiente</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.hasPendingPayment}
+                        onChange={(e) =>
+                          updateFilter(
+                            "hasPendingPayment",
+                            e.target.value as "" | "yes" | "no",
+                          )
+                        }
+                      >
+                        <option value="">Todos</option>
+                        <option value="yes">Con saldo</option>
+                        <option value="no">Sin saldo</option>
+                      </select>
+                    </div>
+
+                    {/* Region */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Región</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.region}
+                        onChange={(e) =>
+                          updateFilter(
+                            "region",
+                            e.target.value as "" | "LIMA" | "PROVINCIA",
+                          )
+                        }
+                      >
+                        <option value="">Todas</option>
+                        <option value="LIMA">Lima</option>
+                        <option value="PROVINCIA">Provincia</option>
+                      </select>
+                    </div>
+
+                    {/* Guide Status */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Estado Envío</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.guideStatus}
+                        onChange={(e) =>
+                          updateFilter("guideStatus", e.target.value)
+                        }
+                      >
+                        {GUIDE_STATUSES.map((s) => (
+                          <option key={s.value} value={s.value}>
+                            {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {Object.values(filters).some((v) => v !== "") && (
+                    <div className="mt-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={clearFilters}
+                        className="text-xs"
+                      >
+                        Limpiar filtros
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
                 {loading ? (
                   <div className="text-center py-10 text-muted-foreground">
                     Cargando entregados...
@@ -1581,14 +1715,6 @@ export default function SeguimientoPage() {
                                       order.created_at,
                                     ).toLocaleDateString()
                                   : "-"}
-                              </TableCell>
-                              <TableCell className="w-[120px] min-w-[120px] text-xs">
-                                <span
-                                  className="truncate"
-                                  title={order.sellerName || "-"}
-                                >
-                                  {order.sellerName || "-"}
-                                </span>
                               </TableCell>
                               <TableCell className="w-[120px] min-w-[120px] text-xs">
                                 {order.payments && order.payments.length > 0
