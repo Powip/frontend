@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader } from "../ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import axios from "axios";
@@ -23,11 +23,11 @@ export default function ForgotPassword({ open, onClose }: Props) {
       setLoading(true);
       const response = await axios.post(
         `${process.env.NEXT_PUBLIC_API_USERS}/auth/forgot-password`,
-        { email }
+        { email },
       );
       if (response.status === 200) {
         toast.success(
-          "Se ha enviado un correo para restablecer tu contraseña."
+          "Se ha enviado un correo para restablecer tu contraseña.",
         );
         setEmail("");
         onClose();
@@ -35,7 +35,7 @@ export default function ForgotPassword({ open, onClose }: Props) {
     } catch (error) {
       console.log(error);
       toast.error(
-        "Hemos tenido un error al enviar el correo. Inténtalo más tarde."
+        "Hemos tenido un error al enviar el correo. Inténtalo más tarde.",
       );
     } finally {
       setLoading(false);
@@ -44,7 +44,9 @@ export default function ForgotPassword({ open, onClose }: Props) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent className="!max-w-[90vw] sm:!max-w-[500px] !w-full">
-        <DialogHeader>Recupera tu contraseña</DialogHeader>
+        <DialogHeader>
+          <DialogTitle>Recupera tu contraseña</DialogTitle>
+        </DialogHeader>
         <div className="space-y-2">
           <p>
             Ingresá tu correo electrónico y te enviaremos un enlace para
