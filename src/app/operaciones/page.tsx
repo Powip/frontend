@@ -467,6 +467,7 @@ export default function OperacionesPage() {
 
         // Guardar el guideNumber y cambiar el estado a EN_ENVIO
         for (const orderId of guideData.orderIds) {
+          const carrierCost = guideData.orderCarrierCosts?.[orderId] || 0;
           await axios.patch(
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
             {
@@ -474,6 +475,7 @@ export default function OperacionesPage() {
               status: "EN_ENVIO",
               courier: guideData.courierName,
               courierId: guideData.courierId || null,
+              carrierShippingCost: carrierCost,
             },
           );
         }
