@@ -103,6 +103,7 @@ interface OrderDetail {
   shippingOffice?: string | null;
   shippingCode?: string | null;
   shippingProofUrl?: string | null;
+  carrierShippingCost?: number | null;
 }
 
 interface GuideDetailsModalProps {
@@ -950,6 +951,13 @@ export default function GuideDetailsModal({
                                 Cobrar: S/{pending.toFixed(2)}
                               </p>
                             )}
+                            {order.carrierShippingCost &&
+                              Number(order.carrierShippingCost) > 0 && (
+                                <p className="text-[10px] text-blue-600 font-medium">
+                                  Envío: S/
+                                  {Number(order.carrierShippingCost).toFixed(2)}
+                                </p>
+                              )}
                           </div>
                           <div className="flex items-center gap-2">
                             <Button

@@ -46,6 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { PaymentDetailsModal } from "./PaymentDetailsModal";
 
 interface BillingStats {
   month: number;
@@ -96,6 +97,7 @@ export const FinanceStats: React.FC = () => {
   const [inventoryValue, setInventoryValue] = useState(0);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [dailyIncome, setDailyIncome] = useState<any[]>([]);
 
   // Receivables state
   const [receivables, setReceivables] = useState<{
@@ -114,6 +116,7 @@ export const FinanceStats: React.FC = () => {
     avgTicket: 0,
   });
   const [receivablesModalOpen, setReceivablesModalOpen] = useState(false);
+  const [paymentsModalOpen, setPaymentsModalOpen] = useState(false);
 
   // Courier stats
   const [courierStats, setCourierStats] = useState<
@@ -138,7 +141,7 @@ export const FinanceStats: React.FC = () => {
         billingParams.year = from.split("-")[0];
       }
 
-      const [billingRes, invRes, receivablesRes, courierRes] =
+      const [billingRes, invRes, receivablesRes, courierRes, dailyIncomeRes] =
         await Promise.all([
           axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
             params: billingParams,
@@ -172,6 +175,12 @@ export const FinanceStats: React.FC = () => {
               params,
             })
             .catch(() => ({ data: [] })),
+          // Fetch daily income
+          axios
+            .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/daily-income`, {
+              params,
+            })
+            .catch(() => ({ data: [] })),
         ]);
 
       setBilling(billingRes.data || []);
@@ -193,6 +202,9 @@ export const FinanceStats: React.FC = () => {
 
       // Process courier stats
       setCourierStats(courierRes.data || []);
+
+      // Process daily income
+      setDailyIncome(dailyIncomeRes.data || []);
     } catch (error) {
       console.error("Error fetching finance stats:", error);
     } finally {
@@ -236,6 +248,8 @@ export const FinanceStats: React.FC = () => {
       ? ((currentYearSales - previousYearSales) / previousYearSales) * 100
       : 0;
 
+  const totalPaid = dailyIncome.reduce((sum, d) => sum + d.amount, 0);
+
   return (
     <div className="flex flex-col h-full w-full overflow-auto bg-muted/30 p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -275,6 +289,18 @@ export const FinanceStats: React.FC = () => {
             value={`S/ ${receivables.pendingTotal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
             subValue={`${receivables.pendingOrders.length} pedidos pendientes`}
             icon={<CreditCard className="h-5 w-5 text-orange-500" />}
+            loading={loading}
+          />
+        </div>
+        <div
+          className="cursor-pointer hover:scale-[1.02] transition-transform"
+          onClick={() => setPaymentsModalOpen(true)}
+        >
+          <StatCard
+            title="Pagos aprobados"
+            value={`S/ ${totalPaid.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
+            subValue="Total recaudado"
+            icon={<DollarSign className="h-5 w-5 text-green-500" />}
             loading={loading}
           />
         </div>
@@ -465,6 +491,68 @@ export const FinanceStats: React.FC = () => {
                   </span>
                 </div>
               ))}
+          </div>
+        </DashboardCard>
+      </div>
+
+      <div className="grid grid-cols-1 gap-6">
+        <DashboardCard
+          title="Detalle de Ingresos Diarios (Pagos Recaudados)"
+          isLoading={loading}
+          data={dailyIncome}
+        >
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={dailyIncome}>
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="hsl(var(--border))"
+                />
+                <XAxis
+                  dataKey="date"
+                  axisLine={false}
+                  tickLine={false}
+                  style={{
+                    fontSize: "12px",
+                    fill: "hsl(var(--muted-foreground))",
+                  }}
+                  tickFormatter={(value) => {
+                    const date = new Date(value);
+                    return date.toLocaleDateString("es-PE", {
+                      day: "2-digit",
+                      month: "short",
+                    });
+                  }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  style={{
+                    fontSize: "12px",
+                    fill: "hsl(var(--muted-foreground))",
+                  }}
+                  tickFormatter={(value) => `S/ ${value}`}
+                />
+                <Tooltip
+                  formatter={(value: any) => [
+                    `S/ ${value.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
+                    "Ingreso",
+                  ]}
+                  contentStyle={{
+                    backgroundColor: "hsl(var(--background))",
+                    borderColor: "hsl(var(--border))",
+                    borderRadius: "8px",
+                  }}
+                />
+                <Bar
+                  dataKey="amount"
+                  fill="#10b981"
+                  radius={[4, 4, 0, 0]}
+                  maxBarSize={50}
+                />
+              </BarChart>
+            </ResponsiveContainer>
           </div>
         </DashboardCard>
       </div>
@@ -711,6 +799,13 @@ export const FinanceStats: React.FC = () => {
           </div>
         </DialogContent>
       </Dialog>
+      <PaymentDetailsModal
+        open={paymentsModalOpen}
+        onOpenChange={setPaymentsModalOpen}
+        storeId={selectedStoreId || ""}
+        fromDate={fromDate}
+        toDate={toDate}
+      />
 
       {/* Profitability Modal Removed */}
     </div>

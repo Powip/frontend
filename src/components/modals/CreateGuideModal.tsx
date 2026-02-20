@@ -263,7 +263,7 @@ export default function CreateGuideModal({
                     )}
                     <div className="mt-1">
                       <Label className="text-[10px] uppercase text-muted-foreground">
-                        Costo Carrier
+                        Costo de Envío (Logística)
                       </Label>
                       <Input
                         type="number"
