@@ -100,6 +100,7 @@ export interface OrderItem {
   subtotal: string;
   discountType: "NONE" | "PERCENTAGE" | "FIXED";
   discountAmount: string;
+  imageUrl?: string;
   created_at: string;
   updated_at: string;
 }

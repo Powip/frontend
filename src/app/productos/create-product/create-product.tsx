@@ -2,7 +2,8 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { Loader2, Plus } from "lucide-react";
+import { Loader2, Plus, Image as ImageIcon, X as XIcon } from "lucide-react";
+import { uploadImage } from "@/services/uploadService";
 
 import {
   Card,
@@ -43,6 +44,7 @@ interface CreateProductBase {
   inventory_id: string;
   supplierId: string;
   brandId: string;
+  mainImageUrl?: string;
 }
 
 interface Supplier {
@@ -112,7 +114,11 @@ export default function ProductCreateForm({
     inventory_id: "",
     supplierId: "",
     brandId: "",
+    mainImageUrl: "",
   });
+
+  const [mainImageFile, setMainImageFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [subcategories, setSubcategories] = useState<Subcategory[]>([]);
@@ -491,14 +497,14 @@ export default function ProductCreateForm({
       prev.map((v, i) =>
         i === index
           ? {
-            ...v,
-            [field]:
-              field === "priceBase" ||
+              ...v,
+              [field]:
+                field === "priceBase" ||
                 field === "priceVta" ||
                 field === "stock"
-                ? Number(value)
-                : value,
-          }
+                  ? Number(value)
+                  : value,
+            }
           : v,
       ),
     );
@@ -699,9 +705,23 @@ export default function ProductCreateForm({
       brandId: form.brandId || null,
       attributes: attributesPayload,
       variants: variantsPayload,
+      imageUrl: form.mainImageUrl,
     };
 
     try {
+      // Si hay un nuevo archivo, subirlo primero
+      if (mainImageFile) {
+        setIsUploading(true);
+        try {
+          const uploadedUrl = await uploadImage(mainImageFile);
+          payload.imageUrl = uploadedUrl;
+        } catch (err) {
+          toast.error("Error al subir la imagen principal");
+          setIsSubmitting(false);
+          setIsUploading(false);
+          return;
+        }
+      }
       if (isEditMode && editVariantId && editProductId) {
         // Modo edición: actualizar la variante existente
         const variantToUpdate = variants[0];
@@ -802,26 +822,72 @@ export default function ProductCreateForm({
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="categoryId">Categoría</Label>
-                  <select
-                    id="categoryId"
-                    name="categoryId"
-                    value={form.categoryId}
-                    onChange={handleChange}
-                    className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
-                    required
-                  >
-                    <option value="">Seleccionar categoría...</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                  <Label>Imagen del producto</Label>
+                  <div className="flex items-center gap-4">
+                    {mainImageFile || form.mainImageUrl ? (
+                      <div className="relative h-20 w-20 rounded-lg border overflow-hidden">
+                        <img
+                          src={
+                            mainImageFile
+                              ? URL.createObjectURL(mainImageFile)
+                              : form.mainImageUrl
+                          }
+                          alt="Preview"
+                          className="h-full w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setMainImageFile(null);
+                            setForm((prev) => ({ ...prev, mainImageUrl: "" }));
+                          }}
+                          className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 hover:bg-destructive/90"
+                        >
+                          <XIcon className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center justify-center h-20 w-20 rounded-lg border border-dashed hover:bg-muted/50 cursor-pointer transition-colors">
+                        <ImageIcon className="h-6 w-6 text-muted-foreground" />
+                        <span className="text-[10px] text-muted-foreground mt-1 text-center">
+                          Subir foto
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            setMainImageFile(e.target.files?.[0] || null)
+                          }
+                        />
+                      </label>
+                    )}
+                    <div className="flex-1 text-xs text-muted-foreground">
+                      <p>Formatos: JPG, PNG, WEBP.</p>
+                      <p>Máximo 5MB.</p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-
+              <div className="space-y-2">
+                <Label htmlFor="categoryId">Categoría</Label>
+                <select
+                  id="categoryId"
+                  name="categoryId"
+                  value={form.categoryId}
+                  onChange={handleChange}
+                  className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
+                  required
+                >
+                  <option value="">Seleccionar categoría...</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
               {/* Nombre */}
               <div className="space-y-2">
@@ -912,14 +978,14 @@ export default function ProductCreateForm({
               {/* Botón generar variantes */}
               {(defaultAttributes.length > 0 ||
                 customAttributes.length > 0) && (
-                  <Button
-                    type="button"
-                    onClick={handleGenerateVariants}
-                    className="bg-blue-600 hover:bg-blue-700"
-                  >
-                    Generar variantes
-                  </Button>
-                )}
+                <Button
+                  type="button"
+                  onClick={handleGenerateVariants}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  Generar variantes
+                </Button>
+              )}
 
               {/* Custom attributes header */}
               <div className="flex items-center justify-between pt-2">
