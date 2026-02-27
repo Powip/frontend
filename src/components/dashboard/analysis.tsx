@@ -69,6 +69,7 @@ interface BrandStats {
   brandId: string;
   brandName: string;
   ordersCount: number;
+  productsCount: number;
   totalAmount: number;
   percentage: number;
 }
@@ -77,6 +78,7 @@ interface CategoryStats {
   categoryId: string;
   categoryName: string;
   ordersCount: number;
+  productsCount: number;
   totalAmount: number;
   percentage: number;
 }
@@ -249,10 +251,7 @@ export const Analysis: React.FC = () => {
     totalOrders:
       categoryData?.reduce((sum, c) => sum + (c.ordersCount || 0), 0) || 0,
     totalProducts:
-      categoryData?.reduce(
-        (sum, c) => sum + (Number((c as any).productsCount) || 0),
-        0,
-      ) || 0,
+      categoryData?.reduce((sum, c) => sum + (c.productsCount || 0), 0) || 0,
   };
   const avgTicket =
     categoryTotals.totalOrders > 0
@@ -655,6 +654,9 @@ export const Analysis: React.FC = () => {
                     Órdenes
                   </TableHead>
                   <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                    Productos
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
                     % Participación
                   </TableHead>
                 </TableRow>
@@ -674,6 +676,9 @@ export const Analysis: React.FC = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       {cat.ordersCount}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {cat.productsCount}
                     </TableCell>
                     <TableCell className="text-right">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">
@@ -713,6 +718,9 @@ export const Analysis: React.FC = () => {
                     Órdenes
                   </TableHead>
                   <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
+                    Productos
+                  </TableHead>
+                  <TableHead className="text-xs uppercase font-bold text-gray-600 text-right">
                     % del Total
                   </TableHead>
                 </TableRow>
@@ -735,6 +743,9 @@ export const Analysis: React.FC = () => {
                     </TableCell>
                     <TableCell className="text-right">
                       {item.ordersCount}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {item.productsCount}
                     </TableCell>
                     <TableCell className="text-right">
                       <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-primary/10 text-primary">

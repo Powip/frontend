@@ -155,6 +155,8 @@ export interface OrderHeader {
   shippingOffice?: string | null;
   shippingProofUrl?: string | null;
   sellerName?: string | null;
+  carrierShippingCost?: string | number | null;
   created_at: string;
+
   updated_at: string;
 }

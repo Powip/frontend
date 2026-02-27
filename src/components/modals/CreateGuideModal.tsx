@@ -56,6 +56,7 @@ export interface CreateGuideData {
   notes?: string;
   courierId?: string;
   courierName?: string;
+  orderCarrierCosts?: Record<string, number>; // Nuevo campo para costos por orden
 }
 
 const CHARGE_TYPE_OPTIONS = [
@@ -111,6 +112,7 @@ export default function CreateGuideModal({
     "PREPAGADO" | "CONTRA_ENTREGA" | "CORTESIA"
   >("CONTRA_ENTREGA");
   const [notes, setNotes] = useState("");
+  const [carrierCosts, setCarrierCosts] = useState<Record<string, string>>({}); // Almacenar como string para el input
 
   // Fecha de hoy formateada
   const todayFormatted = new Date().toLocaleDateString("es-PE", {
@@ -160,6 +162,14 @@ export default function CreateGuideModal({
       notes: notes || undefined,
       courierId,
       courierName,
+      orderCarrierCosts: Object.entries(carrierCosts).reduce(
+        (acc, [id, val]) => {
+          const num = parseFloat(val);
+          if (!isNaN(num)) acc[id] = num;
+          return acc;
+        },
+        {} as Record<string, number>,
+      ),
     };
 
     await onConfirm([guideData]);
@@ -169,6 +179,7 @@ export default function CreateGuideModal({
     setChargeType("CONTRA_ENTREGA");
     setNotes("");
     setSelectedCourierId("");
+    setCarrierCosts({});
     onClose();
   };
 
@@ -250,6 +261,23 @@ export default function CreateGuideModal({
                         Pendiente: S/{order.pendingPayment.toFixed(2)}
                       </span>
                     )}
+                    <div className="mt-1">
+                      <Label className="text-[10px] uppercase text-muted-foreground">
+                        Costo de Envío (Logística)
+                      </Label>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        className="h-8 text-right text-xs"
+                        value={carrierCosts[order.id] || ""}
+                        onChange={(e) =>
+                          setCarrierCosts((prev) => ({
+                            ...prev,
+                            [order.id]: e.target.value,
+                          }))
+                        }
+                      />
+                    </div>
                   </div>
                 </div>
               ))}
