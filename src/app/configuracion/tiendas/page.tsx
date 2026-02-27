@@ -14,7 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import axios from "axios";
-import { Edit2, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { Edit2, Plus, Trash2, AlertTriangle, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -55,10 +55,9 @@ export default function TiendasPage() {
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const { auth, logout } = useAuth();
-  const [shopifyConfig, setShopifyConfig] = useState({
-    url: "",
-    clientId: "",
-    clientSecret: "",
+  const [shopifyStatus, setShopifyStatus] = useState({
+    isConnected: false,
+    shop_url: null as string | null,
   });
 
   const fetchStore = useCallback(async () => {
@@ -78,11 +77,26 @@ export default function TiendasPage() {
     }
   }, [auth]);
 
+  const fetchShopifyStatus = useCallback(async () => {
+    try {
+      if (!auth?.company?.id) return;
+      const integrationApiUrl =
+        process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
+      const response = await axios.get(
+        `${integrationApiUrl}/shopify/status/${auth.company.id}`,
+      );
+      setShopifyStatus(response.data);
+    } catch (error) {
+      console.error("Error checking shopify status:", error);
+    }
+  }, [auth]);
+
   useEffect(() => {
     if (auth?.company?.id) {
       fetchStore();
+      fetchShopifyStatus();
     }
-  }, [auth, fetchStore]);
+  }, [auth, fetchStore, fetchShopifyStatus]);
 
   const handleAddStore = async () => {
     try {
@@ -218,101 +232,58 @@ export default function TiendasPage() {
                 <DialogHeader>
                   <DialogTitle>Conectar con Shopify Partner</DialogTitle>
                 </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="shopify-url">
-                      URL de tu tienda Shopify
-                    </Label>
-                    <Input
-                      id="shopify-url"
-                      placeholder="ej: mi-tienda.myshopify.com"
-                      value={shopifyConfig.url}
-                      onChange={(e) =>
-                        setShopifyConfig({
-                          ...shopifyConfig,
-                          url: e.target.value,
-                        })
-                      }
-                    />
-                    <p className="text-xs text-gray-500">
-                      Usa la URL completa terminada en .myshopify.com
+                <div className="space-y-6">
+                  {!shopifyStatus.isConnected ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center gap-2 text-amber-800 font-medium">
+                        <AlertTriangle className="h-5 w-5" />
+                        Tienda no vinculada
+                      </div>
+                      <p className="text-sm text-amber-700 leading-relaxed">
+                        Tu tienda de Shopify aún no está vinculada a Powip. Para
+                        habilitar la sincronización automática, por favor
+                        solicita a soporte tu{" "}
+                        <strong>enlace de instalación seguro</strong>.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full border-amber-300 text-amber-800 hover:bg-amber-100"
+                        onClick={() => {
+                          window.open(
+                            "https://wa.me/tu-numero-de-soporte",
+                            "_blank",
+                          );
+                        }}
+                      >
+                        Contactar a Soporte
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
+                      <div className="flex items-center gap-2 text-green-800 font-medium">
+                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                        Conectado correctamente
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-xs text-green-700 uppercase font-bold tracking-wider">
+                          Tienda vinculada:
+                        </p>
+                        <p className="text-sm font-mono text-green-900 bg-white/50 p-2 rounded border border-green-100">
+                          {shopifyStatus.shop_url}
+                        </p>
+                      </div>
+                      <p className="text-xs text-green-600 italic">
+                        La sincronización automática de órdenes está activa.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t text-center">
+                    <p className="text-[10px] text-gray-400">
+                      ID Compañía: {auth?.company?.id}
                     </p>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="client-id">Client ID (API Key)</Label>
-                    <Input
-                      id="client-id"
-                      placeholder="Ingresa tu Shopify API Key"
-                      value={shopifyConfig.clientId}
-                      onChange={(e) =>
-                        setShopifyConfig({
-                          ...shopifyConfig,
-                          clientId: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="client-secret">Client Secret</Label>
-                    <Input
-                      id="client-secret"
-                      type="password"
-                      placeholder="Ingresa tu Shopify API Secret"
-                      value={shopifyConfig.clientSecret}
-                      onChange={(e) =>
-                        setShopifyConfig({
-                          ...shopifyConfig,
-                          clientSecret: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-
-                  <Button
-                    onClick={async () => {
-                      const { url, clientId, clientSecret } = shopifyConfig;
-                      if (!url || !clientId || !clientSecret) {
-                        return toast.error("Completa todos los campos");
-                      }
-
-                      const integrationApiUrl =
-                        process.env.NEXT_PUBLIC_API_INTEGRATIONS ||
-                        "http://localhost:3007";
-
-                      try {
-                        toast.loading("Guardando configuración...");
-                        // 1. Guardar las credenciales en el backend
-                        await axios.post(
-                          `${integrationApiUrl}/shopify/setup-credentials`,
-                          {
-                            shop_url: url,
-                            client_id: clientId,
-                            client_secret: clientSecret,
-                            company_id: auth?.company?.id,
-                          },
-                        );
-
-                        toast.dismiss();
-                        toast.success(
-                          "Configuración guardada. Redirigiendo...",
-                        );
-
-                        // 2. Iniciar flujo OAuth
-                        setTimeout(() => {
-                          window.location.href = `${integrationApiUrl}/shopify/auth/${url}?companyId=${auth?.company?.id}`;
-                        }, 1000);
-                      } catch (error) {
-                        toast.dismiss();
-                        console.error("Error en setup shopify:", error);
-                        toast.error("Error al guardar la configuración");
-                      }
-                    }}
-                    className="w-full bg-teal-600 hover:bg-teal-700"
-                  >
-                    Conectar e instalar App
-                  </Button>
                 </div>
               </DialogContent>
             </Dialog>
@@ -393,8 +364,41 @@ export default function TiendasPage() {
                   <span className="inline-block mt-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
                     Activa
                   </span>
+                  {shopifyStatus.isConnected && (
+                    <div className="mt-2 flex items-center gap-1 text-[10px] text-teal-600 font-medium">
+                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                      Vinculada con Shopify
+                    </div>
+                  )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
+                  {shopifyStatus.isConnected && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="gap-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                      onClick={() => {
+                        toast.info("Iniciando sincronización...");
+                        const integrationApiUrl =
+                          process.env.NEXT_PUBLIC_API_INTEGRATIONS ||
+                          "http://localhost:3007";
+                        axios
+                          .post(
+                            `${integrationApiUrl}/shopify/sync/${shopifyStatus.shop_url}`,
+                            {
+                              accessToken: "dynamic", // El backend ya lo tiene en la DB
+                            },
+                          )
+                          .then(() =>
+                            toast.success("Sincronización finalizada"),
+                          )
+                          .catch(() => toast.error("Error sincronizando"));
+                      }}
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                      Sincronizar
+                    </Button>
+                  )}
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button
