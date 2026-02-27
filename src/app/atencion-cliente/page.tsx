@@ -73,6 +73,7 @@ interface Sale {
   city?: string;
   zone?: string;
   sellerName: string | null;
+  externalSource?: string | null;
 }
 
 // Interface para items de promo del día
@@ -126,6 +127,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     city: order.customer?.city ?? "",
     zone: order.customer?.zone ?? "",
     sellerName: order.sellerName ?? null,
+    externalSource: order.externalSource ?? null,
   };
 }
 
@@ -375,13 +377,12 @@ Estado: ${sale.status}
             <TableCell className="text-xs">{sale.sellerName || "—"}</TableCell>
             <TableCell>
               <span
-                className={`px-2 py-1 rounded text-xs font-medium ${
-                  sale.status === "PREPARADO"
-                    ? "bg-yellow-100 text-yellow-800"
-                    : sale.status === "LLAMADO"
-                      ? "bg-blue-100 text-blue-800"
-                      : "bg-gray-100 text-gray-800"
-                }`}
+                className={`px-2 py-1 rounded text-xs font-medium ${sale.status === "PREPARADO"
+                  ? "bg-yellow-100 text-yellow-800"
+                  : sale.status === "LLAMADO"
+                    ? "bg-blue-100 text-blue-800"
+                    : "bg-gray-100 text-gray-800"
+                  }`}
               >
                 {sale.status}
               </span>
@@ -707,8 +708,8 @@ Estado: ${sale.status}
                         <TableCell>
                           {promo.addedAt
                             ? new Date(promo.addedAt).toLocaleDateString(
-                                "es-PE",
-                              )
+                              "es-PE",
+                            )
                             : "-"}
                         </TableCell>
                         <TableCell className="font-medium">

@@ -101,6 +101,7 @@ export interface Sale {
   zone?: string;
   paymentCreatedAt: string | null;
   sellerName: string | null;
+  externalSource?: string | null;
 }
 
 /* -----------------------------------------
@@ -151,6 +152,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
         ? (pendingPayments[0].created_at?.toString() ?? null)
         : null,
     sellerName: order.sellerName ?? null,
+    externalSource: order.externalSource ?? null,
   };
 }
 
@@ -967,8 +969,8 @@ Estado: ${sale.status}
                         <TableCell className="w-[100px] min-w-[100px]">
                           {sale.paymentCreatedAt
                             ? new Date(
-                                sale.paymentCreatedAt,
-                              ).toLocaleDateString("es-PE")
+                              sale.paymentCreatedAt,
+                            ).toLocaleDateString("es-PE")
                             : "-"}
                         </TableCell>
                         <TableCell className="w-[100px] min-w-[100px]">
@@ -1035,7 +1037,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(pagosPendientes.length / 10) || 1}
                 totalItems={pagosPendientes.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="ventas"
               />
             </Card>
@@ -1100,7 +1102,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(entregados.length / 10) || 1}
                 totalItems={entregados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>

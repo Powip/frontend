@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Search, X, ChevronDown, ChevronUp, Filter } from "lucide-react";
 
 export interface SalesFilters {
-  date: string;
+  dateFrom: string;
+  dateTo: string;
   search: string;
   paymentMethod: string;
   hasPendingBalance: "" | "yes" | "no";
@@ -16,10 +17,12 @@ export interface SalesFilters {
   courier: string;
   zone: string;
   hasGuide: "" | "yes" | "no";
+  source: "" | "shopify" | "manual";
 }
 
 export const emptySalesFilters: SalesFilters = {
-  date: "",
+  dateFrom: "",
+  dateTo: "",
   search: "",
   paymentMethod: "",
   hasPendingBalance: "",
@@ -28,6 +31,7 @@ export const emptySalesFilters: SalesFilters = {
   courier: "",
   zone: "",
   hasGuide: "",
+  source: "",
 };
 
 interface SalesTableFiltersProps {
@@ -37,6 +41,7 @@ interface SalesTableFiltersProps {
   showCourierFilter?: boolean;
   showZoneFilter?: boolean;
   showGuideFilter?: boolean;
+  showSourceFilter?: boolean;
   availableCouriers?: string[];
 }
 
@@ -83,6 +88,12 @@ const GUIDE_OPTIONS = [
   { value: "no", label: "Sin guía" },
 ];
 
+const SOURCE_OPTIONS = [
+  { value: "", label: "Todos" },
+  { value: "manual", label: "Manual" },
+  { value: "shopify", label: "Shopify" },
+];
+
 export function SalesTableFilters({
   filters,
   onFiltersChange,
@@ -90,6 +101,7 @@ export function SalesTableFilters({
   showCourierFilter = false,
   showZoneFilter = false,
   showGuideFilter = false,
+  showSourceFilter = true,
   availableCouriers = [],
 }: SalesTableFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -162,13 +174,24 @@ export function SalesTableFilters({
               />
             </div>
 
-            {/* Fecha */}
+            {/* Fecha Desde */}
             <div className="space-y-1">
-              <Label className="text-xs">Fecha</Label>
+              <Label className="text-xs">Fecha Desde</Label>
               <Input
                 type="date"
-                value={filters.date}
-                onChange={(e) => updateFilter("date", e.target.value)}
+                value={filters.dateFrom}
+                onChange={(e) => updateFilter("dateFrom", e.target.value)}
+                className="h-8 text-sm"
+              />
+            </div>
+
+            {/* Fecha Hasta */}
+            <div className="space-y-1">
+              <Label className="text-xs">Fecha Hasta</Label>
+              <Input
+                type="date"
+                value={filters.dateTo}
+                onChange={(e) => updateFilter("dateTo", e.target.value)}
                 className="h-8 text-sm"
               />
             </div>
@@ -304,6 +327,26 @@ export function SalesTableFilters({
                 </select>
               </div>
             )}
+
+            {/* Origen (Manual / Shopify) */}
+            {showSourceFilter && (
+              <div className="space-y-1">
+                <Label className="text-xs">Origen</Label>
+                <select
+                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  value={filters.source}
+                  onChange={(e) =>
+                    updateFilter("source", e.target.value as "" | "shopify" | "manual")
+                  }
+                >
+                  {SOURCE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -324,6 +367,7 @@ export function applyFilters<T extends {
   courier?: string | null;
   zone?: string;
   guideNumber?: string | null;
+  externalSource?: string | null;
 }>(data: T[], filters: SalesFilters): T[] {
   return data.filter((item) => {
     // Search filter (cliente, teléfono, N° orden)
@@ -336,18 +380,24 @@ export function applyFilters<T extends {
       if (!matchesSearch) return false;
     }
 
-    // Date filter (single date)
-    if (filters.date) {
+    // Date range filter (from - to)
+    if (filters.dateFrom || filters.dateTo) {
       const itemDate = parseDate(item.date);
-      const [y, m, d] = filters.date.split("-").map(Number);
-      const filterDate = new Date(y, m - 1, d);
 
-      if (
-        itemDate.getFullYear() !== filterDate.getFullYear() ||
-        itemDate.getMonth() !== filterDate.getMonth() ||
-        itemDate.getDate() !== filterDate.getDate()
-      ) {
-        return false;
+      if (filters.dateFrom) {
+        const [y, m, d] = filters.dateFrom.split("-").map(Number);
+        const fromDate = new Date(y, m - 1, d);
+        fromDate.setHours(0, 0, 0, 0);
+        itemDate.setHours(0, 0, 0, 0);
+        if (itemDate < fromDate) return false;
+      }
+
+      if (filters.dateTo) {
+        const [y, m, d] = filters.dateTo.split("-").map(Number);
+        const toDate = new Date(y, m - 1, d);
+        toDate.setHours(23, 59, 59, 999);
+        itemDate.setHours(0, 0, 0, 0);
+        if (itemDate > toDate) return false;
       }
     }
 
@@ -393,6 +443,16 @@ export function applyFilters<T extends {
     }
     if (filters.hasGuide === "no" && item.guideNumber) {
       return false;
+    }
+
+    // Source filter (Manual / Shopify)
+    if (filters.source) {
+      if (filters.source === "shopify" && item.externalSource !== "shopify") {
+        return false;
+      }
+      if (filters.source === "manual" && item.externalSource) {
+        return false;
+      }
     }
 
     return true;
