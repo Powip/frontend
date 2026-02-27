@@ -14,7 +14,13 @@ import {
 import { User, Role } from "@/interfaces/IUser";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { createCompanyUser, getRoles, CreateCompanyUserRequest, updateUser, UpdateUserRequest } from "@/services/userService";
+import {
+  createCompanyUser,
+  getRoles,
+  CreateCompanyUserRequest,
+  updateUser,
+  UpdateUserRequest,
+} from "@/services/userService";
 
 import ubigeos from "@/utils/json/ubigeos.json";
 
@@ -31,6 +37,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
     { id: "2", name: "VENTAS", description: "Personal de ventas" },
     { id: "3", name: "OPERACIONES", description: "Personal de operaciones" },
     { id: "4", name: "COURIER", description: "Personal de entregas/courier" },
+    { id: "5", name: "CALLER", description: "Integraciones externas" },
   ]);
 
   const [formData, setFormData] = useState({
@@ -50,8 +57,11 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
 
   // Ubigeo data logic
   const departments = ubigeos[0].departments;
-  const filteredProvinces = departments.find((d) => d.name === formData.department)?.provinces || [];
-  const filteredDistricts = filteredProvinces.find((p) => p.name === formData.province)?.districts || [];
+  const filteredProvinces =
+    departments.find((d) => d.name === formData.department)?.provinces || [];
+  const filteredDistricts =
+    filteredProvinces.find((p) => p.name === formData.province)?.districts ||
+    [];
 
   // Load roles from API
   useEffect(() => {
@@ -60,8 +70,10 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
       try {
         const rolesData = await getRoles(auth.accessToken);
         // Filtrar solo roles permitidos para usuarios de compañía (no ADMINISTRADOR ni USUARIO)
-        const allowedRoles = rolesData.filter(r =>
-          ["AGENTES", "VENTAS", "OPERACIONES", "COURIER"].includes(r.name.toUpperCase())
+        const allowedRoles = rolesData.filter((r) =>
+          ["AGENTES", "VENTAS", "OPERACIONES", "COURIER", "CALLER"].includes(
+            r.name.toUpperCase(),
+          ),
         );
         if (allowedRoles.length > 0) {
           setRoles(allowedRoles);
@@ -174,10 +186,12 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
         const data = error.response.data;
         // Errores de validación de Spring (MethodArgumentNotValidException)
         if (data.errors && Array.isArray(data.errors)) {
-          message = data.errors.map((e: any) => e.defaultMessage || e.message).join(". ");
+          message = data.errors
+            .map((e: any) => e.defaultMessage || e.message)
+            .join(". ");
         } else if (data.message) {
           message = data.message;
-        } else if (typeof data === 'string') {
+        } else if (typeof data === "string") {
           message = data;
         }
       } else if (error?.message) {
@@ -209,7 +223,9 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             id="surname"
             placeholder="Ej. Pérez"
             value={formData.surname}
-            onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, surname: e.target.value })
+            }
             required
           />
         </div>
@@ -223,7 +239,9 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             type="email"
             placeholder="juan.perez@ejemplo.com"
             value={formData.email}
-            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, email: e.target.value })
+            }
             required
           />
         </div>
@@ -233,7 +251,9 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             id="phoneNumber"
             placeholder="912345678"
             value={formData.phoneNumber}
-            onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, phoneNumber: e.target.value })
+            }
           />
         </div>
       </div>
@@ -245,25 +265,35 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             id="identityDocument"
             placeholder="DNI / RUC"
             value={formData.identityDocument}
-            onChange={(e) => setFormData({ ...formData, identityDocument: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, identityDocument: e.target.value })
+            }
             required
           />
         </div>
         <div className="space-y-2">
           <Label htmlFor="password">
-            Contraseña {user && <span className="text-muted-foreground text-xs">(dejar vacío para mantener)</span>}
+            Contraseña{" "}
+            {user && (
+              <span className="text-muted-foreground text-xs">
+                (dejar vacío para mantener)
+              </span>
+            )}
           </Label>
           <Input
             id="password"
             type="password"
             placeholder={user ? "••••••••" : "Mínimo 6 caracteres"}
             value={formData.password}
-            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+            onChange={(e) =>
+              setFormData({ ...formData, password: e.target.value })
+            }
             required={!user}
           />
           {!user && (
             <p className="text-[10px] text-muted-foreground mt-1">
-              La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número.
+              La contraseña debe tener al menos 6 caracteres, una letra
+              minúscula y un número.
             </p>
           )}
         </div>
@@ -273,7 +303,9 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
         <Label htmlFor="role">Rol</Label>
         <Select
           value={formData.roleName}
-          onValueChange={(value) => setFormData({ ...formData, roleName: value })}
+          onValueChange={(value) =>
+            setFormData({ ...formData, roleName: value })
+          }
         >
           <SelectTrigger>
             <SelectValue placeholder="Seleccionar rol" />
@@ -298,7 +330,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
                 ...formData,
                 department: value,
                 province: "",
-                district: ""
+                district: "",
               })
             }
           >
@@ -322,7 +354,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
               setFormData({
                 ...formData,
                 province: value,
-                district: ""
+                district: "",
               })
             }
             disabled={!formData.department}
@@ -343,7 +375,9 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           <Label htmlFor="district">Distrito</Label>
           <Select
             value={formData.district}
-            onValueChange={(value) => setFormData({ ...formData, district: value })}
+            onValueChange={(value) =>
+              setFormData({ ...formData, district: value })
+            }
             disabled={!formData.province}
           >
             <SelectTrigger>
@@ -366,16 +400,31 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           id="address"
           placeholder="Av. Las Magnolias 123, frente al parque"
           value={formData.address}
-          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+          onChange={(e) =>
+            setFormData({ ...formData, address: e.target.value })
+          }
         />
       </div>
 
       <div className="flex justify-end gap-2 pt-4">
-        <Button variant="outline" type="button" onClick={() => onUserSaved()} disabled={loading}>
+        <Button
+          variant="outline"
+          type="button"
+          onClick={() => onUserSaved()}
+          disabled={loading}
+        >
           Cancelar
         </Button>
-        <Button type="submit" className="bg-teal-600 hover:bg-teal-700" disabled={loading}>
-          {loading ? "Guardando..." : user ? "Actualizar Usuario" : "Crear Usuario"}
+        <Button
+          type="submit"
+          className="bg-teal-600 hover:bg-teal-700"
+          disabled={loading}
+        >
+          {loading
+            ? "Guardando..."
+            : user
+              ? "Actualizar Usuario"
+              : "Crear Usuario"}
         </Button>
       </div>
     </form>
