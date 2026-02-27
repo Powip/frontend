@@ -234,7 +234,11 @@ export default function TiendasPage() {
                       const shop = (window as any)._shopifyUrl;
                       if (!shop)
                         return toast.error("Ingresa la URL de la tienda");
-                      window.location.href = `http://localhost:3007/shopify/auth/${shop}?companyId=${auth?.company?.id}`;
+
+                      const integrationApiUrl =
+                        process.env.NEXT_PUBLIC_API_INTEGRATIONS ||
+                        "http://localhost:3007";
+                      window.location.href = `${integrationApiUrl}/shopify/auth/${shop}?companyId=${auth?.company?.id}`;
                     }}
                     className="w-full bg-teal-600 hover:bg-teal-700"
                   >
