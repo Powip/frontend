@@ -217,12 +217,22 @@ export default function TiendasPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  className="gap-2 border-teal-600 text-teal-600 hover:bg-teal-50"
+                  className={`gap-2 ${
+                    shopifyConnectedShops.length > 0
+                      ? "border-teal-600 text-teal-600 hover:bg-teal-50 shadow-sm"
+                      : "border-teal-600 text-teal-600 hover:bg-teal-50"
+                  }`}
                 >
-                  <div className="w-4 h-4 rounded bg-green-500 flex items-center justify-center text-[10px] text-white">
-                    S
-                  </div>
-                  Conectar Shopify
+                  {shopifyConnectedShops.length > 0 ? (
+                    <RefreshCw className="h-4 w-4 animate-in fade-in duration-500" />
+                  ) : (
+                    <div className="w-4 h-4 rounded bg-green-500 flex items-center justify-center text-[10px] text-white">
+                      S
+                    </div>
+                  )}
+                  {shopifyConnectedShops.length > 0
+                    ? "Sincronizar con Shopify"
+                    : "Conectar Shopify"}
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-md">
