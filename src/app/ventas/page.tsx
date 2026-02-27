@@ -28,7 +28,7 @@ import {
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Label } from "@/components/ui/label";
 
-import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
+import { OrderHeader, OrderStatus, OrderItem } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import CustomerServiceModal, {
@@ -113,6 +113,7 @@ export interface Sale {
   shippingKey: string;
   shippingOffice: string;
   sellerName: string | null;
+  items: OrderItem[];
 }
 
 /* -----------------------------------------
@@ -157,6 +158,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     shippingKey: order.shippingKey || "",
     shippingOffice: order.shippingOffice || "",
     sellerName: order.sellerName ?? null,
+    items: order.items || [],
   };
 }
 
@@ -716,6 +718,9 @@ Estado: ${sale.status}
             <TableHead className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-20 bg-background border-r">
               Cliente
             </TableHead>
+            <TableHead className="w-[100px] min-w-[100px] text-xs">
+              Items
+            </TableHead>
             <TableHead>Teléfono</TableHead>
             <TableHead>Distrito</TableHead>
             <TableHead className="border-r">Zona</TableHead>
@@ -772,6 +777,34 @@ Estado: ${sale.status}
               <TableCell className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-10 bg-background text-xs truncate max-w-[150px] border-r">
                 {sale.clientName}
               </TableCell>
+              <TableCell>
+                <div className="flex -space-x-2 overflow-hidden">
+                  {sale.items?.slice(0, 3).map((item, idx) => (
+                    <div
+                      key={item.id || idx}
+                      className="inline-block h-8 w-8 rounded-full ring-2 ring-background bg-muted overflow-hidden"
+                      title={item.productName}
+                    >
+                      {item.imageUrl ? (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.productName}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground">
+                          {item.productName.charAt(0)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {sale.items?.length > 3 && (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted ring-2 ring-background text-[10px] font-medium">
+                      +{sale.items.length - 3}
+                    </div>
+                  )}
+                </div>
+              </TableCell>
               {/* Columnas scrolleables */}
               <TableCell className="text-xs">{sale.phoneNumber}</TableCell>
               <TableCell className="text-xs truncate max-w-[120px]">
@@ -792,7 +825,9 @@ Estado: ${sale.status}
               <TableCell className="text-red-600">
                 ${sale.pendingPayment.toFixed(2)}
               </TableCell>
-              <TableCell className="text-xs">{sale.sellerName || "—"}</TableCell>
+              <TableCell className="text-xs">
+                {sale.sellerName || "—"}
+              </TableCell>
               <TableCell>
                 <select
                   value={sale.status}
@@ -1093,7 +1128,9 @@ Estado: ${sale.status}
               <TableCell className="text-red-600">
                 ${sale.pendingPayment.toFixed(2)}
               </TableCell>
-              <TableCell className="text-xs">{sale.sellerName || "—"}</TableCell>
+              <TableCell className="text-xs">
+                {sale.sellerName || "—"}
+              </TableCell>
               <TableCell>
                 <select
                   value={sale.status}

@@ -110,6 +110,7 @@ interface SeguimientoFilters {
   hasPendingPayment: "" | "yes" | "no";
   region: "" | "LIMA" | "PROVINCIA";
   guideStatus: string;
+  seller: string;
 }
 
 const emptyFilters: SeguimientoFilters = {
@@ -120,6 +121,7 @@ const emptyFilters: SeguimientoFilters = {
   hasPendingPayment: "",
   region: "",
   guideStatus: "",
+  seller: "",
 };
 
 const COURIERS = [
@@ -441,6 +443,12 @@ export default function SeguimientoPage() {
       if (filters.guideStatus && guide?.status !== filters.guideStatus)
         return false;
 
+      // Seller filter
+      if (filters.seller) {
+        const sellerName = (order.sellerName || "").toLowerCase();
+        if (sellerName !== filters.seller.toLowerCase()) return false;
+      }
+
       return true;
     });
   }, [envios, filters]);
@@ -507,6 +515,12 @@ export default function SeguimientoPage() {
       if (filters.guideStatus && guide?.status !== filters.guideStatus)
         return false;
 
+      // Seller filter
+      if (filters.seller) {
+        const sellerName = (order.sellerName || "").toLowerCase();
+        if (sellerName !== filters.seller.toLowerCase()) return false;
+      }
+
       return true;
     });
   }, [entregados, filters]);
@@ -567,7 +581,9 @@ export default function SeguimientoPage() {
   // Check if tracking data has changed for an order
   const hasTrackingChanges = (orderId: string): boolean => {
     const current = trackingEdits[orderId];
-    const envioItem = envios.find((e) => e.order.id === orderId);
+    const envioItem =
+      envios.find((e) => e.order.id === orderId) ||
+      entregados.find((e) => e.order.id === orderId);
     if (!current || !envioItem) return false;
 
     const original = {
@@ -606,7 +622,7 @@ export default function SeguimientoPage() {
         },
       );
       // Update local state to sync original values (avoids table refresh)
-      setEnvios((prev) =>
+      const updateItems = (prev: EnvioItem[]) =>
         prev.map((item) =>
           item.order.id === orderId
             ? {
@@ -620,8 +636,9 @@ export default function SeguimientoPage() {
                 } as any,
               }
             : item,
-        ),
-      );
+        );
+      setEnvios(updateItems);
+      setEntregados(updateItems);
     } catch (error: any) {
       toast.error(
         error?.response?.data?.message || "Error al guardar tracking",
@@ -986,6 +1003,29 @@ export default function SeguimientoPage() {
                         {GUIDE_STATUSES.map((s) => (
                           <option key={s.value} value={s.value}>
                             {s.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Vendedor */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Vendedor</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.seller}
+                        onChange={(e) => updateFilter("seller", e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        {Array.from(
+                          new Set(
+                            envios
+                              .map((item) => item.order.sellerName)
+                              .filter(Boolean),
+                          ),
+                        ).map((name) => (
+                          <option key={name} value={name!}>
+                            {name}
                           </option>
                         ))}
                       </select>
@@ -1619,6 +1659,29 @@ export default function SeguimientoPage() {
                         ))}
                       </select>
                     </div>
+
+                    {/* Vendedor */}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Vendedor</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={filters.seller}
+                        onChange={(e) => updateFilter("seller", e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        {Array.from(
+                          new Set(
+                            entregados
+                              .map((item) => item.order.sellerName)
+                              .filter(Boolean),
+                          ),
+                        ).map((name) => (
+                          <option key={name} value={name!}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
                   {Object.values(filters).some((v) => v !== "") && (
@@ -1670,10 +1733,22 @@ export default function SeguimientoPage() {
                             Total
                           </TableHead>
                           <TableHead className="w-[100px] min-w-[100px]">
-                            Adelanto
-                          </TableHead>
-                          <TableHead className="w-[100px] min-w-[100px]">
                             Por Cobrar
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px]">
+                            Nro Tracking
+                          </TableHead>
+                          <TableHead className="w-[80px] min-w-[80px]">
+                            Código
+                          </TableHead>
+                          <TableHead className="w-[80px] min-w-[80px]">
+                            Clave
+                          </TableHead>
+                          <TableHead className="w-[130px] min-w-[130px]">
+                            Oficina
+                          </TableHead>
+                          <TableHead className="w-[120px] min-w-[120px]">
+                            Vendedor
                           </TableHead>
                           <TableHead className="w-[100px] min-w-[100px]">
                             Costo Carrier
@@ -1744,15 +1819,127 @@ export default function SeguimientoPage() {
                                 S/{" "}
                                 {parseFloat(order.grandTotal || "0").toFixed(2)}
                               </TableCell>
-                              <TableCell className="w-[100px] min-w-[100px] text-green-600 font-medium">
-                                S/{" "}
-                                {(
-                                  parseFloat(order.grandTotal || "0") -
-                                  pendingPayment
-                                ).toFixed(2)}
-                              </TableCell>
                               <TableCell className="w-[100px] min-w-[100px] text-red-600 font-medium">
                                 S/ {pendingPayment.toFixed(2)}
+                              </TableCell>
+                              {/* Nro Tracking */}
+                              <TableCell className="w-[120px] min-w-[120px]">
+                                <div className="relative flex items-center">
+                                  <input
+                                    type="text"
+                                    className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                      savingOrderId === order.id
+                                        ? "opacity-50 border-orange-400 pr-6"
+                                        : "focus:border-orange-500"
+                                    }`}
+                                    placeholder="Nro..."
+                                    value={
+                                      trackingEdits[order.id]
+                                        ?.externalTrackingNumber || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateTrackingField(
+                                        order.id,
+                                        "externalTrackingNumber",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onBlur={() => handleSaveTracking(order.id)}
+                                    disabled={savingOrderId === order.id}
+                                  />
+                                  {savingOrderId === order.id && (
+                                    <Loader2 className="absolute right-1.5 h-3 w-3 animate-spin text-orange-500" />
+                                  )}
+                                </div>
+                              </TableCell>
+                              {/* Código */}
+                              <TableCell className="w-[80px] min-w-[80px]">
+                                <div className="relative flex items-center">
+                                  <input
+                                    type="text"
+                                    className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                      savingOrderId === order.id
+                                        ? "opacity-50 border-orange-400 pr-5"
+                                        : "focus:border-orange-500"
+                                    }`}
+                                    placeholder="Código"
+                                    value={
+                                      trackingEdits[order.id]?.shippingCode ||
+                                      ""
+                                    }
+                                    onChange={(e) =>
+                                      updateTrackingField(
+                                        order.id,
+                                        "shippingCode",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onBlur={() => handleSaveTracking(order.id)}
+                                    disabled={savingOrderId === order.id}
+                                  />
+                                </div>
+                              </TableCell>
+                              {/* Clave - siempre visible en entregados */}
+                              <TableCell className="w-[100px] min-w-[100px]">
+                                <div className="relative flex items-center">
+                                  <input
+                                    type="text"
+                                    className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                      savingOrderId === order.id
+                                        ? "opacity-50 border-orange-400"
+                                        : "focus:border-orange-500"
+                                    }`}
+                                    placeholder="Clave"
+                                    value={
+                                      trackingEdits[order.id]?.shippingKey || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateTrackingField(
+                                        order.id,
+                                        "shippingKey",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onBlur={() => handleSaveTracking(order.id)}
+                                    disabled={savingOrderId === order.id}
+                                  />
+                                </div>
+                              </TableCell>
+                              {/* Oficina */}
+                              <TableCell className="w-[130px] min-w-[130px]">
+                                <div className="relative flex items-center">
+                                  <input
+                                    type="text"
+                                    className={`w-full h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                                      savingOrderId === order.id
+                                        ? "opacity-50 border-orange-400 pr-6"
+                                        : "focus:border-orange-500"
+                                    }`}
+                                    placeholder="Oficina..."
+                                    value={
+                                      trackingEdits[order.id]?.shippingOffice ||
+                                      ""
+                                    }
+                                    onChange={(e) =>
+                                      updateTrackingField(
+                                        order.id,
+                                        "shippingOffice",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onBlur={() => handleSaveTracking(order.id)}
+                                    disabled={savingOrderId === order.id}
+                                  />
+                                </div>
+                              </TableCell>
+                              {/* Vendedor */}
+                              <TableCell className="w-[120px] min-w-[120px]">
+                                <span
+                                  className="text-xs truncate"
+                                  title={order.sellerName || "-"}
+                                >
+                                  {order.sellerName || "-"}
+                                </span>
                               </TableCell>
                               <TableCell className="w-[100px] min-w-[100px] font-medium text-blue-600">
                                 S/{" "}

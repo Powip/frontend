@@ -31,7 +31,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useRouter } from "next/navigation";
 
-
 interface Store {
   id?: string;
   name: string;
@@ -57,16 +56,14 @@ export default function TiendasPage() {
   const [loading, setLoading] = useState<boolean>(false);
   const { auth, logout } = useAuth();
 
-  
   const fetchStore = useCallback(async () => {
     setLoading(true);
     try {
       if (!auth?.company?.id) return;
 
       const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${auth.company.id}`
+        `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${auth.company.id}`,
       );
-
 
       setStores(response.data?.stores);
     } catch (error) {
@@ -116,7 +113,7 @@ export default function TiendasPage() {
           name: editingStore.name,
           description: editingStore.description,
           url_web: editingStore.url_web,
-        }
+        },
       );
       toast.success("Tienda Actualizada correctamente!");
 
@@ -131,7 +128,7 @@ export default function TiendasPage() {
   const handleDeleteStore = async (id: string) => {
     try {
       const response = await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_COMPANY}/stores/${id}`
+        `${process.env.NEXT_PUBLIC_API_COMPANY}/stores/${id}`,
       );
 
       if (response.status === 200) {
@@ -198,59 +195,117 @@ export default function TiendasPage() {
       <Card className="mx-10">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Tus tiendas</CardTitle>
-          <Dialog>
-            <DialogTrigger asChild>
-              <Button size="sm" className="gap-2 bg-teal-600 hover:bg-teal-700">
-                <Plus className="h-4 w-4" />
-                Nueva tienda
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-md">
-              <DialogHeader>
-                <DialogTitle>Crear nueva tienda</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="store-name">Nombre de la tienda</Label>
-                  <Input
-                    id="store-name"
-                    placeholder="Ej: Tienda Centro"
-                    value={newStore.name}
-                    onChange={(e) =>
-                      setNewStore({ ...newStore, name: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="store-city">Descripción</Label>
-                  <Textarea
-                    value={newStore.description}
-                    onChange={(e) =>
-                      setNewStore({ ...newStore, description: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="store-url">URL de la tienda (opcional)</Label>
-                  <Input
-                    id="store-url"
-                    placeholder="Ej: www.sitioweb.com"
-                    value={newStore.url_web ?? ""}
-                    onChange={(e) =>
-                      setNewStore({ ...newStore, url_web: e.target.value })
-                    }
-                  />
-                </div>
-
+          <div className="flex gap-2">
+            <Dialog>
+              <DialogTrigger asChild>
                 <Button
-                  onClick={handleAddStore}
-                  className="w-full bg-teal-600 hover:bg-teal-700"
+                  size="sm"
+                  variant="outline"
+                  className="gap-2 border-teal-600 text-teal-600 hover:bg-teal-50"
                 >
-                  Crear tienda
+                  <div className="w-4 h-4 rounded bg-green-500 flex items-center justify-center text-[10px] text-white">
+                    S
+                  </div>
+                  Conectar Shopify
                 </Button>
-              </div>
-            </DialogContent>
-          </Dialog>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Conectar con Shopify Partner</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="shopify-url">
+                      URL de tu tienda Shopify
+                    </Label>
+                    <Input
+                      id="shopify-url"
+                      placeholder="ej: mi-tienda.myshopify.com"
+                      onChange={(e) => {
+                        (window as any)._shopifyUrl = e.target.value;
+                      }}
+                    />
+                    <p className="text-xs text-gray-500">
+                      Usa la URL completa terminada en .myshopify.com
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => {
+                      const shop = (window as any)._shopifyUrl;
+                      if (!shop)
+                        return toast.error("Ingresa la URL de la tienda");
+                      window.location.href = `http://localhost:3007/shopify/auth/${shop}?companyId=${auth?.company?.id}`;
+                    }}
+                    className="w-full bg-teal-600 hover:bg-teal-700"
+                  >
+                    Iniciar conexión automática
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button
+                  size="sm"
+                  className="gap-2 bg-teal-600 hover:bg-teal-700"
+                >
+                  <Plus className="h-4 w-4" />
+                  Nueva tienda
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Crear nueva tienda</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="store-name">Nombre de la tienda</Label>
+                    <Input
+                      id="store-name"
+                      placeholder="Ej: Tienda Centro"
+                      value={newStore.name}
+                      onChange={(e) =>
+                        setNewStore({ ...newStore, name: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="store-city">Descripción</Label>
+                    <Textarea
+                      value={newStore.description}
+                      onChange={(e) =>
+                        setNewStore({
+                          ...newStore,
+                          description: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="store-url">
+                      URL de la tienda (opcional)
+                    </Label>
+                    <Input
+                      id="store-url"
+                      placeholder="Ej: www.sitioweb.com"
+                      value={newStore.url_web ?? ""}
+                      onChange={(e) =>
+                        setNewStore({ ...newStore, url_web: e.target.value })
+                      }
+                    />
+                  </div>
+
+                  <Button
+                    onClick={handleAddStore}
+                    className="w-full bg-teal-600 hover:bg-teal-700"
+                  >
+                    Crear tienda
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
@@ -355,7 +410,9 @@ export default function TiendasPage() {
                         <AlertDialogDescription asChild>
                           <div className="space-y-3">
                             <p>
-                              Estás a punto de eliminar la tienda <strong>&quot;{store.name}&quot;</strong>. Esta acción no se puede deshacer.
+                              Estás a punto de eliminar la tienda{" "}
+                              <strong>&quot;{store.name}&quot;</strong>. Esta
+                              acción no se puede deshacer.
                             </p>
                             <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-3">
                               <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
@@ -370,7 +427,8 @@ export default function TiendasPage() {
                             </div>
                             {stores.length <= 1 && (
                               <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
-                                ⚠️ No puedes eliminar la última tienda de tu empresa.
+                                ⚠️ No puedes eliminar la última tienda de tu
+                                empresa.
                               </p>
                             )}
                           </div>
@@ -380,7 +438,9 @@ export default function TiendasPage() {
                         <AlertDialogCancel>Cancelar</AlertDialogCancel>
                         <AlertDialogAction
                           className="bg-red-600 hover:bg-red-700"
-                          onClick={() => store.id && handleDeleteStore(store.id)}
+                          onClick={() =>
+                            store.id && handleDeleteStore(store.id)
+                          }
                         >
                           Eliminar tienda
                         </AlertDialogAction>
