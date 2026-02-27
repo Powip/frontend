@@ -28,7 +28,7 @@ import {
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Label } from "@/components/ui/label";
 
-import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
+import { OrderHeader, OrderStatus, OrderItem } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import CustomerServiceModal, {
