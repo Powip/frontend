@@ -414,9 +414,22 @@ export default function TiendasPage() {
                               accessToken: "dynamic",
                             },
                           )
-                          .then(() =>
-                            toast.success("Sincronización finalizada"),
-                          )
+                          .then((response) => {
+                            const {
+                              total_found,
+                              orders_synced,
+                              drafts_synced,
+                            } = response.data;
+                            if (total_found === 0) {
+                              toast.success(
+                                "Sincronización finalizada: No se encontraron nuevas órdenes.",
+                              );
+                            } else {
+                              toast.success(
+                                `Sincronización finalizada: ${orders_synced} órdenes y ${drafts_synced} borradores importados.`,
+                              );
+                            }
+                          })
                           .catch(() => toast.error("Error sincronizando"));
                       }}
                     >
