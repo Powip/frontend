@@ -55,10 +55,7 @@ export default function TiendasPage() {
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const { auth, logout } = useAuth();
-  const [shopifyStatus, setShopifyStatus] = useState({
-    isConnected: false,
-    shop_url: null as string | null,
-  });
+  const [shopifyConnectedShops, setShopifyConnectedShops] = useState<any[]>([]);
 
   const fetchStore = useCallback(async () => {
     setLoading(true);
@@ -85,7 +82,7 @@ export default function TiendasPage() {
       const response = await axios.get(
         `${integrationApiUrl}/shopify/status/${auth.company.id}`,
       );
-      setShopifyStatus(response.data);
+      setShopifyConnectedShops(response.data);
     } catch (error) {
       console.error("Error checking shopify status:", error);
     }
@@ -233,51 +230,62 @@ export default function TiendasPage() {
                   <DialogTitle>Conectar con Shopify Partner</DialogTitle>
                 </DialogHeader>
                 <div className="space-y-6">
-                  {!shopifyStatus.isConnected ? (
+                  {shopifyConnectedShops.length === 0 ? (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
                       <div className="flex items-center gap-2 text-amber-800 font-medium">
                         <AlertTriangle className="h-5 w-5" />
-                        Tienda no vinculada
+                        Sin integraciones activas
                       </div>
                       <p className="text-sm text-amber-700 leading-relaxed">
-                        Tu tienda de Shopify aún no está vinculada a Powip. Para
-                        habilitar la sincronización automática, por favor
-                        solicita a soporte tu{" "}
-                        <strong>enlace de instalación seguro</strong>.
+                        No hay tiendas de Shopify vinculadas a tu cuenta de
+                        Powip. Para habilitar la sincronización automática, por
+                        favor solicita a soporte tus{" "}
+                        <strong>enlaces de instalación</strong> para cada
+                        sucursal.
                       </p>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full border-amber-300 text-amber-800 hover:bg-amber-100"
-                        onClick={() => {
-                          window.open(
-                            "https://wa.me/tu-numero-de-soporte",
-                            "_blank",
-                          );
-                        }}
-                      >
-                        Contactar a Soporte
-                      </Button>
                     </div>
                   ) : (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
-                      <div className="flex items-center gap-2 text-green-800 font-medium">
-                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                        Conectado correctamente
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-teal-800 font-medium px-1">
+                        <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+                        Tiendas vinculadas ({shopifyConnectedShops.length})
                       </div>
-                      <div className="space-y-1">
-                        <p className="text-xs text-green-700 uppercase font-bold tracking-wider">
-                          Tienda vinculada:
-                        </p>
-                        <p className="text-sm font-mono text-green-900 bg-white/50 p-2 rounded border border-green-100">
-                          {shopifyStatus.shop_url}
-                        </p>
+                      <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1">
+                        {shopifyConnectedShops.map((s, idx) => (
+                          <div
+                            key={idx}
+                            className="bg-green-50 border border-green-200 rounded-lg p-3"
+                          >
+                            <p className="text-[10px] text-green-700 uppercase font-bold tracking-wider mb-1">
+                              Dominio Shopify:
+                            </p>
+                            <p className="text-xs font-mono text-green-900 bg-white/50 p-1.5 rounded border border-green-100 truncate">
+                              {s.shop_url}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                      <p className="text-xs text-green-600 italic">
-                        La sincronización automática de órdenes está activa.
-                      </p>
                     </div>
                   )}
+
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm text-blue-700 mb-3">
+                      ¿Necesitas conectar una nueva sucursal o tienda adicional?
+                    </p>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full border-blue-300 text-blue-800 hover:bg-blue-100"
+                      onClick={() => {
+                        window.open(
+                          "https://wa.me/tu-numero-de-soporte",
+                          "_blank",
+                        );
+                      }}
+                    >
+                      Contactar a Soporte
+                    </Button>
+                  </div>
 
                   <div className="pt-2 border-t text-center">
                     <p className="text-[10px] text-gray-400">
@@ -364,29 +372,46 @@ export default function TiendasPage() {
                   <span className="inline-block mt-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
                     Activa
                   </span>
-                  {shopifyStatus.isConnected && (
+                  {shopifyConnectedShops.some(
+                    (s) => s.store_id === store.id,
+                  ) && (
                     <div className="mt-2 flex items-center gap-1 text-[10px] text-teal-600 font-medium">
                       <div className="w-1.5 h-1.5 rounded-full bg-teal-500" />
-                      Vinculada con Shopify
+                      Vinculada con Shopify (
+                      {
+                        shopifyConnectedShops.find(
+                          (s) => s.store_id === store.id,
+                        )?.shop_url
+                      }
+                      )
                     </div>
                   )}
                 </div>
                 <div className="flex gap-2 items-center">
-                  {shopifyStatus.isConnected && (
+                  {shopifyConnectedShops.some(
+                    (s) => s.store_id === store.id,
+                  ) && (
                     <Button
                       size="sm"
                       variant="ghost"
                       className="gap-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
                       onClick={() => {
-                        toast.info("Iniciando sincronización...");
+                        const shopInfo = shopifyConnectedShops.find(
+                          (s) => s.store_id === store.id,
+                        );
+                        if (!shopInfo) return;
+
+                        toast.info(
+                          `Iniciando sincronización de ${shopInfo.shop_url}...`,
+                        );
                         const integrationApiUrl =
                           process.env.NEXT_PUBLIC_API_INTEGRATIONS ||
                           "http://localhost:3007";
                         axios
                           .post(
-                            `${integrationApiUrl}/shopify/sync/${shopifyStatus.shop_url}`,
+                            `${integrationApiUrl}/shopify/sync/${shopInfo.shop_url}`,
                             {
-                              accessToken: "dynamic", // El backend ya lo tiene en la DB
+                              accessToken: "dynamic",
                             },
                           )
                           .then(() =>
