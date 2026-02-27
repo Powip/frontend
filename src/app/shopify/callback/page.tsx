@@ -47,8 +47,10 @@ function CallbackContent() {
     // Intentar traer órdenes para el PoC
     try {
       console.log("Solicitando órdenes de prueba...");
+      const integrationApiUrl =
+        process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
       const response = await axios.post(
-        `http://localhost:3007/shopify/sync/${shop}`,
+        `${integrationApiUrl}/shopify/sync/${shop}`,
         {
           accessToken: token,
         },
