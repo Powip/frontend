@@ -49,11 +49,8 @@ function CallbackContent() {
       console.log("Solicitando órdenes de prueba...");
       const integrationApiUrl =
         process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
-      const response = await axios.post(
-        `${integrationApiUrl}/shopify/sync/${shop}`,
-        {
-          accessToken: token,
-        },
+      const response = await axios.get(
+        `${integrationApiUrl}/shopify/orders/${shop}?accessToken=${token}`,
       );
 
       const fetchedOrders = response.data;
