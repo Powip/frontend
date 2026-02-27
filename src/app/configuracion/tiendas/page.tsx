@@ -55,6 +55,11 @@ export default function TiendasPage() {
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const { auth, logout } = useAuth();
+  const [shopifyConfig, setShopifyConfig] = useState({
+    url: "",
+    clientId: "",
+    clientSecret: "",
+  });
 
   const fetchStore = useCallback(async () => {
     setLoading(true);
@@ -221,28 +226,92 @@ export default function TiendasPage() {
                     <Input
                       id="shopify-url"
                       placeholder="ej: mi-tienda.myshopify.com"
-                      onChange={(e) => {
-                        (window as any)._shopifyUrl = e.target.value;
-                      }}
+                      value={shopifyConfig.url}
+                      onChange={(e) =>
+                        setShopifyConfig({
+                          ...shopifyConfig,
+                          url: e.target.value,
+                        })
+                      }
                     />
                     <p className="text-xs text-gray-500">
                       Usa la URL completa terminada en .myshopify.com
                     </p>
                   </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="client-id">Client ID (API Key)</Label>
+                    <Input
+                      id="client-id"
+                      placeholder="Ingresa tu Shopify API Key"
+                      value={shopifyConfig.clientId}
+                      onChange={(e) =>
+                        setShopifyConfig({
+                          ...shopifyConfig,
+                          clientId: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="client-secret">Client Secret</Label>
+                    <Input
+                      id="client-secret"
+                      type="password"
+                      placeholder="Ingresa tu Shopify API Secret"
+                      value={shopifyConfig.clientSecret}
+                      onChange={(e) =>
+                        setShopifyConfig({
+                          ...shopifyConfig,
+                          clientSecret: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
                   <Button
-                    onClick={() => {
-                      const shop = (window as any)._shopifyUrl;
-                      if (!shop)
-                        return toast.error("Ingresa la URL de la tienda");
+                    onClick={async () => {
+                      const { url, clientId, clientSecret } = shopifyConfig;
+                      if (!url || !clientId || !clientSecret) {
+                        return toast.error("Completa todos los campos");
+                      }
 
                       const integrationApiUrl =
                         process.env.NEXT_PUBLIC_API_INTEGRATIONS ||
                         "http://localhost:3007";
-                      window.location.href = `${integrationApiUrl}/shopify/auth/${shop}?companyId=${auth?.company?.id}`;
+
+                      try {
+                        toast.loading("Guardando configuración...");
+                        // 1. Guardar las credenciales en el backend
+                        await axios.post(
+                          `${integrationApiUrl}/shopify/setup-credentials`,
+                          {
+                            shop_url: url,
+                            client_id: clientId,
+                            client_secret: clientSecret,
+                            company_id: auth?.company?.id,
+                          },
+                        );
+
+                        toast.dismiss();
+                        toast.success(
+                          "Configuración guardada. Redirigiendo...",
+                        );
+
+                        // 2. Iniciar flujo OAuth
+                        setTimeout(() => {
+                          window.location.href = `${integrationApiUrl}/shopify/auth/${url}?companyId=${auth?.company?.id}`;
+                        }, 1000);
+                      } catch (error) {
+                        toast.dismiss();
+                        console.error("Error en setup shopify:", error);
+                        toast.error("Error al guardar la configuración");
+                      }
                     }}
                     className="w-full bg-teal-600 hover:bg-teal-700"
                   >
-                    Iniciar conexión automática
+                    Conectar e instalar App
                   </Button>
                 </div>
               </DialogContent>
