@@ -14,7 +14,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
 import axios from "axios";
-import { Edit2, Plus, Trash2, AlertTriangle, RefreshCw } from "lucide-react";
+import {
+  Edit2,
+  Plus,
+  Trash2,
+  AlertTriangle,
+  RefreshCw,
+  Info,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -54,8 +61,52 @@ export default function TiendasPage() {
   });
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [syncingGlobal, setSyncingGlobal] = useState<boolean>(false);
   const { auth, logout } = useAuth();
   const [shopifyConnectedShops, setShopifyConnectedShops] = useState<any[]>([]);
+
+  const handleSyncAll = async () => {
+    if (shopifyConnectedShops.length === 0) return;
+    setSyncingGlobal(true);
+
+    try {
+      toast.info("Iniciando sincronización global...");
+      const integrationApiUrl =
+        process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
+
+      // Sincronizar todas las tiendas en paralelo
+      const syncPromises = shopifyConnectedShops.map((shop) =>
+        axios.post(`${integrationApiUrl}/shopify/sync/${shop.shop_url}`, {
+          accessToken: "dynamic",
+        }),
+      );
+
+      const results = await Promise.all(syncPromises);
+
+      let totalOrders = 0;
+      let totalDrafts = 0;
+
+      results.forEach((res) => {
+        totalOrders += res.data.orders_synced || 0;
+        totalDrafts += res.data.drafts_synced || 0;
+      });
+
+      if (totalOrders + totalDrafts === 0) {
+        toast.success(
+          "Sincronización finalizada: No se encontraron nuevas órdenes en ninguna tienda.",
+        );
+      } else {
+        toast.success(
+          `Sincronización finalizada: ${totalOrders} órdenes y ${totalDrafts} borradores importados de ${shopifyConnectedShops.length} tiendas.`,
+        );
+      }
+    } catch (error) {
+      console.error("Error en sincronización global:", error);
+      toast.error("Error al sincronizar tiendas Shopify");
+    } finally {
+      setSyncingGlobal(false);
+    }
+  };
 
   const fetchStore = useCallback(async () => {
     setLoading(true);
@@ -212,35 +263,106 @@ export default function TiendasPage() {
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Tus tiendas</CardTitle>
           <div className="flex gap-2">
-            <Dialog>
-              <DialogTrigger asChild>
+            {shopifyConnectedShops.length > 0 ? (
+              <div className="flex items-center gap-1">
                 <Button
                   size="sm"
                   variant="outline"
-                  className={`gap-2 ${
-                    shopifyConnectedShops.length > 0
-                      ? "border-teal-600 text-teal-600 hover:bg-teal-50 shadow-sm"
-                      : "border-teal-600 text-teal-600 hover:bg-teal-50"
-                  }`}
+                  className="gap-2 border-teal-600 text-teal-600 hover:bg-teal-50 shadow-sm"
+                  onClick={handleSyncAll}
+                  disabled={syncingGlobal}
                 >
-                  {shopifyConnectedShops.length > 0 ? (
-                    <RefreshCw className="h-4 w-4 animate-in fade-in duration-500" />
-                  ) : (
+                  <RefreshCw
+                    className={`h-4 w-4 ${syncingGlobal ? "animate-spin" : ""}`}
+                  />
+                  Sincronizar con Shopify
+                </Button>
+
+                <Dialog>
+                  <DialogTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-9 w-9 p-0 text-gray-400 hover:text-teal-600"
+                    >
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="max-w-md">
+                    <DialogHeader>
+                      <DialogTitle>Conexión Shopify Partner</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-6">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-teal-800 font-medium px-1">
+                          <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+                          Tiendas vinculadas ({shopifyConnectedShops.length})
+                        </div>
+                        <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1">
+                          {shopifyConnectedShops.map((s, idx) => (
+                            <div
+                              key={idx}
+                              className="bg-green-50 border border-green-200 rounded-lg p-3"
+                            >
+                              <p className="text-[10px] text-green-700 uppercase font-bold tracking-wider mb-1">
+                                Dominio Shopify:
+                              </p>
+                              <p className="text-xs font-mono text-green-900 bg-white/50 p-1.5 rounded border border-green-100 truncate">
+                                {s.shop_url}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <p className="text-sm text-blue-700 mb-3">
+                          ¿Necesitas conectar una nueva sucursal o tienda
+                          adicional?
+                        </p>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="w-full border-blue-300 text-blue-800 hover:bg-blue-100"
+                          onClick={() => {
+                            window.open(
+                              "https://wa.me/tu-numero-de-soporte",
+                              "_blank",
+                            );
+                          }}
+                        >
+                          Contactar a Soporte
+                        </Button>
+                      </div>
+
+                      <div className="pt-2 border-t text-center">
+                        <p className="text-[10px] text-gray-400">
+                          ID Compañía: {auth?.company?.id}
+                        </p>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+              </div>
+            ) : (
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-2 border-teal-600 text-teal-600 hover:bg-teal-50"
+                  >
                     <div className="w-4 h-4 rounded bg-green-500 flex items-center justify-center text-[10px] text-white">
                       S
                     </div>
-                  )}
-                  {shopifyConnectedShops.length > 0
-                    ? "Sincronizar con Shopify"
-                    : "Conectar Shopify"}
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Conectar con Shopify Partner</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-6">
-                  {shopifyConnectedShops.length === 0 ? (
+                    Conectar Shopify
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Conectar con Shopify Partner</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-6">
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
                       <div className="flex items-center gap-2 text-amber-800 font-medium">
                         <AlertTriangle className="h-5 w-5" />
@@ -254,57 +376,36 @@ export default function TiendasPage() {
                         sucursal.
                       </p>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-2 text-teal-800 font-medium px-1">
-                        <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
-                        Tiendas vinculadas ({shopifyConnectedShops.length})
-                      </div>
-                      <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1">
-                        {shopifyConnectedShops.map((s, idx) => (
-                          <div
-                            key={idx}
-                            className="bg-green-50 border border-green-200 rounded-lg p-3"
-                          >
-                            <p className="text-[10px] text-green-700 uppercase font-bold tracking-wider mb-1">
-                              Dominio Shopify:
-                            </p>
-                            <p className="text-xs font-mono text-green-900 bg-white/50 p-1.5 rounded border border-green-100 truncate">
-                              {s.shop_url}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
+
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-blue-700 mb-3">
+                        ¿Necesitas conectar una nueva sucursal o tienda
+                        adicional?
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="w-full border-blue-300 text-blue-800 hover:bg-blue-100"
+                        onClick={() => {
+                          window.open(
+                            "https://wa.me/tu-numero-de-soporte",
+                            "_blank",
+                          );
+                        }}
+                      >
+                        Contactar a Soporte
+                      </Button>
                     </div>
-                  )}
 
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-blue-700 mb-3">
-                      ¿Necesitas conectar una nueva sucursal o tienda adicional?
-                    </p>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full border-blue-300 text-blue-800 hover:bg-blue-100"
-                      onClick={() => {
-                        window.open(
-                          "https://wa.me/tu-numero-de-soporte",
-                          "_blank",
-                        );
-                      }}
-                    >
-                      Contactar a Soporte
-                    </Button>
+                    <div className="pt-2 border-t text-center">
+                      <p className="text-[10px] text-gray-400">
+                        ID Compañía: {auth?.company?.id}
+                      </p>
+                    </div>
                   </div>
-
-                  <div className="pt-2 border-t text-center">
-                    <p className="text-[10px] text-gray-400">
-                      ID Compañía: {auth?.company?.id}
-                    </p>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
+                </DialogContent>
+              </Dialog>
+            )}
 
             <Dialog>
               <DialogTrigger asChild>
