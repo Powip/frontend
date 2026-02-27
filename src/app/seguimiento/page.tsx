@@ -1822,7 +1822,6 @@ export default function SeguimientoPage() {
                               <TableCell className="w-[100px] min-w-[100px] text-red-600 font-medium">
                                 S/ {pendingPayment.toFixed(2)}
                               </TableCell>
-<<<<<<< HEAD
                               {/* Nro Tracking */}
                               <TableCell className="w-[120px] min-w-[120px]">
                                 <div className="relative flex items-center">
@@ -1941,13 +1940,12 @@ export default function SeguimientoPage() {
                                 >
                                   {order.sellerName || "-"}
                                 </span>
-=======
+                              </TableCell>
                               <TableCell className="w-[100px] min-w-[100px] font-medium text-blue-600">
                                 S/{" "}
                                 {Number(order.carrierShippingCost || 0).toFixed(
                                   2,
                                 )}
->>>>>>> 70fdbf1af03d082327f869dccf7a97e48600fe3d
                               </TableCell>
                               <TableCell className="w-[100px] min-w-[100px]">
                                 <Badge className="text-[10px]">
