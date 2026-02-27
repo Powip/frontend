@@ -121,6 +121,7 @@ export interface Sale {
   callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
   hasPendingApprovalPayments: boolean;
   sellerName: string | null;
+  externalSource?: string | null;
 }
 
 /* -----------------------------------------
@@ -166,6 +167,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     callStatus: order.callStatus,
     hasPendingApprovalPayments,
     sellerName: order.sellerName ?? null,
+    externalSource: order.externalSource ?? null,
   };
 }
 
@@ -937,23 +939,22 @@ Estado: ${sale.status}
               <TableCell>
                 {sale.zone ? (
                   <Badge
-                    className={`text-xs whitespace-nowrap ${
-                      sale.zone === "LIMA_NORTE"
-                        ? "bg-blue-100 text-blue-800"
-                        : sale.zone === "CALLAO"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : sale.zone === "LIMA_CENTRO"
-                            ? "bg-green-100 text-green-800"
-                            : sale.zone === "LIMA_SUR"
-                              ? "bg-purple-100 text-purple-800"
-                              : sale.zone === "LIMA_ESTE"
-                                ? "bg-orange-100 text-orange-800"
-                                : sale.zone === "ZONAS_ALEDANAS"
-                                  ? "bg-gray-100 text-gray-800"
-                                  : sale.zone === "PROVINCIAS"
-                                    ? "bg-red-100 text-red-800"
-                                    : "bg-muted text-muted-foreground"
-                    }`}
+                    className={`text-xs whitespace-nowrap ${sale.zone === "LIMA_NORTE"
+                      ? "bg-blue-100 text-blue-800"
+                      : sale.zone === "CALLAO"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : sale.zone === "LIMA_CENTRO"
+                          ? "bg-green-100 text-green-800"
+                          : sale.zone === "LIMA_SUR"
+                            ? "bg-purple-100 text-purple-800"
+                            : sale.zone === "LIMA_ESTE"
+                              ? "bg-orange-100 text-orange-800"
+                              : sale.zone === "ZONAS_ALEDANAS"
+                                ? "bg-gray-100 text-gray-800"
+                                : sale.zone === "PROVINCIAS"
+                                  ? "bg-red-100 text-red-800"
+                                  : "bg-muted text-muted-foreground"
+                      }`}
                   >
                     {sale.zone === "LIMA_NORTE"
                       ? "🟦 L. Norte"
@@ -1241,7 +1242,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(preparados.length / 10) || 1}
                 totalItems={preparados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>
@@ -1316,7 +1317,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(noConfirmados.length / 10) || 1}
                 totalItems={noConfirmados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>
@@ -1415,7 +1416,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(contactados.length / 10) || 1}
                 totalItems={contactados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>
@@ -1492,7 +1493,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(despachados.length / 10) || 1}
                 totalItems={despachados.length}
                 itemsPerPage={10}
-                onPageChange={() => {}}
+                onPageChange={() => { }}
                 itemName="pedidos"
               />
             </Card>
