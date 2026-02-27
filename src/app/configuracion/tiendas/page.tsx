@@ -275,7 +275,9 @@ export default function TiendasPage() {
                   <RefreshCw
                     className={`h-4 w-4 ${syncingGlobal ? "animate-spin" : ""}`}
                   />
-                  Sincronizar con Shopify
+                  {syncingGlobal
+                    ? "Sincronizando..."
+                    : "Sincronizar con Shopify"}
                 </Button>
 
                 <Dialog>
