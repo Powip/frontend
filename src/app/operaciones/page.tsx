@@ -57,7 +57,10 @@ import CancellationModal, {
   CancellationReason,
 } from "@/components/modals/CancellationModal";
 import CourierAssignmentModal from "@/components/modals/CourierAssignmentModal";
-import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
+import {
+  getAvailableStatuses,
+  ORDER_STATUS_FLOW,
+} from "@/utils/domain/orders-status-flow";
 import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
@@ -68,6 +71,8 @@ import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import { Badge } from "@/components/ui/badge";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 import AddToExistingGuideModal from "@/components/modals/AddToExistingGuideModal";
+import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
+import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
 
 /* -----------------------------------------
    Types
@@ -207,15 +212,100 @@ export default function OperacionesPage() {
   const [filtersAnulados, setFiltersAnulados] =
     useState<SalesFilters>(emptySalesFilters);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
 
   // Paginación
   const ITEMS_PER_PAGE = 10;
   const [pageEntregados, setPageEntregados] = useState(1);
   const [pageAnulados, setPageAnulados] = useState(1);
 
-  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
-    new Set(),
+  const [activeTab, setActiveTab] = useState("preparados");
+
+  // Estados de selección independientes por pestaña
+  const [selectedPreparadosIds, setSelectedPreparadosIds] = useState<
+    Set<string>
+  >(new Set());
+  const [selectedNoConfirmadosIds, setSelectedNoConfirmadosIds] = useState<
+    Set<string>
+  >(new Set());
+  const [selectedConfirmadosIds, setSelectedConfirmadosIds] = useState<
+    Set<string>
+  >(new Set());
+  const [selectedContactadosIds, setSelectedContactadosIds] = useState<
+    Set<string>
+  >(new Set());
+  const [selectedDespachadosIds, setSelectedDespachadosIds] = useState<
+    Set<string>
+  >(new Set());
+  const [selectedEntregadosIds, setSelectedEntregadosIds] = useState<
+    Set<string>
+  >(new Set());
+  const [selectedAnuladosOpsIds, setSelectedAnuladosOpsIds] = useState<
+    Set<string>
+  >(new Set());
+
+  // Helper para obtener el set actual según la pestaña
+  const getSelectedIdsForActiveTab = useCallback(() => {
+    switch (activeTab) {
+      case "preparados":
+        return selectedPreparadosIds;
+      case "no_confirmados":
+        return selectedNoConfirmadosIds;
+      case "confirmados":
+        return selectedConfirmadosIds;
+      case "contactados":
+        return selectedContactadosIds;
+      case "despachados":
+        return selectedDespachadosIds;
+      case "entregados":
+        return selectedEntregadosIds;
+      case "anulados":
+        return selectedAnuladosOpsIds;
+      default:
+        return new Set<string>();
+    }
+  }, [
+    activeTab,
+    selectedPreparadosIds,
+    selectedNoConfirmadosIds,
+    selectedConfirmadosIds,
+    selectedContactadosIds,
+    selectedDespachadosIds,
+    selectedEntregadosIds,
+    selectedAnuladosOpsIds,
+  ]);
+
+  // Helper para setear el set actual según la pestaña
+  const setSelectedIdsForActiveTab = useCallback(
+    (newSet: Set<string>) => {
+      switch (activeTab) {
+        case "preparados":
+          setSelectedPreparadosIds(newSet);
+          break;
+        case "no_confirmados":
+          setSelectedNoConfirmadosIds(newSet);
+          break;
+        case "confirmados":
+          setSelectedConfirmadosIds(newSet);
+          break;
+        case "contactados":
+          setSelectedContactadosIds(newSet);
+          break;
+        case "despachados":
+          setSelectedDespachadosIds(newSet);
+          break;
+        case "entregados":
+          setSelectedEntregadosIds(newSet);
+          break;
+        case "anulados":
+          setSelectedAnuladosOpsIds(newSet);
+          break;
+      }
+    },
+    [activeTab],
   );
+
+  const selectedSaleIds = getSelectedIdsForActiveTab();
 
   // Estado para modal de cancelación
   const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
@@ -252,6 +342,45 @@ export default function OperacionesPage() {
 
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
+
+  // Calcular estados disponibles comunes para la selección de la pestaña activa
+  const bulkAvailableStatuses = useMemo(() => {
+    const currentSelectedIds = getSelectedIdsForActiveTab();
+    if (currentSelectedIds.size === 0) return [];
+
+    const selectedSalesList = sales.filter((s) => currentSelectedIds.has(s.id));
+    if (selectedSalesList.length === 0) return [];
+
+    // Si hay alguna anulada, no permitimos cambios masivos
+    if (selectedSalesList.some((s) => s.status === "ANULADO")) return [];
+
+    let intersection: OrderStatus[] = [];
+
+    selectedSalesList.forEach((sale, index) => {
+      const nextStatuses = (ORDER_STATUS_FLOW as any)[sale.status] || [];
+      const filteredNext = nextStatuses.filter(
+        (s: OrderStatus) => s !== "ANULADO",
+      );
+
+      if (index === 0) {
+        intersection = filteredNext;
+      } else {
+        intersection = intersection.filter((s) => filteredNext.includes(s));
+      }
+    });
+
+    return intersection;
+  }, [
+    selectedPreparadosIds,
+    selectedNoConfirmadosIds,
+    selectedConfirmadosIds,
+    selectedContactadosIds,
+    selectedDespachadosIds,
+    selectedEntregadosIds,
+    selectedAnuladosOpsIds,
+    activeTab,
+    sales,
+  ]);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -343,6 +472,68 @@ export default function OperacionesPage() {
     }
   };
 
+  const handleBulkStatusChange = async (newStatus: OrderStatus) => {
+    const selectedIds = Array.from(selectedSaleIds);
+    if (selectedIds.length === 0) return;
+
+    if (newStatus === "ANULADO") {
+      toast.error(
+        "Para anular pedidos, use la opción individual con motivo de cancelación.",
+      );
+      return;
+    }
+
+    // Validar si algún pedido requiere courier antes de pasar a EN_ENVIO masivamente
+    if (newStatus === "EN_ENVIO") {
+      const ordersMissingCourier = sales.filter(
+        (s) => selectedSaleIds.has(s.id) && !s.courier,
+      );
+      if (ordersMissingCourier.length > 0) {
+        toast.error(
+          `Hay ${ordersMissingCourier.length} pedido(s) sin courier asignado. No se puede proceder a EN_ENVIO.`,
+        );
+        return;
+      }
+    }
+
+    setIsBulkLoading(true);
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
+
+    try {
+      const result = await processBulkStatusChange(
+        selectedIds,
+        newStatus,
+        apiBaseUrl,
+        undefined,
+        15, // Ligeramente más agresivo para operaciones si se desea, o mantener 10
+      );
+
+      if (result.success.length > 0) {
+        toast.success(
+          `${result.success.length} pedido(s) actualizados a ${newStatus}`,
+        );
+      }
+
+      if (result.failed.length > 0) {
+        toast.error(
+          `${result.failed.length} pedido(s) no pudieron actualizarse.`,
+          {
+            description:
+              "Verifique las reglas de transición de estado o asignación de courier.",
+            duration: 6000,
+          },
+        );
+      }
+
+      setSelectedIdsForActiveTab(new Set());
+      fetchOrders();
+    } catch (error) {
+      toast.error("Error crítico durante la actualización masiva.");
+    } finally {
+      setIsBulkLoading(false);
+    }
+  };
+
   const handleConfirmCancellation = async (
     reason: CancellationReason,
     notes?: string,
@@ -422,7 +613,7 @@ export default function OperacionesPage() {
       }
 
       setCourierModalOpen(false);
-      setSelectedSaleIds(new Set());
+      setSelectedIdsForActiveTab(new Set());
       fetchOrders();
     } catch (error: any) {
       const backendMessage = error?.response?.data?.message;
@@ -492,7 +683,7 @@ export default function OperacionesPage() {
       }
 
       setCreateGuideModalOpen(false);
-      setSelectedSaleIds(new Set());
+      setSelectedIdsForActiveTab(new Set());
       fetchOrders();
 
       // Abrir modal de detalles de la primera guía creada
@@ -571,7 +762,7 @@ export default function OperacionesPage() {
         `${selectedLlamados.length} pedido(s) agregados a la guía ${guideNumber}`,
       );
       setAddToGuideModalOpen(false);
-      setSelectedSaleIds(new Set());
+      setSelectedIdsForActiveTab(new Set());
       fetchOrders();
     } catch (error: any) {
       console.error("Error adding to guide:", error);
@@ -613,15 +804,13 @@ export default function OperacionesPage() {
   };
 
   const toggleSale = (id: string) => {
-    setSelectedSaleIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+    const next = new Set(selectedSaleIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIdsForActiveTab(next);
   };
 
   useEffect(() => {
@@ -772,7 +961,7 @@ Estado: ${sale.status}
       await printReceipts(receipts);
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
-      setSelectedSaleIds(new Set());
+      setSelectedIdsForActiveTab(new Set());
     } catch (error) {
       console.error("Error en impresión masiva", error);
       toast.error("Error al preparar los recibos para imprimir");
@@ -799,15 +988,13 @@ Estado: ${sale.status}
                 }
                 onChange={(e) => {
                   if (e.target.checked) {
-                    setSelectedSaleIds(
-                      (prev) => new Set([...prev, ...data.map((s) => s.id)]),
-                    );
+                    const next = new Set(selectedSaleIds);
+                    data.forEach((s) => next.add(s.id));
+                    setSelectedIdsForActiveTab(next);
                   } else {
-                    setSelectedSaleIds((prev) => {
-                      const next = new Set(prev);
-                      data.forEach((s) => next.delete(s.id));
-                      return next;
-                    });
+                    const next = new Set(selectedSaleIds);
+                    data.forEach((s) => next.delete(s.id));
+                    setSelectedIdsForActiveTab(next);
                   }
                 }}
               />
@@ -1158,7 +1345,11 @@ Estado: ${sale.status}
         </div>
 
         {/* Tabs para Operaciones */}
-        <Tabs defaultValue="preparados" className="w-full">
+        <Tabs
+          defaultValue="preparados"
+          className="w-full"
+          onValueChange={setActiveTab}
+        >
           <TabsList className="mb-4">
             <TabsTrigger value="preparados">
               Preparados ({preparados.length})
@@ -1186,6 +1377,14 @@ Estado: ${sale.status}
               <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle>Pedidos Preparados</CardTitle>
                 <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <BulkStatusSelect
+                    selectedCount={selectedSaleIds.size}
+                    availableStatuses={ALL_STATUSES.filter(
+                      (s) => s !== "ANULADO",
+                    )}
+                    onStatusChange={handleBulkStatusChange}
+                    isLoading={isBulkLoading}
+                  />
                   <Button
                     variant="outline"
                     className="w-full lg:w-auto"
@@ -1255,6 +1454,12 @@ Estado: ${sale.status}
                   Pedidos NO CONFIRMADOS
                 </CardTitle>
                 <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <BulkStatusSelect
+                    selectedCount={selectedSaleIds.size}
+                    availableStatuses={bulkAvailableStatuses}
+                    onStatusChange={handleBulkStatusChange}
+                    isLoading={isBulkLoading}
+                  />
                   <Button
                     variant="outline"
                     className="w-full lg:w-auto"
@@ -1328,6 +1533,12 @@ Estado: ${sale.status}
               <CardHeader className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
                 <CardTitle>Pedidos Contactados</CardTitle>
                 <div className="flex flex-col sm:flex-row flex-wrap gap-2 w-full xl:w-auto">
+                  <BulkStatusSelect
+                    selectedCount={selectedSaleIds.size}
+                    availableStatuses={bulkAvailableStatuses}
+                    onStatusChange={handleBulkStatusChange}
+                    isLoading={isBulkLoading}
+                  />
                   <Button
                     variant="default"
                     className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700"
@@ -1427,6 +1638,12 @@ Estado: ${sale.status}
               <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle>Pedidos En Envío</CardTitle>
                 <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <BulkStatusSelect
+                    selectedCount={selectedSaleIds.size}
+                    availableStatuses={bulkAvailableStatuses}
+                    onStatusChange={handleBulkStatusChange}
+                    isLoading={isBulkLoading}
+                  />
                   <Button
                     variant="outline"
                     className="w-full lg:w-auto"
@@ -1506,6 +1723,12 @@ Estado: ${sale.status}
                   Pedidos Entregados
                 </CardTitle>
                 <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <BulkStatusSelect
+                    selectedCount={selectedSaleIds.size}
+                    availableStatuses={bulkAvailableStatuses}
+                    onStatusChange={handleBulkStatusChange}
+                    isLoading={isBulkLoading}
+                  />
                   <Button
                     variant="outline"
                     className="w-full lg:w-auto"
@@ -1588,6 +1811,14 @@ Estado: ${sale.status}
                   Pedidos Anulados
                 </CardTitle>
                 <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <BulkStatusSelect
+                    selectedCount={selectedSaleIds.size}
+                    availableStatuses={ALL_STATUSES.filter(
+                      (s) => s !== "ANULADO",
+                    )}
+                    onStatusChange={handleBulkStatusChange}
+                    isLoading={isBulkLoading}
+                  />
                   <Button
                     variant="outline"
                     className="w-full lg:w-auto"

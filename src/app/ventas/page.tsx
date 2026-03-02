@@ -48,7 +48,10 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CancellationModal, {
   CancellationReason,
 } from "@/components/modals/CancellationModal";
-import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
+import {
+  getAvailableStatuses,
+  ORDER_STATUS_FLOW,
+} from "@/utils/domain/orders-status-flow";
 import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
@@ -63,6 +66,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
+import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
+import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
 
 /* -----------------------------------------
    Types
@@ -218,12 +223,73 @@ export default function VentasPage() {
   >({});
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("pendientes");
-  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
+
+  // Estados de selección independientes por pestaña
+  const [selectedPendientesIds, setSelectedPendientesIds] = useState<
+    Set<string>
+  >(new Set());
+  const [selectedAnuladosIds, setSelectedAnuladosIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [selectedTodasIds, setSelectedTodasIds] = useState<Set<string>>(
     new Set(),
   );
 
+  // Helper para obtener el set actual según la pestaña
+  const getSelectedIdsForActiveTab = () => {
+    if (activeTab === "pendientes") return selectedPendientesIds;
+    if (activeTab === "anuladas") return selectedAnuladosIds;
+    return selectedTodasIds;
+  };
+
+  // Helper para setear el set actual según la pestaña
+  const setSelectedIdsForActiveTab = (newSet: Set<string>) => {
+    if (activeTab === "pendientes") setSelectedPendientesIds(newSet);
+    else if (activeTab === "anuladas") setSelectedAnuladosIds(newSet);
+    else setSelectedTodasIds(newSet);
+  };
+
+  const selectedSaleIds = getSelectedIdsForActiveTab();
+  const [pageConfirmados, setPageConfirmados] = useState(1);
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
+
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
+
+  // Calcular estados disponibles comunes para la selección de la pestaña activa
+  const bulkAvailableStatuses = useMemo(() => {
+    const currentSelectedIds = getSelectedIdsForActiveTab();
+    if (currentSelectedIds.size === 0) return [];
+
+    const selectedSales = sales.filter((s) => currentSelectedIds.has(s.id));
+    if (selectedSales.length === 0) return [];
+
+    // Si hay alguna anulada, no permitimos cambios masivos
+    if (selectedSales.some((s) => s.status === "ANULADO")) return [];
+
+    let intersection: OrderStatus[] = [];
+
+    selectedSales.forEach((sale, index) => {
+      const nextStatuses = (ORDER_STATUS_FLOW as any)[sale.status] || [];
+      const filteredNext = nextStatuses.filter(
+        (s: OrderStatus) => s !== "ANULADO",
+      );
+
+      if (index === 0) {
+        intersection = filteredNext;
+      } else {
+        intersection = intersection.filter((s) => filteredNext.includes(s));
+      }
+    });
+
+    return intersection;
+  }, [
+    selectedPendientesIds,
+    selectedAnuladosIds,
+    selectedTodasIds,
+    activeTab,
+    sales,
+  ]);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -321,15 +387,13 @@ export default function VentasPage() {
   };
 
   const toggleSale = (id: string) => {
-    setSelectedSaleIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
+    const next = new Set(selectedSaleIds);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    setSelectedIdsForActiveTab(next);
   };
 
   useEffect(() => {
@@ -483,7 +547,7 @@ Estado: ${sale.status}
     }
 
     fetchOrders();
-    setSelectedSaleIds(new Set());
+    setSelectedIdsForActiveTab(new Set());
     setPendingPrintSales([]);
     setPrintConfirmOpen(false);
     setIsPrinting(false);
@@ -525,12 +589,61 @@ Estado: ${sale.status}
       await printReceipts(receipts);
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
-      setSelectedSaleIds(new Set());
+      setSelectedIdsForActiveTab(new Set());
     } catch (error) {
       console.error("Error en impresión masiva", error);
       toast.error("Error al preparar los recibos para imprimir");
     } finally {
       setIsPrinting(false);
+    }
+  };
+
+  const handleBulkStatusChange = async (newStatus: OrderStatus) => {
+    const selectedIds = Array.from(selectedSaleIds);
+    if (selectedIds.length === 0) return;
+
+    if (newStatus === "ANULADO") {
+      toast.error(
+        "Para anular pedidos, use la opción individual con motivo de cancelación.",
+      );
+      return;
+    }
+
+    setIsBulkLoading(true);
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
+
+    try {
+      const result = await processBulkStatusChange(
+        selectedIds,
+        newStatus,
+        apiBaseUrl,
+        (processed, total) => {
+          // Opcional: Podríamos mostrar un toast de progreso aquí si quisiéramos algo muy visual
+        },
+      );
+
+      if (result.success.length > 0) {
+        toast.success(
+          `${result.success.length} pedido(s) actualizados a ${newStatus}`,
+        );
+      }
+
+      if (result.failed.length > 0) {
+        toast.error(
+          `${result.failed.length} pedido(s) no pudieron actualizarse.`,
+          {
+            description: "Puede ser por reglas de transición de estado.",
+            duration: 6000,
+          },
+        );
+      }
+
+      setSelectedIdsForActiveTab(new Set());
+      fetchOrders();
+    } catch (error) {
+      toast.error("Error crítico durante la actualización masiva.");
+    } finally {
+      setIsBulkLoading(false);
     }
   };
 
@@ -699,15 +812,13 @@ Estado: ${sale.status}
                 }
                 onChange={(e) => {
                   if (e.target.checked) {
-                    setSelectedSaleIds(
-                      (prev) => new Set([...prev, ...data.map((s) => s.id)]),
-                    );
+                    const next = new Set(selectedSaleIds);
+                    data.forEach((s) => next.add(s.id));
+                    setSelectedIdsForActiveTab(next);
                   } else {
-                    setSelectedSaleIds((prev) => {
-                      const next = new Set(prev);
-                      data.forEach((s) => next.delete(s.id));
-                      return next;
-                    });
+                    const next = new Set(selectedSaleIds);
+                    data.forEach((s) => next.delete(s.id));
+                    setSelectedIdsForActiveTab(next);
                   }
                 }}
               />
@@ -1040,15 +1151,13 @@ Estado: ${sale.status}
                 }
                 onChange={(e) => {
                   if (e.target.checked) {
-                    setSelectedSaleIds(
-                      (prev) => new Set([...prev, ...data.map((s) => s.id)]),
-                    );
+                    const next = new Set(selectedSaleIds);
+                    data.forEach((s) => next.add(s.id));
+                    setSelectedIdsForActiveTab(next);
                   } else {
-                    setSelectedSaleIds((prev) => {
-                      const next = new Set(prev);
-                      data.forEach((s) => next.delete(s.id));
-                      return next;
-                    });
+                    const next = new Set(selectedSaleIds);
+                    data.forEach((s) => next.delete(s.id));
+                    setSelectedIdsForActiveTab(next);
                   }
                 }}
               />
@@ -1383,6 +1492,12 @@ Estado: ${sale.status}
               <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle>Ventas Pendientes</CardTitle>
                 <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <BulkStatusSelect
+                    selectedCount={selectedSaleIds.size}
+                    availableStatuses={bulkAvailableStatuses}
+                    onStatusChange={handleBulkStatusChange}
+                    isLoading={isBulkLoading}
+                  />
                   <Button
                     variant="outline"
                     className="w-full lg:w-auto"
@@ -1441,6 +1556,12 @@ Estado: ${sale.status}
               <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle>Ventas Anuladas</CardTitle>
                 <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <BulkStatusSelect
+                    selectedCount={selectedSaleIds.size}
+                    availableStatuses={bulkAvailableStatuses}
+                    onStatusChange={handleBulkStatusChange}
+                    isLoading={isBulkLoading}
+                  />
                   <Button
                     variant="outline"
                     className="w-full lg:w-auto"
@@ -1505,6 +1626,12 @@ Estado: ${sale.status}
               <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <CardTitle>Todas las Ventas</CardTitle>
                 <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <BulkStatusSelect
+                    selectedCount={selectedSaleIds.size}
+                    availableStatuses={bulkAvailableStatuses}
+                    onStatusChange={handleBulkStatusChange}
+                    isLoading={isBulkLoading}
+                  />
                   <Button
                     variant="outline"
                     className="w-full lg:w-auto"
