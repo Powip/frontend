@@ -342,24 +342,34 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
     };
 
     console.log("📦 Payload bulk-import:", JSON.stringify(payload, null, 2));
+    const apiUrl = `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/bulk-import`;
+    console.log("🌐 API URL:", apiUrl);
 
     setIsSaving(true);
     try {
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/bulk-import`,
-        payload,
-      );
+      const res = await axios.post(apiUrl, payload);
 
       console.log("✅ Respuesta bulk-import:", res.data);
-      toast.success(
-        res.data.message ||
-        `Importación completada: ${res.data.created} productos creados`,
-      );
-      onBack(); // Return to the selector
+
+      if (res.data.created === 0 && res.data.errors > 0) {
+        toast.error(`No se crearon productos. ${res.data.errors} errores — revisá la consola`);
+      } else if (res.data.created > 0) {
+        toast.success(
+          res.data.message ||
+          `Importación completada: ${res.data.created} productos creados`,
+        );
+        onBack();
+      } else {
+        toast.warning("La respuesta no indica productos creados. Verificá la consola.");
+      }
     } catch (err: any) {
-      console.error("❌ Error bulk-import:", err.response?.data || err.message);
+      const errorDetail = err.response?.data
+        ? JSON.stringify(err.response.data)
+        : err.message;
+      console.error("❌ Error bulk-import:", errorDetail);
+      console.error("❌ Status:", err.response?.status);
       toast.error(
-        err.response?.data?.message || "Error al guardar los productos",
+        `Error (${err.response?.status || "red"}): ${err.response?.data?.message || err.message}`,
       );
     } finally {
       setIsSaving(false);
