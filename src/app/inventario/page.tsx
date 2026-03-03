@@ -44,6 +44,7 @@ import InventarioModal from "@/components/modals/InventarioModal";
 
 import AddStockModal from "@/components/modals/AddStockModal";
 import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
+import ImportExcelModal from "@/components/modals/ImportExcelModal";
 import { Pagination } from "@/components/ui/pagination";
 
 const ITEMS_PER_PAGE = 10;
@@ -374,10 +375,12 @@ export default function InventarioPage() {
               </Button>
             </Link>
             <Button onClick={() => setOpen(true)}>Crear Inventario</Button>
-            {selectedInventoryId && (
-              deleteInventoryConfirm ? (
+            {selectedInventoryId &&
+              (deleteInventoryConfirm ? (
                 <div className="flex items-center gap-2">
-                  <span className="text-sm text-destructive font-medium">¿Estás seguro?</span>
+                  <span className="text-sm text-destructive font-medium">
+                    ¿Estás seguro?
+                  </span>
                   <Button
                     variant="destructive"
                     size="sm"
@@ -397,14 +400,20 @@ export default function InventarioPage() {
                         window.location.reload();
                       } catch (err: any) {
                         console.error(err);
-                        toast.error(err.response?.data?.message || "Error al eliminar inventario");
+                        toast.error(
+                          err.response?.data?.message ||
+                            "Error al eliminar inventario",
+                        );
                       } finally {
                         setIsDeletingInventory(false);
                       }
                     }}
                   >
                     {isDeletingInventory ? (
-                      <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Eliminando...</>
+                      <>
+                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />{" "}
+                        Eliminando...
+                      </>
                     ) : (
                       "Sí, eliminar"
                     )}
@@ -427,8 +436,7 @@ export default function InventarioPage() {
                   <Trash2 className="mr-2 h-4 w-4" />
                   Eliminar Inventario
                 </Button>
-              )
-            )}
+              ))}
           </div>
           {/* INVENTORY SELECT */}
           <div className="mb-6 flex flex-col gap-4 sm:flex-row">
@@ -486,7 +494,11 @@ export default function InventarioPage() {
 
             {/* EXTRA ACTIONS (EXPORTAR, FILTROS, ETC) */}
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setImportOpen(true)}
+              >
                 <Download className="mr-2 h-4 w-4 rotate-180" />
                 Importar Excel
               </Button>
