@@ -41,6 +41,7 @@ import Link from "next/link";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import InventarioModal from "@/components/modals/InventarioModal";
+import ImportExcelModal from "@/components/modals/ImportExcelModal";
 import AddStockModal from "@/components/modals/AddStockModal";
 import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
 import { Pagination } from "@/components/ui/pagination";
@@ -122,7 +123,10 @@ export default function InventarioPage() {
   const [isLoadingVariants, setIsLoadingVariants] = useState(false);
   const [isLoadingInventories, setIsLoadingInventories] = useState(true);
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [deleteInventoryConfirm, setDeleteInventoryConfirm] = useState(false);
+  const [isDeletingInventory, setIsDeletingInventory] = useState(false);
 
   const stores = auth?.company?.stores || [];
   const currentStore =
@@ -370,6 +374,61 @@ export default function InventarioPage() {
               </Button>
             </Link>
             <Button onClick={() => setOpen(true)}>Crear Inventario</Button>
+            {selectedInventoryId && (
+              deleteInventoryConfirm ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-destructive font-medium">¿Estás seguro?</span>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    disabled={isDeletingInventory}
+                    onClick={async () => {
+                      setIsDeletingInventory(true);
+                      try {
+                        await axios.delete(
+                          `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/${selectedInventoryId}`,
+                        );
+                        toast.success("Inventario eliminado correctamente");
+                        setSelectedInventoryId(null);
+                        setInventoryItems([]);
+                        setProductsWithDetails([]);
+                        setDeleteInventoryConfirm(false);
+                        // Forzar recarga de inventarios
+                        window.location.reload();
+                      } catch (err: any) {
+                        console.error(err);
+                        toast.error(err.response?.data?.message || "Error al eliminar inventario");
+                      } finally {
+                        setIsDeletingInventory(false);
+                      }
+                    }}
+                  >
+                    {isDeletingInventory ? (
+                      <><Loader2 className="mr-1 h-3 w-3 animate-spin" /> Eliminando...</>
+                    ) : (
+                      "Sí, eliminar"
+                    )}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setDeleteInventoryConfirm(false)}
+                    disabled={isDeletingInventory}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDeleteInventoryConfirm(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Eliminar Inventario
+                </Button>
+              )
+            )}
           </div>
           {/* INVENTORY SELECT */}
           <div className="mb-6 flex flex-col gap-4 sm:flex-row">
@@ -427,12 +486,14 @@ export default function InventarioPage() {
 
             {/* EXTRA ACTIONS (EXPORTAR, FILTROS, ETC) */}
             <div className="flex gap-2">
-              {auth?.user?.role === "ADMIN" && (
-                <Button variant="outline" size="sm" onClick={handleExportExcel}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Exportar en Excel
-                </Button>
-              )}
+              <Button variant="outline" size="sm" onClick={() => setImportOpen(true)}>
+                <Download className="mr-2 h-4 w-4 rotate-180" />
+                Importar Excel
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleExportExcel}>
+                <Download className="mr-2 h-4 w-4" />
+                Exportar en Excel
+              </Button>
             </div>
           </div>
 
@@ -564,6 +625,23 @@ export default function InventarioPage() {
         }}
         onSaved={() => {
           setOpen(false);
+        }}
+      />
+
+      <ImportExcelModal
+        open={importOpen}
+        onClose={() => setImportOpen(false)}
+        inventoryId={selectedInventoryId || ""}
+        onSuccess={() => {
+          // Recargar items del inventario
+          if (selectedInventoryId) {
+            axios
+              .get(
+                `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`,
+              )
+              .then((res) => setInventoryItems(res.data))
+              .catch((err) => console.error(err));
+          }
         }}
       />
 
