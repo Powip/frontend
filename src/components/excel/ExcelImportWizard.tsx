@@ -181,15 +181,18 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
     };
     headerRow.alignment = { horizontal: "center" };
 
-    /* Fila de ejemplo */
+    /* Fila de ejemplo basada en la categoría */
+    const catName = selectedCategory?.name || "Producto";
+    const subName = selectedSubcategory?.name || "";
+    const prefix = subName.substring(0, 3).toUpperCase() || catName.substring(0, 3).toUpperCase();
     sheet.addRow({
-      name: "Remera Básica",
-      description: "Remera de algodón 100%",
-      companySku: "REM-001",
-      attributes: "Color:Rojo,Talle:M",
-      priceBase: 1000,
-      priceVta: 2500,
-      quantity: 50,
+      name: `${subName || catName} Ejemplo`,
+      description: `Producto de ejemplo para ${catName} - ${subName}`,
+      companySku: `${prefix}-001`,
+      attributes: "Color:Negro",
+      priceBase: 100,
+      priceVta: 250,
+      quantity: 10,
       min_stock: 5,
     });
 
