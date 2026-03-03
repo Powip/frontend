@@ -41,7 +41,7 @@ import Link from "next/link";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import InventarioModal from "@/components/modals/InventarioModal";
-import ImportExcelModal from "@/components/modals/ImportExcelModal";
+
 import AddStockModal from "@/components/modals/AddStockModal";
 import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
 import { Pagination } from "@/components/ui/pagination";
