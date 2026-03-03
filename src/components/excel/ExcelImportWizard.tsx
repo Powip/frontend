@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs";
 import { toast } from "sonner";
@@ -82,6 +82,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState("");
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [templateDownloaded, setTemplateDownloaded] = useState(false);
+  const skipSubcategoryResetRef = useRef(false);
 
   /* ─── Step 2 state ─── */
   const [file, setFile] = useState<File | null>(null);
@@ -120,7 +121,12 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       )
       .then((res) => {
         setSubcategories(res.data);
-        setSelectedSubcategoryId("");
+        // Don't reset subcategory when loading from file metadata
+        if (skipSubcategoryResetRef.current) {
+          skipSubcategoryResetRef.current = false;
+        } else {
+          setSelectedSubcategoryId("");
+        }
       })
       .catch((err) => console.error("Error cargando subcategorías:", err));
   }, [selectedCategoryId]);
@@ -228,6 +234,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         const catId = metaSheet.getRow(1).getCell(2).value?.toString() || "";
         const subId = metaSheet.getRow(3).getCell(2).value?.toString() || "";
         const invId = metaSheet.getRow(5).getCell(2).value?.toString() || "";
+        if (catId && subId) skipSubcategoryResetRef.current = true;
         if (catId) setSelectedCategoryId(catId);
         if (subId) setSelectedSubcategoryId(subId);
         if (invId) setSelectedInventoryId(invId);
@@ -386,10 +393,10 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
               <div className="flex flex-col items-center gap-1">
                 <div
                   className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${isDone
-                      ? "bg-green-500 text-white"
-                      : isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
+                    ? "bg-green-500 text-white"
+                    : isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
                     }`}
                 >
                   {isDone ? <CheckCircle2 className="h-5 w-5" /> : num}
