@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { ArrowLeft, Plus, Trash2, Search } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Search, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -24,6 +24,7 @@ import {
   fetchClientByPhone,
   updateClient,
 } from "@/services/clients.service";
+import { updateCompany } from "@/services/companyService";
 import { useAuth } from "@/contexts/AuthContext";
 import { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
@@ -64,6 +65,9 @@ function RegistrarVentaContent() {
   const [loadingClient, setLoadingClient] = useState(false);
   const [originalClient, setOriginalClient] = useState<Client | null>(null);
   const [clientForm, setClientForm] = useState(emptyClientForm);
+  const [clientErrors, setClientErrors] = useState<
+    Partial<Record<keyof typeof emptyClientForm, string>>
+  >({});
 
   /* ---------------- Productos ---------------- */
   const [productQuery, setProductQuery] = useState("");
@@ -89,6 +93,23 @@ function RegistrarVentaContent() {
     notes: "",
   });
   const [salesRegion, setSalesRegion] = useState<"LIMA" | "PROVINCIA">("LIMA");
+
+  /* ---------------- Custom Channels ---------------- */
+  const [isAddingSalesChannel, setIsAddingSalesChannel] = useState(false);
+  const [newSalesChannel, setNewSalesChannel] = useState("");
+  const [isAddingClosingChannel, setIsAddingClosingChannel] = useState(false);
+  const [newClosingChannel, setNewClosingChannel] = useState("");
+
+  const defaultSalesChannels = [
+    "TIENDA_FISICA",
+    "WHATSAPP",
+    "INSTAGRAM",
+    "FACEBOOK",
+    "MARKETPLACE",
+    "MERCADOLIBRE",
+    "WEB",
+    "OTRO",
+  ];
 
   /* ---------------- Ubigeo Options ---------------- */
   const departmentOptions = useMemo(() => {
@@ -143,16 +164,74 @@ function RegistrarVentaContent() {
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
 
-  const { auth, selectedStoreId, setSelectedStore, inventories } = useAuth();
+  const {
+    auth,
+    selectedStoreId,
+    setSelectedStore,
+    inventories,
+    updateCompany: updateAuthCompany,
+  } = useAuth();
 
   const companyId = auth?.company?.id;
   const stores = auth?.company?.stores ?? [];
+  const salesChannels = auth?.company?.sales_channels?.length
+    ? auth.company.sales_channels
+    : defaultSalesChannels;
+  const closingChannels = auth?.company?.closing_channels?.length
+    ? auth.company.closing_channels
+    : defaultSalesChannels;
 
   const isIdle = searchState === "idle";
   const isFound = searchState === "found";
   const isNotFound = searchState === "not_found";
 
   const formEnabled = !isIdle;
+
+  const handleSaveNewSalesChannel = async () => {
+    if (!newSalesChannel.trim() || !companyId || !auth?.accessToken) return;
+    try {
+      const updatedChannels = [...salesChannels, newSalesChannel.trim()];
+      await updateCompany(companyId, auth.accessToken, {
+        sales_channels: updatedChannels,
+      });
+      updateAuthCompany({
+        ...auth.company!,
+        sales_channels: updatedChannels,
+      });
+      setOrderDetails({
+        ...orderDetails,
+        salesChannel: newSalesChannel.trim() as any,
+      });
+      setNewSalesChannel("");
+      setIsAddingSalesChannel(false);
+      toast.success("Canal de venta agregado");
+    } catch (error) {
+      toast.error("Error al agregar canal");
+    }
+  };
+
+  const handleSaveNewClosingChannel = async () => {
+    if (!newClosingChannel.trim() || !companyId || !auth?.accessToken) return;
+    try {
+      const updatedChannels = [...closingChannels, newClosingChannel.trim()];
+      await updateCompany(companyId, auth.accessToken, {
+        closing_channels: updatedChannels,
+      });
+      updateAuthCompany({
+        ...auth.company!,
+        closing_channels: updatedChannels,
+      });
+      setOrderDetails({
+        ...orderDetails,
+        closingChannel: newClosingChannel.trim() as any,
+      });
+      setNewClosingChannel("");
+      setIsAddingClosingChannel(false);
+      toast.success("Canal de cierre agregado");
+    } catch (error) {
+      toast.error("Error al agregar canal");
+    }
+  };
 
   useEffect(() => {
     if (!orderId) return;
@@ -414,14 +493,46 @@ function RegistrarVentaContent() {
     setOrderData(null);
   };
 
+  const validateClientForm = () => {
+    const errors: Partial<Record<keyof typeof emptyClientForm, string>> = {};
+    if (!clientForm.fullName.trim())
+      errors.fullName = "Debes completar este dato.";
+    if (!clientForm.province.trim())
+      errors.province = "Debes completar este dato.";
+    if (!clientForm.department.trim())
+      errors.department = "Debes completar este dato.";
+    if (!clientForm.district.trim())
+      errors.district = "Debes completar este dato.";
+    if (!clientForm.address.trim())
+      errors.address = "Debes completar este dato.";
+
+    if (clientForm.documentType) {
+      if (!clientForm.documentNumber.trim()) {
+        errors.documentNumber = "Debes completar este dato.";
+      } else if (
+        clientForm.documentType === "DNI" &&
+        !/^\d{7,8}$/.test(clientForm.documentNumber)
+      ) {
+        errors.documentNumber = "DNI debe tener 7 u 8 dígitos.";
+      }
+    }
+
+    setClientErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
   const handleCreateClient = async () => {
     if (!auth?.company?.id) return;
+    if (!validateClientForm()) {
+      toast.error("Por favor completa los campos requeridos correctamente.");
+      return;
+    }
 
     try {
       const createdClient = await createClient({
         companyId: auth.company.id,
         fullName: clientForm.fullName,
-        phoneNumber: clientForm.phoneNumber,
+        phoneNumber: clientForm.phoneNumber || undefined, // Evita "" que falla en backend
         documentType: clientForm.documentType,
         documentNumber: clientForm.documentType
           ? clientForm.documentNumber
@@ -431,13 +542,16 @@ function RegistrarVentaContent() {
         city: clientForm.department,
         district: clientForm.district,
         address: clientForm.address,
-        reference: clientForm.reference || undefined,
+        reference: clientForm.reference || undefined, // Evita "" que falla en backend
       });
       setClientFound(createdClient);
       setOriginalClient(createdClient);
       setSearchState("found");
+      setClientErrors({});
+      toast.success("Cliente creado correctamente.");
     } catch (error) {
       console.error(error);
+      toast.error("Error al crear el cliente. Verifica los datos.");
     }
   };
 
@@ -837,14 +951,27 @@ function RegistrarVentaContent() {
             {/* Formulario */}
             <div className="border rounded-md p-4 space-y-4">
               <div className="space-y-1">
-                <Label>Nombre completo</Label>
+                <Label
+                  className={clientErrors.fullName ? "text-destructive" : ""}
+                >
+                  Nombre completo
+                </Label>
                 <Input
                   disabled={!formEnabled}
                   value={clientForm.fullName}
-                  onChange={(e) =>
-                    setClientForm({ ...clientForm, fullName: e.target.value })
-                  }
+                  className={clientErrors.fullName ? "border-destructive" : ""}
+                  onChange={(e) => {
+                    setClientForm({ ...clientForm, fullName: e.target.value });
+                    if (clientErrors.fullName) {
+                      setClientErrors({ ...clientErrors, fullName: undefined });
+                    }
+                  }}
                 />
+                {clientErrors.fullName && (
+                  <p className="text-xs text-destructive">
+                    {clientErrors.fullName}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -874,22 +1001,40 @@ function RegistrarVentaContent() {
                     <SelectContent>
                       <SelectItem value="NONE">No aplica</SelectItem>
                       <SelectItem value="DNI">DNI</SelectItem>
-                      <SelectItem value="CUIT">CUIT</SelectItem>
+                      <SelectItem value="CARNET">
+                        Carnet de Extranjería
+                      </SelectItem>
                       <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
                     </SelectContent>
                   </Select>
 
-                  <Input
-                    disabled={!formEnabled || !clientForm.documentType}
-                    placeholder="Número"
-                    value={clientForm.documentNumber}
-                    onChange={(e) =>
-                      setClientForm({
-                        ...clientForm,
-                        documentNumber: e.target.value,
-                      })
-                    }
-                  />
+                  <div>
+                    <Input
+                      disabled={!formEnabled || !clientForm.documentType}
+                      placeholder="Número"
+                      value={clientForm.documentNumber}
+                      className={
+                        clientErrors.documentNumber ? "border-destructive" : ""
+                      }
+                      onChange={(e) => {
+                        setClientForm({
+                          ...clientForm,
+                          documentNumber: e.target.value,
+                        });
+                        if (clientErrors.documentNumber) {
+                          setClientErrors({
+                            ...clientErrors,
+                            documentNumber: undefined,
+                          });
+                        }
+                      }}
+                    />
+                    {clientErrors.documentNumber && (
+                      <p className="text-xs text-destructive mt-1">
+                        {clientErrors.documentNumber}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -929,60 +1074,133 @@ function RegistrarVentaContent() {
               </div>
 
               <div className="space-y-2">
-                <Label>Dirección</Label>
+                <Label
+                  className={
+                    clientErrors.address ||
+                    clientErrors.department ||
+                    clientErrors.province ||
+                    clientErrors.district
+                      ? "text-destructive"
+                      : ""
+                  }
+                >
+                  Dirección
+                </Label>
 
                 <div className="grid grid-cols-3 gap-2">
-                  <Combobox
-                    disabled={!formEnabled}
-                    value={clientForm.department}
-                    onValueChange={(value) =>
-                      setClientForm({
-                        ...clientForm,
-                        department: value,
-                        province: "",
-                        district: "",
-                      })
-                    }
-                    options={departmentOptions}
-                    placeholder="Departamento"
-                    searchPlaceholder="Buscar departamento..."
-                  />
+                  <div>
+                    <Combobox
+                      disabled={!formEnabled}
+                      value={clientForm.department}
+                      onValueChange={(value) => {
+                        setClientForm({
+                          ...clientForm,
+                          department: value,
+                          province: "",
+                          district: "",
+                        });
+                        if (clientErrors.department) {
+                          setClientErrors({
+                            ...clientErrors,
+                            department: undefined,
+                          });
+                        }
+                      }}
+                      options={departmentOptions}
+                      placeholder="Departamento"
+                      searchPlaceholder="Buscar departamento..."
+                      className={
+                        clientErrors.department ? "border-destructive" : ""
+                      }
+                    />
+                    {clientErrors.department && (
+                      <p className="text-[10px] text-destructive mt-1">
+                        {clientErrors.department}
+                      </p>
+                    )}
+                  </div>
 
-                  <Combobox
-                    disabled={!formEnabled || !clientForm.department}
-                    value={clientForm.province}
-                    onValueChange={(value) =>
-                      setClientForm({
-                        ...clientForm,
-                        province: value,
-                        district: "",
-                      })
-                    }
-                    options={provinceOptions}
-                    placeholder="Provincia"
-                    searchPlaceholder="Buscar provincia..."
-                  />
+                  <div>
+                    <Combobox
+                      disabled={!formEnabled || !clientForm.department}
+                      value={clientForm.province}
+                      onValueChange={(value) => {
+                        setClientForm({
+                          ...clientForm,
+                          province: value,
+                          district: "",
+                        });
+                        if (clientErrors.province) {
+                          setClientErrors({
+                            ...clientErrors,
+                            province: undefined,
+                          });
+                        }
+                      }}
+                      options={provinceOptions}
+                      placeholder="Provincia"
+                      searchPlaceholder="Buscar provincia..."
+                      className={
+                        clientErrors.province ? "border-destructive" : ""
+                      }
+                    />
+                    {clientErrors.province && (
+                      <p className="text-[10px] text-destructive mt-1">
+                        {clientErrors.province}
+                      </p>
+                    )}
+                  </div>
 
-                  <Combobox
-                    disabled={!formEnabled || !clientForm.province}
-                    value={clientForm.district}
-                    onValueChange={(value) =>
-                      setClientForm({ ...clientForm, district: value })
-                    }
-                    options={districtOptions}
-                    placeholder="Distrito"
-                    searchPlaceholder="Buscar distrito..."
-                  />
+                  <div>
+                    <Combobox
+                      disabled={!formEnabled || !clientForm.province}
+                      value={clientForm.district}
+                      onValueChange={(value) => {
+                        setClientForm({ ...clientForm, district: value });
+                        if (clientErrors.district) {
+                          setClientErrors({
+                            ...clientErrors,
+                            district: undefined,
+                          });
+                        }
+                      }}
+                      options={districtOptions}
+                      placeholder="Distrito"
+                      searchPlaceholder="Buscar distrito..."
+                      className={
+                        clientErrors.district ? "border-destructive" : ""
+                      }
+                    />
+                    {clientErrors.district && (
+                      <p className="text-[10px] text-destructive mt-1">
+                        {clientErrors.district}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
-                <Input
-                  disabled={!formEnabled}
-                  placeholder="Dirección exacta"
-                  value={clientForm.address}
-                  onChange={(e) =>
-                    setClientForm({ ...clientForm, address: e.target.value })
-                  }
-                />
+                <div>
+                  <Input
+                    disabled={!formEnabled}
+                    placeholder="Dirección exacta"
+                    value={clientForm.address}
+                    className={clientErrors.address ? "border-destructive" : ""}
+                    onChange={(e) => {
+                      setClientForm({ ...clientForm, address: e.target.value });
+                      if (clientErrors.address) {
+                        setClientErrors({
+                          ...clientErrors,
+                          address: undefined,
+                        });
+                      }
+                    }}
+                  />
+                  {clientErrors.address && (
+                    <p className="text-xs text-destructive mt-1">
+                      {clientErrors.address}
+                    </p>
+                  )}
+                </div>
 
                 <Textarea
                   disabled={!formEnabled}
@@ -1407,81 +1625,127 @@ function RegistrarVentaContent() {
             {/* Canal de venta */}
             <div className="space-y-1">
               <Label>Canal de venta</Label>
-              <Select
-                value={orderDetails.salesChannel}
-                onValueChange={(v) =>
-                  setOrderDetails({
-                    ...orderDetails,
-                    salesChannel: v as SalesChannel,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar canal de venta" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SalesChannel.TIENDA_FISICA}>
-                    Tienda física
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.WHATSAPP}>
-                    WhatsApp
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.WEB}>WEB</SelectItem>
-                  <SelectItem value={SalesChannel.INSTAGRAM}>
-                    Instagram
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.FACEBOOK}>
-                    Facebook
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.MARKETPLACE}>
-                    Marketplace
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.MERCADOLIBRE}>
-                    MercadoLibre
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.OTRO}>Otro</SelectItem>
-                </SelectContent>
-              </Select>
+              {!isAddingSalesChannel ? (
+                <Select
+                  value={orderDetails.salesChannel}
+                  onValueChange={(v) => {
+                    if (v === "ADD_NEW") {
+                      setIsAddingSalesChannel(true);
+                    } else {
+                      setOrderDetails({
+                        ...orderDetails,
+                        salesChannel: v as any,
+                      });
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar canal de venta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {salesChannels.map((channel) => (
+                      <SelectItem key={channel} value={channel}>
+                        {channel.replace(/_/g, " ")}
+                      </SelectItem>
+                    ))}
+                    <SelectItem
+                      value="ADD_NEW"
+                      className="text-primary font-medium"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        Agregar nuevo
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    autoFocus
+                    placeholder="Nuevo canal..."
+                    value={newSalesChannel}
+                    onChange={(e) => setNewSalesChannel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveNewSalesChannel();
+                      if (e.key === "Escape") setIsAddingSalesChannel(false);
+                    }}
+                  />
+                  <Button size="icon" onClick={handleSaveNewSalesChannel}>
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setIsAddingSalesChannel(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Canal de cierre */}
             <div className="space-y-1">
               <Label>Canal de cierre</Label>
-              <Select
-                value={orderDetails.closingChannel}
-                onValueChange={(v) =>
-                  setOrderDetails({
-                    ...orderDetails,
-                    closingChannel: v as SalesChannel,
-                  })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar canal de cierre" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={SalesChannel.TIENDA_FISICA}>
-                    Tienda física
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.WHATSAPP}>
-                    WhatsApp
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.WEB}>WEB</SelectItem>
-                  <SelectItem value={SalesChannel.INSTAGRAM}>
-                    Instagram
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.FACEBOOK}>
-                    Facebook
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.MARKETPLACE}>
-                    Marketplace
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.MERCADOLIBRE}>
-                    MercadoLibre
-                  </SelectItem>
-                  <SelectItem value={SalesChannel.OTRO}>Otro</SelectItem>
-                </SelectContent>
-              </Select>
+              {!isAddingClosingChannel ? (
+                <Select
+                  value={orderDetails.closingChannel}
+                  onValueChange={(v) => {
+                    if (v === "ADD_NEW") {
+                      setIsAddingClosingChannel(true);
+                    } else {
+                      setOrderDetails({
+                        ...orderDetails,
+                        closingChannel: v as any,
+                      });
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Seleccionar canal de cierre" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {closingChannels.map((channel) => (
+                      <SelectItem key={channel} value={channel}>
+                        {channel.replace(/_/g, " ")}
+                      </SelectItem>
+                    ))}
+                    <SelectItem
+                      value="ADD_NEW"
+                      className="text-primary font-medium"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Plus className="h-4 w-4" />
+                        Agregar nuevo
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    autoFocus
+                    placeholder="Nuevo canal..."
+                    value={newClosingChannel}
+                    onChange={(e) => setNewClosingChannel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleSaveNewClosingChannel();
+                      if (e.key === "Escape") setIsAddingClosingChannel(false);
+                    }}
+                  />
+                  <Button size="icon" onClick={handleSaveNewClosingChannel}>
+                    <Check className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => setIsAddingClosingChannel(false)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Tipo de entrega */}

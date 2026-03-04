@@ -22,6 +22,7 @@ interface ComboboxProps {
   disabled?: boolean;
   renderLabel?: (option: any) => React.ReactNode;
   onSearchChange?: (query: string) => void;
+  className?: string;
 }
 
 export function Combobox({
@@ -34,6 +35,7 @@ export function Combobox({
   disabled = false,
   renderLabel,
   onSearchChange,
+  className,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
@@ -78,6 +80,7 @@ export function Combobox({
           className={cn(
             "w-full justify-between font-normal h-9 px-3 py-2 text-sm",
             !value && "text-muted-foreground",
+            className,
           )}
           disabled={disabled}
         >

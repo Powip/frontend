@@ -39,6 +39,8 @@ import { es } from "date-fns/locale";
 import axios from "axios";
 import { toast } from "sonner";
 import PaymentVerificationModal from "./PaymentVerificationModal";
+import { exportToExcel } from "@/lib/excel";
+import { FileSpreadsheet } from "lucide-react";
 
 export interface ShippingGuide {
   id: string;
@@ -507,10 +509,50 @@ export default function GuideDetailsModal({
   const totalCobranza =
     cobranzaStats.totalPending + cobranzaStats.pendingApproval;
 
+  const handleExportExcel = () => {
+    if (!guide || ordersDetails.length === 0) {
+      toast.warning("No hay datos para exportar");
+      return;
+    }
+
+    const exportData = ordersDetails.flatMap((order: OrderDetail) => {
+      const paid =
+        order.payments
+          ?.filter((p: any) => p.status === "PAID")
+          .reduce((s: number, p: any) => s + Number(p.amount), 0) || 0;
+      const pending = Math.max(Number(order.grandTotal) - paid, 0);
+
+      return order.items.map((item: any) => ({
+        "Nro Guía": guide.guideNumber,
+        Courier: guide.courierName || "-",
+        Estado: guide.status,
+        "Tipo Cobro": guide.chargeType || "-",
+        "Fecha Guía": guide.created_at
+          ? format(new Date(guide.created_at), "dd/MM/yyyy")
+          : "-",
+        Pedido: order.orderNumber,
+        "Estado Pedido": order.status,
+        Cliente: order.customer.fullName,
+        Teléfono: order.customer.phoneNumber,
+        Distrito: order.customer.district || "-",
+        Dirección: order.customer.address || "-",
+        Producto: item.productName,
+        SKU: item.sku,
+        Cant: item.quantity,
+        Precio: Number(item.unitPrice),
+        Subtotal: Number(item.unitPrice) * item.quantity,
+        "Total Pedido": Number(order.grandTotal),
+        "Monto Pagado": paid,
+        "Monto a Cobrar": pending,
+      }));
+    });
+
+    exportToExcel(exportData, `Guia-${guide.guideNumber}`);
+  };
+
   // Imprimir guía
   const handlePrintGuide = () => {
     if (!guide) return;
-
     const content = `
       <html>
       <head>
@@ -1364,6 +1406,10 @@ export default function GuideDetailsModal({
               )}
             {guide && (
               <>
+                <Button variant="outline" onClick={handleExportExcel}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Exportar Excel
+                </Button>
                 <Button variant="outline" onClick={handlePrintGuide}>
                   <Printer className="h-4 w-4 mr-2" />
                   Imprimir Guía

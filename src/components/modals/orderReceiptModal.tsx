@@ -488,7 +488,7 @@ export default function OrderReceiptModal({
         className="max-w-3xl max-h-[90vh] overflow-y-auto"
       >
         <DialogHeader>
-          <DialogTitle>Comprobante</DialogTitle>
+          <DialogTitle>Comprobante de pedido</DialogTitle>
         </DialogHeader>
 
         {loading && <p>Cargando comprobante...</p>}

@@ -49,6 +49,8 @@ interface Company {
   billingAddress?: string; // Dirección
   phone?: string; // Teléfono
   logoUrl?: string; // URL del logo (para futuro)
+  sales_channels?: string[];
+  closing_channels?: string[];
 }
 
 interface AuthData {

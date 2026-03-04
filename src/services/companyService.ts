@@ -15,6 +15,8 @@ export interface Company {
   billingAddress?: string; // Dirección
   phone?: string; // Teléfono
   logoUrl?: string; // URL del logo (para futuro)
+  sales_channels?: string[];
+  closing_channels?: string[];
 }
 
 export const fetchUserCompany = async (
@@ -39,6 +41,8 @@ export const fetchUserCompany = async (
       billingAddress: response.data.billing_address,
       phone: response.data.phone,
       logoUrl: response.data.logo_url,
+      sales_channels: response.data.sales_channels,
+      closing_channels: response.data.closing_channels,
     };
   } catch (error) {
     // Es normal que falle si el usuario es personal operativo (no es el dueño registrado en ms-company)
@@ -66,6 +70,8 @@ export const fetchCompanyById = async (
       billingAddress: response.data.billing_address,
       phone: response.data.phone,
       logoUrl: response.data.logo_url,
+      sales_channels: response.data.sales_channels,
+      closing_channels: response.data.closing_channels,
     };
   } catch (error) {
     console.error("Error al obtener company by id:", error);
@@ -91,6 +97,8 @@ export const getAllCompanies = async (token: string): Promise<Company[]> => {
     billingAddress: c.billing_address,
     phone: c.phone,
     logoUrl: c.logo_url,
+    sales_channels: c.sales_channels,
+    closing_channels: c.closing_channels,
   }));
 };
 export const createCompany = async (token: string, data: Partial<Company>) => {
@@ -102,6 +110,31 @@ export const createCompany = async (token: string, data: Partial<Company>) => {
       cuit: data.cuit,
       billing_address: data.billingAddress,
       phone: data.phone,
+    },
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  return response.data;
+};
+
+export const updateCompany = async (
+  companyId: string,
+  token: string,
+  data: Partial<Company>,
+) => {
+  const response = await axios.patch(
+    `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${companyId}`,
+    {
+      name: data.name,
+      cuit: data.cuit,
+      billing_address: data.billingAddress,
+      phone: data.phone,
+      logo_url: data.logoUrl,
+      sales_channels: data.sales_channels,
+      closing_channels: data.closing_channels,
     },
     {
       headers: {
