@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import ExcelJS from "exceljs";
 import { toast } from "sonner";
@@ -82,6 +82,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState("");
   const [selectedInventoryId, setSelectedInventoryId] = useState("");
   const [templateDownloaded, setTemplateDownloaded] = useState(false);
+  const skipSubcategoryResetRef = useRef(false);
 
   /* ─── Step 2 state ─── */
   const [file, setFile] = useState<File | null>(null);
@@ -120,7 +121,12 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       )
       .then((res) => {
         setSubcategories(res.data);
-        setSelectedSubcategoryId("");
+        // Don't reset subcategory when loading from file metadata
+        if (skipSubcategoryResetRef.current) {
+          skipSubcategoryResetRef.current = false;
+        } else {
+          setSelectedSubcategoryId("");
+        }
       })
       .catch((err) => console.error("Error cargando subcategorías:", err));
   }, [selectedCategoryId]);
@@ -175,15 +181,18 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
     };
     headerRow.alignment = { horizontal: "center" };
 
-    /* Fila de ejemplo */
+    /* Fila de ejemplo basada en la categoría */
+    const catName = selectedCategory?.name || "Producto";
+    const subName = selectedSubcategory?.name || "";
+    const prefix = subName.substring(0, 3).toUpperCase() || catName.substring(0, 3).toUpperCase();
     sheet.addRow({
-      name: "Remera Básica",
-      description: "Remera de algodón 100%",
-      companySku: "REM-001",
-      attributes: "Color:Rojo,Talle:M",
-      priceBase: 1000,
-      priceVta: 2500,
-      quantity: 50,
+      name: `${subName || catName} Ejemplo`,
+      description: `Producto de ejemplo para ${catName} - ${subName}`,
+      companySku: `${prefix}-001`,
+      attributes: "Color:Negro",
+      priceBase: 100,
+      priceVta: 250,
+      quantity: 10,
       min_stock: 5,
     });
 
@@ -228,6 +237,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         const catId = metaSheet.getRow(1).getCell(2).value?.toString() || "";
         const subId = metaSheet.getRow(3).getCell(2).value?.toString() || "";
         const invId = metaSheet.getRow(5).getCell(2).value?.toString() || "";
+        if (catId && subId) skipSubcategoryResetRef.current = true;
         if (catId) setSelectedCategoryId(catId);
         if (subId) setSelectedSubcategoryId(subId);
         if (invId) setSelectedInventoryId(invId);
@@ -304,6 +314,10 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       toast.error("No hay productos válidos para guardar");
       return;
     }
+    if (!selectedInventoryId) {
+      toast.error("Seleccioná un inventario antes de guardar");
+      return;
+    }
 
     const tenantId = auth?.company?.id;
     if (!tenantId) {
@@ -311,36 +325,51 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       return;
     }
 
+    const payload = {
+      tenantId,
+      inventoryId: selectedInventoryId,
+      subcategoryId: selectedSubcategoryId,
+      rows: validRows.map((r) => ({
+        name: r.name,
+        description: r.description,
+        companySku: r.companySku,
+        attributes: r.attributes,
+        priceBase: r.priceBase,
+        priceVta: r.priceVta,
+        quantity: r.quantity,
+        min_stock: r.min_stock,
+      })),
+    };
+
+    console.log("📦 Payload bulk-import:", JSON.stringify(payload, null, 2));
+    const apiUrl = `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/bulk-import`;
+    console.log("🌐 API URL:", apiUrl);
+
     setIsSaving(true);
     try {
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/bulk-import`,
-        {
-          tenantId,
-          inventoryId: selectedInventoryId,
-          subcategoryId: selectedSubcategoryId,
-          rows: validRows.map((r) => ({
-            name: r.name,
-            description: r.description,
-            companySku: r.companySku,
-            attributes: r.attributes,
-            priceBase: r.priceBase,
-            priceVta: r.priceVta,
-            quantity: r.quantity,
-            min_stock: r.min_stock,
-          })),
-        },
-      );
+      const res = await axios.post(apiUrl, payload);
 
-      toast.success(
-        res.data.message ||
+      console.log("✅ Respuesta bulk-import:", res.data);
+
+      if (res.data.created === 0 && res.data.errors > 0) {
+        toast.error(`No se crearon productos. ${res.data.errors} errores — revisá la consola`);
+      } else if (res.data.created > 0) {
+        toast.success(
+          res.data.message ||
           `Importación completada: ${res.data.created} productos creados`,
-      );
-      onBack(); // Return to the selector
+        );
+        onBack();
+      } else {
+        toast.warning("La respuesta no indica productos creados. Verificá la consola.");
+      }
     } catch (err: any) {
-      console.error(err);
+      const errorDetail = err.response?.data
+        ? JSON.stringify(err.response.data)
+        : err.message;
+      console.error("❌ Error bulk-import:", errorDetail);
+      console.error("❌ Status:", err.response?.status);
       toast.error(
-        err.response?.data?.message || "Error al guardar los productos",
+        `Error (${err.response?.status || "red"}): ${err.response?.data?.message || err.message}`,
       );
     } finally {
       setIsSaving(false);
@@ -376,13 +405,12 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
               )}
               <div className="flex flex-col items-center gap-1">
                 <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${
-                    isDone
-                      ? "bg-green-500 text-white"
-                      : isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "bg-muted text-muted-foreground"
-                  }`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${isDone
+                    ? "bg-green-500 text-white"
+                    : isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                    }`}
                 >
                   {isDone ? <CheckCircle2 className="h-5 w-5" /> : num}
                 </div>
@@ -616,6 +644,32 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
               )}
             </div>
 
+            {/* Inventory selector */}
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-2">
+              <Label className="text-sm font-semibold">Inventario destino *</Label>
+              <Select
+                value={selectedInventoryId}
+                onValueChange={setSelectedInventoryId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccioná el inventario donde guardar..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {inventories.map((inv: any) => (
+                    <SelectItem key={inv.id} value={inv.id}>
+                      {inv.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {!selectedInventoryId && (
+                <p className="text-xs text-amber-600 flex items-center gap-1">
+                  <AlertCircle className="h-3.5 w-3.5" />
+                  Debés seleccionar un inventario para poder guardar
+                </p>
+              )}
+            </div>
+
             {/* Table */}
             <div className="rounded-lg border overflow-auto max-h-[420px]">
               <Table>
@@ -697,7 +751,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
               <Button
                 size="lg"
                 onClick={handleSave}
-                disabled={isSaving || validRows.length === 0}
+                disabled={isSaving || validRows.length === 0 || !selectedInventoryId}
               >
                 {isSaving ? (
                   <>
