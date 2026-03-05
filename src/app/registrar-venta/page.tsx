@@ -1879,12 +1879,12 @@ function RegistrarVentaContent() {
 
             {/* Adelanto de pago */}
             <div className="space-y-1">
-              <Label>Monto de Pago</Label>
+              <Label>Adelanto de Pago</Label>
               <Input
                 type="number"
                 step="0.01"
                 min="0"
-                value={advancePayment === 0 ? "" : advancePayment}
+                value={advancePayment}
                 onChange={(e) => {
                   const val = e.target.value;
                   setAdvancePayment(val === "" ? 0 : Number(val));
