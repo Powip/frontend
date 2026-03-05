@@ -19,6 +19,13 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -809,22 +816,24 @@ export default function ProductCreateForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="inventory_id">Inventario</Label>
-                  <select
-                    id="inventory_id"
-                    name="inventory_id"
+                  <Select
                     value={form.inventory_id}
-                    onChange={handleChange}
-                    className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
+                    onValueChange={(value) =>
+                      setForm((prev) => ({ ...prev, inventory_id: value }))
+                    }
                     disabled={inventories.length === 1}
-                    required
                   >
-                    <option value="">Seleccionar inventario...</option>
-                    {inventories.map((inv) => (
-                      <option key={inv.id} value={inv.id}>
-                        {inv.name}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger id="inventory_id">
+                      <SelectValue placeholder="Seleccionar inventario..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {inventories.map((inv) => (
+                        <SelectItem key={inv.id} value={inv.id}>
+                          {inv.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <div className="space-y-2">
@@ -878,21 +887,23 @@ export default function ProductCreateForm({
 
               <div className="space-y-2">
                 <Label htmlFor="categoryId">Categoría</Label>
-                <select
-                  id="categoryId"
-                  name="categoryId"
+                <Select
                   value={form.categoryId}
-                  onChange={handleChange}
-                  className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600"
-                  required
+                  onValueChange={(value) =>
+                    setForm((prev) => ({ ...prev, categoryId: value }))
+                  }
                 >
-                  <option value="">Seleccionar categoría...</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger id="categoryId">
+                    <SelectValue placeholder="Seleccionar categoría..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Nombre */}
@@ -933,28 +944,30 @@ export default function ProductCreateForm({
               {/* Subcategoría */}
               <div className="space-y-2">
                 <Label htmlFor="subcategoryId">Subcategoría</Label>
-                <select
-                  id="subcategoryId"
-                  name="subcategoryId"
+                <Select
                   value={form.subcategoryId}
-                  onChange={handleChange}
+                  onValueChange={(value) =>
+                    setForm((prev) => ({ ...prev, subcategoryId: value }))
+                  }
                   disabled={!form.categoryId}
-                  className="w-full border rounded-lg p-2 bg-background text-foreground dark:bg-gray-800 dark:border-gray-600 disabled:bg-gray-200 dark:disabled:bg-gray-700"
-                  required
                 >
-                  {!form.categoryId ? (
-                    <option value="">Selecciona categoría primero...</option>
-                  ) : (
-                    <>
-                      <option value="">Seleccionar subcategoría...</option>
-                      {subcategories.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.name}
-                        </option>
-                      ))}
-                    </>
-                  )}
-                </select>
+                  <SelectTrigger id="subcategoryId">
+                    <SelectValue
+                      placeholder={
+                        !form.categoryId
+                          ? "Selecciona categoría primero..."
+                          : "Seleccionar subcategoría..."
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {subcategories.map((s) => (
+                      <SelectItem key={s.id} value={s.id}>
+                        {s.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Descripción */}

@@ -33,6 +33,7 @@ interface CartItem {
   attributes?: Record<string, string>;
   quantity: number;
   price: number;
+  discountAmount: number;
 }
 
 interface Props {
@@ -115,6 +116,7 @@ export default function AddProductsModal({
           attributes: product.attributes,
           quantity: 1,
           price: product.price,
+          discountAmount: 0,
         },
       ];
     });
@@ -134,6 +136,39 @@ export default function AddProductsModal({
 
   const removeFromCart = (cartItemId: string) => {
     setCart((prev) => prev.filter((item) => item.id !== cartItemId));
+  };
+
+  const updateItemSubtotal = (cartItemId: string, newSubtotal: number) => {
+    setCart((prev) =>
+      prev.map((item) => {
+        if (item.id === cartItemId) {
+          const basePrice = item.price * item.quantity;
+          const discount = Math.max(0, basePrice - newSubtotal);
+          return { ...item, discountAmount: discount };
+        }
+        return item;
+      }),
+    );
+  };
+
+  const updateGrandTotal = (newGrandTotal: number) => {
+    const currentBaseTotal = cart.reduce(
+      (acc, item) => acc + item.price * item.quantity,
+      0,
+    );
+    if (currentBaseTotal === 0) return;
+
+    const totalDiscountNeeded = Math.max(0, currentBaseTotal - newGrandTotal);
+
+    setCart((prev) => {
+      // Distribuir el descuento proporcionalmente basándose en el precio base de cada item
+      return prev.map((item) => {
+        const itemBasePrice = item.price * item.quantity;
+        const itemProportion = itemBasePrice / currentBaseTotal;
+        const itemDiscount = totalDiscountNeeded * itemProportion;
+        return { ...item, discountAmount: itemDiscount };
+      });
+    });
   };
 
   const handleSubmit = async () => {
@@ -169,8 +204,8 @@ export default function AddProductsModal({
         productName: item.productName,
         quantity: item.quantity,
         unitPrice: item.price,
-        discountType: "NONE",
-        discountAmount: 0,
+        discountType: item.discountAmount > 0 ? "FIXED" : "NONE",
+        discountAmount: item.discountAmount,
         attributes: item.attributes,
         isPromoItem: true,
         addedByUserId: auth?.user?.id,
@@ -210,10 +245,17 @@ export default function AddProductsModal({
     onClose();
   };
 
-  const cartTotal = cart.reduce(
+  const cartBaseTotal = cart.reduce(
     (acc, item) => acc + item.price * item.quantity,
     0,
   );
+
+  const cartTotalDiscounts = cart.reduce(
+    (acc, item) => acc + item.discountAmount,
+    0,
+  );
+
+  const cartFinalTotal = cartBaseTotal - cartTotalDiscounts;
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
@@ -306,55 +348,90 @@ export default function AddProductsModal({
                 Productos a agregar ({cart.length})
               </h4>
               <div className="space-y-2">
-                {cart.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between bg-background rounded p-2"
-                  >
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{item.productName}</p>
-                      <p className="text-xs text-muted-foreground">
-                        S/{item.price.toFixed(2)} x {item.quantity} = S/
-                        {(item.price * item.quantity).toFixed(2)}
-                      </p>
+                {cart.map((item) => {
+                  const itemSubtotal =
+                    item.price * item.quantity - item.discountAmount;
+                  return (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between bg-background rounded p-2"
+                    >
+                      <div className="flex-1 mr-4">
+                        <p className="text-sm font-medium">
+                          {item.productName}
+                        </p>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-muted-foreground whitespace-nowrap">
+                            S/{item.price.toFixed(2)} x {item.quantity} =
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground">
+                              S/
+                            </span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={itemSubtotal === 0 ? "" : itemSubtotal}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                updateItemSubtotal(
+                                  item.id,
+                                  val === "" ? 0 : Number(val),
+                                );
+                              }}
+                              className="h-6 w-20 text-xs px-1"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-7 w-7"
+                          onClick={() => updateQuantity(item.id, -1)}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <span className="w-8 text-center text-sm">
+                          {item.quantity}
+                        </span>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-7 w-7"
+                          onClick={() => updateQuantity(item.id, 1)}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive"
+                          onClick={() => removeFromCart(item.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="h-7 w-7"
-                        onClick={() => updateQuantity(item.id, -1)}
-                      >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <span className="w-8 text-center text-sm">
-                        {item.quantity}
-                      </span>
-                      <Button
-                        size="icon"
-                        variant="outline"
-                        className="h-7 w-7"
-                        onClick={() => updateQuantity(item.id, 1)}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7 text-destructive"
-                        onClick={() => removeFromCart(item.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
               <div className="mt-3 pt-2 border-t flex justify-between items-center">
-                <span className="font-semibold">Total:</span>
-                <span className="font-bold text-lg">
-                  S/{cartTotal.toFixed(2)}
-                </span>
+                <span className="font-semibold">Total Promo:</span>
+                <div className="flex items-center gap-1">
+                  <span className="font-bold text-lg">S/</span>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={cartFinalTotal === 0 ? "" : cartFinalTotal}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      updateGrandTotal(val === "" ? 0 : Number(val));
+                    }}
+                    className="h-9 w-28 font-bold text-lg text-right"
+                  />
+                </div>
               </div>
             </div>
           )}
