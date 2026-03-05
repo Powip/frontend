@@ -325,6 +325,14 @@ export default function VentasPage() {
     }
   }, [selectedStoreId]);
 
+  // Helper: info del usuario actual para trazabilidad
+  const getUserInfo = () => ({
+    userId: auth?.user?.id,
+    sellerName:
+      [auth?.user?.name, auth?.user?.surname].filter(Boolean).join(" ") ||
+      undefined,
+  });
+
   const handleChangeStatus = async (
     saleId: string,
     newStatus: OrderStatus,
@@ -341,8 +349,9 @@ export default function VentasPage() {
     }
 
     try {
-      const payload: { status: OrderStatus; cancellationReason?: string } = {
+      const payload: Record<string, unknown> = {
         status: newStatus,
+        ...getUserInfo(),
       };
       if (cancellationReason) {
         payload.cancellationReason = cancellationReason;
@@ -374,6 +383,7 @@ export default function VentasPage() {
           status: "ANULADO",
           cancellationReason: reason,
           notes: notes,
+          ...getUserInfo(),
         },
       );
       toast.success(`Venta ${saleToCancel.orderNumber} anulada`);
@@ -532,7 +542,7 @@ Estado: ${sale.status}
       try {
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
-          { status: newStatus },
+          { status: newStatus, ...getUserInfo() },
         );
         successCount++;
       } catch (error) {
@@ -615,6 +625,7 @@ Estado: ${sale.status}
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
 
     try {
+      const uInfo = getUserInfo();
       const result = await processBulkStatusChange(
         selectedIds,
         newStatus,
@@ -622,6 +633,10 @@ Estado: ${sale.status}
         (processed, total) => {
           // Opcional: Podríamos mostrar un toast de progreso aquí si quisiéramos algo muy visual
         },
+        10,
+        uInfo.userId
+          ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" }
+          : undefined,
       );
 
       if (result.success.length > 0) {
@@ -723,12 +738,12 @@ Estado: ${sale.status}
         prev.map((s) =>
           s.id === orderId
             ? {
-              ...s,
-              externalTrackingNumber: data.externalTrackingNumber,
-              shippingCode: data.shippingCode,
-              shippingKey: data.shippingKey,
-              shippingOffice: data.shippingOffice,
-            }
+                ...s,
+                externalTrackingNumber: data.externalTrackingNumber,
+                shippingCode: data.shippingCode,
+                shippingKey: data.shippingKey,
+                shippingOffice: data.shippingOffice,
+              }
             : s,
         ),
       );
@@ -966,10 +981,11 @@ Estado: ${sale.status}
                     <div className="relative flex items-center">
                       <input
                         type="text"
-                        className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${savingOrderId === sale.id
-                          ? "opacity-50 border-orange-400 pr-5"
-                          : "focus:border-orange-500"
-                          }`}
+                        className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                          savingOrderId === sale.id
+                            ? "opacity-50 border-orange-400 pr-5"
+                            : "focus:border-orange-500"
+                        }`}
                         placeholder="Nro..."
                         value={
                           trackingEdits[sale.id]?.externalTrackingNumber || ""
@@ -993,10 +1009,11 @@ Estado: ${sale.status}
                   <TableCell>
                     <input
                       type="text"
-                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${savingOrderId === sale.id
-                        ? "opacity-50 border-orange-400"
-                        : "focus:border-orange-500"
-                        }`}
+                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
                       placeholder="Código"
                       value={trackingEdits[sale.id]?.shippingCode || ""}
                       onChange={(e) =>
@@ -1014,10 +1031,11 @@ Estado: ${sale.status}
                   <TableCell>
                     <input
                       type="text"
-                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${savingOrderId === sale.id
-                        ? "opacity-50 border-orange-400"
-                        : "focus:border-orange-500"
-                        }`}
+                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
                       placeholder="Clave"
                       value={trackingEdits[sale.id]?.shippingKey || ""}
                       onChange={(e) =>
@@ -1035,10 +1053,11 @@ Estado: ${sale.status}
                   <TableCell>
                     <input
                       type="text"
-                      className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${savingOrderId === sale.id
-                        ? "opacity-50 border-orange-400"
-                        : "focus:border-orange-500"
-                        }`}
+                      className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
                       placeholder="Oficina..."
                       value={trackingEdits[sale.id]?.shippingOffice || ""}
                       onChange={(e) =>
@@ -1263,10 +1282,11 @@ Estado: ${sale.status}
                     <div className="relative flex items-center">
                       <input
                         type="text"
-                        className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${savingOrderId === sale.id
-                          ? "opacity-50 border-orange-400 pr-5"
-                          : "focus:border-orange-500"
-                          }`}
+                        className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                          savingOrderId === sale.id
+                            ? "opacity-50 border-orange-400 pr-5"
+                            : "focus:border-orange-500"
+                        }`}
                         placeholder="Nro..."
                         value={
                           trackingEdits[sale.id]?.externalTrackingNumber || ""
@@ -1290,10 +1310,11 @@ Estado: ${sale.status}
                   <TableCell>
                     <input
                       type="text"
-                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${savingOrderId === sale.id
-                        ? "opacity-50 border-orange-400"
-                        : "focus:border-orange-500"
-                        }`}
+                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
                       placeholder="Código"
                       value={trackingEdits[sale.id]?.shippingCode || ""}
                       onChange={(e) =>
@@ -1311,10 +1332,11 @@ Estado: ${sale.status}
                   <TableCell>
                     <input
                       type="text"
-                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${savingOrderId === sale.id
-                        ? "opacity-50 border-orange-400"
-                        : "focus:border-orange-500"
-                        }`}
+                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
                       placeholder="Clave"
                       value={trackingEdits[sale.id]?.shippingKey || ""}
                       onChange={(e) =>
@@ -1332,10 +1354,11 @@ Estado: ${sale.status}
                   <TableCell>
                     <input
                       type="text"
-                      className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${savingOrderId === sale.id
-                        ? "opacity-50 border-orange-400"
-                        : "focus:border-orange-500"
-                        }`}
+                      className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
+                        savingOrderId === sale.id
+                          ? "opacity-50 border-orange-400"
+                          : "focus:border-orange-500"
+                      }`}
                       placeholder="Oficina..."
                       value={trackingEdits[sale.id]?.shippingOffice || ""}
                       onChange={(e) =>
@@ -1538,7 +1561,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(pendientes.length / 10) || 1}
                 totalItems={pendientes.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="ventas"
               />
             </Card>
@@ -1608,7 +1631,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(anulados.length / 10) || 1}
                 totalItems={anulados.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="ventas"
               />
             </Card>

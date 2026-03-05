@@ -240,6 +240,14 @@ export default function FinanzasPage() {
     }
   }, [selectedStoreId]);
 
+  // Helper: info del usuario actual para trazabilidad
+  const getUserInfo = () => ({
+    userId: auth?.user?.id,
+    sellerName:
+      [auth?.user?.name, auth?.user?.surname].filter(Boolean).join(" ") ||
+      undefined,
+  });
+
   const handleChangeStatus = useCallback(
     async (
       saleId: string,
@@ -257,8 +265,9 @@ export default function FinanzasPage() {
       }
 
       try {
-        const payload: { status: OrderStatus; cancellationReason?: string } = {
+        const payload: Record<string, unknown> = {
           status: newStatus,
+          ...getUserInfo(),
         };
         if (cancellationReason) {
           payload.cancellationReason = cancellationReason;
@@ -289,6 +298,7 @@ export default function FinanzasPage() {
           {
             status: "ANULADO",
             cancellationReason: reason,
+            ...getUserInfo(),
           },
         );
         toast.success(`Venta ${saleToCancel.orderNumber} anulada`);
@@ -969,8 +979,8 @@ Estado: ${sale.status}
                         <TableCell className="w-[100px] min-w-[100px]">
                           {sale.paymentCreatedAt
                             ? new Date(
-                              sale.paymentCreatedAt,
-                            ).toLocaleDateString("es-PE")
+                                sale.paymentCreatedAt,
+                              ).toLocaleDateString("es-PE")
                             : "-"}
                         </TableCell>
                         <TableCell className="w-[100px] min-w-[100px]">
@@ -1037,7 +1047,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(pagosPendientes.length / 10) || 1}
                 totalItems={pagosPendientes.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="ventas"
               />
             </Card>
@@ -1102,7 +1112,7 @@ Estado: ${sale.status}
                 totalPages={Math.ceil(entregados.length / 10) || 1}
                 totalItems={entregados.length}
                 itemsPerPage={10}
-                onPageChange={() => { }}
+                onPageChange={() => {}}
                 itemName="pedidos"
               />
             </Card>

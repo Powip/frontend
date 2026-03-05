@@ -619,6 +619,10 @@ export default function SeguimientoPage() {
           shippingCode: data.shippingCode || null,
           shippingKey: data.shippingKey || null,
           shippingOffice: data.shippingOffice || null,
+          userId: auth?.user?.id,
+          sellerName:
+            [auth?.user?.name, auth?.user?.surname].filter(Boolean).join(" ") ||
+            undefined,
         },
       );
       // Update local state to sync original values (avoids table refresh)
