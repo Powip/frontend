@@ -139,6 +139,7 @@ export default function ProductCreateForm({
   );
 
   const [variants, setVariants] = useState<VariantForm[]>([]);
+  const [companySku, setCompanySku] = useState("");
   const [message, setMessage] = useState("");
 
   // Quick create modals
@@ -253,6 +254,9 @@ export default function ProductCreateForm({
           supplierId: productDetails.supplier?.id || "",
           brandId: productDetails.brand?.id || "",
         });
+
+        // Cargar companySku si existe
+        setCompanySku(product.companySku || "");
 
         // Llenar la variante con sus valores
         const variantForm: VariantForm = {
@@ -606,6 +610,7 @@ export default function ProductCreateForm({
     setAttributeValues({});
     setCustomAttributes([]);
     setVariants([]);
+    setCompanySku("");
     setMessage("");
   };
 
@@ -698,6 +703,7 @@ export default function ProductCreateForm({
     const payload = {
       name: form.name,
       description: form.description,
+      companySku: companySku.trim() || undefined,
       companyId: auth?.company?.id,
       subcategoryId: form.subcategoryId,
       inventory_id: form.inventory_id,
@@ -900,6 +906,28 @@ export default function ProductCreateForm({
                   placeholder="Ej: Remera Oversize Premium"
                   required
                 />
+              </div>
+
+              {/* SKU Empresa (opcional) */}
+              <div className="space-y-2">
+                <Label htmlFor="companySku">
+                  SKU personalizado{" "}
+                  <span className="text-xs text-muted-foreground font-normal">
+                    (opcional)
+                  </span>
+                </Label>
+                <Input
+                  id="companySku"
+                  name="companySku"
+                  value={companySku}
+                  onChange={(e) => setCompanySku(e.target.value)}
+                  placeholder="Dejalo vacío para usar el SKU generado por Powip"
+                  maxLength={50}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Si no ingresás un SKU, Powip generará uno automáticamente
+                  basado en la categoría y subcategoría.
+                </p>
               </div>
 
               {/* Subcategoría */}

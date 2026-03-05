@@ -12,6 +12,7 @@ interface ProgressCallback {
 
 /**
  * Processes status updates in batches to handle high concurrency (e.g. 300 orders).
+ * Includes user identity for audit traceability.
  */
 export async function processBulkStatusChange(
   orderIds: string[],
@@ -19,6 +20,7 @@ export async function processBulkStatusChange(
   apiBaseUrl: string,
   onProgress?: ProgressCallback,
   batchSize: number = 10,
+  userInfo?: { userId: string; sellerName: string },
 ): Promise<BulkUpdateResult> {
   const result: BulkUpdateResult = {
     success: [],
@@ -35,7 +37,13 @@ export async function processBulkStatusChange(
     // Process chunk in parallel
     const segmentResults = await Promise.allSettled(
       chunk.map((id) =>
-        axios.patch(`${apiBaseUrl}/order-header/${id}`, { status: newStatus }),
+        axios.patch(`${apiBaseUrl}/order-header/${id}`, {
+          status: newStatus,
+          ...(userInfo && {
+            userId: userInfo.userId,
+            sellerName: userInfo.sellerName,
+          }),
+        }),
       ),
     );
 
