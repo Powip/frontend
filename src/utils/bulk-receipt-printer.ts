@@ -1,4 +1,4 @@
-import QRCode from 'qrcode';
+import QRCode from "qrcode";
 
 /**
  * Receipt data structure matching the backend's OrderReceipt format
@@ -45,23 +45,28 @@ async function generateQR(text: string): Promise<string> {
   try {
     return await QRCode.toDataURL(text, { width: 120 });
   } catch (err) {
-    console.error('Error generating QR', err);
-    return '';
+    console.error("Error generating QR", err);
+    return "";
   }
 }
 
 /**
  * Generates HTML for a single receipt in compact 80mm thermal format
  */
-function generateReceiptHTML(receipt: ReceiptData, qrDataUrl: string, isLast: boolean): string {
+function generateReceiptHTML(
+  receipt: ReceiptData,
+  qrDataUrl: string,
+  isLast: boolean,
+): string {
   const totalPaid = receipt.totals.totalPaid || 0;
   const pendingAmount = receipt.totals.pendingAmount || 0;
 
   return `
-    <div style="page-break-after: ${isLast ? 'auto' : 'always'}; max-width: 280px; margin: 0 auto; font-family: Arial, sans-serif; font-size: 11px; padding: 15px;">
+    <div style="page-break-after: ${isLast ? "auto" : "always"}; max-width: 280px; margin: 0 auto; font-family: Arial, sans-serif; font-size: 11px; padding: 15px;">
       <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; padding-bottom: 8px; border-bottom: 1px dashed #333;">
-        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" style="width: 70px; height: 70px; flex-shrink: 0;">` : ''}
+        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" style="width: 70px; height: 70px; flex-shrink: 0;">` : ""}
         <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
+          <div style="font-size: 11px; font-weight: bold; text-align: center; margin-bottom: 2px; text-transform: uppercase;">Comprobante de pedido</div>
           <div style="font-size: 14px; font-weight: bold; margin-bottom: 4px;">Orden # ${receipt.orderNumber}</div>
           <div style="font-size: 16px; font-weight: bold;">Total: S/ ${receipt.totals.grandTotal.toFixed(2)}</div>
         </div>
@@ -75,39 +80,39 @@ function generateReceiptHTML(receipt: ReceiptData, qrDataUrl: string, isLast: bo
           </div>
           <div style="line-height: 1.3;">
             <span style="color: #666;">Distrito:</span>
-            <span style="font-weight: 500;">${receipt.customer.district || '-'}</span>
+            <span style="font-weight: 500;">${receipt.customer.district || "-"}</span>
           </div>
           <div style="line-height: 1.3;">
             <span style="color: #666;">Teléfono:</span>
-            <span style="font-weight: 500;">${receipt.customer.phoneNumber || '-'}</span>
+            <span style="font-weight: 500;">${receipt.customer.phoneNumber || "-"}</span>
           </div>
           <div style="line-height: 1.3;">
             <span style="color: #666;">Tipo:</span>
-            <span style="font-weight: 500;">${receipt.customer.clientType || '-'}</span>
+            <span style="font-weight: 500;">${receipt.customer.clientType || "-"}</span>
           </div>
           <div style="line-height: 1.3;">
             <span style="color: #666;">Dirección:</span>
-            <span style="font-weight: 500;">${receipt.customer.address || '-'}</span>
+            <span style="font-weight: 500;">${receipt.customer.address || "-"}</span>
           </div>
           <div style="line-height: 1.3;">
             <span style="color: #666;">Referencia:</span>
-            <span style="font-weight: 500;">${receipt.customer.reference || '-'}</span>
+            <span style="font-weight: 500;">${receipt.customer.reference || "-"}</span>
           </div>
           <div style="line-height: 1.3;">
             <span style="color: #666;">Departamento:</span>
-            <span style="font-weight: 500;">${receipt.customer.city || '-'}</span>
+            <span style="font-weight: 500;">${receipt.customer.city || "-"}</span>
           </div>
           <div style="line-height: 1.3;">
             <span style="color: #666;">Canal:</span>
-            <span style="font-weight: 500;">${receipt.salesChannel || '-'}</span>
+            <span style="font-weight: 500;">${receipt.salesChannel || "-"}</span>
           </div>
           <div style="line-height: 1.3;">
             <span style="color: #666;">Provincia:</span>
-            <span style="font-weight: 500;">${receipt.customer.province || '-'}</span>
+            <span style="font-weight: 500;">${receipt.customer.province || "-"}</span>
           </div>
           <div style="line-height: 1.3;">
             <span style="color: #666;">DNI:</span>
-            <span style="font-weight: 500;">${receipt.customer.dni || '-'}</span>
+            <span style="font-weight: 500;">${receipt.customer.dni || "-"}</span>
           </div>
         </div>
       </div>
@@ -123,21 +128,25 @@ function generateReceiptHTML(receipt: ReceiptData, qrDataUrl: string, isLast: bo
             </tr>
           </thead>
           <tbody>
-            ${receipt.items.map((item) => {
-              const attrs = item.attributes ? Object.values(item.attributes).join('/') : '';
-              const discount = Number(item.discountAmount) || 0;
-              const subtotal = Number(item.subtotal);
-              return `
+            ${receipt.items
+              .map((item) => {
+                const attrs = item.attributes
+                  ? Object.values(item.attributes).join("/")
+                  : "";
+                const discount = Number(item.discountAmount) || 0;
+                const subtotal = Number(item.subtotal);
+                return `
                 <tr>
                   <td style="padding: 3px 2px; border-bottom: 1px dotted #ddd; text-align: center; vertical-align: top;">${item.quantity}</td>
                   <td style="padding: 3px 2px; border-bottom: 1px dotted #ddd; vertical-align: top;">
-                    ${item.productName}${attrs ? ` (${attrs})` : ''}
-                    ${discount > 0 ? `<div style="font-size: 8px; color: #666;">Dcto: -S/${discount.toFixed(2)}</div>` : ''}
+                    ${item.productName}${attrs ? ` (${attrs})` : ""}
+                    ${discount > 0 ? `<div style="font-size: 8px; color: #666;">Dcto: -S/${discount.toFixed(2)}</div>` : ""}
                   </td>
                   <td style="padding: 3px 2px; border-bottom: 1px dotted #ddd; text-align: right; vertical-align: top; white-space: nowrap;">S/${subtotal.toFixed(2)}</td>
                 </tr>
               `;
-            }).join('')}
+              })
+              .join("")}
           </tbody>
         </table>
       </div>
@@ -179,22 +188,22 @@ function generateReceiptHTML(receipt: ReceiptData, qrDataUrl: string, isLast: bo
 /**
  * Prints multiple receipts using the compact 80mm thermal format with QR codes.
  * Opens a new print window and triggers the print dialog.
- * 
+ *
  * @param receipts - Array of receipt data to print
  * @returns Promise that resolves when print dialog is triggered, or rejects on error
  */
 export async function printReceipts(receipts: ReceiptData[]): Promise<void> {
   if (receipts.length === 0) {
-    throw new Error('No receipts to print');
+    throw new Error("No receipts to print");
   }
 
   // Generate QR codes for all receipts in parallel
-  const qrPromises = receipts.map(r => generateQR(r.orderId));
+  const qrPromises = receipts.map((r) => generateQR(r.orderId));
   const qrUrls = await Promise.all(qrPromises);
 
   // Generate HTML for all receipts
-  const receiptHTMLs = receipts.map((receipt, index) => 
-    generateReceiptHTML(receipt, qrUrls[index], index === receipts.length - 1)
+  const receiptHTMLs = receipts.map((receipt, index) =>
+    generateReceiptHTML(receipt, qrUrls[index], index === receipts.length - 1),
   );
 
   const printContent = `
@@ -213,15 +222,17 @@ export async function printReceipts(receipts: ReceiptData[]): Promise<void> {
       </style>
     </head>
     <body>
-      ${receiptHTMLs.join('')}
+      ${receiptHTMLs.join("")}
     </body>
     </html>
   `;
 
   // Open print window
-  const printWindow = window.open('', '_blank', 'width=400,height=600');
+  const printWindow = window.open("", "_blank", "width=400,height=600");
   if (!printWindow) {
-    throw new Error('No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.');
+    throw new Error(
+      "No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.",
+    );
   }
 
   printWindow.document.write(printContent);

@@ -66,7 +66,23 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
   const handleExport = () => {
-    exportToExcel(data, title.toLowerCase().replace(/\s+/g, "-"));
+    // Filter data to only include keys that are visible in the UI table
+    const filteredData = data.map((row) => {
+      const filteredRow: any = {};
+      Object.keys(row)
+        .filter(
+          (key) =>
+            !["id", "_id", "tenant_id", "tenantid"].includes(
+              key.toLowerCase(),
+            ) && !key.toLowerCase().endsWith("id"), // More robust suffix check for sellerId, etc.
+        )
+        .forEach((key) => {
+          filteredRow[key] = row[key];
+        });
+      return filteredRow;
+    });
+
+    exportToExcel(filteredData, title.toLowerCase().replace(/\s+/g, "-"));
   };
 
   return (
@@ -168,7 +184,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                                       "tenant_id",
                                       "tenantid",
                                     ].includes(key.toLowerCase()) &&
-                                    !key.toLowerCase().endsWith("_id"),
+                                    !key.toLowerCase().endsWith("id"), // Hide technical IDs like sellerId
                                 )
                                 .map((key) => {
                                   // Mapeo simple de headers a español
@@ -231,7 +247,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                                       "tenant_id",
                                       "tenantid",
                                     ].includes(key.toLowerCase()) &&
-                                    !key.toLowerCase().endsWith("_id"),
+                                    !key.toLowerCase().endsWith("id"), // Hide technical IDs like sellerId
                                 )
                                 .map(([key, val]: [string, any], j) => {
                                   let displayValue = val;

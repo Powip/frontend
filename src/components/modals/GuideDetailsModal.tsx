@@ -39,6 +39,8 @@ import { es } from "date-fns/locale";
 import axios from "axios";
 import { toast } from "sonner";
 import PaymentVerificationModal from "./PaymentVerificationModal";
+import { exportToExcel } from "@/lib/excel";
+import { FileSpreadsheet } from "lucide-react";
 
 export interface ShippingGuide {
   id: string;
@@ -49,14 +51,14 @@ export interface ShippingGuide {
   courierPhone?: string | null;
   orderIds: string[];
   status:
-    | "CREADA"
-    | "APROBADA"
-    | "ASIGNADA"
-    | "EN_RUTA"
-    | "ENTREGADA"
-    | "PARCIAL"
-    | "FALLIDA"
-    | "CANCELADA";
+  | "CREADA"
+  | "APROBADA"
+  | "ASIGNADA"
+  | "EN_RUTA"
+  | "ENTREGADA"
+  | "PARCIAL"
+  | "FALLIDA"
+  | "CANCELADA";
   chargeType?: "PREPAGADO" | "CONTRA_ENTREGA" | "CORTESIA" | null;
   amountToCollect?: number | null;
   scheduledDate?: string | null;
@@ -507,10 +509,81 @@ export default function GuideDetailsModal({
   const totalCobranza =
     cobranzaStats.totalPending + cobranzaStats.pendingApproval;
 
+  const handleExportExcel = async () => {
+    if (!guide) {
+      toast.warning("No hay datos para exportar");
+      return;
+    }
+
+    try {
+      // Use backend endpoint for styled Excel
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/export`,
+        { responseType: "blob" },
+      );
+
+      const blob = new Blob([res.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Guia_${guide.guideNumber}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast.success("Excel descargado correctamente");
+    } catch (error) {
+      console.error("[GUIDE_EXPORT] Backend export failed, using client-side fallback:", error);
+
+      // Fallback: client-side export
+      if (ordersDetails.length === 0) {
+        toast.error("No hay datos disponibles para exportar");
+        return;
+      }
+
+      const exportData = ordersDetails.flatMap((order: OrderDetail) => {
+        const paid =
+          order.payments
+            ?.filter((p: any) => p.status === "PAID")
+            .reduce((s: number, p: any) => s + Number(p.amount), 0) || 0;
+        const pending = Math.max(Number(order.grandTotal) - paid, 0);
+
+        return order.items.map((item: any) => ({
+          "Nro Guía": guide.guideNumber,
+          Courier: guide.courierName || "-",
+          Estado: guide.status,
+          "Tipo Cobro": guide.chargeType || "-",
+          "Fecha Guía": guide.created_at
+            ? format(new Date(guide.created_at), "dd/MM/yyyy")
+            : "-",
+          Pedido: order.orderNumber,
+          "Estado Pedido": order.status,
+          Cliente: order.customer.fullName,
+          Teléfono: order.customer.phoneNumber,
+          Distrito: order.customer.district || "-",
+          Dirección: order.customer.address || "-",
+          Producto: item.productName,
+          SKU: item.sku,
+          Cant: item.quantity,
+          Precio: Number(item.unitPrice),
+          Subtotal: Number(item.unitPrice) * item.quantity,
+          "Total Pedido": Number(order.grandTotal),
+          "Monto Pagado": paid,
+          "Monto a Cobrar": pending,
+        }));
+      });
+
+      exportToExcel(exportData, `Guia-${guide.guideNumber}`);
+      toast.success("Excel exportado (modo local)");
+    }
+  };
+
   // Imprimir guía
   const handlePrintGuide = () => {
     if (!guide) return;
-
     const content = `
       <html>
       <head>
@@ -565,13 +638,13 @@ export default function GuideDetailsModal({
         <div class="orders">
           <h3>Pedidos</h3>
           ${ordersDetails
-            .map((order) => {
-              const paid =
-                order.payments
-                  ?.filter((p) => p.status === "PAID")
-                  .reduce((s, p) => s + Number(p.amount), 0) || 0;
-              const pending = Math.max(Number(order.grandTotal) - paid, 0);
-              return `
+        .map((order) => {
+          const paid =
+            order.payments
+              ?.filter((p) => p.status === "PAID")
+              .reduce((s, p) => s + Number(p.amount), 0) || 0;
+          const pending = Math.max(Number(order.grandTotal) - paid, 0);
+          return `
               <div class="order">
                 <div class="order-header">
                   <span class="number">${order.orderNumber}</span>
@@ -582,18 +655,17 @@ export default function GuideDetailsModal({
                   ${order.customer.district || ""} - ${order.customer.address || ""}
                 </div>
                 <div class="items">
-                  ${
-                    order.items
-                      ?.map(
-                        (item) => `
+                  ${order.items
+              ?.map(
+                (item) => `
                     <div class="item">
                       <span class="item-name">${item.productName} (x${item.quantity})</span>
                       <span>S/${(Number(item.unitPrice) * item.quantity).toFixed(2)}</span>
                     </div>
                   `,
-                      )
-                      .join("") || ""
-                  }
+              )
+              .join("") || ""
+            }
                 </div>
                 <div class="total">
                   Total: S/${Number(order.grandTotal).toFixed(2)}
@@ -601,8 +673,8 @@ export default function GuideDetailsModal({
                 </div>
               </div>
             `;
-            })
-            .join("")}
+        })
+        .join("")}
         </div>
       </body>
       </html>
@@ -658,10 +730,9 @@ export default function GuideDetailsModal({
           </div>
           <div class="section items">
             <div class="section-title">Productos</div>
-            ${
-              order.items
-                ?.map(
-                  (item) => `
+            ${order.items
+          ?.map(
+            (item) => `
               <div class="item">
                 <div class="row">
                   <span>${item.productName}</span>
@@ -673,9 +744,9 @@ export default function GuideDetailsModal({
                 </div>
               </div>
             `,
-                )
-                .join("") || ""
-            }
+          )
+          .join("") || ""
+        }
           </div>
           <div class="section totals">
             <div class="row">
@@ -683,20 +754,20 @@ export default function GuideDetailsModal({
               <span>S/${Number(order.grandTotal).toFixed(2)}</span>
             </div>
             ${(() => {
-              const paid =
-                order.payments
-                  ?.filter((p) => p.status === "PAID")
-                  .reduce((s, p) => s + Number(p.amount), 0) || 0;
-              const pending = Math.max(Number(order.grandTotal) - paid, 0);
-              return pending > 0
-                ? `
+          const paid =
+            order.payments
+              ?.filter((p) => p.status === "PAID")
+              .reduce((s, p) => s + Number(p.amount), 0) || 0;
+          const pending = Math.max(Number(order.grandTotal) - paid, 0);
+          return pending > 0
+            ? `
                 <div class="row pending">
                   <span>A COBRAR:</span>
                   <span>S/${pending.toFixed(2)}</span>
                 </div>
               `
-                : "";
-            })()}
+            : "";
+        })()}
           </div>
           <div style="text-align: center; margin-top: 15px; font-size: 10px; color: #666;">
             Guía: ${guide?.guideNumber || "-"}<br/>
@@ -1072,11 +1143,10 @@ export default function GuideDetailsModal({
                                         ? "password"
                                         : "text"
                                     }
-                                    className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 ${
-                                      pending > 0
+                                    className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 ${pending > 0
                                         ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
                                         : "focus:border-orange-500"
-                                    }`}
+                                      }`}
                                     placeholder="Ej: ABC123"
                                     value={
                                       orderTrackingFields[order.id]
@@ -1224,15 +1294,15 @@ export default function GuideDetailsModal({
                             ) : (
                               <div>
                                 {isCourierView &&
-                                [
-                                  "CREADA",
-                                  "ASIGNADA",
-                                  "APROBADA",
-                                  "EN_RUTA",
-                                  "ENTREGADA",
-                                  "PARCIAL",
-                                  "FALLIDA",
-                                ].includes(guide?.status || "") ? (
+                                  [
+                                    "CREADA",
+                                    "ASIGNADA",
+                                    "APROBADA",
+                                    "EN_RUTA",
+                                    "ENTREGADA",
+                                    "PARCIAL",
+                                    "FALLIDA",
+                                  ].includes(guide?.status || "") ? (
                                   <label className="inline-flex items-center gap-2 cursor-pointer bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs hover:bg-primary/90 transition-colors">
                                     {uploadingOrderId === order.id ? (
                                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -1299,10 +1369,10 @@ export default function GuideDetailsModal({
                             <span className="text-[10px] text-muted-foreground">
                               {note.date
                                 ? format(
-                                    new Date(note.date),
-                                    "dd/MM/yy HH:mm",
-                                    { locale: es },
-                                  )
+                                  new Date(note.date),
+                                  "dd/MM/yy HH:mm",
+                                  { locale: es },
+                                )
                                 : "-"}
                             </span>
                           </div>
@@ -1364,6 +1434,10 @@ export default function GuideDetailsModal({
               )}
             {guide && (
               <>
+                <Button variant="outline" onClick={handleExportExcel}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Exportar Excel
+                </Button>
                 <Button variant="outline" onClick={handlePrintGuide}>
                   <Printer className="h-4 w-4 mr-2" />
                   Imprimir Guía
