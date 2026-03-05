@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -43,6 +44,7 @@ import {
   ArrowRight,
   Save,
   FileSpreadsheet,
+  FileDown,
 } from "lucide-react";
 
 /* ───────── types ───────── */
@@ -55,6 +57,9 @@ interface Subcategory {
   name: string;
 }
 interface ParsedRow {
+  categoryName?: string;
+  subcategoryName?: string;
+  subcategoryId?: string;
   name: string;
   description: string;
   companySku: string;
@@ -84,10 +89,41 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
   const [templateDownloaded, setTemplateDownloaded] = useState(false);
   const skipSubcategoryResetRef = useRef(false);
 
-  /* ─── Step 2 state ─── */
   const [file, setFile] = useState<File | null>(null);
   const [parsedRows, setParsedRows] = useState<ParsedRow[]>([]);
   const [isParsing, setIsParsing] = useState(false);
+  const [allSubcategories, setAllSubcategories] = useState<
+    Record<string, Subcategory[]>
+  >({});
+
+  const updateRow = (index: number, updates: Partial<ParsedRow>) => {
+    setParsedRows((prev) => {
+      const copy = [...prev];
+      copy[index] = { ...copy[index], ...updates };
+
+      // Re-validate if subcategoryId changed
+      if (updates.subcategoryId) {
+        copy[index].error = undefined;
+      }
+
+      return copy;
+    });
+  };
+
+  const fetchSubcategoriesForCategory = async (categoryId: string) => {
+    if (allSubcategories[categoryId]) return allSubcategories[categoryId];
+
+    try {
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${categoryId}`,
+      );
+      setAllSubcategories((prev) => ({ ...prev, [categoryId]: res.data }));
+      return res.data;
+    } catch (err) {
+      console.error("Error cargando subcategorías:", err);
+      return [];
+    }
+  };
 
   /* ─── Step 3 state ─── */
   const [isSaving, setIsSaving] = useState(false);
@@ -99,6 +135,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
   );
   const validRows = parsedRows.filter((r) => !r.error);
   const errorRows = parsedRows.filter((r) => !!r.error);
+  const invalidCount = errorRows.length;
 
   /* ─── Load categories ─── */
   useEffect(() => {
@@ -141,30 +178,33 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
   /* ════════════════════════════════════
      STEP 1: Generate & Download Template
      ════════════════════════════════════ */
-  const handleDownloadTemplate = async () => {
-    if (!selectedSubcategoryId || !selectedCategoryId) {
-      toast.error("Seleccioná una categoría y subcategoría primero");
-      return;
-    }
-
+  const handleDownloadTemplate = async (isBaseTemplate: boolean = false) => {
     const workbook = new ExcelJS.Workbook();
+    const workbookName = isBaseTemplate
+      ? "Plantilla_Base_Importacion.xlsx"
+      : `Plantilla_${selectedCategory?.name || "Cat"}_${selectedSubcategory?.name || "Sub"}.xlsx`;
 
     /* ── Hoja de metadata (oculta) ── */
     const metaSheet = workbook.addWorksheet("_metadata");
     metaSheet.state = "hidden";
-    metaSheet.addRow(["categoryId", selectedCategoryId]);
-    metaSheet.addRow(["categoryName", selectedCategory?.name || ""]);
-    metaSheet.addRow(["subcategoryId", selectedSubcategoryId]);
-    metaSheet.addRow(["subcategoryName", selectedSubcategory?.name || ""]);
-    metaSheet.addRow(["inventoryId", selectedInventoryId]);
+    metaSheet.addRow([
+      "inventoryId",
+      isBaseTemplate ? "" : selectedInventoryId,
+    ]);
 
     /* ── Hoja de productos ── */
     const sheet = workbook.addWorksheet("Productos");
     sheet.columns = [
+      { header: "Categoría *", key: "categoryName", width: 25 },
+      { header: "Subcategoría *", key: "subcategoryName", width: 25 },
       { header: "Nombre *", key: "name", width: 30 },
       { header: "Descripción", key: "description", width: 40 },
       { header: "SKU Empresa", key: "companySku", width: 20 },
-      { header: "Atributos (Color:Rojo,Talle:M)", key: "attributes", width: 32 },
+      {
+        header: "Atributos (Color:Rojo,Talle:M)",
+        key: "attributes",
+        width: 32,
+      },
       { header: "Precio Compra *", key: "priceBase", width: 16 },
       { header: "Precio Venta *", key: "priceVta", width: 16 },
       { header: "Stock Inicial *", key: "quantity", width: 16 },
@@ -181,26 +221,55 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
     };
     headerRow.alignment = { horizontal: "center" };
 
-    /* Fila de ejemplo basada en la categoría */
-    const catName = selectedCategory?.name || "Producto";
-    const subName = selectedSubcategory?.name || "";
-    const prefix = subName.substring(0, 3).toUpperCase() || catName.substring(0, 3).toUpperCase();
-    sheet.addRow({
-      name: `${subName || catName} Ejemplo`,
-      description: `Producto de ejemplo para ${catName} - ${subName}`,
-      companySku: `${prefix}-001`,
-      attributes: "Color:Negro",
-      priceBase: 100,
-      priceVta: 250,
-      quantity: 10,
-      min_stock: 5,
-    });
+    /* Fila de ejemplo base */
+    if (isBaseTemplate) {
+      sheet.addRow({
+        categoryName: "Vestimenta",
+        subcategoryName: "Camperas",
+        name: "Producto Ejemplo",
+        description: "Campera de abrigo térmica",
+        companySku: "SKU-001",
+        attributes: "Color:Azul,Talle:L",
+        priceBase: 5000,
+        priceVta: 12500,
+        quantity: 20,
+        min_stock: 5,
+      });
+      sheet.addRow({
+        categoryName: "Calzado",
+        subcategoryName: "Zapatillas",
+        name: "Zapatillas Urbanas",
+        description: "Zapatillas blancas de cuero",
+        companySku: "SKU-002",
+        attributes: "Talle:42",
+        priceBase: 3500,
+        priceVta: 8900,
+        quantity: 15,
+        min_stock: 3,
+      });
+    } else {
+      /* Fila de ejemplo personalizada */
+      const catName = selectedCategory?.name || "Producto";
+      const subName = selectedSubcategory?.name || "";
+      sheet.addRow({
+        categoryName: selectedCategory?.name || "Ropa",
+        subcategoryName: selectedSubcategory?.name || "Camisas",
+        name: `${subName || catName} Ejemplo`,
+        description: `Producto de ejemplo de ${subName || catName}`,
+        companySku: `SKU-PROD-001`,
+        attributes: "Color:Blanco",
+        priceBase: 100,
+        priceVta: 250,
+        quantity: 10,
+        min_stock: 5,
+      });
 
-    /* Info banner row */
-    const infoRow = sheet.addRow([]);
-    sheet.addRow([
-      `📋 Categoría: ${selectedCategory?.name}  |  Subcategoría: ${selectedSubcategory?.name}`,
-    ]);
+      /* Info banner row */
+      sheet.addRow([]);
+      sheet.addRow([
+        `📋 Categoría: ${selectedCategory?.name}  |  Subcategoría: ${selectedSubcategory?.name}`,
+      ]);
+    }
 
     const buf = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buf], {
@@ -209,7 +278,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
     const url = window.URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `Plantilla_${selectedCategory?.name}_${selectedSubcategory?.name}.xlsx`;
+    anchor.download = workbookName;
     anchor.click();
     window.URL.revokeObjectURL(url);
 
@@ -231,64 +300,97 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       const buffer = await f.arrayBuffer();
       await workbook.xlsx.load(buffer);
 
-      /* Read metadata */
-      const metaSheet = workbook.getWorksheet("_metadata");
-      if (metaSheet) {
-        const catId = metaSheet.getRow(1).getCell(2).value?.toString() || "";
-        const subId = metaSheet.getRow(3).getCell(2).value?.toString() || "";
-        const invId = metaSheet.getRow(5).getCell(2).value?.toString() || "";
-        if (catId && subId) skipSubcategoryResetRef.current = true;
-        if (catId) setSelectedCategoryId(catId);
-        if (subId) setSelectedSubcategoryId(subId);
-        if (invId) setSelectedInventoryId(invId);
-      }
-
       /* Read products */
-      const sheet = workbook.getWorksheet("Productos") || workbook.worksheets[0];
+      const sheet =
+        workbook.getWorksheet("Productos") || workbook.worksheets[0];
       if (!sheet) throw new Error("No se encontró la hoja 'Productos'");
 
-      const rows: ParsedRow[] = [];
+      const rawRows: any[] = [];
+      const uniqueCategoryNames = new Set<string>();
+
       sheet.eachRow((row, rowNum) => {
         if (rowNum === 1) return; // skip header
 
-        const name = row.getCell(1).value?.toString()?.trim() || "";
-        const description = row.getCell(2).value?.toString()?.trim() || "";
-        const companySku = row.getCell(3).value?.toString()?.trim() || "";
-        const rawAttrs = row.getCell(4).value?.toString()?.trim() || "";
-        const priceBase = Number(row.getCell(5).value) || 0;
-        const priceVta = Number(row.getCell(6).value) || 0;
-        const quantity = Number(row.getCell(7).value) || 0;
-        const min_stock = Number(row.getCell(8).value) || 0;
+        const categoryName = row.getCell(1).value?.toString()?.trim() || "";
+        const subcategoryName = row.getCell(2).value?.toString()?.trim() || "";
+        const name = row.getCell(3).value?.toString()?.trim() || "";
+        const description = row.getCell(4).value?.toString()?.trim() || "";
+        const companySku = row.getCell(5).value?.toString()?.trim() || "";
+        const rawAttrs = row.getCell(6).value?.toString()?.trim() || "";
+        const priceBase = Number(row.getCell(7).value) || 0;
+        const priceVta = Number(row.getCell(8).value) || 0;
+        const quantity = Number(row.getCell(9).value) || 0;
+        const min_stock = Number(row.getCell(10).value) || 0;
 
-        if (!name) return; // skip empty rows
+        if (!name && !categoryName) return;
+
+        if (categoryName) uniqueCategoryNames.add(categoryName);
+
+        rawRows.push({
+          categoryName,
+          subcategoryName,
+          name,
+          description,
+          companySku,
+          rawAttrs,
+          priceBase,
+          priceVta,
+          quantity,
+          min_stock,
+        });
+      });
+
+      // Pre-fetch subcategories for all mentioned categories
+      const categoryMap: Record<string, string> = {};
+      for (const catName of Array.from(uniqueCategoryNames)) {
+        const matchingCat = categories.find(
+          (c) => c.name.toLowerCase() === catName.toLowerCase(),
+        );
+        if (matchingCat) {
+          categoryMap[catName.toLowerCase()] = matchingCat.id;
+          await fetchSubcategoriesForCategory(matchingCat.id);
+        }
+      }
+
+      const rows: ParsedRow[] = rawRows.map((raw) => {
+        let subcategoryId = "";
+        let error: string | undefined;
+
+        const catId = categoryMap[raw.categoryName.toLowerCase()];
+        if (catId) {
+          const subcats = allSubcategories[catId] || [];
+          const matchingSub = subcats.find(
+            (s) => s.name.toLowerCase() === raw.subcategoryName.toLowerCase(),
+          );
+          if (matchingSub) {
+            subcategoryId = matchingSub.id;
+          } else {
+            error = `Subcategoría "${raw.subcategoryName}" no encontrada`;
+          }
+        } else {
+          error = `Categoría "${raw.categoryName}" no encontrada`;
+        }
 
         /* Parse attributes */
         const attributes: Record<string, string> = {};
-        if (rawAttrs) {
-          rawAttrs.split(",").forEach((pair) => {
+        if (raw.rawAttrs) {
+          raw.rawAttrs.split(",").forEach((pair: string) => {
             const [k, v] = pair.split(":");
             if (k?.trim() && v?.trim()) attributes[k.trim()] = v.trim();
           });
         }
 
-        /* Validate */
-        let error: string | undefined;
-        if (!name) error = "Nombre vacío";
-        else if (priceBase <= 0) error = "Precio Compra inválido";
-        else if (priceVta <= 0) error = "Precio Venta inválido";
-        else if (quantity <= 0) error = "Stock inválido";
+        if (!raw.name) error = "Nombre vacío";
+        if (raw.priceBase < 0) error = "Precio Compra inválido";
+        if (raw.priceVta < 0) error = "Precio Venta inválido";
+        if (raw.quantity < 0) error = "Stock inválido";
 
-        rows.push({
-          name,
-          description,
-          companySku,
+        return {
+          ...raw,
           attributes,
-          priceBase,
-          priceVta,
-          quantity,
-          min_stock,
+          subcategoryId,
           error,
-        });
+        };
       });
 
       setParsedRows(rows);
@@ -328,7 +430,6 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
     const payload = {
       tenantId,
       inventoryId: selectedInventoryId,
-      subcategoryId: selectedSubcategoryId,
       rows: validRows.map((r) => ({
         name: r.name,
         description: r.description,
@@ -338,6 +439,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         priceVta: r.priceVta,
         quantity: r.quantity,
         min_stock: r.min_stock,
+        subcategoryId: r.subcategoryId, // Enviamos el ID resuelto
       })),
     };
 
@@ -352,15 +454,19 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       console.log("✅ Respuesta bulk-import:", res.data);
 
       if (res.data.created === 0 && res.data.errors > 0) {
-        toast.error(`No se crearon productos. ${res.data.errors} errores — revisá la consola`);
+        toast.error(
+          `No se crearon productos. ${res.data.errors} errores — revisá la consola`,
+        );
       } else if (res.data.created > 0) {
         toast.success(
           res.data.message ||
-          `Importación completada: ${res.data.created} productos creados`,
+            `Importación completada: ${res.data.created} productos creados`,
         );
         onBack();
       } else {
-        toast.warning("La respuesta no indica productos creados. Verificá la consola.");
+        toast.warning(
+          "La respuesta no indica productos creados. Verificá la consola.",
+        );
       }
     } catch (err: any) {
       const errorDetail = err.response?.data
@@ -377,11 +483,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
   };
 
   /* ═══════════ RENDER ═══════════ */
-  const stepLabels = [
-    "Generar Plantilla",
-    "Subir Archivo",
-    "Vista Previa",
-  ];
+  const stepLabels = ["Generar Plantilla", "Subir Archivo", "Vista Previa"];
 
   return (
     <div className="w-full px-6 pb-6">
@@ -405,12 +507,13 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
               )}
               <div className="flex flex-col items-center gap-1">
                 <div
-                  className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${isDone
-                    ? "bg-green-500 text-white"
-                    : isActive
-                      ? "bg-primary text-primary-foreground"
-                      : "bg-muted text-muted-foreground"
-                    }`}
+                  className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+                    isDone
+                      ? "bg-green-500 text-white"
+                      : isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
+                  }`}
                 >
                   {isDone ? <CheckCircle2 className="h-5 w-5" /> : num}
                 </div>
@@ -429,110 +532,171 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
            STEP 1: Generate Template
          ═══════════════════════════ */}
       {step === 1 && (
-        <Card className="max-w-2xl mx-auto">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5" />
-              Paso 1 — Generar Plantilla
-            </CardTitle>
-            <CardDescription>
-              Seleccioná la categoría, subcategoría e inventario para generar la
-              plantilla Excel personalizada.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {/* Category */}
-            <div className="space-y-1.5">
-              <Label>Categoría</Label>
-              <Select
-                value={selectedCategoryId}
-                onValueChange={setSelectedCategoryId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Elegí una categoría..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Subcategory */}
-            <div className="space-y-1.5">
-              <Label>Subcategoría</Label>
-              <Select
-                value={selectedSubcategoryId}
-                onValueChange={setSelectedSubcategoryId}
-                disabled={!selectedCategoryId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Elegí una subcategoría..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {subcategories.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>
-                      {s.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Inventory */}
-            {inventories.length > 1 && (
-              <div className="space-y-1.5">
-                <Label>Inventario</Label>
-                <Select
-                  value={selectedInventoryId}
-                  onValueChange={setSelectedInventoryId}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Elegí un inventario..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {inventories.map((inv: any) => (
-                      <SelectItem key={inv.id} value={inv.id}>
-                        {inv.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        <Card className="max-w-2xl mx-auto shadow-lg border-primary/10">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <CardTitle className="flex items-center gap-2 text-xl font-bold text-primary">
+                  <FileSpreadsheet className="h-6 w-6" />
+                  Paso 1 — Obtener Plantilla
+                </CardTitle>
+                <CardDescription>
+                  Descargá el archivo Excel para completar con tus productos.
+                </CardDescription>
               </div>
-            )}
+              <Badge
+                variant="outline"
+                className="bg-primary/5 text-primary border-primary/20"
+              >
+                Paso Inicial
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Opción 1: Plantilla Rápida / Base */}
+            <div className="rounded-xl border bg-secondary/30 p-5 space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="mt-1 rounded-full bg-primary/10 p-2">
+                  <Download className="h-4 w-4 text-primary" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-semibold text-sm">
+                    Plantilla Base (Recomendado para nuevos clientes)
+                  </h4>
+                  <p className="text-xs text-muted-foreground">
+                    Descargá una estructura limpia con ejemplos de cómo llenar
+                    las categorías y subcategorías.
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                className="w-full bg-background hover:bg-primary hover:text-white transition-all duration-300"
+                onClick={() => handleDownloadTemplate(true)}
+              >
+                <FileDown className="mr-2 h-4 w-4" />
+                Descargar Plantilla Base de Ejemplo
+              </Button>
+            </div>
 
-            {/* Download button */}
-            <Button
-              className="w-full"
-              size="lg"
-              onClick={handleDownloadTemplate}
-              disabled={!selectedSubcategoryId || !selectedInventoryId}
-            >
-              <Download className="mr-2 h-5 w-5" />
-              Descargar Plantilla Excel
-            </Button>
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground font-medium text-[10px] tracking-widest">
+                  Opcional: Plantilla Personalizada
+                </span>
+              </div>
+            </div>
+
+            {/* Opción 2: Plantilla filtrada */}
+            <div className="space-y-4 pt-1">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Categoría
+                  </Label>
+                  <Select
+                    value={selectedCategoryId}
+                    onValueChange={setSelectedCategoryId}
+                  >
+                    <SelectTrigger className="h-10 bg-muted/50 border-none shadow-none ring-0 focus:ring-1">
+                      <SelectValue placeholder="Elegí categoría..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Subcategoría
+                  </Label>
+                  <Select
+                    value={selectedSubcategoryId}
+                    onValueChange={setSelectedSubcategoryId}
+                    disabled={!selectedCategoryId}
+                  >
+                    <SelectTrigger className="h-10 bg-muted/50 border-none shadow-none ring-0 focus:ring-1">
+                      <SelectValue placeholder="Elegí subcategoría..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {subcategories.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Inventory */}
+              {inventories.length > 1 && (
+                <div className="space-y-1.5">
+                  <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Inventario destino
+                  </Label>
+                  <Select
+                    value={selectedInventoryId}
+                    onValueChange={setSelectedInventoryId}
+                  >
+                    <SelectTrigger className="h-10 bg-muted/50 border-none shadow-none ring-0 focus:ring-1">
+                      <SelectValue placeholder="Seleccionar inventario..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {inventories.map((inv: any) => (
+                        <SelectItem key={inv.id} value={inv.id}>
+                          {inv.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              <Button
+                className="w-full h-11 shadow-md transition-all active:scale-[0.98]"
+                onClick={() => handleDownloadTemplate(false)}
+                disabled={!selectedSubcategoryId || !selectedInventoryId}
+              >
+                <Download className="mr-2 h-5 w-5" />
+                Generar Plantilla Personalizada
+              </Button>
+            </div>
 
             {templateDownloaded && (
-              <p className="text-xs text-green-600 flex items-center gap-1">
+              <p className="text-xs text-green-600 flex items-center justify-center gap-1 font-medium bg-green-50 dark:bg-green-950/20 py-2 rounded-lg">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Plantilla descargada — completala y subila en el paso 2.
+                Plantilla descargada con éxito — Completala y subila en el Paso
+                2
               </p>
             )}
 
             {/* Navigation */}
-            <div className="flex justify-between pt-2">
-              <Button variant="outline" onClick={onBack}>
+            <div className="flex justify-between items-center pt-2 border-t">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onBack}
+                className="text-muted-foreground hover:text-foreground"
+              >
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Volver
+                Cancelar
               </Button>
               <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => setStep(2)}
-                disabled={!selectedSubcategoryId || !selectedInventoryId}
+                className="font-semibold shadow-sm"
               >
-                Siguiente
+                Ya tengo mi archivo, ir al Paso 2
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             </div>
@@ -609,162 +773,246 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
            STEP 3: Preview & Confirm
          ═══════════════════════════ */}
       {step === 3 && (
-        <Card>
+        <Card className="max-w-[95vw] lg:max-w-7xl mx-auto">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5" />
-              Paso 3 — Vista Previa
+              Paso 3 — Vista Previa y Edición
             </CardTitle>
             <CardDescription>
-              Revisá los productos antes de guardarlos. Podés volver al paso
-              anterior para corregir el archivo.
+              Revisá y corregí las categorías de los productos si es necesario.
+              Aseguráte de que todos tengan una subcategoría asignada.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5">
-            {/* Summary */}
-            <div className="flex flex-wrap gap-4">
-              <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-4 py-2 text-sm">
-                <span className="font-semibold text-green-700 dark:text-green-400">
-                  {validRows.length}
-                </span>{" "}
-                productos listos
-              </div>
-              {errorRows.length > 0 && (
-                <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-2 text-sm">
-                  <span className="font-semibold text-red-700 dark:text-red-400">
-                    {errorRows.length}
+          <CardContent className="space-y-6">
+            {/* Summary & Globals */}
+            <div className="flex flex-col md:flex-row gap-6">
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 px-4 py-2 text-sm">
+                  <span className="font-semibold text-green-700 dark:text-green-400">
+                    {validRows.length}
                   </span>{" "}
-                  con errores
+                  productos listos
                 </div>
-              )}
-              {selectedCategory && selectedSubcategory && (
-                <div className="rounded-lg bg-muted/60 px-4 py-2 text-sm">
-                  {selectedCategory.name} → {selectedSubcategory.name}
-                </div>
-              )}
-            </div>
+                {errorRows.length > 0 && (
+                  <div className="rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 px-4 py-2 text-sm">
+                    <span className="font-semibold text-red-700 dark:text-red-400">
+                      {errorRows.length}
+                    </span>{" "}
+                    pendientes de corregir
+                  </div>
+                )}
+              </div>
 
-            {/* Inventory selector */}
-            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-2">
-              <Label className="text-sm font-semibold">Inventario destino *</Label>
-              <Select
-                value={selectedInventoryId}
-                onValueChange={setSelectedInventoryId}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Seleccioná el inventario donde guardar..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {inventories.map((inv: any) => (
-                    <SelectItem key={inv.id} value={inv.id}>
-                      {inv.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {!selectedInventoryId && (
-                <p className="text-xs text-amber-600 flex items-center gap-1">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  Debés seleccionar un inventario para poder guardar
-                </p>
-              )}
+              {/* Inventory selector */}
+              <div className="flex-1 rounded-lg border border-primary/20 bg-primary/5 p-4 flex flex-col md:flex-row items-center gap-4">
+                <div className="space-y-1 flex-1">
+                  <Label className="text-sm font-semibold">
+                    Inventario destino *
+                  </Label>
+                  <Select
+                    value={selectedInventoryId}
+                    onValueChange={setSelectedInventoryId}
+                  >
+                    <SelectTrigger className="bg-white dark:bg-background">
+                      <SelectValue placeholder="Seleccioná el inventario..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {inventories.map((inv: any) => (
+                        <SelectItem key={inv.id} value={inv.id}>
+                          {inv.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {!selectedInventoryId && (
+                  <p className="text-xs text-amber-600 flex items-center gap-1 mt-6">
+                    <AlertCircle className="h-3.5 w-3.5" />
+                    Seleccioná un inventario
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Table */}
-            <div className="rounded-lg border overflow-auto max-h-[420px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-8">#</TableHead>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>SKU Empresa</TableHead>
-                    <TableHead>Atributos</TableHead>
-                    <TableHead className="text-right">P. Compra</TableHead>
-                    <TableHead className="text-right">P. Venta</TableHead>
-                    <TableHead className="text-right">Stock</TableHead>
-                    <TableHead className="text-right">Mín.</TableHead>
-                    <TableHead>Estado</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {parsedRows.map((row, i) => (
-                    <TableRow
-                      key={i}
-                      className={row.error ? "bg-red-50/50 dark:bg-red-950/10" : ""}
-                    >
-                      <TableCell className="text-muted-foreground text-xs">
-                        {i + 1}
-                      </TableCell>
-                      <TableCell className="font-medium">{row.name}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {row.companySku || "—"}
-                      </TableCell>
-                      <TableCell className="text-xs text-muted-foreground max-w-[160px] truncate">
-                        {Object.entries(row.attributes)
-                          .map(([k, v]) => `${k}: ${v}`)
-                          .join(", ") || "—"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        ${row.priceBase.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        ${row.priceVta.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {row.quantity}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {row.min_stock}
-                      </TableCell>
-                      <TableCell>
-                        {row.error ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-red-600">
-                            <AlertCircle className="h-3.5 w-3.5" />
-                            {row.error}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-xs text-green-600">
-                            <CheckCircle2 className="h-3.5 w-3.5" />
-                            OK
-                          </span>
-                        )}
-                      </TableCell>
+            <div className="rounded-lg border overflow-hidden">
+              <div className="overflow-auto max-h-[500px]">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-secondary z-10 shadow-sm">
+                    <TableRow>
+                      <TableHead className="w-10">#</TableHead>
+                      <TableHead className="min-w-[150px]">Nombre</TableHead>
+                      <TableHead className="min-w-[180px]">Categoría</TableHead>
+                      <TableHead className="min-w-[180px]">
+                        Subcategoría
+                      </TableHead>
+                      <TableHead>SKU</TableHead>
+                      <TableHead className="text-right">Venta</TableHead>
+                      <TableHead className="text-right">Stock</TableHead>
+                      <TableHead className="w-24">Estado</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {parsedRows.map((row, i) => {
+                      const currentCategoryId =
+                        categories.find(
+                          (c) =>
+                            c.name.toLowerCase() ===
+                            row.categoryName?.toLowerCase(),
+                        )?.id || "";
+
+                      return (
+                        <TableRow
+                          key={i}
+                          className={
+                            row.error ? "bg-red-50/30 dark:bg-red-950/5" : ""
+                          }
+                        >
+                          <TableCell className="text-muted-foreground text-xs">
+                            {i + 1}
+                          </TableCell>
+                          <TableCell
+                            className="font-medium text-xs max-w-[150px] truncate"
+                            title={row.name}
+                          >
+                            {row.name}
+                          </TableCell>
+
+                          {/* Categoría Selector */}
+                          <TableCell>
+                            <Select
+                              value={currentCategoryId}
+                              onValueChange={(newCatId) => {
+                                const catName =
+                                  categories.find((c) => c.id === newCatId)
+                                    ?.name || "";
+                                updateRow(i, {
+                                  categoryName: catName,
+                                  subcategoryId: "",
+                                  subcategoryName: "",
+                                  error: "Seleccioná subcategoría",
+                                });
+                                fetchSubcategoriesForCategory(newCatId);
+                              }}
+                            >
+                              <SelectTrigger
+                                className={`h-8 text-xs ${!currentCategoryId ? "border-red-500" : ""}`}
+                              >
+                                <SelectValue placeholder="Cat..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {categories.map((c) => (
+                                  <SelectItem key={c.id} value={c.id}>
+                                    {c.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+
+                          {/* Subcategoría Selector */}
+                          <TableCell>
+                            <Select
+                              value={row.subcategoryId}
+                              onValueChange={(newSubId) => {
+                                const subName =
+                                  allSubcategories[currentCategoryId]?.find(
+                                    (s) => s.id === newSubId,
+                                  )?.name || "";
+                                updateRow(i, {
+                                  subcategoryId: newSubId,
+                                  subcategoryName: subName,
+                                });
+                              }}
+                              disabled={!currentCategoryId}
+                            >
+                              <SelectTrigger
+                                className={`h-8 text-xs ${!row.subcategoryId ? "border-red-500" : ""}`}
+                              >
+                                <SelectValue placeholder="Sub..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {(
+                                  allSubcategories[currentCategoryId] || []
+                                ).map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    {s.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </TableCell>
+
+                          <TableCell className="text-xs text-muted-foreground">
+                            {row.companySku || "—"}
+                          </TableCell>
+                          <TableCell className="text-right text-xs">
+                            ${row.priceVta.toLocaleString()}
+                          </TableCell>
+                          <TableCell className="text-right text-xs">
+                            {row.quantity}
+                          </TableCell>
+                          <TableCell>
+                            {row.error ? (
+                              <span
+                                className="flex items-center justify-center"
+                                title={row.error}
+                              >
+                                <AlertCircle className="h-4 w-4 text-red-500" />
+                              </span>
+                            ) : (
+                              <span className="flex items-center justify-center">
+                                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                              </span>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex justify-between pt-2">
+            {/* Navigation */}
+            <div className="flex justify-between items-center pt-4">
               <Button
-                variant="outline"
-                onClick={() => {
-                  setStep(2);
-                  setFile(null);
-                  setParsedRows([]);
-                }}
+                variant="ghost"
+                onClick={() => setStep(2)}
+                disabled={isSaving}
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Volver a subir
+                Cambiar archivo
               </Button>
-              <Button
-                size="lg"
-                onClick={handleSave}
-                disabled={isSaving || validRows.length === 0 || !selectedInventoryId}
-              >
-                {isSaving ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Guardando...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Guardar {validRows.length} productos
-                  </>
+
+              <div className="flex items-center gap-3">
+                {errorRows.length > 0 && (
+                  <p className="text-xs text-red-500 font-medium">
+                    Corregí los errores para continuar
+                  </p>
                 )}
-              </Button>
+                <Button
+                  size="lg"
+                  onClick={handleSave}
+                  disabled={
+                    invalidCount > 0 || isSaving || !selectedInventoryId
+                  }
+                  className="min-w-[180px]"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Importar {validRows.length} productos
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
