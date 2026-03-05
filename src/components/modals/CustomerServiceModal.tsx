@@ -1,6 +1,8 @@
 "use client";
 import axios from "axios";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -35,6 +37,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
+import { Calendar } from "../ui/calendar";
+import { cn } from "@/lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -122,6 +127,7 @@ interface OrderReceipt {
   closingChannel?: string;
   callStatus?: string;
   callAttempts?: number;
+  callbackAt?: string | null;
   customer: {
     fullName: string;
     phoneNumber?: string;
@@ -197,7 +203,13 @@ export default function CustomerServiceModal({
   const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
 
-  const fetchLogs = async () => {
+  // Scheduling states
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(
+    undefined,
+  );
+  const [isScheduling, setIsScheduling] = useState(false);
+
+  const fetchLogs = useCallback(async () => {
     if (!orderId) return;
     setLogsLoading(true);
     try {
@@ -210,7 +222,7 @@ export default function CustomerServiceModal({
     } finally {
       setLogsLoading(false);
     }
-  };
+  }, [orderId]);
 
   const handleSendComment = async () => {
     if (!newComment.trim() || !orderId) return;
@@ -246,13 +258,8 @@ export default function CustomerServiceModal({
     });
   };
 
-  useEffect(() => {
-    if (!open || !orderId) return;
-    fetchReceipt();
-    fetchLogs();
-  }, [open, orderId]);
-
-  const fetchReceipt = async () => {
+  const fetchReceipt = useCallback(async () => {
+    if (!orderId) return;
     try {
       setLoading(true);
       const res = await axios.get(
@@ -270,7 +277,13 @@ export default function CustomerServiceModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [orderId]);
+
+  useEffect(() => {
+    if (!open || !orderId) return;
+    fetchReceipt();
+    fetchLogs();
+  }, [open, orderId, fetchReceipt, fetchLogs]);
 
   const handleUpdateCallStatus = async (
     callStatus: "CONFIRMED" | "NO_ANSWER",
@@ -297,6 +310,51 @@ export default function CustomerServiceModal({
     } catch (error) {
       console.error("Error updating call status", error);
       toast.error("Error al actualizar el estado");
+    }
+  };
+
+  const handleScheduleCallback = async () => {
+    if (!scheduledDate || !orderId) return;
+
+    try {
+      setIsScheduling(true);
+
+      // Ajustar a formato ISO para el backend
+      const callbackAt = scheduledDate.toISOString();
+
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+        {
+          callStatus: "SCHEDULED",
+          callbackAt,
+          userId: auth?.user?.id,
+          sellerName: auth?.user?.email,
+        },
+      );
+
+      // Registrar log de programación
+      await axios.post(`${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas`, {
+        orderId,
+        comentarios: `Llamada programada para el ${format(scheduledDate, "PPPPp", { locale: es })}`,
+        operacion: "SCHEDULE_CALLBACK",
+        userId: auth?.user?.id ?? null,
+        userName: auth?.user?.email ?? null,
+        data: { callbackAt },
+        isSystemGenerated: false,
+      });
+
+      toast.success(
+        `Llamada programada para ${format(scheduledDate, "dd/MM HH:mm")}`,
+      );
+      setScheduledDate(undefined);
+      fetchReceipt();
+      fetchLogs();
+      onOrderUpdated?.();
+    } catch (error) {
+      console.error("Error scheduling callback", error);
+      toast.error("Error al programar la llamada");
+    } finally {
+      setIsScheduling(false);
     }
   };
 
@@ -1835,6 +1893,100 @@ export default function CustomerServiceModal({
                               <PhoneOff className="h-4 w-4 mr-2" />
                               NO CONTESTA ({(receipt.callAttempts || 0) + 1}/3)
                             </Button>
+                          </div>
+
+                          <div className="pt-2 border-t border-dashed border-muted-foreground/20">
+                            <label className="text-xs font-medium text-muted-foreground mb-2 block">
+                              ¿Programar rellamada?
+                            </label>
+                            <div className="flex gap-2">
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    variant="outline"
+                                    className={cn(
+                                      "flex-1 justify-start text-left font-normal h-9",
+                                      !scheduledDate && "text-muted-foreground",
+                                    )}
+                                  >
+                                    <Clock className="mr-2 h-4 w-4" />
+                                    {scheduledDate ? (
+                                      format(
+                                        scheduledDate,
+                                        "dd/MM/yyyy HH:mm",
+                                        { locale: es },
+                                      )
+                                    ) : (
+                                      <span>Seleccionar fecha y hora</span>
+                                    )}
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  className="w-auto p-0"
+                                  align="start"
+                                >
+                                  <div className="p-3 border-b border-border">
+                                    <div className="flex flex-col gap-2">
+                                      <label className="text-xs font-bold uppercase text-muted-foreground">
+                                        Fecha y Hora
+                                      </label>
+                                      <Input
+                                        type="datetime-local"
+                                        className="h-9 text-sm"
+                                        onChange={(e) => {
+                                          const val = e.target.value;
+                                          if (val)
+                                            setScheduledDate(new Date(val));
+                                        }}
+                                        min={format(
+                                          new Date(),
+                                          "yyyy-MM-dd'T'HH:mm",
+                                        )}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="p-1">
+                                    <Calendar
+                                      mode="single"
+                                      selected={scheduledDate}
+                                      onSelect={(date) => {
+                                        if (date) {
+                                          const current =
+                                            scheduledDate || new Date();
+                                          date.setHours(current.getHours());
+                                          date.setMinutes(current.getMinutes());
+                                          setScheduledDate(date);
+                                        }
+                                      }}
+                                      initialFocus
+                                      locale={es}
+                                    />
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                              <Button
+                                onClick={handleScheduleCallback}
+                                disabled={!scheduledDate || isScheduling}
+                                className="bg-amber-600 hover:bg-amber-700 h-9"
+                              >
+                                {isScheduling ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  "Agendar"
+                                )}
+                              </Button>
+                            </div>
+                            {receipt?.callStatus === "SCHEDULED" &&
+                              receipt.callbackAt && (
+                                <p className="text-[10px] text-amber-600 mt-1 flex items-center gap-1">
+                                  <Clock className="h-3 w-3" />
+                                  Programada:{" "}
+                                  {format(
+                                    new Date(receipt.callbackAt),
+                                    "dd/MM HH:mm",
+                                  )}
+                                </p>
+                              )}
                           </div>
                         </div>
                       )}
