@@ -115,9 +115,9 @@ export default function ShopifySyncWizard({ onBack }: ShopifySyncWizardProps) {
                 Shopify en la sección de integraciones.
               </p>
             </div>
-            <Link href="/configuracion/integraciones">
+            <Link href="/configuracion/tiendas">
               <Button className="mt-2">
-                Ir a Integraciones
+                Gestionar Tiendas
                 <ExternalLink className="ml-2 h-4 w-4" />
               </Button>
             </Link>
