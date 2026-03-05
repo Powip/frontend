@@ -817,7 +817,7 @@ export default function ProductCreateForm({
                 <div className="space-y-2">
                   <Label htmlFor="inventory_id">Inventario</Label>
                   <Select
-                    value={form.inventory_id}
+                    value={form.inventory_id || undefined}
                     onValueChange={(value) =>
                       setForm((prev) => ({ ...prev, inventory_id: value }))
                     }
