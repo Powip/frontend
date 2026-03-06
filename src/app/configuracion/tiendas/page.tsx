@@ -21,7 +21,9 @@ import {
   AlertTriangle,
   RefreshCw,
   Info,
+  X,
 } from "lucide-react";
+import { updateCompany } from "@/services/companyService";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
@@ -62,8 +64,62 @@ export default function TiendasPage() {
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [syncingGlobal, setSyncingGlobal] = useState<boolean>(false);
-  const { auth, logout } = useAuth();
+  const { auth, logout, updateCompany: updateAuthCompany } = useAuth();
   const [shopifyConnectedShops, setShopifyConnectedShops] = useState<any[]>([]);
+
+  // --- Canales de venta ---
+  const [newSalesChannel, setNewSalesChannel] = useState("");
+
+  const defaultChannels = [
+    "TIENDA_FISICA",
+    "WHATSAPP",
+    "INSTAGRAM",
+    "FACEBOOK",
+    "MARKETPLACE",
+    "MERCADOLIBRE",
+    "WEB",
+    "OTRO",
+  ];
+
+  const salesChannels = auth?.company?.sales_channels?.length
+    ? auth.company.sales_channels
+    : defaultChannels;
+
+  const companyId = auth?.company?.id;
+
+  const handleAddSalesChannel = async () => {
+    const name = newSalesChannel.trim();
+    if (!name || !companyId || !auth?.accessToken) return;
+    if (salesChannels.includes(name)) {
+      toast.error("Ese canal ya existe");
+      return;
+    }
+    try {
+      const updated = [...salesChannels, name];
+      await updateCompany(companyId, auth.accessToken, {
+        sales_channels: updated,
+      });
+      updateAuthCompany({ ...auth.company!, sales_channels: updated });
+      setNewSalesChannel("");
+      toast.success("Canal de venta agregado");
+    } catch {
+      toast.error("Error al agregar canal");
+    }
+  };
+
+  const handleRemoveSalesChannel = async (channel: string) => {
+    if (!companyId || !auth?.accessToken) return;
+    try {
+      const updated = salesChannels.filter((c) => c !== channel);
+      await updateCompany(companyId, auth.accessToken, {
+        sales_channels: updated,
+      });
+      updateAuthCompany({ ...auth.company!, sales_channels: updated });
+      toast.success("Canal de venta eliminado");
+    } catch {
+      toast.error("Error al eliminar canal");
+    }
+  };
 
   const handleSyncAll = async () => {
     if (shopifyConnectedShops.length === 0) return;
@@ -678,6 +734,58 @@ export default function TiendasPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* --- Canales de venta --- */}
+      <Card className="mx-10 mt-6">
+        <CardHeader>
+          <CardTitle>Canales de venta</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Configura los canales disponibles para registrar ventas. Estos
+            canales se usarán tanto para el canal de venta como para el canal de
+            cierre.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              {salesChannels.map((channel) => (
+                <span
+                  key={channel}
+                  className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm text-teal-800"
+                >
+                  {channel.replace(/_/g, " ")}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveSalesChannel(channel)}
+                    className="ml-1 rounded-full p-0.5 hover:bg-teal-200 transition-colors"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2 max-w-md">
+              <Input
+                placeholder="Nuevo canal..."
+                value={newSalesChannel}
+                onChange={(e) => setNewSalesChannel(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAddSalesChannel();
+                }}
+              />
+              <Button
+                size="sm"
+                className="gap-1 bg-teal-600 hover:bg-teal-700 shrink-0"
+                onClick={handleAddSalesChannel}
+                disabled={!newSalesChannel.trim()}
+              >
+                <Plus className="h-4 w-4" />
+                Agregar
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>

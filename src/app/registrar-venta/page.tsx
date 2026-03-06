@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState, useRef, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import { ArrowLeft, Plus, Trash2, Search, Check, X } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -24,7 +24,6 @@ import {
   fetchClientByPhone,
   updateClient,
 } from "@/services/clients.service";
-import { updateCompany } from "@/services/companyService";
 import { useAuth } from "@/contexts/AuthContext";
 import { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
@@ -95,10 +94,6 @@ function RegistrarVentaContent() {
   const [salesRegion, setSalesRegion] = useState<"LIMA" | "PROVINCIA">("LIMA");
 
   /* ---------------- Custom Channels ---------------- */
-  const [isAddingSalesChannel, setIsAddingSalesChannel] = useState(false);
-  const [newSalesChannel, setNewSalesChannel] = useState("");
-  const [isAddingClosingChannel, setIsAddingClosingChannel] = useState(false);
-  const [newClosingChannel, setNewClosingChannel] = useState("");
 
   const defaultSalesChannels = [
     "TIENDA_FISICA",
@@ -164,74 +159,21 @@ function RegistrarVentaContent() {
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
 
-  const {
-    auth,
-    selectedStoreId,
-    setSelectedStore,
-    inventories,
-    updateCompany: updateAuthCompany,
-  } = useAuth();
+  const { auth, selectedStoreId, setSelectedStore, inventories } = useAuth();
 
   const companyId = auth?.company?.id;
   const stores = auth?.company?.stores ?? [];
   const salesChannels = auth?.company?.sales_channels?.length
     ? auth.company.sales_channels
     : defaultSalesChannels;
-  const closingChannels = auth?.company?.closing_channels?.length
-    ? auth.company.closing_channels
-    : defaultSalesChannels;
+  // Los canales de cierre usan la misma lista que los canales de venta
+  const closingChannels = salesChannels;
 
   const isIdle = searchState === "idle";
   const isFound = searchState === "found";
   const isNotFound = searchState === "not_found";
 
   const formEnabled = !isIdle;
-
-  const handleSaveNewSalesChannel = async () => {
-    if (!newSalesChannel.trim() || !companyId || !auth?.accessToken) return;
-    try {
-      const updatedChannels = [...salesChannels, newSalesChannel.trim()];
-      await updateCompany(companyId, auth.accessToken, {
-        sales_channels: updatedChannels,
-      });
-      updateAuthCompany({
-        ...auth.company!,
-        sales_channels: updatedChannels,
-      });
-      setOrderDetails({
-        ...orderDetails,
-        salesChannel: newSalesChannel.trim() as any,
-      });
-      setNewSalesChannel("");
-      setIsAddingSalesChannel(false);
-      toast.success("Canal de venta agregado");
-    } catch (error) {
-      toast.error("Error al agregar canal");
-    }
-  };
-
-  const handleSaveNewClosingChannel = async () => {
-    if (!newClosingChannel.trim() || !companyId || !auth?.accessToken) return;
-    try {
-      const updatedChannels = [...closingChannels, newClosingChannel.trim()];
-      await updateCompany(companyId, auth.accessToken, {
-        closing_channels: updatedChannels,
-      });
-      updateAuthCompany({
-        ...auth.company!,
-        closing_channels: updatedChannels,
-      });
-      setOrderDetails({
-        ...orderDetails,
-        closingChannel: newClosingChannel.trim() as any,
-      });
-      setNewClosingChannel("");
-      setIsAddingClosingChannel(false);
-      toast.success("Canal de cierre agregado");
-    } catch (error) {
-      toast.error("Error al agregar canal");
-    }
-  };
 
   useEffect(() => {
     if (!orderId) return;
@@ -557,6 +499,10 @@ function RegistrarVentaContent() {
 
   const handleConfirmSale = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
+
+    // Cerrar cualquier Select/Popover abierto antes de iniciar el submit
+    // para evitar que Radix quede en estado inconsistente si hay error
+    (document.activeElement as HTMLElement)?.blur();
 
     if (!clientFound?.id) {
       console.error("❌ No hay customerId");
@@ -978,7 +924,7 @@ function RegistrarVentaContent() {
                 <Label>Documento (opcional)</Label>
                 <div className="grid grid-cols-2 gap-2">
                   <Select
-                    disabled={!formEnabled}
+                    disabled={!formEnabled || isSubmitting}
                     value={clientForm.documentType ?? "NONE"}
                     onValueChange={(v) => {
                       if (v === "NONE") {
@@ -1041,7 +987,7 @@ function RegistrarVentaContent() {
               <div className="space-y-1">
                 <Label>Tipo de cliente</Label>
                 <Select
-                  disabled={!formEnabled}
+                  disabled={!formEnabled || isSubmitting}
                   value={clientForm.clientType}
                   onValueChange={(v) =>
                     setClientForm({ ...clientForm, clientType: v as any })
@@ -1090,7 +1036,7 @@ function RegistrarVentaContent() {
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <Combobox
-                      disabled={!formEnabled}
+                      disabled={!formEnabled || isSubmitting}
                       value={clientForm.department}
                       onValueChange={(value) => {
                         setClientForm({
@@ -1122,7 +1068,9 @@ function RegistrarVentaContent() {
 
                   <div>
                     <Combobox
-                      disabled={!formEnabled || !clientForm.department}
+                      disabled={
+                        !formEnabled || !clientForm.department || isSubmitting
+                      }
                       value={clientForm.province}
                       onValueChange={(value) => {
                         setClientForm({
@@ -1153,7 +1101,9 @@ function RegistrarVentaContent() {
 
                   <div>
                     <Combobox
-                      disabled={!formEnabled || !clientForm.province}
+                      disabled={
+                        !formEnabled || !clientForm.province || isSubmitting
+                      }
                       value={clientForm.district}
                       onValueChange={(value) => {
                         setClientForm({ ...clientForm, district: value });
@@ -1267,7 +1217,7 @@ function RegistrarVentaContent() {
               <div className="space-y-1">
                 <Label>Tienda seleccionada</Label>
                 <Select
-                  disabled={orderId !== null}
+                  disabled={orderId !== null || isSubmitting}
                   value={selectedStoreId ?? ""}
                   onValueChange={(storeId) => setSelectedStore(storeId)}
                 >
@@ -1288,7 +1238,7 @@ function RegistrarVentaContent() {
                 <Label>Inventario seleccionado</Label>
                 <Select
                   value={selectedInventory}
-                  disabled={!selectedStoreId}
+                  disabled={!selectedStoreId || isSubmitting}
                   onValueChange={(inventoryId) =>
                     setSelectedInventory(inventoryId)
                   }
@@ -1598,6 +1548,7 @@ function RegistrarVentaContent() {
             <div className="space-y-1">
               <Label>Tipo de orden</Label>
               <Select
+                disabled={isSubmitting}
                 value={orderDetails.orderType}
                 onValueChange={(v) =>
                   setOrderDetails({
@@ -1625,133 +1576,60 @@ function RegistrarVentaContent() {
             {/* Canal de venta */}
             <div className="space-y-1">
               <Label>Canal de venta</Label>
-              {!isAddingSalesChannel ? (
-                <Select
-                  value={orderDetails.salesChannel}
-                  onValueChange={(v) => {
-                    if (v === "ADD_NEW") {
-                      setIsAddingSalesChannel(true);
-                    } else {
-                      setOrderDetails({
-                        ...orderDetails,
-                        salesChannel: v as any,
-                      });
-                    }
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar canal de venta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {salesChannels.map((channel) => (
-                      <SelectItem key={channel} value={channel}>
-                        {channel.replace(/_/g, " ")}
-                      </SelectItem>
-                    ))}
-                    <SelectItem
-                      value="ADD_NEW"
-                      className="text-primary font-medium"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Plus className="h-4 w-4" />
-                        Agregar nuevo
-                      </div>
+              <Select
+                disabled={isSubmitting}
+                value={orderDetails.salesChannel}
+                onValueChange={(v) =>
+                  setOrderDetails({
+                    ...orderDetails,
+                    salesChannel: v as any,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar canal de venta" />
+                </SelectTrigger>
+                <SelectContent>
+                  {salesChannels.map((channel) => (
+                    <SelectItem key={channel} value={channel}>
+                      {channel.replace(/_/g, " ")}
                     </SelectItem>
-                  </SelectContent>
-                </Select>
-              ) : (
-                <div className="flex gap-2">
-                  <Input
-                    autoFocus
-                    placeholder="Nuevo canal..."
-                    value={newSalesChannel}
-                    onChange={(e) => setNewSalesChannel(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSaveNewSalesChannel();
-                      if (e.key === "Escape") setIsAddingSalesChannel(false);
-                    }}
-                  />
-                  <Button size="icon" onClick={handleSaveNewSalesChannel}>
-                    <Check className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setIsAddingSalesChannel(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Canal de cierre */}
             <div className="space-y-1">
               <Label>Canal de cierre</Label>
-              {!isAddingClosingChannel ? (
-                <Select
-                  value={orderDetails.closingChannel}
-                  onValueChange={(v) => {
-                    if (v === "ADD_NEW") {
-                      setIsAddingClosingChannel(true);
-                    } else {
-                      setOrderDetails({
-                        ...orderDetails,
-                        closingChannel: v as any,
-                      });
-                    }
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar canal de cierre" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {closingChannels.map((channel) => (
-                      <SelectItem key={channel} value={channel}>
-                        {channel.replace(/_/g, " ")}
-                      </SelectItem>
-                    ))}
-                    <SelectItem
-                      value="ADD_NEW"
-                      className="text-primary font-medium"
-                    >
-                      <div className="flex items-center gap-2">
-                        <Plus className="h-4 w-4" />
-                        Agregar nuevo
-                      </div>
+              <Select
+                disabled={isSubmitting}
+                value={orderDetails.closingChannel}
+                onValueChange={(v) =>
+                  setOrderDetails({
+                    ...orderDetails,
+                    closingChannel: v as any,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar canal de cierre" />
+                </SelectTrigger>
+                <SelectContent>
+                  {closingChannels.map((channel) => (
+                    <SelectItem key={channel} value={channel}>
+                      {channel.replace(/_/g, " ")}
                     </SelectItem>
-                  </SelectContent>
-                </Select>
-              ) : (
-                <div className="flex gap-2">
-                  <Input
-                    autoFocus
-                    placeholder="Nuevo canal..."
-                    value={newClosingChannel}
-                    onChange={(e) => setNewClosingChannel(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") handleSaveNewClosingChannel();
-                      if (e.key === "Escape") setIsAddingClosingChannel(false);
-                    }}
-                  />
-                  <Button size="icon" onClick={handleSaveNewClosingChannel}>
-                    <Check className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => setIsAddingClosingChannel(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Tipo de entrega */}
             <div className="space-y-1">
               <Label>Tipo de entrega</Label>
               <Select
+                disabled={isSubmitting}
                 value={orderDetails.deliveryType}
                 onValueChange={(v) =>
                   setOrderDetails({
@@ -1780,6 +1658,7 @@ function RegistrarVentaContent() {
               <div className="space-y-1">
                 <Label>Método de envío</Label>
                 <Select
+                  disabled={isSubmitting}
                   value={orderDetails.enviaPor}
                   onValueChange={(v) =>
                     setOrderDetails({
@@ -1825,7 +1704,11 @@ function RegistrarVentaContent() {
             {/* Método de pago */}
             <div className="space-y-1">
               <Label>Método de pago</Label>
-              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+              <Select
+                disabled={isSubmitting}
+                value={paymentMethod}
+                onValueChange={setPaymentMethod}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="Seleccionar método de pago" />
                 </SelectTrigger>
@@ -1991,6 +1874,7 @@ function RegistrarVentaContent() {
             <div className="space-y-1">
               <Label>Modo de impuestos</Label>
               <Select
+                disabled={isSubmitting}
                 value={taxMode}
                 onValueChange={(v) =>
                   setTaxMode(v as "AUTOMATICO" | "INCLUIDO")
