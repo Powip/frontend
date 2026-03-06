@@ -41,7 +41,6 @@ import Link from "next/link";
 
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import InventarioModal from "@/components/modals/InventarioModal";
 
 import AddStockModal from "@/components/modals/AddStockModal";
 import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
@@ -113,7 +112,7 @@ export interface InventoryItem {
   updated_at: string; // ISO date string
 }
 
-export default function InventarioPage() {
+export default function AlmacenPage() {
   const { auth, selectedStoreId, inventories: storeInventories } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -125,7 +124,6 @@ export default function InventarioPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingVariants, setIsLoadingVariants] = useState(false);
   const [isLoadingInventories, setIsLoadingInventories] = useState(true);
-  const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [deleteInventoryConfirm, setDeleteInventoryConfirm] = useState(false);
@@ -145,29 +143,34 @@ export default function InventarioPage() {
     useState<ProductWithInventoryDetails | null>(null);
 
   // ------------------------------------------------------
-  // 1) Seleccionar inventario automáticamente
+  // 1) Seleccionar almacén automáticamente
   // ------------------------------------------------------
   useEffect(() => {
-    if (!storeInventories || storeInventories.length === 0) {
-      setIsLoadingInventories(true);
-      return;
-    }
+    // Si todavía no tenemos la data de la empresa cargada, esperamos
+    if (!auth?.company) return;
 
     setIsLoadingInventories(false);
 
-    if (storeInventories.length === 1) {
-      // Solo un inventario → seleccionarlo
-      setSelectedInventoryId(storeInventories[0].id);
-    } else {
-      // Más de uno → mantener el seleccionado o usar el primero
+    if (storeInventories.length > 0) {
       if (!selectedInventoryId) {
+        // Seleccionar el primero por defecto
         setSelectedInventoryId(storeInventories[0].id);
+      } else {
+        // Verificar si el seleccionado aún existe
+        const exists = storeInventories.some(
+          (inv) => inv.id === selectedInventoryId,
+        );
+        if (!exists) {
+          setSelectedInventoryId(storeInventories[0].id);
+        }
       }
+    } else {
+      setSelectedInventoryId(null);
     }
-  }, [storeInventories, selectedInventoryId]);
+  }, [storeInventories, selectedInventoryId, auth?.company]);
 
   // ------------------------------------------------------
-  // 2) Cargar items del inventario seleccionado
+  // 2) Cargar items del almacén seleccionado
   // ------------------------------------------------------
   useEffect(() => {
     if (!selectedInventoryId) return;
@@ -278,7 +281,7 @@ export default function InventarioPage() {
     }
 
     const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Inventario");
+    const worksheet = workbook.addWorksheet("Almacén");
 
     // -------------------------------------------
     // ENCABEZADOS DE LA TABLA
@@ -344,7 +347,7 @@ export default function InventarioPage() {
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `Inventario_${currentStore?.name || "Tienda"}.xlsx`;
+    a.download = `Almacen_${currentStore?.name || "Tienda"}.xlsx`;
     a.click();
     window.URL.revokeObjectURL(url);
   };
@@ -358,7 +361,7 @@ export default function InventarioPage() {
   return (
     <div className="h-screen flex flex-col px-6">
       <HeaderConfig
-        title="Inventario"
+        title="Almacén"
         description="Gestión de productos y control de stock por tienda"
       />
 
@@ -376,12 +379,6 @@ export default function InventarioPage() {
                   Compras
                 </Button>
               </Link>
-              <Link href="/productos">
-                <Button variant="outline">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Crear Producto
-                </Button>
-              </Link>
               <Button
                 variant="outline"
                 className="border-teal-100 dark:border-teal-900/30 text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/20"
@@ -390,80 +387,17 @@ export default function InventarioPage() {
                 <ShoppingBag className="mr-2 h-4 w-4" />
                 Sincronizar Shopify
               </Button>
-              <Button onClick={() => setOpen(true)}>Crear Inventario</Button>
-              {selectedInventoryId &&
-                (deleteInventoryConfirm ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm text-destructive font-medium">
-                      ¿Estás seguro?
-                    </span>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      disabled={isDeletingInventory}
-                      onClick={async () => {
-                        setIsDeletingInventory(true);
-                        try {
-                          await axios.delete(
-                            `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/${selectedInventoryId}`,
-                          );
-                          toast.success("Inventario eliminado correctamente");
-                          setSelectedInventoryId(null);
-                          setInventoryItems([]);
-                          setProductsWithDetails([]);
-                          setDeleteInventoryConfirm(false);
-                          // Forzar recarga de inventarios
-                          window.location.reload();
-                        } catch (err: any) {
-                          console.error(err);
-                          toast.error(
-                            err.response?.data?.message ||
-                              "Error al eliminar inventario",
-                          );
-                        } finally {
-                          setIsDeletingInventory(false);
-                        }
-                      }}
-                    >
-                      {isDeletingInventory ? (
-                        <>
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />{" "}
-                          Eliminando...
-                        </>
-                      ) : (
-                        "Sí, eliminar"
-                      )}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setDeleteInventoryConfirm(false)}
-                      disabled={isDeletingInventory}
-                    >
-                      Cancelar
-                    </Button>
-                  </div>
-                ) : (
-                  <Button
-                    variant="destructive"
-                    size="sm"
-                    onClick={() => setDeleteInventoryConfirm(true)}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Eliminar Inventario
-                  </Button>
-                ))}
             </div>
             {/* INVENTORY SELECT */}
             <div className="mb-6 flex flex-col gap-4 sm:flex-row">
               <div className="flex-1 sm:max-w-xs">
-                <Label className="mb-2 block">Seleccionar Inventario</Label>
+                <Label className="mb-2 block">Seleccionar Almacén</Label>
 
                 {isLoadingInventories ? (
                   <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted">
                     <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                     <span className="text-sm text-muted-foreground">
-                      Cargando inventarios...
+                      Cargando almacenes...
                     </span>
                   </div>
                 ) : (
@@ -473,7 +407,7 @@ export default function InventarioPage() {
                     disabled={storeInventories.length <= 1}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar inventario" />
+                      <SelectValue placeholder="Seleccionar almacén" />
                     </SelectTrigger>
                     <SelectContent>
                       {storeInventories.map((inv) => (
@@ -578,7 +512,7 @@ export default function InventarioPage() {
                         colSpan={8}
                         className="text-center py-6 text-muted-foreground"
                       >
-                        No hay productos en este inventario
+                        No hay productos en este almacén
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -647,15 +581,6 @@ export default function InventarioPage() {
           )}
         </Card>
       )}
-      <InventarioModal
-        open={open}
-        onClose={() => {
-          setOpen(false);
-        }}
-        onSaved={() => {
-          setOpen(false);
-        }}
-      />
 
       <ImportExcelModal
         open={importOpen}

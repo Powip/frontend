@@ -267,7 +267,7 @@ export const FinanceStats: React.FC = () => {
       {/* KPI Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
-          title="Valor Inventario"
+          title="Valor Almacén"
           value={`S/ ${inventoryValue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue="Costo de reposición est."
           icon={<Package className="h-5 w-5 text-primary" />}

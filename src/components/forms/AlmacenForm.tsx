@@ -10,7 +10,7 @@ interface Props {
   onClienteSaved: () => void;
 }
 
-export default function InventarioForm({ onClienteSaved }: Props) {
+export default function AlmacenForm({ onClienteSaved }: Props) {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const { auth, refreshInventories } = useAuth();
@@ -36,7 +36,7 @@ export default function InventarioForm({ onClienteSaved }: Props) {
 
       // Refrescar inventarios en el contexto global
       await refreshInventories();
-      toast.success("Inventario creado correctamente");
+      toast.success("Almacén creado correctamente");
       onClienteSaved();
     } catch (err: any) {
       toast.error(err.message || "Error al guardar Inventario");
@@ -51,12 +51,12 @@ export default function InventarioForm({ onClienteSaved }: Props) {
       onSubmit={handleOnSubmit}
     >
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="name">Nombre del inventario</Label>
+        <Label htmlFor="name">Nombre del almacén</Label>
         <Input
           id="name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Inventario Ropa"
+          placeholder="Almacén Central"
           required
         />
       </div>
@@ -66,7 +66,7 @@ export default function InventarioForm({ onClienteSaved }: Props) {
         className="col-span-full justify-self-end"
         disabled={loading}
       >
-        Crear Inventario
+        Crear Almacén
       </Button>
     </form>
   );

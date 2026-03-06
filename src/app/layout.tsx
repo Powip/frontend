@@ -16,13 +16,13 @@ export const metadata: Metadata = {
     "TikTok",
     "ventas",
     "pedidos",
-    "inventario",
+    "almacén",
     "cobranzas",
   ],
   openGraph: {
     title: "POWIP - Gestión de ventas para negocios digitales",
     description:
-      "Centraliza tus pedidos, gestiona tu inventario y haz seguimiento a tus cobranzas.",
+      "Centraliza tus pedidos, gestiona tu almacén y haz seguimiento a tus cobranzas.",
     type: "website",
   },
 };

@@ -1,4 +1,4 @@
-/* "use client";
+"use client";
 import { useState } from "react";
 import { Brand } from "@/interfaces/IProvider";
 import {
@@ -8,7 +8,6 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  TableActions,
 } from "@/components/ui/table";
 import { Edit, Trash, Plus } from "lucide-react";
 import BrandModal from "../brands/BrandModal";
@@ -62,27 +61,26 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
             <TableRow key={brand.id}>
               <TableCell>{brand.name}</TableCell>
               <TableCell>{brand.description || "-"}</TableCell>
-              <TableActions>
+              <TableCell className="text-right space-x-2">
                 <Button
                   size="icon"
                   className="bg-lime"
                   onClick={() => handleEdit(brand)}
                 >
-                  <Edit />
+                  <Edit className="h-4 w-4" />
                 </Button>
                 <Button
                   size="icon"
                   className="bg-red"
                   onClick={() => handleDelete(brand)}
                 >
-                  <Trash />
+                  <Trash className="h-4 w-4" />
                 </Button>
-              </TableActions>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-
 
       <BrandModal
         open={openModal}
@@ -92,7 +90,6 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
         onSaved={onUpdated}
       />
 
- 
       <BrandDeleteModal
         open={openDelete}
         onClose={() => setOpenDelete(false)}
@@ -102,4 +99,3 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
     </>
   );
 }
- */

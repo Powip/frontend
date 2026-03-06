@@ -7,6 +7,7 @@ export interface ShopifyShopStatus {
   isConnected: boolean;
   shop_url: string;
   store_id?: string;
+  inventory_id?: string;
 }
 
 export const getShopifyStatus = async (
@@ -21,15 +22,15 @@ export const getShopifyStatus = async (
 export const syncShopifyProducts = async (
   shopUrl: string,
   companyId: string,
+  inventoryId?: string,
   storeId?: string,
 ): Promise<{ total: number; success: number }> => {
-  const response = await axios.post(
-    `${API_INTEGRATIONS}/shopify/sync-products/${shopUrl}`,
-    {
-      companyId,
-      storeId,
-    },
-  );
+  const response = await axios.post(`${API_INTEGRATIONS}/shopify/sync`, {
+    shopUrl,
+    companyId,
+    inventoryId,
+    storeId,
+  });
   return response.data;
 };
 

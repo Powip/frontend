@@ -207,8 +207,6 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       },
       { header: "Precio Compra *", key: "priceBase", width: 16 },
       { header: "Precio Venta *", key: "priceVta", width: 16 },
-      { header: "Stock Inicial *", key: "quantity", width: 16 },
-      { header: "Stock Mínimo", key: "min_stock", width: 16 },
     ];
 
     /* Header styling */
@@ -232,8 +230,6 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         attributes: "Color:Azul,Talle:L",
         priceBase: 5000,
         priceVta: 12500,
-        quantity: 20,
-        min_stock: 5,
       });
       sheet.addRow({
         categoryName: "Calzado",
@@ -244,8 +240,6 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         attributes: "Talle:42",
         priceBase: 3500,
         priceVta: 8900,
-        quantity: 15,
-        min_stock: 3,
       });
     } else {
       /* Fila de ejemplo personalizada */
@@ -260,8 +254,6 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         attributes: "Color:Blanco",
         priceBase: 100,
         priceVta: 250,
-        quantity: 10,
-        min_stock: 5,
       });
 
       /* Info banner row */
@@ -319,8 +311,8 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         const rawAttrs = row.getCell(6).value?.toString()?.trim() || "";
         const priceBase = Number(row.getCell(7).value) || 0;
         const priceVta = Number(row.getCell(8).value) || 0;
-        const quantity = Number(row.getCell(9).value) || 0;
-        const min_stock = Number(row.getCell(10).value) || 0;
+        const quantity = 0; // Forzado a 0 según requerimiento
+        const min_stock = 0; // Forzado a 0 según requerimiento
 
         if (!name && !categoryName) return;
 
@@ -383,7 +375,6 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         if (!raw.name) error = "Nombre vacío";
         if (raw.priceBase < 0) error = "Precio Compra inválido";
         if (raw.priceVta < 0) error = "Precio Venta inválido";
-        if (raw.quantity < 0) error = "Stock inválido";
 
         return {
           ...raw,
@@ -417,7 +408,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       return;
     }
     if (!selectedInventoryId) {
-      toast.error("Seleccioná un inventario antes de guardar");
+      toast.error("Seleccioná un almacén antes de guardar");
       return;
     }
 
@@ -437,8 +428,8 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         attributes: r.attributes,
         priceBase: r.priceBase,
         priceVta: r.priceVta,
-        quantity: r.quantity,
-        min_stock: r.min_stock,
+        quantity: 0, // Siempre 0 en importación Excel
+        min_stock: 0, // Siempre 0 en importación Excel
         subcategoryId: r.subcategoryId, // Enviamos el ID resuelto
       })),
     };
@@ -641,14 +632,14 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
               {inventories.length > 1 && (
                 <div className="space-y-1.5">
                   <Label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Inventario destino
+                    Almacén destino
                   </Label>
                   <Select
                     value={selectedInventoryId}
                     onValueChange={setSelectedInventoryId}
                   >
                     <SelectTrigger className="h-10 bg-muted/50 border-none shadow-none ring-0 focus:ring-1">
-                      <SelectValue placeholder="Seleccionar inventario..." />
+                      <SelectValue placeholder="Seleccionar almacén..." />
                     </SelectTrigger>
                     <SelectContent>
                       {inventories.map((inv: any) => (
@@ -808,14 +799,14 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
               <div className="flex-1 rounded-lg border border-primary/20 bg-primary/5 p-4 flex flex-col md:flex-row items-center gap-4">
                 <div className="space-y-1 flex-1">
                   <Label className="text-sm font-semibold">
-                    Inventario destino *
+                    Almacén destino *
                   </Label>
                   <Select
                     value={selectedInventoryId}
                     onValueChange={setSelectedInventoryId}
                   >
                     <SelectTrigger className="bg-white dark:bg-background">
-                      <SelectValue placeholder="Seleccioná el inventario..." />
+                      <SelectValue placeholder="Seleccioná el almacén..." />
                     </SelectTrigger>
                     <SelectContent>
                       {inventories.map((inv: any) => (
@@ -829,7 +820,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
                 {!selectedInventoryId && (
                   <p className="text-xs text-amber-600 flex items-center gap-1 mt-6">
                     <AlertCircle className="h-3.5 w-3.5" />
-                    Seleccioná un inventario
+                    Seleccioná un almacén
                   </p>
                 )}
               </div>
@@ -849,7 +840,6 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
                       </TableHead>
                       <TableHead>SKU</TableHead>
                       <TableHead className="text-right">Venta</TableHead>
-                      <TableHead className="text-right">Stock</TableHead>
                       <TableHead className="w-24">Estado</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -949,9 +939,6 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
                           </TableCell>
                           <TableCell className="text-right text-xs">
                             ${row.priceVta.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right text-xs">
-                            {row.quantity}
                           </TableCell>
                           <TableCell>
                             {row.error ? (

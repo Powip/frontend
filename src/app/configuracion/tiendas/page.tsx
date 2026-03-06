@@ -54,6 +54,10 @@ interface NewStore {
   url_web: string;
 }
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import CatalogoMarcas from "@/components/brands/CatalogoMarcas";
+import GestionAlmacenes from "@/components/forms/GestionAlmacenes";
+
 export default function TiendasPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [newStore, setNewStore] = useState<NewStore>({
@@ -66,6 +70,7 @@ export default function TiendasPage() {
   const [syncingGlobal, setSyncingGlobal] = useState<boolean>(false);
   const { auth, logout, updateCompany: updateAuthCompany } = useAuth();
   const [shopifyConnectedShops, setShopifyConnectedShops] = useState<any[]>([]);
+  const router = useRouter();
 
   // --- Canales de venta ---
   const [newSalesChannel, setNewSalesChannel] = useState("");
@@ -86,6 +91,14 @@ export default function TiendasPage() {
     : defaultChannels;
 
   const companyId = auth?.company?.id;
+
+  // Redirigir si no es admin
+  useEffect(() => {
+    if (auth && auth.user && auth.user.role !== "ADMIN") {
+      toast.error("No tienes permisos para acceder a esta configuración");
+      router.push("/dashboard");
+    }
+  }, [auth, router]);
 
   const handleAddSalesChannel = async () => {
     const name = newSalesChannel.trim();
@@ -266,529 +279,538 @@ export default function TiendasPage() {
     }
   };
 
-  if (!auth) return null;
+  if (!auth || auth.user?.role !== "ADMIN") return null;
 
   if (loading) {
     return (
-      <div>
-        {/* Header skeleton */}
-        <div className="mb-6 px-10">
-          <Skeleton className="h-8 w-64 mb-2" />
-          <Skeleton className="h-4 w-48" />
-        </div>
-
-        {/* Card skeleton */}
-        <Card className="mx-10">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <Skeleton className="h-6 w-32" />
-            <Skeleton className="h-9 w-32 rounded-md" />
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {/* Store items skeleton */}
-              {[...Array(3)].map((_, i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between rounded-lg border p-4"
-                >
-                  <div className="space-y-2">
-                    <Skeleton className="h-5 w-40" />
-                    <Skeleton className="h-4 w-56" />
-                    <Skeleton className="h-5 w-16 rounded-full" />
-                  </div>
-                  <div className="flex gap-2">
-                    <Skeleton className="h-9 w-9 rounded-md" />
-                    <Skeleton className="h-9 w-9 rounded-md" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="px-10 py-6">
+        <Skeleton className="h-8 w-64 mb-6" />
+        <Skeleton className="h-10 w-full max-w-md mb-8" />
+        <Skeleton className="h-[400px] w-full" />
       </div>
     );
   }
 
   return (
-    <div>
+    <div className="pb-10">
       <HeaderConfig
-        title="Gestión de Tiendas"
-        description="Crea y administra tus tiendas"
+        title="Administración de la Empresa"
+        description="Gestiona tiendas, almacenes, marcas y canales de venta"
       />
-      <Card className="mx-10">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Tus tiendas</CardTitle>
-          <div className="flex gap-2">
-            {shopifyConnectedShops.length > 0 ? (
-              <div className="flex items-center gap-1">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="gap-2 border-teal-600 text-teal-600 hover:bg-teal-50 shadow-sm"
-                  onClick={handleSyncAll}
-                  disabled={syncingGlobal}
-                >
-                  <RefreshCw
-                    className={`h-4 w-4 ${syncingGlobal ? "animate-spin" : ""}`}
-                  />
-                  {syncingGlobal
-                    ? "Sincronizando..."
-                    : "Sincronizar con Shopify"}
-                </Button>
 
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-9 w-9 p-0 text-gray-400 hover:text-teal-600"
-                    >
-                      <Info className="h-4 w-4" />
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent className="max-w-md">
-                    <DialogHeader>
-                      <DialogTitle>Conexión Shopify Partner</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-6">
-                      <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-teal-800 font-medium px-1">
-                          <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
-                          Tiendas vinculadas ({shopifyConnectedShops.length})
-                        </div>
-                        <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1">
-                          {shopifyConnectedShops.map((s, idx) => (
-                            <div
-                              key={idx}
-                              className="bg-green-50 border border-green-200 rounded-lg p-3"
-                            >
-                              <p className="text-[10px] text-green-700 uppercase font-bold tracking-wider mb-1">
-                                Dominio Shopify:
-                              </p>
-                              <p className="text-xs font-mono text-green-900 bg-white/50 p-1.5 rounded border border-green-100 truncate">
-                                {s.shop_url}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+      <div className="px-10">
+        <Tabs defaultValue="tiendas" className="space-y-6">
+          <TabsList className="bg-muted p-1">
+            <TabsTrigger value="tiendas">Tiendas</TabsTrigger>
+            <TabsTrigger value="almacenes">Almacenes</TabsTrigger>
+            <TabsTrigger value="marcas">Marcas</TabsTrigger>
+            <TabsTrigger value="canales">Canales de Venta</TabsTrigger>
+          </TabsList>
 
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <p className="text-sm text-blue-700 mb-3">
-                          ¿Necesitas conectar una nueva sucursal o tienda
-                          adicional?
-                        </p>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="w-full border-blue-300 text-blue-800 hover:bg-blue-100"
-                          onClick={() => {
-                            window.open(
-                              "https://wa.me/tu-numero-de-soporte",
-                              "_blank",
-                            );
-                          }}
-                        >
-                          Contactar a Soporte
-                        </Button>
-                      </div>
-
-                      <div className="pt-2 border-t text-center">
-                        <p className="text-[10px] text-gray-400">
-                          ID Compañía: {auth?.company?.id}
-                        </p>
-                      </div>
-                    </div>
-                  </DialogContent>
-                </Dialog>
-              </div>
-            ) : (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="gap-2 border-teal-600 text-teal-600 hover:bg-teal-50"
-                  >
-                    <div className="w-4 h-4 rounded bg-green-500 flex items-center justify-center text-[10px] text-white">
-                      S
-                    </div>
-                    Conectar Shopify
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Conectar con Shopify Partner</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-6">
-                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
-                      <div className="flex items-center gap-2 text-amber-800 font-medium">
-                        <AlertTriangle className="h-5 w-5" />
-                        Sin integraciones activas
-                      </div>
-                      <p className="text-sm text-amber-700 leading-relaxed">
-                        No hay tiendas de Shopify vinculadas a tu cuenta de
-                        Powip. Para habilitar la sincronización automática, por
-                        favor solicita a soporte tus{" "}
-                        <strong>enlaces de instalación</strong> para cada
-                        sucursal.
-                      </p>
-                    </div>
-
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <p className="text-sm text-blue-700 mb-3">
-                        ¿Necesitas conectar una nueva sucursal o tienda
-                        adicional?
-                      </p>
+          <TabsContent value="tiendas" className="space-y-6">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle>Tus tiendas</CardTitle>
+                <div className="flex gap-2">
+                  {shopifyConnectedShops.length > 0 ? (
+                    <div className="flex items-center gap-1">
                       <Button
                         size="sm"
                         variant="outline"
-                        className="w-full border-blue-300 text-blue-800 hover:bg-blue-100"
-                        onClick={() => {
-                          window.open(
-                            "https://wa.me/tu-numero-de-soporte",
-                            "_blank",
-                          );
-                        }}
+                        className="gap-2 border-teal-600 text-teal-600 hover:bg-teal-50 shadow-sm"
+                        onClick={handleSyncAll}
+                        disabled={syncingGlobal}
                       >
-                        Contactar a Soporte
+                        <RefreshCw
+                          className={`h-4 w-4 ${syncingGlobal ? "animate-spin" : ""}`}
+                        />
+                        {syncingGlobal
+                          ? "Sincronizando..."
+                          : "Sincronizar con Shopify"}
                       </Button>
-                    </div>
 
-                    <div className="pt-2 border-t text-center">
-                      <p className="text-[10px] text-gray-400">
-                        ID Compañía: {auth?.company?.id}
-                      </p>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            )}
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-9 w-9 p-0 text-gray-400 hover:text-teal-600"
+                          >
+                            <Info className="h-4 w-4" />
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Conexión Shopify Partner</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-6">
+                            <div className="space-y-3">
+                              <div className="flex items-center gap-2 text-teal-800 font-medium px-1">
+                                <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
+                                Tiendas vinculadas (
+                                {shopifyConnectedShops.length})
+                              </div>
+                              <div className="max-h-[200px] overflow-y-auto space-y-2 pr-1">
+                                {shopifyConnectedShops.map((s, idx) => (
+                                  <div
+                                    key={idx}
+                                    className="bg-green-50 border border-green-200 rounded-lg p-3"
+                                  >
+                                    <p className="text-[10px] text-green-700 uppercase font-bold tracking-wider mb-1">
+                                      Dominio Shopify:
+                                    </p>
+                                    <p className="text-xs font-mono text-green-900 bg-white/50 p-1.5 rounded border border-green-100 truncate">
+                                      {s.shop_url}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
 
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button
-                  size="sm"
-                  className="gap-2 bg-teal-600 hover:bg-teal-700"
-                >
-                  <Plus className="h-4 w-4" />
-                  Nueva tienda
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Crear nueva tienda</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="store-name">Nombre de la tienda</Label>
-                    <Input
-                      id="store-name"
-                      placeholder="Ej: Tienda Centro"
-                      value={newStore.name}
-                      onChange={(e) =>
-                        setNewStore({ ...newStore, name: e.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="store-city">Descripción</Label>
-                    <Textarea
-                      value={newStore.description}
-                      onChange={(e) =>
-                        setNewStore({
-                          ...newStore,
-                          description: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="store-url">
-                      URL de la tienda (opcional)
-                    </Label>
-                    <Input
-                      id="store-url"
-                      placeholder="Ej: www.sitioweb.com"
-                      value={newStore.url_web ?? ""}
-                      onChange={(e) =>
-                        setNewStore({ ...newStore, url_web: e.target.value })
-                      }
-                    />
-                  </div>
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                              <p className="text-sm text-blue-700 mb-3">
+                                ¿Necesitas conectar una nueva sucursal o tienda
+                                adicional?
+                              </p>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="w-full border-blue-300 text-blue-800 hover:bg-blue-100"
+                                onClick={() => {
+                                  window.open(
+                                    "https://wa.me/tu-numero-de-soporte",
+                                    "_blank",
+                                  );
+                                }}
+                              >
+                                Contactar a Soporte
+                              </Button>
+                            </div>
 
-                  <Button
-                    onClick={handleAddStore}
-                    className="w-full bg-teal-600 hover:bg-teal-700"
-                  >
-                    Crear tienda
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-2">
-            {stores.map((store) => (
-              <div
-                key={store.id}
-                className="flex items-center justify-between rounded-lg border p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-              >
-                <div>
-                  <h4 className="font-medium">{store.name}</h4>
-                  <p className="text-sm text-gray-500">{store.description}</p>
-                  <span className="inline-block mt-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
-                    Activa
-                  </span>
-                  {shopifyConnectedShops.some(
-                    (s) => s.store_id === store.id,
-                  ) && (
-                    <div className="mt-2 flex items-center gap-1 text-[10px] text-teal-600 font-medium">
-                      <div className="w-1.5 h-1.5 rounded-full bg-teal-500" />
-                      Vinculada con Shopify (
-                      {
-                        shopifyConnectedShops.find(
-                          (s) => s.store_id === store.id,
-                        )?.shop_url
-                      }
-                      )
+                            <div className="pt-2 border-t text-center">
+                              <p className="text-[10px] text-gray-400">
+                                ID Compañía: {auth?.company?.id}
+                              </p>
+                            </div>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     </div>
+                  ) : (
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="gap-2 border-teal-600 text-teal-600 hover:bg-teal-50"
+                        >
+                          <div className="w-4 h-4 rounded bg-green-500 flex items-center justify-center text-[10px] text-white">
+                            S
+                          </div>
+                          Conectar Shopify
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>
+                            Conectar con Shopify Partner
+                          </DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-6">
+                          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+                            <div className="flex items-center gap-2 text-amber-800 font-medium">
+                              <AlertTriangle className="h-5 w-5" />
+                              Sin integraciones activas
+                            </div>
+                            <p className="text-sm text-amber-700 leading-relaxed">
+                              No hay tiendas de Shopify vinculadas a tu cuenta
+                              de Powip. Para habilitar la sincronización
+                              automática, por favor solicita a soporte tus{" "}
+                              <strong>enlaces de instalación</strong> para cada
+                              sucursal.
+                            </p>
+                          </div>
+
+                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                            <p className="text-sm text-blue-700 mb-3">
+                              ¿Necesitas conectar una nueva sucursal o tienda
+                              adicional?
+                            </p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="w-full border-blue-300 text-blue-800 hover:bg-blue-100"
+                              onClick={() => {
+                                window.open(
+                                  "https://wa.me/tu-numero-de-soporte",
+                                  "_blank",
+                                );
+                              }}
+                            >
+                              Contactar a Soporte
+                            </Button>
+                          </div>
+
+                          <div className="pt-2 border-t text-center">
+                            <p className="text-[10px] text-gray-400">
+                              ID Compañía: {auth?.company?.id}
+                            </p>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   )}
-                </div>
-                <div className="flex gap-2 items-center">
-                  {shopifyConnectedShops.some(
-                    (s) => s.store_id === store.id,
-                  ) && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="gap-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
-                      onClick={() => {
-                        const shopInfo = shopifyConnectedShops.find(
-                          (s) => s.store_id === store.id,
-                        );
-                        if (!shopInfo) return;
 
-                        toast.info(
-                          `Iniciando sincronización de ${shopInfo.shop_url}...`,
-                        );
-                        const integrationApiUrl =
-                          process.env.NEXT_PUBLIC_API_INTEGRATIONS ||
-                          "http://localhost:3007";
-                        axios
-                          .post(
-                            `${integrationApiUrl}/shopify/sync/${shopInfo.shop_url}`,
-                            {
-                              accessToken: "dynamic",
-                            },
-                          )
-                          .then((response) => {
-                            const {
-                              total_found,
-                              orders_synced,
-                              drafts_synced,
-                            } = response.data;
-                            if (total_found === 0) {
-                              toast.success(
-                                "Sincronización finalizada: No se encontraron nuevas órdenes.",
-                              );
-                            } else {
-                              toast.success(
-                                `Sincronización finalizada: ${orders_synced} órdenes y ${drafts_synced} borradores importados.`,
-                              );
-                            }
-                          })
-                          .catch(() => toast.error("Error sincronizando"));
-                      }}
-                    >
-                      <RefreshCw className="h-4 w-4" />
-                      Sincronizar
-                    </Button>
-                  )}
                   <Dialog>
                     <DialogTrigger asChild>
                       <Button
                         size="sm"
-                        variant="outline"
-                        onClick={() => handleEditStore(store)}
+                        className="gap-2 bg-teal-600 hover:bg-teal-700"
                       >
-                        <Edit2 className="h-4 w-4" />
+                        <Plus className="h-4 w-4" />
+                        Nueva tienda
                       </Button>
                     </DialogTrigger>
                     <DialogContent className="max-w-md">
                       <DialogHeader>
-                        <DialogTitle>Editar tienda</DialogTitle>
+                        <DialogTitle>Crear nueva tienda</DialogTitle>
                       </DialogHeader>
-                      {editingStore && (
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="edit-store-name">
-                              Nombre de la tienda
-                            </Label>
-                            <Input
-                              id="edit-store-name"
-                              value={editingStore.name}
-                              onChange={(e) =>
-                                setEditingStore({
-                                  ...editingStore,
-                                  name: e.target.value,
-                                })
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="edit-store-url">
-                              URL de la tienda
-                            </Label>
-                            <Input
-                              id="edit-store-url"
-                              value={editingStore.url_web ?? ""}
-                              onChange={(e) =>
-                                setEditingStore({
-                                  ...editingStore,
-                                  url_web: e.target.value,
-                                })
-                              }
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="edit-store-desc">Descripción</Label>
-                            <Input
-                              id="edit-store-desc"
-                              value={editingStore.description}
-                              onChange={(e) =>
-                                setEditingStore({
-                                  ...editingStore,
-                                  description: e.target.value,
-                                })
-                              }
-                            />
-                          </div>
-                          <Button
-                            onClick={handleUpdateStore}
-                            className="w-full bg-teal-600 hover:bg-teal-700"
-                          >
-                            Guardar cambios
-                          </Button>
+                      <div className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="store-name">
+                            Nombre de la tienda
+                          </Label>
+                          <Input
+                            id="store-name"
+                            placeholder="Ej: Tienda Centro"
+                            value={newStore.name}
+                            onChange={(e) =>
+                              setNewStore({ ...newStore, name: e.target.value })
+                            }
+                          />
                         </div>
-                      )}
+                        <div className="space-y-2">
+                          <Label htmlFor="store-description">Descripción</Label>
+                          <Textarea
+                            id="store-description"
+                            value={newStore.description}
+                            onChange={(e) =>
+                              setNewStore({
+                                ...newStore,
+                                description: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="store-url">
+                            URL de la tienda (opcional)
+                          </Label>
+                          <Input
+                            id="store-url"
+                            placeholder="Ej: www.sitioweb.com"
+                            value={newStore.url_web ?? ""}
+                            onChange={(e) =>
+                              setNewStore({
+                                ...newStore,
+                                url_web: e.target.value,
+                              })
+                            }
+                          />
+                        </div>
+
+                        <Button
+                          onClick={handleAddStore}
+                          className="w-full bg-teal-600 hover:bg-teal-700"
+                        >
+                          Crear tienda
+                        </Button>
+                      </div>
                     </DialogContent>
                   </Dialog>
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        disabled={stores.length <= 1}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle className="flex items-center gap-2">
-                          <AlertTriangle className="h-5 w-5 text-red-500" />
-                          ¿Eliminar tienda?
-                        </AlertDialogTitle>
-                        <AlertDialogDescription asChild>
-                          <div className="space-y-3">
-                            <p>
-                              Estás a punto de eliminar la tienda{" "}
-                              <strong>&quot;{store.name}&quot;</strong>. Esta
-                              acción no se puede deshacer.
-                            </p>
-                            <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-3">
-                              <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
-                                Al eliminar esta tienda perderás:
-                              </p>
-                              <ul className="text-sm text-red-700 dark:text-red-300 list-disc list-inside space-y-1">
-                                <li>Todos los inventarios asociados</li>
-                                <li>Productos registrados en la tienda</li>
-                                <li>Historial de ventas</li>
-                                <li>Estadísticas y trazabilidad</li>
-                              </ul>
-                            </div>
-                            {stores.length <= 1 && (
-                              <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
-                                ⚠️ No puedes eliminar la última tienda de tu
-                                empresa.
-                              </p>
-                            )}
-                          </div>
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                        <AlertDialogAction
-                          className="bg-red-600 hover:bg-red-700"
-                          onClick={() =>
-                            store.id && handleDeleteStore(store.id)
-                          }
-                        >
-                          Eliminar tienda
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
                 </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {stores.map((store) => (
+                    <div
+                      key={store.id}
+                      className="flex items-center justify-between rounded-lg border p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+                    >
+                      <div>
+                        <h4 className="font-medium">{store.name}</h4>
+                        <p className="text-sm text-gray-500">
+                          {store.description}
+                        </p>
+                        <span className="inline-block mt-1 text-xs px-2 py-1 rounded-full bg-green-100 text-green-800">
+                          Activa
+                        </span>
+                        {shopifyConnectedShops.some(
+                          (s) => s.store_id === store.id,
+                        ) && (
+                          <div className="mt-2 flex items-center gap-1 text-[10px] text-teal-600 font-medium">
+                            <div className="w-1.5 h-1.5 rounded-full bg-teal-500" />
+                            Vinculada con Shopify (
+                            {
+                              shopifyConnectedShops.find(
+                                (s) => s.store_id === store.id,
+                              )?.shop_url
+                            }
+                            )
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2 items-center">
+                        {shopifyConnectedShops.some(
+                          (s) => s.store_id === store.id,
+                        ) && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="gap-2 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                            onClick={() => {
+                              const shopInfo = shopifyConnectedShops.find(
+                                (s) => s.store_id === store.id,
+                              );
+                              if (!shopInfo) return;
 
-      {/* --- Canales de venta --- */}
-      <Card className="mx-10 mt-6">
-        <CardHeader>
-          <CardTitle>Canales de venta</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Configura los canales disponibles para registrar ventas. Estos
-            canales se usarán tanto para el canal de venta como para el canal de
-            cierre.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
-              {salesChannels.map((channel) => (
-                <span
-                  key={channel}
-                  className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm text-teal-800"
-                >
-                  {channel.replace(/_/g, " ")}
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveSalesChannel(channel)}
-                    className="ml-1 rounded-full p-0.5 hover:bg-teal-200 transition-colors"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </span>
-              ))}
-            </div>
-            <div className="flex gap-2 max-w-md">
-              <Input
-                placeholder="Nuevo canal..."
-                value={newSalesChannel}
-                onChange={(e) => setNewSalesChannel(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAddSalesChannel();
-                }}
-              />
-              <Button
-                size="sm"
-                className="gap-1 bg-teal-600 hover:bg-teal-700 shrink-0"
-                onClick={handleAddSalesChannel}
-                disabled={!newSalesChannel.trim()}
-              >
-                <Plus className="h-4 w-4" />
-                Agregar
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                              toast.info(
+                                `Iniciando sincronización de ${shopInfo.shop_url}...`,
+                              );
+                              const integrationApiUrl =
+                                process.env.NEXT_PUBLIC_API_INTEGRATIONS ||
+                                "http://localhost:3007";
+                              axios
+                                .post(
+                                  `${integrationApiUrl}/shopify/sync/${shopInfo.shop_url}`,
+                                  {
+                                    accessToken: "dynamic",
+                                  },
+                                )
+                                .then((response) => {
+                                  const {
+                                    total_found,
+                                    orders_synced,
+                                    drafts_synced,
+                                  } = response.data;
+                                  if (total_found === 0) {
+                                    toast.success(
+                                      "Sincronización finalizada: No se encontraron nuevas órdenes.",
+                                    );
+                                  } else {
+                                    toast.success(
+                                      `Sincronización finalizada: ${orders_synced} órdenes y ${drafts_synced} borradores importados.`,
+                                    );
+                                  }
+                                })
+                                .catch(() =>
+                                  toast.error("Error sincronizando"),
+                                );
+                            }}
+                          >
+                            <RefreshCw className="h-4 w-4" />
+                            Sincronizar
+                          </Button>
+                        )}
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleEditStore(store)}
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-md">
+                            <DialogHeader>
+                              <DialogTitle>Editar tienda</DialogTitle>
+                            </DialogHeader>
+                            {editingStore && (
+                              <div className="space-y-4">
+                                <div className="space-y-2">
+                                  <Label htmlFor="edit-store-name">
+                                    Nombre de la tienda
+                                  </Label>
+                                  <Input
+                                    id="edit-store-name"
+                                    value={editingStore.name}
+                                    onChange={(e) =>
+                                      setEditingStore({
+                                        ...editingStore,
+                                        name: e.target.value,
+                                      })
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="edit-store-url">
+                                    URL de la tienda
+                                  </Label>
+                                  <Input
+                                    id="edit-store-url"
+                                    value={editingStore.url_web ?? ""}
+                                    onChange={(e) =>
+                                      setEditingStore({
+                                        ...editingStore,
+                                        url_web: e.target.value,
+                                      })
+                                    }
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label htmlFor="edit-store-desc">
+                                    Descripción
+                                  </Label>
+                                  <Input
+                                    id="edit-store-desc"
+                                    value={editingStore.description}
+                                    onChange={(e) =>
+                                      setEditingStore({
+                                        ...editingStore,
+                                        description: e.target.value,
+                                      })
+                                    }
+                                  />
+                                </div>
+                                <Button
+                                  onClick={handleUpdateStore}
+                                  className="w-full bg-teal-600 hover:bg-teal-700"
+                                >
+                                  Guardar cambios
+                                </Button>
+                              </div>
+                            )}
+                          </DialogContent>
+                        </Dialog>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              disabled={stores.length <= 1}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle className="flex items-center gap-2">
+                                <AlertTriangle className="h-5 w-5 text-red-500" />
+                                ¿Eliminar tienda?
+                              </AlertDialogTitle>
+                              <AlertDialogDescription asChild>
+                                <div className="space-y-3">
+                                  <p>
+                                    Estás a punto de eliminar la tienda{" "}
+                                    <strong>&quot;{store.name}&quot;</strong>.
+                                    Esta acción no se puede deshacer.
+                                  </p>
+                                  <div className="rounded-lg border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950 p-3">
+                                    <p className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
+                                      Al eliminar esta tienda perderás:
+                                    </p>
+                                    <ul className="text-sm text-red-700 dark:text-red-300 list-disc list-inside space-y-1">
+                                      <li>Todos los inventarios asociados</li>
+                                      <li>
+                                        Productos registrados en la tienda
+                                      </li>
+                                      <li>Historial de ventas</li>
+                                      <li>Estadísticas y trazabilidad</li>
+                                    </ul>
+                                  </div>
+                                  {stores.length <= 1 && (
+                                    <p className="text-sm text-amber-600 dark:text-amber-400 font-medium">
+                                      ⚠️ No puedes eliminar la última tienda de
+                                      tu empresa.
+                                    </p>
+                                  )}
+                                </div>
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                className="bg-red-600 hover:bg-red-700"
+                                onClick={() =>
+                                  store.id && handleDeleteStore(store.id)
+                                }
+                              >
+                                Eliminar tienda
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="almacenes">
+            <GestionAlmacenes />
+          </TabsContent>
+
+          <TabsContent value="marcas">
+            <CatalogoMarcas />
+          </TabsContent>
+
+          <TabsContent value="canales">
+            <Card>
+              <CardHeader>
+                <CardTitle>Canales de venta</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Configura los canales disponibles para registrar ventas. Estos
+                  canales se usarán tanto para el canal de venta como para el
+                  canal de cierre.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    {salesChannels.map((channel) => (
+                      <span
+                        key={channel}
+                        className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm text-teal-800"
+                      >
+                        {channel.replace(/_/g, " ")}
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveSalesChannel(channel)}
+                          className="ml-1 rounded-full p-0.5 hover:bg-teal-200 transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 max-w-md">
+                    <Input
+                      placeholder="Nuevo canal..."
+                      value={newSalesChannel}
+                      onChange={(e) => setNewSalesChannel(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleAddSalesChannel();
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      className="gap-1 bg-teal-600 hover:bg-teal-700 shrink-0"
+                      onClick={handleAddSalesChannel}
+                      disabled={!newSalesChannel.trim()}
+                    >
+                      <Plus className="h-4 w-4" />
+                      Agregar
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }
