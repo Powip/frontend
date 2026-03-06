@@ -82,7 +82,7 @@ export function Sidebar({ className }: SidebarProps) {
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
     { name: "Crear Productos", href: "/productos", icon: Tags },
     { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
-    { name: "Almacén", href: "/almacen", icon: Package },
+    { name: "Inventario", href: "/inventario", icon: Package },
     { name: "Compras", href: "/compras", icon: PackagePlus },
     { name: "Ventas", href: "/ventas", icon: ShoppingCart },
     { name: "Operaciones", href: "/operaciones", icon: Truck },
