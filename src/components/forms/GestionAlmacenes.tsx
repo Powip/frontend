@@ -31,7 +31,7 @@ const GestionAlmacenes = () => {
   const [almacenes, setAlmacenes] = useState<Inventory[]>([]);
   const [loading, setLoading] = useState(true);
   const [openModal, setOpenModal] = useState(false);
-  const { auth } = useAuth();
+  const { auth, refreshInventories } = useAuth();
   const companyId = auth?.company?.id;
 
   const fetchAlmacenes = useCallback(async () => {
@@ -61,6 +61,7 @@ const GestionAlmacenes = () => {
       );
       toast.success("Almacén eliminado correctamente");
       fetchAlmacenes();
+      refreshInventories(); // Sincronizar estado global
     } catch (error: any) {
       console.error(error);
       toast.error(
@@ -172,6 +173,7 @@ const GestionAlmacenes = () => {
         onSaved={() => {
           setOpenModal(false);
           fetchAlmacenes();
+          refreshInventories(); // Sincronizar estado global
         }}
       />
     </div>

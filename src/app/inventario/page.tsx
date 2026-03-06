@@ -41,7 +41,6 @@ import Link from "next/link";
 
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import AlmacenModal from "@/components/modals/AlmacenModal";
 
 import AddStockModal from "@/components/modals/AddStockModal";
 import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
@@ -125,7 +124,6 @@ export default function AlmacenPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingVariants, setIsLoadingVariants] = useState(false);
   const [isLoadingInventories, setIsLoadingInventories] = useState(true);
-  const [open, setOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [deleteInventoryConfirm, setDeleteInventoryConfirm] = useState(false);
@@ -148,23 +146,28 @@ export default function AlmacenPage() {
   // 1) Seleccionar almacén automáticamente
   // ------------------------------------------------------
   useEffect(() => {
-    if (!storeInventories || storeInventories.length === 0) {
-      setIsLoadingInventories(true);
-      return;
-    }
+    // Si todavía no tenemos la data de la empresa cargada, esperamos
+    if (!auth?.company) return;
 
     setIsLoadingInventories(false);
 
-    if (storeInventories.length === 1) {
-      // Solo un inventario → seleccionarlo
-      setSelectedInventoryId(storeInventories[0].id);
-    } else {
-      // Más de uno → mantener el seleccionado o usar el primero
+    if (storeInventories.length > 0) {
       if (!selectedInventoryId) {
+        // Seleccionar el primero por defecto
         setSelectedInventoryId(storeInventories[0].id);
+      } else {
+        // Verificar si el seleccionado aún existe
+        const exists = storeInventories.some(
+          (inv) => inv.id === selectedInventoryId,
+        );
+        if (!exists) {
+          setSelectedInventoryId(storeInventories[0].id);
+        }
       }
+    } else {
+      setSelectedInventoryId(null);
     }
-  }, [storeInventories, selectedInventoryId]);
+  }, [storeInventories, selectedInventoryId, auth?.company]);
 
   // ------------------------------------------------------
   // 2) Cargar items del almacén seleccionado
@@ -374,12 +377,6 @@ export default function AlmacenPage() {
                 <Button variant="outline">
                   <ShoppingCart className="mr-2 h-4 w-4" />
                   Compras
-                </Button>
-              </Link>
-              <Link href="/productos">
-                <Button variant="outline">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Crear Producto
                 </Button>
               </Link>
               <Button

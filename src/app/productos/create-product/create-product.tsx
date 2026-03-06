@@ -267,11 +267,12 @@ export default function ProductCreateForm({
 
         // Llenar la variante con sus valores
         const variantForm: VariantForm = {
+          id: variant.id,
           attributes: variant.attributeValues || {},
           priceBase: Number(variant.priceBase) || 0,
           priceVta: Number(variant.priceVta) || 0,
-          stock: 0, // El stock se maneja en inventario
-          minStock: 0,
+          stock: Number(variant.stock) || 0,
+          minStock: Number(variant.minStock) || 0,
           imageFile: null,
         };
         setVariants([variantForm]);
@@ -741,6 +742,7 @@ export default function ProductCreateForm({
         const variantPayload = {
           priceBase: variantToUpdate.priceBase,
           priceVta: variantToUpdate.priceVta,
+          minStock: variantToUpdate.minStock,
           attributeValues: variantToUpdate.attributes,
         };
 
@@ -1166,14 +1168,22 @@ export default function ProductCreateForm({
                           <Input
                             type="number"
                             value={variant.stock || ""}
+                            disabled={isEditMode}
                             onChange={(e) =>
                               updateVariantField(index, "stock", e.target.value)
                             }
                           />
+                          {isEditMode && (
+                            <p className="text-[10px] text-muted-foreground mt-1">
+                              El stock solo se puede modificar mediante compras.
+                            </p>
+                          )}
                         </div>
 
                         <div className="space-y-1">
-                          <Label className="text-xs">Stock mínimo</Label>
+                          <Label className="text-xs">
+                            Stock mínimo (Alerta por stock mínimo)
+                          </Label>
                           <Input
                             type="number"
                             value={variant.minStock || ""}
@@ -1229,8 +1239,10 @@ export default function ProductCreateForm({
           {isSubmitting ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Creando...
+              {isEditMode ? "Actualizando..." : "Creando..."}
             </>
+          ) : isEditMode ? (
+            "Actualizar Producto"
           ) : (
             "Crear Producto"
           )}
