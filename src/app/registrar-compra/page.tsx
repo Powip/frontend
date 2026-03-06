@@ -687,14 +687,14 @@ export default function RegistrarCompraPage() {
                 <div className="space-y-2">
                   <Label className="text-sm font-medium flex items-center gap-2">
                     <Package className="h-4 w-4" />
-                    Inventario *
+                    Almacén *
                   </Label>
                   <Select
                     value={selectedInventoryId}
                     onValueChange={setSelectedInventoryId}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar inventario" />
+                      <SelectValue placeholder="Seleccionar almacén" />
                     </SelectTrigger>
                     <SelectContent>
                       {inventories.map((inv) => (

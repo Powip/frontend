@@ -58,7 +58,10 @@ export default function ShopifySyncWizard({ onBack }: ShopifySyncWizardProps) {
       const result = await syncShopifyProducts(
         shopUrl,
         auth.company.id,
-        auth.company.stores?.[0]?.id, // Default to first store for inventory if not selected
+        shops.find((s) => s.shop_url === shopUrl)?.inventory_id ||
+          auth.company.stores?.[0]?.id, // Fallback a store id si no hay inventory_id mapeado aún
+        shops.find((s) => s.shop_url === shopUrl)?.store_id ||
+          auth.company.stores?.[0]?.id,
       );
       toast.success(
         `Sincronización completada: ${result.success} productos procesados`,

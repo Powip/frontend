@@ -49,7 +49,7 @@ export default function DeleteInventoryItemModal({
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/${inventoryItemId}`,
       );
-      toast.success("Producto eliminado del inventario");
+      toast.success("Producto eliminado del almacén");
       onSuccess?.();
       handleClose();
     } catch (error) {
@@ -72,7 +72,7 @@ export default function DeleteInventoryItemModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-red-600">
             <AlertTriangle className="h-5 w-5" />
-            Eliminar Producto del Inventario
+            Eliminar Producto del Almacén
           </DialogTitle>
         </DialogHeader>
 
@@ -81,7 +81,7 @@ export default function DeleteInventoryItemModal({
             <div className="space-y-3 text-sm text-muted-foreground">
               <p>
                 ¿Estás seguro que deseas eliminar el siguiente producto del
-                inventario?
+                almacén?
               </p>
               <div className="bg-muted p-3 rounded-md">
                 <p className="font-semibold text-foreground">{productName}</p>

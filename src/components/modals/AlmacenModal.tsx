@@ -1,4 +1,4 @@
-import InventarioForm from "../forms/InventarioModal";
+import AlmacenForm from "../forms/AlmacenForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 
 interface Props {
@@ -6,7 +6,7 @@ interface Props {
   onClose: () => void;
   onSaved: () => void;
 }
-export default function InventarioModal({ open, onClose, onSaved }: Props) {
+export default function AlmacenModal({ open, onClose, onSaved }: Props) {
   return (
     <Dialog
       open={open}
@@ -14,9 +14,9 @@ export default function InventarioModal({ open, onClose, onSaved }: Props) {
     >
       <DialogContent className="!max-w-[90vw] sm:!max-w-[500px] !w-full">
         <DialogHeader>
-          <DialogTitle></DialogTitle>
+          <DialogTitle>Almacén</DialogTitle>
         </DialogHeader>
-        <InventarioForm onClienteSaved={onSaved} />
+        <AlmacenForm onClienteSaved={onSaved} />
       </DialogContent>
     </Dialog>
   );

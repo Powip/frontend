@@ -34,7 +34,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
 export const SIDEBAR_ITEMS_PERMISSIONS: Record<string, string> = {
   Dashboard: "VIEW_DASHBOARD",
   "Crear Productos": "MANAGE_PRODUCTS",
-  Inventario: "MANAGE_INVENTORY",
+  Almacén: "MANAGE_INVENTORY",
   Ventas: "VIEW_SALES",
   "Registrar venta": "CREATE_SALE",
   Operaciones: "MANAGE_OPERATIONS",

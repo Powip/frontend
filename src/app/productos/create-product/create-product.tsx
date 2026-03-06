@@ -815,7 +815,7 @@ export default function ProductCreateForm({
               {/* Row: Inventario + Categoría */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="inventory_id">Inventario</Label>
+                  <Label htmlFor="inventory_id">Almacén</Label>
                   <Select
                     value={form.inventory_id || undefined}
                     onValueChange={(value) =>
@@ -824,7 +824,7 @@ export default function ProductCreateForm({
                     disabled={inventories.length === 1}
                   >
                     <SelectTrigger id="inventory_id">
-                      <SelectValue placeholder="Seleccionar inventario..." />
+                      <SelectValue placeholder="Seleccionar almacén..." />
                     </SelectTrigger>
                     <SelectContent>
                       {inventories.map((inv) => (

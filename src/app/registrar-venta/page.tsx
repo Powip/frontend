@@ -1235,7 +1235,7 @@ function RegistrarVentaContent() {
               </div>
 
               <div className="space-y-1">
-                <Label>Inventario seleccionado</Label>
+                <Label>Almacén seleccionado</Label>
                 <Select
                   value={selectedInventory}
                   disabled={!selectedStoreId || isSubmitting}
@@ -1244,7 +1244,7 @@ function RegistrarVentaContent() {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar inventario" />
+                    <SelectValue placeholder="Seleccionar almacén" />
                   </SelectTrigger>
                   <SelectContent>
                     {inventories.map((inv) => (

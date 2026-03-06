@@ -1,13 +1,7 @@
-/* "use client";
+"use client";
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-
-import Container from "../ui/container";
-import Header from "../ui/header";
-import FormContainer from "../ui/form-container";
-import FormGrid from "../ui/form-grid";
-
 import {
   Select,
   SelectTrigger,
@@ -15,31 +9,34 @@ import {
   SelectItem,
   SelectValue,
 } from "@/components/ui/select";
-
 import { Brand, Provider } from "@/interfaces/IProvider";
-
 import { getProvidersByCompany } from "@/services/providerService";
 import { getBrandsBySupplier } from "@/services/brandService";
-
 import BrandsTable from "../brands/BrandsTable";
-import { Label } from "../ui/label";
+import { Label } from "@/components/ui/label";
+import { useAuth } from "@/contexts/AuthContext";
+import { Loader2 } from "lucide-react";
 
 const CatalogoMarcas = () => {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [brands, setBrands] = useState<Brand[]>([]);
-
-  const companyId = "5d5b824c-2b81-4b17-960f-855bfc7806e2";
+  const [loading, setLoading] = useState(false);
+  const { auth } = useAuth();
+  const companyId = auth?.company?.id;
 
   // Traer proveedores
   useEffect(() => {
+    if (!companyId) return;
+    setLoading(true);
     getProvidersByCompany(companyId)
       .then((data) => setProviders(data))
       .catch((err) => {
         toast.error("Error al cargar proveedores");
         console.error(err);
-      });
-  }, []);
+      })
+      .finally(() => setLoading(false));
+  }, [companyId]);
 
   // Cargar marcas cuando cambia el proveedor seleccionado
   useEffect(() => {
@@ -52,55 +49,74 @@ const CatalogoMarcas = () => {
       });
   }, [selectedProvider]);
 
-  return (
-    <Container>
-      <Header className="mb-6">Catálogo de Marcas</Header>
+  if (!companyId) return null;
 
-      <FormContainer>
-        <FormGrid>
-          <div>
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border bg-card p-6">
+        <div className="mb-6">
+          <h3 className="text-lg font-medium">Catálogo de Marcas</h3>
+          <p className="text-sm text-muted-foreground">
+            Gestiona las marcas asociadas a tus proveedores
+          </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="space-y-2">
             <Label>Proveedor</Label>
-            <Select
-              onValueChange={(value) => setSelectedProvider(value)}
-              value={selectedProvider}
-            >
-              <SelectTrigger className="w-[300px]">
-                <SelectValue placeholder="Seleccionar proveedor" />
-              </SelectTrigger>
-              <SelectContent>
-                {providers
-                  .filter((prov) => prov.is_active)
-                  .map((prov) => (
-                    <SelectItem key={prov.id} value={prov.id!}>
-                      {prov.name}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
+            {loading ? (
+              <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted">
+                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">
+                  Cargando proveedores...
+                </span>
+              </div>
+            ) : (
+              <Select
+                onValueChange={(value) => setSelectedProvider(value)}
+                value={selectedProvider}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccionar proveedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {providers
+                    .filter((prov) => prov.is_active)
+                    .map((prov) => (
+                      <SelectItem key={prov.id} value={prov.id!}>
+                        {prov.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
-        </FormGrid>
-      </FormContainer>
+        </div>
+      </div>
 
       {selectedProvider && (
-        <div className="px-6 mt-4">
-          <BrandsTable
-            brands={brands}
-            supplierId={selectedProvider}
-            onUpdated={() => {
-              getBrandsBySupplier(selectedProvider).then(setBrands);
-            }}
-          />
+        <div className="rounded-lg border bg-card">
+          <div className="p-6">
+            <BrandsTable
+              brands={brands}
+              supplierId={selectedProvider}
+              onUpdated={() => {
+                getBrandsBySupplier(selectedProvider).then(setBrands);
+              }}
+            />
+          </div>
         </div>
       )}
 
-      {!selectedProvider && (
-        <p className="text-xl text-center  text-gray-500  mb-6">
-          Selecciona un proveedor para ver sus marcas
-        </p>
+      {!selectedProvider && !loading && (
+        <div className="flex flex-col items-center justify-center py-12 border rounded-lg border-dashed">
+          <p className="text-muted-foreground">
+            Selecciona un proveedor para ver y gestionar sus marcas
+          </p>
+        </div>
       )}
-    </Container>
+    </div>
   );
 };
 
 export default CatalogoMarcas;
- */
