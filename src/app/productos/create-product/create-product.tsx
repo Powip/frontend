@@ -299,13 +299,17 @@ export default function ProductCreateForm({
 
   // Auto-seleccionar inventario si solo hay uno
   useEffect(() => {
-    if (inventories.length === 1 && !form.inventory_id && !isEditMode) {
+    if (
+      inventories.length === 1 &&
+      !isEditMode &&
+      form.inventory_id !== inventories[0].id
+    ) {
       setForm((prev) => ({
         ...prev,
         inventory_id: inventories[0].id,
       }));
     }
-  }, [inventories, isEditMode]);
+  }, [inventories, isEditMode, form.inventory_id]);
 
   // =========================
   // Cargar subcategorías al cambiar categoría
