@@ -55,7 +55,7 @@ export default function ShopifySyncWizard({ onBack }: ShopifySyncWizardProps) {
     if (!auth?.company?.id) return;
     setSyncing(shopUrl);
     try {
-      const result = await syncShopifyProducts(
+      await syncShopifyProducts(
         shopUrl,
         auth.company.id,
         shops.find((s) => s.shop_url === shopUrl)?.inventory_id ||
@@ -64,7 +64,10 @@ export default function ShopifySyncWizard({ onBack }: ShopifySyncWizardProps) {
           auth.company.stores?.[0]?.id,
       );
       toast.success(
-        `Sincronización completada: ${result.success} productos procesados`,
+        "Sincronización iniciada en segundo plano. Los productos aparecerán en tu inventario a medida que se procesen (esto puede tardar hasta 3 minutos).",
+        {
+          duration: 6000,
+        },
       );
     } catch (error) {
       console.error("Error syncing products:", error);

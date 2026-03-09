@@ -24,7 +24,7 @@ export const syncShopifyProducts = async (
   companyId: string,
   inventoryId?: string,
   storeId?: string,
-): Promise<{ total: number; success: number }> => {
+): Promise<any> => {
   const response = await axios.post(`${API_INTEGRATIONS}/shopify/sync`, {
     shopUrl,
     companyId,
