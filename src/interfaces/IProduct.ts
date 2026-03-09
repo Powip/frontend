@@ -63,7 +63,10 @@ export interface InventoryItemForSale {
   productName: string;
   sku: string;
   price: number;
+  priceBase?: number;
+  priceVta?: number;
   availableStock: number;
   physicalStock: number;
+  min_stock?: number;
   attributes?: Record<string, string>;
 }
