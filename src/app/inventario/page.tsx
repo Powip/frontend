@@ -41,6 +41,8 @@ import Link from "next/link";
 
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import { searchInventoryItems } from "@/services/inventoryItems.service";
+import { InventoryItemForSale } from "@/interfaces/IProduct";
 
 import AddStockModal from "@/components/modals/AddStockModal";
 import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemModal";
@@ -50,68 +52,6 @@ import ShopifySyncWizard from "../productos/shopify-sync-wizard";
 
 const ITEMS_PER_PAGE = 10;
 
-interface VariantBatchItem {
-  id: string;
-  sku: string;
-  priceVta: number;
-  priceBase: number;
-  attributeValues: Record<string, string>;
-  product: {
-    id: string;
-    name: string;
-    description: string;
-    sku: string;
-    companyId: string;
-    inventory_id: string;
-    status: boolean;
-    hasVariants: boolean;
-  };
-}
-
-interface ProductWithInventoryDetails {
-  inventoryItemId: string;
-  variantId: string;
-  quantity: number;
-  min_stock: number;
-
-  descripcion: string;
-  sku: string;
-  name: string;
-  attributes: Record<string, string>;
-  priceBase: number;
-  priceVta: number;
-}
-
-interface Product {
-  id: string;
-  name: string;
-  description: string;
-  sku: string;
-  companyId: string;
-  inventory_id: string;
-  status: boolean;
-  hasVariants: boolean;
-  created_at: string; // ISO date string
-  updated_at: string; // ISO date string
-}
-
-export interface InventoryItem {
-  id: string;
-  variant_id: string;
-  product: Product;
-  sku: string;
-  attributeValues: Record<string, string>; // ej. { Color: "Rojo", Talle: "S" }
-  priceBase: string; // "200.00"
-  priceVta: string; // "350.00"
-  images: string[]; // lista de URLs o paths
-  quantity: number;
-  min_stock: number;
-  max_stock: number;
-  isActive: boolean;
-  created_at: string; // ISO date string
-  updated_at: string; // ISO date string
-}
-
 export default function AlmacenPage() {
   const { auth, selectedStoreId, inventories: storeInventories } = useAuth();
 
@@ -119,15 +59,15 @@ export default function AlmacenPage() {
   const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(
     null,
   );
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
-  const [productsWithDetails, setProductsWithDetails] = useState<any[]>([]);
+  const [productsWithDetails, setProductsWithDetails] = useState<
+    InventoryItemForSale[]
+  >([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingVariants, setIsLoadingVariants] = useState(false);
   const [isLoadingInventories, setIsLoadingInventories] = useState(true);
   const [importOpen, setImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [deleteInventoryConfirm, setDeleteInventoryConfirm] = useState(false);
-  const [isDeletingInventory, setIsDeletingInventory] = useState(false);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalItems, setTotalItems] = useState(0);
   const [mode, setMode] = useState<"table" | "shopify">("table");
 
   const stores = auth?.company?.stores || [];
@@ -139,8 +79,9 @@ export default function AlmacenPage() {
   // Estados para modales de acciones
   const [addStockOpen, setAddStockOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [selectedItem, setSelectedItem] =
-    useState<ProductWithInventoryDetails | null>(null);
+  const [selectedItem, setSelectedItem] = useState<InventoryItemForSale | null>(
+    null,
+  );
 
   // ------------------------------------------------------
   // 1) Seleccionar almacén automáticamente
@@ -170,7 +111,7 @@ export default function AlmacenPage() {
   }, [storeInventories, selectedInventoryId, auth?.company]);
 
   // ------------------------------------------------------
-  // 2) Cargar items del almacén seleccionado
+  // 2) Cargar items del almacén seleccionado (Pagina y Búsqueda)
   // ------------------------------------------------------
   useEffect(() => {
     if (!selectedInventoryId) return;
@@ -179,103 +120,64 @@ export default function AlmacenPage() {
       setIsLoading(true);
 
       try {
-        const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`,
-        );
+        const response = await searchInventoryItems({
+          inventoryId: selectedInventoryId,
+          q: searchQuery || undefined,
+          page: currentPage,
+          limit: ITEMS_PER_PAGE,
+        });
 
-        setInventoryItems(response.data);
+        setProductsWithDetails(response.data);
+        setTotalPages(response.meta.totalPages);
+        setTotalItems(response.meta.total);
       } catch (err) {
         console.error("Error loading inventory items:", err);
+        toast.error("Error al cargar los productos del inventario");
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadInventoryItems();
-  }, [selectedInventoryId]);
+    const timer = setTimeout(() => {
+      loadInventoryItems();
+    }, 300); // Pequeño debounce para la búsqueda
 
-  // ------------------------------------------------------
-  // 3) Cargar detalles de las variantes (solo cuando tengamos items)
-  // ------------------------------------------------------
-  useEffect(() => {
-    const loadVariantsBatch = async () => {
-      if (!inventoryItems || inventoryItems.length === 0) {
-        setProductsWithDetails([]);
-        setIsLoadingVariants(false);
-        return;
-      }
+    return () => clearTimeout(timer);
+  }, [selectedInventoryId, currentPage, searchQuery]);
 
-      setIsLoadingVariants(true);
-
-      try {
-        const variantIds = inventoryItems.map((item) => item.variant_id);
-
-        // 📌 LLAMADA REAL AL NUEVO ENDPOINT
-        const { data: variants } = await axios.post<VariantBatchItem[]>(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/multiple/by-ids`,
-          { ids: variantIds },
-        );
-        // VARIABLE: unir items + variants
-        const merged = inventoryItems.map((item) => {
-          const variant = variants.find((v) => v.id === item.variant_id);
-
-          return {
-            inventoryItemId: item.id,
-            variantId: item.variant_id,
-            quantity: item.quantity,
-            min_stock: item.min_stock,
-
-            descripcion: variant?.product.description,
-            sku: variant?.sku ?? "N/A",
-            name: variant?.product?.name ?? "Sin nombre",
-            attributes: variant?.attributeValues ?? {},
-            priceVta: Number(variant?.priceVta ?? 0),
-            priceBase: Number(variant?.priceBase ?? 0),
-          };
-        });
-
-        setProductsWithDetails(merged);
-      } catch (err) {
-        console.error("❌ Error cargando variantes batch:", err);
-      } finally {
-        setIsLoadingVariants(false);
-      }
-    };
-
-    loadVariantsBatch();
-  }, [inventoryItems]);
-
-  const filteredProducts: ProductWithInventoryDetails[] =
-    productsWithDetails.filter((item) => {
-      const q = searchQuery.toLowerCase();
-
-      const sku = item.sku?.toLowerCase() || "";
-      const name = item.name?.toLowerCase() || "";
-
-      const attributesString = Object.entries(item.attributes || {})
-        .map(
-          ([k, v]) => `${String(k).toLowerCase()} ${String(v).toLowerCase()}`,
-        )
-        .join(" ");
-
-      return (
-        sku.includes(q) || name.includes(q) || attributesString.includes(q)
-      );
-    });
-
-  // Pagination
-  const totalPages = Math.ceil(filteredProducts.length / ITEMS_PER_PAGE);
-  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
-  const endIndex = startIndex + ITEMS_PER_PAGE;
-  const paginatedProducts = filteredProducts.slice(startIndex, endIndex);
-
-  // Reset page when search changes
+  // Reset page when search or inventory changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, selectedInventoryId]);
 
+  // ------------------------------------------------------
+  // RENDER
+  // ------------------------------------------------------
+
+  if (!auth) return null;
+
+  const refreshItems = async () => {
+    if (!selectedInventoryId) return;
+    setIsLoading(true);
+    try {
+      const response = await searchInventoryItems({
+        inventoryId: selectedInventoryId,
+        q: searchQuery || undefined,
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+      });
+      setProductsWithDetails(response.data);
+      setTotalPages(response.meta.totalPages);
+      setTotalItems(response.meta.total);
+    } catch (err) {
+      console.error("Error refreshing items:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleExportExcel = async () => {
-    if (filteredProducts.length === 0) {
+    if (productsWithDetails.length === 0) {
       toast.warning("No hay productos para exportar");
       return;
     }
@@ -283,19 +185,13 @@ export default function AlmacenPage() {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Almacén");
 
-    // -------------------------------------------
-    // ENCABEZADOS DE LA TABLA
-    // -------------------------------------------
     worksheet.columns = [
       { header: "SKU", key: "sku", width: 20 },
       { header: "Nombre", key: "name", width: 30 },
-      { header: "Descripción", key: "descripcion", width: 40 },
-      { header: "Variantes", key: "variantes", width: 35 },
       { header: "Stock", key: "stock", width: 12 },
       { header: "Precio", key: "precio", width: 15 },
     ];
 
-    // Estilo del header
     worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
     worksheet.getRow(1).alignment = { horizontal: "center" };
     worksheet.getRow(1).fill = {
@@ -304,42 +200,15 @@ export default function AlmacenPage() {
       fgColor: { argb: "FF02A8E1" },
     };
 
-    // -------------------------------------------
-    // FILAS
-    // -------------------------------------------
-    filteredProducts.forEach((prod) => {
-      const variantesText = Object.entries(prod.attributes || {})
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(" / ");
-
+    productsWithDetails.forEach((prod) => {
       worksheet.addRow({
         sku: prod.sku,
-        name: prod.name,
-        descripcion: prod.descripcion ?? "",
-        variantes: variantesText,
-        stock: prod.quantity,
+        name: prod.productName,
+        stock: prod.physicalStock,
         precio: prod.priceVta,
-        precioBase: prod.priceBase,
       });
     });
 
-    // -------------------------------------------
-    // ESTILO DE BORDES
-    // -------------------------------------------
-    worksheet.eachRow((row) => {
-      row.eachCell((cell) => {
-        cell.border = {
-          top: { style: "thin" },
-          left: { style: "thin" },
-          bottom: { style: "thin" },
-          right: { style: "thin" },
-        };
-      });
-    });
-
-    // -------------------------------------------
-    // DESCARGAR ARCHIVO
-    // -------------------------------------------
     const buffer = await workbook.xlsx.writeBuffer();
     const blob = new Blob([buffer], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -351,12 +220,6 @@ export default function AlmacenPage() {
     a.click();
     window.URL.revokeObjectURL(url);
   };
-
-  // ------------------------------------------------------
-  // RENDER
-  // ------------------------------------------------------
-
-  if (!auth) return null;
 
   return (
     <div className="h-screen flex flex-col px-6">
@@ -466,7 +329,6 @@ export default function AlmacenPage() {
                   <TableRow>
                     <TableHead className="border-r">SKU</TableHead>
                     <TableHead className="border-r">Nombre</TableHead>
-                    <TableHead className="border-r">Descripcion</TableHead>
                     <TableHead className="border-r">Variantes</TableHead>
                     <TableHead className="border-r">Stock</TableHead>
                     <TableHead className="border-r">Precio base</TableHead>
@@ -476,7 +338,7 @@ export default function AlmacenPage() {
                 </TableHeader>
 
                 <TableBody>
-                  {isLoading || isLoadingVariants ? (
+                  {isLoading ? (
                     // Skeleton rows
                     [...Array(5)].map((_, i) => (
                       <TableRow key={i}>
@@ -485,9 +347,6 @@ export default function AlmacenPage() {
                         </TableCell>
                         <TableCell className="border-r">
                           <Skeleton className="h-4 w-32" />
-                        </TableCell>
-                        <TableCell className="border-r">
-                          <Skeleton className="h-4 w-40" />
                         </TableCell>
                         <TableCell className="border-r">
                           <Skeleton className="h-4 w-24" />
@@ -506,30 +365,29 @@ export default function AlmacenPage() {
                         </TableCell>
                       </TableRow>
                     ))
-                  ) : filteredProducts.length === 0 ? (
+                  ) : productsWithDetails.length === 0 ? (
                     <TableRow>
                       <TableCell
-                        colSpan={8}
+                        colSpan={7}
                         className="text-center py-6 text-muted-foreground"
                       >
                         No hay productos en este almacén
                       </TableCell>
                     </TableRow>
                   ) : (
-                    paginatedProducts.map((prod) => (
+                    productsWithDetails.map((prod) => (
                       <TableRow key={prod.inventoryItemId}>
                         <TableCell className="border-r">{prod.sku}</TableCell>
-                        <TableCell className="border-r">{prod.name}</TableCell>
                         <TableCell className="border-r">
-                          {prod.descripcion}
+                          {prod.productName}
                         </TableCell>
                         <TableCell className="border-r">
-                          {Object.entries(prod.attributes)
+                          {Object.entries(prod.attributes || {})
                             .map(([k, v]) => `${k}: ${v}`)
                             .join(" / ")}
                         </TableCell>
                         <TableCell className="border-r">
-                          {prod.quantity}
+                          {prod.physicalStock}
                         </TableCell>
                         <TableCell className="border-r">
                           ${prod.priceBase}
@@ -569,11 +427,11 @@ export default function AlmacenPage() {
           </CardContent>
 
           {/* Pagination */}
-          {!(isLoading || isLoadingVariants) && (
+          {!isLoading && (
             <Pagination
               currentPage={currentPage}
               totalPages={totalPages}
-              totalItems={filteredProducts.length}
+              totalItems={totalItems}
               itemsPerPage={ITEMS_PER_PAGE}
               onPageChange={setCurrentPage}
               itemName="productos"
@@ -586,55 +444,25 @@ export default function AlmacenPage() {
         open={importOpen}
         onClose={() => setImportOpen(false)}
         inventoryId={selectedInventoryId || ""}
-        onSuccess={() => {
-          // Recargar items del inventario
-          if (selectedInventoryId) {
-            axios
-              .get(
-                `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`,
-              )
-              .then((res) => setInventoryItems(res.data))
-              .catch((err) => console.error(err));
-          }
-        }}
+        onSuccess={refreshItems}
       />
 
       <AddStockModal
         open={addStockOpen}
         inventoryItemId={selectedItem?.inventoryItemId || null}
-        productName={selectedItem?.name || ""}
-        currentStock={selectedItem?.quantity || 0}
+        productName={selectedItem?.productName || ""}
+        currentStock={selectedItem?.physicalStock || 0}
         onClose={() => setAddStockOpen(false)}
-        onSuccess={() => {
-          // Recargar items del inventario
-          if (selectedInventoryId) {
-            axios
-              .get(
-                `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`,
-              )
-              .then((res) => setInventoryItems(res.data))
-              .catch((err) => console.error(err));
-          }
-        }}
+        onSuccess={refreshItems}
       />
 
       <DeleteInventoryItemModal
         open={deleteOpen}
         inventoryItemId={selectedItem?.inventoryItemId || null}
-        productName={selectedItem?.name || ""}
+        productName={selectedItem?.productName || ""}
         sku={selectedItem?.sku || ""}
         onClose={() => setDeleteOpen(false)}
-        onSuccess={() => {
-          // Recargar items del inventario
-          if (selectedInventoryId) {
-            axios
-              .get(
-                `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/inventory/${selectedInventoryId}`,
-              )
-              .then((res) => setInventoryItems(res.data))
-              .catch((err) => console.error(err));
-          }
-        }}
+        onSuccess={refreshItems}
       />
     </div>
   );
