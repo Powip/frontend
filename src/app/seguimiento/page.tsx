@@ -417,14 +417,14 @@ export default function SeguimientoPage() {
         const itemDate = new Date(guide?.created_at || order.created_at);
 
         if (filters.startDate) {
-          const start = new Date(filters.startDate);
-          start.setHours(0, 0, 0, 0);
+          const [y, m, d] = filters.startDate.split("-").map(Number);
+          const start = new Date(y, m - 1, d, 0, 0, 0, 0);
           if (itemDate < start) return false;
         }
 
         if (filters.endDate) {
-          const end = new Date(filters.endDate);
-          end.setHours(23, 59, 59, 999);
+          const [y, m, d] = filters.endDate.split("-").map(Number);
+          const end = new Date(y, m - 1, d, 23, 59, 59, 999);
           if (itemDate > end) return false;
         }
       }
@@ -489,14 +489,14 @@ export default function SeguimientoPage() {
         const itemDate = new Date(guide?.created_at || order.created_at);
 
         if (filters.startDate) {
-          const start = new Date(filters.startDate);
-          start.setHours(0, 0, 0, 0);
+          const [y, m, d] = filters.startDate.split("-").map(Number);
+          const start = new Date(y, m - 1, d, 0, 0, 0, 0);
           if (itemDate < start) return false;
         }
 
         if (filters.endDate) {
-          const end = new Date(filters.endDate);
-          end.setHours(23, 59, 59, 999);
+          const [y, m, d] = filters.endDate.split("-").map(Number);
+          const end = new Date(y, m - 1, d, 23, 59, 59, 999);
           if (itemDate > end) return false;
         }
       }
