@@ -26,16 +26,17 @@ import {
   Download,
   Loader2,
   Search,
-  Plus,
   Pencil,
   Trash2,
   ShoppingCart,
   ShoppingBag,
+  History,
+  LayoutList,
+  PackagePlus,
 } from "lucide-react";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import axios from "axios";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 
@@ -49,6 +50,8 @@ import DeleteInventoryItemModal from "@/components/modals/DeleteInventoryItemMod
 import ImportExcelModal from "@/components/modals/ImportExcelModal";
 import { Pagination } from "@/components/ui/pagination";
 import ShopifySyncWizard from "../productos/shopify-sync-wizard";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MovementHistoryTable } from "@/components/inventory/MovementHistoryTable";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -76,28 +79,21 @@ export default function AlmacenPage() {
 
   const router = useRouter();
 
-  // Estados para modales de acciones
   const [addStockOpen, setAddStockOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<InventoryItemForSale | null>(
     null,
   );
 
-  // ------------------------------------------------------
-  // 1) Seleccionar almacén automáticamente
-  // ------------------------------------------------------
   useEffect(() => {
-    // Si todavía no tenemos la data de la empresa cargada, esperamos
     if (!auth?.company) return;
 
     setIsLoadingInventories(false);
 
     if (storeInventories.length > 0) {
       if (!selectedInventoryId) {
-        // Seleccionar el primero por defecto
         setSelectedInventoryId(storeInventories[0].id);
       } else {
-        // Verificar si el seleccionado aún existe
         const exists = storeInventories.some(
           (inv) => inv.id === selectedInventoryId,
         );
@@ -110,9 +106,6 @@ export default function AlmacenPage() {
     }
   }, [storeInventories, selectedInventoryId, auth?.company]);
 
-  // ------------------------------------------------------
-  // 2) Cargar items del almacén seleccionado (Pagina y Búsqueda)
-  // ------------------------------------------------------
   useEffect(() => {
     if (!selectedInventoryId) return;
 
@@ -140,19 +133,14 @@ export default function AlmacenPage() {
 
     const timer = setTimeout(() => {
       loadInventoryItems();
-    }, 300); // Pequeño debounce para la búsqueda
+    }, 300);
 
     return () => clearTimeout(timer);
   }, [selectedInventoryId, currentPage, searchQuery]);
 
-  // Reset page when search or inventory changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery, selectedInventoryId]);
-
-  // ------------------------------------------------------
-  // RENDER
-  // ------------------------------------------------------
 
   if (!auth) return null;
 
@@ -233,17 +221,29 @@ export default function AlmacenPage() {
           <ShopifySyncWizard onBack={() => setMode("table")} />
         </div>
       ) : (
-        <Card>
-          <CardContent className="p-6">
-            <div className="mb-6 flex justify-end gap-2">
+        <Tabs defaultValue="stock" className="flex-1 flex flex-col">
+          <div className="mb-4 flex items-center justify-between">
+            <TabsList>
+              <TabsTrigger value="stock" className="flex items-center gap-2">
+                <LayoutList className="h-4 w-4" />
+                Stock Actual
+              </TabsTrigger>
+              <TabsTrigger value="history" className="flex items-center gap-2">
+                <History className="h-4 w-4" />
+                Historial de Movimientos
+              </TabsTrigger>
+            </TabsList>
+
+            <div className="flex gap-2">
               <Link href="/compras">
-                <Button variant="outline">
+                <Button variant="outline" size="sm">
                   <ShoppingCart className="mr-2 h-4 w-4" />
                   Compras
                 </Button>
               </Link>
               <Button
                 variant="outline"
+                size="sm"
                 className="border-teal-100 dark:border-teal-900/30 text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/20"
                 onClick={() => setMode("shopify")}
               >
@@ -251,193 +251,237 @@ export default function AlmacenPage() {
                 Sincronizar Shopify
               </Button>
             </div>
-            {/* INVENTORY SELECT */}
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row">
-              <div className="flex-1 sm:max-w-xs">
-                <Label className="mb-2 block">Seleccionar Almacén</Label>
+          </div>
 
-                {isLoadingInventories ? (
-                  <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted">
-                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      Cargando almacenes...
-                    </span>
-                  </div>
-                ) : (
-                  <Select
-                    value={selectedInventoryId || undefined}
-                    onValueChange={(value) => setSelectedInventoryId(value)}
-                    disabled={storeInventories.length <= 1}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar almacén" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {storeInventories.map((inv) => (
-                        <SelectItem key={inv.id} value={inv.id}>
-                          {inv.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
+          <TabsContent value="stock" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 flex-1 flex flex-col">
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row">
+                  <div className="flex-1 sm:max-w-xs">
+                    <Label className="mb-2 block">Seleccionar Almacén</Label>
 
-              <div className="flex items-end">
-                <div>
-                  <p className="text-sm text-muted-foreground">Tienda:</p>
-                  <p className="font-medium">
-                    {currentStore?.name ?? "Sin tienda"}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              {/* SEARCH */}
-              <div className="relative flex-1 sm:max-w-md">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por SKU, nombre o variante..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
-              </div>
-
-              {/* EXTRA ACTIONS (EXPORTAR, FILTROS, ETC) */}
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setImportOpen(true)}
-                >
-                  <Download className="mr-2 h-4 w-4 rotate-180" />
-                  Importar Excel
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleExportExcel}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Exportar en Excel
-                </Button>
-              </div>
-            </div>
-
-            {/* TABLE */}
-            <div className="rounded-md border min-h-[18rem]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="border-r">SKU</TableHead>
-                    <TableHead className="border-r">Nombre</TableHead>
-                    <TableHead className="border-r">Variantes</TableHead>
-                    <TableHead className="border-r">Stock</TableHead>
-                    <TableHead className="border-r">Precio base</TableHead>
-                    <TableHead className="border-r">Precio venta</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-
-                <TableBody>
-                  {isLoading ? (
-                    // Skeleton rows
-                    [...Array(5)].map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="border-r">
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell className="border-r">
-                          <Skeleton className="h-4 w-32" />
-                        </TableCell>
-                        <TableCell className="border-r">
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell className="border-r">
-                          <Skeleton className="h-4 w-12" />
-                        </TableCell>
-                        <TableCell className="border-r">
-                          <Skeleton className="h-4 w-16" />
-                        </TableCell>
-                        <TableCell className="border-r">
-                          <Skeleton className="h-4 w-16" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : productsWithDetails.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={7}
-                        className="text-center py-6 text-muted-foreground"
+                    {isLoadingInventories ? (
+                      <div className="flex items-center gap-2 h-10 px-3 border rounded-md bg-muted">
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">
+                          Cargando almacenes...
+                        </span>
+                      </div>
+                    ) : (
+                      <Select
+                        value={selectedInventoryId || undefined}
+                        onValueChange={(value) => setSelectedInventoryId(value)}
+                        disabled={storeInventories.length <= 1}
                       >
-                        No hay productos en este almacén
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    productsWithDetails.map((prod) => (
-                      <TableRow key={prod.inventoryItemId}>
-                        <TableCell className="border-r">{prod.sku}</TableCell>
-                        <TableCell className="border-r">
-                          {prod.productName}
-                        </TableCell>
-                        <TableCell className="border-r">
-                          {Object.entries(prod.attributes || {})
-                            .map(([k, v]) => `${k}: ${v}`)
-                            .join(" / ")}
-                        </TableCell>
-                        <TableCell className="border-r">
-                          {prod.physicalStock}
-                        </TableCell>
-                        <TableCell className="border-r">
-                          ${prod.priceBase}
-                        </TableCell>
-                        <TableCell className="border-r">
-                          ${prod.priceVta}
-                        </TableCell>
-                        <TableCell className="text-right space-x-1">
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            title="Editar Producto"
-                            onClick={() => {
-                              router.push(`/productos?edit=${prod.variantId}`);
-                            }}
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="destructive"
-                            title="Eliminar"
-                            onClick={() => {
-                              setSelectedItem(prod);
-                              setDeleteOpen(true);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar almacén" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {storeInventories.map((inv) => (
+                            <SelectItem key={inv.id} value={inv.id}>
+                              {inv.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  </div>
 
-          {/* Pagination */}
-          {!isLoading && (
-            <Pagination
-              currentPage={currentPage}
-              totalPages={totalPages}
-              totalItems={totalItems}
-              itemsPerPage={ITEMS_PER_PAGE}
-              onPageChange={setCurrentPage}
-              itemName="productos"
-            />
-          )}
-        </Card>
+                  <div className="flex items-end">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Tienda:</p>
+                      <p className="font-medium">
+                        {currentStore?.name ?? "Sin tienda"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="relative flex-1 sm:max-w-md">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por SKU, nombre o variante..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-9"
+                    />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setImportOpen(true)}
+                    >
+                      <Download className="mr-2 h-4 w-4 rotate-180" />
+                      Importar Excel
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={handleExportExcel}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Exportar en Excel
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-md border flex-1 overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/50">
+                        <TableHead className="border-r w-[80px]">Foto</TableHead>
+                        <TableHead className="border-r w-[130px]">SKU</TableHead>
+                        <TableHead className="border-r min-w-[200px] max-w-[250px]">Nombre</TableHead>
+                        <TableHead className="border-r">Variantes</TableHead>
+                        <TableHead className="border-r">Stock</TableHead>
+                        <TableHead className="border-r">Precio base</TableHead>
+                        <TableHead className="border-r">Precio venta</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+
+                    <TableBody>
+                      {isLoading ? (
+                        [...Array(5)].map((_, i) => (
+                          <TableRow key={i}>
+                            <TableCell className="border-r">
+                              <Skeleton className="h-16 w-16 rounded-md" />
+                            </TableCell>
+                            <TableCell className="border-r">
+                              <Skeleton className="h-4 w-24" />
+                            </TableCell>
+                            <TableCell className="border-r">
+                              <Skeleton className="h-4 w-48" />
+                            </TableCell>
+                            <TableCell className="border-r">
+                              <Skeleton className="h-4 w-24" />
+                            </TableCell>
+                            <TableCell className="border-r">
+                              <Skeleton className="h-4 w-12" />
+                            </TableCell>
+                            <TableCell className="border-r">
+                              <Skeleton className="h-4 w-16" />
+                            </TableCell>
+                            <TableCell className="border-r">
+                              <Skeleton className="h-4 w-16" />
+                            </TableCell>
+                            <TableCell>
+                              <Skeleton className="h-4 w-24" />
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : productsWithDetails.length === 0 ? (
+                        <TableRow>
+                          <TableCell
+                            colSpan={8}
+                            className="text-center py-6 text-muted-foreground"
+                          >
+                            No hay productos en este almacén
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        productsWithDetails.map((prod) => (
+                          <TableRow key={prod.inventoryItemId} className="hover:bg-muted/30 transition-colors">
+                            <TableCell className="border-r">
+                              {prod.imageUrl ? (
+                                <img 
+                                  src={prod.imageUrl} 
+                                  alt={prod.productName} 
+                                  className="h-16 w-16 rounded-md object-cover border"
+                                />
+                              ) : (
+                                <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center text-muted-foreground">
+                                  <ShoppingBag className="h-8 w-8" />
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="border-r font-medium text-xs max-w-[130px] truncate" title={prod.sku}>
+                              {prod.sku}
+                            </TableCell>
+                            <TableCell className="border-r text-sm max-w-[250px] truncate" title={prod.productName}>
+                              {prod.productName}
+                            </TableCell>
+                            <TableCell className="border-r text-sm">
+                              {Object.entries(prod.attributes || {})
+                                .map(([k, v]) => `${k}: ${v}`)
+                                .join(" / ")}
+                            </TableCell>
+                            <TableCell className="border-r font-semibold">
+                              {prod.physicalStock}
+                            </TableCell>
+                            <TableCell className="border-r text-sm">
+                              ${prod.priceBase}
+                            </TableCell>
+                            <TableCell className="border-r text-sm">
+                              ${prod.priceVta}
+                            </TableCell>
+                            <TableCell className="text-right space-x-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-teal-600 hover:text-teal-700 hover:bg-teal-50"
+                                title="Ajustar Stock"
+                                onClick={() => {
+                                  setSelectedItem(prod);
+                                  setAddStockOpen(true);
+                                }}
+                              >
+                                <PackagePlus className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                title="Editar Producto"
+                                onClick={() => {
+                                  router.push(`/productos?edit=${prod.variantId}`);
+                                }}
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-destructive hover:text-destructive"
+                                title="Eliminar"
+                                onClick={() => {
+                                  setSelectedItem(prod);
+                                  setDeleteOpen(true);
+                                }}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                
+                {!isLoading && (
+                  <div className="mt-4">
+                    <Pagination
+                      currentPage={currentPage}
+                      totalPages={totalPages}
+                      totalItems={totalItems}
+                      itemsPerPage={ITEMS_PER_PAGE}
+                      onPageChange={setCurrentPage}
+                      itemName="productos"
+                    />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="history" className="flex-1 flex flex-col mt-0">
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                <MovementHistoryTable companyId={auth?.company?.id} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       )}
 
       <ImportExcelModal
@@ -449,9 +493,7 @@ export default function AlmacenPage() {
 
       <AddStockModal
         open={addStockOpen}
-        inventoryItemId={selectedItem?.inventoryItemId || null}
-        productName={selectedItem?.productName || ""}
-        currentStock={selectedItem?.physicalStock || 0}
+        item={selectedItem}
         onClose={() => setAddStockOpen(false)}
         onSuccess={refreshItems}
       />

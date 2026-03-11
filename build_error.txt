@@ -1,0 +1,24 @@
+
+> frontend@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.9
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 7.0s
+   Linting and checking validity of types ...
+Failed to compile.
+
+./src/app/operaciones/page.tsx:172:5
+Type error: Type '"PENDING" | "NO_ANSWER" | "CONFIRMED" | "SCHEDULED" | null | undefined' is not assignable to type '"PENDING" | "NO_ANSWER" | "CONFIRMED" | null | undefined'.
+  Type '"SCHEDULED"' is not assignable to type '"PENDING" | "NO_ANSWER" | "CONFIRMED" | null | undefined'.
+
+[0m [90m 170 |[39m     zone[33m:[39m order[33m.[39mcustomer[33m.[39mzone [33m?[39m[33m?[39m undefined[33m,[39m
+ [90m 171 |[39m     guideNumber[33m:[39m order[33m.[39mguideNumber [33m?[39m[33m?[39m [36mnull[39m[33m,[39m
+[31m[1m>[22m[39m[90m 172 |[39m     callStatus[33m:[39m order[33m.[39mcallStatus[33m,[39m
+ [90m     |[39m     [31m[1m^[22m[39m
+ [90m 173 |[39m     hasPendingApprovalPayments[33m,[39m
+ [90m 174 |[39m     sellerName[33m:[39m order[33m.[39msellerName [33m?[39m[33m?[39m [36mnull[39m[33m,[39m
+ [90m 175 |[39m     externalSource[33m:[39m order[33m.[39mexternalSource [33m?[39m[33m?[39m [36mnull[39m[33m,[39m[0m
+Next.js build worker exited with code: 1 and signal: null

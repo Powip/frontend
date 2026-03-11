@@ -365,6 +365,9 @@ export default function CustomerServiceModal({
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
         { notes },
       );
+      toast.success("Notas guardadas correctamente");
+    } catch (error) {
+      console.error("Error saving notes", error);
       toast.error("Error al guardar las notas");
     } finally {
       setSavingNotes(false);
@@ -1921,48 +1924,60 @@ export default function CustomerServiceModal({
                                     )}
                                   </Button>
                                 </PopoverTrigger>
-                                <PopoverContent
-                                  className="w-auto p-0"
-                                  align="start"
-                                >
-                                  <div className="p-3 border-b border-border">
-                                    <div className="flex flex-col gap-2">
-                                      <label className="text-xs font-bold uppercase text-muted-foreground">
-                                        Fecha y Hora
-                                      </label>
-                                      <Input
-                                        type="datetime-local"
-                                        className="h-9 text-sm"
-                                        onChange={(e) => {
-                                          const val = e.target.value;
-                                          if (val)
-                                            setScheduledDate(new Date(val));
+                                  <PopoverContent
+                                    className="w-auto p-0"
+                                    align="start"
+                                  >
+                                    <div className="p-1">
+                                      <Calendar
+                                        mode="single"
+                                        selected={scheduledDate}
+                                        onSelect={(date) => {
+                                          if (date) {
+                                            const current =
+                                              scheduledDate || new Date();
+                                            date.setHours(current.getHours());
+                                            date.setMinutes(
+                                              current.getMinutes(),
+                                            );
+                                            setScheduledDate(date);
+                                          }
                                         }}
-                                        min={format(
-                                          new Date(),
-                                          "yyyy-MM-dd'T'HH:mm",
-                                        )}
+                                        initialFocus
+                                        locale={es}
                                       />
                                     </div>
-                                  </div>
-                                  <div className="p-1">
-                                    <Calendar
-                                      mode="single"
-                                      selected={scheduledDate}
-                                      onSelect={(date) => {
-                                        if (date) {
-                                          const current =
-                                            scheduledDate || new Date();
-                                          date.setHours(current.getHours());
-                                          date.setMinutes(current.getMinutes());
-                                          setScheduledDate(date);
-                                        }
-                                      }}
-                                      initialFocus
-                                      locale={es}
-                                    />
-                                  </div>
-                                </PopoverContent>
+                                    <div className="p-3 border-t border-border">
+                                      <div className="flex flex-col gap-2">
+                                        <label className="text-xs font-bold uppercase text-muted-foreground">
+                                          Hora de rellamada
+                                        </label>
+                                        <Input
+                                          type="time"
+                                          className="h-9 text-sm"
+                                          value={
+                                            scheduledDate
+                                              ? format(scheduledDate, "HH:mm")
+                                              : ""
+                                          }
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val) {
+                                              const [hours, minutes] = val
+                                                .split(":")
+                                                .map(Number);
+                                              const next = new Date(
+                                                scheduledDate || new Date(),
+                                              );
+                                              next.setHours(hours);
+                                              next.setMinutes(minutes);
+                                              setScheduledDate(next);
+                                            }
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                  </PopoverContent>
                               </Popover>
                               <Button
                                 onClick={handleScheduleCallback}

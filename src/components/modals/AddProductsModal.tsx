@@ -16,6 +16,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -187,28 +188,33 @@ export default function AddProductsModal({
 
       // Preparar los items existentes (sin modificar)
       const existingItems = currentOrder.items.map((item: any) => ({
-        productVariantId: item.productVariantId,
+        id: item.id,
+        productVariantId: item.productVariantId || undefined,
         sku: item.sku,
         productName: item.productName,
         quantity: item.quantity,
-        unitPrice: item.unitPrice,
+        unitPrice: Number(item.unitPrice) || 0,
         discountType: item.discountType || "NONE",
-        discountAmount: item.discountAmount || 0,
-        attributes: item.attributes,
+        discountAmount: Number(item.discountAmount) || 0,
+        attributes: item.attributes || {},
+        isPromoItem: !!item.isPromoItem,
+        addedByUserId: item.addedByUserId || undefined,
+        addedAt: item.addedAt,
+        imageUrl: item.imageUrl || undefined,
       }));
 
       // Preparar los nuevos items con flag de promo
       const newItems = cart.map((item) => ({
-        productVariantId: item.variantId,
+        productVariantId: item.variantId || undefined,
         sku: item.sku,
         productName: item.productName,
-        quantity: item.quantity,
-        unitPrice: item.price,
+        quantity: item.quantity || 1,
+        unitPrice: Number(item.price) || 0,
         discountType: item.discountAmount > 0 ? "FIXED" : "NONE",
-        discountAmount: item.discountAmount,
-        attributes: item.attributes,
+        discountAmount: Number(item.discountAmount) || 0,
+        attributes: item.attributes || {},
         isPromoItem: true,
-        addedByUserId: auth?.user?.id,
+        addedByUserId: auth?.user?.id || undefined,
         addedAt: new Date().toISOString(),
       }));
 
@@ -220,7 +226,9 @@ export default function AddProductsModal({
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
         {
           items: allItems,
-          userId: auth?.user?.id ?? null,
+          userId: auth?.user?.id || undefined,
+          sellerName: auth?.user?.name || undefined,
+          userEmail: auth?.user?.email || undefined,
         },
       );
 
@@ -258,13 +266,16 @@ export default function AddProductsModal({
   const cartFinalTotal = cartBaseTotal - cartTotalDiscounts;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && handleClose()}>
+    <Dialog open={open} onOpenChange={(o: boolean) => !o && handleClose()}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" />
             Agregar productos - Promo del día
           </DialogTitle>
+          <DialogDescription>
+            Agrega productos adicionales a esta orden. Puedes ajustar cantidades y precios.
+          </DialogDescription>
         </DialogHeader>
         <div className="flex-1 overflow-auto space-y-4">
           <div className="relative">

@@ -260,32 +260,49 @@ export default function ProductCreateForm({
           inventory_id: product.inventory_id || "",
           supplierId: productDetails.supplier?.id || "",
           brandId: productDetails.brand?.id || "",
+          mainImageUrl: product.imageUrl || "",
         });
 
         // Cargar companySku si existe
         setCompanySku(product.companySku || "");
 
-        // Llenar la variante con sus valores
-        const variantForm: VariantForm = {
-          id: variant.id,
-          attributes: variant.attributeValues || {},
-          priceBase: Number(variant.priceBase) || 0,
-          priceVta: Number(variant.priceVta) || 0,
-          stock: Number(variant.stock) || 0,
-          minStock: Number(variant.minStock) || 0,
-          imageFile: null,
-        };
-        setVariants([variantForm]);
+        // Obtener TODAS las variantes del producto para mostrarlas
+        const { data: allVariants } = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/by-product/${product.id}`,
+        );
 
-        // Llenar los valores de atributos
-        const attrVals: Record<string, string> = {};
-        attrs.forEach((attr) => {
-          const val = variant.attributeValues?.[attr.name];
-          if (val) {
-            attrVals[attr.id] = val;
+        // Llenar las variantes con sus valores
+        const variantForms: VariantForm[] = allVariants.map((v: any) => ({
+          id: v.id,
+          attributes: v.attributeValues || {},
+          priceBase: Number(v.priceBase) || 0,
+          priceVta: Number(v.priceVta) || 0,
+          stock: Number(v.stock) || 0,
+          minStock: Number(v.minStock) || 0,
+          imageFile: null,
+        }));
+        setVariants(variantForms);
+
+        // Llenar los valores de atributos de forma agregada para permitir "regenerar" o ver qué valores existen
+        const attrVals: Record<string, string[]> = {};
+        allVariants.forEach((v: any) => {
+          if (v.attributeValues) {
+            Object.entries(v.attributeValues).forEach(([name, val]) => {
+              if (!attrVals[name]) attrVals[name] = [];
+              if (!attrVals[name].includes(val as string)) {
+                attrVals[name].push(val as string);
+              }
+            });
           }
         });
-        setAttributeValues(attrVals);
+
+        // Convertir arrays de valores a strings separados por coma para los inputs
+        const finalAttrVals: Record<string, string> = {};
+        attrs.forEach((attr) => {
+          const vals = attrVals[attr.name] || [];
+          finalAttrVals[attr.id] = vals.join(", ");
+        });
+        setAttributeValues(finalAttrVals);
       } catch (error) {
         console.error("Error cargando producto para editar:", error);
         toast.error("Error al cargar el producto");
@@ -760,6 +777,7 @@ export default function ProductCreateForm({
         const productPayload = {
           name: form.name,
           description: form.description,
+          imageUrl: payload.imageUrl,
         };
 
         await axios.patch(

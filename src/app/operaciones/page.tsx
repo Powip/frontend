@@ -123,7 +123,7 @@ export interface Sale {
   guideNumber?: string | null;
   hasStockIssue?: boolean;
   zone?: string;
-  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
+  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | "SCHEDULED" | null;
   hasPendingApprovalPayments: boolean;
   sellerName: string | null;
   externalSource?: string | null;

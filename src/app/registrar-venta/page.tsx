@@ -1563,10 +1563,10 @@ function RegistrarVentaContent() {
                 <SelectContent>
                   <SelectItem value={OrderType.VENTA}>Venta</SelectItem>
                   <SelectItem value={OrderType.CAMBIO}>Cambio</SelectItem>
-                  <SelectItem value={OrderType.RESERVA} disabled>
+                  <SelectItem value={OrderType.RESERVA}>
                     Reserva
                   </SelectItem>
-                  <SelectItem value={OrderType.PREVENTA} disabled>
+                  <SelectItem value={OrderType.PREVENTA}>
                     Preventa
                   </SelectItem>
                 </SelectContent>

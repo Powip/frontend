@@ -68,7 +68,8 @@ interface Sale {
   address: string;
   advancePayment: number;
   pendingPayment: number;
-  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
+  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | "SCHEDULED" | null;
+  callbackAt?: string | null;
   province?: string;
   city?: string;
   zone?: string;
@@ -86,6 +87,7 @@ interface PromoItem {
   subtotal: number;
   addedAt: string;
   addedByUserId: string | null;
+  addedByUserName?: string;
   orderId: string;
   orderNumber: string;
   orderTotal: number;
@@ -122,7 +124,8 @@ function mapOrderToSale(order: OrderHeader): Sale {
     address: order.customer?.address ?? "-",
     advancePayment: totalPaid,
     pendingPayment: Math.max(grandTotal - totalPaid, 0),
-    callStatus: order.callStatus,
+    callStatus: order.callStatus as any,
+    callbackAt: order.callbackAt ? new Date(order.callbackAt).toLocaleString("es-PE") : null,
     province: order.customer?.province ?? "",
     city: order.customer?.city ?? "",
     zone: order.customer?.zone ?? "",
@@ -167,6 +170,8 @@ export default function AtencionClientePage() {
     useState<SalesFilters>(emptySalesFilters);
   const [filtersNoConfirmados, setFiltersNoConfirmados] =
     useState<SalesFilters>(emptySalesFilters);
+  const [filtersReprogramados, setFiltersReprogramados] =
+    useState<SalesFilters>(emptySalesFilters);
   const [filtersConfirmados, setFiltersConfirmados] =
     useState<SalesFilters>(emptySalesFilters);
 
@@ -209,10 +214,6 @@ export default function AtencionClientePage() {
     }
   }, [selectedStoreId]);
 
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    fetchOrders();
-  }, [selectedStoreId, fetchOrders]);
 
   // Fetch promo items
   const fetchPromoItems = useCallback(async () => {
@@ -234,6 +235,12 @@ export default function AtencionClientePage() {
       setPromoLoading(false);
     }
   }, [selectedStoreId, promoFromDate, promoToDate]);
+
+  useEffect(() => {
+    if (!selectedStoreId) return;
+    fetchOrders();
+    fetchPromoItems();
+  }, [selectedStoreId, fetchOrders, fetchPromoItems]);
 
   const toggleSale = (id: string) => {
     setSelectedSaleIds((prev) => {
@@ -308,7 +315,7 @@ Estado: ${sale.status}
 
   const renderTable = (
     data: Sale[],
-    tableType: "preparados" | "no_confirmados" | "confirmados",
+    tableType: "preparados" | "no_confirmados" | "confirmados" | "reprogramados",
   ) => (
     <Table>
       <TableHeader>
@@ -337,7 +344,8 @@ Estado: ${sale.status}
           <TableHead>N° Orden</TableHead>
           <TableHead>Cliente</TableHead>
           <TableHead>Teléfono</TableHead>
-          <TableHead>Fecha</TableHead>
+          <TableHead>Fecha Orden</TableHead>
+          {tableType === "reprogramados" && <TableHead>Fecha Rellamada</TableHead>}
           <TableHead>Pago</TableHead>
           <TableHead>Envío</TableHead>
           <TableHead>Total</TableHead>
@@ -365,6 +373,11 @@ Estado: ${sale.status}
             <TableCell>{sale.clientName}</TableCell>
             <TableCell>{sale.phoneNumber}</TableCell>
             <TableCell>{sale.date}</TableCell>
+            {tableType === "reprogramados" && (
+              <TableCell className="text-blue-600 font-medium">
+                {sale.callbackAt || "-"}
+              </TableCell>
+            )}
             <TableCell>{sale.paymentMethod}</TableCell>
             <TableCell>{sale.deliveryType}</TableCell>
             <TableCell>S/{sale.total.toFixed(2)}</TableCell>
@@ -487,10 +500,19 @@ Estado: ${sale.status}
     return applyFilters(statusFiltered, filtersConfirmados);
   }, [sales, filtersConfirmados]);
 
+  // Pedidos Reprogramados: callStatus = SCHEDULED
+  const pedidosReprogramados = useMemo(() => {
+    const statusFiltered = sales.filter((s) => s.callStatus === "SCHEDULED");
+    return applyFilters(statusFiltered, filtersReprogramados);
+  }, [sales, filtersReprogramados]);
+
   const selectedPreparadosCount = pedidosPreparados.filter((s) =>
     selectedSaleIds.has(s.id),
   ).length;
   const selectedNoConfirmadosCount = pedidosNoConfirmados.filter((s) =>
+    selectedSaleIds.has(s.id),
+  ).length;
+  const selectedReprogramadosCount = pedidosReprogramados.filter((s) =>
     selectedSaleIds.has(s.id),
   ).length;
   const selectedConfirmadosCount = pedidosConfirmados.filter((s) =>
@@ -517,6 +539,9 @@ Estado: ${sale.status}
             </TabsTrigger>
             <TabsTrigger value="no_confirmados" className="text-red-600">
               Pedidos NO CONFIRMADOS ({pedidosNoConfirmados.length})
+            </TabsTrigger>
+            <TabsTrigger value="reprogramados" className="text-blue-600">
+              Pedidos REPROGRAMADOS ({pedidosReprogramados.length})
             </TabsTrigger>
             <TabsTrigger value="confirmados" className="text-green-600">
               Pedidos CONFIRMADOS ({pedidosConfirmados.length})
@@ -651,6 +676,50 @@ Estado: ${sale.status}
             </Card>
           </TabsContent>
 
+          {/* Tab Pedidos Reprogramados */}
+          <TabsContent value="reprogramados">
+            <Card className="border-blue-200">
+              <CardHeader className="flex flex-row items-center justify-between bg-blue-50">
+                <CardTitle className="text-blue-700">
+                  Pedidos REPROGRAMADOS (Rellamada)
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={selectedReprogramadosCount === 0}
+                    onClick={() => handleCopySelected(pedidosReprogramados)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({selectedReprogramadosCount})
+                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleExportExcel(
+                          pedidosReprogramados,
+                          "reprogramados",
+                        )
+                      }
+                      disabled={pedidosReprogramados.length === 0}
+                    >
+                      <FileDown className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersReprogramados}
+                  onFiltersChange={setFiltersReprogramados}
+                  showRegionFilter={true}
+                />
+                {renderTable(pedidosReprogramados, "reprogramados")}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
           {/* Tab Promos Vendidas */}
           <TabsContent value="promos">
             <Card className="border-purple-200">
@@ -691,6 +760,7 @@ Estado: ${sale.status}
                   <TableHeader>
                     <TableRow>
                       <TableHead>Fecha</TableHead>
+                      <TableHead>Vendedor</TableHead>
                       <TableHead>Orden</TableHead>
                       <TableHead>Cliente</TableHead>
                       <TableHead>Teléfono</TableHead>
@@ -706,11 +776,28 @@ Estado: ${sale.status}
                     {promoItems.map((promo) => (
                       <TableRow key={promo.id}>
                         <TableCell>
-                          {promo.addedAt
-                            ? new Date(promo.addedAt).toLocaleDateString(
-                              "es-PE",
-                            )
-                            : "-"}
+                          <div className="flex flex-col">
+                            <span className="font-medium">
+                              {promo.addedAt
+                                ? new Date(promo.addedAt).toLocaleDateString(
+                                  "es-PE",
+                                )
+                                : "-"}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {promo.addedAt
+                                ? new Date(promo.addedAt).toLocaleTimeString(
+                                  "es-PE",
+                                  { hour: '2-digit', minute: '2-digit' }
+                                )
+                                : ""}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full border border-blue-100">
+                            {promo.addedByUserName || "Desconocido"}
+                          </span>
                         </TableCell>
                         <TableCell className="font-medium">
                           {promo.orderNumber}
