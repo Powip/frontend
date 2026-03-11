@@ -187,14 +187,19 @@ export default function AddProductsModal({
 
       // Preparar los items existentes (sin modificar)
       const existingItems = currentOrder.items.map((item: any) => ({
+        id: item.id,
         productVariantId: item.productVariantId,
         sku: item.sku,
         productName: item.productName,
         quantity: item.quantity,
-        unitPrice: item.unitPrice,
+        unitPrice: Number(item.unitPrice),
         discountType: item.discountType || "NONE",
-        discountAmount: item.discountAmount || 0,
+        discountAmount: Number(item.discountAmount || 0),
         attributes: item.attributes,
+        isPromoItem: item.isPromoItem,
+        addedByUserId: item.addedByUserId,
+        addedAt: item.addedAt,
+        imageUrl: item.imageUrl,
       }));
 
       // Preparar los nuevos items con flag de promo
@@ -221,6 +226,8 @@ export default function AddProductsModal({
         {
           items: allItems,
           userId: auth?.user?.id ?? null,
+          sellerName: auth?.user?.name ?? null,
+          userEmail: auth?.user?.email ?? null,
         },
       );
 

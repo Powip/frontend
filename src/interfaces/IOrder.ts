@@ -142,7 +142,8 @@ export interface OrderHeader {
   status: OrderStatus;
   salesRegion: "LIMA" | "PROVINCIA";
   taxMode?: "AUTOMATICO" | "INCLUIDO";
-  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
+  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | "SCHEDULED" | null;
+  callbackAt?: string | null;
   callAttempts?: number;
   cancellationReason: string | null;
   notes: string | null;

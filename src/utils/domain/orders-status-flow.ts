@@ -7,7 +7,7 @@ export const ORDER_STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   LLAMADO: ["ASIGNADO_A_GUIA", "EN_ENVIO", "ANULADO"],
   ASIGNADO_A_GUIA: ["EN_ENVIO", "ANULADO"],
   EN_ENVIO: ["ENTREGADO", "ANULADO"],
-  ENTREGADO: [],
+  ENTREGADO: ["ANULADO"],
   ANULADO: [],
 };
 

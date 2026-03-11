@@ -365,6 +365,9 @@ export default function CustomerServiceModal({
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
         { notes },
       );
+      toast.success("Notas guardadas correctamente");
+    } catch (error) {
+      console.error("Error saving notes", error);
       toast.error("Error al guardar las notas");
     } finally {
       setSavingNotes(false);

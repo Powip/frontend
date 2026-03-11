@@ -25,6 +25,7 @@ import {
   MapPin,
   PackagePlus,
   ShieldCheck,
+  History,
 } from "lucide-react";
 
 import { Button } from "../ui/button";

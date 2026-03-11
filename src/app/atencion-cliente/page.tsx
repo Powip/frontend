@@ -68,7 +68,8 @@ interface Sale {
   address: string;
   advancePayment: number;
   pendingPayment: number;
-  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | null;
+  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | "SCHEDULED" | null;
+  callbackAt?: string | null;
   province?: string;
   city?: string;
   zone?: string;
@@ -122,7 +123,8 @@ function mapOrderToSale(order: OrderHeader): Sale {
     address: order.customer?.address ?? "-",
     advancePayment: totalPaid,
     pendingPayment: Math.max(grandTotal - totalPaid, 0),
-    callStatus: order.callStatus,
+    callStatus: order.callStatus as any,
+    callbackAt: order.callbackAt ? new Date(order.callbackAt).toLocaleString("es-PE") : null,
     province: order.customer?.province ?? "",
     city: order.customer?.city ?? "",
     zone: order.customer?.zone ?? "",
@@ -166,6 +168,8 @@ export default function AtencionClientePage() {
   const [filtersPreparados, setFiltersPreparados] =
     useState<SalesFilters>(emptySalesFilters);
   const [filtersNoConfirmados, setFiltersNoConfirmados] =
+    useState<SalesFilters>(emptySalesFilters);
+  const [filtersReprogramados, setFiltersReprogramados] =
     useState<SalesFilters>(emptySalesFilters);
   const [filtersConfirmados, setFiltersConfirmados] =
     useState<SalesFilters>(emptySalesFilters);
@@ -308,7 +312,7 @@ Estado: ${sale.status}
 
   const renderTable = (
     data: Sale[],
-    tableType: "preparados" | "no_confirmados" | "confirmados",
+    tableType: "preparados" | "no_confirmados" | "confirmados" | "reprogramados",
   ) => (
     <Table>
       <TableHeader>
@@ -337,7 +341,8 @@ Estado: ${sale.status}
           <TableHead>N° Orden</TableHead>
           <TableHead>Cliente</TableHead>
           <TableHead>Teléfono</TableHead>
-          <TableHead>Fecha</TableHead>
+          <TableHead>Fecha Orden</TableHead>
+          {tableType === "reprogramados" && <TableHead>Fecha Rellamada</TableHead>}
           <TableHead>Pago</TableHead>
           <TableHead>Envío</TableHead>
           <TableHead>Total</TableHead>
@@ -365,6 +370,11 @@ Estado: ${sale.status}
             <TableCell>{sale.clientName}</TableCell>
             <TableCell>{sale.phoneNumber}</TableCell>
             <TableCell>{sale.date}</TableCell>
+            {tableType === "reprogramados" && (
+              <TableCell className="text-blue-600 font-medium">
+                {sale.callbackAt || "-"}
+              </TableCell>
+            )}
             <TableCell>{sale.paymentMethod}</TableCell>
             <TableCell>{sale.deliveryType}</TableCell>
             <TableCell>S/{sale.total.toFixed(2)}</TableCell>
@@ -487,10 +497,19 @@ Estado: ${sale.status}
     return applyFilters(statusFiltered, filtersConfirmados);
   }, [sales, filtersConfirmados]);
 
+  // Pedidos Reprogramados: callStatus = SCHEDULED
+  const pedidosReprogramados = useMemo(() => {
+    const statusFiltered = sales.filter((s) => s.callStatus === "SCHEDULED");
+    return applyFilters(statusFiltered, filtersReprogramados);
+  }, [sales, filtersReprogramados]);
+
   const selectedPreparadosCount = pedidosPreparados.filter((s) =>
     selectedSaleIds.has(s.id),
   ).length;
   const selectedNoConfirmadosCount = pedidosNoConfirmados.filter((s) =>
+    selectedSaleIds.has(s.id),
+  ).length;
+  const selectedReprogramadosCount = pedidosReprogramados.filter((s) =>
     selectedSaleIds.has(s.id),
   ).length;
   const selectedConfirmadosCount = pedidosConfirmados.filter((s) =>
@@ -517,6 +536,9 @@ Estado: ${sale.status}
             </TabsTrigger>
             <TabsTrigger value="no_confirmados" className="text-red-600">
               Pedidos NO CONFIRMADOS ({pedidosNoConfirmados.length})
+            </TabsTrigger>
+            <TabsTrigger value="reprogramados" className="text-blue-600">
+              Pedidos REPROGRAMADOS ({pedidosReprogramados.length})
             </TabsTrigger>
             <TabsTrigger value="confirmados" className="text-green-600">
               Pedidos CONFIRMADOS ({pedidosConfirmados.length})
@@ -647,6 +669,50 @@ Estado: ${sale.status}
                   showRegionFilter={true}
                 />
                 {renderTable(pedidosConfirmados, "confirmados")}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Tab Pedidos Reprogramados */}
+          <TabsContent value="reprogramados">
+            <Card className="border-blue-200">
+              <CardHeader className="flex flex-row items-center justify-between bg-blue-50">
+                <CardTitle className="text-blue-700">
+                  Pedidos REPROGRAMADOS (Rellamada)
+                </CardTitle>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    disabled={selectedReprogramadosCount === 0}
+                    onClick={() => handleCopySelected(pedidosReprogramados)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados ({selectedReprogramadosCount})
+                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      onClick={() =>
+                        handleExportExcel(
+                          pedidosReprogramados,
+                          "reprogramados",
+                        )
+                      }
+                      disabled={pedidosReprogramados.length === 0}
+                    >
+                      <FileDown className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersReprogramados}
+                  onFiltersChange={setFiltersReprogramados}
+                  showRegionFilter={true}
+                />
+                {renderTable(pedidosReprogramados, "reprogramados")}
               </CardContent>
             </Card>
           </TabsContent>
