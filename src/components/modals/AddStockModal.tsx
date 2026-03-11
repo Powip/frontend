@@ -24,13 +24,22 @@ export default function AddStockModal({
     onSuccess
 }: Props) {
     const { auth } = useAuth();
-    const [quantity, setQuantity] = useState(1);
+    const [quantity, setQuantity] = useState<number | ""> (1);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     if (!item) return null;
 
     const handleSubmit = async () => {
-        if (!item.inventoryItemId || quantity <= 0) return;
+        const qty = Number(quantity);
+        if (!item.inventoryItemId || qty === 0) {
+            toast.error("La cantidad debe ser distinta de 0");
+            return;
+        }
+
+        if (item.physicalStock + qty < 0) {
+            toast.error("El stock final no puede ser negativo");
+            return;
+        }
 
         setIsSubmitting(true);
         try {
@@ -44,7 +53,7 @@ export default function AddStockModal({
                     referenceId: "MANUAL_ADJUSTMENT"
                 }
             );
-            toast.success(`Se agregaron ${quantity} unidades al stock de "${item.productName}"`);
+            toast.success(`Se ajustaron ${qty} unidades al stock de "${item.productName}"`);
             onSuccess?.();
             handleClose();
         } catch (error) {
@@ -110,7 +119,7 @@ export default function AddStockModal({
                         <div className="p-3 bg-teal-50 dark:bg-teal-900/20 rounded-lg border border-teal-100 dark:border-teal-900/30">
                             <p className="text-xs text-teal-600 dark:text-teal-400 mb-1">Stock Final</p>
                             <p className="text-xl font-bold text-teal-700 dark:text-teal-300">
-                                {item.physicalStock + quantity}
+                                {item.physicalStock + Number(quantity || 0)}
                             </p>
                         </div>
                     </div>
@@ -119,7 +128,7 @@ export default function AddStockModal({
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
                             <Label className="text-sm font-medium">Cantidad a agregar</Label>
-                            <span className="text-xs text-teal-600 font-semibold">+{quantity} unidades</span>
+                            <span className="text-xs text-teal-600 font-semibold">{Number(quantity || 0) >= 0 ? "+" : ""}{quantity || 0} unidades</span>
                         </div>
                         <div className="flex items-center gap-3">
                             <Button
@@ -127,17 +136,23 @@ export default function AddStockModal({
                                 variant="outline"
                                 size="icon"
                                 className="h-10 w-10 shrink-0"
-                                onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                                disabled={quantity <= 1 || isSubmitting}
+                                onClick={() => setQuantity(Number(quantity || 0) - 1)}
+                                disabled={isSubmitting}
                             >
                                 <Minus className="h-4 w-4" />
                             </Button>
 
                             <Input
                                 type="number"
-                                min={1}
                                 value={quantity}
-                                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                                onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (val === "") {
+                                        setQuantity("");
+                                    } else {
+                                        setQuantity(parseInt(val) || 0);
+                                    }
+                                }}
                                 className="text-center h-10 text-lg font-semibold"
                                 disabled={isSubmitting}
                             />
@@ -147,7 +162,7 @@ export default function AddStockModal({
                                 variant="outline"
                                 size="icon"
                                 className="h-10 w-10 shrink-0"
-                                onClick={() => setQuantity(quantity + 1)}
+                                onClick={() => setQuantity(Number(quantity || 0) + 1)}
                                 disabled={isSubmitting}
                             >
                                 <Plus className="h-4 w-4" />
@@ -161,13 +176,13 @@ export default function AddStockModal({
                     </div>
                 </div>
 
-                <DialogFooter className="gap-2 sm:gap-0">
+                <DialogFooter className="gap-4 sm:gap-4 justify-center sm:justify-center">
                     <Button variant="outline" onClick={handleClose} disabled={isSubmitting}>
                         Cancelar
                     </Button>
                     <Button
                         onClick={handleSubmit}
-                        disabled={isSubmitting || quantity <= 0}
+                        disabled={isSubmitting || Number(quantity || 0) === 0}
                         className="bg-teal-600 hover:bg-teal-700 text-white min-w-[140px]"
                     >
                         {isSubmitting ? (

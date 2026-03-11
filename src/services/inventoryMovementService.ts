@@ -31,7 +31,15 @@ interface MovementsResponse {
 
 export async function getMovementsByCompany(
   companyId: string,
-  params: { page?: number; limit?: number } = {}
+  params: { 
+    page?: number; 
+    limit?: number;
+    type?: string;
+    userEmail?: string;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+  } = {}
 ): Promise<MovementsResponse> {
   const res = await axios.get<MovementsResponse>(
     `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-movement/company/${companyId}`,

@@ -87,6 +87,7 @@ interface PromoItem {
   subtotal: number;
   addedAt: string;
   addedByUserId: string | null;
+  addedByUserName?: string;
   orderId: string;
   orderNumber: string;
   orderTotal: number;
@@ -213,10 +214,6 @@ export default function AtencionClientePage() {
     }
   }, [selectedStoreId]);
 
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    fetchOrders();
-  }, [selectedStoreId, fetchOrders]);
 
   // Fetch promo items
   const fetchPromoItems = useCallback(async () => {
@@ -238,6 +235,12 @@ export default function AtencionClientePage() {
       setPromoLoading(false);
     }
   }, [selectedStoreId, promoFromDate, promoToDate]);
+
+  useEffect(() => {
+    if (!selectedStoreId) return;
+    fetchOrders();
+    fetchPromoItems();
+  }, [selectedStoreId, fetchOrders, fetchPromoItems]);
 
   const toggleSale = (id: string) => {
     setSelectedSaleIds((prev) => {
@@ -757,6 +760,7 @@ Estado: ${sale.status}
                   <TableHeader>
                     <TableRow>
                       <TableHead>Fecha</TableHead>
+                      <TableHead>Vendedor</TableHead>
                       <TableHead>Orden</TableHead>
                       <TableHead>Cliente</TableHead>
                       <TableHead>Teléfono</TableHead>
@@ -772,11 +776,28 @@ Estado: ${sale.status}
                     {promoItems.map((promo) => (
                       <TableRow key={promo.id}>
                         <TableCell>
-                          {promo.addedAt
-                            ? new Date(promo.addedAt).toLocaleDateString(
-                              "es-PE",
-                            )
-                            : "-"}
+                          <div className="flex flex-col">
+                            <span className="font-medium">
+                              {promo.addedAt
+                                ? new Date(promo.addedAt).toLocaleDateString(
+                                  "es-PE",
+                                )
+                                : "-"}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {promo.addedAt
+                                ? new Date(promo.addedAt).toLocaleTimeString(
+                                  "es-PE",
+                                  { hour: '2-digit', minute: '2-digit' }
+                                )
+                                : ""}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-xs px-2 py-0.5 bg-blue-50 text-blue-700 rounded-full border border-blue-100">
+                            {promo.addedByUserName || "Desconocido"}
+                          </span>
                         </TableCell>
                         <TableCell className="font-medium">
                           {promo.orderNumber}

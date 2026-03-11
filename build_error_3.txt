@@ -1,0 +1,148 @@
+
+> frontend@0.1.0 build
+> next build
+
+   ▲ Next.js 15.5.9
+   - Environments: .env
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully in 33.6s
+   Linting and checking validity of types ...
+
+./src/app/compras/page.tsx
+102:8  Warning: React Hook useEffect has a missing dependency: 'fetchPurchases'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/couriers/page.tsx
+100:6  Warning: React Hook useEffect has a missing dependency: 'loadCouriers'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/finanzas/page.tsx
+287:5  Warning: React Hook useCallback has a missing dependency: 'getUserInfo'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+315:5  Warning: React Hook useCallback has a missing dependency: 'getUserInfo'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/inventario/page.tsx
+386:33  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/app/operaciones/page.tsx
+375:6  Warning: React Hook useMemo has a missing dependency: 'getSelectedIdsForActiveTab'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/productos/create-product/create-product.tsx
+414:6  Warning: React Hook useEffect has a missing dependency: 'form.brandId'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+868:25  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/app/proveedores/page.tsx
+95:6  Warning: React Hook useEffect has a missing dependency: 'fetchSuppliers'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/registrar-compra/page.tsx
+193:6  Warning: React Hook useEffect has a missing dependency: 'loadPurchaseForEdit'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+288:6  Warning: React Hook useEffect has a missing dependency: 'fetchSuppliers'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+374:6  Warning: React Hook useEffect has missing dependencies: 'searchProducts' and 'selectedInventoryId'. Either include them or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/registrar-venta/page.tsx
+306:6  Warning: React Hook useEffect has a missing dependency: 'inventories'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+322:6  Warning: React Hook useEffect has a missing dependency: 'searchProducts'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+333:6  Warning: React Hook useEffect has a missing dependency: 'searchProducts'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+1839:23  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/app/shopify/components/shopify-order-review-modal.tsx
+250:49  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/app/superadmin/page.tsx
+826:6  Warning: React Hook useEffect has a missing dependency: 'fetchDetails'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/app/ventas/page.tsx
+288:6  Warning: React Hook useMemo has a missing dependency: 'getSelectedIdsForActiveTab'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+917:25  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/dashboard/analysis.tsx
+207:6  Warning: React Hook useEffect has a missing dependency: 'fetchData'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/dashboard/FinanceStats.tsx
+219:6  Warning: React Hook useEffect has a missing dependency: 'fetchData'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/dashboard/geography.tsx
+302:6  Warning: React Hook useEffect has a missing dependency: 'fetchData'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/dashboard/PaymentDetailsModal.tsx
+73:6  Warning: React Hook useEffect has a missing dependency: 'fetchPaymentDetails'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/dashboard/stats.tsx
+217:6  Warning: React Hook useEffect has a missing dependency: 'fetchStats'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/dashboard/TeamManagement.tsx
+167:6  Warning: React Hook useEffect has a missing dependency: 'fetchSellers'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/excel/ExcelImportWizard.tsx
+176:6  Warning: React Hook useEffect has a missing dependency: 'selectedInventoryId'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/inventory/MovementHistoryTable.tsx
+112:6  Warning: React Hook useEffect has a missing dependency: 'loadMovements'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/modals/CommentsTimelineModal.tsx
+83:6  Warning: React Hook useEffect has a missing dependency: 'fetchLogs'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/modals/GuideDetailsModal.tsx
+234:6  Warning: React Hook useEffect has a missing dependency: 'fetchGuide'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+1277:33  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/modals/PaymentProofUploadModal.tsx
+131:37  Warning: Using `<img>` could result in slower LCP and higher bandwidth. Consider using `<Image />` from `next/image` or a custom image loader to automatically optimize images. This may incur additional usage or cost from your provider. See: https://nextjs.org/docs/messages/no-img-element  @next/next/no-img-element
+
+./src/components/modals/PaymentVerificationModal.tsx
+130:6  Warning: React Hook useEffect has a missing dependency: 'fetchOrderData'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/components/products/EditProducto.tsx
+135:6  Warning: React Hook useEffect has a missing dependency: 'product.subcategoryId'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+./src/contexts/AuthContext.tsx
+193:6  Warning: React Hook useEffect has a missing dependency: 'fetchInventories'. Either include it or remove the dependency array.  react-hooks/exhaustive-deps
+
+info  - Need to disable some ESLint rules? Learn more here: https://nextjs.org/docs/app/api-reference/config/eslint#disabling-rules
+   Collecting page data ...
+   Generating static pages (0/30) ...
+   Generating static pages (7/30) 
+   Generating static pages (14/30) 
+   Generating static pages (22/30) 
+[DEBUG] Archivo TeamManagement.tsx cargado
+ ✓ Generating static pages (30/30)
+   Finalizing page optimization ...
+   Collecting build traces ...
+
+Route (app)                                 Size  First Load JS
+┌ ○ /                                    2.25 kB         125 kB
+├ ○ /_not-found                             1 kB         103 kB
+├ ○ /atencion-cliente                       5 kB         500 kB
+├ ○ /clientes                            6.71 kB         199 kB
+├ ○ /compras                             7.69 kB         169 kB
+├ ○ /configuracion                       3.18 kB         118 kB
+├ ○ /configuracion/editar-usuario         5.9 kB         150 kB
+├ ○ /configuracion/empresa               4.78 kB         185 kB
+├ ○ /configuracion/tiendas                 15 kB         195 kB
+├ ○ /couriers                            6.68 kB         301 kB
+├ ○ /dashboard                           34.6 kB         429 kB
+├ ○ /finanzas                               7 kB         359 kB
+├ ○ /icon.jpeg                               0 B            0 B
+├ ○ /inventario                            13 kB         464 kB
+├ ○ /login                               7.53 kB         205 kB
+├ ○ /new-company                         7.05 kB         182 kB
+├ ○ /operaciones                         12.1 kB         367 kB
+├ ○ /productos                           8.23 kB         452 kB
+├ ƒ /productos/[id]/edit                 5.09 kB         151 kB
+├ ○ /proveedores                         4.69 kB         166 kB
+├ ○ /registrar-compra                    9.07 kB         189 kB
+├ ○ /registrar-venta                     13.7 kB         363 kB
+├ ○ /restablecer-contrasena              2.75 kB         144 kB
+├ ○ /seguimiento                         9.72 kB         361 kB
+├ ○ /shopify/callback                    6.71 kB         176 kB
+├ ○ /subscriptions                       5.48 kB         168 kB
+├ ○ /superadmin                          17.5 kB         287 kB
+├ ○ /usuarios                            6.78 kB         199 kB
+└ ○ /ventas                              7.11 kB         362 kB
++ First Load JS shared by all             102 kB
+  ├ chunks/1255-8befde0980f5cba9.js      45.6 kB
+  ├ chunks/4bd1b696-100b9d70ed4e49c1.js  54.2 kB
+  └ other shared chunks (total)          2.12 kB
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

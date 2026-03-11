@@ -69,4 +69,5 @@ export interface InventoryItemForSale {
   physicalStock: number;
   min_stock?: number;
   attributes?: Record<string, string>;
+  imageUrl?: string | null;
 }

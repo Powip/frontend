@@ -260,6 +260,7 @@ export default function ProductCreateForm({
           inventory_id: product.inventory_id || "",
           supplierId: productDetails.supplier?.id || "",
           brandId: productDetails.brand?.id || "",
+          mainImageUrl: product.imageUrl || "",
         });
 
         // Cargar companySku si existe
@@ -776,6 +777,7 @@ export default function ProductCreateForm({
         const productPayload = {
           name: form.name,
           description: form.description,
+          imageUrl: payload.imageUrl,
         };
 
         await axios.patch(

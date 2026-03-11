@@ -328,8 +328,9 @@ export default function AlmacenPage() {
                   <Table>
                     <TableHeader>
                       <TableRow className="bg-muted/50">
-                        <TableHead className="border-r">SKU</TableHead>
-                        <TableHead className="border-r">Nombre</TableHead>
+                        <TableHead className="border-r w-[80px]">Foto</TableHead>
+                        <TableHead className="border-r w-[130px]">SKU</TableHead>
+                        <TableHead className="border-r min-w-[200px] max-w-[250px]">Nombre</TableHead>
                         <TableHead className="border-r">Variantes</TableHead>
                         <TableHead className="border-r">Stock</TableHead>
                         <TableHead className="border-r">Precio base</TableHead>
@@ -343,10 +344,13 @@ export default function AlmacenPage() {
                         [...Array(5)].map((_, i) => (
                           <TableRow key={i}>
                             <TableCell className="border-r">
-                              <Skeleton className="h-4 w-20" />
+                              <Skeleton className="h-16 w-16 rounded-md" />
                             </TableCell>
                             <TableCell className="border-r">
-                              <Skeleton className="h-4 w-32" />
+                              <Skeleton className="h-4 w-24" />
+                            </TableCell>
+                            <TableCell className="border-r">
+                              <Skeleton className="h-4 w-48" />
                             </TableCell>
                             <TableCell className="border-r">
                               <Skeleton className="h-4 w-24" />
@@ -368,7 +372,7 @@ export default function AlmacenPage() {
                       ) : productsWithDetails.length === 0 ? (
                         <TableRow>
                           <TableCell
-                            colSpan={7}
+                            colSpan={8}
                             className="text-center py-6 text-muted-foreground"
                           >
                             No hay productos en este almacén
@@ -377,8 +381,23 @@ export default function AlmacenPage() {
                       ) : (
                         productsWithDetails.map((prod) => (
                           <TableRow key={prod.inventoryItemId} className="hover:bg-muted/30 transition-colors">
-                            <TableCell className="border-r font-medium text-sm">{prod.sku}</TableCell>
-                            <TableCell className="border-r text-sm">
+                            <TableCell className="border-r">
+                              {prod.imageUrl ? (
+                                <img 
+                                  src={prod.imageUrl} 
+                                  alt={prod.productName} 
+                                  className="h-16 w-16 rounded-md object-cover border"
+                                />
+                              ) : (
+                                <div className="h-16 w-16 rounded-md bg-muted flex items-center justify-center text-muted-foreground">
+                                  <ShoppingBag className="h-8 w-8" />
+                                </div>
+                              )}
+                            </TableCell>
+                            <TableCell className="border-r font-medium text-xs max-w-[130px] truncate" title={prod.sku}>
+                              {prod.sku}
+                            </TableCell>
+                            <TableCell className="border-r text-sm max-w-[250px] truncate" title={prod.productName}>
                               {prod.productName}
                             </TableCell>
                             <TableCell className="border-r text-sm">
