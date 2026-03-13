@@ -115,7 +115,9 @@ export function Sidebar({ className }: SidebarProps) {
       icon: DollarSign,
       children: [
         { name: "Resumen Finanzas", href: "/finanzas", icon: BarChart },
-        { name: "Facturación", href: "/facturacion", icon: FileText },
+        ...(auth?.user?.email === "maurimartine01@gmail.com" 
+          ? [{ name: "Facturación", href: "/facturacion", icon: FileText }] 
+          : []),
       ],
     },
     { name: "Clientes", href: "/clientes", icon: Users },

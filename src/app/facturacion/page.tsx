@@ -32,6 +32,7 @@ import InvoiceModal from "@/components/modals/InvoiceModal";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useAuth } from "@/contexts/AuthContext";
+import { useRouter } from "next/navigation";
 
 interface Sale {
   id: string;
@@ -71,7 +72,15 @@ export default function FacturacionPage() {
   const [sunatLogs, setSunatLogs] = useState<Record<string, SunatLog>>({});
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { selectedStoreId } = useAuth();
+  const { selectedStoreId, auth, loading: authLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && auth?.user?.email !== "maurimartine01@gmail.com") {
+      toast.error("No tienes permisos para acceder a esta sección.");
+      router.push("/dashboard");
+    }
+  }, [auth, authLoading, router]);
 
   const fetchSales = async () => {
     if (!selectedStoreId) return;
@@ -110,6 +119,14 @@ export default function FacturacionPage() {
     s.orderNumber.toLowerCase().includes(search.toLowerCase()) ||
     s.id.toLowerCase().includes(search.toLowerCase())
   );
+
+  if (authLoading || auth?.user?.email !== "maurimartine01@gmail.com") {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green"></div>
+      </div>
+    );
+  }
 
   const getStatusBadge = (id: string) => {
     const log = sunatLogs[id];
@@ -195,7 +212,7 @@ export default function FacturacionPage() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <CardTitle>Ventas Entregadas</CardTitle>
-              <CardDescription>Mostrando ventas con estado "ENTREGADO" listas para facturar.</CardDescription>
+              <CardDescription>Mostrando ventas con estado &quot;ENTREGADO&quot; listas para facturar.</CardDescription>
             </div>
             <div className="relative w-full md:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
