@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -123,11 +123,11 @@ export default function CreateGuideModal({
   });
 
   // Cargar couriers
-  useState(() => {
-    if (auth?.company?.id) {
+  useEffect(() => {
+    if (open && auth?.company?.id) {
       fetchCouriers(auth.company.id).then(setCouriers).catch(console.error);
     }
-  });
+  }, [open, auth?.company?.id]);
 
   const totalAmount = useMemo(() => {
     return selectedOrders.reduce((acc, o) => acc + o.pendingPayment, 0);

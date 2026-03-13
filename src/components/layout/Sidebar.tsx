@@ -26,6 +26,8 @@ import {
   PackagePlus,
   ShieldCheck,
   History,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -36,7 +38,7 @@ import {
 } from "@/components/ui/layout/avatar";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import {
   SIDEBAR_ITEMS_PERMISSIONS,
   isSuperadmin,
@@ -48,14 +50,17 @@ interface SidebarProps {
 
 interface NavigationItem {
   name: string;
-  href: string;
+  href?: string;
   icon: React.ElementType;
+  children?: { name: string; href: string; icon?: React.ElementType }[];
 }
 
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
   const { auth, logout, hasPermission } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
   const { theme, setTheme } = useTheme();
 
   // Auto-colapsar en móviles
@@ -68,15 +73,27 @@ export function Sidebar({ className }: SidebarProps) {
       }
     };
 
-    // Ejecutar al montar
     handleResize();
-
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  // Mantener submenú abierto si el path actual es hijo
+  useEffect(() => {
+    if (pathname.includes("/facturacion") || pathname === "/finanzas") {
+      setOpenSubmenus(prev => ({ ...prev, Finanzas: true }));
+    }
+  }, [pathname]);
+
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark");
+  };
+
+  const toggleSubmenu = (name: string) => {
+    setOpenSubmenus((prev) => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
   };
 
   const navigation: NavigationItem[] = [
@@ -93,25 +110,32 @@ export function Sidebar({ className }: SidebarProps) {
       icon: Headphones,
     },
     { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
-    { name: "Finanzas", href: "/finanzas", icon: DollarSign },
+    {
+      name: "Finanzas",
+      icon: DollarSign,
+      children: [
+        { name: "Resumen Finanzas", href: "/finanzas", icon: BarChart },
+        ...(auth?.user?.email === "maurimartine01@gmail.com" 
+          ? [{ name: "Facturación", href: "/facturacion", icon: FileText }] 
+          : []),
+      ],
+    },
     { name: "Clientes", href: "/clientes", icon: Users },
     { name: "Proveedores", href: "/proveedores", icon: Building2 },
     { name: "Usuarios", href: "/usuarios", icon: UserCog },
     { name: "Couriers", href: "/couriers", icon: Truck },
     { name: "Configuración", href: "/configuracion", icon: Settings },
-    /*    { name: "Auditoría", href: "/auditoria", icon: FileSearch }, */
     { name: "Superadmin", href: "/superadmin", icon: ShieldCheck },
   ];
 
   // Filtrar navegación por permisos del usuario
   const filteredNavigation = navigation.filter((item) => {
-    // Caso especial para Superadmin
     if (item.name === "Superadmin") {
       return isSuperadmin(auth?.user.email);
     }
 
     const requiredPermission = SIDEBAR_ITEMS_PERMISSIONS[item.name];
-    if (!requiredPermission) return true; // Sin restricción
+    if (!requiredPermission) return true;
     return hasPermission(requiredPermission);
   });
 
@@ -151,7 +175,6 @@ export function Sidebar({ className }: SidebarProps) {
         ) : (
           <>
             <Link href="/" className="flex items-center pl-4">
-              {/* Logo for light mode */}
               <Image
                 src="/logo_powip_white.png"
                 alt="Powip Logo"
@@ -159,7 +182,6 @@ export function Sidebar({ className }: SidebarProps) {
                 height={40}
                 className="dark:hidden"
               />
-              {/* Logo for dark mode */}
               <Image
                 src="/logo_powip_dark.png"
                 alt="Powip Logo"
@@ -187,30 +209,80 @@ export function Sidebar({ className }: SidebarProps) {
         >
           {filteredNavigation.map((item) => {
             const Icon = item.icon;
+            const hasChildren = item.children && item.children.length > 0;
+            const isOpen = openSubmenus[item.name] || false;
+            const isActive = item.href ? pathname === item.href : item.children?.some(c => pathname === c.href);
+
             return (
               <div
                 key={item.name}
-                className={cn("w-full", isCollapsed && "flex justify-center")}
+                className={cn("w-full", isCollapsed && "flex flex-col items-center")}
               >
-                <Link
-                  href={item.href}
-                  className={cn(isCollapsed ? "w-auto" : "w-full")}
-                >
-                  <Button
-                    variant="ghost"
-                    className={cn(
-                      "flex items-center gap-2 h-9 cursor-pointer",
-                      isCollapsed
-                        ? "justify-center w-9"
-                        : "justify-start w-full",
+                {hasChildren && !isCollapsed ? (
+                  <>
+                    <Button
+                      variant="ghost"
+                      onClick={() => toggleSubmenu(item.name)}
+                      className={cn(
+                        "flex items-center justify-between h-9 w-full gap-2 cursor-pointer",
+                        isActive && "bg-gray-100 dark:bg-gray-800",
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Icon className="h-4 w-4 text-green" />
+                        <span className="text-sm">{item.name}</span>
+                      </div>
+                      {isOpen ? (
+                        <ChevronUp className="h-3 w-3" />
+                      ) : (
+                        <ChevronDown className="h-3 w-3" />
+                      )}
+                    </Button>
+                    {isOpen && (
+                      <div className="ml-4 flex flex-col gap-1 mt-1 border-l pl-2 border-gray-100 dark:border-gray-800">
+                        {item.children?.map((child) => (
+                          <Link key={child.name} href={child.href} className="w-full">
+                            <Button
+                              variant="ghost"
+                              className={cn(
+                                "flex items-center gap-2 h-8 w-full justify-start text-[13px] opacity-80 hover:opacity-100",
+                                pathname === child.href && "text-green font-medium opacity-100 bg-green/5",
+                              )}
+                            >
+                              {child.icon ? (
+                                <child.icon className="h-3.5 w-3.5" />
+                              ) : (
+                                <div className="w-1 h-1 rounded-full bg-green" />
+                              )}
+                              <span>{child.name}</span>
+                            </Button>
+                          </Link>
+                        ))}
+                      </div>
                     )}
+                  </>
+                ) : (
+                  <Link
+                    href={item.href || "#"}
+                    className={cn(isCollapsed ? "w-auto" : "w-full")}
                   >
-                    <Icon className="h-4 w-4 text-green" />
-                    {!isCollapsed && (
-                      <span className="text-sm">{item.name}</span>
-                    )}
-                  </Button>
-                </Link>
+                    <Button
+                      variant="ghost"
+                      className={cn(
+                        "flex items-center gap-2 h-9 cursor-pointer",
+                        isCollapsed
+                          ? "justify-center w-9"
+                          : "justify-start w-full",
+                        isActive && "bg-gray-100 dark:bg-gray-800",
+                      )}
+                    >
+                      <Icon className="h-4 w-4 text-green" />
+                      {!isCollapsed && (
+                        <span className="text-sm">{item.name}</span>
+                      )}
+                    </Button>
+                  </Link>
+                )}
               </div>
             );
           })}

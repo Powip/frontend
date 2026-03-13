@@ -40,10 +40,16 @@ export async function updateClient(id: string, data: UpdateClientDto) {
   }
 }
 
-export async function findByCompany(id: string) {
+export async function findByCompany(
+  id: string,
+  filters?: { brandId?: string; categoryId?: string }
+) {
   try {
     const res = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/clients/company/${id}`
+      `${process.env.NEXT_PUBLIC_API_VENTAS}/clients/company/${id}`,
+      {
+        params: filters,
+      }
     );
     return res;
   } catch (error) {

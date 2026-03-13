@@ -21,15 +21,25 @@ import {
   Trash2,
   Download,
   MessageCircle,
+  Filter,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import ClienteModal from "@/components/modals/ClienteModal";
 import { Client } from "@/interfaces/ICliente";
 import { toast } from "sonner";
 import { findByCompany, toggleClienteActivo } from "@/api/clientes/route";
+import { getBrands, getCategories } from "@/api/Productos";
+import { IGetBrand, IGetCategory } from "@/api/Interfaces";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
 import { useRouter } from "next/navigation";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -40,12 +50,20 @@ export default function ClientesPage() {
   const [openModal, setOpenModal] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<Client | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const [brands, setBrands] = useState<IGetBrand[]>([]);
+  const [categories, setCategories] = useState<IGetCategory[]>([]);
+  const [selectedBrand, setSelectedBrand] = useState<string>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const { auth } = useAuth();
 
   const fetchClients = async (companyId: string) => {
     setLoading(true);
     try {
-      const res = await findByCompany(companyId);
+      const filters = {
+        brandId: selectedBrand !== "all" ? selectedBrand : undefined,
+        categoryId: selectedCategory !== "all" ? selectedCategory : undefined,
+      };
+      const res = await findByCompany(companyId, filters);
       if (res) setClients(res.data);
     } catch (error) {
       console.log("Error cargando clientes:", error);
@@ -54,11 +72,28 @@ export default function ClientesPage() {
     }
   };
 
+  const loadFilters = async () => {
+    try {
+      const [brandsRes, categoriesRes] = await Promise.all([
+        getBrands(),
+        getCategories(),
+      ]);
+      setBrands(brandsRes);
+      setCategories(categoriesRes);
+    } catch (error) {
+      console.error("Error cargando filtros:", error);
+    }
+  };
+
   useEffect(() => {
     if (auth?.company?.id) {
       fetchClients(auth?.company?.id);
     }
-  }, [auth?.company?.id]);
+  }, [auth?.company?.id, selectedBrand, selectedCategory]);
+
+  useEffect(() => {
+    loadFilters();
+  }, []);
 
   const filtered = clients.filter((c) => {
     const q = searchQuery.toLowerCase();
@@ -212,22 +247,57 @@ export default function ClientesPage() {
         <Card className="flex-1 overflow-hidden">
           <CardContent className="p-4 flex flex-col h-full">
             {/* Search and Export */}
-            <div className="mb-4 flex justify-between items-center gap-4">
-              <div className="relative w-full md:w-80">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Buscar por nombre o teléfono..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                />
+            <div className="mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="flex flex-col md:flex-row gap-2 w-full md:w-auto">
+                <div className="relative w-full md:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por nombre o teléfono..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9"
+                  />
+                </div>
+
+                <Select value={selectedBrand} onValueChange={setSelectedBrand}>
+                  <SelectTrigger className="w-full md:w-48 bg-white">
+                    <SelectValue placeholder="Filtrar por Marca" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las marcas</SelectItem>
+                    {brands.map((brand) => (
+                      <SelectItem key={brand.id} value={brand.id}>
+                        {brand.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <Select
+                  value={selectedCategory}
+                  onValueChange={setSelectedCategory}
+                >
+                  <SelectTrigger className="w-full md:w-48 bg-white">
+                    <SelectValue placeholder="Filtrar por Categoría" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas las categorías</SelectItem>
+                    {categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+
               {auth?.user?.role === "ADMIN" && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleExportExcel}
                   disabled={filtered.length === 0}
+                  className="w-full md:w-auto"
                 >
                   <Download className="h-4 w-4 mr-2" />
                   Exportar Excel

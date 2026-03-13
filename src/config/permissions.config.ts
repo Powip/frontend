@@ -28,6 +28,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/couriers": ["MANAGE_OPERATIONS"],
   "/configuracion": ["ACCESS_SETTINGS"],
   "/atencion-cliente": ["VIEW_CUSTOMER_SERVICE"],
+  "/facturacion": ["VIEW_FINANCES"],
 };
 
 // Map sidebar items to required permissions
@@ -46,6 +47,7 @@ export const SIDEBAR_ITEMS_PERMISSIONS: Record<string, string> = {
   Couriers: "MANAGE_OPERATIONS",
   Configuración: "ACCESS_SETTINGS",
   "Atención al cliente": "VIEW_CUSTOMER_SERVICE",
+  Facturación: "VIEW_FINANCES",
 };
 
 // Helper function to check if user has required permission
