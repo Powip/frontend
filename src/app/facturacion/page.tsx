@@ -267,13 +267,18 @@ export default function FacturacionPage() {
                             {log?.status === 'ACCEPTED' && (
                               <div className="flex gap-1">
                                 <Button variant="ghost" size="icon" asChild title="Descargar XML">
-                                  <a href={log.xml_url} target="_blank" rel="noopener noreferrer">
+                                  <a href={`${API.integrations}/sunat/xml/${sale.id}`} target="_blank" rel="noopener noreferrer">
                                     <Download className="h-4 w-4 text-blue-500" />
+                                  </a>
+                                </Button>
+                                <Button variant="ghost" size="icon" asChild title="Descargar PDF">
+                                  <a href={`${API.integrations}/sunat/pdf/${sale.id}`} target="_blank" rel="noopener noreferrer">
+                                    <FileText className="h-4 w-4 text-red-500" />
                                   </a>
                                 </Button>
                                 <Button variant="ghost" size="icon" asChild title="Descargar CDR">
                                   <a href={log.cdr_url} target="_blank" rel="noopener noreferrer">
-                                    <FileText className="h-4 w-4 text-green" />
+                                    <FileCheck className="h-4 w-4 text-green" />
                                   </a>
                                 </Button>
                               </div>

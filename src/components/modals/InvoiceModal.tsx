@@ -77,16 +77,30 @@ export default function InvoiceModal({
   const handleSubmit = async () => {
     if (!sale) return;
 
-    // Validaciones básicas
+    // Limpieza de strings antes de enviar
+    const cleanCustomerName = formData.customerName.trim();
+    const cleanDocNumber = formData.customerDocNumber.trim();
+    const cleanAddress = formData.customerAddress.trim();
+
+    // Validaciones estrictas
     if (documentType === "01") {
-      if (formData.customerDocNumber.length !== 11) {
-        return toast.error("El RUC debe tener 11 dígitos");
+      const isRucValid = /^(10|20)\d{9}$/.test(cleanDocNumber);
+      if (!isRucValid) {
+        return toast.error("Para Facturas se requiere un RUC válido (11 dígitos, empieza con 10 o 20)");
       }
-      if (!formData.customerName) {
+      if (!cleanCustomerName) {
         return toast.error("La Razón Social es obligatoria");
       }
-      if (!formData.customerAddress) {
+      if (!cleanAddress) {
         return toast.error("La Dirección Fiscal es obligatoria para Facturas");
+      }
+    } else if (documentType === "03") {
+      // Boleta: validar DNI (8) o RUC (11)
+      if (formData.customerDocType === "1" && cleanDocNumber.length !== 8) {
+        return toast.error("El DNI debe tener 8 dígitos");
+      }
+      if (formData.customerDocType === "6" && cleanDocNumber.length !== 11) {
+        return toast.error("El RUC debe tener 11 dígitos");
       }
     }
 
@@ -95,11 +109,11 @@ export default function InvoiceModal({
       const payload = {
         externalId: sale.id,
         documentType,
-        customerName: formData.customerName,
+        customerName: cleanCustomerName,
         customerDocType: formData.customerDocType as any,
-        customerDocNumber: formData.customerDocNumber,
-        customerAddress: formData.customerAddress,
-        totalTax: Number(sale.grandTotal) * 0.18 / 1.18, // Cálculo aproximado si no viene desglosado
+        customerDocNumber: cleanDocNumber,
+        customerAddress: cleanAddress,
+        totalTax: Number(sale.grandTotal) * 0.18 / 1.18, 
         totalValue: Number(sale.grandTotal) / 1.18,
         totalPrice: Number(sale.grandTotal),
         items: (sale.items || []).map((d: any) => ({
@@ -108,7 +122,7 @@ export default function InvoiceModal({
           quantity: d.quantity,
           unitPrice: d.price,
           unitCode: "NIU",
-          taxType: "10", // Gravado - Operación Onerosa
+          taxType: "10", 
         })),
       };
 
