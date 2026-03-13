@@ -448,10 +448,11 @@ export default function OperacionesPage() {
       return;
     }
 
-    // Validar courier antes de cambiar a EN_ENVIO
+    // Validar courier antes de cambiar a EN_ENVIO (solo si no es retiro en tienda)
     if (newStatus === "EN_ENVIO") {
       const sale = sales.find((s) => s.id === saleId);
-      if (sale && !sale.courier) {
+      const isPickup = sale?.deliveryType.toUpperCase().includes("RETIRO");
+      if (sale && !sale.courier && !isPickup) {
         toast.error("Debe asignar un courier antes de cambiar a EN_ENVIO");
         return;
       }
@@ -497,7 +498,10 @@ export default function OperacionesPage() {
     // Validar si algún pedido requiere courier antes de pasar a EN_ENVIO masivamente
     if (newStatus === "EN_ENVIO") {
       const ordersMissingCourier = sales.filter(
-        (s) => selectedSaleIds.has(s.id) && !s.courier,
+        (s) =>
+          selectedSaleIds.has(s.id) &&
+          !s.courier &&
+          !s.deliveryType.toUpperCase().includes("RETIRO"),
       );
       if (ordersMissingCourier.length > 0) {
         toast.error(
