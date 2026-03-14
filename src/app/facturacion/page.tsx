@@ -76,7 +76,10 @@ export default function FacturacionPage() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!authLoading && auth?.user?.email !== "maurimartine01@gmail.com") {
+    const authorizedEmails = ["maurimartine01@gmail.com", "joel@aranni.com.pe"];
+    const userEmail = auth?.user?.email;
+
+    if (!authLoading && userEmail && !authorizedEmails.includes(userEmail)) {
       toast.error("No tienes permisos para acceder a esta sección.");
       router.push("/dashboard");
     }
