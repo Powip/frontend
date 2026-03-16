@@ -115,7 +115,7 @@ export function Sidebar({ className }: SidebarProps) {
       icon: DollarSign,
       children: [
         { name: "Resumen Finanzas", href: "/finanzas", icon: BarChart },
-        ...(["maurimartine01@gmail.com", "joel@aranni.com.pe"].includes(auth?.user?.email || "")
+        ...(isSuperadmin(auth?.user?.email)
           ? [{ name: "Facturación", href: "/facturacion", icon: FileText }]
           : []),
       ],
@@ -169,7 +169,7 @@ export function Sidebar({ className }: SidebarProps) {
               onClick={() => setIsCollapsed(!isCollapsed)}
               className="h-7 w-7"
             >
-              <Menu className="h-4 w-4 text-green" />
+              <Menu className="h-4 w-4 text-primary" />
             </Button>
           </div>
         ) : (
@@ -196,7 +196,7 @@ export function Sidebar({ className }: SidebarProps) {
               onClick={() => setIsCollapsed(!isCollapsed)}
               className="h-7 w-7"
             >
-              <Menu className="h-4 w-4 text-green" />
+              <Menu className="h-4 w-4 text-primary" />
             </Button>
           </>
         )}
@@ -229,7 +229,7 @@ export function Sidebar({ className }: SidebarProps) {
                       )}
                     >
                       <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-green" />
+                        <Icon className="h-4 w-4 text-primary" />
                         <span className="text-sm">{item.name}</span>
                       </div>
                       {isOpen ? (
@@ -246,13 +246,13 @@ export function Sidebar({ className }: SidebarProps) {
                               variant="ghost"
                               className={cn(
                                 "flex items-center gap-2 h-8 w-full justify-start text-[13px] opacity-80 hover:opacity-100",
-                                pathname === child.href && "text-green font-medium opacity-100 bg-green/5",
+                                pathname === child.href && "text-primary font-medium opacity-100 bg-primary/5",
                               )}
                             >
                               {child.icon ? (
                                 <child.icon className="h-3.5 w-3.5" />
                               ) : (
-                                <div className="w-1 h-1 rounded-full bg-green" />
+                                <div className="w-1 h-1 rounded-full bg-primary" />
                               )}
                               <span>{child.name}</span>
                             </Button>
@@ -276,7 +276,7 @@ export function Sidebar({ className }: SidebarProps) {
                         isActive && "bg-gray-100 dark:bg-gray-800",
                       )}
                     >
-                      <Icon className="h-4 w-4 text-green" />
+                      <Icon className="h-4 w-4 text-primary" />
                       {!isCollapsed && (
                         <span className="text-sm">{item.name}</span>
                       )}

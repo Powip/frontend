@@ -39,6 +39,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useRouter } from "next/navigation";
+import { isSuperadmin } from "@/config/permissions.config";
 
 interface Store {
   id?: string;
@@ -94,7 +95,10 @@ export default function TiendasPage() {
 
   // Redirigir si no es admin
   useEffect(() => {
-    if (auth && auth.user && auth.user.role !== "ADMIN") {
+    const userRole = auth?.user?.role;
+    const userEmail = auth?.user?.email;
+
+    if (auth && auth.user && userRole !== "ADMIN" && !isSuperadmin(userEmail)) {
       toast.error("No tienes permisos para acceder a esta configuración");
       router.push("/dashboard");
     }
