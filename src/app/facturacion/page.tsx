@@ -33,6 +33,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
+import { isSuperadmin } from "@/config/permissions.config";
 
 interface Sale {
   id: string;
@@ -76,10 +77,9 @@ export default function FacturacionPage() {
   const router = useRouter();
 
   useEffect(() => {
-    const authorizedEmails = ["maurimartine01@gmail.com", "joel@aranni.com.pe"];
     const userEmail = auth?.user?.email;
 
-    if (!authLoading && userEmail && !authorizedEmails.includes(userEmail)) {
+    if (!authLoading && userEmail && !isSuperadmin(userEmail)) {
       toast.error("No tienes permisos para acceder a esta sección.");
       router.push("/dashboard");
     }
@@ -123,10 +123,10 @@ export default function FacturacionPage() {
     s.id.toLowerCase().includes(search.toLowerCase())
   );
 
-  if (authLoading || auth?.user?.email !== "maurimartine01@gmail.com") {
+  if (authLoading || !isSuperadmin(auth?.user?.email || "")) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green"></div>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
     );
   }
@@ -313,7 +313,7 @@ export default function FacturacionPage() {
                             <Button
                               size="sm"
                               variant={log?.status === 'ACCEPTED' ? "outline" : "default"}
-                              className={cn(log?.status === 'ACCEPTED' ? "border-green/20 text-green hover:bg-green/5" : "bg-green hover:bg-green/90 text-white")}
+                              className={cn(log?.status === 'ACCEPTED' ? "border-primary/20 text-primary hover:bg-primary/5" : "bg-primary hover:bg-primary/90 text-white")}
                               onClick={() => handleOpenModal(sale)}
                             >
                               <FileText className="h-4 w-4 mr-1" />

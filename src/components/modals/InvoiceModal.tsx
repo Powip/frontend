@@ -154,11 +154,11 @@ export default function InvoiceModal({
       <DialogContent className="sm:max-w-[500px] border-none shadow-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
-            <FileText className="h-5 w-5 text-green" />
+            <FileText className="h-5 w-5 text-primary" />
             Emitir Comprobante Electrónico
           </DialogTitle>
           <DialogDescription>
-            Venta: <span className="font-bold text-foreground">{sale?.orderNumber}</span> - Total: <span className="font-bold text-green">S/ {Number(sale?.grandTotal || 0).toFixed(2)}</span>
+            Venta: <span className="font-bold text-foreground">{sale?.orderNumber}</span> - Total: <span className="font-bold text-primary">S/ {Number(sale?.grandTotal || 0).toFixed(2)}</span>
           </DialogDescription>
         </DialogHeader>
 
@@ -242,7 +242,7 @@ export default function InvoiceModal({
           <Button 
             onClick={handleSubmit} 
             disabled={loading}
-            className="bg-green hover:bg-green/90 text-white min-w-[140px]"
+            className="bg-primary hover:bg-primary/90 text-white min-w-[140px]"
           >
             {loading ? (
               <>
