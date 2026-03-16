@@ -107,20 +107,20 @@ export default function InvoiceModal({
     try {
       setLoading(true);
       const payload = {
-        externalId: sale.id,
+        externalId: String(sale.id),
         documentType,
         customerName: cleanCustomerName,
-        customerDocType: formData.customerDocType as any,
-        customerDocNumber: cleanDocNumber,
-        customerAddress: cleanAddress,
-        totalTax: Number(sale.grandTotal) * 0.18 / 1.18, 
-        totalValue: Number(sale.grandTotal) / 1.18,
-        totalPrice: Number(sale.grandTotal),
+        customerDocType: String(formData.customerDocType) as any,
+        customerDocNumber: String(cleanDocNumber),
+        customerAddress: cleanAddress || undefined,
+        totalTax: Number((Number(sale.grandTotal) * 0.18 / 1.18).toFixed(2)), 
+        totalValue: Number((Number(sale.grandTotal) / 1.18).toFixed(2)),
+        totalPrice: Number(Number(sale.grandTotal).toFixed(2)),
         items: (sale.items || []).map((d: any) => ({
-          internalCode: d.sku || "PROD001",
-          description: d.productName,
-          quantity: d.quantity,
-          unitPrice: d.price,
+          internalCode: String(d.sku || "PROD001"),
+          description: String(d.productName || "Producto"),
+          quantity: Number(d.quantity || 1),
+          unitPrice: Number(d.price || 0),
           unitCode: "NIU",
           taxType: "10", 
         })),
@@ -143,7 +143,14 @@ export default function InvoiceModal({
       }
     } catch (error: any) {
       console.error("Error emitting invoice:", error);
-      toast.error(error.response?.data?.message || "Error de conexión con el servidor");
+      const serverMessage = error.response?.data?.message;
+      const displayMessage = Array.isArray(serverMessage) 
+        ? serverMessage.join(", ") 
+        : serverMessage || "Error de conexión con el servidor";
+      
+      toast.error("Error 400: Validación fallida", {
+        description: displayMessage,
+      });
     } finally {
       setLoading(false);
     }
