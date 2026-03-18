@@ -14,9 +14,10 @@ export interface Company {
   cuit?: string; // RUC/CUIT
   billingAddress?: string; // Dirección
   phone?: string; // Teléfono
-  logoUrl?: string; // URL del logo (para futuro)
+  logoUrl?: string;
   sales_channels?: string[];
   closing_channels?: string[];
+  createdAt?: string;
 }
 
 export const fetchUserCompany = async (
@@ -99,6 +100,7 @@ export const getAllCompanies = async (token: string): Promise<Company[]> => {
     logoUrl: c.logo_url,
     sales_channels: c.sales_channels,
     closing_channels: c.closing_channels,
+    createdAt: c.created_at,
   }));
 };
 export const createCompany = async (token: string, data: Partial<Company>) => {

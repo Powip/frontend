@@ -1,10 +1,8 @@
 // Permissions configuration for route-based access control
 
 export const SUPERADMIN_EMAILS = [
-  "powipsystem@gmail.com",
   "maurimartine01@gmail.com",
   "joel@aranni.com.pe",
-  "octatoledo7@gmail.com",
 ];
 
 export const isSuperadmin = (email?: string): boolean => {
@@ -58,6 +56,7 @@ export const SIDEBAR_ITEMS_PERMISSIONS: Record<string, string> = {
   Configuración: "ACCESS_SETTINGS",
   "Atención al cliente": "VIEW_CUSTOMER_SERVICE",
   Facturación: "VIEW_FINANCES",
+  "Super Admin": "VIEW_SUPER_ADMIN",
 };
 
 // Helper function to check if user has required permission
