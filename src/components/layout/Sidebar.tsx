@@ -152,15 +152,32 @@ export function Sidebar({ className }: SidebarProps) {
   ];
 
   // Filtrar navegación por permisos del usuario
-  const filteredNavigation = navigation.filter((item) => {
-    if (item.name === "Superadmin") {
-      return isSuperadmin(auth?.user.email);
-    }
+  const filteredNavigation = navigation
+    .filter((item) => {
+      if (item.name === "Superadmin" || item.name === "Super Admin") {
+        return isSuperadmin(auth?.user?.email);
+      }
 
-    const requiredPermission = SIDEBAR_ITEMS_PERMISSIONS[item.name];
-    if (!requiredPermission) return true;
-    return hasPermission(requiredPermission);
-  });
+      const requiredPermission = SIDEBAR_ITEMS_PERMISSIONS[item.name];
+      if (!requiredPermission) return true;
+      return hasPermission(requiredPermission);
+    })
+    .map((item) => {
+      if (item.children) {
+        return {
+          ...item,
+          children: item.children.filter((child) => {
+            if (child.name === "Super Admin" || child.name === "Superadmin") {
+              return isSuperadmin(auth?.user?.email);
+            }
+            const childPermission = SIDEBAR_ITEMS_PERMISSIONS[child.name];
+            if (!childPermission) return true;
+            return hasPermission(childPermission);
+          }),
+        };
+      }
+      return item;
+    });
 
   return (
     <div

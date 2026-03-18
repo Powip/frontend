@@ -17,7 +17,11 @@ import {
   AreaChart,
   Area,
 } from "recharts";
-import { AlertTriangle, TrendingDown, ArrowDownRight, Wifi } from "lucide-react";
+import { AlertTriangle, TrendingDown, ArrowDownRight, Wifi, Loader2 } from "lucide-react";
+import { getAllCompanies, Company } from "@/services/companyService";
+import { getAllUsers } from "@/services/userService";
+import { getGlobalSalesSummary, getCompanySalesSummary } from "@/services/salesService";
+import { getSubscriptionByUserId, getAllPlans, Plan } from "@/services/subscriptionService";
 
 /* ─────────────────── Constants ─────────────────── */
 
@@ -33,27 +37,60 @@ const PLAN_ORDER = ["Basic", "Standard", "Full", "Enterprise"];
 /* ─────────────────── Component ─────────────────── */
 
 export default function MetricasSuperAdminPage() {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
   const [loading, setLoading] = useState(true);
-  const [companies, setCompanies] = useState<any[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
-
-  // Info de la plataforma
-  const companyName = "Plataforma Powip";
-  const companyRuc = "ADMIN-MODE";
+  const [data, setData] = useState<any>({
+    companies: [],
+    users: [],
+    sales: { totalSales: 0, orderCount: 0 },
+    subscriptions: [],
+    plans: [],
+    topCompanies: []
+  });
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!auth?.accessToken) return;
       setLoading(true);
       try {
-        const [ordersRes, companiesRes] = await Promise.all([
-          axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
-          ),
-          axios.get(`${process.env.NEXT_PUBLIC_API_COMPANY}/company`)
+        const token = auth.accessToken;
+        
+        // 1. Fetch data básica en paralelo
+        const [companies, users, sales, plans] = await Promise.all([
+          getAllCompanies(token),
+          getAllUsers(token),
+          getGlobalSalesSummary(token),
+          getAllPlans(token)
         ]);
-        setOrders(ordersRes.data || []);
-        setCompanies(companiesRes.data || []);
+
+        // 2. Fetch suscripciones y ventas individuales para el Top 5
+        // Nota: Solo tenemos 9 compañías, así que esto es viable
+        const subsAndSales = await Promise.all(
+          companies.map(async (c: Company) => {
+            const [subs, companySales] = await Promise.all([
+              getSubscriptionByUserId(token, c.userId).catch(() => []),
+              getCompanySalesSummary(token, c.id).catch(() => ({ totalSales: 0, orderCount: 0 }))
+            ]);
+            const activeSub = subs.find((s: any) => s.status === 'ACTIVE') || subs[0] || null;
+            return {
+              companyId: c.id,
+              companyName: c.name,
+              subscription: activeSub,
+              sales: companySales
+            };
+          })
+        );
+
+        setData({
+          companies,
+          users,
+          sales,
+          subscriptions: subsAndSales.map(i => i.subscription).filter(Boolean),
+          plans,
+          topCompanies: subsAndSales
+            .sort((a, b) => b.sales.totalSales - a.sales.totalSales)
+            .slice(0, 5)
+        });
       } catch (error) {
         console.error("Error fetching superadmin data:", error);
       } finally {
@@ -61,56 +98,59 @@ export default function MetricasSuperAdminPage() {
       }
     };
     fetchData();
-  }, [selectedStoreId]);
+  }, [auth]);
 
   // ── Platform-level KPIs (derived from available data + platform estimates) ──
-  const gmv = useMemo(() => {
-    return orders.reduce(
-      (sum: number, o: any) => sum + (parseFloat(o.grandTotal || "0")),
-      0
-    );
-  }, [orders]);
-
-  // ── Platform-level KPIs (Real business count + estimates) ──
-  const negociosActivos = useMemo(() => {
-    return companies.length > 0 ? companies.length : 0;
-  }, [companies]);
+  // ── Platform-level KPIs ──
+  const gmv = data.sales.totalSales;
+  const negociosActivos = data.companies.length;
 
   const negociosNuevos = useMemo(() => {
-    // Estimación histórica de crecimiento mensual
-    return Math.round(negociosActivos * 0.08);
-  }, [negociosActivos]);
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return data.companies.filter((c: Company) => new Date(c.createdAt || Date.now()) > thirtyDaysAgo).length;
+  }, [data.companies]);
 
-  // MRR estimates based on plan distribution
   const planDistribution = useMemo(() => {
-    const plans = [
-      { name: "Basic", price: 99, pct: 0.35 },
-      { name: "Standard", price: 189, pct: 0.35 },
-      { name: "Full", price: 269, pct: 0.22 },
-      { name: "Enterprise", price: 499, pct: 0.08 },
-    ];
-    return plans.map((p) => ({
-      ...p,
-      count: Math.round(negociosActivos * p.pct),
-      mrr: Math.round(negociosActivos * p.pct * p.price),
-    }));
-  }, [negociosActivos]);
+    const distribution = data.plans.map((plan: Plan) => {
+      const count = data.subscriptions.filter((s: any) => s.plan?.id === plan.id).length;
+      return {
+        name: plan.name,
+        price: plan.price,
+        count,
+        mrr: count * plan.price
+      };
+    });
+    return distribution;
+  }, [data.plans, data.subscriptions]);
 
   const mrrTotal = useMemo(
-    () => planDistribution.reduce((s, p) => s + p.mrr, 0),
+    () => planDistribution.reduce((s: number, p: any) => s + p.mrr, 0),
     [planDistribution]
   );
 
-  const churnRate = 2.8;
-  const nrr = 108;
-  const tasaActivacion = 61;
-  const ttfv = 2.4;
-  const dauMau = 42;
+  const churnRate = 0; 
+  const nrr = 100;
+  
+  const tasaActivacion = useMemo(() => {
+    if (data.companies.length === 0) return 0;
+    const activos = data.topCompanies.filter((c: any) => c.sales.orderCount > 0).length;
+    return Math.round((activos / data.companies.length) * 100);
+  }, [data.companies, data.topCompanies]);
+
+  const ttfv = 2.4; // Sigue siendo estimado por ahora
+  const dauMau = 42; // Sigue siendo estimado por ahora
+
+  const registros30dTotal = useMemo(() => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    return data.users.filter((u: any) => new Date(u.createdAt) > thirtyDaysAgo).length;
+  }, [data.users]);
 
   // ── MRR por plan data ──
   const mrrByPlan = useMemo(
     () =>
-      planDistribution.map((p) => ({
+      planDistribution.map((p: any) => ({
         name: `${p.name} S/${p.price}`,
         mrr: p.mrr,
         color: PLAN_COLORS[p.name] || "#94a3b8",
@@ -121,7 +161,7 @@ export default function MetricasSuperAdminPage() {
   // ── Distribución negocios por plan (donut) ──
   const planDonut = useMemo(
     () =>
-      planDistribution.map((p) => ({
+      planDistribution.map((p: any) => ({
         name: p.name,
         value: p.count,
         color: PLAN_COLORS[p.name] || "#94a3b8",
@@ -148,29 +188,16 @@ export default function MetricasSuperAdminPage() {
     const now = new Date();
     const monthLabel = now.toLocaleDateString("es-PE", { month: "long", year: "numeric" });
 
-    // Group by seller and compute GMV
-    const sellerMap: Record<string, number> = {};
-    orders.forEach((o: any) => {
-      const seller = o.sellerName || "Negocio";
-      sellerMap[seller] = (sellerMap[seller] || 0) + parseFloat(o.grandTotal || "0");
-    });
-
-    const plans = ["Full", "Full", "Standard", "Standard", "Basic"];
-    const risks = ["BAJO", "BAJO", "MEDIO", "BAJO", "ALTO"];
-
     return {
       month: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
-      data: Object.entries(sellerMap)
-        .sort(([, a], [, b]) => b - a)
-        .slice(0, 5)
-        .map(([name, gmvVal], idx) => ({
-          name: name.length > 18 ? name.substring(0, 15) + "..." : name,
-          gmv: Math.round(gmvVal),
-          plan: plans[idx] || "Basic",
-          churnRisk: risks[idx] || "BAJO",
+      data: data.topCompanies.map((c: any, idx: number) => ({
+          name: c.companyName,
+          gmv: Math.round(c.sales.totalSales),
+          plan: c.subscription?.plan?.name || "Basic",
+          churnRisk: c.sales.orderCount > 0 ? "BAJO" : "ALTO",
         })),
     };
-  }, [orders]);
+  }, [data.topCompanies]);
 
   // Churn risk badge
   const churnBadge = (risk: string) => {
@@ -230,8 +257,7 @@ export default function MetricasSuperAdminPage() {
           Superadmin — Plataforma Powip
         </h1>
         <p className="text-xs text-slate-400 font-semibold tracking-[0.15em] uppercase mt-1">
-          Vista consolidada de todos los negocios · {companyName}
-          {companyRuc ? ` · RUC ${companyRuc}` : ""}
+          Vista consolidada de todos los negocios
         </p>
       </div>
 
@@ -405,8 +431,8 @@ export default function MetricasSuperAdminPage() {
                   }
                 />
                 <Tooltip
-                  formatter={(value: any) => [
-                    `S/ ${Number(value).toLocaleString("es-PE")}`,
+                  formatter={(value: number) => [
+                    `S/ ${value.toLocaleString("es-PE")}`,
                     "MRR",
                   ]}
                   contentStyle={{
@@ -419,7 +445,7 @@ export default function MetricasSuperAdminPage() {
                   }}
                 />
                 <Bar dataKey="mrr" radius={[6, 6, 0, 0]} barSize={55}>
-                  {mrrByPlan.map((entry, idx) => (
+                  {mrrByPlan.map((entry: any, idx: number) => (
                     <Cell key={idx} fill={entry.color} />
                   ))}
                 </Bar>
@@ -451,12 +477,12 @@ export default function MetricasSuperAdminPage() {
                     dataKey="value"
                     strokeWidth={0}
                   >
-                    {planDonut.map((entry, idx) => (
+                    {planDonut.map((entry: any, idx: number) => (
                       <Cell key={idx} fill={entry.color} />
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: any, name: string) => [`${value} negocios`, name]}
+                    formatter={(value: number, name: string) => [`${value} negocios`, name]}
                     contentStyle={{
                       background: "white",
                       border: "1px solid #e2e8f0",
@@ -469,7 +495,7 @@ export default function MetricasSuperAdminPage() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="flex flex-col gap-2 flex-1">
-                {planDonut.map((p, idx) => (
+                {planDonut.map((p: any, idx: number) => (
                   <div key={idx} className="flex items-center gap-2">
                     <div
                       className="w-3 h-3 rounded-full flex-shrink-0"
@@ -550,7 +576,7 @@ export default function MetricasSuperAdminPage() {
                 tick={{ fontSize: 11, fill: "#94a3b8", fontWeight: 600 }}
               />
               <Tooltip
-                formatter={(value: any) => [`${value}`, "Registros"]}
+                formatter={(value: number) => [`${value}`, "Registros"]}
                 contentStyle={{
                   background: "white",
                   border: "1px solid #e2e8f0",
@@ -599,7 +625,7 @@ export default function MetricasSuperAdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {top5.data.map((biz, idx) => (
+                {top5.data.map((biz: any, idx: number) => (
                   <tr
                     key={idx}
                     className="border-b border-slate-50 last:border-0"
