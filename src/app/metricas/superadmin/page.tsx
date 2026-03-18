@@ -45,7 +45,8 @@ export default function MetricasSuperAdminPage() {
     sales: { totalSales: 0, orderCount: 0 },
     subscriptions: [],
     plans: [],
-    topCompanies: []
+    topCompanies: [],
+    expiringSubs: []
   });
 
   useEffect(() => {
@@ -56,15 +57,16 @@ export default function MetricasSuperAdminPage() {
         const token = auth.accessToken;
         
         // 1. Fetch data básica en paralelo
-        const [companies, users, sales, plans] = await Promise.all([
+        const [companies, users, sales, plans, expiringSubs] = await Promise.all([
           getAllCompanies(token),
           getAllUsers(token),
           getGlobalSalesSummary(token),
-          getAllPlans(token)
+          getAllPlans(token),
+          // getExpiringSubscriptionsAlert(token, 7).catch(() => []) // Próximamente si el endpoint existe
+          Promise.resolve([]) 
         ]);
 
         // 2. Fetch suscripciones y ventas individuales para el Top 5
-        // Nota: Solo tenemos 9 compañías, así que esto es viable
         const subsAndSales = await Promise.all(
           companies.map(async (c: Company) => {
             const [subs, companySales] = await Promise.all([
@@ -74,9 +76,11 @@ export default function MetricasSuperAdminPage() {
             const activeSub = subs.find((s: any) => s.status === 'ACTIVE') || subs[0] || null;
             return {
               companyId: c.id,
+              userId: c.userId,
               companyName: c.name,
               subscription: activeSub,
-              sales: companySales
+              sales: companySales,
+              createdAt: c.createdAt
             };
           })
         );
@@ -89,7 +93,9 @@ export default function MetricasSuperAdminPage() {
           plans,
           topCompanies: subsAndSales
             .sort((a, b) => b.sales.totalSales - a.sales.totalSales)
-            .slice(0, 5)
+            .slice(0, 5),
+          expiringSubs,
+          allCompaniesStats: subsAndSales
         });
       } catch (error) {
         console.error("Error fetching superadmin data:", error);
@@ -100,7 +106,6 @@ export default function MetricasSuperAdminPage() {
     fetchData();
   }, [auth]);
 
-  // ── Platform-level KPIs (derived from available data + platform estimates) ──
   // ── Platform-level KPIs ──
   const gmv = data.sales.totalSales;
   const negociosActivos = data.companies.length;
@@ -108,7 +113,10 @@ export default function MetricasSuperAdminPage() {
   const negociosNuevos = useMemo(() => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    return data.companies.filter((c: Company) => new Date(c.createdAt || Date.now()) > thirtyDaysAgo).length;
+    return data.companies.filter((c: Company) => {
+      if (!c.createdAt) return false;
+      return new Date(c.createdAt) > thirtyDaysAgo;
+    }).length;
   }, [data.companies]);
 
   const planDistribution = useMemo(() => {
@@ -134,17 +142,18 @@ export default function MetricasSuperAdminPage() {
   
   const tasaActivacion = useMemo(() => {
     if (data.companies.length === 0) return 0;
-    const activos = data.topCompanies.filter((c: any) => c.sales.orderCount > 0).length;
+    const activos = (data.allCompaniesStats || []).filter((c: any) => c.sales.orderCount > 0).length;
     return Math.round((activos / data.companies.length) * 100);
-  }, [data.companies, data.topCompanies]);
+  }, [data.companies, data.allCompaniesStats]);
 
-  const ttfv = 2.4; // Sigue siendo estimado por ahora
-  const dauMau = 42; // Sigue siendo estimado por ahora
+  // Si no tenemos datos para estos, mejor mostrarlos como "-" o 0 real
+  const ttfv = "—"; 
+  const dauMau = "—"; 
 
   const registros30dTotal = useMemo(() => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    return data.users.filter((u: any) => new Date(u.createdAt) > thirtyDaysAgo).length;
+    return data.users.filter((u: any) => u.created_at && new Date(u.created_at) > thirtyDaysAgo).length;
   }, [data.users]);
 
   // ── MRR por plan data ──
@@ -169,19 +178,28 @@ export default function MetricasSuperAdminPage() {
     [planDistribution]
   );
 
-  // ── Nuevos registros últimos 30 días ──
+  // ── Nuevos registros reales (usuarios) ──
   const registros30d = useMemo(() => {
-    const data: { day: number; registros: number }[] = [];
-    for (let i = 1; i <= 30; i++) {
-      // Simulate a wave pattern with daily variance
-      const base = 8 + Math.sin(i * 0.8) * 5;
-      data.push({
-        day: i,
-        registros: Math.max(2, Math.round(base + Math.random() * 4)),
+    const now = new Date();
+    const result = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(now.getDate() - i);
+      const dayStr = d.toISOString().split('T')[0];
+      
+      const count = data.users.filter((u: any) => {
+        if (!u.created_at) return false;
+        return u.created_at.startsWith(dayStr);
+      }).length;
+
+      result.push({
+        day: d.getDate(),
+        registros: count,
+        fullDate: dayStr
       });
     }
-    return data;
-  }, []);
+    return result;
+  }, [data.users]);
 
   // ── Top 5 negocios ──
   const top5 = useMemo(() => {
@@ -190,7 +208,7 @@ export default function MetricasSuperAdminPage() {
 
     return {
       month: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
-      data: data.topCompanies.map((c: any, idx: number) => ({
+      data: data.topCompanies.map((c: any) => ({
           name: c.companyName,
           gmv: Math.round(c.sales.totalSales),
           plan: c.subscription?.plan?.name || "Basic",
@@ -213,41 +231,64 @@ export default function MetricasSuperAdminPage() {
     }
   };
 
-  // Alert items
-  const churnAlerts = [
-    {
-      icon: <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />,
-      title: "14 negocios sin login en 7+ días",
-      desc: "Trigger automático de email activado. 4 superan 14 días → llamada CS pendiente.",
-      badge: "CRÍTICO",
-      badgeColor: "bg-red-100 text-red-500",
-      borderColor: "border-l-red-500",
-    },
-    {
-      icon: <TrendingDown className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />,
-      title: "8 negocios con caída de pedidos >40% semana a semana",
-      desc: "Puede ser problema técnico o insatisfacción. Revisión individual antes de 48h.",
-      badge: "ATENCIÓN",
-      badgeColor: "bg-amber-100 text-amber-600",
-      borderColor: "border-l-amber-500",
-    },
-    {
-      icon: <ArrowDownRight className="h-4 w-4 text-blue-500 flex-shrink-0 mt-0.5" />,
-      title: "3 negocios con downgrade de plan este mes (Full → Standard)",
-      desc: "Oportunidad de intervención comercial. Asignar a equipo de retención.",
-      badge: "RETENCIÓN",
-      badgeColor: "bg-blue-100 text-blue-600",
-      borderColor: "border-l-blue-500",
-    },
-    {
-      icon: <Wifi className="h-4 w-4 text-teal-500 flex-shrink-0 mt-0.5" />,
-      title: "Canal desconectado sin reconexión >48h — 6 casos",
-      desc: "Notificación push + email enviados. Monitorear reconexión activa.",
-      badge: "MONITOREO",
-      badgeColor: "bg-teal-100 text-teal-600",
-      borderColor: "border-l-teal-500",
-    },
-  ];
+  // ── Alertas dinámicas basadas en datos reales ──
+  const churnAlerts = useMemo(() => {
+    const alerts = [];
+    
+    // 1. Negocios sin ventas (proxy para inactividad)
+    const sinVentas = (data.allCompaniesStats || []).filter((c: any) => c.sales.orderCount === 0);
+    if (sinVentas.length > 0) {
+      alerts.push({
+        icon: <AlertTriangle className="h-4 w-4 text-red-500 flex-shrink-0 mt-0.5" />,
+        title: `${sinVentas.length} negocios sin ventas registradas`,
+        desc: "Negocios activos que no han procesado pedidos. Requieren seguimiento de onboarding.",
+        badge: "CRÍTICO",
+        badgeColor: "bg-red-100 text-red-500",
+        borderColor: "border-l-red-500",
+      });
+    }
+
+    // 2. Bajo volumen de ventas
+    const bajoVolumen = (data.allCompaniesStats || []).filter((c: any) => c.sales.orderCount > 0 && c.sales.orderCount < 5);
+    if (bajoVolumen.length > 0) {
+      alerts.push({
+        icon: <TrendingDown className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />,
+        title: `${bajoVolumen.length} negocios con bajo volumen (< 5 pedidos)`,
+        desc: "Actividad mínima detectada. Posible riesgo de abandono o problemas de configuración.",
+        badge: "ATENCIÓN",
+        badgeColor: "bg-amber-100 text-amber-600",
+        borderColor: "border-l-amber-500",
+      });
+    }
+
+    // 3. Nuevos negocios hoy
+    const hoyStr = new Date().toISOString().split('T')[0];
+    const nuevosHoy = data.companies.filter((c: any) => c.createdAt && c.createdAt.startsWith(hoyStr)).length;
+    if (nuevosHoy > 0) {
+      alerts.push({
+        icon: <Wifi className="h-4 w-4 text-teal-500 flex-shrink-0 mt-0.5" />,
+        title: `${nuevosHoy} nuevos registros de negocios hoy`,
+        desc: "Se requiere validación de cuenta y asignación de equipo de éxito.",
+        badge: "NUEVO",
+        badgeColor: "bg-teal-100 text-teal-600",
+        borderColor: "border-l-teal-500",
+      });
+    }
+
+    // Si no hay alertas críticas, mostrar aviso de salud
+    if (alerts.length === 0) {
+      alerts.push({
+        icon: <Wifi className="h-4 w-4 text-emerald-500 flex-shrink-0 mt-0.5" />,
+        title: "Plataforma Estable",
+        desc: "No se detectan anomalías críticas en el comportamiento de los negocios hoy.",
+        badge: "SALUDABLE",
+        badgeColor: "bg-emerald-100 text-emerald-600",
+        borderColor: "border-l-emerald-500",
+      });
+    }
+
+    return alerts;
+  }, [data.allCompaniesStats, data.companies]);
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-slate-50/50 min-h-screen">
