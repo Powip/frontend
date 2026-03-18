@@ -87,7 +87,7 @@ export function Sidebar({ className }: SidebarProps) {
       setOpenSubmenus(prev => ({ ...prev, Finanzas: true }));
     }
     // Auto-open Métricas if current path matches any of its children
-    const metricasRoutes = ["/metricas/ventas", "/metricas/inventario", "/metricas/operaciones", "/metricas/seguimientos", "/metricas/atencion-cliente", "/metricas/call-center", "/metricas/couriers", "/metricas/clientes", "/metricas/super-admin"];
+    const metricasRoutes = ["/metricas/ventas", "/metricas/inventario", "/metricas/operaciones", "/metricas/seguimientos", "/metricas/atencion-cliente", "/metricas/call-center", "/metricas/couriers", "/metricas/clientes", "/metricas/superadmin"];
     if (metricasRoutes.some(r => pathname === r || pathname.startsWith(r + "/"))) {
       setOpenSubmenus(prev => ({ ...prev, "Métricas": true }));
     }
@@ -118,7 +118,7 @@ export function Sidebar({ className }: SidebarProps) {
         { name: "Call Center", href: "/metricas/call-center", icon: Phone, group: "Clientes" },
         { name: "Couriers", href: "/metricas/couriers", icon: Truck, group: "Clientes" },
         { name: "Clientes", href: "/metricas/clientes", icon: Users, group: "Admin" },
-        { name: "Super Admin", href: "/metricas/super-admin", icon: ShieldCheck, group: "Admin" },
+        { name: "Super Admin", href: "/metricas/superadmin", icon: ShieldCheck, group: "Admin" },
       ],
     },
     { name: "Crear Productos", href: "/productos", icon: Tags },

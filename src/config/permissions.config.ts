@@ -38,7 +38,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/metricas/call-center": ["VIEW_CUSTOMER_SERVICE"],
   "/metricas/couriers": ["MANAGE_OPERATIONS"],
   "/metricas/clientes": ["MANAGE_CLIENTS"],
-  "/metricas/super-admin": ["VIEW_DASHBOARD"],
+  "/metricas/superadmin": ["VIEW_DASHBOARD"],
 };
 
 // Map sidebar items to required permissions
