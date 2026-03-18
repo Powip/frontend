@@ -18,6 +18,7 @@ import {
   UserCog,
   DollarSign,
   BarChart,
+  BarChart2,
   Headphones,
   Settings,
   FileSearch,
@@ -28,6 +29,8 @@ import {
   History,
   ChevronDown,
   ChevronUp,
+  Phone,
+  Activity,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -52,7 +55,7 @@ interface NavigationItem {
   name: string;
   href?: string;
   icon: React.ElementType;
-  children?: { name: string; href: string; icon?: React.ElementType }[];
+  children?: { name: string; href: string; icon?: React.ElementType; group?: string }[];
 }
 
 export function Sidebar({ className }: SidebarProps) {
@@ -83,6 +86,11 @@ export function Sidebar({ className }: SidebarProps) {
     if (pathname.includes("/facturacion") || pathname === "/finanzas") {
       setOpenSubmenus(prev => ({ ...prev, Finanzas: true }));
     }
+    // Auto-open Métricas if current path matches any of its children
+    const metricasRoutes = ["/metricas/ventas", "/metricas/inventario", "/metricas/operaciones", "/metricas/seguimientos", "/metricas/atencion-cliente", "/metricas/call-center", "/metricas/couriers", "/metricas/clientes", "/metricas/super-admin"];
+    if (metricasRoutes.some(r => pathname === r || pathname.startsWith(r + "/"))) {
+      setOpenSubmenus(prev => ({ ...prev, "Métricas": true }));
+    }
   }, [pathname]);
 
   const toggleTheme = () => {
@@ -98,6 +106,21 @@ export function Sidebar({ className }: SidebarProps) {
 
   const navigation: NavigationItem[] = [
     { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    {
+      name: "Métricas",
+      icon: BarChart2,
+      children: [
+        { name: "Ventas", href: "/metricas/ventas", icon: ShoppingCart, group: "Gestión" },
+        { name: "Inventario", href: "/metricas/inventario", icon: Package, group: "Gestión" },
+        { name: "Operaciones", href: "/metricas/operaciones", icon: Truck, group: "Gestión" },
+        { name: "Seguimientos", href: "/metricas/seguimientos", icon: MapPin, group: "Gestión" },
+        { name: "Atención al Cliente", href: "/metricas/atencion-cliente", icon: Headphones, group: "Clientes" },
+        { name: "Call Center", href: "/metricas/call-center", icon: Phone, group: "Clientes" },
+        { name: "Couriers", href: "/metricas/couriers", icon: Truck, group: "Clientes" },
+        { name: "Clientes", href: "/metricas/clientes", icon: Users, group: "Admin" },
+        { name: "Super Admin", href: "/metricas/super-admin", icon: ShieldCheck, group: "Admin" },
+      ],
+    },
     { name: "Crear Productos", href: "/productos", icon: Tags },
     { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
     { name: "Inventario", href: "/inventario", icon: Package },
@@ -240,24 +263,38 @@ export function Sidebar({ className }: SidebarProps) {
                     </Button>
                     {isOpen && (
                       <div className="ml-4 flex flex-col gap-1 mt-1 border-l pl-2 border-gray-100 dark:border-gray-800">
-                        {item.children?.map((child) => (
-                          <Link key={child.name} href={child.href} className="w-full">
-                            <Button
-                              variant="ghost"
-                              className={cn(
-                                "flex items-center gap-2 h-8 w-full justify-start text-[13px] opacity-80 hover:opacity-100",
-                                pathname === child.href && "text-primary font-medium opacity-100 bg-primary/5",
-                              )}
-                            >
-                              {child.icon ? (
-                                <child.icon className="h-3.5 w-3.5" />
-                              ) : (
-                                <div className="w-1 h-1 rounded-full bg-primary" />
-                              )}
-                              <span>{child.name}</span>
-                            </Button>
-                          </Link>
-                        ))}
+                        {(() => {
+                          let lastGroup: string | undefined = undefined;
+                          return item.children?.map((child) => {
+                            const showGroupHeader = child.group && child.group !== lastGroup;
+                            if (child.group) lastGroup = child.group;
+                            return (
+                              <div key={child.name}>
+                                {showGroupHeader && (
+                                  <p className="text-[9px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest mt-2 mb-1 px-2">
+                                    {child.group}
+                                  </p>
+                                )}
+                                <Link href={child.href} className="w-full">
+                                  <Button
+                                    variant="ghost"
+                                    className={cn(
+                                      "flex items-center gap-2 h-8 w-full justify-start text-[13px] opacity-80 hover:opacity-100",
+                                      pathname === child.href && "text-primary font-medium opacity-100 bg-primary/5",
+                                    )}
+                                  >
+                                    {child.icon ? (
+                                      <child.icon className="h-3.5 w-3.5" />
+                                    ) : (
+                                      <div className="w-1 h-1 rounded-full bg-primary" />
+                                    )}
+                                    <span>{child.name}</span>
+                                  </Button>
+                                </Link>
+                              </div>
+                            );
+                          });
+                        })()}
                       </div>
                     )}
                   </>

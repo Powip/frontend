@@ -13,51 +13,46 @@ export default function DashboardPage() {
   console.log("[DEBUG] DashboardPage renderizando");
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col bg-background">
       <Header />
-      <div className="flex-1 overflow-hidden">
-        <Tabs defaultValue="general" className="h-full flex flex-col">
-          <div className="border-b px-4 py-2 bg-card">
-            <TabsList className="bg-muted/50 p-1">
+      <div className="flex-1 overflow-hidden flex flex-col">
+        <Tabs defaultValue="general" className="flex-1 flex flex-col min-h-0">
+          <div className="px-8 border-b border-border bg-background">
+            <TabsList className="bg-transparent p-0 gap-8 flex justify-start items-center h-12">
               <TabsTrigger
                 value="general"
-                className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="h-12 p-0 px-2 rounded-none bg-transparent data-[state=active]:bg-transparent border-t-0 border-x-0 border-b-2 border-transparent data-[state=active]:border-[#00f2ad] text-muted-foreground data-[state=active]:text-foreground font-medium transition-all duration-300 shadow-none data-[state=active]:shadow-none"
               >
-                <BarChart3 className="h-4 w-4 text-primary" />
                 Resumen General
               </TabsTrigger>
               <TabsTrigger
                 value="analysis"
-                className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="h-12 p-0 px-2 rounded-none bg-transparent data-[state=active]:bg-transparent border-t-0 border-x-0 border-b-2 border-transparent data-[state=active]:border-[#00f2ad] text-muted-foreground data-[state=active]:text-foreground font-medium transition-all duration-300 shadow-none data-[state=active]:shadow-none"
               >
-                <TrendingUp className="h-4 w-4 text-primary" />
                 Análisis Comercial
               </TabsTrigger>
               <TabsTrigger
                 value="geography"
-                className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="h-12 p-0 px-2 rounded-none bg-transparent data-[state=active]:bg-transparent border-t-0 border-x-0 border-b-2 border-transparent data-[state=active]:border-[#00f2ad] text-muted-foreground data-[state=active]:text-foreground font-medium transition-all duration-300 shadow-none data-[state=active]:shadow-none"
               >
-                <MapPin className="h-4 w-4 text-primary" />
                 Geografía & Clientes
               </TabsTrigger>
               <TabsTrigger
                 value="team"
-                className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="h-12 p-0 px-2 rounded-none bg-transparent data-[state=active]:bg-transparent border-t-0 border-x-0 border-b-2 border-transparent data-[state=active]:border-[#00f2ad] text-muted-foreground data-[state=active]:text-foreground font-medium transition-all duration-300 shadow-none data-[state=active]:shadow-none"
               >
-                <Users className="h-4 w-4 text-primary" />
                 Gestión de Equipo
               </TabsTrigger>
               <TabsTrigger
                 value="finance"
-                className="gap-2 data-[state=active]:bg-background data-[state=active]:shadow-sm"
+                className="h-12 p-0 px-2 rounded-none bg-transparent data-[state=active]:bg-transparent border-t-0 border-x-0 border-b-2 border-transparent data-[state=active]:border-[#00f2ad] text-muted-foreground data-[state=active]:text-foreground font-medium transition-all duration-300 shadow-none data-[state=active]:shadow-none"
               >
-                <Wallet className="h-4 w-4 text-primary" />
                 Finanzas
               </TabsTrigger>
             </TabsList>
           </div>
 
-          <TabsContent value="general" className="flex-1 overflow-hidden mt-0">
+          <TabsContent value="general" className="flex-1 overflow-auto mt-0 scrollbar-none outline-none">
             <Stats />
           </TabsContent>
 

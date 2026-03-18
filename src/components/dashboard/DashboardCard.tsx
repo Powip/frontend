@@ -87,21 +87,21 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
 
   return (
     <Card
-      className={`w-full shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden bg-card/50 backdrop-blur-sm border-border flex flex-col ${className || "h-full"}`}
+      className={`w-full shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden bg-white border border-slate-200 flex flex-col ${className || "h-full"}`}
     >
       <CardHeader className="p-4 pb-2">
         <div className="flex justify-between items-start">
-          <CardTitle className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+          <CardTitle className="text-sm font-semibold text-slate-700 tracking-tight">
             {title}
           </CardTitle>
           {summaryStats && (
             <div className="flex gap-4">
               {summaryStats.map((stat, idx) => (
                 <div key={idx} className="text-right">
-                  <p className="text-[10px] text-muted-foreground uppercase">
+                  <p className="text-[10px] text-slate-400 uppercase font-bold">
                     {stat.label}
                   </p>
-                  <p className="text-sm font-bold text-foreground">
+                  <p className="text-sm font-bold text-slate-800">
                     {stat.value}
                   </p>
                 </div>
@@ -114,7 +114,7 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
             {filters.map((filter, idx) => (
               <div key={idx} className="flex-1 min-w-[100px]">
                 <Select value={filter.value} onValueChange={filter.onChange}>
-                  <SelectTrigger className="h-8 text-xs bg-muted/50 border-border">
+                  <SelectTrigger className="h-8 text-xs bg-slate-50 border-slate-200">
                     <SelectValue placeholder={filter.label} />
                   </SelectTrigger>
                   <SelectContent>

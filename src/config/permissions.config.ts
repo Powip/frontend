@@ -29,6 +29,16 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/configuracion": ["ACCESS_SETTINGS"],
   "/atencion-cliente": ["VIEW_CUSTOMER_SERVICE"],
   "/facturacion": ["VIEW_FINANCES"],
+  // Métricas routes
+  "/metricas/ventas": ["VIEW_SALES"],
+  "/metricas/inventario": ["MANAGE_INVENTORY"],
+  "/metricas/operaciones": ["MANAGE_OPERATIONS"],
+  "/metricas/seguimientos": ["VIEW_TRACKING"],
+  "/metricas/atencion-cliente": ["VIEW_CUSTOMER_SERVICE"],
+  "/metricas/call-center": ["VIEW_CUSTOMER_SERVICE"],
+  "/metricas/couriers": ["MANAGE_OPERATIONS"],
+  "/metricas/clientes": ["MANAGE_CLIENTS"],
+  "/metricas/super-admin": ["VIEW_DASHBOARD"],
 };
 
 // Map sidebar items to required permissions

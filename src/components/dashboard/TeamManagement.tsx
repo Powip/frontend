@@ -1,7 +1,5 @@
 "use client";
 
-console.log("[DEBUG] Archivo TeamManagement.tsx cargado");
-
 import React, { useEffect, useState } from "react";
 import axios from "axios";
 import {
@@ -12,6 +10,7 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
+  Cell,
 } from "recharts";
 import {
   Users,
@@ -46,24 +45,20 @@ const StatCard: React.FC<{
   title: string;
   value: string | number;
   subValue?: string;
-  icon: React.ReactNode;
   loading?: boolean;
-}> = ({ title, value, subValue, icon, loading }) => (
-  <Card className="bg-card/50 backdrop-blur-sm border-border shadow-sm">
-    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-      <CardTitle className="text-xs font-medium text-muted-foreground uppercase">
+}> = ({ title, value, subValue, loading }) => (
+  <Card className="bg-white border border-slate-200 shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 overflow-hidden">
+    <CardContent className="p-4 flex flex-col h-full justify-between">
+      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
         {title}
-      </CardTitle>
-      <div className="p-2 bg-primary/5 rounded-full text-primary">{icon}</div>
-    </CardHeader>
-    <CardContent>
+      </span>
       {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+        <div className="h-7 w-24 bg-slate-100 animate-pulse rounded" />
       ) : (
         <>
-          <div className="text-xl font-bold text-foreground">{value}</div>
+          <div className="text-2xl font-bold text-slate-900 tracking-tight leading-none">{value}</div>
           {subValue && (
-            <p className="text-[10px] font-medium text-primary mt-1">
+            <p className="text-[10px] font-medium text-green-600 mt-1">
               {subValue}
             </p>
           )}
@@ -94,18 +89,15 @@ export const TeamManagement: React.FC = () => {
     Record<string, { delivered: number; created: number }>
   >({});
 
-  console.log("[DEBUG] TeamManagement renderizando", {
-    companyId,
-    selectedStoreId,
-  });
+
 
   const fetchSellers = async (from?: string, to?: string) => {
     if (!companyId) {
-      console.warn("[DEBUG] fetchSellers abortado: companyId es nulo");
+
       return;
     }
     setLoading(true);
-    console.log("[DEBUG] fetchSellers iniciando para:", companyId);
+
     try {
       const params: Record<string, string> = {};
       if (from) params.fromDate = from;
@@ -150,17 +142,16 @@ export const TeamManagement: React.FC = () => {
         };
       });
 
-      console.log("[DEBUG] fetchSellers respuesta:", enrichedSellers);
+
       setSellers(enrichedSellers);
     } catch (error) {
-      console.error("[DEBUG] Error fetching sellers:", error);
+      console.error("Error fetching sellers:", error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    console.log("[DEBUG] TeamManagement montado");
     if (companyId && fromDate && toDate) {
       fetchSellers(fromDate, toDate);
     }
@@ -207,21 +198,23 @@ export const TeamManagement: React.FC = () => {
   const currentUserStats = sellers.find((s) => s.sellerId === currentUserId);
 
   return (
-    <div className="flex flex-col h-full w-full overflow-auto bg-muted/30 p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full w-full overflow-auto bg-slate-50/50">
+      {/* Header */}
+      <div className="px-8 py-6 flex items-center justify-between border-b border-slate-200 bg-white shadow-sm">
         <div>
-          <h2 className="text-xl font-bold text-foreground">
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">
             Gestión de Equipo
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Monitoreo de desempeño y tiempos de respuesta
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">
+            Rendimiento de vendedores y colaboradores
           </p>
         </div>
         <PeriodSelector onPeriodChange={handlePeriodChange} />
       </div>
 
+      <div className="p-8 space-y-8">
       {/* KPI Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Vendedor Estrella"
           value={topSeller?.sellerName || "N/A"}
@@ -230,14 +223,12 @@ export const TeamManagement: React.FC = () => {
               ? `S/ ${topSeller.totalSales.toLocaleString()}`
               : undefined
           }
-          icon={<Award className="h-5 w-5 text-primary" />}
           loading={loading}
         />
         <StatCard
           title="Colaboradores Activos"
           value={realCollaborators.length}
           subValue="Con ventas en el periodo"
-          icon={<Users className="h-5 w-5 text-primary" />}
           loading={loading}
         />
         <StatCard
@@ -247,57 +238,52 @@ export const TeamManagement: React.FC = () => {
               ? `S/ ${Math.round(totalSalesOverall / realCollaborators.length).toLocaleString()}`
               : "-"
           }
-          subValue="Venta media (incl. sin asignar)"
-          icon={<TrendingUp className="h-5 w-5 text-primary" />}
+          subValue="Venta media"
           loading={loading}
         />
         <StatCard
           title="Efectividad Entrega"
           value={`${overallEffectiveness}%`}
           subValue={`${overallDelivered}/${overallCreated} entregados`}
-          icon={<Truck className="h-5 w-5 text-primary" />}
           loading={loading}
         />
       </div>
 
       {/* Current User Stats Card */}
       {currentUserStats && (
-        <Card className="bg-gradient-to-r from-primary/5 to-primary/10 border-primary/20">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-primary uppercase flex items-center gap-2">
-              <Target className="h-4 w-4" />
-              Tus Ventas - {currentUserStats.sellerName}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <Card className="bg-white border border-green-200 shadow-sm">
+          <CardContent className="p-5">
+            <p className="text-xs font-black text-green-600 uppercase tracking-widest mb-4">
+              Tus Ventas — {currentUserStats.sellerName}
+            </p>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
               <div>
-                <p className="text-xs text-muted-foreground">Facturación</p>
-                <p className="text-lg font-bold">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Facturación</p>
+                <p className="text-lg font-bold text-green-600">
                   S/ {currentUserStats.totalSales.toLocaleString()}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Órdenes</p>
-                <p className="text-lg font-bold">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Órdenes</p>
+                <p className="text-lg font-bold text-green-600">
                   {currentUserStats.orderCount}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Productos</p>
-                <p className="text-lg font-bold">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Productos</p>
+                <p className="text-lg font-bold text-green-600">
                   {currentUserStats.productsCount}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Ticket Promedio</p>
-                <p className="text-lg font-bold">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Ticket Promedio</p>
+                <p className="text-lg font-bold text-green-600">
                   S/ {currentUserStats.averageTicket.toLocaleString()}
                 </p>
               </div>
               <div>
-                <p className="text-xs text-muted-foreground">Efectividad</p>
-                <p className="text-lg font-bold text-primary">
+                <p className="text-[10px] font-bold text-slate-400 uppercase">Efectividad</p>
+                <p className="text-lg font-bold text-green-600">
                   {currentUserStats.deliveryEffectiveness || 0}%
                 </p>
               </div>
@@ -306,181 +292,93 @@ export const TeamManagement: React.FC = () => {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Desempeño Ventas */}
-        <DashboardCard
-          title="Ventas por Colaborador"
-          isLoading={loading}
-          data={activeSellers}
-          summaryStats={[
-            {
-              label: "Total",
-              value: `S/ ${totalSalesOverall.toLocaleString()}`,
-            },
-          ]}
-        >
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={activeSellers.map((s, i) => ({
-                  ...s,
-                  fill: CHART_COLORS[i % CHART_COLORS.length],
-                }))}
-                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="hsl(var(--border))"
-                />
-                <XAxis
-                  dataKey="sellerName"
-                  axisLine={false}
-                  tickLine={false}
-                  style={{
-                    fontSize: "12px",
-                    fill: "hsl(var(--muted-foreground))",
-                  }}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  style={{
-                    fontSize: "12px",
-                    fill: "hsl(var(--muted-foreground))",
-                  }}
-                />
-                <Tooltip
-                  content={({ active, payload, label }) => {
-                    if (active && payload && payload.length) {
-                      const data = payload[0].payload;
-                      const prodPerOrder =
-                        data.orderCount > 0
-                          ? (data.productsCount / data.orderCount).toFixed(1)
-                          : 0;
-                      return (
-                        <div className="bg-card p-3 border border-border shadow-lg rounded-lg text-xs">
-                          <p className="font-bold mb-2 text-foreground border-b pb-1">
-                            {label}
-                          </p>
-                          <div className="space-y-1">
-                            <div className="flex justify-between gap-4">
-                              <span className="text-blue-600 font-medium">
-                                Ventas:
-                              </span>
-                              <span className="font-bold">
-                                S/ {data.totalSales.toLocaleString()}
-                              </span>
-                            </div>
-                            <div className="flex justify-between gap-4">
-                              <span className="text-muted-foreground">
-                                Órdenes:
-                              </span>
-                              <span className="font-bold">
-                                {data.orderCount}
-                              </span>
-                            </div>
-                            <div className="flex justify-between gap-4">
-                              <span className="text-muted-foreground">
-                                Productos:
-                              </span>
-                              <span className="font-bold">
-                                {data.productsCount}
-                              </span>
-                            </div>
-                            <div className="mt-1 pt-1 border-t flex justify-between gap-4">
-                              <span className="text-primary italic">
-                                Prod/Orden:
-                              </span>
-                              <span className="font-bold text-primary">
-                                {prodPerOrder}
-                              </span>
-                            </div>
-                            <div className="flex justify-between gap-4">
-                              <span className="text-green-600">
-                                Efectividad:
-                              </span>
-                              <span className="font-bold text-green-600">
-                                {data.deliveryEffectiveness || 0}%
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                <Bar dataKey="totalSales" radius={[4, 4, 0, 0]} barSize={40} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </DashboardCard>
-      </div>
-
-      {/* Tabla Detallada */}
+      {/* Ventas por Colaborador - full width */}
       <DashboardCard
-        title="Detalle de Performance"
+        title="Ventas por Colaborador"
         isLoading={loading}
         data={activeSellers}
-        className="h-auto min-h-[400px]"
+        summaryStats={[
+          {
+            label: "Total",
+            value: `S/ ${totalSalesOverall.toLocaleString()}`,
+          },
+        ]}
+        className="h-auto"
       >
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left text-muted-foreground">
-            <thead className="text-xs text-muted-foreground uppercase bg-muted">
-              <tr>
-                <th className="px-6 py-3">Vendedor</th>
-                <th className="px-6 py-3">Monto Total</th>
-                <th className="px-6 py-3"># Órdenes</th>
-                <th className="px-6 py-3"># Productos</th>
-                <th className="px-6 py-3">Ticket Prom.</th>
-                <th className="px-6 py-3">Efectividad</th>
-              </tr>
-            </thead>
-            <tbody>
-              {activeSellers.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center">
-                    No hay datos de vendedores para mostrar
-                  </td>
-                </tr>
-              ) : (
-                activeSellers.map((s) => (
-                  <tr
-                    key={s.sellerId}
-                    className="bg-card border-b border-border hover:bg-muted/50"
-                  >
-                    <td className="px-6 py-4 font-medium text-foreground">
-                      {s.sellerName}
-                    </td>
-                    <td className="px-6 py-4">
-                      S/ {s.totalSales.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4">{s.orderCount}</td>
-                    <td className="px-6 py-4">{s.productsCount}</td>
-                    <td className="px-6 py-4">
-                      S/ {s.averageTicket.toLocaleString()}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          (s.deliveryEffectiveness || 0) >= 80
-                            ? "bg-green-100 text-green-700"
-                            : (s.deliveryEffectiveness || 0) >= 50
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-red-100 text-red-700"
-                        }`}
-                      >
-                        {s.deliveryEffectiveness || 0}%
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+        <div className="h-[300px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={activeSellers.map((s, i) => ({
+                ...s,
+                fill: CHART_COLORS[i % CHART_COLORS.length],
+              }))}
+              margin={{ top: 10, right: 20, left: 10, bottom: 5 }}
+            >
+              <CartesianGrid
+                strokeDasharray="3 3"
+                vertical={false}
+                stroke="#f1f5f9"
+              />
+              <XAxis
+                dataKey="sellerName"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fill: "#64748b", fontWeight: 700 }}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
+                tickFormatter={(v) => `S/${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v}`}
+              />
+              <Tooltip
+                content={({ active, payload, label }) => {
+                  if (active && payload && payload.length) {
+                    const data = payload[0].payload;
+                    return (
+                      <div className="bg-white p-3 border border-slate-200 shadow-lg rounded-xl text-xs">
+                        <p className="font-bold mb-2 text-slate-800 border-b border-slate-100 pb-1">
+                          {label}
+                        </p>
+                        <div className="space-y-1">
+                          <div className="flex justify-between gap-4">
+                            <span className="text-slate-500 font-medium">Ventas:</span>
+                            <span className="font-bold text-slate-800">S/ {data.totalSales.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-slate-500">Órdenes:</span>
+                            <span className="font-bold text-slate-800">{data.orderCount}</span>
+                          </div>
+                          <div className="flex justify-between gap-4">
+                            <span className="text-slate-500">Productos:</span>
+                            <span className="font-bold text-slate-800">{data.productsCount}</span>
+                          </div>
+                          <div className="mt-1 pt-1 border-t border-slate-100 flex justify-between gap-4">
+                            <span className="text-green-600">Efectividad:</span>
+                            <span className="font-bold text-green-600">{data.deliveryEffectiveness || 0}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return null;
+                }}
+              />
+              <Bar dataKey="totalSales" radius={[4, 4, 0, 0]} barSize={60}>
+                {activeSellers.map((_, i) => (
+                  <Cell
+                    key={`cell-${i}`}
+                    fill={CHART_COLORS[i % CHART_COLORS.length]}
+                    fillOpacity={0.85}
+                  />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </DashboardCard>
+
+      </div>
     </div>
   );
 };

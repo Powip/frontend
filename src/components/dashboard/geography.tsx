@@ -80,38 +80,25 @@ const StatCard: React.FC<{
   title: string;
   value: string | number;
   subValue?: string;
-  icon: React.ReactNode;
   loading?: boolean;
   onClick?: () => void;
   clickable?: boolean;
-}> = ({ title, value, subValue, icon, loading, onClick, clickable }) => (
-  <Card className="bg-card/50 backdrop-blur-sm border-border shadow-sm transition-all">
-    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-      <CardTitle className="text-xs font-medium text-muted-foreground uppercase">
+}> = ({ title, value, subValue, loading, onClick, clickable }) => (
+  <Card
+    className={`bg-white border border-slate-200 shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 group overflow-hidden ${clickable ? "cursor-pointer hover:shadow-md" : ""}`}
+    onClick={clickable ? onClick : undefined}
+  >
+    <CardContent className="p-4 flex flex-col h-full justify-between">
+      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
         {title}
-      </CardTitle>
-      <div className="flex items-center gap-2">
-        {clickable && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-primary hover:bg-primary/5 mt-[-4px]"
-            onClick={onClick}
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-        )}
-        <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
-      </div>
-    </CardHeader>
-    <CardContent>
+      </span>
       {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+        <div className="h-7 w-24 bg-slate-100 animate-pulse rounded" />
       ) : (
         <>
-          <div className="text-xl font-bold text-foreground">{value}</div>
+          <div className="text-2xl font-bold text-slate-900 tracking-tight leading-none">{value}</div>
           {subValue && (
-            <p className="text-[10px] font-medium text-primary mt-1">
+            <p className="text-[10px] font-medium text-green-600 mt-1">
               {subValue}
             </p>
           )}
@@ -310,21 +297,16 @@ export const Geography: React.FC = () => {
   const topLocation = locationData[0];
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-muted/30">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-slate-50/50">
       {/* Header with Date Filters */}
-      <div className="bg-card border-b px-6 py-4 flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/5 rounded-lg text-primary">
-            <MapPin className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-foreground">
-              Geografía y Finanzas
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Distribución territorial y métodos de pago
-            </p>
-          </div>
+      <div className="px-8 py-6 flex items-center justify-between border-b border-slate-200 bg-white shadow-sm">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">
+            Geografía & Clientes
+          </h2>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">
+            Distribución territorial y métodos de pago
+          </p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -332,16 +314,15 @@ export const Geography: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
+      <div className="flex-1 overflow-auto p-8 space-y-8">
         {/* KPI Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Zona Top"
             value={topLocation?.name || "Sin datos"}
             subValue={
               topLocation ? `${topLocation.percentage}% del total` : undefined
             }
-            icon={<MapPin className="h-5 w-5 text-primary" />}
             loading={loading}
             clickable
             onClick={() => setIsZonesModalOpen(true)}
@@ -354,16 +335,14 @@ export const Geography: React.FC = () => {
                 ? `${paymentData[0].percentage}% de acogida`
                 : undefined
             }
-            icon={<CreditCard className="h-5 w-5 text-primary" />}
             loading={loading}
             clickable
             onClick={() => setIsPaymentsModalOpen(true)}
           />
           <StatCard
-            title="Facturación del Periodo"
+            title="Facturación"
             value={`S/ ${periodBilling.toLocaleString()}`}
-            subValue="Basado en el filtro seleccionado"
-            icon={<Receipt className="h-5 w-5 text-primary" />}
+            subValue="Filtro aplicado"
             loading={loading}
             clickable
             onClick={fetchBillingOrders}
@@ -372,7 +351,6 @@ export const Geography: React.FC = () => {
             title="Ticket Promedio"
             value={`S/ ${Math.round(paymentData.reduce((s, p) => s + p.totalAmount, 0) / (paymentData.reduce((s, p) => s + p.ordersCount, 0) || 1))}`}
             subValue="Promedio general"
-            icon={<Truck className="h-5 w-5 text-primary" />}
             loading={loading}
             clickable
             onClick={() => setIsPaymentsModalOpen(true)}
@@ -417,35 +395,51 @@ export const Geography: React.FC = () => {
                   fill: CHART_COLORS[i % CHART_COLORS.length],
                 }))}
                 layout="vertical"
-                margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                margin={{ top: 5, right: 40, left: 10, bottom: 5 }}
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  horizontal={true}
-                  vertical={false}
-                  stroke="#f0f0f0"
+                  horizontal={false}
+                  vertical={true}
+                  stroke="#f1f5f9"
                 />
                 <XAxis type="number" hide />
                 <YAxis
                   dataKey="name"
                   type="category"
-                  width={100}
+                  width={90}
                   axisLine={false}
                   tickLine={false}
-                  style={{ fontSize: "11px" }}
+                  tick={{ fontSize: 11, fill: "#64748b", fontWeight: 700 }}
                 />
                 <Tooltip
                   formatter={(value) => [
-                    `S/ ${value.toLocaleString()}`,
+                    `S/ ${Number(value).toLocaleString("es-PE")}`,
                     "Monto",
                   ]}
                   contentStyle={{
-                    borderRadius: "8px",
-                    border: "none",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    background: "white",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "12px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                    fontSize: "11px",
+                    fontWeight: 700,
                   }}
                 />
-                <Bar dataKey="totalAmount" radius={[0, 4, 4, 0]} barSize={20} />
+                <Bar
+                  dataKey="percentage"
+                  radius={[0, 6, 6, 0]}
+                  barSize={16}
+                  label={{ position: "right", formatter: (v: any) => `${v}%`, fontSize: 10, fill: "#64748b", fontWeight: 700 }}
+                >
+                  {locationData.slice(0, 10).map((_, i) => (
+                    <Cell
+                      key={`cell-${i}`}
+                      fill={CHART_COLORS[i % CHART_COLORS.length]}
+                      fillOpacity={0.85}
+                    />
+                  ))}
+                </Bar>
               </BarChart>
             </ResponsiveContainer>
           </DashboardCard>
@@ -456,15 +450,15 @@ export const Geography: React.FC = () => {
             isLoading={loading}
             data={paymentData}
             summaryStats={[
-              { label: "Método Top", value: paymentData[0]?.method || "-" },
+              { label: "Método top", value: paymentData[0]?.method || "-" },
             ]}
           >
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={paymentData.map((p, i) => ({
-                    name: p.method,
-                    value: p.totalAmount,
+                    name: p.method.replace("_", " "),
+                    value: p.ordersCount,
                     fill:
                       PAYMENT_COLORS[p.method] ||
                       CHART_COLORS[i % CHART_COLORS.length],
@@ -479,7 +473,7 @@ export const Geography: React.FC = () => {
                   {paymentData.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
-                      fillOpacity={0.8}
+                      fillOpacity={0.85}
                       stroke="white"
                       strokeWidth={2}
                     />
@@ -487,91 +481,20 @@ export const Geography: React.FC = () => {
                 </Pie>
                 <Tooltip
                   formatter={(value) => [
-                    `S/ ${Number(value).toLocaleString()}`,
-                    "Monto",
+                    `${value} pedidos`,
+                    "Cantidad",
                   ]}
+                  contentStyle={{
+                    background: "white",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "12px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                  }}
                 />
                 <Legend iconType="circle" />
               </PieChart>
-            </ResponsiveContainer>
-          </DashboardCard>
-        </div>
-
-        {/* Bottom Row */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-[400px]">
-          {/* Entrega Card */}
-          <DashboardCard
-            title="Canales de Entrega"
-            isLoading={loading}
-            data={deliveryData}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={deliveryData.map((d, i) => ({
-                  name: d.type,
-                  monto: d.totalAmount,
-                  fill: CHART_COLORS[i % CHART_COLORS.length],
-                }))}
-                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#f0f0f0"
-                />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  style={{ fontSize: "12px" }}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  style={{ fontSize: "12px" }}
-                />
-                <Tooltip />
-                <Bar dataKey="monto" radius={[4, 4, 0, 0]} barSize={40} />
-              </BarChart>
-            </ResponsiveContainer>
-          </DashboardCard>
-
-          {/* Histórico Card */}
-          <DashboardCard
-            title="Comparativo de Facturación"
-            isLoading={loading}
-            data={billingData}
-          >
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={billingData.map((b) => ({
-                  name: b.monthName,
-                  Ventas: b.currentYear,
-                  Anterior: b.previousYear,
-                }))}
-                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-              >
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  vertical={false}
-                  stroke="#f0f0f0"
-                />
-                <XAxis
-                  dataKey="name"
-                  axisLine={false}
-                  tickLine={false}
-                  style={{ fontSize: "12px" }}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  style={{ fontSize: "12px" }}
-                />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="Ventas" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="Anterior" fill="#e2e8f0" radius={[4, 4, 0, 0]} />
-              </BarChart>
             </ResponsiveContainer>
           </DashboardCard>
         </div>
