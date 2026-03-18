@@ -196,45 +196,40 @@ export default function FinanzasPage() {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-      const mappedSales = res.data.map(mapOrderToSale);
-      setSales(mappedSales);
+      const [ordersRes, guidesRes] = await Promise.all([
+        axios.get<OrderHeader[]>(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+        ),
+        axios.get(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
+        ),
+      ]);
 
-      // Obtener datos de guías de envío para órdenes entregadas
-      const deliveredOrders = mappedSales.filter(
-        (s) => s.status === "ENTREGADO",
-      );
-      if (deliveredOrders.length > 0) {
-        const guidePromises = deliveredOrders.map(async (sale) => {
-          try {
-            const guideRes = await axios.get(
-              `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`,
-            );
-            return { orderId: sale.id, guide: guideRes.data };
-          } catch {
-            return { orderId: sale.id, guide: null };
-          }
-        });
+      const mappedSales = ordersRes.data.map(mapOrderToSale);
+      const allGuides = guidesRes.data || [];
 
-        const guideResults = await Promise.all(guidePromises);
-        const guideMap = new Map(guideResults.map((r) => [r.orderId, r.guide]));
+      // Crear un mapa de orderId -> guide para acceso O(1)
+      const guideMap = new Map();
+      allGuides.forEach((g: any) => {
+        if (g.orderIds && Array.isArray(g.orderIds)) {
+          g.orderIds.forEach((oid: string) => guideMap.set(oid, g));
+        }
+      });
 
-        setSales((prevSales) =>
-          prevSales.map((sale) => {
-            const guide = guideMap.get(sale.id);
-            if (guide) {
-              return {
-                ...sale,
-                shippingDeliveryType: guide.deliveryType || undefined,
-                shippingCourierName: guide.courierName || undefined,
-              };
-            }
-            return sale;
-          }),
-        );
-      }
+      // Enriquecer ventas con info de courier
+      const enrichedSales = mappedSales.map((sale) => {
+        const guide = guideMap.get(sale.id);
+        if (guide) {
+          return {
+            ...sale,
+            shippingDeliveryType: guide.deliveryType || undefined,
+            shippingCourierName: guide.courierName || undefined,
+          };
+        }
+        return sale;
+      });
+
+      setSales(enrichedSales);
     } catch (error) {
       console.error("Error fetching orders", error);
     }

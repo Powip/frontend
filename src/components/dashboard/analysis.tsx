@@ -87,34 +87,26 @@ const StatCard: React.FC<{
   title: string;
   value: string | number;
   subValue?: string;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   loading?: boolean;
   onClick?: () => void;
   clickable?: boolean;
-}> = ({ title, value, subValue, icon, loading, onClick, clickable }) => (
+}> = ({ title, value, subValue, loading, onClick, clickable }) => (
   <Card
-    className={`bg-card/50 backdrop-blur-sm border-border shadow-sm transition-all ${clickable ? "cursor-pointer hover:shadow-md hover:border-primary/20" : ""}`}
+    className={`bg-white border border-slate-200 shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 group overflow-hidden ${clickable ? "cursor-pointer hover:shadow-md" : ""}`}
     onClick={clickable ? onClick : undefined}
   >
-    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-      <CardTitle className="text-xs font-medium text-muted-foreground uppercase">
+    <CardContent className="p-4 flex flex-col h-full justify-between">
+      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
         {title}
-      </CardTitle>
-      <div className="flex items-center gap-2">
-        {clickable && (
-          <ChevronRight className="h-3 w-3 text-muted-foreground/70" />
-        )}
-        <div className="p-2 bg-primary/5 rounded-full">{icon}</div>
-      </div>
-    </CardHeader>
-    <CardContent>
+      </span>
       {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+        <div className="h-7 w-24 bg-slate-100 animate-pulse rounded" />
       ) : (
         <>
-          <div className="text-xl font-bold text-foreground">{value}</div>
+          <div className="text-2xl font-bold text-slate-900 tracking-tight leading-none">{value}</div>
           {subValue && (
-            <p className="text-[10px] font-medium text-primary mt-1">
+            <p className="text-[10px] font-medium text-green-600 mt-1">
               {subValue}
             </p>
           )}
@@ -369,21 +361,16 @@ export const Analysis: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-muted/30">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-slate-50/50">
       {/* Header with Date Filters */}
-      <div className="bg-card border-b px-6 py-4 flex items-center justify-between flex-wrap gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-primary/5 rounded-lg text-primary">
-            <Calendar className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-foreground">
-              Análisis Comercial
-            </h2>
-            <p className="text-xs text-muted-foreground">
-              Distribución de ventas por canal y producto
-            </p>
-          </div>
+      <div className="px-8 py-6 flex items-center justify-between border-b border-slate-200 bg-white shadow-sm">
+        <div>
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">
+            Análisis Comercial
+          </h2>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">
+            Distribución de ventas por canal y producto
+          </p>
         </div>
 
         <div className="flex items-center gap-3">
@@ -393,7 +380,7 @@ export const Analysis: React.FC = () => {
               onClick={handleExportFacturacion}
               variant="outline"
               size="sm"
-              className="gap-2 border-primary/20 hover:bg-primary/5"
+              className="gap-2 border-slate-200 hover:bg-slate-50"
               disabled={!fromDate || !toDate}
             >
               <Download className="h-4 w-4" />
@@ -403,9 +390,9 @@ export const Analysis: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
+      <div className="flex-1 overflow-auto p-8 space-y-8">
         {/* KPI Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             title="Canal Top"
             value={topSalesChannel?.channel.replace("_", " ") || "-"}
@@ -414,7 +401,6 @@ export const Analysis: React.FC = () => {
                 ? `${topSalesChannel.percentage}% del total`
                 : undefined
             }
-            icon={<Radio className="h-5 w-5 text-primary" />}
             loading={loading}
           />
           <StatCard
@@ -423,23 +409,20 @@ export const Analysis: React.FC = () => {
             subValue={
               topCategory ? `${topCategory.percentage}% del total` : undefined
             }
-            icon={<Tag className="h-5 w-5 text-primary" />}
             loading={loading}
             clickable={!!topCategory}
             onClick={() => setCategoryModalOpen(true)}
           />
           <StatCard
-            title="Ventas Totales"
+            title="Ventas Periodo"
             value={`S/ ${channelData?.salesChannels.reduce((sum, c) => sum + c.totalAmount, 0).toLocaleString() || 0}`}
             subValue="Periodo seleccionado"
-            icon={<Package className="h-5 w-5 text-primary" />}
             loading={loading}
           />
           <StatCard
-            title="Total Pedidos"
+            title="Órdenes"
             value={`${channelData?.salesChannels.reduce((sum, c) => sum + c.ordersCount, 0) || 0}`}
-            subValue="Ordenes procesadas"
-            icon={<Users className="h-5 w-5 text-primary" />}
+            subValue="Procesadas"
             loading={loading}
           />
         </div>
@@ -480,40 +463,49 @@ export const Analysis: React.FC = () => {
               <BarChart
                 data={getChannelChartData()}
                 layout="vertical"
-                margin={{ top: 5, right: 30, left: 40, bottom: 5 }}
+                margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
               >
                 <CartesianGrid
                   strokeDasharray="3 3"
-                  horizontal={true}
-                  vertical={false}
-                  stroke="#f0f0f0"
+                  horizontal={false}
+                  vertical={true}
+                  stroke="#f1f5f9"
                 />
-                <XAxis type="number" hide />
+                <XAxis
+                  type="number"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
+                  tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
+                />
                 <YAxis
                   dataKey="name"
                   type="category"
-                  width={100}
+                  width={90}
                   axisLine={false}
                   tickLine={false}
-                  style={{ fontSize: "12px" }}
+                  tick={{ fontSize: 11, fill: "#64748b", fontWeight: 700 }}
                 />
                 <Tooltip
                   formatter={(value) => [
-                    `S/ ${value.toLocaleString()}`,
+                    `S/ ${Number(value).toLocaleString("es-PE")}`,
                     "Monto",
                   ]}
                   contentStyle={{
-                    borderRadius: "8px",
-                    border: "none",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    background: "white",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "12px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                    fontSize: "11px",
+                    fontWeight: 700,
                   }}
                 />
-                <Bar dataKey="monto" radius={[0, 4, 4, 0]} barSize={20}>
+                <Bar dataKey="monto" radius={[0, 6, 6, 0]} barSize={28}>
                   {getChannelChartData().map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={entry.fill}
-                      fillOpacity={0.8}
+                      fillOpacity={0.85}
                     />
                   ))}
                 </Bar>

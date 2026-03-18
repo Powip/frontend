@@ -63,24 +63,20 @@ const StatCard: React.FC<{
   title: string;
   value: string | number;
   subValue?: string;
-  icon: React.ReactNode;
   loading?: boolean;
-}> = ({ title, value, subValue, icon, loading }) => (
-  <Card className="bg-card/50 backdrop-blur-sm border-border shadow-sm">
-    <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-      <CardTitle className="text-xs font-medium text-muted-foreground uppercase">
+}> = ({ title, value, subValue, loading }) => (
+  <Card className="bg-white border border-slate-200 shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 overflow-hidden">
+    <CardContent className="p-4 flex flex-col h-full justify-between">
+      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
         {title}
-      </CardTitle>
-      <div className="p-2 bg-primary/5 rounded-full text-primary">{icon}</div>
-    </CardHeader>
-    <CardContent>
+      </span>
       {loading ? (
-        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+        <div className="h-7 w-24 bg-slate-100 animate-pulse rounded" />
       ) : (
         <>
-          <div className="text-xl font-bold text-foreground">{value}</div>
+          <div className="text-2xl font-bold text-slate-900 tracking-tight leading-none">{value}</div>
           {subValue && (
-            <p className="text-[10px] font-medium text-primary mt-1">
+            <p className="text-[10px] font-medium text-green-600 mt-1">
               {subValue}
             </p>
           )}
@@ -251,33 +247,33 @@ export const FinanceStats: React.FC = () => {
   const totalPaid = dailyIncome.reduce((sum, d) => sum + d.amount, 0);
 
   return (
-    <div className="flex flex-col h-full w-full overflow-auto bg-muted/30 p-6 space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="flex flex-col h-full w-full overflow-auto bg-slate-50/50">
+      {/* Header */}
+      <div className="px-8 py-6 flex items-center justify-between border-b border-slate-200 bg-white shadow-sm">
         <div>
-          <h2 className="text-xl font-bold text-foreground">
+          <h2 className="text-xl font-black text-slate-900 tracking-tight">
             Panel Financiero
           </h2>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">
             Estado de ingresos, egresos y valorización de activos
           </p>
         </div>
         <PeriodSelector onPeriodChange={handlePeriodChange} />
       </div>
 
+      <div className="p-8 space-y-8">
       {/* KPI Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Valor Almacén"
           value={`S/ ${inventoryValue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
-          subValue="Costo de reposición est."
-          icon={<Package className="h-5 w-5 text-primary" />}
+          subValue="Costo reposición est."
           loading={loading}
         />
         <StatCard
           title="Ingresos Totales"
           value={`S/ ${currentYearSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
-          subValue={`${growth >= 0 ? "+" : ""}${growth.toFixed(1)}% vs año anterior`}
-          icon={<Wallet className="h-5 w-5 text-primary" />}
+          subValue={`${growth >= 0 ? "+" : ""}${growth.toFixed(1)}% vs año ant.`}
           loading={loading}
         />
         <div
@@ -288,7 +284,6 @@ export const FinanceStats: React.FC = () => {
             title="Cuentas por Cobrar"
             value={`S/ ${receivables.pendingTotal.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
             subValue={`${receivables.pendingOrders.length} pedidos pendientes`}
-            icon={<CreditCard className="h-5 w-5 text-orange-500" />}
             loading={loading}
           />
         </div>
@@ -297,36 +292,32 @@ export const FinanceStats: React.FC = () => {
           onClick={() => setPaymentsModalOpen(true)}
         >
           <StatCard
-            title="Pagos aprobados"
+            title="Pagos Aprobados"
             value={`S/ ${totalPaid.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
             subValue="Total recaudado"
-            icon={<DollarSign className="h-5 w-5 text-green-500" />}
             loading={loading}
           />
         </div>
       </div>
 
       {/* Second KPI Row - Receivables Breakdown */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <StatCard
           title="Lima / Callao"
           value={receivables.limaCount}
           subValue="Pedidos pendientes"
-          icon={<Receipt className="h-5 w-5 text-primary" />}
           loading={loading}
         />
         <StatCard
           title="Provincia"
           value={receivables.provinciaCount}
           subValue="Pedidos pendientes"
-          icon={<Receipt className="h-5 w-5 text-primary" />}
           loading={loading}
         />
         <StatCard
           title="Ticket Promedio Pendiente"
           value={`S/ ${receivables.avgTicket.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue="Por cobrar"
-          icon={<BarChart3 className="h-5 w-5 text-primary" />}
           loading={loading}
         />
       </div>
@@ -335,7 +326,7 @@ export const FinanceStats: React.FC = () => {
         {/* Evolución Card */}
         <div className="lg:col-span-2">
           <DashboardCard
-            title="Evolución de Ingresos (Año Actual vs Anterior)"
+            title="Evolución de Ingresos"
             isLoading={loading}
             data={billing}
           >
@@ -348,88 +339,60 @@ export const FinanceStats: React.FC = () => {
                   ordenes: b.currentOrders,
                   productos: b.currentProducts,
                 }))}
-                margin={{ top: 10, right: 30, left: 0, bottom: 0 }}
+                margin={{ top: 10, right: 20, left: 10, bottom: 0 }}
               >
                 <defs>
                   <linearGradient id="colorActual" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.1} />
+                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.15} />
                     <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
-                  stroke="hsl(var(--border))"
+                  stroke="#f1f5f9"
                 />
                 <XAxis
                   dataKey="name"
                   axisLine={false}
                   tickLine={false}
-                  style={{
-                    fontSize: "12px",
-                    fill: "hsl(var(--muted-foreground))",
-                  }}
+                  tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  style={{
-                    fontSize: "12px",
-                    fill: "hsl(var(--muted-foreground))",
-                  }}
+                  tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
+                  tickFormatter={(v) => `S/${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
                 />
                 <Tooltip
-                  formatter={(value: any, name) => {
-                    if (name === "Actual" || name === "Anterior")
-                      return [
-                        `S/ ${value.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
-                        "Venta",
-                      ];
-                    return [value, name];
-                  }}
-                  labelStyle={{ fontWeight: "bold", marginBottom: "4px" }}
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload;
                       return (
-                        <div className="bg-card p-3 border border-border shadow-lg rounded-lg text-xs">
-                          <p className="font-bold mb-2 text-foreground border-b pb-1">
+                        <div className="bg-white p-3 border border-slate-200 shadow-lg rounded-xl text-xs">
+                          <p className="font-bold mb-2 text-slate-800 border-b border-slate-100 pb-1">
                             {label}
                           </p>
                           <div className="space-y-1">
                             <div className="flex justify-between gap-4">
-                              <span className="text-blue-600 font-medium">
-                                Este Año:
-                              </span>
-                              <span className="font-bold">
-                                S/{" "}
-                                {data.Actual.toLocaleString("es-PE", {
-                                  minimumFractionDigits: 2,
-                                })}
+                              <span className="text-blue-600 font-medium">Este Año:</span>
+                              <span className="font-bold text-slate-800">
+                                S/ {data.Actual.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                               </span>
                             </div>
                             <div className="flex justify-between gap-4">
-                              <span className="text-muted-foreground/70">
-                                Año Anterior:
-                              </span>
-                              <span className="text-muted-foreground italic">
-                                S/{" "}
-                                {data.Anterior.toLocaleString("es-PE", {
-                                  minimumFractionDigits: 2,
-                                })}
+                              <span className="text-slate-400">Año Anterior:</span>
+                              <span className="text-slate-500 italic">
+                                S/ {data.Anterior.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                               </span>
                             </div>
-                            <div className="mt-2 pt-2 border-t flex justify-between gap-4">
-                              <span className="text-primary/70">Órdenes:</span>
-                              <span className="font-bold">{data.ordenes}</span>
+                            <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between gap-4">
+                              <span className="text-slate-500">Órdenes:</span>
+                              <span className="font-bold text-slate-800">{data.ordenes}</span>
                             </div>
                             <div className="flex justify-between gap-4">
-                              <span className="text-primary/70">
-                                Productos:
-                              </span>
-                              <span className="font-bold">
-                                {data.productos}
-                              </span>
+                              <span className="text-slate-500">Productos:</span>
+                              <span className="font-bold text-slate-800">{data.productos}</span>
                             </div>
                           </div>
                         </div>
@@ -438,7 +401,14 @@ export const FinanceStats: React.FC = () => {
                     return null;
                   }}
                 />
-                <Legend />
+                <Legend
+                  iconType="square"
+                  wrapperStyle={{ fontSize: "11px", fontWeight: 700 }}
+                  formatter={(value) => {
+                    const year = new Date().getFullYear();
+                    return value === "Actual" ? `${year}` : `${year - 1}`;
+                  }}
+                />
                 <Area
                   type="monotone"
                   dataKey="Actual"
@@ -459,79 +429,70 @@ export const FinanceStats: React.FC = () => {
           </DashboardCard>
         </div>
 
-        {/* Resumen Diario Placeholder */}
+        {/* Distribución Mensual */}
         <DashboardCard
           title="Distribución Mensual"
           isLoading={loading}
           data={billing}
         >
-          <div className="space-y-4">
+          <div className="space-y-3">
             {billing
               .filter((b) => b.currentYear > 0)
               .slice(-5)
               .reverse()
-              .map((b) => (
-                <div
-                  key={b.month}
-                  className="flex items-center justify-between p-3 bg-card rounded-lg border border-border"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg">
-                      <Receipt className="h-4 w-4" />
+              .map((b, i) => {
+                const colors = ["bg-blue-500", "bg-green-500", "bg-amber-500", "bg-purple-500", "bg-rose-500"];
+                return (
+                  <div
+                    key={b.month}
+                    className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 ${colors[i % colors.length]} rounded-lg flex items-center justify-center`}>
+                        <span className="text-white text-xs font-black">{b.monthName.charAt(0)}</span>
+                      </div>
+                      <span className="font-semibold text-slate-700 text-sm">
+                        {b.monthName}
+                      </span>
                     </div>
-                    <span className="font-medium text-foreground">
-                      {b.monthName}
+                    <span className="font-bold text-slate-900 text-sm">
+                      S/ {b.currentYear.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                     </span>
                   </div>
-                  <span className="font-bold text-foreground">
-                    S/{" "}
-                    {b.currentYear.toLocaleString("es-PE", {
-                      minimumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
           </div>
         </DashboardCard>
       </div>
 
       <div className="grid grid-cols-1 gap-6">
         <DashboardCard
-          title="Detalle de Ingresos Diarios (Pagos Recaudados)"
+          title="Detalle de Ingresos Diarios"
           isLoading={loading}
           data={dailyIncome}
         >
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="w-full">
+            <ResponsiveContainer width="100%" height={300}>
               <BarChart data={dailyIncome}>
                 <CartesianGrid
                   strokeDasharray="3 3"
                   vertical={false}
-                  stroke="hsl(var(--border))"
+                  stroke="#f1f5f9"
                 />
                 <XAxis
                   dataKey="date"
                   axisLine={false}
                   tickLine={false}
-                  style={{
-                    fontSize: "12px",
-                    fill: "hsl(var(--muted-foreground))",
-                  }}
+                  tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
                   tickFormatter={(value) => {
                     const date = new Date(value);
-                    return date.toLocaleDateString("es-PE", {
-                      day: "2-digit",
-                      month: "short",
-                    });
+                    return date.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
                   }}
                 />
                 <YAxis
                   axisLine={false}
                   tickLine={false}
-                  style={{
-                    fontSize: "12px",
-                    fill: "hsl(var(--muted-foreground))",
-                  }}
+                  tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
                   tickFormatter={(value) => `S/ ${value}`}
                 />
                 <Tooltip
@@ -540,9 +501,12 @@ export const FinanceStats: React.FC = () => {
                     "Ingreso",
                   ]}
                   contentStyle={{
-                    backgroundColor: "hsl(var(--background))",
-                    borderColor: "hsl(var(--border))",
-                    borderRadius: "8px",
+                    background: "white",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "12px",
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                    fontSize: "11px",
+                    fontWeight: 700,
                   }}
                 />
                 <Bar
@@ -567,18 +531,20 @@ export const FinanceStats: React.FC = () => {
           <ResponsiveContainer width="100%" height={300}>
             <BarChart
               data={courierStats}
-              margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              margin={{ top: 20, right: 20, left: 10, bottom: 5 }}
             >
-              <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
               <XAxis
                 dataKey="courierName"
-                tick={{ fontSize: 12 }}
-                tickFormatter={(v) =>
-                  v.length > 10 ? v.substring(0, 10) + "..." : v
-                }
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fill: "#64748b", fontWeight: 700 }}
+                tickFormatter={(v) => v.length > 10 ? v.substring(0, 10) + "..." : v}
               />
               <YAxis
-                tick={{ fontSize: 12 }}
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
                 tickFormatter={(v) => `S/ ${v.toLocaleString()}`}
               />
               <Tooltip
@@ -586,37 +552,22 @@ export const FinanceStats: React.FC = () => {
                   if (active && payload && payload.length) {
                     const data = payload[0].payload;
                     return (
-                      <div className="bg-card p-3 rounded-lg shadow-lg border border-border">
-                        <p className="font-bold text-foreground">
-                          {data.courierName}
-                        </p>
-                        <div className="mt-2 space-y-1 text-sm">
+                      <div className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-xs">
+                        <p className="font-bold text-slate-800">{data.courierName}</p>
+                        <div className="mt-2 space-y-1">
                           <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                              Ingresos Envío:
-                            </span>
+                            <span className="text-slate-500">Monto Recaudado:</span>
                             <span className="font-bold text-green-600">
-                              S/{" "}
-                              {data.shippingRevenue.toLocaleString("es-PE", {
-                                minimumFractionDigits: 2,
-                              })}
+                              S/ {data.shippingRevenue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                             </span>
                           </div>
                           <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                              Órdenes:
-                            </span>
-                            <span className="font-bold">
-                              {data.ordersCount}
-                            </span>
+                            <span className="text-slate-500">Órdenes:</span>
+                            <span className="font-bold text-slate-800">{data.ordersCount}</span>
                           </div>
                           <div className="flex justify-between gap-4">
-                            <span className="text-muted-foreground">
-                              Participación:
-                            </span>
-                            <span className="font-bold">
-                              {data.percentage}%
-                            </span>
+                            <span className="text-slate-500">Efectividad:</span>
+                            <span className="font-bold text-slate-800">{data.percentage}%</span>
                           </div>
                         </div>
                       </div>
@@ -629,7 +580,7 @@ export const FinanceStats: React.FC = () => {
                 dataKey="shippingRevenue"
                 fill="#10b981"
                 radius={[4, 4, 0, 0]}
-                name="Ingresos Envío"
+                name="Monto Recaudado"
               />
             </BarChart>
           </ResponsiveContainer>
@@ -643,41 +594,41 @@ export const FinanceStats: React.FC = () => {
         >
           <div className="space-y-3 max-h-[280px] overflow-y-auto">
             {courierStats.length === 0 ? (
-              <div className="text-center text-gray-400 py-8">
+              <div className="text-center text-slate-400 py-8">
                 Sin datos de courier
               </div>
             ) : (
-              courierStats.map((c) => (
-                <div
-                  key={c.courierName}
-                  className="flex items-center justify-between p-3 bg-card rounded-lg border border-border"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-green-500/10 text-green-500 rounded-lg">
-                      <Package className="h-4 w-4" />
+              courierStats.map((c, i) => {
+                const colors = ["bg-emerald-500", "bg-blue-500", "bg-amber-500", "bg-purple-500"];
+                return (
+                  <div
+                    key={c.courierName}
+                    className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`w-8 h-8 ${colors[i % colors.length]} rounded-lg flex items-center justify-center`}>
+                        <span className="text-white text-xs font-black">{c.courierName.charAt(0)}</span>
+                      </div>
+                      <div>
+                        <span className="font-semibold text-slate-700 block text-sm">
+                          {c.courierName}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {c.ordersCount} órdenes
+                        </span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="font-medium text-foreground block">
-                        {c.courierName}
+                    <div className="text-right">
+                      <span className="font-bold text-slate-900 block text-sm">
+                        S/ {c.shippingRevenue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                       </span>
-                      <span className="text-xs text-muted-foreground">
-                        {c.ordersCount} órdenes
+                      <span className="text-[10px] text-green-600 font-medium">
+                        Efectividad: {c.percentage}%
                       </span>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <span className="font-bold text-foreground block">
-                      S/{" "}
-                      {c.shippingRevenue.toLocaleString("es-PE", {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                    <span className="text-xs text-green-500">
-                      {c.percentage}%
-                    </span>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </DashboardCard>
@@ -806,6 +757,7 @@ export const FinanceStats: React.FC = () => {
         fromDate={fromDate}
         toDate={toDate}
       />
+      </div>
 
       {/* Profitability Modal Removed */}
     </div>
