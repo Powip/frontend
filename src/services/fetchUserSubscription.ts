@@ -3,7 +3,12 @@ import axios from "axios";
 export const fetchUserSubscription = async (userId: string, token: string) => {
   try {
     const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_SUBS}/subscriptions/user/${userId}`
+      `${process.env.NEXT_PUBLIC_API_SUBS}/subscriptions/user/${userId}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
     );
 
     const subscriptions = response.data;

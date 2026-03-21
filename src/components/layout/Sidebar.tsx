@@ -220,6 +220,8 @@ export function Sidebar({ className }: SidebarProps) {
                 alt="Powip Logo"
                 width={80}
                 height={40}
+                priority
+                style={{ height: "auto" }}
                 className="dark:hidden"
               />
               <Image
@@ -227,6 +229,8 @@ export function Sidebar({ className }: SidebarProps) {
                 alt="Powip Logo"
                 width={80}
                 height={40}
+                priority
+                style={{ height: "auto" }}
                 className="hidden dark:block"
               />
             </Link>
@@ -256,30 +260,41 @@ export function Sidebar({ className }: SidebarProps) {
             return (
               <div
                 key={item.name}
-                className={cn("w-full", isCollapsed && "flex flex-col items-center")}
+                className={cn("w-full mb-1", isCollapsed && "flex flex-col items-center")}
               >
+                {/* SuperAdmin section header */}
+                {!isCollapsed && item.name === "Superadmin" && (
+                  <div className="px-4 py-2 mt-4 mb-2">
+                    <p className="text-[10px] uppercase tracking-wider font-semibold text-gray-400 dark:text-gray-500">
+                      Administración
+                    </p>
+                  </div>
+                )}
+                
                 {hasChildren && !isCollapsed ? (
                   <>
                     <Button
                       variant="ghost"
                       onClick={() => toggleSubmenu(item.name)}
                       className={cn(
-                        "flex items-center justify-between h-9 w-full gap-2 cursor-pointer",
-                        isActive && "bg-gray-100 dark:bg-gray-800",
+                        "flex items-center justify-between h-10 w-full gap-2 px-3 rounded-lg transition-all duration-200",
+                        isActive 
+                          ? "bg-primary/5 text-primary font-medium" 
+                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                       )}
                     >
-                      <div className="flex items-center gap-2">
-                        <Icon className="h-4 w-4 text-primary" />
-                        <span className="text-sm">{item.name}</span>
+                      <div className="flex items-center gap-2.5">
+                        <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-gray-400")} />
+                        <span className="text-[13.5px]">{item.name}</span>
                       </div>
                       {isOpen ? (
-                        <ChevronUp className="h-3 w-3" />
+                        <ChevronUp className="h-3 w-3 opacity-50" />
                       ) : (
-                        <ChevronDown className="h-3 w-3" />
+                        <ChevronDown className="h-3 w-3 opacity-50" />
                       )}
                     </Button>
                     {isOpen && (
-                      <div className="ml-4 flex flex-col gap-1 mt-1 border-l pl-2 border-gray-100 dark:border-gray-800">
+                      <div className="ml-5 flex flex-col gap-1 mt-1 border-l-2 pl-3 border-gray-100 dark:border-gray-800">
                         {(() => {
                           let lastGroup: string | undefined = undefined;
                           return item.children?.map((child) => {
@@ -296,14 +311,19 @@ export function Sidebar({ className }: SidebarProps) {
                                   <Button
                                     variant="ghost"
                                     className={cn(
-                                      "flex items-center gap-2 h-8 w-full justify-start text-[13px] opacity-80 hover:opacity-100",
-                                      pathname === child.href && "text-primary font-medium opacity-100 bg-primary/5",
+                                      "flex items-center gap-2.5 h-9 w-full justify-start text-[13px] rounded-md transition-all",
+                                      pathname === child.href 
+                                        ? "text-primary font-semibold bg-primary/5 shadow-sm"
+                                        : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-transparent",
                                     )}
                                   >
                                     {child.icon ? (
-                                      <child.icon className="h-3.5 w-3.5" />
+                                      <child.icon className={cn("h-4 w-4", pathname === child.href ? "text-primary" : "text-gray-400")} />
                                     ) : (
-                                      <div className="w-1 h-1 rounded-full bg-primary" />
+                                      <div className={cn(
+                                        "w-1.5 h-1.5 rounded-full transition-all",
+                                        pathname === child.href ? "bg-primary scale-125" : "bg-gray-300 dark:bg-gray-600 group-hover:bg-gray-400"
+                                      )} />
                                     )}
                                     <span>{child.name}</span>
                                   </Button>
@@ -323,16 +343,19 @@ export function Sidebar({ className }: SidebarProps) {
                     <Button
                       variant="ghost"
                       className={cn(
-                        "flex items-center gap-2 h-9 cursor-pointer",
+                        "flex items-center gap-2.5 h-10 px-3 rounded-lg transition-all duration-200",
                         isCollapsed
-                          ? "justify-center w-9"
+                          ? "justify-center w-10 h-10 p-0"
                           : "justify-start w-full",
-                        isActive && "bg-gray-100 dark:bg-gray-800",
+                        isActive 
+                          ? "bg-primary text-white shadow-md shadow-primary/20 hover:bg-primary/90" 
+                          : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
+                        item.name === "Superadmin" && !isActive && "border border-primary/20 bg-primary/5 text-primary"
                       )}
                     >
-                      <Icon className="h-4 w-4 text-primary" />
+                      <Icon className={cn("h-4 w-4", isActive ? "text-white" : "text-primary")} />
                       {!isCollapsed && (
-                        <span className="text-sm">{item.name}</span>
+                        <span className="text-[13.5px] font-medium">{item.name}</span>
                       )}
                     </Button>
                   </Link>

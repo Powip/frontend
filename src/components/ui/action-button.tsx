@@ -10,6 +10,7 @@ interface ActionButtonProps {
   variant?: "default" | "outline" | "destructive" | "secondary" | "ghost";
   size?: "default" | "sm" | "lg" | "icon";
   icon?: React.ReactNode; // Ícono opcional (ej: <Plus />)
+  disabled?: boolean;
 }
 
 export default function ActionButton({
@@ -19,6 +20,7 @@ export default function ActionButton({
   variant = "default",
   size = "default",
   icon,
+  disabled = false,
 }: ActionButtonProps) {
   const [loading, setLoading] = useState(false);
 
@@ -34,8 +36,8 @@ export default function ActionButton({
   return (
     <Button
       onClick={handleClick}
-      disabled={loading}
-      variant="default"
+      disabled={loading || disabled}
+      variant={variant}
       size={size}
     >
       {loading ? (

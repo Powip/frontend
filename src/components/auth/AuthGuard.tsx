@@ -3,7 +3,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, ReactNode } from "react";
-import { getRoutePermissions, hasAnyPermission } from "@/config/permissions.config";
+import { getRoutePermissions, hasAnyPermission, isSuperadmin } from "@/config/permissions.config";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -33,7 +33,8 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const requiredPermissions = pathname ? getRoutePermissions(pathname) : [];
 
   // Verificar si el usuario tiene acceso
-  const hasAccess = requiredPermissions.length === 0 ||
+  const hasAccess = isSuperadmin(auth?.user?.email) || 
+    requiredPermissions.length === 0 ||
     hasAnyPermission(auth?.user?.permissions, requiredPermissions);
 
   useEffect(() => {

@@ -33,9 +33,36 @@ const DropdownMenuItem = ({
   />
 );
 
+const DropdownMenuLabel = ({
+  className,
+  inset,
+  ...props
+}: DropdownMenuPrimitive.DropdownMenuLabelProps & { inset?: boolean }) => (
+  <DropdownMenuPrimitive.Label
+    className={cn(
+      "px-2 py-1.5 text-sm font-semibold",
+      inset && "pl-8",
+      className
+    )}
+    {...props}
+  />
+);
+
+const DropdownMenuSeparator = ({
+  className,
+  ...props
+}: DropdownMenuPrimitive.DropdownMenuSeparatorProps) => (
+  <DropdownMenuPrimitive.Separator
+    className={cn("-mx-1 my-1 h-px bg-muted", className)}
+    {...props}
+  />
+);
+
 export {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
 };

@@ -14,7 +14,7 @@ export const isSuperadmin = (email?: string): boolean => {
 export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/dashboard": ["VIEW_DASHBOARD"],
   "/productos": ["MANAGE_PRODUCTS"],
-  "/inventario": ["MANAGE_INVENTORY"],
+  "/inventario": ["MANAGE_ALMACEN"],
   "/ventas": ["VIEW_SALES"],
   "/registrar-venta": ["CREATE_SALE"],
   "/operaciones": ["MANAGE_OPERATIONS"],
@@ -29,7 +29,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/facturacion": ["VIEW_FINANCES"],
   // Métricas routes
   "/metricas/ventas": ["VIEW_SALES"],
-  "/metricas/inventario": ["MANAGE_INVENTORY"],
+  "/metricas/inventario": ["MANAGE_ALMACEN"],
   "/metricas/operaciones": ["MANAGE_OPERATIONS"],
   "/metricas/seguimientos": ["VIEW_TRACKING"],
   "/metricas/atencion-cliente": ["VIEW_CUSTOMER_SERVICE"],
@@ -43,7 +43,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
 export const SIDEBAR_ITEMS_PERMISSIONS: Record<string, string> = {
   Dashboard: "VIEW_DASHBOARD",
   "Crear Productos": "MANAGE_PRODUCTS",
-  Inventario: "MANAGE_INVENTORY",
+  Almacén: "MANAGE_ALMACEN",
   Ventas: "VIEW_SALES",
   "Registrar venta": "CREATE_SALE",
   Operaciones: "MANAGE_OPERATIONS",

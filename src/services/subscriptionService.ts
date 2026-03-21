@@ -17,6 +17,7 @@ export interface SubscriptionDetail {
   endDate: string;
   status: string;
   autoRenewal: boolean;
+  initPoint?: string;
 }
 
 export const getExpiringSubscriptionsAlert = async (
@@ -100,7 +101,7 @@ export const cancelSubscription = async (
 
 export const createSubscription = async (
   accessToken: string,
-  data: { userId: string; planId: string },
+  data: { userId: string; planId: string; payerEmail: string; status?: string },
 ): Promise<SubscriptionDetail> => {
   const response = await axios.post(`${API_SUBS}/subscriptions`, data, {
     headers: {
