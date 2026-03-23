@@ -16,7 +16,8 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
-import { ChevronDown } from "lucide-react";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { format, subDays, differenceInDays } from "date-fns";
 
 /* ─────────────────── Types ─────────────────── */
 
@@ -38,6 +39,7 @@ interface WeeklyChannelData {
 interface TopProduct {
   name: string;
   quantity: number;
+  revenue: number;
   color: string;
 }
 
@@ -65,10 +67,9 @@ export default function MetricasVentasPage() {
   const { selectedStoreId } = useAuth();
   const [loading, setLoading] = useState(true);
 
-  // Month selector
-  const now = new Date();
-  const [selectedMonth, setSelectedMonth] = useState(now.getMonth()); // 0-based
-  const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+  // Date range
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
 
   // Data
   const [kpi, setKpi] = useState<KpiData>({
@@ -83,14 +84,15 @@ export default function MetricasVentasPage() {
   const [weeklyData, setWeeklyData] = useState<WeeklyChannelData[]>([]);
   const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
 
-  const monthLabel = useMemo(() => {
-    const d = new Date(selectedYear, selectedMonth);
-    return d.toLocaleDateString("es-PE", { month: "short", year: "numeric" });
-  }, [selectedMonth, selectedYear]);
+  // Handle period change
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
 
   // Fetch sales data
   useEffect(() => {
-    if (!selectedStoreId) return;
+    if (!selectedStoreId || !fromDate || !toDate) return;
 
     const fetchData = async () => {
       setLoading(true);
@@ -100,39 +102,48 @@ export default function MetricasVentasPage() {
         );
         const orders = res.data || [];
 
-        // Filter orders for selected month
-        const monthOrders = orders.filter((o: any) => {
+        const start = new Date(fromDate);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+
+        // Filter orders for selected period
+        const periodOrders = orders.filter((o: any) => {
           const d = new Date(o.created_at);
-          return d.getMonth() === selectedMonth && d.getFullYear() === selectedYear;
+          return d >= start && d <= end;
         });
 
-        // Previous month orders for comparison
-        const prevMonth = selectedMonth === 0 ? 11 : selectedMonth - 1;
-        const prevYear = selectedMonth === 0 ? selectedYear - 1 : selectedYear;
-        const prevMonthOrders = orders.filter((o: any) => {
+        // Previous period for comparison
+        const diffDays = differenceInDays(end, start) + 1;
+        const prevEnd = subDays(start, 1);
+        const prevStart = subDays(prevEnd, diffDays - 1);
+        prevEnd.setHours(23, 59, 59, 999);
+        prevStart.setHours(0, 0, 0, 0);
+
+        const prevPeriodOrders = orders.filter((o: any) => {
           const d = new Date(o.created_at);
-          return d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+          return d >= prevStart && d <= prevEnd;
         });
 
         // KPIs
-        const ventasMes = monthOrders.reduce(
+        const ventasMes = periodOrders.reduce(
           (sum: number, o: any) => sum + Number(o.grandTotal || 0),
           0
         );
-        const ventasMesAnterior = prevMonthOrders.reduce(
+        const ventasMesAnterior = prevPeriodOrders.reduce(
           (sum: number, o: any) => sum + Number(o.grandTotal || 0),
           0
         );
-        const totalOrdenes = monthOrders.length;
+        const totalOrdenes = periodOrders.length;
         const ticketPromedio = totalOrdenes > 0 ? ventasMes / totalOrdenes : 0;
-        const prevOrdenes = prevMonthOrders.length;
+        const prevOrdenes = prevPeriodOrders.length;
         const ticketAnterior = prevOrdenes > 0 ? ventasMesAnterior / prevOrdenes : 0;
 
         const crecimientoMes = ventasMesAnterior === 0 
           ? (ventasMes > 0 ? 100 : 0) 
           : Math.round(((ventasMes - ventasMesAnterior) / ventasMesAnterior) * 100);
 
-        const anuladas = monthOrders.filter((o: any) => o.status === "ANULADO").length;
+        const anuladas = periodOrders.filter((o: any) => o.status === "ANULADO").length;
         const tasaAnulacion = totalOrdenes > 0 ? Math.round((anuladas / totalOrdenes) * 100) : 0;
 
         setKpi({
@@ -145,12 +156,12 @@ export default function MetricasVentasPage() {
           ticketAnterior,
         });
 
-        // Weekly channel breakdown (4 weeks of the month)
+        // Weekly channel breakdown
         const channelMap: Record<string, number[]> = {};
-        monthOrders.forEach((o: any) => {
+        periodOrders.forEach((o: any) => {
           const d = new Date(o.created_at);
-          const dayOfMonth = d.getDate();
-          const weekIdx = Math.min(Math.floor((dayOfMonth - 1) / 7), 3);
+          const dayDiff = differenceInDays(d, start);
+          const weekIdx = Math.min(Math.floor(dayDiff / 7), 3);
           const channel = (o.salesChannel || "web").toLowerCase();
           if (!channelMap[channel]) channelMap[channel] = [0, 0, 0, 0];
           channelMap[channel][weekIdx] += Number(o.grandTotal || 0);
@@ -166,20 +177,23 @@ export default function MetricasVentasPage() {
         setWeeklyData(weeks);
 
         // Top products
-        const productCount: Record<string, number> = {};
-        monthOrders.forEach((o: any) => {
+        const productStats: Record<string, { quantity: number; revenue: number }> = {};
+        periodOrders.forEach((o: any) => {
           (o.items || []).forEach((item: any) => {
             const name = item.productName || item.name || "Producto";
-            productCount[name] = (productCount[name] || 0) + Number(item.quantity || 1);
+            if (!productStats[name]) productStats[name] = { quantity: 0, revenue: 0 };
+            productStats[name].quantity += Number(item.quantity || 1);
+            productStats[name].revenue += Number(item.subtotal || item.price || 0);
           });
         });
 
-        const sorted = Object.entries(productCount)
-          .sort(([, a], [, b]) => b - a)
+        const sorted = Object.entries(productStats)
+          .sort(([, a], [, b]) => b.quantity - a.quantity)
           .slice(0, 5)
-          .map(([name, quantity], idx) => ({
+          .map(([name, stats], idx) => ({
             name: name.length > 25 ? name.substring(0, 22) + "..." : name,
-            quantity,
+            quantity: stats.quantity,
+            revenue: stats.revenue,
             color: TOP_PRODUCT_COLORS[idx % TOP_PRODUCT_COLORS.length],
           }));
         setTopProducts(sorted);
@@ -191,7 +205,7 @@ export default function MetricasVentasPage() {
     };
 
     fetchData();
-  }, [selectedStoreId, selectedMonth, selectedYear]);
+  }, [selectedStoreId, fromDate, toDate]);
 
   // Percentage change helper
   const pctChange = (current: number, previous: number) => {
@@ -209,57 +223,28 @@ export default function MetricasVentasPage() {
     return keys;
   }, [weeklyData]);
 
-  // Month navigation
-  const handleMonthChange = (direction: number) => {
-    let newMonth = selectedMonth + direction;
-    let newYear = selectedYear;
-    if (newMonth < 0) {
-      newMonth = 11;
-      newYear -= 1;
-    } else if (newMonth > 11) {
-      newMonth = 0;
-      newYear += 1;
-    }
-    setSelectedMonth(newMonth);
-    setSelectedYear(newYear);
-  };
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50/50 min-h-screen">
+    <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight">Ventas</h1>
-          <p className="text-xs text-slate-400 font-semibold tracking-[0.15em] uppercase mt-1">
+          <h1 className="text-2xl font-black text-foreground tracking-tight">Ventas</h1>
+          <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
             Registro y análisis de ventas por canal y producto
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleMonthChange(-1)}
-            className="px-2 py-1 text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            ‹
-          </button>
-          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-700">
-            <span className="capitalize">{monthLabel}</span>
-            <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
-          </div>
-          <button
-            onClick={() => handleMonthChange(1)}
-            className="px-2 py-1 text-slate-400 hover:text-slate-600 transition-colors"
-          >
-            ›
-          </button>
+          <PeriodSelector onPeriodChange={handlePeriodChange} />
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Ventas del mes */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Ventas del mes
             </p>
             {ventasPct !== 0 && (
@@ -275,7 +260,7 @@ export default function MetricasVentasPage() {
               </span>
             )}
           </div>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             S/ {kpi.ventasMes.toLocaleString("es-PE", { minimumFractionDigits: 0 })}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -284,9 +269,9 @@ export default function MetricasVentasPage() {
         </div>
 
         {/* Ticket promedio */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Ticket promedio
             </p>
             {ticketPct !== 0 && (
@@ -302,38 +287,38 @@ export default function MetricasVentasPage() {
               </span>
             )}
           </div>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             S/ {Math.round(kpi.ticketPromedio).toLocaleString("es-PE")}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">Por orden</p>
         </div>
 
         {/* Crecimiento Mensual */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Crecimiento vs mes ant.
           </p>
           <p className={`text-2xl font-black ${kpi.crecimientoMes >= 0 ? "text-emerald-500" : "text-red-500"}`}>
             {kpi.crecimientoMes > 0 ? "+" : ""}{kpi.crecimientoMes}%
           </p>
-          <p className="text-xs text-slate-400 font-semibold mt-0.5">Ingresos vs {kpi.ventasMesAnterior === 0 ? "0" : `S/ ${kpi.ventasMesAnterior.toLocaleString("es-PE", { minimumFractionDigits: 0 })}`}</p>
+          <p className="text-xs text-muted-foreground font-semibold mt-0.5">Ingresos vs {kpi.ventasMesAnterior === 0 ? "0" : `S/ ${kpi.ventasMesAnterior.toLocaleString("es-PE", { minimumFractionDigits: 0 })}`}</p>
         </div>
 
         {/* Tasa Anulación */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Tasa de anulación
           </p>
           <p className="text-2xl font-black text-amber-500">{kpi.tasaAnulacion}%</p>
-          <p className="text-xs text-slate-400 font-semibold mt-0.5">Meta: &lt;10%</p>
+          <p className="text-xs text-muted-foreground font-semibold mt-0.5">Meta: &lt;10%</p>
         </div>
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Ventas por canal — tendencia semanal */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Ventas por canal — tendencia semanal
           </h3>
           {loading ? (
@@ -397,14 +382,14 @@ export default function MetricasVentasPage() {
         </div>
 
         {/* Top productos del mes */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">Top productos del mes</h3>
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">Top productos del mes</h3>
           {loading ? (
             <div className="h-[280px] flex items-center justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : topProducts.length === 0 ? (
-            <div className="h-[280px] flex items-center justify-center text-slate-400 text-sm">
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
               Sin datos para el periodo
             </div>
           ) : (
@@ -430,14 +415,40 @@ export default function MetricasVentasPage() {
                   width={120}
                 />
                 <Tooltip
-                  formatter={(value: any) => [`${value} unidades`, "Cantidad"]}
-                  contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
-                    borderRadius: "12px",
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                    fontSize: "11px",
-                    fontWeight: 600,
+                  formatter={(value: any, name: string, props: any) => {
+                    if (name === "quantity") {
+                      return [`${value} unidades`, "Cantidad"];
+                    }
+                    return [value, name];
+                  }}
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      const data = payload[0].payload;
+                      return (
+                        <div className="bg-card border border-border rounded-xl p-3 shadow-lg text-[11px] font-semibold">
+                          <p className="text-foreground mb-1">{data.name}</p>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center justify-between gap-4">
+                              <span className="text-muted-foreground font-normal">Unidades:</span>
+                              <span className="text-foreground">{data.quantity}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                              <span className="text-muted-foreground font-normal">Monto:</span>
+                              <span className="text-foreground">S/ {Number(data.revenue).toLocaleString("es-PE")}</span>
+                            </div>
+                            <div className="flex items-center justify-between gap-4">
+                              <span className="text-muted-foreground font-normal">Porcentaje:</span>
+                              <span className="text-emerald-500">
+                                {kpi.ventasMes > 0 
+                                  ? ((data.revenue / kpi.ventasMes) * 100).toFixed(1) 
+                                  : 0}%
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    }
+                    return null;
                   }}
                 />
                 <Bar dataKey="quantity" radius={[0, 6, 6, 0]} barSize={28}>

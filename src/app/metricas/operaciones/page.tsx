@@ -20,7 +20,8 @@ import {
   Area,
   AreaChart,
 } from "recharts";
-import { ChevronDown } from "lucide-react";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { format, differenceInDays } from "date-fns";
 
 /* ─────────────────── Constants ─────────────────── */
 
@@ -65,25 +66,23 @@ export default function MetricasOperacionesPage() {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<any[]>([]);
 
-  // Date range (14 days)
-  const now = new Date();
-  const dateFrom = useMemo(() => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 13);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
-  const dateTo = useMemo(() => {
-    const d = new Date(now);
-    d.setHours(23, 59, 59, 999);
-    return d;
-  }, []);
+  // Date range
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
 
-  const dateLabel = useMemo(() => {
-    const fmt = (d: Date) =>
-      d.toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
-    return `Hoy — ${fmt(dateFrom)}`;
-  }, [dateFrom]);
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const periodDates = useMemo(() => {
+    if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
+    const from = new Date(fromDate);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setHours(23, 59, 59, 999);
+    return { from, to };
+  }, [fromDate, toDate]);
 
   // Fetch orders
   useEffect(() => {
@@ -109,9 +108,9 @@ export default function MetricasOperacionesPage() {
     () =>
       orders.filter((o) => {
         const d = new Date(o.created_at);
-        return d >= dateFrom && d <= dateTo;
+        return d >= periodDates.from && d <= periodDates.to;
       }),
-    [orders, dateFrom, dateTo]
+    [orders, periodDates]
   );
 
   // ── KPIs ──
@@ -127,6 +126,24 @@ export default function MetricasOperacionesPage() {
 
   const enColaPct = totalActive > 0 ? Math.round((enCola / totalActive) * 100) : 0;
 
+  // Delayed orders (> 20 days in EN_ENVIO)
+  const pedidosRetrasados = useMemo(() => {
+    const twentyDaysAgo = new Date();
+    twentyDaysAgo.setDate(twentyDaysAgo.getDate() - 20);
+    
+    return orders.filter((o) => {
+      if (o.status !== "EN_ENVIO") return false;
+      
+      // Find the last log entry where it entered EN_ENVIO
+      const enEnvioLog = o.logs
+        ?.filter((l: any) => l.data?.status === "EN_ENVIO")
+        .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+        
+      const entryDate = enEnvioLog ? new Date(enEnvioLog.timestamp) : new Date(o.updated_at || o.created_at);
+      return entryDate < twentyDaysAgo;
+    }).length;
+  }, [orders]);
+
   // Average cycle time (days from created to ENTREGADO)
   const tiempoCiclo = useMemo(() => {
     const delivered = orders.filter(
@@ -135,21 +152,15 @@ export default function MetricasOperacionesPage() {
     if (delivered.length === 0) return 0;
     const totalDays = delivered.reduce((sum: number, o: any) => {
       const created = new Date(o.created_at);
-      const updated = new Date(o.updated_at || o.created_at);
-      return sum + Math.max(1, (updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
+      // Find the first log entry for ENTREGADO or PAGADO
+      const deliveredLog = o.logs
+        ?.filter((l: any) => ["ENTREGADO", "PAGADO"].includes(l.data?.status))
+        .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())[0];
+        
+      const finished = deliveredLog ? new Date(deliveredLog.timestamp) : new Date(o.updated_at || o.created_at);
+      return sum + Math.max(0, (finished.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
     }, 0);
     return Number((totalDays / delivered.length).toFixed(1));
-  }, [orders]);
-
-  // Delayed orders (older than 5 days and not delivered)
-  const pedidosRetrasados = useMemo(() => {
-    const fiveDaysAgo = new Date();
-    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
-    return orders.filter(
-      (o) =>
-        !["ENTREGADO", "PAGADO", "ANULADO"].includes(o.status) &&
-        new Date(o.created_at) < fiveDaysAgo
-    ).length;
   }, [orders]);
 
   // Incident rate (cancelled / total)
@@ -187,33 +198,50 @@ export default function MetricasOperacionesPage() {
 
   // ── KPIs de Tiempo ──
   const timeKpis = useMemo(() => {
-    const calculateAvgHours = (fromStatus: string, toStatus: string) => {
-      // Simplified: calculate based on order age
-      const relevant = orders.filter(
-        (o) => o.status === toStatus || o.status === fromStatus
-      );
-      if (relevant.length === 0) return 0;
-      const avg = relevant.reduce((sum: number, o: any) => {
-        const created = new Date(o.created_at);
-        const updated = new Date(o.updated_at || o.created_at);
-        return sum + (updated.getTime() - created.getTime()) / (1000 * 60 * 60);
-      }, 0);
-      return Number((avg / relevant.length).toFixed(0));
+    const getDurationHours = (order: any, startStatus: string | null, endStatus: string) => {
+      const logs = order.logs || [];
+      const startTime = startStatus 
+        ? new Date(logs.find((l: any) => l.data?.status === startStatus)?.timestamp || order.created_at).getTime()
+        : new Date(order.created_at).getTime();
+        
+      // Special case for "Guía" which can be EN_ENVIO or CON_GUIA
+      const endLog = logs.find((l: any) => {
+        if (endStatus === "CON_GUIA") {
+          return l.data?.status === "CON_GUIA" || l.data?.status === "EN_ENVIO";
+        }
+        return l.data?.status === endStatus;
+      });
+      
+      if (!endLog && order.status !== endStatus) return null;
+      
+      const endTime = endLog ? new Date(endLog.timestamp).getTime() : new Date(order.updated_at || order.created_at).getTime();
+      return Math.max(0, (endTime - startTime) / (1000 * 60 * 60));
+    };
+
+    const calculateAvgHours = (startStatus: string | null, endStatus: string) => {
+      const durations = orders.map(o => getDurationHours(o, startStatus, endStatus)).filter(d => d !== null) as number[];
+      if (durations.length === 0) return 0;
+      return Number((durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(0));
     };
 
     return [
-      { name: "Pendiente→Guía", hours: calculateAvgHours("PENDIENTE", "CON_GUIA"), color: "#6366f1" },
+      { name: "Pendiente→Guía", hours: calculateAvgHours(null, "CON_GUIA"), color: "#6366f1" },
       { name: "Tiempo en Llamado", hours: calculateAvgHours("LLAMADO", "EN_ENVIO"), color: "#3b82f6" },
-      { name: "Ciclo total", hours: calculateAvgHours("PENDIENTE", "ENTREGADO"), color: "#10b981" },
-      { name: "Ant Llamado", hours: calculateAvgHours("PREPARADO", "LLAMADO"), color: "#f59e0b" },
+      { name: "Ciclo total", hours: calculateAvgHours(null, "ENTREGADO"), color: "#10b981" },
+      { name: "Ant Llamado", hours: calculateAvgHours(null, "LLAMADO"), color: "#f59e0b" },
     ];
   }, [orders]);
 
-  // ── Pedidos procesados últimos 14 días ──
+  // ── Pedidos procesados en el tiempo ──
   const dailyProcessed = useMemo(() => {
     const days: { date: string; procesados: number; retrasados: number }[] = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date();
+    const diff = differenceInDays(periodDates.to, periodDates.from);
+    
+    const twentyDaysAgo = new Date();
+    twentyDaysAgo.setDate(twentyDaysAgo.getDate() - 20);
+
+    for (let i = diff; i >= 0; i--) {
+      const d = new Date(periodDates.to);
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split("T")[0];
       const dayLabel = d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
@@ -223,22 +251,25 @@ export default function MetricasOperacionesPage() {
         return od === dateStr;
       });
 
+      // Only those with a guide number are considered "procesados"
       const procesados = dayOrders.filter(
-        (o) => o.status !== "PENDIENTE" && o.status !== "ANULADO"
+        (o) => o.guideNumber && o.status !== "ANULADO"
       ).length;
 
-      const fiveDaysBefore = new Date(d);
-      fiveDaysBefore.setDate(fiveDaysBefore.getDate() - 5);
-      const retrasados = dayOrders.filter(
-        (o) =>
-          !["ENTREGADO", "PAGADO", "ANULADO"].includes(o.status) &&
-          new Date(o.created_at) < fiveDaysBefore
-      ).length;
+      // Delayed logic: > 20 days in EN_ENVIO
+      const retrasados = dayOrders.filter((o) => {
+        if (o.status !== "EN_ENVIO") return false;
+        const enEnvioLog = o.logs
+          ?.filter((l: any) => l.data?.status === "EN_ENVIO")
+          .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0];
+        const entryDate = enEnvioLog ? new Date(enEnvioLog.timestamp) : new Date(o.updated_at || o.created_at);
+        return entryDate < twentyDaysAgo;
+      }).length;
 
       days.push({ date: dayLabel, procesados, retrasados });
     }
     return days;
-  }, [orders]);
+  }, [orders, periodDates]);
 
   // ── Cancelados por motivo ──
   const cancelReasons = useMemo(() => {
@@ -246,7 +277,8 @@ export default function MetricasOperacionesPage() {
     orders
       .filter((o) => o.status === "ANULADO")
       .forEach((o) => {
-        const reason = o.cancellationReason?.reason || o.cancellationReason || "Sin motivo";
+        // Use notes for specific reason if available
+        const reason = o.notes || o.cancellationReason?.reason || o.cancellationReason || "Sin motivo";
         const label = typeof reason === "string" ? reason : "Sin motivo";
         reasons[label] = (reasons[label] || 0) + 1;
       });
@@ -254,7 +286,7 @@ export default function MetricasOperacionesPage() {
     return Object.entries(reasons)
       .sort(([, a], [, b]) => b - a)
       .map(([name, value], idx) => ({
-        name: name.length > 18 ? name.substring(0, 15) + "..." : name,
+        name: name.length > 25 ? name.substring(0, 22) + "..." : name,
         value,
         color: CANCEL_COLORS[idx % CANCEL_COLORS.length],
       }));
@@ -286,28 +318,27 @@ export default function MetricasOperacionesPage() {
   }, [periodOrders]);
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50/50 min-h-screen">
+    <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-2xl font-black text-foreground tracking-tight">
             Operaciones
           </h1>
-          <p className="text-xs text-slate-400 font-semibold tracking-[0.15em] uppercase mt-1">
+          <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
             Ciclo de vida de cada pedido — del ingreso a la entrega
           </p>
         </div>
-        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-700">
-          <span>{dateLabel}</span>
-          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+        <div className="flex items-center gap-2">
+          <PeriodSelector onPeriodChange={handlePeriodChange} />
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* En Cola */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             En Cola (sin procesar)
           </p>
           <p className="text-2xl font-black text-amber-500">
@@ -319,11 +350,11 @@ export default function MetricasOperacionesPage() {
         </div>
 
         {/* Tiempo Ciclo */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Tiempo Ciclo Promedio
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${tiempoCiclo}d`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -332,24 +363,24 @@ export default function MetricasOperacionesPage() {
         </div>
 
         {/* Pedidos Retrasados */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-            Pedidos Retrasados
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
+            Pedidos Retrasados por Recoger
           </p>
           <p className="text-2xl font-black text-amber-500">
             {loading ? "—" : pedidosRetrasados}
           </p>
           <p className="text-xs text-amber-500 font-semibold mt-0.5">
-            Fecha estimada vencida
+            Diferencia &gt; 20 días en envío
           </p>
         </div>
 
         {/* Tasa de Incidencia */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Tasa de Incidencia
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${tasaIncidencia}%`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -361,8 +392,8 @@ export default function MetricasOperacionesPage() {
       {/* Row 1: Flujo por Estado + KPIs de Tiempo */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Flujo por Estado */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Flujo por Estado (pedidos activos)
           </h3>
           {loading ? (
@@ -408,8 +439,8 @@ export default function MetricasOperacionesPage() {
         </div>
 
         {/* KPIs de Tiempo */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             KPIs de Tiempo (horas/días)
           </h3>
           {loading ? (
@@ -459,8 +490,8 @@ export default function MetricasOperacionesPage() {
       </div>
 
       {/* Row 2: Pedidos procesados últimos 14 días */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-700 mb-4">
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-muted-foreground mb-4">
           Pedidos procesados — últimos 14 días
         </h3>
         {loading ? (
@@ -530,8 +561,8 @@ export default function MetricasOperacionesPage() {
       {/* Row 3: Cancelados + Reagendados */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Cancelados por motivo */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Cancelados — motivo
           </h3>
           {loading ? (
@@ -539,7 +570,7 @@ export default function MetricasOperacionesPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : cancelReasons.length === 0 ? (
-            <div className="h-[280px] flex items-center justify-center text-slate-400 text-sm">
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
               Sin cancelaciones en el periodo
             </div>
           ) : (
@@ -583,7 +614,7 @@ export default function MetricasOperacionesPage() {
                     <span className="text-xs text-slate-600 font-medium truncate">
                       {r.name}
                     </span>
-                    <span className="text-xs text-slate-400 font-semibold ml-auto">
+                    <span className="text-xs text-muted-foreground font-semibold ml-auto">
                       {r.value}
                     </span>
                   </div>
@@ -594,8 +625,8 @@ export default function MetricasOperacionesPage() {
         </div>
 
         {/* Reagendados vs resueltos */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Reagendados vs resueltos
           </h3>
           {loading ? (

@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+  useCallback,
+} from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { isSuperadmin } from "@/config/permissions.config";
 import { useRouter } from "next/navigation";
@@ -17,6 +21,13 @@ import {
   X,
   Info,
   ExternalLink,
+  RefreshCw,
+  Check,
+  Plus,
+  Edit,
+  User,
+  BarChart3,
+  AlertOctagon,
 } from "lucide-react";
 import {
   Card,
@@ -42,7 +53,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@/components/ui/dialog";
+}
+from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -52,22 +64,45 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SellerStats } from "@/components/dashboard/seller-stats";
+import { useLeads } from "@/hooks/useLeads";
+import { CrmPipelineView } from "@/components/superadmin/CrmPipelineView";
+import { CompaniesView } from "@/components/superadmin/CompaniesView";
 
-import { getAllUsers } from "@/services/userService";
-import { getAllCompanies } from "@/services/companyService";
+import { SaasMetrics } from "@/components/superadmin/SaasMetrics";
+import { ChurnAlertsTable } from "@/components/superadmin/ChurnAlertsTable";
+import { ChurnRiskView } from "@/components/superadmin/ChurnRiskView";
+import { ConversionFunnel } from "@/components/superadmin/ConversionFunnel";
+import { UsersView } from "@/components/superadmin/UsersView";
+import { InventoryView } from "@/components/superadmin/InventoryView";
+import { OverviewView } from "@/components/superadmin/OverviewView";
+import { useSaasMetrics, useChurnAlerts } from "@/hooks/useSaasMetrics";
+import { useConversionFunnel } from "@/hooks/useConversionFunnel";
+import { Pagination } from "@/components/ui/pagination";
+
+
 import {
   getProductSummary,
   getOutOfStockSummary,
   getOutOfStockDetails,
+  getCompanyProductCount,
   OutOfStockItem,
 } from "@/services/productService";
 import {
   getGlobalSalesSummary,
   getGlobalBilling,
+  getCompanySalesSummary,
+  getCompanyBilling,
+  BillingStats,
 } from "@/services/salesService";
 import {
   getExpiringSubscriptionsAlert,
   getSubscriptionByUserId,
+  createSubscription,
+  updateSubscription,
+  cancelSubscription,
+  getAllPlans,
+  refreshUserSubscription,
+  Plan,
   SubscriptionDetail,
 } from "@/services/subscriptionService";
 import {
@@ -75,30 +110,29 @@ import {
   getRoles,
   getUsersByCompany,
   createPlatformUser,
+  updateUser,
+  getAllUsers,
   Role,
 } from "@/services/userService";
-import { getCompanyProductCount } from "@/services/productService";
-import {
-  getCompanySalesSummary,
-  getCompanyBilling,
-  BillingStats,
-} from "@/services/salesService";
+
 import {
   Company,
   createCompany as createCompanyService,
+  getAllCompanies,
 } from "@/services/companyService";
+import { decodeToken } from "@/lib/jwt";
 import StatsChart from "@/components/superadmin/StatsChart";
-import {
-  updateSubscription,
-  cancelSubscription,
-  createSubscription,
-  getAllPlans,
-  Plan,
-} from "@/services/subscriptionService";
+
 import { toast } from "sonner";
 import ActionButton from "@/components/ui/action-button";
-import { Plus } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Label } from "@/components/ui/label";
+import { EmptyState } from "@/components/ui/empty-state";
 
 export default function SuperadminPage() {
   const { auth, loading } = useAuth();
@@ -129,15 +163,24 @@ export default function SuperadminPage() {
   // Company detail modal states
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
-  const [period, setPeriod] = useState("all");
+  const [period, setPeriod] = useState<"all" | "weekly" | "monthly" | "yearly">("all");
+
+  const ITEMS_PER_PAGE = 10;
+  const [companiesPage, setCompaniesPage] = useState(1);
+
   const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>(
     {},
   );
 
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
-  const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
+
+
+  const { data: leads = [], isLoading: isLoadingLeads } = useLeads(auth?.accessToken);
+  const { data: saasMetrics, isLoading: isLoadingMetrics } = useSaasMetrics(auth?.accessToken);
+  const { data: churnAlerts = [], refetch: refetchAlerts } = useChurnAlerts(auth?.accessToken);
+  const { data: funnelData, isLoading: isLoadingFunnel } = useConversionFunnel(auth?.accessToken);
 
   useEffect(() => {
     if (auth?.accessToken) {
@@ -145,34 +188,123 @@ export default function SuperadminPage() {
       getRoles(auth.accessToken).then(setRoles).catch(console.error);
     }
   }, [auth]);
+  const calculateDates = useCallback(() => {
+    const to = new Date();
+    let from = new Date();
+
+    if (period === "all") {
+      setDateRange({});
+      return;
+    }
+
+    switch (period) {
+      case "weekly":
+        from.setDate(to.getDate() - 7);
+        break;
+      case "monthly":
+        from.setMonth(to.getMonth() - 1);
+        break;
+      case "yearly":
+        from.setFullYear(to.getFullYear() - 1);
+        break;
+    }
+
+    setDateRange({
+      from: from.toISOString().split("T")[0],
+      to: to.toISOString().split("T")[0],
+    });
+  }, [period]);
 
   useEffect(() => {
-    const calculateDates = () => {
-      const now = new Date();
-      const today = now.toISOString().split("T")[0];
-      let from: string | undefined;
-
-      switch (period) {
-        case "weekly":
-          const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-          from = lastWeek.toISOString().split("T")[0];
-          break;
-        case "monthly":
-          const lastMonth = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-          from = lastMonth.toISOString().split("T")[0];
-          break;
-        case "yearly":
-          const lastYear = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000);
-          from = lastYear.toISOString().split("T")[0];
-          break;
-        default:
-          from = undefined;
-      }
-      setDateRange({ from, to: from ? today : undefined });
-    };
-
     calculateDates();
-  }, [period]);
+  }, [calculateDates]);
+
+  const refreshData = useCallback(async () => {
+    if (!auth?.accessToken) return;
+    try {
+      const token = auth.accessToken;
+      const [
+        users,
+        allCompanies,
+        products,
+        outOfStock,
+        sales,
+        outOfStockList,
+        expiringAlert,
+        globalBillingData,
+      ] = await Promise.all([
+        getAllUsers(token),
+        getAllCompanies(token),
+        getProductSummary(token),
+        getOutOfStockSummary(token).catch(() => ({ count: 0 })),
+        getGlobalSalesSummary(token, dateRange.from, dateRange.to).catch(
+          () => ({
+            totalSales: 0,
+            orderCount: 0,
+          }),
+        ),
+        getOutOfStockDetails(token).catch(() => []),
+        getExpiringSubscriptionsAlert(token).catch(() => []),
+        getGlobalBilling(token).catch(() => []),
+      ]);
+
+      setMetrics({
+        totalCompanies: allCompanies.length,
+        totalUsers: users.length,
+        monthlyRevenue: sales.totalSales,
+        totalProducts: products.total,
+        outOfStockCount: outOfStock.count,
+        totalSales: sales.totalSales,
+        orderCount: sales.orderCount,
+      });
+
+      setAllUsers(users);
+      setGlobalBilling(
+        globalBillingData.map((b: any) => ({
+          ...b,
+          "2025": b.currentYear,
+          "2024": b.previousYear,
+        })),
+      );
+      setOutOfStockItems(outOfStockList);
+      setExpiringSubscriptions(expiringAlert);
+
+      const enrichedCompanies = await Promise.all(
+        allCompanies.map(async (company) => {
+          try {
+            const subs = await getSubscriptionByUserId(
+              token,
+              company.userId,
+            );
+            const activeSub =
+              subs.find(
+                (s) =>
+                  s.status === "ACTIVE" || s.status === "PENDING_PAYMENT",
+              ) || subs[0];
+            return {
+              ...company,
+              plan: activeSub?.plan?.name || "N/A",
+              price: activeSub?.plan?.price || 0,
+              expiry: activeSub?.endDate || "N/A",
+              status: activeSub?.status || "ACTIVE",
+            };
+          } catch {
+            return {
+              ...company,
+              plan: "N/A",
+              price: 0,
+              expiry: "N/A",
+              status: "ACTIVE",
+            };
+          }
+        }),
+      );
+
+      setCompanies(enrichedCompanies);
+    } catch (error) {
+      console.error("Error refreshing superadmin data:", error);
+    }
+  }, [auth?.accessToken, dateRange.from, dateRange.to]);
 
   useEffect(() => {
     setMounted(true);
@@ -184,100 +316,9 @@ export default function SuperadminPage() {
         router.push("/");
         return;
       }
-
-      const fetchData = async () => {
-        try {
-          const token = auth.accessToken;
-          const [
-            users,
-            allCompanies,
-            products,
-            outOfStock,
-            sales,
-            outOfStockList,
-            expiringAlert,
-            globalBillingData,
-          ] = await Promise.all([
-            getAllUsers(token),
-            getAllCompanies(token),
-            getProductSummary(token),
-            getOutOfStockSummary(token).catch(() => ({ count: 0 })),
-            getGlobalSalesSummary(token, dateRange.from, dateRange.to).catch(
-              () => ({
-                totalSales: 0,
-                orderCount: 0,
-              }),
-            ),
-            getOutOfStockDetails(token).catch(() => []),
-            getExpiringSubscriptionsAlert(token).catch(() => []),
-            getGlobalBilling(token).catch(() => []),
-          ]);
-
-          setMetrics({
-            totalCompanies: allCompanies.length,
-            totalUsers: users.length,
-            monthlyRevenue: sales.totalSales,
-            totalProducts: products.total,
-            outOfStockCount: outOfStock.count,
-            totalSales: sales.totalSales,
-            orderCount: sales.orderCount,
-          });
-
-          setAllUsers(users);
-          setGlobalBilling(
-            globalBillingData.map((b: any) => ({
-              ...b,
-              "2025": b.currentYear,
-              "2024": b.previousYear,
-            })),
-          );
-          setOutOfStockItems(outOfStockList);
-          setExpiringSubscriptions(expiringAlert);
-
-          // Enrich companies with subscription info
-          // Fetch subscription for each company's root user
-          const enrichedCompanies = await Promise.all(
-            allCompanies.map(async (company) => {
-              // In a real scenario, we might want to fetch all subs once and map them
-              // but here we can try to find the specific sub for the user_id
-              try {
-                const subs = await getSubscriptionByUserId(
-                  token,
-                  company.userId,
-                );
-                const activeSub =
-                  subs.find(
-                    (s) =>
-                      s.status === "ACTIVE" || s.status === "PENDING_PAYMENT",
-                  ) || subs[0];
-                return {
-                  ...company,
-                  plan: activeSub?.plan?.name || "N/A",
-                  price: activeSub?.plan?.price || 0,
-                  expiry: activeSub?.endDate || "N/A",
-                  status: activeSub?.status || "ACTIVE",
-                };
-              } catch {
-                return {
-                  ...company,
-                  plan: "N/A",
-                  price: 0,
-                  expiry: "N/A",
-                  status: "ACTIVE",
-                };
-              }
-            }),
-          );
-
-          setCompanies(enrichedCompanies);
-        } catch (error) {
-          console.error("Error fetching superadmin data:", error);
-        }
-      };
-
-      fetchData();
+      refreshData();
     }
-  }, [auth, loading, mounted, router, dateRange]);
+  }, [auth, loading, mounted, router, refreshData]);
 
   const handleCompanyClick = async (company: Company) => {
     setSelectedCompany(company);
@@ -341,7 +382,7 @@ export default function SuperadminPage() {
 
       {/* Tabbed Content */}
       <Tabs defaultValue="overview" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5 h-auto p-1 bg-muted/50 border">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-6 h-auto p-1 bg-muted/50 border">
           <TabsTrigger value="overview" className="gap-2 py-2">
             <TrendingUp className="h-4 w-4" />
             Vista General
@@ -358,6 +399,14 @@ export default function SuperadminPage() {
             <AlertTriangle className="h-4 w-4" />
             Almacén
           </TabsTrigger>
+          <TabsTrigger value="leads" className="gap-2 py-2">
+            <Users className="h-4 w-4" />
+            CRM Leads
+          </TabsTrigger>
+          <TabsTrigger value="churn-risk" className="gap-2 py-2">
+            <AlertOctagon className="h-4 w-4 text-red-500" />
+            Riesgo de Churn
+          </TabsTrigger>
           <TabsTrigger value="system" className="gap-2 py-2">
             <ShieldCheck className="h-4 w-4" />
             Sistema
@@ -365,271 +414,78 @@ export default function SuperadminPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <MetricCard
-              title="Total Compañías"
-              value={metrics.totalCompanies.toString()}
-              icon={Building2}
-              description="Empresas registradas"
-            />
-            <MetricCard
-              title="Usuarios Totales"
-              value={metrics.totalUsers.toString()}
-              icon={Users}
-              description="En toda la plataforma"
-            />
-            <MetricCard
-              title="Ventas Totales (App Powip)"
-              value={`S/ ${metrics.totalSales.toLocaleString()}`}
-              icon={CreditCard}
-              description={`${metrics.orderCount} órdenes en toda la app`}
-              tooltip="Monto total acumulado de todas las compañías registradas en Powip."
-            />
-            <MetricCard
-              title="Sin Stock"
-              value={metrics.outOfStockCount.toString()}
-              icon={TrendingUp}
-              description="Variantes con stock cero"
-              status={metrics.outOfStockCount > 0 ? "warning" : "success"}
-            />
-          </div>
+          <OverviewView
+            metrics={metrics}
+            saasMetrics={saasMetrics}
+            isLoadingMetrics={isLoadingMetrics}
+            funnelData={funnelData}
+            isLoadingFunnel={isLoadingFunnel}
+            globalBilling={globalBilling}
+            refetchAlerts={refetchAlerts}
+          />
+        </TabsContent>
 
-          <div className="grid gap-6 md:grid-cols-7">
-            <div className="md:col-span-4">
-              <StatsChart
-                title="Rendimiento de Ventas Globales (S/)"
-                data={globalBilling}
-                xKey="month"
-                lines={[
-                  { key: "2025", name: "Año Actual", color: "var(--primary)" },
-                  { key: "2024", name: "Año Previo", color: "#94a3b8" },
-                ]}
-              />
-            </div>
-            <Card className="md:col-span-3">
-              <CardHeader>
-                <CardTitle>Próximos Vencimientos</CardTitle>
-                <CardDescription>
-                  Suscripciones que expiran este mes.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {expiringSubscriptions.length > 0 ? (
-                    expiringSubscriptions.map((sub) => (
-                      <div
-                        key={sub.id}
-                        className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
-                      >
-                        <div>
-                          <p className="text-sm font-medium">
-                            {sub.userId.substring(0, 8)}...
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Plan: {sub.plan?.name}
-                          </p>
-                        </div>
-                        <Badge
-                          variant="outline"
-                          className="text-amber-600 border-amber-200"
-                        >
-                          {new Date(sub.endDate).toLocaleDateString()}
-                        </Badge>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="py-8 text-center text-muted-foreground text-sm">
-                      No hay vencimientos próximos.
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <TabsContent value="churn-risk" className="space-y-6">
+          <ChurnRiskView 
+            alerts={churnAlerts.map((a: any) => {
+              const company = companies.find(c => c.id === a.business_id);
+              return { 
+                ...a, 
+                company: company ? { name: company.name, plan: company.plan, price: company.price } : a.company 
+              };
+            })}
+            metrics={saasMetrics || { churnRate: 0, mrr: 0 }}
+            companies={companies}
+            onResolve={async (id) => {
+              const note = window.prompt("Ingrese una nota de resolución:");
+              if (note === null) return;
+              try {
+                const config = auth?.accessToken ? { headers: { Authorization: `Bearer ${auth.accessToken}` } } : {};
+                await axios.patch(`/api/superadmin/churn-alerts/${id}/resolve`, { note }, config);
+                toast.success("Alerta marcada como atendida");
+                refetchAlerts();
+              } catch (error) {
+                toast.error("Error al procesar la resolución");
+              }
+            }}
+          />
         </TabsContent>
 
         <TabsContent value="companies" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0">
-              <div>
-                <CardTitle>Gestión de Empresas</CardTitle>
-                <CardDescription>
-                  Listado y administración de clientes corporativos.
-                </CardDescription>
-              </div>
-              <Button
-                onClick={() => setIsCreateCompanyOpen(true)}
-                className="gap-2 shadow-md"
-              >
-                <Plus className="h-4 w-4" /> Nueva Empresa
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="relative flex-1">
-                  <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por nombre, ID o dueño..."
-                    className="pl-8"
-                  />
-                </div>
-                <Select defaultValue="all">
-                  <SelectTrigger className="w-[150px]">
-                    <SelectValue placeholder="Estado" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Ver Todos</SelectItem>
-                    <SelectItem value="active">Activos</SelectItem>
-                    <SelectItem value="inactive">Inactivos</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>Plan</TableHead>
-                    <TableHead>Monto</TableHead>
-                    <TableHead>Vencimiento</TableHead>
-                    <TableHead>Estado</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {companies.map((company) => (
-                    <TableRow
-                      key={company.id}
-                      className="group cursor-pointer hover:bg-muted/50"
-                      onClick={() => handleCompanyClick(company)}
-                    >
-                      <TableCell className="font-medium">
-                        <div className="flex flex-col">
-                          <span className="flex items-center gap-1 group-hover:text-primary transition-colors">
-                            {company.name}
-                            <ExternalLink className="h-3 w-3 opacity-0 group-hover:opacity-100" />
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">
-                            ID: {company.id}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className="text-[10px] font-bold"
-                        >
-                          {company.plan || "N/A"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="font-semibold text-primary">
-                        S/ {company.price || 0}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                          {company.expiry || "N/A"}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={company.status || "ACTIVE"} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <CompaniesView
+            companies={companies}
+            auth={auth}
+            plans={plans}
+            allUsers={allUsers}
+            onCreateSuccess={refreshData}
+          />
         </TabsContent>
 
         <TabsContent value="users" className="space-y-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 text-balance">
-              <div>
-                <CardTitle>Usuarios de la Plataforma</CardTitle>
-                <CardDescription>
-                  Control de acceso global y gestión de perfiles.
-                </CardDescription>
-              </div>
-              <Button
-                onClick={() => setIsCreateUserOpen(true)}
-                variant="outline"
-                className="gap-2"
-              >
-                <Plus className="h-4 w-4" /> Nuevo Usuario
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Empresa ID</TableHead>
-                    <TableHead>Creado</TableHead>
-                    <TableHead className="text-right">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {allUsers.map((u) => (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-medium">{u.email}</TableCell>
-                      <TableCell className="text-xs font-mono">
-                        {u.companyId || "N/A"}
-                      </TableCell>
-                      <TableCell className="text-xs">
-                        {new Date(u.createdAt).toLocaleDateString()}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" className="h-8">
-                          Ver
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <UsersView
+            allUsers={allUsers}
+            auth={auth}
+            roles={roles}
+            companies={companies}
+            plans={plans}
+            onUpdateSuccess={refreshData}
+          />
         </TabsContent>
 
         <TabsContent value="inventory" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Estado Global de Almacenes</CardTitle>
-              <CardDescription>
-                Resumen de existencias en todas las compañías.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Empresa</TableHead>
-                    <TableHead>Producto</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead className="text-right">Stock</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {outOfStockItems.map((item) => (
-                    <TableRow key={item.variantId}>
-                      <TableCell className="font-medium text-xs">
-                        Empresa ID: {item.variantId.substring(0, 8)}
-                      </TableCell>
-                      <TableCell className="text-sm">
-                        {item.productName}
-                      </TableCell>
-                      <TableCell className="font-mono text-[10px]">
-                        {item.sku}
-                      </TableCell>
-                      <TableCell className="text-right text-red-600 font-black">
-                        {item.availableStock}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+          <InventoryView
+            outOfStockItems={outOfStockItems}
+            metrics={metrics}
+            companies={companies}
+          />
+        </TabsContent>
+
+        <TabsContent value="leads" className="space-y-4">
+          <CrmPipelineView
+            leads={leads}
+            token={auth?.accessToken}
+            isLoading={isLoadingLeads}
+          />
         </TabsContent>
 
         <TabsContent value="system" className="space-y-4">
@@ -683,15 +539,8 @@ export default function SuperadminPage() {
         isOpen={isCreateCompanyOpen}
         onOpenChange={setIsCreateCompanyOpen}
         auth={auth}
-        users={metrics.totalUsers > 0 ? [] : []}
-      />
-
-      <CreateUserModal
-        isOpen={isCreateUserOpen}
-        onOpenChange={setIsCreateUserOpen}
-        auth={auth}
-        roles={roles}
-        companies={companies}
+        allUsers={allUsers}
+        onSaveSuccess={refreshData}
       />
     </div>
   );
@@ -1071,24 +920,40 @@ function StatusBadge({ status }: { status: string }) {
   }
 }
 
-function CreateCompanyModal({ isOpen, onOpenChange, auth }: any) {
+function CreateCompanyModal({ isOpen, onOpenChange, auth, allUsers, onSaveSuccess }: any) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
-    userId: "",
+    ownerEmail: "",
     cuit: "",
     billingAddress: "",
     phone: "",
+    billingEmail: "",
   });
 
   const handleSave = async () => {
     if (!auth?.accessToken) return;
+
+    // Resolve email to userId
+    const owner = allUsers.find(
+      (u: any) => u.email.toLowerCase() === formData.ownerEmail.toLowerCase(),
+    );
+
+    if (!owner) {
+      toast.error("No se encontró un usuario con ese email");
+      return;
+    }
+
     setLoading(true);
     try {
-      await createCompanyService(auth.accessToken, formData);
+      await createCompanyService(auth.accessToken, {
+        ...formData,
+        userId: owner.id,
+        billingEmail: formData.billingEmail || formData.ownerEmail,
+      });
       toast.success("Compañía creada con éxito");
       onOpenChange(false);
-      window.location.reload(); // Refresh to see changes
+      onSaveSuccess?.();
     } catch (error) {
       toast.error("Error al crear compañía");
     } finally {
@@ -1117,13 +982,13 @@ function CreateCompanyModal({ isOpen, onOpenChange, auth }: any) {
             />
           </div>
           <div className="space-y-2">
-            <Label>ID del Usuario Dueño</Label>
+            <Label>Email del Usuario Dueño</Label>
             <Input
-              value={formData.userId}
+              value={formData.ownerEmail}
               onChange={(e) =>
-                setFormData({ ...formData, userId: e.target.value })
+                setFormData({ ...formData, ownerEmail: e.target.value })
               }
-              placeholder="ID del usuario en ms-auth"
+              placeholder="email@ejemplo.com"
             />
           </div>
           <div className="space-y-2">
@@ -1136,6 +1001,36 @@ function CreateCompanyModal({ isOpen, onOpenChange, auth }: any) {
               placeholder="11 dígitos"
             />
           </div>
+          <div className="space-y-2">
+            <Label>Dirección Fiscal</Label>
+            <Input
+              value={formData.billingAddress}
+              onChange={(e) =>
+                setFormData({ ...formData, billingAddress: e.target.value })
+              }
+              placeholder="Av. Principal 123..."
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Teléfono</Label>
+            <Input
+              value={formData.phone}
+              onChange={(e) =>
+                setFormData({ ...formData, phone: e.target.value })
+              }
+              placeholder="+51 987654321"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Email de Facturación</Label>
+            <Input
+              value={formData.billingEmail || formData.ownerEmail}
+              onChange={(e) =>
+                setFormData({ ...formData, billingEmail: e.target.value })
+              }
+              placeholder="facturacion@empresa.com"
+            />
+          </div>
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -1144,154 +1039,6 @@ function CreateCompanyModal({ isOpen, onOpenChange, auth }: any) {
           <ActionButton
             label="Crear Compañía"
             loadingLabel="Guardando..."
-            onClick={handleSave}
-          />
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function CreateUserModal({
-  isOpen,
-  onOpenChange,
-  auth,
-  roles,
-  companies,
-}: any) {
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-    name: "",
-    surname: "",
-    identityDocument: "",
-    roleName: "user",
-    companyId: "none",
-  });
-
-  const handleSave = async () => {
-    if (!auth?.accessToken) return;
-    setLoading(true);
-    try {
-      if (formData.companyId && formData.companyId !== "none") {
-        await createCompanyUser(
-          formData.companyId,
-          formData as any,
-          auth.accessToken,
-        );
-      } else {
-        await createPlatformUser(formData as any, auth.accessToken);
-      }
-      toast.success("Usuario creado con éxito");
-      onOpenChange(false);
-      window.location.reload();
-    } catch (error) {
-      toast.error("Error al crear usuario");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Nuevo Usuario</DialogTitle>
-          <DialogDescription>
-            Crea una cuenta de usuario y opcionalmente vincúlala a una compañía.
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4 py-4 max-h-[60vh] overflow-y-auto">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Nombre</Label>
-              <Input
-                value={formData.name}
-                onChange={(e) =>
-                  setFormData({ ...formData, name: e.target.value })
-                }
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Apellido</Label>
-              <Input
-                value={formData.surname}
-                onChange={(e) =>
-                  setFormData({ ...formData, surname: e.target.value })
-                }
-              />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Email</Label>
-            <Input
-              type="email"
-              value={formData.email}
-              onChange={(e) =>
-                setFormData({ ...formData, email: e.target.value })
-              }
-            />
-          </div>
-          <div className="space-y-2">
-            <Label>Contraseña</Label>
-            <Input
-              type="password"
-              value={formData.password}
-              onChange={(e) =>
-                setFormData({ ...formData, password: e.target.value })
-              }
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label>Rol</Label>
-              <Select
-                value={formData.roleName}
-                onValueChange={(v) => setFormData({ ...formData, roleName: v })}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {roles.map((r: any) => (
-                    <SelectItem key={r.id} value={r.name}>
-                      {r.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Compañía (Opcional)</Label>
-              <Select
-                value={formData.companyId}
-                onValueChange={(v) =>
-                  setFormData({ ...formData, companyId: v })
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Sin compañía" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Sin compañía</SelectItem>
-                  {companies?.map((c: any) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <ActionButton
-            label="Registar Usuario"
-            loadingLabel="Creando..."
             onClick={handleSave}
           />
         </div>

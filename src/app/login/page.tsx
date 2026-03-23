@@ -21,7 +21,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="mb-8 flex flex-col items-center gap-4">
           <Image
-            src="/logo_icon.png"
+            src="/logo_mini.jpeg"
             alt="Powip Logo"
             width={64}
             height={64}

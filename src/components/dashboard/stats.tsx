@@ -6,7 +6,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Loader2,
   ChevronDown,
+  Download,
 } from "lucide-react";
+import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 import {
   ComposedChart,
   BarChart as RechartsBarChart,
@@ -22,8 +24,6 @@ import {
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardCard } from "./DashboardCard";
-import { PeriodSelector } from "./PeriodSelector";
-
 // --- Types ---
 
 interface StatCardProps {
@@ -128,15 +128,15 @@ const StatCard: React.FC<StatCardProps> = ({
   subValueColor = "text-muted-foreground",
 }) => {
   return (
-    <Card className="bg-white border border-slate-200 shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 group overflow-hidden">
+    <Card className="bg-card border border-border shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 group overflow-hidden">
       <CardContent className="p-4 flex flex-col h-full justify-between">
         <div className="flex justify-between items-start mb-2">
-          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
             {title}
           </span>
           {trend && (
             <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${
-              trend.isPositive ? "bg-green-500/10 text-green-600" : "bg-red-500/10 text-red-600"
+              trend.isPositive ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600"
             }`}>
               {trend.isPositive ? "+" : "-"}{trend.value}
             </div>
@@ -144,16 +144,16 @@ const StatCard: React.FC<StatCardProps> = ({
         </div>
 
         <div className="flex flex-col gap-0.5">
-          <div className="text-2xl font-bold text-slate-900 tracking-tight leading-none">
+          <div className="text-2xl font-bold text-card-foreground tracking-tight leading-none">
             {loading ? (
-              <div className="h-7 w-24 bg-slate-100 animate-pulse rounded" />
+              <div className="h-7 w-24 bg-muted animate-pulse rounded" />
             ) : (
               value
             )}
           </div>
           <div className={`text-[11px] font-medium ${subValueColor} flex items-center gap-1 mt-1`}>
             {description}
-            {subValue && <span className="text-slate-400">• {subValue}</span>}
+            {subValue && <span className="text-muted-foreground opacity-70">• {subValue}</span>}
           </div>
         </div>
       </CardContent>
@@ -175,7 +175,7 @@ const FunnelStage: React.FC<FunnelStageProps> = ({
 }) => (
   <div className="relative">
     <div 
-      className={`grid grid-cols-[auto_1fr_auto] items-center gap-4 py-3 bg-white/50 hover:bg-white transition-colors group px-4 ${
+      className={`grid grid-cols-[auto_1fr_auto] items-center gap-4 py-3 bg-background/50 hover:bg-background transition-colors group px-4 ${
         isBottomJoined ? "rounded-t-lg" : "rounded-lg"
       }`}
       style={{ borderLeft: `4px solid ${color}`, boxShadow: 'inset 0 0 20px -10px rgba(0,0,0,0.05)' }}
@@ -187,12 +187,12 @@ const FunnelStage: React.FC<FunnelStageProps> = ({
         >
           {index}
         </div>
-        <span className="text-xs font-bold text-slate-800 tracking-tight whitespace-nowrap">
+        <span className="text-xs font-bold text-foreground tracking-tight whitespace-nowrap">
           {label}
         </span>
       </div>
       
-      <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden mx-4">
+      <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mx-4">
         <div 
           className="h-full rounded-full transition-all duration-1000 ease-out"
           style={{ 
@@ -204,10 +204,10 @@ const FunnelStage: React.FC<FunnelStageProps> = ({
       </div>
 
       <div className="flex items-center gap-3 text-right">
-        <span className="text-lg font-black text-slate-900 tabular-nums min-w-[3ch]">
+        <span className="text-lg font-black text-foreground tabular-nums min-w-[3ch]">
           {value}
         </span>
-        <span className="text-[10px] font-bold text-slate-400 tabular-nums w-8">
+        <span className="text-[10px] font-bold text-muted-foreground tabular-nums w-8">
           {percentage}%
         </span>
       </div>
@@ -215,19 +215,20 @@ const FunnelStage: React.FC<FunnelStageProps> = ({
   </div>
 );
 
-const GapIndicator: React.FC<{ count: number }> = ({ count }) => (
+const GapIndicator: React.FC<{ count?: number }> = ({ count }) => (
   <div className="flex flex-col items-center py-1 opacity-60">
-    <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400">
-      <ChevronDown className="w-3 h-3" />
-      <span>{count} no avanzan</span>
+    <div className="flex flex-col items-center justify-center text-[10px] font-bold text-muted-foreground">
+      <ChevronDown className="w-4 h-4" />
+      {count !== undefined && <span>{count} no avanzan</span>}
     </div>
   </div>
 );
 
 const FunnelCOD: React.FC<{ 
   selectedStoreId: string;
-}> = ({ selectedStoreId }) => {
-  const [period, setPeriod] = useState<"day" | "week" | "month">("month");
+  fromDate: string;
+  toDate: string;
+}> = ({ selectedStoreId, fromDate, toDate }) => {
   const [funnelData, setFunnelData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -235,98 +236,155 @@ const FunnelCOD: React.FC<{
     if (!selectedStoreId) return;
     setLoading(true);
     try {
-      const now = new Date();
-      let fromDate = "";
-      
-      if (period === "day") {
-        fromDate = now.toISOString().split("T")[0];
-      } else if (period === "week") {
-        const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        fromDate = lastWeek.toISOString().split("T")[0];
-      } else {
-        const lastMonth = new Date(now.setMonth(now.getMonth() - 1));
-        fromDate = lastMonth.toISOString().split("T")[0];
-      }
-
-      const toDate = new Date().toISOString().split("T")[0];
-
       const res = await axios.get<DashboardData>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
         { params: { storeId: selectedStoreId, fromDate, toDate } }
       );
+      console.log("📊 [DEBUG] FUNNEL RAW RES DATA:", res.data.funnelMetrics);
       setFunnelData(res.data);
     } catch (error) {
       console.error("Error fetching funnel data:", error);
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId, period]);
+  }, [selectedStoreId, fromDate, toDate]);
 
   useEffect(() => {
     fetchFunnelData();
   }, [fetchFunnelData]);
 
-  const total = funnelData?.funnelMetrics?.ingresados || 0;
+  const baseTotal = funnelData?.totalOrders || 0;
+  const ingresados = funnelData?.funnelMetrics?.ingresados || 0;
   const confirmed = funnelData?.funnelMetrics?.confirmados || 0;
   const inEnvio = funnelData?.funnelMetrics?.enEnvio || 0;
   const delivered = funnelData?.funnelMetrics?.entregados || 0;
   const paid = funnelData?.funnelMetrics?.pagados || 0;
   const rejected = funnelData?.funnelMetrics?.rechazados || 0;
 
-  const realEffectiveness = total > 0 ? Math.round((delivered / total) * 100) : 0;
-  const operationalEffectiveness = confirmed > 0 ? Math.round((delivered / confirmed) * 100) : 0;
+  const realEffectiveness = baseTotal > 0 ? Math.round(((delivered + paid) / baseTotal) * 100) : 0;
+  const cumulativeConfirmados = confirmed + inEnvio + delivered + paid;
+  const operationalEffectiveness = cumulativeConfirmados > 0 ? Math.round(((delivered + paid) / cumulativeConfirmados) * 100) : 0;
+
+  const [downloading, setDownloading] = useState(false);
+
+  const handleExport = async () => {
+    if (!selectedStoreId) return;
+    setDownloading(true);
+    try {
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+        { params: { fromDate, toDate } }
+      );
+      
+      let orders = res.data;
+
+      // Ordenar por estado jerárquico
+      const statusWeight: Record<string, number> = {
+        PENDIENTE: 1,
+        LLAMADO: 2,
+        PREPARADO: 3,
+        ASIGNADO_A_GUIA: 4,
+        EN_ENVIO: 5,
+        ENTREGADO: 6,
+        PAGADO: 7,
+        RECHAZADO: 8,
+        ANULADO: 9,
+      };
+      
+      orders.sort((a: any, b: any) => (statusWeight[a.status] || 99) - (statusWeight[b.status] || 99));
+
+      const exportData: SaleExportData[] = orders.map((o: any) => {
+        const approvedPayments = (o.payments || []).filter((p: any) => p.status === 'PAID');
+        const advancePayment = approvedPayments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
+        const total = Number(o.grandTotal) || 0;
+        const pendingPayment = Math.max(0, total - advancePayment);
+        const productsStr = (o.items || []).map((i: any) => `${i.quantity}x ${i.productName}`).join(" | ");
+
+        return {
+          orderNumber: o.orderNumber,
+          clientName: o.customer?.fullName || "-",
+          phoneNumber: o.customer?.phoneNumber || "-",
+          documentType: o.customer?.documentType || "-",
+          documentNumber: o.customer?.documentNumber || "-",
+          date: new Date(o.created_at).toLocaleDateString("es-PE"),
+          products: productsStr,
+          total,
+          advancePayment,
+          pendingPayment,
+          status: o.status,
+          salesRegion: o.salesRegion || "-",
+          province: o.customer?.province || "-",
+          city: o.customer?.city || "-",
+          district: o.customer?.district || "-",
+          zone: o.customer?.reference || "-",
+          address: o.customer?.address || "-",
+          paymentMethod: (o.payments && o.payments.length > 0) ? o.payments[0].paymentMethod : "N/A",
+          deliveryType: o.deliveryType || "-",
+          courier: o.courier || "-",
+          sellerName: o.sellerName || "-",
+          guideNumber: o.guideNumber || "-"
+        };
+      });
+
+      exportSalesToExcel(exportData, `funnel_efectividad_cod`);
+    } catch(err) {
+      console.error("Error exporting to Excel", err);
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <>
-    <Card className="bg-white border border-slate-200 shadow-xl flex flex-col">
-      <CardHeader className="flex flex-row items-center justify-between pb-6 border-b border-slate-100 bg-white px-6">
+    <Card className="bg-card border border-border shadow-xl flex flex-col">
+      <CardHeader className="flex flex-row items-center justify-between pb-6 border-b border-border bg-card px-6">
         <div>
-          <CardTitle className="text-xl font-black text-slate-800 tracking-tight">
+          <CardTitle className="text-xl font-black text-foreground tracking-tight">
             Funnel Efectividad COD
           </CardTitle>
         </div>
-        <div className="flex bg-slate-100 p-1 rounded-lg">
-          {(["day", "week", "month"] as const).map((p) => (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`px-4 py-1.5 text-[10px] font-black rounded-md transition-all ${
-                period === p 
-                ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200" 
-                : "text-slate-400 hover:text-slate-600"
-              }`}
-            >
-              {p === "day" ? "HOY" : p === "week" ? "SEMANA" : "MES"}
-            </button>
-          ))}
-        </div>
+        <button
+          onClick={handleExport}
+          disabled={downloading}
+          className="flex items-center gap-2 px-4 py-2 bg-[#00f2ad] text-slate-900 rounded-md text-xs font-bold hover:bg-[#00d89a] transition-colors shadow-none disabled:opacity-50 tracking-tight"
+        >
+          {downloading ? (
+             <>
+               <Loader2 className="w-4 h-4 animate-spin text-slate-800" /> Procesando...
+             </>
+          ) : (
+             <>
+               <Download className="w-4 h-4 text-slate-800 stroke-[3px]" /> Exportar a Excel
+             </>
+          )}
+        </button>
       </CardHeader>
       
-      <CardContent className="p-6 bg-slate-50/30 flex flex-col gap-8">
+      <CardContent className="p-6 bg-muted/10 flex flex-col gap-8">
         {/* Metric Boxes */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 relative overflow-hidden group hover:shadow-md transition-shadow">
+          <div className="bg-card rounded-2xl p-6 shadow-sm border border-border relative overflow-hidden group hover:shadow-md transition-shadow">
 
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">
+            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest block mb-1">
               DUEÑO DEL NEGOCIO
             </span>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-black text-slate-800">Efectividad Real</span>
-              <span className="text-[10px] text-slate-400 font-bold italic">Entregados / Ingresados</span>
+              <span className="text-sm font-black text-foreground">Efectividad Real</span>
+              <span className="text-[10px] text-muted-foreground font-bold italic">Entregados / Ingresados</span>
             </div>
             <div className="mt-4 text-5xl font-black text-[#00f2ad] tracking-tighter">
               {realEffectiveness}%
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 relative overflow-hidden group hover:shadow-md transition-shadow">
+          <div className="bg-card rounded-2xl p-6 shadow-sm border border-border relative overflow-hidden group hover:shadow-md transition-shadow">
 
             <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest block mb-1">
               SUPERVISOR DE OPERACIONES
             </span>
             <div className="flex items-center justify-between">
-              <span className="text-sm font-black text-slate-800">Efectividad Operativa</span>
-              <span className="text-[10px] text-slate-400 font-bold italic">Entregados / Confirmados</span>
+              <span className="text-sm font-black text-foreground">Efectividad Operativa</span>
+              <span className="text-[10px] text-muted-foreground font-bold italic">Entregados / Confirmados</span>
             </div>
             <div className="mt-4 text-5xl font-black text-[#0ea5e9] tracking-tighter">
               {operationalEffectiveness}%
@@ -347,60 +405,60 @@ const FunnelCOD: React.FC<{
             <>
               <FunnelStage 
                 index={1} 
-                label="Ingresados" 
-                value={total} 
-                percentage={100} 
+                label="Ingresados (Pendientes)" 
+                value={ingresados} 
+                percentage={baseTotal > 0 ? Math.round((ingresados / baseTotal) * 100) : 0} 
                 color={STATUS_COLORS.INGRESADO} 
               />
-              <GapIndicator count={total - confirmed} />
+              <GapIndicator />
               
               <FunnelStage 
                 index={2} 
-                label="Confirmados (call center)" 
+                label="Confirmados (Llamado)" 
                 value={confirmed} 
-                percentage={total > 0 ? Math.round((confirmed / total) * 100) : 0} 
+                percentage={baseTotal > 0 ? Math.round((confirmed / baseTotal) * 100) : 0} 
                 color={STATUS_COLORS.CONFIRMADO} 
               />
-              <GapIndicator count={confirmed - inEnvio} />
+              <GapIndicator />
 
               <FunnelStage 
                 index={3} 
-                label="En envío (guía generada)" 
+                label="En envío" 
                 value={inEnvio} 
-                percentage={total > 0 ? Math.round((inEnvio / total) * 100) : 0} 
+                percentage={baseTotal > 0 ? Math.round((inEnvio / baseTotal) * 100) : 0} 
                 color={STATUS_COLORS.EN_ENVIO} 
               />
-              <GapIndicator count={inEnvio - delivered} />
+              <GapIndicator />
 
               {/* Joined Stages Group */}
-              <div className="bg-slate-100/50 rounded-xl p-0.5 border border-slate-200 shadow-inner">
+              <div className="bg-muted/30 rounded-xl p-0.5 border border-border shadow-inner">
                 <FunnelStage 
                   index={4} 
                   label="Entregados" 
                   value={delivered} 
-                  percentage={total > 0 ? Math.round((delivered / total) * 100) : 0} 
+                  percentage={baseTotal > 0 ? Math.round((delivered / baseTotal) * 100) : 0} 
                   color={STATUS_COLORS.ENTREGADO}
                   isBottomJoined
                 />
-                <div className="h-px bg-slate-200 mx-4" />
+                <div className="h-px bg-border mx-4" />
                 <FunnelStage 
                   index={5} 
-                  label="Pagados (COD cobrado)" 
+                  label="Pagados" 
                   value={paid} 
-                  percentage={total > 0 ? Math.round((paid / total) * 100) : 0} 
+                  percentage={baseTotal > 0 ? Math.round((paid / baseTotal) * 100) : 0} 
                   color={STATUS_COLORS.PAGADO} 
                 />
               </div>
 
               <div className="flex items-center justify-center py-2 h-8">
-                <div className="w-px h-full bg-slate-200" />
+                <div className="w-px h-full bg-border" />
               </div>
 
               <FunnelStage 
                 index="X" 
                 label="Rechazados / devueltos" 
                 value={rejected} 
-                percentage={total > 0 ? Math.round((rejected / total) * 100) : 0} 
+                percentage={baseTotal > 0 ? Math.round((rejected / baseTotal) * 100) : 0} 
                 color={STATUS_COLORS.RECHAZADO} 
               />
             </>
@@ -414,34 +472,40 @@ const FunnelCOD: React.FC<{
     {!loading && funnelData && (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Ingresos Diarios */}
-        <Card className="bg-white border border-slate-200 shadow-sm">
+        <Card className="bg-card border border-border shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-black text-slate-800 tracking-tight">Ingresos Diarios</h3>
+              <h3 className="text-sm font-black text-foreground tracking-tight">Ingresos Diarios</h3>
               <div className="flex items-center gap-4 text-[10px] font-bold">
                 <div className="flex items-center gap-1.5">
                   <div className="w-2.5 h-2.5 rounded-sm bg-[#3b82f6]" />
-                  <span className="text-slate-500">Ventas</span>
+                  <span className="text-muted-foreground">Ventas</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <div className="w-2.5 h-2.5 rounded-full bg-[#a78bfa]" />
-                  <span className="text-slate-500">Órdenes</span>
+                  <span className="text-muted-foreground">Órdenes</span>
                 </div>
               </div>
             </div>
             <div className="h-[220px]">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
-                  data={(funnelData.dailySales || []).map((d) => ({
-                    day: new Date(d.date).getDate(),
-                    amount: d.amount,
-                    orders: d.orders,
-                  }))}
+                  data={(funnelData.dailySales || []).map((d) => {
+                    const dateStr = typeof d.date === "string" && d.date.length === 10 ? `${d.date}T12:00:00` : d.date;
+                    const dateObj = new Date(dateStr);
+                    const formattedDate = dateObj.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+                    
+                    return {
+                      dayLabel: formattedDate,
+                      amount: d.amount,
+                      orders: d.orders,
+                    };
+                  })}
                   margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
                   <XAxis
-                    dataKey="day"
+                    dataKey="dayLabel"
                     axisLine={false}
                     tickLine={false}
                     tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
@@ -461,19 +525,22 @@ const FunnelCOD: React.FC<{
                     tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
                   />
                   <Tooltip
+                    cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
+                    itemStyle={{ color: "var(--foreground)" }}
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
                       borderRadius: "12px",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                       fontSize: "11px",
                       fontWeight: 700,
+                      color: "var(--foreground)",
                     }}
                     formatter={(value: number, name: string) => [
                       name === "amount" ? `S/ ${value.toLocaleString("es-PE")}` : value,
                       name === "amount" ? "Ventas" : "Órdenes",
                     ]}
-                    labelFormatter={(label) => `Día ${label}`}
+                    labelFormatter={(label) => `${label}`}
                   />
                   <Bar
                     yAxisId="left"
@@ -499,9 +566,9 @@ const FunnelCOD: React.FC<{
         </Card>
 
         {/* Distribución por Estado */}
-        <Card className="bg-white border border-slate-200 shadow-sm">
+        <Card className="bg-card border border-border shadow-sm">
           <CardContent className="p-6">
-            <h3 className="text-sm font-black text-slate-800 tracking-tight mb-6">Distribución por Estado</h3>
+            <h3 className="text-sm font-black text-foreground tracking-tight mb-6">Distribución por Estado</h3>
             <div className="h-[220px]">
               <ResponsiveContainer width="100%" height="100%">
                 <RechartsBarChart
@@ -529,13 +596,16 @@ const FunnelCOD: React.FC<{
                     tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }}
                   />
                   <Tooltip
+                    cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
+                    itemStyle={{ color: "var(--foreground)" }}
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
                       borderRadius: "12px",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                       fontSize: "11px",
                       fontWeight: 700,
+                      color: "var(--foreground)",
                     }}
                     formatter={(value: number) => [value, "Órdenes"]}
                   />
@@ -554,18 +624,24 @@ const FunnelCOD: React.FC<{
         </Card>
       </div>
     )}
+    
+    {/* HardSpacer para garantizar margen al llegar al fondo del scroll container */}
+    <div className="h-16 w-full flex-shrink-0" />
     </>
   );
 };
 
 // --- Main Component ---
 
-export const Stats: React.FC = () => {
+interface StatsProps {
+  fromDate: string;
+  toDate: string;
+}
+
+export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
   const { selectedStoreId } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
 
   const fetchStats = useCallback(async () => {
     if (!selectedStoreId) return;
@@ -596,35 +672,15 @@ export const Stats: React.FC = () => {
     }
   }, [fetchStats, fromDate, toDate]);
 
-  const handlePeriodChange = (from: string, to: string) => {
-    setFromDate(from);
-    setToDate(to);
-  };
-
   const deliveryPercentage =
     data && data.totalOrders > 0
       ? Math.round((data.totalDelivered / data.totalOrders) * 100)
       : 0;
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-slate-50/50">
-      {/* Header con selector de periodo */}
-      <div className="px-8 py-6 flex items-center justify-between border-b border-slate-200 bg-white shadow-sm">
-        <div>
-          <h1 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            PANEL DE CONTROL
-          </h1>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">
-            Resumen General de Operaciones
-          </p>
-        </div>
-        <div className="flex items-center gap-4">
-          <PeriodSelector onPeriodChange={handlePeriodChange} />
-        </div>
-      </div>
-
+    <div className="flex flex-col h-full w-full overflow-hidden bg-background">
       {/* Contenido principal */}
-      <div className="flex-1 flex flex-col p-8 gap-8 min-h-0 overflow-y-auto scrollbar-none">
+      <div className="flex-1 flex flex-col p-8 gap-8 min-h-0 overflow-y-auto scrollbar-none pb-32">
         {/* Cards de resumen */}
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <StatCard
@@ -677,7 +733,7 @@ export const Stats: React.FC = () => {
 
         {/* Funnel Section */}
         <div className="grid grid-cols-1 gap-6 min-h-[600px] pb-8">
-          <FunnelCOD selectedStoreId={selectedStoreId || ""} />
+          <FunnelCOD selectedStoreId={selectedStoreId || ""} fromDate={fromDate} toDate={toDate} />
         </div>
       </div>
     </div>

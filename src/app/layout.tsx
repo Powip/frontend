@@ -1,5 +1,19 @@
 import type { Metadata } from "next";
+import { Montserrat, Poppins } from "next/font/google";
 import "../styles/globals.css";
+
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  variable: "--font-montserrat",
+  display: "swap",
+});
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-poppins",
+  display: "swap",
+});
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/contexts/AuthContext";
 import AppContainer from "@/components/layout/AppContainer";
@@ -34,7 +48,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" suppressHydrationWarning>
-      <body suppressHydrationWarning>
+      <body suppressHydrationWarning className={`${poppins.variable} ${montserrat.variable} antialiased`}>
         <ThemeProvider>
           <QueryProvider>
             <AuthProvider>

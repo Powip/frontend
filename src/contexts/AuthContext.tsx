@@ -12,6 +12,7 @@ import { decodeToken, isExpired } from "@/lib/jwt";
 import { fetchUserCompany, fetchCompanyById } from "@/services/companyService";
 import { fetchUserSubscription } from "@/services/fetchUserSubscription";
 import axios from "axios";
+import { isSuperadmin } from "@/config/permissions.config";
 
 // Configurar axios para enviar cookies automáticamente (httpOnly cookies)
 axios.defaults.withCredentials = true;
@@ -269,6 +270,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // ---- CHECK PERMISSION ----
   const hasPermission = (permission: string): boolean => {
+    if (isSuperadmin(auth?.user?.email)) return true;
     return auth?.user.permissions?.includes(permission) ?? false;
   };
 

@@ -115,15 +115,17 @@ export const createPlatformUser = async (
   request: CreateCompanyUserRequest,
   accessToken: string,
 ) => {
-  const response = await axios.post(
-    `${API_AUTH}/api/v1/auth/register`,
-    request,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
+  // Mapear CreateCompanyUserRequest a lo que RegisterRequest (backend) espera
+  const registerPayload = {
+    ...request,
+    city: request.department, // El backend para registro usa 'city'
+  };
+
+  const response = await axios.post(`${API_AUTH}/api/v1/auth/register`, registerPayload, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
     },
-  );
+  });
   return response.data;
 };

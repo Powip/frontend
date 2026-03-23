@@ -15,6 +15,8 @@ import {
   PieChart,
   Pie,
 } from "recharts";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { format, differenceInDays } from "date-fns";
 import { ChevronDown } from "lucide-react";
 
 /* ─────────────────── Constants ─────────────────── */
@@ -36,19 +38,22 @@ export default function MetricasCallCenterPage() {
   const [orders, setOrders] = useState<any[]>([]);
 
   // Date range
-  const now = new Date();
-  const dateFrom = useMemo(() => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 6);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
 
-  const dateLabel = useMemo(() => {
-    const fmt = (d: Date) =>
-      d.toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
-    return `Hoy — ${fmt(dateFrom)}`;
-  }, [dateFrom]);
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const periodDates = useMemo(() => {
+    if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
+    const from = new Date(fromDate);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setHours(23, 59, 59, 999);
+    return { from, to };
+  }, [fromDate, toDate]);
 
   // Fetch
   useEffect(() => {
@@ -67,7 +72,7 @@ export default function MetricasCallCenterPage() {
       }
     };
     fetchData();
-  }, [selectedStoreId]);
+  }, [selectedStoreId, fromDate, toDate]);
 
   // Orders that went through "LLAMADO" status (called)
   const calledOrders = useMemo(
@@ -76,9 +81,10 @@ export default function MetricasCallCenterPage() {
         (o) =>
           o.status !== "PENDIENTE" &&
           o.status !== "ANULADO" &&
-          new Date(o.created_at) >= dateFrom
+          new Date(o.created_at) >= periodDates.from &&
+          new Date(o.created_at) <= periodDates.to
       ),
-    [orders, dateFrom]
+    [orders, periodDates]
   );
 
   const todayOrders = useMemo(() => {
@@ -92,8 +98,13 @@ export default function MetricasCallCenterPage() {
 
   // Contact Rate: orders contacted / total orders in period
   const totalPeriod = useMemo(
-    () => orders.filter((o) => new Date(o.created_at) >= dateFrom).length,
-    [orders, dateFrom]
+    () =>
+      orders.filter(
+        (o) =>
+          new Date(o.created_at) >= periodDates.from &&
+          new Date(o.created_at) <= periodDates.to
+      ).length,
+    [orders, periodDates]
   );
   const contactRate = useMemo(() => {
     if (totalPeriod === 0) return 0;
@@ -179,12 +190,12 @@ export default function MetricasCallCenterPage() {
     // Count unique agents
     const uniqueAgents = new Set(calledOrders.map((o) => o.sellerName || o.userId || "Agente")).size;
     
-    // Determine the number of days in the period (dateFrom to now)
-    const daysInPeriod = 7;
+    // Determine the number of days in the period
+    const daysInPeriod = Math.max(1, differenceInDays(periodDates.to, periodDates.from) + 1);
     
     if (uniqueAgents === 0) return 0;
     return Math.round(calledOrders.length / (uniqueAgents * daysInPeriod));
-  }, [calledOrders]);
+  }, [calledOrders, periodDates]);
 
   // ── Call results donut (Today) ──
   const callResults = useMemo(() => {
@@ -255,20 +266,34 @@ export default function MetricasCallCenterPage() {
 
   // ── Upselling últimos 7 días ──
   const weeklyUpsell = useMemo(() => {
-    const data = DAY_LABELS.map((day) => ({ day, total: 0 }));
+    const diff = differenceInDays(periodDates.to, periodDates.from);
+    const data: Record<string, { label: string; total: number }> = {};
+
+    for (let i = diff; i >= 0; i--) {
+      const d = new Date(periodDates.to);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split("T")[0];
+      const dayLabel = d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+      data[dateStr] = { label: dayLabel, total: 0 };
+    }
+
     calledOrders.forEach((o: any) => {
       if ((o.items?.length || 0) <= 1) return;
-      const d = new Date(o.created_at);
-      let dayIdx = d.getDay() - 1;
-      if (dayIdx < 0) dayIdx = 6;
-      const extra = (o.items || []).slice(1).reduce(
-        (s: number, i: any) => s + Number(i.subtotal || i.price || 0),
-        0
-      );
-      data[dayIdx].total += extra;
+      const dateStr = new Date(o.created_at).toISOString().split("T")[0];
+      if (data[dateStr]) {
+        const extra = (o.items || []).slice(1).reduce(
+          (s: number, i: any) => s + Number(i.subtotal || i.price || 0),
+          0
+        );
+        data[dateStr].total += extra;
+      }
     });
-    return data.map((d) => ({ ...d, total: Math.round(d.total) }));
-  }, [calledOrders]);
+
+    return Object.values(data).map((d) => ({
+      day: d.label,
+      total: Math.round(d.total),
+    }));
+  }, [calledOrders, periodDates]);
 
   // Badge color helpers
   const confirmColor = (v: number) =>
@@ -277,36 +302,35 @@ export default function MetricasCallCenterPage() {
     v >= 20 ? "text-emerald-500" : "text-amber-500";
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50/50 min-h-screen">
+    <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-2xl font-black text-foreground tracking-tight">
             Call Center
           </h1>
-          <p className="text-xs text-slate-400 font-semibold tracking-[0.15em] uppercase mt-1">
+          <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
             Confirmaciones, gestión de llamadas y upselling
           </p>
         </div>
-        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-700">
-          <span>{dateLabel}</span>
-          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+        <div className="flex items-center gap-2">
+          <PeriodSelector onPeriodChange={handlePeriodChange} />
         </div>
       </div>
 
       {/* KPI Cards Row 1 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Contact Rate */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Contact Rate
             </p>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30">
               +3%
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${contactRate}%`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -315,16 +339,16 @@ export default function MetricasCallCenterPage() {
         </div>
 
         {/* Confirmation Rate */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Confirmation Rate
             </p>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30">
               +1%
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${confirmRate}%`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -333,8 +357,8 @@ export default function MetricasCallCenterPage() {
         </div>
 
         {/* Tasa NCI */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Tasa NCI
           </p>
           <p className="text-2xl font-black text-amber-500">
@@ -346,11 +370,11 @@ export default function MetricasCallCenterPage() {
         </div>
 
         {/* Speed to Call */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Speed to Call
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${speedToCall}m`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -362,11 +386,11 @@ export default function MetricasCallCenterPage() {
       {/* KPI Cards Row 2 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Tiempo Confirmación */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Tiempo Confirmación
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${tmc}h`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -375,16 +399,16 @@ export default function MetricasCallCenterPage() {
         </div>
 
         {/* Upsell Rate */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Upsell Rate
             </p>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30">
               +4%
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${upsellRate}%`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -393,11 +417,11 @@ export default function MetricasCallCenterPage() {
         </div>
 
         {/* Upselling Generado */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Upselling Generado
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading
               ? "—"
               : `S/ ${upsellRevenue.toLocaleString("es-PE", { minimumFractionDigits: 0 })}`}
@@ -408,11 +432,11 @@ export default function MetricasCallCenterPage() {
         </div>
 
         {/* Pedidos/Día Agente */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Pedidos/Día Agente
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : pedidosAgenteDia}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -424,8 +448,8 @@ export default function MetricasCallCenterPage() {
       {/* Row: Resultados de llamadas + Ranking de agentes */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Resultados de llamadas — Hoy */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Resultados de llamadas — Hoy
           </h3>
           {loading ? (
@@ -433,7 +457,7 @@ export default function MetricasCallCenterPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : callResults.length === 0 ? (
-            <div className="h-[280px] flex items-center justify-center text-slate-400 text-sm">
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
               Sin llamadas hoy
             </div>
           ) : (
@@ -457,8 +481,8 @@ export default function MetricasCallCenterPage() {
                   <Tooltip
                     formatter={(value: any, name: string) => [`${value}`, name]}
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
                       borderRadius: "12px",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                       fontSize: "11px",
@@ -474,10 +498,10 @@ export default function MetricasCallCenterPage() {
                       className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{ backgroundColor: r.color }}
                     />
-                    <span className="text-xs text-slate-600 font-medium">
+                    <span className="text-xs text-foreground font-medium">
                       {r.name}
                     </span>
-                    <span className="text-xs text-slate-400 font-semibold ml-auto">
+                    <span className="text-xs text-muted-foreground font-semibold ml-auto">
                       {r.value}
                     </span>
                   </div>
@@ -488,8 +512,8 @@ export default function MetricasCallCenterPage() {
         </div>
 
         {/* Ranking de agentes — Hoy */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Ranking de agentes — Hoy
           </h3>
           {loading ? (
@@ -497,27 +521,27 @@ export default function MetricasCallCenterPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : agentRanking.length === 0 ? (
-            <div className="h-[280px] flex items-center justify-center text-slate-400 text-sm">
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
               Sin datos de agentes
             </div>
           ) : (
             <div className="overflow-auto max-h-[320px]">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 w-8">
+                  <tr className="border-b border-border">
+                    <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 w-8">
                       #
                     </th>
-                    <th className="text-left text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 pr-2">
+                    <th className="text-left text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pr-2">
                       Agente
                     </th>
-                    <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-2">
+                    <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-2">
                       Confirm
                     </th>
-                    <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-2">
+                    <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-2">
                       TMC
                     </th>
-                    <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 pl-2">
+                    <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pl-2">
                       Upsell
                     </th>
                   </tr>
@@ -526,14 +550,14 @@ export default function MetricasCallCenterPage() {
                   {agentRanking.map((agent, idx) => (
                     <tr
                       key={idx}
-                      className="border-b border-slate-50 last:border-0"
+                      className="border-b border-border/50 last:border-0"
                     >
                       <td className="py-3 text-center">
-                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-[10px] font-bold text-slate-500">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
                           {idx + 1}
                         </span>
                       </td>
-                      <td className="py-3 pr-2 text-sm font-semibold text-slate-700">
+                      <td className="py-3 pr-2 text-sm font-semibold text-foreground">
                         {agent.name}
                       </td>
                       <td
@@ -541,7 +565,7 @@ export default function MetricasCallCenterPage() {
                       >
                         {agent.confirm}%
                       </td>
-                      <td className="py-3 px-2 text-center text-sm text-slate-600">
+                      <td className="py-3 px-2 text-center text-sm text-muted-foreground">
                         {agent.tmc}h
                       </td>
                       <td
@@ -559,8 +583,8 @@ export default function MetricasCallCenterPage() {
       </div>
 
       {/* Upselling generado — últimos 7 días */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-700 mb-4">
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-muted-foreground mb-4">
           Upselling generado — últimos 7 días
         </h3>
         {loading ? (
@@ -585,14 +609,14 @@ export default function MetricasCallCenterPage() {
                   v >= 1000 ? `S/${(v / 1000).toFixed(0)}k` : `S/${v}`
                 }
               />
-              <Tooltip
+                <Tooltip
                 formatter={(value: any) => [
                   `S/ ${Number(value).toLocaleString("es-PE")}`,
                   "Upselling",
                 ]}
                 contentStyle={{
-                  background: "white",
-                  border: "1px solid #e2e8f0",
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
                   borderRadius: "12px",
                   boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                   fontSize: "11px",

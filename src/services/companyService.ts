@@ -14,7 +14,8 @@ export interface Company {
   cuit?: string; // RUC/CUIT
   billingAddress?: string; // Dirección
   phone?: string; // Teléfono
-  logoUrl?: string;
+  billingEmail?: string; // Email de facturación
+  logoUrl?: string; // URL del logo (para futuro)
   sales_channels?: string[];
   closing_channels?: string[];
   createdAt?: string;
@@ -112,6 +113,7 @@ export const createCompany = async (token: string, data: Partial<Company>) => {
       cuit: data.cuit,
       billing_address: data.billingAddress,
       phone: data.phone,
+      billing_email: data.billingEmail,
     },
     {
       headers: {
