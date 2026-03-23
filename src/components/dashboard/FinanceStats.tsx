@@ -29,7 +29,6 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardCard } from "./DashboardCard";
-import { PeriodSelector } from "./PeriodSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import {
@@ -65,18 +64,18 @@ const StatCard: React.FC<{
   subValue?: string;
   loading?: boolean;
 }> = ({ title, value, subValue, loading }) => (
-  <Card className="bg-white border border-slate-200 shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 overflow-hidden">
+  <Card className="bg-card border border-border shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 overflow-hidden">
     <CardContent className="p-4 flex flex-col h-full justify-between">
-      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">
         {title}
       </span>
       {loading ? (
-        <div className="h-7 w-24 bg-slate-100 animate-pulse rounded" />
+        <div className="h-7 w-24 bg-muted animate-pulse rounded" />
       ) : (
         <>
-          <div className="text-2xl font-bold text-slate-900 tracking-tight leading-none">{value}</div>
+          <div className="text-2xl font-bold text-card-foreground tracking-tight leading-none">{value}</div>
           {subValue && (
-            <p className="text-[10px] font-medium text-green-600 mt-1">
+            <p className="text-[10px] font-medium text-emerald-600 mt-1">
               {subValue}
             </p>
           )}
@@ -86,13 +85,16 @@ const StatCard: React.FC<{
   </Card>
 );
 
-export const FinanceStats: React.FC = () => {
+interface FinanceStatsProps {
+  fromDate: string;
+  toDate: string;
+}
+
+export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) => {
   const { selectedStoreId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [billing, setBilling] = useState<BillingStats[]>([]);
   const [inventoryValue, setInventoryValue] = useState(0);
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
   const [dailyIncome, setDailyIncome] = useState<any[]>([]);
 
   // Receivables state
@@ -147,7 +149,6 @@ export const FinanceStats: React.FC = () => {
             {
               params: {
                 storeId: selectedStoreId,
-                date: to,
               },
             },
           ),
@@ -214,11 +215,6 @@ export const FinanceStats: React.FC = () => {
     }
   }, [selectedStoreId, fromDate, toDate]);
 
-  const handlePeriodChange = (from: string, to: string) => {
-    setFromDate(from);
-    setToDate(to);
-  };
-
   const getMonthFromDate = (dateStr: string) => {
     if (!dateStr) return 0;
     return parseInt(dateStr.split("-")[1], 10);
@@ -247,18 +243,17 @@ export const FinanceStats: React.FC = () => {
   const totalPaid = dailyIncome.reduce((sum, d) => sum + d.amount, 0);
 
   return (
-    <div className="flex flex-col h-full w-full overflow-auto bg-slate-50/50">
+    <div className="flex flex-col h-full w-full overflow-auto bg-background">
       {/* Header */}
-      <div className="px-8 py-6 flex items-center justify-between border-b border-slate-200 bg-white shadow-sm">
+      <div className="px-8 py-6 flex items-center justify-between border-b border-border bg-card shadow-sm">
         <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">
+          <h2 className="text-xl font-black text-foreground tracking-tight">
             Panel Financiero
           </h2>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] mt-1">
             Estado de ingresos, egresos y valorización de activos
           </p>
         </div>
-        <PeriodSelector onPeriodChange={handlePeriodChange} />
       </div>
 
       <div className="p-8 space-y-8">
@@ -271,7 +266,7 @@ export const FinanceStats: React.FC = () => {
           loading={loading}
         />
         <StatCard
-          title="Ingresos Totales"
+          title="Total Generado"
           value={`S/ ${currentYearSales.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`}
           subValue={`${growth >= 0 ? "+" : ""}${growth.toFixed(1)}% vs año ant.`}
           loading={loading}
@@ -369,14 +364,14 @@ export const FinanceStats: React.FC = () => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload;
                       return (
-                        <div className="bg-white p-3 border border-slate-200 shadow-lg rounded-xl text-xs">
-                          <p className="font-bold mb-2 text-slate-800 border-b border-slate-100 pb-1">
+                        <div className="bg-card p-3 border border-border shadow-lg rounded-xl text-xs">
+                          <p className="font-bold mb-2 text-foreground border-b border-border pb-1">
                             {label}
                           </p>
                           <div className="space-y-1">
                             <div className="flex justify-between gap-4">
                               <span className="text-blue-600 font-medium">Este Año:</span>
-                              <span className="font-bold text-slate-800">
+                              <span className="font-bold text-foreground">
                                 S/ {data.Actual.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                               </span>
                             </div>
@@ -386,13 +381,13 @@ export const FinanceStats: React.FC = () => {
                                 S/ {data.Anterior.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                               </span>
                             </div>
-                            <div className="mt-2 pt-2 border-t border-slate-100 flex justify-between gap-4">
-                              <span className="text-slate-500">Órdenes:</span>
-                              <span className="font-bold text-slate-800">{data.ordenes}</span>
+                            <div className="mt-2 pt-2 border-t border-border flex justify-between gap-4">
+                              <span className="text-muted-foreground">Órdenes:</span>
+                              <span className="font-bold text-foreground">{data.ordenes}</span>
                             </div>
                             <div className="flex justify-between gap-4">
-                              <span className="text-slate-500">Productos:</span>
-                              <span className="font-bold text-slate-800">{data.productos}</span>
+                              <span className="text-muted-foreground">Productos:</span>
+                              <span className="font-bold text-foreground">{data.productos}</span>
                             </div>
                           </div>
                         </div>
@@ -445,17 +440,17 @@ export const FinanceStats: React.FC = () => {
                 return (
                   <div
                     key={b.month}
-                    className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100"
+                    className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border"
                   >
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 ${colors[i % colors.length]} rounded-lg flex items-center justify-center`}>
                         <span className="text-white text-xs font-black">{b.monthName.charAt(0)}</span>
                       </div>
-                      <span className="font-semibold text-slate-700 text-sm">
+                      <span className="font-semibold text-foreground text-sm">
                         {b.monthName}
                       </span>
                     </div>
-                    <span className="font-bold text-slate-900 text-sm">
+                    <span className="font-bold text-foreground text-sm">
                       S/ {b.currentYear.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                     </span>
                   </div>
@@ -485,7 +480,8 @@ export const FinanceStats: React.FC = () => {
                   tickLine={false}
                   tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
                   tickFormatter={(value) => {
-                    const date = new Date(value);
+                    const dateStr = typeof value === "string" && value.length === 10 ? `${value}T12:00:00` : value;
+                    const date = new Date(dateStr);
                     return date.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
                   }}
                 />
@@ -496,17 +492,20 @@ export const FinanceStats: React.FC = () => {
                   tickFormatter={(value) => `S/ ${value}`}
                 />
                 <Tooltip
+                  cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
                   formatter={(value: any) => [
                     `S/ ${value.toLocaleString("es-PE", { minimumFractionDigits: 2 })}`,
                     "Ingreso",
                   ]}
+                  itemStyle={{ color: "var(--foreground)" }}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
                     fontWeight: 700,
+                    color: "var(--foreground)",
                   }}
                 />
                 <Bar
@@ -548,26 +547,27 @@ export const FinanceStats: React.FC = () => {
                 tickFormatter={(v) => `S/ ${v.toLocaleString()}`}
               />
               <Tooltip
+                cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
                 content={({ active, payload }) => {
                   if (active && payload && payload.length) {
                     const data = payload[0].payload;
                     return (
-                      <div className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-xs">
-                        <p className="font-bold text-slate-800">{data.courierName}</p>
+                      <div className="bg-card p-3 rounded-xl shadow-lg border border-border text-xs">
+                        <p className="font-bold text-foreground">{data.courierName}</p>
                         <div className="mt-2 space-y-1">
                           <div className="flex justify-between gap-4">
-                            <span className="text-slate-500">Monto Recaudado:</span>
+                            <span className="text-muted-foreground">Monto Recaudado:</span>
                             <span className="font-bold text-green-600">
                               S/ {data.shippingRevenue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                             </span>
                           </div>
                           <div className="flex justify-between gap-4">
-                            <span className="text-slate-500">Órdenes:</span>
-                            <span className="font-bold text-slate-800">{data.ordersCount}</span>
+                            <span className="text-muted-foreground">Órdenes:</span>
+                            <span className="font-bold text-foreground">{data.ordersCount}</span>
                           </div>
                           <div className="flex justify-between gap-4">
-                            <span className="text-slate-500">Efectividad:</span>
-                            <span className="font-bold text-slate-800">{data.percentage}%</span>
+                            <span className="text-muted-foreground">Efectividad:</span>
+                            <span className="font-bold text-foreground">{data.percentage}%</span>
                           </div>
                         </div>
                       </div>
@@ -603,23 +603,23 @@ export const FinanceStats: React.FC = () => {
                 return (
                   <div
                     key={c.courierName}
-                    className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100"
+                    className="flex items-center justify-between p-3 bg-muted/30 rounded-xl border border-border"
                   >
                     <div className="flex items-center gap-3">
                       <div className={`w-8 h-8 ${colors[i % colors.length]} rounded-lg flex items-center justify-center`}>
                         <span className="text-white text-xs font-black">{c.courierName.charAt(0)}</span>
                       </div>
                       <div>
-                        <span className="font-semibold text-slate-700 block text-sm">
+                        <span className="font-semibold text-foreground block text-sm">
                           {c.courierName}
                         </span>
-                        <span className="text-[10px] text-slate-400">
+                        <span className="text-[10px] text-muted-foreground">
                           {c.ordersCount} órdenes
                         </span>
                       </div>
                     </div>
                     <div className="text-right">
-                      <span className="font-bold text-slate-900 block text-sm">
+                      <span className="font-bold text-foreground block text-sm">
                         S/ {c.shippingRevenue.toLocaleString("es-PE", { minimumFractionDigits: 2 })}
                       </span>
                       <span className="text-[10px] text-green-600 font-medium">

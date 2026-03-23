@@ -45,7 +45,6 @@ import { exportToExcel } from "@/lib/excel";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { DashboardCard } from "./DashboardCard";
-import { PeriodSelector } from "./PeriodSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface LocationStats {
@@ -85,18 +84,18 @@ const StatCard: React.FC<{
   clickable?: boolean;
 }> = ({ title, value, subValue, loading, onClick, clickable }) => (
   <Card
-    className={`bg-white border border-slate-200 shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 group overflow-hidden ${clickable ? "cursor-pointer hover:shadow-md" : ""}`}
+    className={`bg-card border border-border shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 group overflow-hidden ${clickable ? "cursor-pointer hover:shadow-md" : ""}`}
     onClick={clickable ? onClick : undefined}
   >
     <CardContent className="p-4 flex flex-col h-full justify-between">
-      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">
         {title}
       </span>
       {loading ? (
-        <div className="h-7 w-24 bg-slate-100 animate-pulse rounded" />
+        <div className="h-7 w-24 bg-muted animate-pulse rounded" />
       ) : (
         <>
-          <div className="text-2xl font-bold text-slate-900 tracking-tight leading-none">{value}</div>
+          <div className="text-2xl font-bold text-foreground tracking-tight leading-none">{value}</div>
           {subValue && (
             <p className="text-[10px] font-medium text-green-600 mt-1">
               {subValue}
@@ -129,8 +128,12 @@ const CHART_COLORS = [
   "#6366f1",
   "#14b8a6",
 ];
+interface GeographyProps {
+  fromDate: string;
+  toDate: string;
+}
 
-export const Geography: React.FC = () => {
+export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
   const { auth, selectedStoreId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [locationData, setLocationData] = useState<LocationStats[]>([]);
@@ -158,9 +161,6 @@ export const Geography: React.FC = () => {
   const [geoDimension, setGeoDimension] = useState<
     "city" | "province" | "district"
   >("city");
-
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
 
   const fetchData = async () => {
     if (!selectedStoreId) return;
@@ -288,29 +288,20 @@ export const Geography: React.FC = () => {
     }
   }, [selectedStoreId, geoDimension, fromDate, toDate]);
 
-  const handlePeriodChange = (from: string, to: string) => {
-    setFromDate(from);
-    setToDate(to);
-  };
-
   const periodBilling = summaryData.deliveredAmount;
   const topLocation = locationData[0];
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-slate-50/50">
+    <div className="flex flex-col h-full w-full overflow-hidden bg-background">
       {/* Header with Date Filters */}
-      <div className="px-8 py-6 flex items-center justify-between border-b border-slate-200 bg-white shadow-sm">
+      <div className="px-8 py-6 flex items-center justify-between border-b border-border bg-card shadow-sm">
         <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">
+          <h2 className="text-xl font-black text-foreground tracking-tight">
             Geografía & Clientes
           </h2>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.2em] mt-1">
             Distribución territorial y métodos de pago
           </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <PeriodSelector onPeriodChange={handlePeriodChange} />
         </div>
       </div>
 
@@ -413,17 +404,20 @@ export const Geography: React.FC = () => {
                   tick={{ fontSize: 11, fill: "#64748b", fontWeight: 700 }}
                 />
                 <Tooltip
+                  cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
                   formatter={(value) => [
                     `S/ ${Number(value).toLocaleString("es-PE")}`,
                     "Monto",
                   ]}
+                  itemStyle={{ color: "var(--foreground)" }}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
                     fontWeight: 700,
+                    color: "var(--foreground)",
                   }}
                 />
                 <Bar
@@ -484,13 +478,15 @@ export const Geography: React.FC = () => {
                     `${value} pedidos`,
                     "Cantidad",
                   ]}
+                  itemStyle={{ color: "var(--foreground)" }}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
                     fontWeight: 700,
+                    color: "var(--foreground)",
                   }}
                 />
                 <Legend iconType="circle" />

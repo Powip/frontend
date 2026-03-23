@@ -15,7 +15,8 @@ import {
   PieChart,
   Pie,
 } from "recharts";
-import { ChevronDown, HeadphonesIcon, TrendingUp, CheckCircle2 } from "lucide-react";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { HeadphonesIcon, TrendingUp, CheckCircle2 } from "lucide-react";
 
 /* ─────────────────── Constants ─────────────────── */
 
@@ -35,20 +36,23 @@ export default function MetricasAtencionClientePage() {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<any[]>([]);
 
-  // Date range (last 7 days by default)
-  const now = new Date();
-  const dateFrom = useMemo(() => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 6);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
+  // Date range
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
 
-  const dateLabel = useMemo(() => {
-    const fmt = (d: Date) =>
-      d.toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
-    return `Hoy — ${fmt(dateFrom)}`;
-  }, [dateFrom]);
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const periodDates = useMemo(() => {
+    if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
+    const from = new Date(fromDate);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setHours(23, 59, 59, 999);
+    return { from, to };
+  }, [fromDate, toDate]);
 
   // Fetch
   useEffect(() => {
@@ -67,14 +71,17 @@ export default function MetricasAtencionClientePage() {
       }
     };
     fetchData();
-  }, [selectedStoreId]);
+  }, [selectedStoreId, fromDate, toDate]);
 
   // ── Data Memoization ──
 
-  const targetOrders = useMemo(
-    () => orders.filter((o) => new Date(o.created_at) >= dateFrom),
-    [orders, dateFrom]
-  );
+  const targetOrders = useMemo(() => {
+    if (!fromDate || !toDate) return orders;
+    return orders.filter((o) => {
+      const d = new Date(o.created_at);
+      return d >= periodDates.from && d <= periodDates.to;
+    });
+  }, [orders, periodDates, fromDate, toDate]);
   
   // Pending to be managed (Backlog)
   const preparadosCount = useMemo(() => {
@@ -185,45 +192,43 @@ export default function MetricasAtencionClientePage() {
   }, [managedOrders]);
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50/50 min-h-screen">
+    <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-2xl font-black text-foreground tracking-tight">
             Gestión de Pedidos & Upselling
           </h1>
-          <p className="text-xs text-slate-400 font-semibold tracking-[0.15em] uppercase mt-1">
+          <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
             Métricas de confirmación y retención (Exención de Tickets)
           </p>
         </div>
-        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-700 shadow-sm cursor-pointer hover:bg-slate-50 transition-colors">
-          <span className="text-primary mr-1">●</span>
-          <span>{dateLabel}</span>
-          <ChevronDown className="h-3.5 w-3.5 text-slate-400 ml-1" />
+        <div className="flex items-center gap-2">
+          <PeriodSelector onPeriodChange={handlePeriodChange} />
         </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Backlog */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm relative overflow-hidden group">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm relative overflow-hidden group">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Pedidos por Gestionar
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : preparadosCount}
           </p>
           <p className="text-xs text-amber-500 font-semibold mt-0.5">
             En cola de llamadas
           </p>
-          <div className="absolute right-[-10px] top-[-10px] bg-slate-50 rounded-full p-4 opacity-50 transition-transform group-hover:scale-110">
-            <HeadphonesIcon className="h-8 w-8 text-slate-300" />
+          <div className="absolute right-[-10px] top-[-10px] bg-amber-50 dark:bg-amber-900/10 rounded-full p-4 opacity-50 transition-transform group-hover:scale-110">
+            <HeadphonesIcon className="h-8 w-8 text-amber-200 dark:text-amber-800" />
           </div>
         </div>
 
         {/* Efectividad Confirmacion */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm relative overflow-hidden group">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm relative overflow-hidden group">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Tasa de Confirmación
           </p>
           <p className="text-2xl font-black text-emerald-500">
@@ -232,30 +237,30 @@ export default function MetricasAtencionClientePage() {
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
             De {managedOrders.length} gestionados
           </p>
-          <div className="absolute right-[-10px] top-[-10px] bg-emerald-50 rounded-full p-4 opacity-50 transition-transform group-hover:scale-110">
-            <CheckCircle2 className="h-8 w-8 text-emerald-200" />
+          <div className="absolute right-[-10px] top-[-10px] bg-emerald-50 dark:bg-emerald-900/10 rounded-full p-4 opacity-50 transition-transform group-hover:scale-110">
+            <CheckCircle2 className="h-8 w-8 text-emerald-200 dark:text-emerald-800" />
           </div>
         </div>
 
         {/* Upsell Rate */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm relative overflow-hidden group">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm relative overflow-hidden group">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Tasa de Upselling
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${tasaUpselling}%`}
           </p>
           <p className="text-xs text-indigo-500 font-semibold mt-0.5">
             Logrado en su gestión
           </p>
-          <div className="absolute right-[-10px] top-[-10px] bg-indigo-50 rounded-full p-4 opacity-50 transition-transform group-hover:scale-110">
-            <TrendingUp className="h-8 w-8 text-indigo-200" />
+          <div className="absolute right-[-10px] top-[-10px] bg-indigo-50 dark:bg-indigo-900/10 rounded-full p-4 opacity-50 transition-transform group-hover:scale-110">
+            <TrendingUp className="h-8 w-8 text-indigo-200 dark:text-indigo-800" />
           </div>
         </div>
 
         {/* Upsell Revenue */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Ingreso por Upsell
           </p>
           <p className="text-2xl font-black text-emerald-500">
@@ -270,8 +275,8 @@ export default function MetricasAtencionClientePage() {
       {/* Row 1 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Estado Gestiones */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Estado de Gestiones
           </h3>
           {loading ? (
@@ -279,7 +284,7 @@ export default function MetricasAtencionClientePage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : statusDistribution.length === 0 ? (
-            <div className="h-[280px] flex items-center justify-center text-slate-400 text-sm">
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
               Sin datos
             </div>
           ) : (
@@ -303,8 +308,8 @@ export default function MetricasAtencionClientePage() {
                   <Tooltip
                     formatter={(value: any, name: string) => [`${value} pedidos`, name]}
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
                       borderRadius: "12px",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                       fontSize: "11px",
@@ -318,9 +323,9 @@ export default function MetricasAtencionClientePage() {
                   <div key={idx} className="flex flex-col">
                     <div className="flex items-center gap-2">
                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: s.color }} />
-                       <span className="text-xs text-slate-600 font-medium">{s.name}</span>
+                       <span className="text-xs text-foreground font-medium">{s.name}</span>
                     </div>
-                    <span className="text-sm font-bold text-slate-800 ml-5">{s.value}</span>
+                    <span className="text-sm font-bold text-muted-foreground ml-5">{s.value}</span>
                   </div>
                 ))}
               </div>
@@ -329,8 +334,8 @@ export default function MetricasAtencionClientePage() {
         </div>
 
         {/* Top Upsells */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Top Productos Añadidos (Upsell)
           </h3>
           {loading ? (
@@ -338,7 +343,7 @@ export default function MetricasAtencionClientePage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : topUpsellProducts.length === 0 ? (
-            <div className="h-[280px] flex items-center justify-center text-slate-400 text-sm">
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm">
               No hay upselling registrado
             </div>
           ) : (
@@ -359,8 +364,8 @@ export default function MetricasAtencionClientePage() {
                 <Tooltip
                   formatter={(value: any) => [`${value} uds.`, "Vendidos"]}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
@@ -379,9 +384,9 @@ export default function MetricasAtencionClientePage() {
       </div>
 
       {/* Row 2: Table */}
-      <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary rounded">
+      <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+        <div className="p-5 border-b border-border/50 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary rounded">
             Rendimiento por Confirmador (Agentes)
           </h3>
         </div>
@@ -390,52 +395,52 @@ export default function MetricasAtencionClientePage() {
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
           </div>
         ) : agentPerformance.length === 0 ? (
-          <div className="p-8 text-center text-sm text-slate-500">
+          <div className="p-8 text-center text-sm text-muted-foreground">
             Sin datos de performance.
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="bg-slate-50/50 border-b border-slate-100">
-                  <th className="text-left text-[10px] text-slate-400 font-bold uppercase tracking-wider py-3 px-5">
+                <tr className="bg-muted/30 border-b border-border/50">
+                  <th className="text-left text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-3 px-5">
                     Agente
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-3 px-4">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-3 px-4">
                     Asignados
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-3 px-4">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-3 px-4">
                     Confirmación
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-3 px-4">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-3 px-4">
                     Tasa Upsell
                   </th>
-                  <th className="text-right text-[10px] text-slate-400 font-bold uppercase tracking-wider py-3 px-5">
+                  <th className="text-right text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-3 px-5">
                     Rev. Upsell
                   </th>
                 </tr>
               </thead>
               <tbody>
                 {agentPerformance.map((a, idx) => (
-                  <tr key={idx} className="border-b border-slate-50 hover:bg-slate-50/50 transition-colors last:border-0">
-                    <td className="py-3 px-5 text-sm font-semibold text-slate-700 flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-bold uppercase">
+                  <tr key={idx} className="border-b border-border/50 hover:bg-muted/30 transition-colors last:border-0">
+                    <td className="py-3 px-5 text-sm font-semibold text-foreground flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400 flex items-center justify-center text-xs font-bold uppercase">
                             {a.name.substring(0,2)}
                         </div>
                         {a.name}
                     </td>
-                    <td className="py-3 px-4 text-center text-sm text-slate-600 font-medium">
+                    <td className="py-3 px-4 text-center text-sm text-muted-foreground font-medium">
                       {a.total}
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${a.confirmRate >= 60 ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600'}`}>
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${a.confirmRate >= 60 ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'}`}>
                         {a.confirmRate}%
                       </span>
                     </td>
                     <td className="py-3 px-4 text-center">
-                      <span className="text-sm font-bold text-slate-700">{a.upsellRate}%</span>
+                      <span className="text-sm font-bold text-foreground">{a.upsellRate}%</span>
                     </td>
-                    <td className="py-3 px-5 text-right font-bold text-emerald-600 text-sm">
+                    <td className="py-3 px-5 text-right font-bold text-emerald-600 dark:text-emerald-500 text-sm">
                       S/ {a.upsellRev.toLocaleString("es-PE", { minimumFractionDigits: 0 })}
                     </td>
                   </tr>

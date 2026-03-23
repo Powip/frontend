@@ -16,6 +16,8 @@ import {
   Pie,
   Cell,
 } from "recharts";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { format, differenceInDays, subMonths, startOfMonth, endOfMonth, isSameMonth } from "date-fns";
 
 /* ─────────────────── Constants ─────────────────── */
 
@@ -33,6 +35,24 @@ export default function MetricasClientesPage() {
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<any[]>([]);
 
+  // Date range
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
+
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const periodDates = useMemo(() => {
+    if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
+    const from = new Date(fromDate);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setHours(23, 59, 59, 999);
+    return { from, to };
+  }, [fromDate, toDate]);
+
   useEffect(() => {
     if (!selectedStoreId) return;
     const fetchData = async () => {
@@ -49,7 +69,17 @@ export default function MetricasClientesPage() {
       }
     };
     fetchData();
-  }, [selectedStoreId]);
+  }, [selectedStoreId, fromDate, toDate]);
+
+  // Filter orders for the period
+  const periodOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        const d = new Date(o.created_at);
+        return d >= periodDates.from && d <= periodDates.to;
+      }),
+    [orders, periodDates]
+  );
 
   // ── Build customer map ──
   const customerMap = useMemo(() => {
@@ -58,7 +88,7 @@ export default function MetricasClientesPage() {
       { firstOrder: Date; orderCount: number; totalSpent: number }
     > = {};
 
-    orders.forEach((o: any) => {
+    periodOrders.forEach((o: any) => {
       const cId =
         o.customer?.documentNumber ||
         o.customer?.phoneNumber ||
@@ -83,7 +113,7 @@ export default function MetricasClientesPage() {
     });
 
     return map;
-  }, [orders]);
+  }, [periodOrders]);
 
   // ── KPIs ──
   const totalClientes = Object.keys(customerMap).length;
@@ -91,15 +121,12 @@ export default function MetricasClientesPage() {
   // Clientes este mes
   const thisMonth = new Date();
   const clientesEsteMes = useMemo(() => {
-    const month = thisMonth.getMonth();
-    const year = thisMonth.getFullYear();
+    const from = periodDates.from;
+    const to = periodDates.to;
     return Object.values(customerMap).filter((c) => {
-      return (
-        c.firstOrder.getMonth() === month &&
-        c.firstOrder.getFullYear() === year
-      );
+      return c.firstOrder >= from && c.firstOrder <= to;
     }).length;
-  }, [customerMap]);
+  }, [customerMap, periodDates]);
 
   // Tasa de recompra: customers with >1 order / total
   const tasaRecompra = useMemo(() => {
@@ -128,42 +155,34 @@ export default function MetricasClientesPage() {
 
   // ── Nuevos vs Recurrentes por mes ──
   const monthlyData = useMemo(() => {
-    const now = new Date();
     const data: { month: string; nuevos: number; recurrentes: number }[] = [];
+    
+    // Calculate months between fromDate and toDate
+    const start = startOfMonth(periodDates.from);
+    const end = startOfMonth(periodDates.to);
+    
+    let current = start;
+    while (current <= end) {
+      const monthIdx = current.getMonth();
+      const year = current.getFullYear();
 
-    for (let i = 2; i >= 0; i--) {
-      const targetMonth = now.getMonth() - i;
-      const targetYear =
-        now.getFullYear() + Math.floor((now.getMonth() - i) / 12);
-      const monthIdx = ((targetMonth % 12) + 12) % 12;
-
-      const monthOrders = orders.filter((o: any) => {
+      const monthOrders = periodOrders.filter((o: any) => {
         const d = new Date(o.created_at);
-        return d.getMonth() === monthIdx && d.getFullYear() === targetYear;
+        return d.getMonth() === monthIdx && d.getFullYear() === year;
       });
 
-      // Group by customer
       const customerOrders: Record<string, number> = {};
       monthOrders.forEach((o: any) => {
-        const cId =
-          o.customer?.documentNumber ||
-          o.customer?.phoneNumber ||
-          o.customer?.fullName ||
-          o.id;
+        const cId = o.customer?.documentNumber || o.customer?.phoneNumber || o.customer?.fullName || o.id;
         if (!cId) return;
         customerOrders[cId] = (customerOrders[cId] || 0) + 1;
       });
 
-      // A customer is "new" if their first order in customerMap is in this month
       let nuevos = 0;
       let recurrentes = 0;
       Object.keys(customerOrders).forEach((cId) => {
         const first = customerMap[cId]?.firstOrder;
-        if (
-          first &&
-          first.getMonth() === monthIdx &&
-          first.getFullYear() === targetYear
-        ) {
+        if (first && first.getMonth() === monthIdx && first.getFullYear() === year) {
           nuevos++;
         } else {
           recurrentes++;
@@ -175,10 +194,14 @@ export default function MetricasClientesPage() {
         nuevos,
         recurrentes,
       });
+
+      // Move to next month
+      current = new Date(current);
+      current.setMonth(current.getMonth() + 1);
     }
 
     return data;
-  }, [orders, customerMap]);
+  }, [periodOrders, customerMap, periodDates]);
 
   // ── Frecuencia de compra ──
   const frecuencia = useMemo(() => {
@@ -206,25 +229,30 @@ export default function MetricasClientesPage() {
   }, [customerMap]);
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50/50 min-h-screen">
+    <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight">
-          Clientes
-        </h1>
-        <p className="text-xs text-slate-400 font-semibold tracking-[0.15em] uppercase mt-1">
-          Retención, valor de vida y análisis de base de clientes
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-black text-foreground tracking-tight">
+            Clientes
+          </h1>
+          <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
+            Retención, valor de vida y análisis de base de clientes
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <PeriodSelector onPeriodChange={handlePeriodChange} />
+        </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Clientes */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Total Clientes
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : totalClientes.toLocaleString("es-PE")}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -233,12 +261,12 @@ export default function MetricasClientesPage() {
         </div>
 
         {/* Tasa de Recompra */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Tasa de Recompra
             </p>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30">
               +5%
             </span>
           </div>
@@ -251,11 +279,11 @@ export default function MetricasClientesPage() {
         </div>
 
         {/* LTV Estimado */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             LTV Estimado
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `S/ ${ltv.toLocaleString("es-PE")}`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -264,14 +292,14 @@ export default function MetricasClientesPage() {
         </div>
 
         {/* Frecuencia Promedio */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Frecuencia Promedio
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${frecuenciaMedia}x`}
           </p>
-          <p className="text-xs text-slate-400 font-semibold mt-0.5">
+          <p className="text-xs text-muted-foreground font-semibold mt-0.5">
             Pedidos por cliente
           </p>
         </div>
@@ -280,8 +308,8 @@ export default function MetricasClientesPage() {
       {/* Row: Nuevos vs Recurrentes + Frecuencia de compra */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Nuevos vs Recurrentes */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Nuevos vs Recurrentes
           </h3>
           {loading ? (
@@ -312,8 +340,8 @@ export default function MetricasClientesPage() {
                 />
                 <Tooltip
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
@@ -346,8 +374,8 @@ export default function MetricasClientesPage() {
         </div>
 
         {/* Frecuencia de compra */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Frecuencia de compra
           </h3>
           {loading ? (
@@ -379,8 +407,8 @@ export default function MetricasClientesPage() {
                   <Tooltip
                     formatter={(value: any, name: string) => [`${value}`, name]}
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
                       borderRadius: "12px",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                       fontSize: "11px",
@@ -396,10 +424,10 @@ export default function MetricasClientesPage() {
                       className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{ backgroundColor: f.color }}
                     />
-                    <span className="text-xs text-slate-600 font-medium">
+                    <span className="text-xs text-foreground font-medium">
                       {f.name}
                     </span>
-                    <span className="text-xs text-slate-400 font-semibold ml-auto">
+                    <span className="text-xs text-muted-foreground font-semibold ml-auto">
                       {f.value}
                     </span>
                   </div>

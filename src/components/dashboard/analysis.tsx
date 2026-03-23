@@ -30,7 +30,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DashboardCard } from "./DashboardCard";
-import { PeriodSelector } from "./PeriodSelector";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import {
@@ -93,20 +92,20 @@ const StatCard: React.FC<{
   clickable?: boolean;
 }> = ({ title, value, subValue, loading, onClick, clickable }) => (
   <Card
-    className={`bg-white border border-slate-200 shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 group overflow-hidden ${clickable ? "cursor-pointer hover:shadow-md" : ""}`}
+    className={`bg-card border border-border shadow-sm hover:ring-1 hover:ring-primary/20 transition-all duration-300 group overflow-hidden ${clickable ? "cursor-pointer hover:shadow-md" : ""}`}
     onClick={clickable ? onClick : undefined}
   >
     <CardContent className="p-4 flex flex-col h-full justify-between">
-      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mb-2">
+      <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest block mb-2">
         {title}
       </span>
       {loading ? (
-        <div className="h-7 w-24 bg-slate-100 animate-pulse rounded" />
+        <div className="h-7 w-24 bg-muted animate-pulse rounded" />
       ) : (
         <>
-          <div className="text-2xl font-bold text-slate-900 tracking-tight leading-none">{value}</div>
+          <div className="text-2xl font-bold text-card-foreground tracking-tight leading-none">{value}</div>
           {subValue && (
-            <p className="text-[10px] font-medium text-green-600 mt-1">
+            <p className="text-[10px] font-medium text-emerald-600 mt-1">
               {subValue}
             </p>
           )}
@@ -138,7 +137,12 @@ const CHART_COLORS = [
   "#14b8a6",
 ];
 
-export const Analysis: React.FC = () => {
+interface AnalysisProps {
+  fromDate: string;
+  toDate: string;
+}
+
+export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
   const { auth, selectedStoreId } = useAuth();
   const [loading, setLoading] = useState(true);
   const [channelData, setChannelData] = useState<{
@@ -157,9 +161,6 @@ export const Analysis: React.FC = () => {
   const [productDimension, setProductDimension] = useState<
     "category" | "brand"
   >("category");
-
-  const [fromDate, setFromDate] = useState("");
-  const [toDate, setToDate] = useState("");
 
   const fetchData = async (from?: string, to?: string) => {
     if (!selectedStoreId) return;
@@ -197,11 +198,6 @@ export const Analysis: React.FC = () => {
       fetchData(fromDate, toDate);
     }
   }, [selectedStoreId, fromDate, toDate]);
-
-  const handlePeriodChange = (from: string, to: string) => {
-    setFromDate(from);
-    setToDate(to);
-  };
 
   // Derived data for charts
   const getChannelChartData = () => {
@@ -361,36 +357,25 @@ export const Analysis: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full w-full overflow-hidden bg-slate-50/50">
-      {/* Header with Date Filters */}
-      <div className="px-8 py-6 flex items-center justify-between border-b border-slate-200 bg-white shadow-sm">
-        <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight">
-            Análisis Comercial
-          </h2>
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] mt-1">
-            Distribución de ventas por canal y producto
-          </p>
-        </div>
+    <div className="flex flex-col h-full w-full overflow-hidden bg-background">
 
-        <div className="flex items-center gap-3">
-          <PeriodSelector onPeriodChange={handlePeriodChange} />
-          {auth?.user?.role === "ADMIN" && (
-            <Button
-              onClick={handleExportFacturacion}
-              variant="outline"
-              size="sm"
-              className="gap-2 border-slate-200 hover:bg-slate-50"
-              disabled={!fromDate || !toDate}
-            >
-              <Download className="h-4 w-4" />
-              Facturación
-            </Button>
-          )}
+      {/* Export / Actions Header within component if needed */}
+      {auth?.user?.role === "ADMIN" && (
+        <div className="px-8 pt-4 pb-2 flex justify-end">
+          <Button
+            onClick={handleExportFacturacion}
+            variant="outline"
+            size="sm"
+            className="gap-2 border-border hover:bg-muted"
+            disabled={!fromDate || !toDate}
+          >
+            <Download className="h-4 w-4" />
+            Facturación
+          </Button>
         </div>
-      </div>
+      )}
 
-      <div className="flex-1 overflow-auto p-8 space-y-8">
+      <div className="flex-1 overflow-auto p-8 pt-4 space-y-8">
         {/* KPI Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
@@ -487,17 +472,20 @@ export const Analysis: React.FC = () => {
                   tick={{ fontSize: 11, fill: "#64748b", fontWeight: 700 }}
                 />
                 <Tooltip
+                  cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
                   formatter={(value) => [
                     `S/ ${Number(value).toLocaleString("es-PE")}`,
                     "Monto",
                   ]}
+                  itemStyle={{ color: "var(--foreground)" }}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
                     fontWeight: 700,
+                    color: "var(--foreground)",
                   }}
                 />
                 <Bar dataKey="monto" radius={[0, 6, 6, 0]} barSize={28}>
@@ -564,10 +552,13 @@ export const Analysis: React.FC = () => {
                     `S/ ${Number(value).toLocaleString()}`,
                     "Monto",
                   ]}
+                  itemStyle={{ color: "var(--foreground)" }}
                   contentStyle={{
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "8px",
-                    border: "none",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                    color: "var(--foreground)",
                   }}
                 />
                 <Legend iconType="circle" />

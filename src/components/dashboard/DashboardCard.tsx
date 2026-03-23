@@ -87,21 +87,21 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
 
   return (
     <Card
-      className={`w-full shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden bg-white border border-slate-200 flex flex-col ${className || "h-full"}`}
+      className={`w-full shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden bg-card border border-border flex flex-col ${className || "h-full"}`}
     >
       <CardHeader className="p-4 pb-2">
         <div className="flex justify-between items-start">
-          <CardTitle className="text-sm font-semibold text-slate-700 tracking-tight">
+          <CardTitle className="text-sm font-semibold text-foreground tracking-tight">
             {title}
           </CardTitle>
           {summaryStats && (
             <div className="flex gap-4">
               {summaryStats.map((stat, idx) => (
                 <div key={idx} className="text-right">
-                  <p className="text-[10px] text-slate-400 uppercase font-bold">
+                  <p className="text-[10px] text-muted-foreground uppercase font-bold">
                     {stat.label}
                   </p>
-                  <p className="text-sm font-bold text-slate-800">
+                  <p className="text-sm font-bold text-foreground">
                     {stat.value}
                   </p>
                 </div>
@@ -216,6 +216,10 @@ export const DashboardCard: React.FC<DashboardCardProps> = ({
                                       deliveredCount: "Entregados",
                                       createdCount: "Total Órdenes",
                                       deliveryEffectiveness: "% Efectividad",
+                                      courierName: "Nombre Courier",
+                                      shippingRevenue: "Monto de Cobranza",
+                                      ordersCount: "N° Pedidos",
+                                      percentage: "% de Efectividad",
                                     }[key] ||
                                     key.replace(/_/g, " ").toUpperCase();
 

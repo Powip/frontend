@@ -10,11 +10,14 @@ import {
   Cell,
   Tooltip,
 } from "recharts";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 
 /* ─────────────────── Types ─────────────────── */
 
 interface InventoryItem {
   inventoryItemId: string;
+  variantId: string;
+  productId: string;
   productName: string;
   sku: string;
   availableStock: number;
@@ -56,6 +59,24 @@ export default function MetricasInventarioPage() {
   const { inventories } = useAuth();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<InventoryItem[]>([]);
+
+  // Date range
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
+
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const periodDates = useMemo(() => {
+    if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
+    const from = new Date(fromDate);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setHours(23, 59, 59, 999);
+    return { from, to };
+  }, [fromDate, toDate]);
 
   // Fetch all inventory items
   useEffect(() => {
@@ -103,10 +124,14 @@ export default function MetricasInventarioPage() {
     };
 
     fetchItems();
-  }, [inventories]);
+  }, [inventories, fromDate, toDate]);
 
   // KPIs
   const totalSkus = items.length;
+  const totalProducts = useMemo(() => {
+    const products = new Set(items.map((i) => i.productId).filter(Boolean));
+    return products.size;
+  }, [items]);
 
   const totalStock = useMemo(
     () => items.reduce((sum, i) => sum + (i.availableStock || 0), 0),
@@ -142,7 +167,7 @@ export default function MetricasInventarioPage() {
     const catMap: Record<string, number> = {};
 
     items.forEach((item) => {
-      const cat = item.attributes?.category || item.category || "General";
+      const cat = item.category || item.attributes?.category || "General";
       catMap[cat] = (catMap[cat] || 0) + (item.availableStock || 0);
     });
 
@@ -193,38 +218,40 @@ export default function MetricasInventarioPage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50/50 min-h-screen">
+    <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight">
-          Inventario
-        </h1>
-        <p className="text-xs text-slate-400 font-semibold tracking-[0.15em] uppercase mt-1">
-          Control de stock y rotación de productos
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-black text-foreground tracking-tight">
+            Inventario
+          </h1>
+          <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
+            Control de stock y rotación de productos
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <PeriodSelector onPeriodChange={handlePeriodChange} />
+        </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total SKUs */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-            Total SKUs
+        {/* Total Productos */}
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
+            Total Productos
           </p>
-          <p className="text-2xl font-black text-slate-800">
-            {loading ? "—" : totalSkus.toLocaleString()}
-          </p>
-          <p className="text-xs text-emerald-500 font-semibold mt-0.5">
-            Productos registrados
+          <p className="text-2xl font-black text-foreground">
+            {loading ? "—" : totalProducts.toLocaleString()}
           </p>
         </div>
 
         {/* Rotación */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Rotación
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${rotacion}x`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -233,27 +260,27 @@ export default function MetricasInventarioPage() {
         </div>
 
         {/* Stock-Out Rate */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Stock-Out Rate
           </p>
           <p className="text-2xl font-black text-amber-500">
             {loading ? "—" : `${stockOutRate}%`}
           </p>
-          <p className="text-xs text-slate-400 font-semibold mt-0.5">
+          <p className="text-xs text-muted-foreground font-semibold mt-0.5">
             Meta: &lt;3%
           </p>
         </div>
 
         {/* Días de Cobertura */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Días de Cobertura
           </p>
           <p className="text-2xl font-black text-amber-500">
             {loading ? "—" : `${diasCobertura}d`}
           </p>
-          <p className="text-xs text-slate-400 font-semibold mt-0.5">
+          <p className="text-xs text-muted-foreground font-semibold mt-0.5">
             Óptimo: 20-30d
           </p>
         </div>
@@ -262,8 +289,8 @@ export default function MetricasInventarioPage() {
       {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Stock por categoría - Donut */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Stock por categoría
           </h3>
           {loading ? (
@@ -271,7 +298,7 @@ export default function MetricasInventarioPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : categoryData.length === 0 ? (
-            <div className="h-[300px] flex items-center justify-center text-slate-400 text-sm">
+            <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
               Sin datos de categoría
             </div>
           ) : (
@@ -298,8 +325,8 @@ export default function MetricasInventarioPage() {
                       name,
                     ]}
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
                       borderRadius: "12px",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                       fontSize: "11px",
@@ -316,10 +343,10 @@ export default function MetricasInventarioPage() {
                       className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{ backgroundColor: cat.color }}
                     />
-                    <span className="text-xs text-slate-600 font-medium truncate">
+                    <span className="text-xs text-foreground font-medium truncate">
                       {cat.name}
                     </span>
-                    <span className="text-xs text-slate-400 font-semibold ml-auto">
+                    <span className="text-xs text-muted-foreground font-semibold ml-auto">
                       {cat.value}
                     </span>
                   </div>
@@ -330,8 +357,8 @@ export default function MetricasInventarioPage() {
         </div>
 
         {/* Productos con stock bajo */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Productos con stock bajo
           </h3>
           {loading ? (
@@ -339,24 +366,24 @@ export default function MetricasInventarioPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : lowStockProducts.length === 0 ? (
-            <div className="h-[300px] flex items-center justify-center text-slate-400 text-sm">
+            <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
               No hay productos con stock bajo
             </div>
           ) : (
             <div className="overflow-auto max-h-[320px]">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 pr-4">
+                  <tr className="border-b border-border">
+                    <th className="text-left text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pr-4">
                       Producto
                     </th>
-                    <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-3">
+                    <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-3">
                       Stock
                     </th>
-                    <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-3">
+                    <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-3">
                       Cobertura
                     </th>
-                    <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 pl-3">
+                    <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pl-3">
                       Estado
                     </th>
                   </tr>
@@ -365,15 +392,15 @@ export default function MetricasInventarioPage() {
                   {lowStockProducts.map((product, idx) => (
                     <tr
                       key={idx}
-                      className="border-b border-slate-50 last:border-0"
+                      className="border-b border-border/50 last:border-0"
                     >
-                      <td className="py-3 pr-4 text-sm font-medium text-slate-700">
+                      <td className="py-3 pr-4 text-sm font-medium text-foreground">
                         {product.name}
                       </td>
-                      <td className="py-3 px-3 text-center text-sm font-semibold text-slate-600">
+                      <td className="py-3 px-3 text-center text-sm font-semibold text-muted-foreground">
                         {product.stock}
                       </td>
-                      <td className="py-3 px-3 text-center text-sm text-slate-500">
+                      <td className="py-3 px-3 text-center text-sm text-muted-foreground">
                         {product.coverageDays}d
                       </td>
                       <td className="py-3 pl-3 text-center">

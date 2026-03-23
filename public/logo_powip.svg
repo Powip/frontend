@@ -1,0 +1,13 @@
+<svg width="140" height="40" viewBox="0 0 140 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon container -->
+  <rect x="0" y="4" width="32" height="32" rx="6" fill="#4C2FB5"/>
+  
+  <!-- Speech bubble shape -->
+  <path d="M8 12C8 10.3431 9.34315 9 11 9H21C22.6569 9 24 10.3431 24 12V22C24 23.6569 22.6569 25 21 25H18L14.5 30L14.5 25H11C9.34315 25 8 23.6569 8 22V12Z" fill="white"/>
+  
+  <!-- Smile curve -->
+  <path d="M12 18C12 18 14 21 18 18" stroke="#4C2FB5" stroke-width="2" stroke-linecap="round"/>
+  
+  <!-- POWIP text -->
+  <text x="40" y="28" font-family="Montserrat, Arial, sans-serif" font-size="20" font-weight="700" fill="#4C2FB5">POWIP</text>
+</svg>

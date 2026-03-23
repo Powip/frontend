@@ -19,6 +19,8 @@ import {
   Area,
   Line,
 } from "recharts";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { format, differenceInDays } from "date-fns";
 import { ChevronDown, AlertTriangle } from "lucide-react";
 
 /* ─────────────────── Types ─────────────────── */
@@ -64,20 +66,23 @@ export default function MetricasSeguimientosPage() {
   const [orders, setOrders] = useState<any[]>([]);
   const [guides, setGuides] = useState<ShippingGuide[]>([]);
 
-  // Date range label
-  const now = new Date();
-  const dateFrom = useMemo(() => {
-    const d = new Date(now);
-    d.setDate(d.getDate() - 13);
-    d.setHours(0, 0, 0, 0);
-    return d;
-  }, []);
+  // Date range
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
 
-  const dateLabel = useMemo(() => {
-    const fmt = (d: Date) =>
-      d.toLocaleDateString("es-PE", { day: "numeric", month: "short", year: "numeric" });
-    return `Hoy — ${fmt(dateFrom)}`;
-  }, [dateFrom]);
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const periodDates = useMemo(() => {
+    if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
+    const from = new Date(fromDate);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setHours(23, 59, 59, 999);
+    return { from, to };
+  }, [fromDate, toDate]);
 
   // Fetch data
   useEffect(() => {
@@ -102,38 +107,57 @@ export default function MetricasSeguimientosPage() {
       }
     };
     fetchData();
-  }, [selectedStoreId]);
+  }, [selectedStoreId, fromDate, toDate]);
+
+  // Filter orders and guides for the period
+  const periodOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        const d = new Date(o.created_at);
+        return d >= periodDates.from && d <= periodDates.to;
+      }),
+    [orders, periodDates]
+  );
+
+  const periodGuides = useMemo(
+    () =>
+      guides.filter((g) => {
+        const d = new Date(g.created_at);
+        return d >= periodDates.from && d <= periodDates.to;
+      }),
+    [guides, periodDates]
+  );
 
   // ── KPIs ──
 
   // En tránsito ahora: orders with EN_ENVIO status
   const enTransito = useMemo(
-    () => orders.filter((o) => o.status === "EN_ENVIO").length,
-    [orders]
+    () => periodOrders.filter((o) => o.status === "EN_ENVIO").length,
+    [periodOrders]
   );
 
   // Entrega primer intento: delivered guides / (delivered + failed)
   const entregaPrimerIntento = useMemo(() => {
-    const delivered = guides.filter((g) => g.status === "ENTREGADA").length;
-    const failed = guides.filter((g) => g.status === "FALLIDA" || g.status === "PARCIAL").length;
+    const delivered = periodGuides.filter((g) => g.status === "ENTREGADA").length;
+    const failed = periodGuides.filter((g) => g.status === "FALLIDA" || g.status === "PARCIAL").length;
     const total = delivered + failed;
     if (total === 0) return 0;
     return Math.round((delivered / total) * 100);
-  }, [guides]);
+  }, [periodGuides]);
 
   const entregaMeta = 85;
   const entregaDiff = entregaPrimerIntento - entregaMeta;
 
   // Sin movimiento +48h: orders EN_ENVIO older than 2 days
   const sinMovimiento = useMemo(() => {
-    const twoDaysAgo = new Date();
-    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-    return orders.filter(
+    const twoDaysAgoLimit = new Date();
+    twoDaysAgoLimit.setDate(twoDaysAgoLimit.getDate() - 2);
+    return periodOrders.filter(
       (o) =>
         o.status === "EN_ENVIO" &&
-        new Date(o.updated_at || o.created_at) < twoDaysAgo
+        new Date(o.updated_at || o.created_at) < twoDaysAgoLimit
     );
-  }, [orders]);
+  }, [periodOrders]);
 
   // Courier breakdown for the alert
   const sinMovimientoByCourier = useMemo(() => {
@@ -150,7 +174,7 @@ export default function MetricasSeguimientosPage() {
 
   // Tiempo promedio entrega (days from created to delivered)
   const tiempoPromedio = useMemo(() => {
-    const delivered = orders.filter((o) => o.status === "ENTREGADO" || o.status === "PAGADO");
+    const delivered = periodOrders.filter((o) => o.status === "ENTREGADO" || o.status === "PAGADO");
     if (delivered.length === 0) return 0;
     const totalDays = delivered.reduce((sum: number, o: any) => {
       const created = new Date(o.created_at);
@@ -158,12 +182,12 @@ export default function MetricasSeguimientosPage() {
       return sum + Math.max(0.1, (updated.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
     }, 0);
     return Number((totalDays / delivered.length).toFixed(1));
-  }, [orders]);
+  }, [periodOrders]);
 
   // ── Performance por Courier ──
   const courierPerformance = useMemo(() => {
     const map: Record<string, { delivered: number; total: number }> = {};
-    guides.forEach((g) => {
+    periodGuides.forEach((g) => {
       const name = g.courierName || "Sin asignar";
       if (!map[name]) map[name] = { delivered: 0, total: 0 };
       if (["ENTREGADA", "FALLIDA", "PARCIAL"].includes(g.status)) {
@@ -179,11 +203,11 @@ export default function MetricasSeguimientosPage() {
         color: COURIER_COLORS[idx % COURIER_COLORS.length],
       }))
       .sort((a, b) => b.rate - a.rate);
-  }, [guides]);
+  }, [periodGuides]);
 
   // ── Estado en tránsito (donut) ──
   const transitStatus = useMemo(() => {
-    const activeGuides = guides.filter(
+    const activeGuides = periodGuides.filter(
       (g) => !["ENTREGADA", "CANCELADA"].includes(g.status)
     );
     const map: Record<string, number> = {};
@@ -195,18 +219,20 @@ export default function MetricasSeguimientosPage() {
       value,
       color: GUIDE_STATUS_COLORS[status] || "#94a3b8",
     }));
-  }, [guides]);
+  }, [periodGuides]);
 
   // ── Pedidos procesados últimos 14 días ──
   const dailyProcessed = useMemo(() => {
     const days: { date: string; procesados: number; retrasados: number }[] = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date();
+    const diff = differenceInDays(periodDates.to, periodDates.from);
+
+    for (let i = diff; i >= 0; i--) {
+      const d = new Date(periodDates.to);
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split("T")[0];
       const dayLabel = d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
 
-      const dayGuides = guides.filter((g) => {
+      const dayGuides = periodGuides.filter((g) => {
         const gd = new Date(g.created_at).toISOString().split("T")[0];
         return gd === dateStr;
       });
@@ -221,11 +247,11 @@ export default function MetricasSeguimientosPage() {
       days.push({ date: dayLabel, procesados, retrasados });
     }
     return days;
-  }, [guides]);
+  }, [periodGuides, periodDates]);
 
   // ── Cancelados / Fallidos por motivo ──
   const cancelReasons = useMemo(() => {
-    const failedGuides = guides.filter(
+    const failedGuides = periodGuides.filter(
       (g) => g.status === "FALLIDA" || g.status === "CANCELADA"
     );
     const reasons: Record<string, number> = {};
@@ -235,7 +261,7 @@ export default function MetricasSeguimientosPage() {
     });
 
     // Also count order-level cancellation reasons
-    orders
+    periodOrders
       .filter((o) => o.status === "ANULADO")
       .forEach((o) => {
         const reason = typeof o.cancellationReason === "string"
@@ -252,12 +278,12 @@ export default function MetricasSeguimientosPage() {
         value,
         color: colors[idx % colors.length],
       }));
-  }, [guides, orders]);
+  }, [periodGuides, periodOrders]);
 
   // ── Tasa de devolución por courier ──
   const devolucionByCourier = useMemo(() => {
     const map: Record<string, { total: number; failed: number }> = {};
-    guides.forEach((g) => {
+    periodGuides.forEach((g) => {
       const name = g.courierName || "Sin asignar";
       if (!map[name]) map[name] = { total: 0, failed: 0 };
       map[name].total++;
@@ -273,41 +299,40 @@ export default function MetricasSeguimientosPage() {
         color: COURIER_COLORS[idx % COURIER_COLORS.length],
       }))
       .sort((a, b) => b.tasa - a.tasa);
-  }, [guides]);
+  }, [periodGuides]);
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50/50 min-h-screen">
+    <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+          <h1 className="text-2xl font-black text-foreground tracking-tight">
             Seguimiento
           </h1>
-          <p className="text-xs text-slate-400 font-semibold tracking-[0.15em] uppercase mt-1">
+          <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
             Rastreo en tránsito — conectado a couriers
           </p>
         </div>
-        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-sm font-semibold text-slate-700">
-          <span>{dateLabel}</span>
-          <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+        <div className="flex items-center gap-2">
+          <PeriodSelector onPeriodChange={handlePeriodChange} />
         </div>
       </div>
 
       {/* Alert banner */}
       {sinMovimiento.length > 0 && (
-        <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-5 py-3">
+        <div className="flex items-center justify-between bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900/50 rounded-xl px-5 py-3">
           <div className="flex items-center gap-3">
             <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
             <div>
-              <p className="text-sm font-bold text-slate-800">
+              <p className="text-sm font-bold text-foreground">
                 {sinMovimiento.length} pedidos sin movimiento +48h
               </p>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-muted-foreground">
                 {sinMovimientoByCourier}. Contactar al courier o escalar al cliente.
               </p>
             </div>
           </div>
-          <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-600">
+          <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-red-100 text-red-600 dark:bg-red-900/30">
             CRÍTICO
           </span>
         </div>
@@ -316,11 +341,11 @@ export default function MetricasSeguimientosPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* En tránsito ahora */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             En Tránsito Ahora
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : enTransito}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -329,17 +354,17 @@ export default function MetricasSeguimientosPage() {
         </div>
 
         {/* Entrega 1er intento */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Entrega 1er Intento
             </p>
             {entregaDiff !== 0 && (
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   entregaDiff >= 0
-                    ? "bg-emerald-50 text-emerald-600"
-                    : "bg-red-50 text-red-500"
+                    ? "bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30"
+                    : "bg-red-50 text-red-500 dark:bg-red-900/30"
                 }`}
               >
                 {entregaDiff > 0 ? "+" : ""}
@@ -356,8 +381,8 @@ export default function MetricasSeguimientosPage() {
         </div>
 
         {/* Sin movimiento +48h */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Sin Movimiento +48h
           </p>
           <p className="text-2xl font-black text-amber-500">
@@ -369,11 +394,11 @@ export default function MetricasSeguimientosPage() {
         </div>
 
         {/* Tiempo promedio entrega */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Tiempo Promedio Entrega
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${tiempoPromedio}d`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -385,8 +410,8 @@ export default function MetricasSeguimientosPage() {
       {/* Row 1: Courier performance + Estado en tránsito */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Performance por Courier */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Performance por Courier — Tasa entrega 1er intento
           </h3>
           {loading ? (
@@ -421,8 +446,8 @@ export default function MetricasSeguimientosPage() {
                 <Tooltip
                   formatter={(value: any) => [`${value}%`, "Tasa 1er intento"]}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
@@ -440,8 +465,8 @@ export default function MetricasSeguimientosPage() {
         </div>
 
         {/* Estado en tránsito */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Estado en tránsito
           </h3>
           {loading ? (
@@ -473,8 +498,8 @@ export default function MetricasSeguimientosPage() {
                   <Tooltip
                     formatter={(value: any, name: string) => [`${value}`, name]}
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
                       borderRadius: "12px",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                       fontSize: "11px",
@@ -490,10 +515,10 @@ export default function MetricasSeguimientosPage() {
                       className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{ backgroundColor: s.color }}
                     />
-                    <span className="text-xs text-slate-600 font-medium truncate">
+                    <span className="text-xs text-foreground font-medium truncate">
                       {s.name}
                     </span>
-                    <span className="text-xs text-slate-400 font-semibold ml-auto">
+                    <span className="text-xs text-muted-foreground font-semibold ml-auto">
                       {s.value}
                     </span>
                   </div>
@@ -505,8 +530,8 @@ export default function MetricasSeguimientosPage() {
       </div>
 
       {/* Row 2: Pedidos procesados últimos 14 días */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-700 mb-4">
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-muted-foreground mb-4">
           Pedidos procesados — últimos 14 días
         </h3>
         {loading ? (
@@ -536,8 +561,8 @@ export default function MetricasSeguimientosPage() {
               />
               <Tooltip
                 contentStyle={{
-                  background: "white",
-                  border: "1px solid #e2e8f0",
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
                   borderRadius: "12px",
                   boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                   fontSize: "11px",
@@ -556,7 +581,7 @@ export default function MetricasSeguimientosPage() {
                 stroke="#3b82f6"
                 strokeWidth={2.5}
                 fill="url(#colorProcSeg)"
-                dot={{ r: 3, strokeWidth: 2, fill: "white" }}
+                dot={{ r: 3, strokeWidth: 2, fill: "var(--background)" }}
                 activeDot={{ r: 5 }}
               />
               <Line
@@ -566,7 +591,7 @@ export default function MetricasSeguimientosPage() {
                 stroke="#ec4899"
                 strokeWidth={2}
                 strokeDasharray="4 4"
-                dot={{ r: 3, strokeWidth: 2, fill: "white" }}
+                dot={{ r: 3, strokeWidth: 2, fill: "var(--background)" }}
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -576,8 +601,8 @@ export default function MetricasSeguimientosPage() {
       {/* Row 3: Cancelados + Tasa devolución */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Cancelados por motivo */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Cancelados — motivo
           </h3>
           {loading ? (
@@ -609,8 +634,8 @@ export default function MetricasSeguimientosPage() {
                   <Tooltip
                     formatter={(value: any, name: string) => [`${value}`, name]}
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
                       borderRadius: "12px",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                       fontSize: "11px",
@@ -626,10 +651,10 @@ export default function MetricasSeguimientosPage() {
                       className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{ backgroundColor: r.color }}
                     />
-                    <span className="text-xs text-slate-600 font-medium truncate">
+                    <span className="text-xs text-foreground font-medium truncate">
                       {r.name}
                     </span>
-                    <span className="text-xs text-slate-400 font-semibold ml-auto">
+                    <span className="text-xs text-muted-foreground font-semibold ml-auto">
                       {r.value}
                     </span>
                   </div>
@@ -640,8 +665,8 @@ export default function MetricasSeguimientosPage() {
         </div>
 
         {/* Tasa de devolución por courier */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Tasa de devolución por courier — últimos 30 días
           </h3>
           {loading ? (
@@ -675,8 +700,8 @@ export default function MetricasSeguimientosPage() {
                 <Tooltip
                   formatter={(value: any) => [`${value}%`, "Tasa devolución"]}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
