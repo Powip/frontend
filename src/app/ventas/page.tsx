@@ -298,6 +298,9 @@ export default function VentasPage() {
       const res = await axios.get<OrderHeader[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
+
+      res.data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
       const mappedSales = res.data.map(mapOrderToSale);
       setSales(mappedSales);
 
