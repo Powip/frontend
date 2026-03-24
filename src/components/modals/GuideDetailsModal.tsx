@@ -39,8 +39,10 @@ import { es } from "date-fns/locale";
 import axios from "axios";
 import { toast } from "sonner";
 import PaymentVerificationModal from "./PaymentVerificationModal";
+import SendToShalomModal from "@/components/shalom/SendToShalomModal";
 import { exportToExcel } from "@/lib/excel";
 import { FileSpreadsheet } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
 
 export interface ShippingGuide {
   id: string;
@@ -190,6 +192,12 @@ export default function GuideDetailsModal({
   onGuideUpdated,
   isCourierView = false,
 }: GuideDetailsModalProps) {
+  const { auth } = useAuth();
+  const companyId = auth?.company?.id;
+
+  // Shalom modal
+  const [shalomModalOpen, setShalomModalOpen] = useState(false);
+
   const [guide, setGuide] = useState<ShippingGuide | null>(null);
   const [loading, setLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
@@ -1432,6 +1440,17 @@ export default function GuideDetailsModal({
                   ✓ Aprobar Guía
                 </Button>
               )}
+          {/* Botón Enviar a Shalom — solo si es Shalom y guía APROBADA */}
+            {guide &&
+              guide.status === "APROBADA" &&
+              normalizeCourier(guide.courierName) === "Shalom" && (
+                <Button
+                  onClick={() => setShalomModalOpen(true)}
+                  className="bg-orange-500 hover:bg-orange-600 text-white"
+                >
+                  📦 Enviar a Shalom
+                </Button>
+              )}
             {guide && (
               <>
                 <Button variant="outline" onClick={handleExportExcel}>
@@ -1460,11 +1479,34 @@ export default function GuideDetailsModal({
           open={paymentModalOpen}
           onClose={() => {
             setPaymentModalOpen(false);
-            fetchGuide(); // Refrescar para ver nuevos estados de pago si es necesario
+            fetchGuide();
           }}
           orderId={selectedPaymentOrder.id}
           orderNumber={selectedPaymentOrder.number}
           canApprove={false}
+        />
+      )}
+
+      {guide && companyId && shalomModalOpen && (
+        <SendToShalomModal
+          open={shalomModalOpen}
+          onClose={() => setShalomModalOpen(false)}
+          guideId={guide.id}
+          guideNumber={guide.guideNumber}
+          companyId={companyId}
+          orders={ordersDetails.map((o) => ({
+            id: o.id,
+            orderNumber: o.orderNumber,
+            recipientName: o.customer.fullName,
+            recipientPhone: o.customer.phoneNumber,
+            district: o.customer.district,
+            content: o.items.map((i) => `${i.productName} x${i.quantity}`).join(", "),
+          }))}
+          onSuccess={() => {
+            setShalomModalOpen(false);
+            fetchGuide();
+            onGuideUpdated?.();
+          }}
         />
       )}
     </Dialog>
