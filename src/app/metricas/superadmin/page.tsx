@@ -291,13 +291,13 @@ export default function MetricasSuperAdminPage() {
   }, [data.allCompaniesStats, data.companies]);
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50/50 min-h-screen">
+    <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+        <h1 className="text-2xl font-black text-foreground tracking-tight">
           Superadmin — Plataforma Powip
         </h1>
-        <p className="text-xs text-slate-400 font-semibold tracking-[0.15em] uppercase mt-1">
+        <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
           Vista consolidada de todos los negocios
         </p>
       </div>
@@ -305,16 +305,16 @@ export default function MetricasSuperAdminPage() {
       {/* KPI Cards Row 1 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* MRR Total */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               MRR Total
             </p>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30">
               +7.6%
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading
               ? "—"
               : `S/ ${mrrTotal.toLocaleString("es-PE")}`}
@@ -325,16 +325,16 @@ export default function MetricasSuperAdminPage() {
         </div>
 
         {/* Negocios Activos */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Negocios Activos
             </p>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30">
               +1.6%
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : negociosActivos}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -343,8 +343,8 @@ export default function MetricasSuperAdminPage() {
         </div>
 
         {/* Churn Rate Mensual */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Churn Rate Mensual
           </p>
           <p className="text-2xl font-black text-amber-500">
@@ -356,12 +356,12 @@ export default function MetricasSuperAdminPage() {
         </div>
 
         {/* NRR */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               NRR
             </p>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30">
               Excelente
             </span>
           </div>
@@ -377,8 +377,8 @@ export default function MetricasSuperAdminPage() {
       {/* KPI Cards Row 2 */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Tasa de Activación */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Tasa de Activación
           </p>
           <p className="text-2xl font-black text-amber-500">
@@ -390,11 +390,11 @@ export default function MetricasSuperAdminPage() {
         </div>
 
         {/* Time to First Value */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Time to First Value
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `${ttfv}d`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -403,8 +403,8 @@ export default function MetricasSuperAdminPage() {
         </div>
 
         {/* DAU / MAU */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             DAU / MAU
           </p>
           <p className="text-2xl font-black text-emerald-500">
@@ -416,16 +416,16 @@ export default function MetricasSuperAdminPage() {
         </div>
 
         {/* GMV Plataforma */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               GMV Plataforma
             </p>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30">
               +22%
             </span>
           </div>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading
               ? "—"
               : gmv >= 1000000
@@ -441,8 +441,8 @@ export default function MetricasSuperAdminPage() {
       {/* Row: MRR por plan + Distribución */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* MRR por plan */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             MRR por plan
           </h3>
           {loading ? (
@@ -477,8 +477,8 @@ export default function MetricasSuperAdminPage() {
                     "MRR",
                   ]}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
@@ -496,8 +496,8 @@ export default function MetricasSuperAdminPage() {
         </div>
 
         {/* Distribución negocios por plan */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Distribución negocios por plan
           </h3>
           {loading ? (
@@ -525,8 +525,8 @@ export default function MetricasSuperAdminPage() {
                   <Tooltip
                     formatter={(value: number, name: string) => [`${value} negocios`, name]}
                     contentStyle={{
-                      background: "white",
-                      border: "1px solid #e2e8f0",
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
                       borderRadius: "12px",
                       boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                       fontSize: "11px",
@@ -542,10 +542,10 @@ export default function MetricasSuperAdminPage() {
                       className="w-3 h-3 rounded-full flex-shrink-0"
                       style={{ backgroundColor: p.color }}
                     />
-                    <span className="text-xs text-slate-600 font-medium">
+                    <span className="text-xs text-foreground font-medium">
                       {p.name}
                     </span>
-                    <span className="text-xs text-slate-400 font-semibold ml-auto">
+                    <span className="text-xs text-muted-foreground font-semibold ml-auto">
                       {p.value}
                     </span>
                   </div>
@@ -557,29 +557,34 @@ export default function MetricasSuperAdminPage() {
       </div>
 
       {/* Señales de Riesgo de Churn */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-700 mb-4">
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-muted-foreground mb-4">
           Señales de Riesgo de Churn — Intervención requerida
         </h3>
         <div className="flex flex-col gap-3">
           {churnAlerts.map((alert, idx) => (
             <div
               key={idx}
-              className={`flex items-start justify-between gap-4 bg-slate-50 rounded-lg px-4 py-3 border-l-4 ${alert.borderColor}`}
+              className={`flex items-start justify-between gap-4 bg-background dark:bg-muted/10 rounded-lg px-4 py-3 border-l-4 ${alert.borderColor}`}
             >
               <div className="flex items-start gap-3">
                 {alert.icon}
                 <div>
-                  <p className="text-sm font-bold text-slate-800">
+                  <p className="text-sm font-bold text-foreground">
                     {alert.title}
                   </p>
-                  <p className="text-xs text-slate-500 mt-0.5">
+                  <p className="text-xs text-muted-foreground mt-0.5">
                     {alert.desc}
                   </p>
                 </div>
               </div>
               <span
-                className={`text-[10px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${alert.badgeColor}`}
+                className={`text-[10px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap flex-shrink-0 ${
+                  alert.badgeColor.includes('bg-red') ? 'bg-red-100 text-red-500 dark:bg-red-900/30 dark:text-red-400' :
+                  alert.badgeColor.includes('bg-amber') ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400' :
+                  alert.badgeColor.includes('bg-teal') ? 'bg-teal-100 text-teal-600 dark:bg-teal-900/30 dark:text-teal-400' :
+                  'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400'
+                }`}
               >
                 {alert.badge}
               </span>
@@ -591,8 +596,8 @@ export default function MetricasSuperAdminPage() {
       {/* Row: Nuevos registros + Top 5 negocios */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Nuevos registros 30 días */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Nuevos registros — últimos 30 días
           </h3>
           <ResponsiveContainer width="100%" height={250}>
@@ -619,8 +624,8 @@ export default function MetricasSuperAdminPage() {
               <Tooltip
                 formatter={(value: number) => [`${value}`, "Registros"]}
                 contentStyle={{
-                  background: "white",
-                  border: "1px solid #e2e8f0",
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
                   borderRadius: "12px",
                   boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                   fontSize: "11px",
@@ -633,34 +638,34 @@ export default function MetricasSuperAdminPage() {
                 stroke="#6366f1"
                 strokeWidth={2.5}
                 fill="url(#colorRegSa)"
-                dot={{ r: 2, strokeWidth: 2, fill: "white" }}
+                dot={{ r: 2, strokeWidth: 2, fill: "var(--background)" }}
               />
             </AreaChart>
           </ResponsiveContainer>
         </div>
 
         {/* Top 5 negocios */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Top 5 negocios por GMV — {top5.month}
           </h3>
           <div className="overflow-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 w-8">
+                <tr className="border-b border-border/50">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 w-8">
                     #
                   </th>
-                  <th className="text-left text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 pr-3">
+                  <th className="text-left text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pr-3">
                     Negocio
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-2">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-2">
                     GMV
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-2">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-2">
                     Plan
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 pl-2">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pl-2">
                     Churn Risk
                   </th>
                 </tr>
@@ -669,25 +674,30 @@ export default function MetricasSuperAdminPage() {
                 {top5.data.map((biz: any, idx: number) => (
                   <tr
                     key={idx}
-                    className="border-b border-slate-50 last:border-0"
+                    className="border-b border-border/50 last:border-0"
                   >
                     <td className="py-3 text-center">
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-[10px] font-bold text-slate-500">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
                         {idx + 1}
                       </span>
                     </td>
-                    <td className="py-3 pr-3 text-sm font-semibold text-slate-700">
+                    <td className="py-3 pr-3 text-sm font-semibold text-foreground">
                       {biz.name}
                     </td>
-                    <td className="py-3 px-2 text-center text-sm font-semibold text-slate-600">
+                    <td className="py-3 px-2 text-center text-sm font-semibold text-muted-foreground">
                       S/ {biz.gmv.toLocaleString("es-PE")}
                     </td>
-                    <td className="py-3 px-2 text-center text-sm text-slate-600">
+                    <td className="py-3 px-2 text-center text-sm text-muted-foreground">
                       {biz.plan}
                     </td>
                     <td className="py-3 pl-2 text-center">
                       <span
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${churnBadge(biz.churnRisk)}`}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                          churnBadge(biz.churnRisk).includes('bg-red') ? 'bg-red-100 text-red-500 dark:bg-red-900/30' :
+                          churnBadge(biz.churnRisk).includes('bg-amber') ? 'bg-amber-100 text-amber-600 dark:bg-amber-900/30' :
+                          churnBadge(biz.churnRisk).includes('bg-emerald') ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30' :
+                          'bg-slate-100 text-slate-500 dark:bg-muted dark:text-muted-foreground'
+                        }`}
                       >
                         {biz.churnRisk}
                       </span>

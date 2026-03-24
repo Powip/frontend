@@ -26,6 +26,7 @@ export interface SaleExportData {
   courier?: string | null;
   sellerName?: string | null;
   guideNumber?: string | null;
+  products?: string;
 }
 
 /**
@@ -50,6 +51,7 @@ export function exportSalesToExcel(
     "Tipo Doc": s.documentType || "-",
     "N° Documento": s.documentNumber || "-",
     Fecha: s.date,
+    Productos: s.products || "-",
     Total: s.total.toFixed(2),
     Adelanto: s.advancePayment.toFixed(2),
     "Por Cobrar": s.pendingPayment.toFixed(2),

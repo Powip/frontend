@@ -37,6 +37,7 @@ interface SaasMetricsProps {
       activation: MetricTarget;
       churn: MetricTarget;
       stickiness: MetricTarget;
+      ttfv: MetricTarget;
     };
   };
 }

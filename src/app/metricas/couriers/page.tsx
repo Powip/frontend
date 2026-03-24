@@ -15,6 +15,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 
 /* ─────────────────── Types ─────────────────── */
 
@@ -60,6 +61,24 @@ export default function MetricasCouriersPage() {
   const [guides, setGuides] = useState<ShippingGuide[]>([]);
   const [orders, setOrders] = useState<any[]>([]);
 
+  // Date range
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
+
+  const handlePeriodChange = (from: string, to: string) => {
+    setFromDate(from);
+    setToDate(to);
+  };
+
+  const periodDates = useMemo(() => {
+    if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
+    const from = new Date(fromDate);
+    from.setHours(0, 0, 0, 0);
+    const to = new Date(toDate);
+    to.setHours(23, 59, 59, 999);
+    return { from, to };
+  }, [fromDate, toDate]);
+
   useEffect(() => {
     if (!selectedStoreId || !auth?.company?.id) return;
     const fetchData = async () => {
@@ -84,7 +103,26 @@ export default function MetricasCouriersPage() {
       }
     };
     fetchData();
-  }, [selectedStoreId, auth?.company?.id]);
+  }, [selectedStoreId, auth?.company?.id, fromDate, toDate]);
+
+  // Filter guides and orders for the period
+  const periodGuides = useMemo(
+    () =>
+      guides.filter((g) => {
+        const d = new Date(g.created_at);
+        return d >= periodDates.from && d <= periodDates.to;
+      }),
+    [guides, periodDates]
+  );
+
+  const periodOrders = useMemo(
+    () =>
+      orders.filter((o) => {
+        const d = new Date(o.created_at);
+        return d >= periodDates.from && d <= periodDates.to;
+      }),
+    [orders, periodDates]
+  );
 
   // ── Per-courier stats ──
   const courierStats: CourierStat[] = useMemo(() => {
@@ -113,7 +151,7 @@ export default function MetricasCouriersPage() {
     });
 
     // Also pick up courier names from guides
-    guides.forEach((g) => {
+    periodGuides.forEach((g) => {
       const name = g.courierName || "Sin asignar";
       if (!map[name]) {
         map[name] = {
@@ -151,7 +189,7 @@ export default function MetricasCouriersPage() {
     });
 
     // Also count from orders courier field
-    orders.forEach((o: any) => {
+    periodOrders.forEach((o: any) => {
       const name = o.courier;
       if (!name || map[name]) return; // skip if already counted or no courier
       if (!map[name]) {
@@ -203,7 +241,7 @@ export default function MetricasCouriersPage() {
         };
       })
       .sort((a, b) => b.score - a.score);
-  }, [couriers, guides, orders]);
+  }, [couriers, periodGuides, periodOrders]);
 
   // ── KPIs ──
   const couriersActivos = useMemo(
@@ -212,7 +250,7 @@ export default function MetricasCouriersPage() {
   );
   const totalCouriers = couriers.length;
 
-  const enviosMes = useMemo(() => guides.length, [guides]);
+  const enviosMes = useMemo(() => periodGuides.length, [periodGuides]);
 
   const costoPromedio = useMemo(() => {
     const withCost = courierStats.filter((c) => c.costoProm > 0);
@@ -224,10 +262,10 @@ export default function MetricasCouriersPage() {
 
   const tasaEntregaGlobal = useMemo(() => {
     const totalEnvios = courierStats.reduce((s, c) => s + c.envios, 0);
-    const totalDelivered = guides.filter((g) => g.status === "ENTREGADA").length;
+    const totalDelivered = periodGuides.filter((g) => g.status === "ENTREGADA").length;
     if (totalEnvios === 0) return 0;
     return Math.round((totalDelivered / totalEnvios) * 100);
-  }, [courierStats, guides]);
+  }, [courierStats, periodGuides]);
 
   // Score badge color
   const scoreColor = (score: number) => {
@@ -240,25 +278,30 @@ export default function MetricasCouriersPage() {
   const entregaColor = (v: number) => (v >= 85 ? "text-emerald-500" : v > 0 ? "text-slate-700" : "text-red-400");
 
   return (
-    <div className="flex flex-col gap-6 p-6 bg-slate-50/50 min-h-screen">
+    <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight">
-          Couriers
-        </h1>
-        <p className="text-xs text-slate-400 font-semibold tracking-[0.15em] uppercase mt-1">
-          Rendimiento y costos de entrega por courier
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-black text-foreground tracking-tight">
+            Couriers
+          </h1>
+          <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
+            Rendimiento y costos de entrega por courier
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <PeriodSelector onPeriodChange={handlePeriodChange} />
+        </div>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Couriers activos */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Couriers Activos
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : couriersActivos}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -267,11 +310,11 @@ export default function MetricasCouriersPage() {
         </div>
 
         {/* Envíos del mes */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Envíos del Mes
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : enviosMes}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -280,11 +323,11 @@ export default function MetricasCouriersPage() {
         </div>
 
         {/* Costo promedio envío */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Costo Promedio Envío
           </p>
-          <p className="text-2xl font-black text-slate-800">
+          <p className="text-2xl font-black text-foreground">
             {loading ? "—" : `S/ ${costoPromedio.toFixed(2)}`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
@@ -293,12 +336,12 @@ export default function MetricasCouriersPage() {
         </div>
 
         {/* Tasa entrega global */}
-        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
+        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
           <div className="flex items-center justify-between mb-1">
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Tasa Entrega Global
             </p>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600">
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30">
               +1%
             </span>
           </div>
@@ -314,13 +357,17 @@ export default function MetricasCouriersPage() {
       {/* Row 1: Tasa de entrega + Tiempo promedio */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Tasa de entrega exitosa */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Tasa de entrega exitosa (%)
           </h3>
           {loading ? (
             <div className="h-[280px] flex items-center justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : courierStats.filter((c) => c.envios > 0).length === 0 ? (
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm font-medium">
+              Sin datos de entrega para este periodo
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
@@ -346,8 +393,8 @@ export default function MetricasCouriersPage() {
                 <Tooltip
                   formatter={(value: any) => [`${value}%`, "Tasa entrega"]}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
@@ -367,13 +414,17 @@ export default function MetricasCouriersPage() {
         </div>
 
         {/* Tiempo promedio entrega */}
-        <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-700 mb-4">
+        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
             Tiempo promedio entrega (días)
           </h3>
           {loading ? (
             <div className="h-[280px] flex items-center justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : courierStats.filter((c) => c.tiempoProm > 0).length === 0 ? (
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm font-medium">
+              Sin datos de tiempos para este periodo
             </div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
@@ -398,8 +449,8 @@ export default function MetricasCouriersPage() {
                 <Tooltip
                   formatter={(value: any) => [`${value} días`, "Tiempo promedio"]}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #e2e8f0",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "12px",
                     boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                     fontSize: "11px",
@@ -420,13 +471,17 @@ export default function MetricasCouriersPage() {
       </div>
 
       {/* Envíos vs Devoluciones */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-700 mb-4">
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-muted-foreground mb-4">
           Envíos vs Devoluciones — últimos 30 días
         </h3>
         {loading ? (
           <div className="h-[250px] flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+          </div>
+        ) : courierStats.filter((c) => c.envios > 0).length === 0 ? (
+          <div className="h-[250px] flex items-center justify-center text-muted-foreground text-sm font-medium">
+            Sin datos de envíos vs devoluciones
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={250}>
@@ -453,8 +508,8 @@ export default function MetricasCouriersPage() {
               />
               <Tooltip
                 contentStyle={{
-                  background: "white",
-                  border: "1px solid #e2e8f0",
+                  background: "var(--card)",
+                  border: "1px solid var(--border)",
                   borderRadius: "12px",
                   boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
                   fontSize: "11px",
@@ -487,8 +542,8 @@ export default function MetricasCouriersPage() {
       </div>
 
       {/* Ranking Couriers */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-slate-700 mb-4">
+      <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+        <h3 className="text-sm font-semibold text-muted-foreground mb-4">
           Ranking Couriers — Score Combinado
         </h3>
         {loading ? (
@@ -499,29 +554,29 @@ export default function MetricasCouriersPage() {
           <div className="overflow-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 w-8">
+                <tr className="border-b border-border/50">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 w-8">
                     #
                   </th>
-                  <th className="text-left text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 pr-3">
+                  <th className="text-left text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pr-3">
                     Courier
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-2">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-2">
                     Envíos
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-2">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-2">
                     Tasa Entrega
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-2">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-2">
                     Tiempo Prom.
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-2">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-2">
                     Devoluciones
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 px-2">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-2">
                     Costo Prom.
                   </th>
-                  <th className="text-center text-[10px] text-slate-400 font-bold uppercase tracking-wider py-2 pl-2">
+                  <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pl-2">
                     Score
                   </th>
                 </tr>
@@ -530,17 +585,17 @@ export default function MetricasCouriersPage() {
                 {courierStats.map((courier, idx) => (
                   <tr
                     key={idx}
-                    className="border-b border-slate-50 last:border-0"
+                    className="border-b border-border/50 last:border-0"
                   >
                     <td className="py-3 text-center">
-                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-[10px] font-bold text-slate-500">
+                      <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-muted text-[10px] font-bold text-muted-foreground">
                         {idx + 1}
                       </span>
                     </td>
-                    <td className="py-3 pr-3 text-sm font-semibold text-slate-700">
+                    <td className="py-3 pr-3 text-sm font-semibold text-foreground">
                       {courier.name}
                     </td>
-                    <td className="py-3 px-2 text-center text-sm font-semibold text-slate-600">
+                    <td className="py-3 px-2 text-center text-sm font-semibold text-muted-foreground">
                       {courier.envios}
                     </td>
                     <td
@@ -548,18 +603,22 @@ export default function MetricasCouriersPage() {
                     >
                       {courier.entrega}%
                     </td>
-                    <td className="py-3 px-2 text-center text-sm text-slate-600">
+                    <td className="py-3 px-2 text-center text-sm text-muted-foreground">
                       {courier.tiempoProm > 0 ? `${courier.tiempoProm}d` : "—"}
                     </td>
-                    <td className="py-3 px-2 text-center text-sm text-slate-600">
+                    <td className="py-3 px-2 text-center text-sm text-muted-foreground">
                       {courier.envios > 0 ? `${courier.devoluciones}%` : "—"}
                     </td>
-                    <td className="py-3 px-2 text-center text-sm text-slate-600">
+                    <td className="py-3 px-2 text-center text-sm text-muted-foreground">
                       S/ {courier.costoProm.toFixed(2)}
                     </td>
                     <td className="py-3 pl-2 text-center">
                       <span
-                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${scoreColor(courier.score)}`}
+                        className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${
+                          scoreColor(courier.score).includes('bg-red') ? 'bg-red-100 text-red-500 dark:bg-red-900/30' :
+                          scoreColor(courier.score).includes('bg-emerald') ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30' :
+                          'bg-amber-100 text-amber-600 dark:bg-amber-900/30'
+                        }`}
                       >
                         {courier.score >= 0 ? `${courier.score}/100` : "SIN DATOS"}
                       </span>

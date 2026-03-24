@@ -4,11 +4,11 @@ import { syncLeadToGoogleSheets } from '@/lib/integrations/google-sheets';
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const supabase = await createClient();
   try {
-    const { id } = params;
+    const { id } = await params;
     const body = await request.json();
     const { new_stage, old_stage, performed_by } = body;
 

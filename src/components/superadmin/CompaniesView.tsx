@@ -411,7 +411,7 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth }: any)
       if (period === 'yearly') from = new Date(now.getTime() - 365 * 86400000).toISOString().split('T')[0];
 
       const [users, productCount, sales, billing] = await Promise.all([
-        _guc(company.id, token).catch(() => []),
+        getUsersByCompany(company.id, token).catch(() => []),
         getCompanyProductCount(token, company.id).catch(() => 0),
         getCompanySalesSummary(token, company.id, from, from ? today : undefined).catch(() => ({ totalSales: 0, orderCount: 0 })),
         getCompanyBilling(token, company.id).catch(() => []),
@@ -439,7 +439,7 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth }: any)
         await updateSubscription(auth.accessToken, active.id, { planId });
         toast.success('Plan actualizado correctamente');
       } else {
-        await createSubscription(auth.accessToken, { userId: company.userId, planId });
+        await createSubscription(auth.accessToken, { userId: company.userId, planId, payerEmail: company.billingEmail || company.email || 'support@powip.com' });
         toast.success('Suscripción creada');
       }
     } catch { toast.error('Error al actualizar el plan'); }
