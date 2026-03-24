@@ -1,8 +1,8 @@
-import { createClient } from "@/utils/supabase/server";
+import { createRouteClient } from "@/utils/supabase/api";
 import { NextResponse } from "next/server";
 
-export async function GET() {
-  const supabase = await createClient();
+export async function GET(request: Request) {
+  const supabase = createRouteClient(request);
 
   try {
     // Primero, ejecutamos el refresh de alertas (simulando el cron job para la demo)

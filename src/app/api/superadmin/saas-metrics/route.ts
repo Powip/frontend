@@ -1,4 +1,4 @@
-import { createClient } from "@/utils/supabase/server";
+import { createRouteClient } from "@/utils/supabase/api";
 import { NextResponse } from "next/server";
 
 const PLAN_PRICES: Record<string, number> = {
@@ -8,8 +8,8 @@ const PLAN_PRICES: Record<string, number> = {
   enterprise: 499,
 };
 
-export async function GET() {
-  const supabase = await createClient();
+export async function GET(request: Request) {
+  const supabase = createRouteClient(request);
 
   try {
     const now = new Date();

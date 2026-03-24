@@ -1,8 +1,8 @@
-import { createClient } from "@/utils/supabase/server";
+import { createRouteClient } from "@/utils/supabase/api";
 import { NextResponse } from "next/server";
 
-export async function GET() {
-  const supabase = await createClient();
+export async function GET(request: Request) {
+  const supabase = createRouteClient(request);
 
   try {
     const now = new Date();
@@ -31,10 +31,20 @@ export async function GET() {
     // 4. Clientes Activos (Al menos 1 pedido en el mes)
     const { data: activeOrderBusinesses } = await supabase
       .from("orderHeader")
-      .select("company_id")
+      .select("storeId")
       .gte("created_at", startOfMonth);
+
+    const storeIds = Array.from(new Set(activeOrderBusinesses?.map(o => o.storeId).filter(Boolean)));
+    let uniqueActiveBusinesses = 0;
     
-    const uniqueActiveBusinesses = new Set(activeOrderBusinesses?.map(o => o.company_id)).size;
+    if (storeIds.length > 0) {
+      const { data: activeStores } = await supabase
+        .from("stores")
+        .select("company_id")
+        .in("id", storeIds);
+        
+      uniqueActiveBusinesses = new Set(activeStores?.map(s => s.company_id).filter(Boolean)).size;
+    }
 
     return NextResponse.json({
       leads: totalLeads || 0,
