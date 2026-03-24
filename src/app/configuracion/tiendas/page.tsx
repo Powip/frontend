@@ -39,7 +39,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useRouter } from "next/navigation";
-import { isSuperadmin } from "@/config/permissions.config";
+import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 
 interface Store {
   id?: string;
@@ -93,12 +93,12 @@ export default function TiendasPage() {
 
   const companyId = auth?.company?.id;
 
-  // Redirigir si no es admin
+  // Redirigir si no es admin o superadmin
   useEffect(() => {
     const userRole = auth?.user?.role;
     const userEmail = auth?.user?.email;
 
-    if (auth && auth.user && userRole !== "ADMIN" && !isSuperadmin(userEmail)) {
+    if (auth && auth.user && !hasAdminAccess(userRole) && !isSuperadmin(userEmail)) {
       toast.error("No tienes permisos para acceder a esta configuración");
       router.push("/dashboard");
     }
@@ -207,8 +207,9 @@ export default function TiendasPage() {
         `${integrationApiUrl}/shopify/status/${auth.company.id}`,
       );
       setShopifyConnectedShops(response.data);
-    } catch (error) {
-      console.error("Error checking shopify status:", error);
+    } catch {
+      // Shopify no disponible: se omite sin afectar la página
+      setShopifyConnectedShops([]);
     }
   }, [auth]);
 
@@ -283,7 +284,7 @@ export default function TiendasPage() {
     }
   };
 
-  if (!auth || auth.user?.role !== "ADMIN") return null;
+  if (!auth || (!hasAdminAccess(auth.user?.role) && !isSuperadmin(auth.user?.email))) return null;
 
   if (loading) {
     return (
