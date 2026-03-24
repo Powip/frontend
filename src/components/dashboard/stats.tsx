@@ -276,7 +276,7 @@ const FunnelCOD: React.FC<{
         { params: { fromDate, toDate } }
       );
       
-      let orders = res.data;
+      const orders = res.data;
 
       // Ordenar por estado jerárquico
       const statusWeight: Record<string, number> = {

@@ -3,9 +3,9 @@ import { NextResponse } from "next/server";
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { id: string, step_code: string } }
+  { params }: { params: Promise<{ id: string, step_code: string }> }
 ) {
-  const { id, step_code } = params;
+  const { id, step_code } = await params;
   const { completed } = await request.json();
   const supabase = await createClient();
 

@@ -8,6 +8,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { isSuperadmin } from "@/config/permissions.config";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 import {
   ShieldCheck,
   Building2,
@@ -75,6 +76,7 @@ import { ConversionFunnel } from "@/components/superadmin/ConversionFunnel";
 import { UsersView } from "@/components/superadmin/UsersView";
 import { InventoryView } from "@/components/superadmin/InventoryView";
 import { OverviewView } from "@/components/superadmin/OverviewView";
+import { CreateUserModal } from "@/components/superadmin/CreateUserModal";
 import { useSaasMetrics, useChurnAlerts } from "@/hooks/useSaasMetrics";
 import { useConversionFunnel } from "@/hooks/useConversionFunnel";
 import { Pagination } from "@/components/ui/pagination";
@@ -101,7 +103,6 @@ import {
   updateSubscription,
   cancelSubscription,
   getAllPlans,
-  refreshUserSubscription,
   Plan,
   SubscriptionDetail,
 } from "@/services/subscriptionService";
@@ -173,6 +174,7 @@ export default function SuperadminPage() {
   );
 
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
+  const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
 
@@ -190,7 +192,7 @@ export default function SuperadminPage() {
   }, [auth]);
   const calculateDates = useCallback(() => {
     const to = new Date();
-    let from = new Date();
+    const from = new Date();
 
     if (period === "all") {
       setDateRange({});
@@ -365,7 +367,7 @@ export default function SuperadminPage() {
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Select value={period} onValueChange={setPeriod}>
+          <Select value={period} onValueChange={(v) => setPeriod(v as any)}>
             <SelectTrigger className="w-[180px]">
               <Calendar className="h-4 w-4 mr-2" />
               <SelectValue placeholder="Periodo" />
@@ -540,6 +542,16 @@ export default function SuperadminPage() {
         onOpenChange={setIsCreateCompanyOpen}
         auth={auth}
         allUsers={allUsers}
+        onSaveSuccess={refreshData}
+      />
+
+      <CreateUserModal
+        isOpen={isCreateUserOpen}
+        onOpenChange={setIsCreateUserOpen}
+        auth={auth}
+        roles={roles}
+        companies={companies}
+        plans={plans}
         onSaveSuccess={refreshData}
       />
     </div>
@@ -804,6 +816,7 @@ function CompanyDetailModal({
                           await createSubscription(auth.accessToken, {
                             userId: company.userId,
                             planId,
+                            payerEmail: "superadmin@powip.com", // Temporary placeholder
                           });
                           toast.success("Suscripción creada");
                         }
