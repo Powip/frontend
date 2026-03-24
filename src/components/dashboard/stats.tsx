@@ -240,7 +240,6 @@ const FunnelCOD: React.FC<{
         `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
         { params: { storeId: selectedStoreId, fromDate, toDate } }
       );
-      console.log("📊 [DEBUG] FUNNEL RAW RES DATA:", res.data.funnelMetrics);
       setFunnelData(res.data);
     } catch (error) {
       console.error("Error fetching funnel data:", error);

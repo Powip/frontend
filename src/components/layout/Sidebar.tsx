@@ -175,14 +175,19 @@ export function Sidebar({ className }: SidebarProps) {
         { name: "Configuración", href: "/configuracion", icon: Settings },
       ],
     },
+    {
+      name: "Super Admin",
+      icon: ShieldCheck,
+      href: "/superadmin",
+    },
   ];
 
-  // Filtrar navegación por permisos y ocultar Superadmin
+  // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation
     .filter((item: NavigationItem) => {
-      // Hide Superadmin completely
-      if (item.name.toLowerCase().includes("superadmin") || item.name.toLowerCase().includes("super admin")) {
-        return false;
+      // Si es Super Admin, verificar específicamente por email
+      if (item.name === "Super Admin") {
+        return isSuperadmin(auth?.user.email);
       }
 
       const requiredPermission = SIDEBAR_ITEMS_PERMISSIONS[item.name];
@@ -194,8 +199,9 @@ export function Sidebar({ className }: SidebarProps) {
         return {
           ...item,
           children: item.children.filter((child: { name: string }) => {
+            // También filtramos sub-ítems que puedan ser de superadmin si existieran
             if (child.name.toLowerCase().includes("superadmin") || child.name.toLowerCase().includes("super admin")) {
-              return false;
+              return isSuperadmin(auth?.user.email);
             }
             const childPermission = SIDEBAR_ITEMS_PERMISSIONS[child.name];
             if (!childPermission) return true;
@@ -287,11 +293,11 @@ export function Sidebar({ className }: SidebarProps) {
                         className={cn(
                           "flex items-center justify-center h-10 w-10 p-0 rounded-lg transition-all duration-200",
                           isActive 
-                            ? "bg-primary text-white shadow-md shadow-primary/20 hover:bg-primary/90" 
+                            ? "bg-primary/10 text-primary shadow-sm" 
                             : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                         )}
                       >
-                        <Icon className={cn("h-4 w-4", isActive ? "text-white" : "text-primary")} />
+                        <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-primary")} />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent side="right" sideOffset={10} className="w-48 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
@@ -304,7 +310,7 @@ export function Sidebar({ className }: SidebarProps) {
                             className={cn(
                               "flex items-center gap-2.5 px-2 py-2 cursor-pointer rounded-md transition-colors",
                               pathname === child.href 
-                                ? "bg-primary/10 text-primary font-medium" 
+                                ? "bg-primary/5 text-primary font-semibold shadow-sm" 
                                 : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
                             )}
                           >
@@ -330,7 +336,7 @@ export function Sidebar({ className }: SidebarProps) {
                       className={cn(
                         "flex items-center justify-between h-10 w-full gap-2 px-3 rounded-lg transition-all duration-200",
                         isActive 
-                          ? "bg-primary/5 text-primary font-medium" 
+                          ? "bg-primary/5 text-primary font-semibold shadow-sm" 
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                       )}
                     >
@@ -387,11 +393,11 @@ export function Sidebar({ className }: SidebarProps) {
                           ? "justify-center w-10 h-10 p-0"
                           : "justify-start w-full",
                         isActive 
-                          ? "bg-primary text-white shadow-md shadow-primary/20 hover:bg-primary/90" 
+                          ? "bg-primary/5 text-primary font-semibold shadow-sm" 
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                       )}
                     >
-                      <Icon className={cn("h-4 w-4", isActive ? "text-white" : "text-primary")} />
+                      <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-primary")} />
                       {!isCollapsed && (
                         <span className="text-[13.5px] font-medium">{item.name}</span>
                       )}

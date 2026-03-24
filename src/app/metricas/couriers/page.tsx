@@ -365,6 +365,10 @@ export default function MetricasCouriersPage() {
             <div className="h-[280px] flex items-center justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
+          ) : courierStats.filter((c) => c.envios > 0).length === 0 ? (
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm font-medium">
+              Sin datos de entrega para este periodo
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart
@@ -418,6 +422,10 @@ export default function MetricasCouriersPage() {
             <div className="h-[280px] flex items-center justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
+          ) : courierStats.filter((c) => c.tiempoProm > 0).length === 0 ? (
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm font-medium">
+              Sin datos de tiempos para este periodo
+            </div>
           ) : (
             <ResponsiveContainer width="100%" height={280}>
               <BarChart
@@ -470,6 +478,10 @@ export default function MetricasCouriersPage() {
         {loading ? (
           <div className="h-[250px] flex items-center justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+          </div>
+        ) : courierStats.filter((c) => c.envios > 0).length === 0 ? (
+          <div className="h-[250px] flex items-center justify-center text-muted-foreground text-sm font-medium">
+            Sin datos de envíos vs devoluciones
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={250}>
