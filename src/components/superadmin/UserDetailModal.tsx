@@ -314,7 +314,6 @@ export function UserDetailModal({
             <ActionButton
               label="Guardar Cambios"
               loadingLabel="Guardando..."
-              loading={loading}
               onClick={handleUpdate}
               className="px-8 bg-primary hover:bg-primary/90 text-white font-bold"
             />

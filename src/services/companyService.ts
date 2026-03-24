@@ -45,6 +45,7 @@ export const fetchUserCompany = async (
       logoUrl: response.data.logo_url,
       sales_channels: response.data.sales_channels,
       closing_channels: response.data.closing_channels,
+      billingEmail: response.data.billing_email,
     };
   } catch (error) {
     // Es normal que falle si el usuario es personal operativo (no es el dueño registrado en ms-company)
@@ -74,6 +75,7 @@ export const fetchCompanyById = async (
       logoUrl: response.data.logo_url,
       sales_channels: response.data.sales_channels,
       closing_channels: response.data.closing_channels,
+      billingEmail: response.data.billing_email,
     };
   } catch (error) {
     console.error("Error al obtener company by id:", error);
@@ -101,6 +103,7 @@ export const getAllCompanies = async (token: string): Promise<Company[]> => {
     logoUrl: c.logo_url,
     sales_channels: c.sales_channels,
     closing_channels: c.closing_channels,
+    billingEmail: c.billing_email,
     createdAt: c.created_at,
   }));
 };

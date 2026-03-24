@@ -267,7 +267,6 @@ export function CreateUserModal({
               <ActionButton
                 label="Crear Usuario"
                 loadingLabel="Guardando..."
-                loading={loading}
                 className="w-full md:w-auto px-10 bg-primary hover:bg-primary/90 text-white font-bold"
                 onClick={handleSave}
               />
@@ -312,7 +311,6 @@ export function CreateUserModal({
               <ActionButton
                 label="Activar y Finalizar"
                 loadingLabel="Procesando..."
-                loading={loading}
                 disabled={!selectedPlanId}
                 className="bg-green-600 hover:bg-green-500 text-white font-bold px-8"
                 onClick={handleSubscriptionSave}
