@@ -506,7 +506,7 @@ export default function GuideDetailsModal({
         order.payments
           ?.filter((p) => p.status === "PENDING_APPROVAL")
           .reduce((s, p) => s + Number(p.amount), 0) || 0;
-      const totalPending = Number(order.grandTotal) - paid - pendingApproval;
+      const totalPending = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid - pendingApproval;
 
       return {
         totalPending: acc.totalPending + Math.max(totalPending, 0),
@@ -747,7 +747,7 @@ export default function GuideDetailsModal({
                 order.payments
                   ?.filter((p) => p.status === "PAID")
                   .reduce((s, p) => s + Number(p.amount), 0) || 0;
-              const pending = Math.max(Number(order.grandTotal) - paid, 0);
+              const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
               return `
               <div class="order">
                 <div class="order-header">
@@ -773,7 +773,7 @@ export default function GuideDetailsModal({
                   }
                 </div>
                 <div class="total">
-                  Total: S/${Number(order.grandTotal).toFixed(2)}
+                  Total: S/${Number(order.totals?.grandTotal ?? order.grandTotal ?? 0).toFixed(2)}
                   ${pending > 0 ? `<span class="pending"> | Cobrar: S/${pending.toFixed(2)}</span>` : ""}
                 </div>
               </div>
@@ -857,14 +857,14 @@ export default function GuideDetailsModal({
           <div class="section totals">
             <div class="row">
               <span>TOTAL:</span>
-              <span>S/${Number(order.grandTotal).toFixed(2)}</span>
+              <span>S/${Number(order.totals?.grandTotal ?? order.grandTotal ?? 0).toFixed(2)}</span>
             </div>
             ${(() => {
               const paid =
                 order.payments
                   ?.filter((p) => p.status === "PAID")
                   .reduce((s, p) => s + Number(p.amount), 0) || 0;
-              const pending = Math.max(Number(order.grandTotal) - paid, 0);
+              const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
               return pending > 0
                 ? `
                 <div class="row pending">
@@ -1093,7 +1093,7 @@ export default function GuideDetailsModal({
                     order.payments
                       ?.filter((p) => p.status === "PAID")
                       .reduce((s, p) => s + Number(p.amount), 0) || 0;
-                  const pending = Math.max(Number(order.grandTotal) - paid, 0);
+                  const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
 
                   return (
                     <div key={order.id} className="bg-background">
@@ -1121,7 +1121,7 @@ export default function GuideDetailsModal({
                         <div className="flex items-center gap-3">
                           <div className="text-right">
                             <p className="font-medium">
-                              S/{Number(order.grandTotal).toFixed(2)}
+                              S/{Number(order.totals?.grandTotal ?? order.grandTotal ?? 0).toFixed(2)}
                             </p>
                             {pending > 0 && (
                               <p className="text-xs text-red-600">
