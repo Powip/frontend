@@ -38,25 +38,34 @@ export async function GET(request: Request) {
       .gte("created_at", startOfMonth)
       .eq("pipeline_stage", "cerrado");
 
-    // 5. Average Cycle Time (Lead -> Company)
-    const { data: cycles } = await supabase
-      .from("leads")
-      .select(`
-        created_at,
-        company:business_id(created_at)
-      `)
-      .not("business_id", "is", null)
-      .gte("created_at", startOfMonth);
-
     let avgCycleTimeDays = 0;
-    if (cycles && cycles.length > 0) {
-      const validCycles = cycles.filter((c: any) => c.company && c.company.created_at);
+    try {
+      // 1. Duración del Ciclo de Ventas y Win Rate
+      const { data: cycles, error } = await supabase
+        .from("pipeline_history")
+        .select(`
+          created_at,
+          company:company_id(created_at)
+        `)
+        .eq("stage", "cierre_ganado")
+        .gte("created_at", startOfMonth);
+
+      if (error) {
+        console.warn("Error fetching pipeline_history (table may not exist):", error.message);
+      }
+
+      // Safe fallback if cycles is null
+      const safeCycles = cycles || [];
+      const validCycles = safeCycles.filter((c: any) => c.company && c.company.created_at);
       const totalDays = validCycles.reduce((acc: number, c: any) => {
         const start = new Date(c.created_at);
         const end = new Date(c.company.created_at);
         return acc + (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
       }, 0);
       avgCycleTimeDays = totalDays / (validCycles.length || 1);
+    } catch (error) {
+      console.error("Error calculating cycle time from pipeline_history:", error);
+      // avgCycleTimeDays remains 0 as initialized
     }
 
     // 6. Leads uncontacted > 24h
