@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
+import { useQuery } from "@tanstack/react-query";
 import {
   ResponsiveContainer,
   PieChart,
@@ -11,6 +12,7 @@ import {
   Tooltip,
 } from "recharts";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { Skeleton } from "@/components/ui/skeleton";
 
 /* ─────────────────── Types ─────────────────── */
 
@@ -57,8 +59,6 @@ const CATEGORY_COLORS = [
 
 export default function MetricasInventarioPage() {
   const { inventories } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [items, setItems] = useState<InventoryItem[]>([]);
 
   // Date range
   const [fromDate, setFromDate] = useState<string>("");
@@ -69,62 +69,55 @@ export default function MetricasInventarioPage() {
     setToDate(to);
   };
 
-  const periodDates = useMemo(() => {
-    if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
-    const from = new Date(fromDate);
-    from.setHours(0, 0, 0, 0);
-    const to = new Date(toDate);
-    to.setHours(23, 59, 59, 999);
-    return { from, to };
-  }, [fromDate, toDate]);
+  // Fetch all inventory items using React Query
+  const { data: items = [], isLoading: loading } = useQuery({
+    queryKey: ["inventory-metrics", inventories?.map((inv: any) => inv.id)],
+    queryFn: async () => {
+      if (!inventories || inventories.length === 0) return [];
+      
+      const allItems: InventoryItem[] = [];
+      const inventoryIds = inventories.map((inv: any) => inv.id);
 
-  // Fetch all inventory items
-  useEffect(() => {
-    if (!inventories || inventories.length === 0) return;
+      // We'll process each inventory in parallel for better performance
+      const fetchPromises = inventoryIds.map(async (inventoryId: string) => {
+        let page = 1;
+        let hasMore = true;
+        const invItems: InventoryItem[] = [];
 
-    const fetchItems = async () => {
-      setLoading(true);
-      try {
-        const allItems: InventoryItem[] = [];
-
-        for (const inv of inventories) {
-          let page = 1;
-          let hasMore = true;
-
-          while (hasMore) {
-            const res = await axios.get(
-              `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
-              {
-                params: {
-                  inventoryId: inv.id,
-                  page,
-                  limit: 100,
-                },
-              }
-            );
-
-            const data = res.data?.data || [];
-            allItems.push(...data);
-
-            const meta = res.data?.meta;
-            if (meta && page < meta.totalPages) {
-              page++;
-            } else {
-              hasMore = false;
+        while (hasMore) {
+          const res = await axios.get(
+            `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
+            {
+              params: {
+                inventoryId,
+                page,
+                limit: 100,
+              },
             }
+          );
+
+          const data = res.data?.data || [];
+          invItems.push(...data);
+
+          const meta = res.data?.meta;
+          if (meta && page < meta.totalPages) {
+            page++;
+          } else {
+            hasMore = false;
           }
         }
+        return invItems;
+      });
 
-        setItems(allItems);
-      } catch (error) {
-        console.error("Error fetching inventory items:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchItems();
-  }, [inventories, fromDate, toDate]);
+      const results = await Promise.all(fetchPromises);
+      results.forEach(resItems => allItems.push(...resItems));
+      
+      return allItems;
+    },
+    enabled: !!inventories && inventories.length > 0,
+    staleTime: 5 * 60 * 1000, // 5 minutes cache
+    refetchOnWindowFocus: false,
+  });
 
   // KPIs
   const totalSkus = items.length;
@@ -294,11 +287,11 @@ export default function MetricasInventarioPage() {
             Stock por categoría
           </h3>
           {loading ? (
-            <div className="h-[300px] flex items-center justify-center">
+            <div className="h-[280px] flex items-center justify-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : categoryData.length === 0 ? (
-            <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
+            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm font-medium">
               Sin datos de categoría
             </div>
           ) : (
