@@ -34,13 +34,13 @@ interface ChurnAlertsTableProps {
 const ALERT_LABELS: Record<string, string> = {
   no_login: "Sin login 7+ días",
   order_drop: "Caída pedidos >40% semanal",
-  disconnected_channel: "Canal desconectado >48h",
-  low_onboarding: "Onboarding <30% (d14)",
-  no_activation_3d: "Sin activar (d3)",
-  high_tickets: "3+ tickets mismo tipo (7d)",
-  downgrade_requested: "Downgrade solicitado",
-  feature_unused_14d: "Features clave sin uso (14d)",
-  negative_feedback: "NPS Negativo o CSAT <3"
+  no_orders: "Sin pedidos (7d)",
+  expiring_soon: "Suscripción por vencer (<3d)",
+  pending_payment: "Pago pendiente (>5d)",
+  low_usage: "Bajo uso operativo (7d)",
+  inactive_subscribed: "Inactiva con suscripción",
+  ttfv_high: "Fallo en activación (TTFV)",
+  high_tickets: "Ticket crítico sin resolver",
 };
 
 const SEVERITY_COLORS: Record<string, string> = {

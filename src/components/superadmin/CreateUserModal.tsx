@@ -197,20 +197,32 @@ export function CreateUserModal({
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <Label className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Email (Acceso)</Label>
-              <Input
-                type="email"
-                placeholder="juan@empresa.com"
-                className="bg-white/5 border-white/10"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              />
-            </div>
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Documento (DNI/RUC)</Label>
+                <Label className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Email (Acceso)</Label>
+                <Input
+                  type="email"
+                  placeholder="juan@empresa.com"
+                  className="bg-white/5 border-white/10"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Contraseña</Label>
+                <Input
+                  type="password"
+                  placeholder="Min. 6 caracteres"
+                  className="bg-white/5 border-white/10"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Documento</Label>
                 <Input
                   className="bg-white/5 border-white/10"
                   value={formData.identityDocument}
@@ -225,6 +237,25 @@ export function CreateUserModal({
                   onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Distrito</Label>
+                <Input
+                  placeholder="Ej: Miraflores"
+                  className="bg-white/5 border-white/10"
+                  value={formData.district}
+                  onChange={(e) => setFormData({ ...formData, district: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Dirección</Label>
+              <Input
+                placeholder="Ej: Av. Larco 123"
+                className="bg-white/5 border-white/10"
+                value={formData.address}
+                onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+              />
             </div>
 
             <div className="grid grid-cols-2 gap-4">

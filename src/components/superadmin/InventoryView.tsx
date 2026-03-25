@@ -169,13 +169,19 @@ export function InventoryView({
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                        <div className="p-1 rounded bg-blue-500/10 text-blue-500">
-                          <Building2 className="h-3 w-3" />
-                        </div>
-                        <div className="text-xs text-gray-300 font-medium">
-                          {companies.find(c => c.id === item.variantId.substring(0, item.variantId.indexOf('-')) || item.variantId.substring(0,8))?.name || `Empresa ${item.variantId.substring(0, 4)}`}
-                        </div>
+                      <div className="p-1 rounded bg-blue-500/10 text-blue-500">
+                        <Building2 className="h-3 w-3" />
                       </div>
+                      <div className="text-xs text-gray-300 font-medium">
+                        {(() => {
+                          const company = companies.find(c => 
+                            c.stores?.some((s: any) => s.id === item.storeId) || 
+                            c.id === item.variantId?.split('-')[0]
+                          );
+                          return company?.name || `Empresa ${item.storeId?.substring(0, 4) || '???'}`;
+                        })()}
+                      </div>
+                    </div>
                   </TableCell>
                   <TableCell className="text-right pr-6">
                     <div className="flex flex-col items-end">

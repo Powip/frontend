@@ -828,6 +828,27 @@ export default function OperacionesPage() {
     );
   };
 
+  const handleBulkWhatsApp = (salesList: Sale[]) => {
+    const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
+
+    if (selectedSales.length === 0) {
+      toast.warning("No hay pedidos seleccionados en esta vista para enviar WhatsApp");
+      return;
+    }
+
+    if (selectedSales.length > 5) {
+      toast.info(`Se abrirán ${selectedSales.length} ventanas de WhatsApp. Asegúrate de permitir las ventanas emergentes (pop-ups).`);
+    } else {
+      toast.success(`Preparando envío múltiple a ${selectedSales.length} clientes...`);
+    }
+
+    selectedSales.forEach((sale, index) => {
+      setTimeout(() => {
+        handleWhatsApp(sale.phoneNumber, sale.orderNumber, sale.clientName);
+      }, index * 600);
+    });
+  };
+
   const toggleSale = (id: string) => {
     const next = new Set(selectedSaleIds);
     if (next.has(id)) {
@@ -1438,6 +1459,20 @@ Estado: ${sale.status}
                     {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
                     )
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    disabled={
+                      preparados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleBulkWhatsApp(preparados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
+                    {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
+                    )
+                  </Button>
                   {auth?.user?.role === "ADMIN" && (
                     <Button
                       variant="outline"
@@ -1517,6 +1552,20 @@ Estado: ${sale.status}
                       noConfirmados.filter((s) => selectedSaleIds.has(s.id))
                         .length
                     }
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    disabled={
+                      noConfirmados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleBulkWhatsApp(noConfirmados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
+                    {noConfirmados.filter((s) => selectedSaleIds.has(s.id)).length}
                     )
                   </Button>
                   {auth?.user?.role === "ADMIN" && (
@@ -1622,6 +1671,20 @@ Estado: ${sale.status}
                     }
                     )
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    disabled={
+                      contactados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleBulkWhatsApp(contactados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
+                    {contactados.filter((s) => selectedSaleIds.has(s.id)).length}
+                    )
+                  </Button>
                   {auth?.user?.role === "ADMIN" && (
                     <Button
                       variant="outline"
@@ -1701,6 +1764,20 @@ Estado: ${sale.status}
                       despachados.filter((s) => selectedSaleIds.has(s.id))
                         .length
                     }
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    disabled={
+                      despachados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleBulkWhatsApp(despachados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
+                    {despachados.filter((s) => selectedSaleIds.has(s.id)).length}
                     )
                   </Button>
                   {auth?.user?.role === "ADMIN" && (
@@ -1788,6 +1865,20 @@ Estado: ${sale.status}
                     }
                     )
                   </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    disabled={
+                      entregadosAll.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleBulkWhatsApp(entregadosAll)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
+                    {entregadosAll.filter((s) => selectedSaleIds.has(s.id)).length}
+                    )
+                  </Button>
                   {auth?.user?.role === "ADMIN" && (
                     <Button
                       variant="outline"
@@ -1859,6 +1950,20 @@ Estado: ${sale.status}
                       anuladosAll.filter((s) => selectedSaleIds.has(s.id))
                         .length
                     }
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    disabled={
+                      anuladosAll.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleBulkWhatsApp(anuladosAll)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
+                    {anuladosAll.filter((s) => selectedSaleIds.has(s.id)).length}
                     )
                   </Button>
                   {auth?.user?.role === "ADMIN" && (

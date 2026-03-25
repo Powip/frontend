@@ -667,6 +667,24 @@ Estado: ${sale.status}
     }
   };
 
+  const handleBulkWhatsApp = (salesList: Sale[]) => {
+    const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
+
+    if (selectedSales.length === 0) {
+      toast.warning("No hay pedidos seleccionados");
+      return;
+    }
+
+    setSelectedIdsForActiveTab(new Set());
+    toast.info(`Abriendo ${selectedSales.length} pestañas de WhatsApp... ¡Asegúrese de permitir Pop-ups!`);
+
+    selectedSales.forEach((sale, index) => {
+      setTimeout(() => {
+        handleWhatsApp(sale.phoneNumber, sale.orderNumber, sale.clientName);
+      }, index * 600);
+    });
+  };
+
   const handleWhatsApp = (
     phoneNumber: string,
     orderNumber?: string,
@@ -1531,6 +1549,15 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
+                    className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                    disabled={selectedPendientesCount === 0}
+                    onClick={() => handleBulkWhatsApp(pendientes)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo ({selectedPendientesCount})
+                  </Button>
+                  <Button
+                    variant="outline"
                     className="w-full lg:w-auto"
                     disabled={selectedPendientesCount === 0}
                     onClick={() => handleCopySelected(pendientes)}
@@ -1595,6 +1622,19 @@ Estado: ${sale.status}
                   >
                     <Printer className="h-4 w-4 mr-2" />
                     Imprimir seleccionados (
+                    {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                    disabled={
+                      anulados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleBulkWhatsApp(anulados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
                     {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
                   </Button>
                   <Button
@@ -1665,6 +1705,23 @@ Estado: ${sale.status}
                   >
                     <Printer className="h-4 w-4 mr-2" />
                     Imprimir seleccionados (
+                    {
+                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                    disabled={
+                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleBulkWhatsApp(todasLasVentas)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
                     {
                       todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
                         .length

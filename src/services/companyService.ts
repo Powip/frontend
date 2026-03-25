@@ -85,7 +85,7 @@ export const fetchCompanyById = async (
 
 export const getAllCompanies = async (token: string): Promise<Company[]> => {
   const response = await axios.get(
-    `${process.env.NEXT_PUBLIC_API_COMPANY}/company`,
+    `${process.env.NEXT_PUBLIC_API_COMPANY}/company?includeStores=true`,
     {
       headers: {
         Authorization: `Bearer ${token}`,
