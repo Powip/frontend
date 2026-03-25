@@ -51,14 +51,14 @@ export interface ShippingGuide {
   courierPhone?: string | null;
   orderIds: string[];
   status:
-  | "CREADA"
-  | "APROBADA"
-  | "ASIGNADA"
-  | "EN_RUTA"
-  | "ENTREGADA"
-  | "PARCIAL"
-  | "FALLIDA"
-  | "CANCELADA";
+    | "CREADA"
+    | "APROBADA"
+    | "ASIGNADA"
+    | "EN_RUTA"
+    | "ENTREGADA"
+    | "PARCIAL"
+    | "FALLIDA"
+    | "CANCELADA";
   chargeType?: "PREPAGADO" | "CONTRA_ENTREGA" | "CORTESIA" | null;
   amountToCollect?: number | null;
   scheduledDate?: string | null;
@@ -78,16 +78,21 @@ export interface ShippingGuide {
 
 interface OrderDetail {
   id: string;
+  orderId?: string;
   orderNumber: string;
   status: string;
   grandTotal: number;
+  salesChannel?: string;
   customer: {
     fullName: string;
     phoneNumber: string;
+    province?: string;
+    city?: string;
     district?: string;
     address?: string;
   };
   payments: Array<{
+    id?: string;
     amount: number;
     status: string;
   }>;
@@ -98,6 +103,11 @@ interface OrderDetail {
     unitPrice: number;
     attributes?: Record<string, string>;
   }>;
+  totals?: {
+    grandTotal: number;
+    totalPaid: number;
+    pendingAmount: number;
+  };
   // Campos de tracking por pedido
   externalTrackingNumber?: string | null;
   shippingKey?: string | null;
@@ -254,11 +264,11 @@ export default function GuideDetailsModal({
         setSelectedCourier(normalizeCourier(defaultCourier));
       }
 
-      // Fetch order details for all orders in the guide
+      // Fetch order details for all orders in the guide using /receipt endpoint
       if (res.data?.orderIds?.length) {
         const ordersPromises = res.data.orderIds.map((id) =>
           axios.get<OrderDetail>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`,
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}/receipt`,
           ),
         );
         const ordersResponses = await Promise.all(ordersPromises);
@@ -496,7 +506,7 @@ export default function GuideDetailsModal({
         order.payments
           ?.filter((p) => p.status === "PENDING_APPROVAL")
           .reduce((s, p) => s + Number(p.amount), 0) || 0;
-      const totalPending = Number(order.grandTotal) - paid - pendingApproval;
+      const totalPending = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid - pendingApproval;
 
       return {
         totalPending: acc.totalPending + Math.max(totalPending, 0),
@@ -515,70 +525,164 @@ export default function GuideDetailsModal({
       return;
     }
 
-    try {
-      // Use backend endpoint for styled Excel
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/export`,
-        { responseType: "blob" },
+    if (ordersDetails.length === 0) {
+      toast.error("No hay pedidos cargados para exportar");
+      return;
+    }
+
+    const guideNumber = guide.guideNumber;
+    const courierName = guide.courierName || "-";
+    const fecha = guide.created_at
+      ? format(new Date(guide.created_at), "dd/MM/yyyy")
+      : format(new Date(), "dd/MM/yyyy");
+
+    const ExcelJS = (await import("exceljs")).default;
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet("Despacho");
+
+    const DARK_NAVY = "FF1B2A3B";
+    const HEADER_FONT: any = {
+      bold: true,
+      color: { argb: "FFFFFFFF" },
+      size: 10,
+    };
+    const TITLE_FONT: any = {
+      bold: true,
+      size: 13,
+      color: { argb: "FF1B2A3B" },
+    };
+    const META_LABEL_FONT: any = {
+      bold: true,
+      size: 10,
+      color: { argb: "FF555555" },
+    };
+    const THIN_BORDER: any = {
+      top: { style: "thin", color: { argb: "FFDDDDDD" } },
+      left: { style: "thin", color: { argb: "FFDDDDDD" } },
+      bottom: { style: "thin", color: { argb: "FFDDDDDD" } },
+      right: { style: "thin", color: { argb: "FFDDDDDD" } },
+    };
+
+    const COLUMNS = [
+      { header: "Nro Orden Powip", width: 18 },
+      { header: "Nro Orden Canal", width: 18 },
+      { header: "Nombre Cliente", width: 24 },
+      { header: "Teléfono", width: 14 },
+      { header: "Departamento", width: 16 },
+      { header: "Provincia", width: 16 },
+      { header: "Ciudad/Distrito", width: 18 },
+      { header: "Dirección", width: 30 },
+      { header: "Cant. Productos", width: 16 },
+      { header: "Productos", width: 40 },
+      { header: "Monto Total", width: 14 },
+      { header: "Adelanto", width: 14 },
+      { header: "Saldo a Pagar", width: 14 },
+    ];
+    const numCols = COLUMNS.length;
+
+    // Fila 1: Título
+    ws.addRow([`HOJA DE DESPACHO — ${guideNumber}`]);
+    ws.mergeCells(1, 1, 1, numCols);
+    const titleCell = ws.getCell("A1");
+    titleCell.font = TITLE_FONT;
+    titleCell.alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(1).height = 28;
+
+    // Fila 2: Courier
+    ws.addRow(["Courier:", courierName]);
+    ws.getCell("A2").font = META_LABEL_FONT;
+
+    // Fila 3: Fecha
+    ws.addRow(["Fecha:", fecha]);
+    ws.getCell("A3").font = META_LABEL_FONT;
+
+    // Fila 4: vacía
+    ws.addRow([]);
+
+    // Fila 5: Headers con dark navy
+    const headerRow = ws.addRow(COLUMNS.map((c) => c.header));
+    headerRow.height = 22;
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: DARK_NAVY },
+      };
+      cell.font = HEADER_FONT;
+      cell.alignment = {
+        horizontal: "center",
+        vertical: "middle",
+        wrapText: true,
+      };
+      cell.border = THIN_BORDER;
+    });
+
+    // Filas de datos
+    ordersDetails.forEach((order: OrderDetail) => {
+      // /receipt endpoint retorna el total bajo totals.grandTotal
+      const grandTotal = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0);
+      const adelanto =
+        order.payments
+          ?.filter((p) => p.status === "PAID")
+          .reduce((s, p) => s + Number(p.amount), 0) ?? 0;
+      const saldo = Math.max(grandTotal - adelanto, 0);
+
+
+      const productosStr = (order.items ?? [])
+        .map((item) => {
+          const attrs = item.attributes
+            ? Object.values(item.attributes).filter(Boolean).join("/")
+            : "";
+          return `${item.productName}${attrs ? ` (${attrs})` : ""} x${item.quantity}`;
+        })
+        .join(" | ");
+
+      const cantProductos = (order.items ?? []).reduce(
+        (sum, i) => sum + i.quantity,
+        0,
       );
 
-      const blob = new Blob([res.data], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      const dataRow = ws.addRow([
+        order.orderNumber,
+        order.externalTrackingNumber || "",
+        order.customer.fullName,
+        order.customer.phoneNumber,
+        order.customer.province || "-",
+        order.customer.city || "-",
+        order.customer.district || "-",
+        order.customer.address || "-",
+        cantProductos,
+        productosStr,
+        grandTotal,
+        adelanto,
+        saldo,
+      ]);
+
+      dataRow.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = THIN_BORDER;
+        cell.alignment = { vertical: "middle", wrapText: false };
       });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `Guia_${guide.guideNumber}_${new Date().toISOString().slice(0, 10)}.xlsx`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+    });
 
-      toast.success("Excel descargado correctamente");
-    } catch (error) {
-      console.error("[GUIDE_EXPORT] Backend export failed, using client-side fallback:", error);
+    // Ajustar ancho de columnas
+    COLUMNS.forEach((col, i) => {
+      ws.getColumn(i + 1).width = col.width;
+    });
 
-      // Fallback: client-side export
-      if (ordersDetails.length === 0) {
-        toast.error("No hay datos disponibles para exportar");
-        return;
-      }
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Guia_${guideNumber}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
 
-      const exportData = ordersDetails.flatMap((order: OrderDetail) => {
-        const paid =
-          order.payments
-            ?.filter((p: any) => p.status === "PAID")
-            .reduce((s: number, p: any) => s + Number(p.amount), 0) || 0;
-        const pending = Math.max(Number(order.grandTotal) - paid, 0);
-
-        return order.items.map((item: any) => ({
-          "Nro Guía": guide.guideNumber,
-          Courier: guide.courierName || "-",
-          Estado: guide.status,
-          "Tipo Cobro": guide.chargeType || "-",
-          "Fecha Guía": guide.created_at
-            ? format(new Date(guide.created_at), "dd/MM/yyyy")
-            : "-",
-          Pedido: order.orderNumber,
-          "Estado Pedido": order.status,
-          Cliente: order.customer.fullName,
-          Teléfono: order.customer.phoneNumber,
-          Distrito: order.customer.district || "-",
-          Dirección: order.customer.address || "-",
-          Producto: item.productName,
-          SKU: item.sku,
-          Cant: item.quantity,
-          Precio: Number(item.unitPrice),
-          Subtotal: Number(item.unitPrice) * item.quantity,
-          "Total Pedido": Number(order.grandTotal),
-          "Monto Pagado": paid,
-          "Monto a Cobrar": pending,
-        }));
-      });
-
-      exportToExcel(exportData, `Guia-${guide.guideNumber}`);
-      toast.success("Excel exportado (modo local)");
-    }
+    toast.success("Excel exportado correctamente");
   };
 
   // Imprimir guía
@@ -638,13 +742,13 @@ export default function GuideDetailsModal({
         <div class="orders">
           <h3>Pedidos</h3>
           ${ordersDetails
-        .map((order) => {
-          const paid =
-            order.payments
-              ?.filter((p) => p.status === "PAID")
-              .reduce((s, p) => s + Number(p.amount), 0) || 0;
-          const pending = Math.max(Number(order.grandTotal) - paid, 0);
-          return `
+            .map((order) => {
+              const paid =
+                order.payments
+                  ?.filter((p) => p.status === "PAID")
+                  .reduce((s, p) => s + Number(p.amount), 0) || 0;
+              const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
+              return `
               <div class="order">
                 <div class="order-header">
                   <span class="number">${order.orderNumber}</span>
@@ -655,26 +759,27 @@ export default function GuideDetailsModal({
                   ${order.customer.district || ""} - ${order.customer.address || ""}
                 </div>
                 <div class="items">
-                  ${order.items
-              ?.map(
-                (item) => `
+                  ${
+                    order.items
+                      ?.map(
+                        (item) => `
                     <div class="item">
                       <span class="item-name">${item.productName} (x${item.quantity})</span>
                       <span>S/${(Number(item.unitPrice) * item.quantity).toFixed(2)}</span>
                     </div>
                   `,
-              )
-              .join("") || ""
-            }
+                      )
+                      .join("") || ""
+                  }
                 </div>
                 <div class="total">
-                  Total: S/${Number(order.grandTotal).toFixed(2)}
+                  Total: S/${Number(order.totals?.grandTotal ?? order.grandTotal ?? 0).toFixed(2)}
                   ${pending > 0 ? `<span class="pending"> | Cobrar: S/${pending.toFixed(2)}</span>` : ""}
                 </div>
               </div>
             `;
-        })
-        .join("")}
+            })
+            .join("")}
         </div>
       </body>
       </html>
@@ -730,9 +835,10 @@ export default function GuideDetailsModal({
           </div>
           <div class="section items">
             <div class="section-title">Productos</div>
-            ${order.items
-          ?.map(
-            (item) => `
+            ${
+              order.items
+                ?.map(
+                  (item) => `
               <div class="item">
                 <div class="row">
                   <span>${item.productName}</span>
@@ -744,30 +850,30 @@ export default function GuideDetailsModal({
                 </div>
               </div>
             `,
-          )
-          .join("") || ""
-        }
+                )
+                .join("") || ""
+            }
           </div>
           <div class="section totals">
             <div class="row">
               <span>TOTAL:</span>
-              <span>S/${Number(order.grandTotal).toFixed(2)}</span>
+              <span>S/${Number(order.totals?.grandTotal ?? order.grandTotal ?? 0).toFixed(2)}</span>
             </div>
             ${(() => {
-          const paid =
-            order.payments
-              ?.filter((p) => p.status === "PAID")
-              .reduce((s, p) => s + Number(p.amount), 0) || 0;
-          const pending = Math.max(Number(order.grandTotal) - paid, 0);
-          return pending > 0
-            ? `
+              const paid =
+                order.payments
+                  ?.filter((p) => p.status === "PAID")
+                  .reduce((s, p) => s + Number(p.amount), 0) || 0;
+              const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
+              return pending > 0
+                ? `
                 <div class="row pending">
                   <span>A COBRAR:</span>
                   <span>S/${pending.toFixed(2)}</span>
                 </div>
               `
-            : "";
-        })()}
+                : "";
+            })()}
           </div>
           <div style="text-align: center; margin-top: 15px; font-size: 10px; color: #666;">
             Guía: ${guide?.guideNumber || "-"}<br/>
@@ -987,7 +1093,7 @@ export default function GuideDetailsModal({
                     order.payments
                       ?.filter((p) => p.status === "PAID")
                       .reduce((s, p) => s + Number(p.amount), 0) || 0;
-                  const pending = Math.max(Number(order.grandTotal) - paid, 0);
+                  const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
 
                   return (
                     <div key={order.id} className="bg-background">
@@ -1015,7 +1121,7 @@ export default function GuideDetailsModal({
                         <div className="flex items-center gap-3">
                           <div className="text-right">
                             <p className="font-medium">
-                              S/{Number(order.grandTotal).toFixed(2)}
+                              S/{Number(order.totals?.grandTotal ?? order.grandTotal ?? 0).toFixed(2)}
                             </p>
                             {pending > 0 && (
                               <p className="text-xs text-red-600">
@@ -1143,10 +1249,11 @@ export default function GuideDetailsModal({
                                         ? "password"
                                         : "text"
                                     }
-                                    className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 ${pending > 0
+                                    className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 ${
+                                      pending > 0
                                         ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
                                         : "focus:border-orange-500"
-                                      }`}
+                                    }`}
                                     placeholder="Ej: ABC123"
                                     value={
                                       orderTrackingFields[order.id]
@@ -1294,15 +1401,15 @@ export default function GuideDetailsModal({
                             ) : (
                               <div>
                                 {isCourierView &&
-                                  [
-                                    "CREADA",
-                                    "ASIGNADA",
-                                    "APROBADA",
-                                    "EN_RUTA",
-                                    "ENTREGADA",
-                                    "PARCIAL",
-                                    "FALLIDA",
-                                  ].includes(guide?.status || "") ? (
+                                [
+                                  "CREADA",
+                                  "ASIGNADA",
+                                  "APROBADA",
+                                  "EN_RUTA",
+                                  "ENTREGADA",
+                                  "PARCIAL",
+                                  "FALLIDA",
+                                ].includes(guide?.status || "") ? (
                                   <label className="inline-flex items-center gap-2 cursor-pointer bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs hover:bg-primary/90 transition-colors">
                                     {uploadingOrderId === order.id ? (
                                       <Loader2 className="h-3 w-3 animate-spin" />
@@ -1369,10 +1476,10 @@ export default function GuideDetailsModal({
                             <span className="text-[10px] text-muted-foreground">
                               {note.date
                                 ? format(
-                                  new Date(note.date),
-                                  "dd/MM/yy HH:mm",
-                                  { locale: es },
-                                )
+                                    new Date(note.date),
+                                    "dd/MM/yy HH:mm",
+                                    { locale: es },
+                                  )
                                 : "-"}
                             </span>
                           </div>

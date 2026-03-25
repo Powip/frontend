@@ -390,6 +390,8 @@ export default function OperacionesPage() {
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
 
+      res.data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
       const mappedSales = res.data.map(mapOrderToSale);
 
       // Enriquecer órdenes con guideNumber que no tienen courier con el courierName de la guía

@@ -3,7 +3,7 @@
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, ReactNode } from "react";
-import { getRoutePermissions, hasAnyPermission, isSuperadmin } from "@/config/permissions.config";
+import { getRoutePermissions, hasAnyPermission, isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -32,10 +32,15 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   // Obtener permisos requeridos para la ruta actual
   const requiredPermissions = pathname ? getRoutePermissions(pathname) : [];
 
-  // Verificar si el usuario tiene acceso
-  const hasAccess = isSuperadmin(auth?.user?.email) || 
-    requiredPermissions.length === 0 ||
-    hasAnyPermission(auth?.user?.permissions, requiredPermissions);
+  // Verificar acceso:
+  // 1. Superadmin siempre tiene acceso
+  // 2. Si requiere __ADMIN_ROLE__, verificar el rol del usuario (ADMIN/OWNER)
+  // 3. Si requiere permisos específicos, verificar permissions[] del JWT
+  // 4. Si no hay requisitos (array vacío), cualquier autenticado puede acceder
+  const hasAccess = isSuperadmin(auth?.user?.email) ||
+    (requiredPermissions.includes("__ADMIN_ROLE__")
+      ? hasAdminAccess(auth?.user?.role)
+      : hasAnyPermission(auth?.user?.permissions, requiredPermissions));
 
   useEffect(() => {
     // Si no está cargando, no hay auth, y NO es ruta pública -> login
@@ -75,7 +80,6 @@ export default function AuthGuard({ children }: AuthGuardProps) {
           No tienes permisos para acceder a esta página.
         </p>
         <button
-
           onClick={() => router.push("/dashboard")}
           className="mt-4 px-4 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
         >
