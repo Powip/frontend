@@ -48,8 +48,8 @@ export async function GET(request: Request) {
 
     // 3. Map company and user details to alerts in-memory
     const enrichedAlerts = alerts.map((alert: any) => {
-      const company = companyMap.get(alert.business_id);
-      const user = company ? userMap.get(company.user_id) : null;
+      const company = companyMap.get(alert.business_id) as any;
+      const user = company ? userMap.get(company.user_id) as any : null;
 
       return {
         ...alert,
