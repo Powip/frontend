@@ -43,23 +43,23 @@ export async function GET(request: Request) {
     const users = (usersRes.status === 'fulfilled' && (usersRes.value as any).data) ? (usersRes.value as any).data : [];
 
     // Create maps for efficient lookup
-    const userMap = new Map(users.map((u: any) => [u.id, u]));
-    const companyMap = new Map(companies.map((c: any) => [c.id, c]));
+    const userMap = new Map<string, any>(users.map((u: any) => [u.id, u]));
+    const companyMap = new Map<string, any>(companies.map((c: any) => [c.id, c]));
 
     // 3. Map company and user details to alerts in-memory
     const enrichedAlerts = alerts.map((alert: any) => {
-      const company = companyMap.get(alert.business_id) as any;
-      const user = company ? userMap.get(company.user_id) as any : null;
+      const companyData = companyMap.get(alert.business_id);
+      const userData = companyData?.user_id ? userMap.get(companyData.user_id) : null;
 
       return {
         ...alert,
-        company: company ? {
-          name: company.name,
-          plan: company.plan || "N/A",
-          price: company.price || 0,
-          phone: company.phone || company.billing_phone || "No registrado",
-          email: company.billing_email,
-          lastSignInAt: user?.lastSignInAt || null
+        company: companyData ? {
+          name: companyData.name,
+          plan: companyData.plan || "N/A",
+          price: companyData.price || 0,
+          phone: companyData.phone || companyData.billing_phone || "No registrado",
+          email: companyData.billing_email,
+          lastSignInAt: userData?.lastSignInAt || null
         } : { name: "Empresa desconocida", plan: "N/A", price: 0 }
       };
     });
