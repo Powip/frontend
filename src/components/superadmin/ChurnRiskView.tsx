@@ -213,7 +213,7 @@ const KpiItem = ({ title, value, subtitle, color, valueColor }: any) => (
 );
 
 const AlertCard = ({ 
-  alert, 
+  alert: churnAlert, 
   onResolve, 
   onViewStats 
 }: { 
@@ -221,18 +221,18 @@ const AlertCard = ({
   onResolve: (id: string) => void; 
   onViewStats: (companyId: string) => void;
 }) => {
-  const config = SEVERITY_CONFIG[alert.severity] || SEVERITY_CONFIG.low;
-  const label = ALERT_LABELS[alert.alert_type] || alert.alert_type;
+  const config = SEVERITY_CONFIG[churnAlert.severity] || SEVERITY_CONFIG.low;
+  const label = ALERT_LABELS[churnAlert.alert_type] || churnAlert.alert_type;
 
   const handleContact = () => {
-    const phone = alert.company?.phone;
+    const phone = churnAlert.company?.phone;
     if (!phone) {
       alert("No hay teléfono registrado para esta empresa");
       return;
     }
 
     let reason = "algunos inconvenientes en su cuenta";
-    const type = alert.alert_type;
+    const type = churnAlert.alert_type;
     if (type === 'no_login') reason = "que hace más de 7 días no inicia sesión";
     if (type === 'order_drop') reason = "una caída significativa en sus pedidos";
     if (type === 'no_orders') reason = "que no ha registrado pedidos en los últimos 7 días";
@@ -242,7 +242,7 @@ const AlertCard = ({
     if (type === 'inactive_subscribed') reason = "que su empresa figura inactiva pero tiene suscripción";
     if (type === 'ttfv_high') reason = "que aún no ha registrado su primer pedido";
 
-    const name = alert.company?.name || "cliente";
+    const name = churnAlert.company?.name || "cliente";
     const message = `¡Hola ${name}! Somos del equipo de Powip. Notamos ${reason} y queríamos saber si podemos ayudarlo con algo.`;
     const encodedMessage = encodeURIComponent(message);
     window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${encodedMessage}`, '_blank');
@@ -253,32 +253,32 @@ const AlertCard = ({
       {/* Severity Indicator Line */}
       <div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl ${config.indicator}`} />
       
-      <div className="flex-1 space-y-1.5 pl-2 cursor-pointer" onClick={() => onViewStats(alert.business_id)}>
+      <div className="flex-1 space-y-1.5 pl-2 cursor-pointer" onClick={() => onViewStats(churnAlert.business_id)}>
         <div className="flex items-center gap-2 flex-wrap">
           <h4 className="text-lg font-bold text-slate-900 dark:text-white/90 group-hover:text-primary transition-colors">
-            {alert.company?.name || "Negocio"} <span className="text-slate-400 dark:text-gray-500 font-medium mx-1">—</span> <span className="text-slate-900 dark:text-white">{label}</span>
+            {churnAlert.company?.name || "Negocio"} <span className="text-slate-400 dark:text-gray-500 font-medium mx-1">—</span> <span className="text-slate-900 dark:text-white">{label}</span>
           </h4>
         </div>
         
         <div className="flex flex-col gap-1">
           <p className="text-xs text-slate-600 dark:text-gray-400 font-medium leading-relaxed max-w-3xl line-clamp-2 italic text-balance">
-            {alert.details}
+            {churnAlert.details}
           </p>
           <div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 dark:text-gray-500 uppercase">
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              Detectado {formatDistanceToNow(parseISO(alert.created_at), { addSuffix: true, locale: es })}
+              Detectado {formatDistanceToNow(parseISO(churnAlert.created_at), { addSuffix: true, locale: es })}
             </span>
-            {alert.company?.plan && (
+            {churnAlert.company?.plan && (
               <span className="flex items-center gap-1">
                 <DollarSign className="h-3 w-3" />
-                MRR: S/ {alert.company?.price} ({alert.company?.plan})
+                MRR: S/ {churnAlert.company?.price} ({churnAlert.company?.plan})
               </span>
             )}
-            {alert.company?.lastSignInAt && (
+            {churnAlert.company?.lastSignInAt && (
               <span className="flex items-center gap-1 text-primary">
                 <History className="h-3 w-3" />
-                Último acceso: {formatDistanceToNow(parseISO(alert.company.lastSignInAt), { addSuffix: true, locale: es })}
+                Último acceso: {formatDistanceToNow(parseISO(churnAlert.company.lastSignInAt), { addSuffix: true, locale: es })}
               </span>
             )}
           </div>
@@ -304,7 +304,7 @@ const AlertCard = ({
             variant="secondary" 
             size="sm" 
             className="h-9 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-900 dark:text-white border-slate-200 dark:border-white/10 font-bold text-xs"
-            onClick={() => onResolve(alert.id)}
+            onClick={() => onResolve(churnAlert.id)}
           >
             Resolver
           </Button>
@@ -312,7 +312,7 @@ const AlertCard = ({
             variant="ghost" 
             size="icon" 
             className="h-9 w-9 text-slate-400 hover:text-slate-900 dark:text-gray-500 dark:hover:text-white"
-            onClick={() => onViewStats(alert.business_id)}
+            onClick={() => onViewStats(churnAlert.business_id)}
           >
             <ChevronRight className="h-5 w-5" />
           </Button>
