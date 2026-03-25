@@ -363,6 +363,7 @@ export function CompaniesView({ companies, auth, plans, allUsers, onCreateSucces
         company={selectedCompany}
         plans={plans}
         auth={auth}
+        allUsers={allUsers}
       />
       <CreateCompanyModal
         isOpen={isCreateOpen}
@@ -395,7 +396,7 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── Company Detail Modal ──────────────────────────────────────────────────
 
-function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth }: any) {
+function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUsers }: any) {
   const [details, setDetails] = useState<any>({ users: [], productCount: 0, sales: { totalSales: 0, orderCount: 0 }, billing: [], loading: true });
   const [period, setPeriod] = useState('all');
   const [changingPlan, setChangingPlan] = useState(false);
