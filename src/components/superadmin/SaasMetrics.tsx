@@ -101,7 +101,7 @@ export const SaasMetrics: React.FC<SaasMetricsProps> = ({ metrics }) => {
     },
     {
       title: "Churn Rate",
-      value: `${metrics.churnRate.toFixed(2)}%`,
+      value: `${(metrics.churnRate || 0).toFixed(1)}%`,
       label: "Fuga Mensual",
       icon: UserMinus,
       status: getStatusColor(metrics.churnRate, metrics.targets?.churn, true),

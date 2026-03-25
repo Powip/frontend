@@ -1,8 +1,9 @@
 // Permissions configuration for route-based access control
 
 export const SUPERADMIN_EMAILS = [
+  "octatoledo7@gmail.com",
   "maurimartine01@gmail.com",
-  "joel@aranni.com.pe",
+  "joel@aranni.com.pe"
 ];
 
 export const isSuperadmin = (email?: string): boolean => {

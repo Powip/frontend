@@ -351,6 +351,27 @@ export default function FinanzasPage() {
     );
   };
 
+  const handleBulkWhatsApp = (salesList: Sale[]) => {
+    const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
+
+    if (selectedSales.length === 0) {
+      toast.warning("No hay pedidos seleccionados en esta vista para enviar WhatsApp");
+      return;
+    }
+
+    if (selectedSales.length > 5) {
+      toast.info(`Se abrirán ${selectedSales.length} ventanas de WhatsApp. Asegúrate de permitir las ventanas emergentes (pop-ups).`);
+    } else {
+      toast.success(`Preparando envío múltiple a ${selectedSales.length} clientes...`);
+    }
+
+    selectedSales.forEach((sale, index) => {
+      setTimeout(() => {
+        handleWhatsApp(sale.phoneNumber, sale.orderNumber, sale.clientName, sale.pendingPayment);
+      }, index * 600);
+    });
+  };
+
   const handleCopySelected = async (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
@@ -854,24 +875,41 @@ Estado: ${sale.status}
           {/* Tab Pagos Pendientes */}
           <TabsContent value="pagosPendientes">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                 <div>
                   <CardTitle>Pagos Pendientes de Aprobación</CardTitle>
                   <p className="text-sm text-muted-foreground mt-1">
                     Ventas con comprobantes de pago por verificar
                   </p>
                 </div>
-                {auth?.user?.role === "ADMIN" && (
+                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                   <Button
                     variant="outline"
-                    onClick={() =>
-                      handleExportExcel(pagosPendientes, "pagos_pendientes")
+                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    disabled={
+                      pagosPendientes.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
                     }
+                    onClick={() => handleBulkWhatsApp(pagosPendientes)}
                   >
-                    <Download className="h-4 w-4 mr-2" />
-                    Exportar Excel
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
+                    {pagosPendientes.filter((s) => selectedSaleIds.has(s.id)).length}
+                    )
                   </Button>
-                )}
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      onClick={() =>
+                        handleExportExcel(pagosPendientes, "pagos_pendientes")
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 <SalesTableFilters
@@ -1077,6 +1115,20 @@ Estado: ${sale.status}
                   >
                     <Copy className="h-4 w-4 mr-2" />
                     Copiar seleccionados (
+                    {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    disabled={
+                      entregados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleBulkWhatsApp(entregados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
                     {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
                     )
                   </Button>

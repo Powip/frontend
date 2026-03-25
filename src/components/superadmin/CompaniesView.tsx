@@ -6,6 +6,8 @@ import {
   CheckCircle2, Minus, ChevronRight, BarChart3,
   Calendar, X, Loader2,
 } from 'lucide-react';
+import { formatDistanceToNow, parseISO } from 'date-fns';
+import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -417,10 +419,22 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth }: any)
         getCompanyBilling(token, company.id).catch(() => []),
       ]);
 
+      // Calculate trend
+      let trend = "0%";
+      if (billing.length >= 2) {
+        const current = billing[billing.length - 1].ordersCount || 0;
+        const prev = billing[billing.length - 2].ordersCount || 0;
+        if (prev > 0) {
+          const diff = ((current - prev) / prev) * 100;
+          trend = `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`;
+        }
+      }
+
       setDetails({
         users,
         productCount,
         sales,
+        trend,
         billing: billing.map((b: any) => ({ ...b, '2025': b.ordersCount, '2024': b.previousOrdersCount })),
         loading: false,
       });
@@ -493,18 +507,35 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth }: any)
             </div>
 
             {/* KPI mini grid */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               {[
                 { label: 'Productos', value: details.productCount, icon: BarChart3 },
-                { label: 'Órdenes', value: details.sales.orderCount, icon: TrendingUp },
+                { 
+                  label: 'Último Acceso', 
+                  value: company?.userId ? (
+                    allUsers.find((u: any) => u.id === company.userId)?.lastSignInAt 
+                      ? formatDistanceToNow(parseISO(allUsers.find((u: any) => u.id === company.userId).lastSignInAt), { addSuffix: true, locale: es })
+                      : "Nunca"
+                  ) : "N/A", 
+                  icon: Users,
+                  accent: true 
+                },
+                { label: 'Ventas (30d)', value: details.sales.orderCount, icon: TrendingUp, sub: details.trend, trendUp: !details.trend?.startsWith('-') },
                 { label: 'Facturado', value: `S/ ${details.sales.totalSales?.toLocaleString()}`, icon: CreditCard, accent: true },
-              ].map(({ label, value, icon: Icon, accent }) => (
-                <div key={label} className="bg-white/5 border border-white/5 rounded-xl p-4 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <Icon className={cn('h-4 w-4', accent ? 'text-primary' : 'text-gray-500')} />
-                    <span className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">{label}</span>
+              ].map(({ label, value, icon: Icon, accent, sub, trendUp }: any) => (
+                <div key={label} className="bg-white/5 border border-white/5 rounded-xl p-4 flex flex-col gap-2 overflow-hidden">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Icon className={cn('h-4 w-4', accent ? 'text-primary' : 'text-gray-500')} />
+                      <span className="text-[10px] text-gray-500 uppercase tracking-wider font-bold">{label}</span>
+                    </div>
+                    {sub && (
+                      <span className={cn('text-[10px] font-bold px-1.5 py-0.5 rounded', trendUp ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400')}>
+                        {sub}
+                      </span>
+                    )}
                   </div>
-                  <div className={cn('text-2xl font-black', accent ? 'text-primary' : 'text-white')}>
+                  <div className={cn('text-lg font-black truncate', accent ? 'text-primary' : 'text-white')}>
                     {value}
                   </div>
                 </div>

@@ -181,6 +181,24 @@ export default function AtencionClientePage() {
   const [promoFromDate, setPromoFromDate] = useState<string>("");
   const [promoToDate, setPromoToDate] = useState<string>("");
 
+  const handleBulkWhatsApp = (salesList: Sale[]) => {
+    const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
+
+    if (selectedSales.length === 0) {
+      toast.warning("No hay pedidos seleccionados");
+      return;
+    }
+
+    setSelectedSaleIds(new Set());
+    toast.info(`Abriendo ${selectedSales.length} pestañas de WhatsApp... ¡Asegúrese de permitir Pop-ups!`);
+
+    selectedSales.forEach((sale, index) => {
+      setTimeout(() => {
+        handleWhatsApp(sale.phoneNumber, sale.orderNumber, sale.clientName);
+      }, index * 600);
+    });
+  };
+
   const handleWhatsApp = (
     phoneNumber: string,
     orderNumber: string,
@@ -560,6 +578,15 @@ Estado: ${sale.status}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
+                    className="text-green-600 border-green-200 hover:bg-green-50"
+                    disabled={selectedPreparadosCount === 0}
+                    onClick={() => handleBulkWhatsApp(pedidosPreparados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo ({selectedPreparadosCount})
+                  </Button>
+                  <Button
+                    variant="outline"
                     disabled={selectedPreparadosCount === 0}
                     onClick={() => handleCopySelected(pedidosPreparados)}
                   >
@@ -599,6 +626,15 @@ Estado: ${sale.status}
                   Pedidos NO CONFIRMADOS
                 </CardTitle>
                 <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="text-green-600 border-green-200 hover:bg-green-50"
+                    disabled={selectedNoConfirmadosCount === 0}
+                    onClick={() => handleBulkWhatsApp(pedidosNoConfirmados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo ({selectedNoConfirmadosCount})
+                  </Button>
                   <Button
                     variant="outline"
                     disabled={selectedNoConfirmadosCount === 0}
@@ -645,6 +681,15 @@ Estado: ${sale.status}
                 <div className="flex gap-2">
                   <Button
                     variant="outline"
+                    className="text-green-600 border-green-200 hover:bg-green-50"
+                    disabled={selectedConfirmadosCount === 0}
+                    onClick={() => handleBulkWhatsApp(pedidosConfirmados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo ({selectedConfirmadosCount})
+                  </Button>
+                  <Button
+                    variant="outline"
                     disabled={selectedConfirmadosCount === 0}
                     onClick={() => handleCopySelected(pedidosConfirmados)}
                   >
@@ -684,6 +729,15 @@ Estado: ${sale.status}
                   Pedidos REPROGRAMADOS (Rellamada)
                 </CardTitle>
                 <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    className="text-green-600 border-green-200 hover:bg-green-50"
+                    disabled={selectedReprogramadosCount === 0}
+                    onClick={() => handleBulkWhatsApp(pedidosReprogramados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo ({selectedReprogramadosCount})
+                  </Button>
                   <Button
                     variant="outline"
                     disabled={selectedReprogramadosCount === 0}

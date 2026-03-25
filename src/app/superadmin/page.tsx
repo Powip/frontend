@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   Calendar,
   CheckCircle2,
+  DollarSign,
   Search,
   X,
   Info,
@@ -29,7 +30,10 @@ import {
   User,
   BarChart3,
   AlertOctagon,
+  History,
 } from "lucide-react";
+import { formatDistanceToNow, parseISO } from "date-fns";
+import { es } from "date-fns/locale";
 import {
   Card,
   CardContent,
@@ -38,6 +42,7 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -431,13 +436,25 @@ export default function SuperadminPage() {
           <ChurnRiskView 
             alerts={churnAlerts.map((a: any) => {
               const company = companies.find(c => c.id === a.business_id);
+              const user = company ? allUsers.find(u => u.id === company.userId) : null;
               return { 
                 ...a, 
-                company: company ? { name: company.name, plan: company.plan, price: company.price } : a.company 
+                company: company ? { 
+                  ...company,
+                  name: company.name, 
+                  plan: company.plan, 
+                  price: company.price,
+                  phone: company.phone,
+                  lastSignInAt: user?.lastSignInAt || null
+                } : a.company 
               };
             })}
             metrics={saasMetrics || { churnRate: 0, mrr: 0 }}
             companies={companies}
+            onViewStats={(companyId) => {
+              const company = companies.find(c => c.id === companyId);
+              if (company) handleCompanyClick(company);
+            }}
             onResolve={async (id) => {
               const note = window.prompt("Ingrese una nota de resolución:");
               if (note === null) return;
@@ -535,6 +552,7 @@ export default function SuperadminPage() {
         company={selectedCompany}
         plans={plans}
         auth={auth}
+        allUsers={allUsers}
       />
 
       <CreateCompanyModal
@@ -613,6 +631,7 @@ function CompanyDetailModal({
   company,
   auth,
   plans,
+  allUsers,
 }: any) {
   const [details, setDetails] = useState<any>({
     users: [],
@@ -665,13 +684,25 @@ function CompanyDetailModal({
         getCompanyBilling(token, company.id).catch(() => []),
       ]);
 
+      // Calculate trend
+      let trend = "0%";
+      if (billing.length >= 2) {
+        const current = billing[billing.length - 1].ordersCount || 0;
+        const prev = billing[billing.length - 2].ordersCount || 0;
+        if (prev > 0) {
+          const diff = ((current - prev) / prev) * 100;
+          trend = `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`;
+        }
+      }
+
       setDetails({
         users,
         productCount,
         sales,
+        trend,
         billing: billing.map((b: any) => ({
           ...b,
-          "2025": b.ordersCount, // Simplificado para el gráfico
+          "2025": b.ordersCount,
           "2024": b.previousOrdersCount,
         })),
         loading: false,
@@ -718,7 +749,7 @@ function CompanyDetailModal({
               </Select>
             </div>
             {/* Quick Stats Grid */}
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
               <Card className="bg-muted/30">
                 <CardContent className="pt-6">
                   <div className="text-sm font-medium text-muted-foreground">
@@ -732,7 +763,28 @@ function CompanyDetailModal({
               <Card className="bg-muted/30">
                 <CardContent className="pt-6">
                   <div className="text-sm font-medium text-muted-foreground">
-                    Órdenes Realizadas
+                    Último Acceso (Admin)
+                  </div>
+                  <div className="text-2xl font-bold text-primary">
+                    {company?.userId ? (
+                      allUsers.find((u: any) => u.id === company.userId)?.lastSignInAt 
+                        ? formatDistanceToNow(parseISO(allUsers.find((u: any) => u.id === company.userId).lastSignInAt), { addSuffix: true, locale: es })
+                        : "Nunca"
+                    ) : "N/A"}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card className="bg-muted/30">
+                <CardContent className="pt-6">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium text-muted-foreground">
+                      Ventas (30 días)
+                    </div>
+                    {details.trend && (
+                      <Badge className={cn("text-[10px]", !details.trend.startsWith('-') ? "bg-green-500/20 text-green-600 border-green-500/30" : "bg-red-500/20 text-red-600 border-red-500/30")}>
+                        {details.trend}
+                      </Badge>
+                    )}
                   </div>
                   <div className="text-2xl font-bold">
                     {details.sales.orderCount}
@@ -742,7 +794,7 @@ function CompanyDetailModal({
               <Card className="bg-muted/30">
                 <CardContent className="pt-6">
                   <div className="text-sm font-medium text-muted-foreground">
-                    Facturación Acumulada
+                    Facturación (Periodo)
                   </div>
                   <div className="text-2xl font-bold text-primary">
                     S/ {details.sales.totalSales.toLocaleString()}

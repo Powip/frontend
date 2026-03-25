@@ -20,6 +20,7 @@ import {
   Loader2,
   ExternalLink,
   MessageSquare,
+  MessageCircle,
   Phone,
   ChevronDown,
   ChevronRight,
@@ -211,6 +212,7 @@ export default function GuideDetailsModal({
     id: string;
     number: string;
   } | null>(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
 
   // Estado para tracking por pedido (key = orderId)
   const [orderTrackingFields, setOrderTrackingFields] = useState<
@@ -477,6 +479,7 @@ export default function GuideDetailsModal({
     setSelectedCourier("");
     setOrdersDetails([]);
     setExpandedOrders(new Set());
+    setSelectedOrderIds(new Set());
     setOrderTrackingFields({});
     onClose();
     // No reseteamos el guideId u orderId aquí porque vienen de props,
@@ -492,6 +495,58 @@ export default function GuideDetailsModal({
         next.add(orderId);
       }
       return next;
+    });
+  };
+
+  const handleWhatsApp = (
+    phoneNumber: string,
+    orderNumber?: string,
+    clientName?: string,
+    pendingPayment?: number,
+  ) => {
+    const phone = phoneNumber.replace(/\D/g, "");
+    const cleanPhone = phone.startsWith("51") ? phone : `51${phone}`;
+
+    let message = `Hola${clientName ? ` ${clientName}` : ""}! `;
+    if (orderNumber) {
+      const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${orderNumber}`;
+      message += `Te contactamos por tu pedido ${orderNumber}.\n\nPuedes rastrear tu pedido aquí: ${trackingUrl}`;
+    }
+
+    if (pendingPayment && pendingPayment > 0) {
+      message += `\n\n📌 Tienes un saldo pendiente de: S/ ${pendingPayment.toFixed(2)}`;
+    }
+
+    window.open(
+      `https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`,
+      "_blank",
+    );
+  };
+
+  const handleBulkWhatsApp = () => {
+    const selectedOrders = ordersDetails.filter((o) => selectedOrderIds.has(o.id));
+
+    if (selectedOrders.length === 0) {
+      toast.warning("No hay pedidos seleccionados para enviar WhatsApp");
+      return;
+    }
+
+    if (selectedOrders.length > 5) {
+      toast.info(`Se abrirán ${selectedOrders.length} ventanas de WhatsApp. Asegúrate de permitir las ventanas emergentes (pop-ups).`);
+    } else {
+      toast.success(`Preparando envío múltiple a ${selectedOrders.length} clientes...`);
+    }
+
+    selectedOrders.forEach((order, index) => {
+      setTimeout(() => {
+        const paid =
+          order.payments
+            ?.filter((p) => p.status === "PAID")
+            .reduce((s, p) => s + Number(p.amount), 0) || 0;
+        const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
+
+        handleWhatsApp(order.customer.phoneNumber, order.orderNumber, order.customer.fullName, pending);
+      }, index * 600);
     });
   };
 
@@ -1080,11 +1135,39 @@ export default function GuideDetailsModal({
 
             {/* Lista de pedidos con detalles */}
             <div className="border rounded-lg overflow-hidden">
-              <div className="bg-muted/50 px-3 py-2 border-b">
+              <div className="bg-muted/50 px-3 py-2 border-b flex items-center justify-between">
                 <h4 className="font-medium flex items-center gap-2">
                   <Package className="h-4 w-4" />
                   Pedidos ({ordersDetails.length})
                 </h4>
+                <div className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 mr-2"
+                    checked={
+                      ordersDetails.length > 0 &&
+                      selectedOrderIds.size === ordersDetails.length
+                    }
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedOrderIds(new Set(ordersDetails.map((o) => o.id)));
+                      } else {
+                        setSelectedOrderIds(new Set());
+                      }
+                    }}
+                  />
+                  <span className="text-muted-foreground mr-2">Seleccionar todos</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    disabled={selectedOrderIds.size === 0}
+                    onClick={handleBulkWhatsApp}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo ({selectedOrderIds.size})
+                  </Button>
+                </div>
               </div>
               <div className="divide-y max-h-[300px] overflow-y-auto">
                 {ordersDetails.map((order) => {
@@ -1099,18 +1182,28 @@ export default function GuideDetailsModal({
                     <div key={order.id} className="bg-background">
                       {/* Header del pedido */}
                       <div
-                        className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-muted/30"
-                        onClick={() => toggleOrderExpand(order.id)}
+                        className="flex items-center justify-between px-3 py-2 hover:bg-muted/30"
                       >
                         <div className="flex items-center gap-3">
-                          <button className="text-muted-foreground">
+                          <input
+                            type="checkbox"
+                            checked={selectedOrderIds.has(order.id)}
+                            onChange={(e) => {
+                              const newSelected = new Set(selectedOrderIds);
+                              if (e.target.checked) newSelected.add(order.id);
+                              else newSelected.delete(order.id);
+                              setSelectedOrderIds(newSelected);
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 mt-0.5"
+                          />
+                          <button className="text-muted-foreground cursor-pointer" onClick={() => toggleOrderExpand(order.id)}>
                             {isExpanded ? (
                               <ChevronDown className="h-4 w-4" />
                             ) : (
                               <ChevronRight className="h-4 w-4" />
                             )}
                           </button>
-                          <div>
+                          <div className="cursor-pointer" onClick={() => toggleOrderExpand(order.id)}>
                             <p className="font-medium">{order.orderNumber}</p>
                             <p className="text-sm text-muted-foreground">
                               {order.customer.fullName} •{" "}
