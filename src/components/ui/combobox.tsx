@@ -22,6 +22,9 @@ interface ComboboxProps {
   disabled?: boolean;
   renderLabel?: (option: any) => React.ReactNode;
   onSearchChange?: (query: string) => void;
+  onLoadMore?: () => void;
+  hasMore?: boolean;
+  isLoading?: boolean;
   className?: string;
 }
 
@@ -35,6 +38,9 @@ export function Combobox({
   disabled = false,
   renderLabel,
   onSearchChange,
+  onLoadMore,
+  hasMore = false,
+  isLoading = false,
   className,
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false);
@@ -62,6 +68,8 @@ export function Combobox({
     return options.find((option) => option.value === value);
   }, [options, value]);
 
+  const sentinelRef = React.useRef<HTMLDivElement>(null);
+
   // Reset search query when popover opens/closes
   React.useEffect(() => {
     if (!open) {
@@ -69,6 +77,31 @@ export function Combobox({
       if (onSearchChange) onSearchChange("");
     }
   }, [open, onSearchChange]);
+
+  // Infinite scroll observer
+  React.useEffect(() => {
+    if (!onLoadMore || !hasMore || isLoading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          onLoadMore();
+        }
+      },
+      { threshold: 0.1 },
+    );
+
+    const currentSentinel = sentinelRef.current;
+    if (currentSentinel) {
+      observer.observe(currentSentinel);
+    }
+
+    return () => {
+      if (currentSentinel) {
+        observer.unobserve(currentSentinel);
+      }
+    };
+  }, [onLoadMore, hasMore, isLoading, filteredOptions]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -132,6 +165,14 @@ export function Combobox({
                   {renderLabel ? renderLabel(option) : option.label}
                 </div>
               ))
+            )}
+            {hasMore && (
+              <div
+                ref={sentinelRef}
+                className="py-4 flex items-center justify-center text-xs text-muted-foreground"
+              >
+                {isLoading ? "Cargando más..." : "Cargar más"}
+              </div>
             )}
           </div>
         </ScrollArea>
