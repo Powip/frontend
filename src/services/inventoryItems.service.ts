@@ -13,6 +13,7 @@ interface SearchInventoryItemsResponse {
 
 export async function searchInventoryItems(params: {
   inventoryId: string;
+  companyId?: string;
   q?: string;
   page?: number;
   limit?: number;
