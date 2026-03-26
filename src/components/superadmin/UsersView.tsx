@@ -237,7 +237,7 @@ export function UsersView({
                   <TableCell>
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">
                       <Clock className="h-3 w-3" />
-                      {new Date(user.createdAt).toLocaleDateString()}
+                      {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'N/A'}
                     </div>
                   </TableCell>
                   <TableCell className="text-right pr-6">

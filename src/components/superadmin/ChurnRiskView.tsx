@@ -28,7 +28,13 @@ interface ChurnAlert {
   severity: 'low' | 'medium' | 'high';
   details: string;
   created_at: string;
-  company?: { name: string; plan?: string; price?: number };
+  company?: { 
+    name: string; 
+    plan?: string; 
+    price?: number;
+    phone?: string;
+    lastSignInAt?: string | null;
+  };
 }
 
 interface ChurnRiskViewProps {
@@ -39,6 +45,7 @@ interface ChurnRiskViewProps {
   };
   companies: any[];
   onResolve: (id: string) => void;
+  onViewStats: (companyId: string) => void;
 }
 
 const SEVERITY_CONFIG = {
@@ -48,7 +55,7 @@ const SEVERITY_CONFIG = {
     badge: 'bg-red-500 text-white',
     iconColor: 'text-red-500',
     indicator: 'bg-red-500',
-    action: { label: 'Llamar CS', icon: Phone }
+    action: { label: 'Contactar', icon: MessageSquare }
   },
   medium: {
     label: 'ALTO',
@@ -56,7 +63,7 @@ const SEVERITY_CONFIG = {
     badge: 'bg-amber-500 text-black font-extrabold',
     iconColor: 'text-amber-500',
     indicator: 'bg-amber-500',
-    action: { label: 'Intervenir', icon: Zap }
+    action: { label: 'Contactar', icon: MessageSquare }
   },
   low: {
     label: 'MEDIO',
@@ -71,20 +78,21 @@ const SEVERITY_CONFIG = {
 const ALERT_LABELS: Record<string, string> = {
   no_login: "Sin login 7+ días",
   order_drop: "Caída pedidos >40% semanal",
-  disconnected_channel: "Canal desconectado >48h",
-  low_onboarding: "Onboarding <30% (d14)",
-  no_activation_3d: "Sin activar (d3)",
-  high_tickets: "3+ tickets mismo tipo (7d)",
-  downgrade_requested: "Downgrade solicitado",
-  feature_unused_14d: "Features clave sin uso (14d)",
-  negative_feedback: "NPS Negativo o CSAT <3"
+  no_orders: "Sin pedidos (7d)",
+  expiring_soon: "Suscripción por vencer (<3d)",
+  pending_payment: "Pago pendiente (>5d)",
+  low_usage: "Bajo uso operativo (7d)",
+  inactive_subscribed: "Inactiva con suscripción",
+  ttfv_high: "Fallo en activación (TTFV)",
+  high_tickets: "Ticket crítico sin resolver",
 };
 
 export const ChurnRiskView: React.FC<ChurnRiskViewProps> = ({ 
   alerts, 
   metrics, 
   companies,
-  onResolve 
+  onResolve,
+  onViewStats 
 }) => {
   // ── Calculation ──────────────────────────────────────────────
   const stats = useMemo(() => {
@@ -136,7 +144,7 @@ export const ChurnRiskView: React.FC<ChurnRiskViewProps> = ({
         />
         <KpiItem 
           title="CHURN RATE" 
-          value={`${metrics.churnRate}%`} 
+          value={`${Number(metrics.churnRate).toFixed(1)}%`} 
           subtitle="Meta: <3% — límite" 
           color="text-amber-400"
           valueColor="text-amber-400"
@@ -167,6 +175,7 @@ export const ChurnRiskView: React.FC<ChurnRiskViewProps> = ({
               key={alert.id} 
               alert={alert} 
               onResolve={onResolve}
+              onViewStats={onViewStats}
             />
           ))}
           
@@ -203,35 +212,73 @@ const KpiItem = ({ title, value, subtitle, color, valueColor }: any) => (
   </Card>
 );
 
-const AlertCard = ({ alert, onResolve }: { alert: ChurnAlert; onResolve: (id: string) => void }) => {
-  const config = SEVERITY_CONFIG[alert.severity] || SEVERITY_CONFIG.low;
-  const label = ALERT_LABELS[alert.alert_type] || alert.alert_type;
+const AlertCard = ({ 
+  alert: churnAlert, 
+  onResolve, 
+  onViewStats 
+}: { 
+  alert: ChurnAlert; 
+  onResolve: (id: string) => void; 
+  onViewStats: (companyId: string) => void;
+}) => {
+  const config = SEVERITY_CONFIG[churnAlert.severity] || SEVERITY_CONFIG.low;
+  const label = ALERT_LABELS[churnAlert.alert_type] || churnAlert.alert_type;
+
+  const handleContact = () => {
+    const phone = churnAlert.company?.phone;
+    if (!phone) {
+      alert("No hay teléfono registrado para esta empresa");
+      return;
+    }
+
+    let reason = "algunos inconvenientes en su cuenta";
+    const type = churnAlert.alert_type;
+    if (type === 'no_login') reason = "que hace más de 7 días no inicia sesión";
+    if (type === 'order_drop') reason = "una caída significativa en sus pedidos";
+    if (type === 'no_orders') reason = "que no ha registrado pedidos en los últimos 7 días";
+    if (type === 'expiring_soon') reason = "que su suscripción vence pronto";
+    if (type === 'pending_payment') reason = "que tiene un pago de suscripción pendiente";
+    if (type === 'low_usage') reason = "que está usando muy poco el sistema";
+    if (type === 'inactive_subscribed') reason = "que su empresa figura inactiva pero tiene suscripción";
+    if (type === 'ttfv_high') reason = "que aún no ha registrado su primer pedido";
+
+    const name = churnAlert.company?.name || "cliente";
+    const message = `¡Hola ${name}! Somos del equipo de Powip. Notamos ${reason} y queríamos saber si podemos ayudarlo con algo.`;
+    const encodedMessage = encodeURIComponent(message);
+    window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${encodedMessage}`, '_blank');
+  };
 
   return (
     <div className={`relative flex flex-col md:flex-row md:items-center justify-between p-4 md:p-6 rounded-xl border border-slate-200 dark:border-white/5 ${config.color} transition-all hover:shadow-md dark:hover:border-white/20 group`}>
       {/* Severity Indicator Line */}
       <div className={`absolute left-0 top-0 bottom-0 w-1.5 rounded-l-xl ${config.indicator}`} />
       
-      <div className="flex-1 space-y-1.5 pl-2">
+      <div className="flex-1 space-y-1.5 pl-2 cursor-pointer" onClick={() => onViewStats(churnAlert.business_id)}>
         <div className="flex items-center gap-2 flex-wrap">
-          <h4 className="text-lg font-bold text-slate-900 dark:text-white/90">
-            {alert.company?.name || "Negocio"} <span className="text-slate-400 dark:text-gray-500 font-medium mx-1">—</span> <span className="text-slate-900 dark:text-white">{label}</span>
+          <h4 className="text-lg font-bold text-slate-900 dark:text-white/90 group-hover:text-primary transition-colors">
+            {churnAlert.company?.name || "Negocio"} <span className="text-slate-400 dark:text-gray-500 font-medium mx-1">—</span> <span className="text-slate-900 dark:text-white">{label}</span>
           </h4>
         </div>
         
         <div className="flex flex-col gap-1">
           <p className="text-xs text-slate-600 dark:text-gray-400 font-medium leading-relaxed max-w-3xl line-clamp-2 italic text-balance">
-            {alert.details}
+            {churnAlert.details}
           </p>
           <div className="flex items-center gap-4 text-[10px] font-bold text-slate-400 dark:text-gray-500 uppercase">
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              Detectado {formatDistanceToNow(parseISO(alert.created_at), { addSuffix: true, locale: es })}
+              Detectado {formatDistanceToNow(parseISO(churnAlert.created_at), { addSuffix: true, locale: es })}
             </span>
-            {alert.company?.plan && (
+            {churnAlert.company?.plan && (
               <span className="flex items-center gap-1">
                 <DollarSign className="h-3 w-3" />
-                MRR: S/ {alert.company?.price} ({alert.company?.plan})
+                MRR: S/ {churnAlert.company?.price} ({churnAlert.company?.plan})
+              </span>
+            )}
+            {churnAlert.company?.lastSignInAt && (
+              <span className="flex items-center gap-1 text-primary">
+                <History className="h-3 w-3" />
+                Último acceso: {formatDistanceToNow(parseISO(churnAlert.company.lastSignInAt), { addSuffix: true, locale: es })}
               </span>
             )}
           </div>
@@ -245,18 +292,27 @@ const AlertCard = ({ alert, onResolve }: { alert: ChurnAlert; onResolve: (id: st
         
         <div className="flex gap-2">
            <Button 
+            variant="default" 
+            size="sm" 
+            className="h-9 bg-green-600 hover:bg-green-700 text-white font-bold text-xs gap-2"
+            onClick={handleContact}
+          >
+            <MessageSquare className="h-4 w-4" />
+            Contactar
+          </Button>
+          <Button 
             variant="secondary" 
             size="sm" 
-            className="h-9 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-900 dark:text-white border-slate-200 dark:border-white/10 font-bold text-xs gap-2"
-            onClick={() => onResolve(alert.id)}
+            className="h-9 bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-slate-900 dark:text-white border-slate-200 dark:border-white/10 font-bold text-xs"
+            onClick={() => onResolve(churnAlert.id)}
           >
-            <config.action.icon className="h-4 w-4" />
-            {config.action.label}
+            Resolver
           </Button>
           <Button 
             variant="ghost" 
             size="icon" 
             className="h-9 w-9 text-slate-400 hover:text-slate-900 dark:text-gray-500 dark:hover:text-white"
+            onClick={() => onViewStats(churnAlert.business_id)}
           >
             <ChevronRight className="h-5 w-5" />
           </Button>

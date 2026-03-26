@@ -1,8 +1,9 @@
 // Permissions configuration for route-based access control
 
 export const SUPERADMIN_EMAILS = [
+  "octatoledo7@gmail.com",
   "maurimartine01@gmail.com",
-  "joel@aranni.com.pe",
+  "joel@aranni.com.pe"
 ];
 
 export const isSuperadmin = (email?: string): boolean => {
@@ -10,52 +11,62 @@ export const isSuperadmin = (email?: string): boolean => {
   return SUPERADMIN_EMAILS.includes(email.toLowerCase());
 };
 
-// Map routes to required permissions
+// Roles que tienen acceso a configuración
+const ADMIN_ROLES = ["ADMIN", "OWNER", "SUPERADMIN", "admin", "owner"];
+
+/**
+ * Map de rutas a permisos requeridos.
+ * Si el array está vacío [], cualquier usuario autenticado puede acceder.
+ * "__ADMIN_ROLE__" significa que se verifica el rol del usuario (ADMIN/OWNER).
+ */
 export const ROUTE_PERMISSIONS: Record<string, string[]> = {
-  "/dashboard": ["VIEW_DASHBOARD"],
-  "/productos": ["MANAGE_PRODUCTS"],
-  "/inventario": ["MANAGE_ALMACEN"],
-  "/ventas": ["VIEW_SALES"],
-  "/registrar-venta": ["CREATE_SALE"],
-  "/operaciones": ["MANAGE_OPERATIONS"],
-  "/seguimiento": ["VIEW_TRACKING"],
-  "/finanzas": ["VIEW_FINANCES"],
-  "/clientes": ["MANAGE_CLIENTS"],
-  "/proveedores": ["MANAGE_PROVIDERS"],
-  "/usuarios": ["MANAGE_USERS"],
-  "/couriers": ["MANAGE_OPERATIONS"],
-  "/configuracion": ["ACCESS_SETTINGS"],
-  "/atencion-cliente": ["VIEW_CUSTOMER_SERVICE"],
-  "/facturacion": ["VIEW_FINANCES"],
-  // Métricas routes
-  "/metricas/ventas": ["VIEW_SALES"],
-  "/metricas/inventario": ["MANAGE_ALMACEN"],
-  "/metricas/operaciones": ["MANAGE_OPERATIONS"],
-  "/metricas/seguimientos": ["VIEW_TRACKING"],
-  "/metricas/atencion-cliente": ["VIEW_CUSTOMER_SERVICE"],
-  "/metricas/call-center": ["VIEW_CUSTOMER_SERVICE"],
-  "/metricas/couriers": ["MANAGE_OPERATIONS"],
-  "/metricas/clientes": ["MANAGE_CLIENTS"],
-  "/metricas/superadmin": ["VIEW_DASHBOARD"],
+  // Rutas operativas: accesibles para cualquier usuario autenticado
+  "/dashboard": [],
+  "/productos": [],
+  "/inventario": [],
+  "/ventas": [],
+  "/registrar-venta": [],
+  "/operaciones": [],
+  "/seguimiento": [],
+  "/finanzas": [],
+  "/clientes": [],
+  "/proveedores": [],
+  "/usuarios": [],
+  "/couriers": [],
+  "/atencion-cliente": [],
+  "/facturacion": [],
+  // Métricas: accesibles para cualquier usuario autenticado
+  "/metricas/ventas": [],
+  "/metricas/inventario": [],
+  "/metricas/operaciones": [],
+  "/metricas/seguimientos": [],
+  "/metricas/atencion-cliente": [],
+  "/metricas/call-center": [],
+  "/metricas/couriers": [],
+  "/metricas/clientes": [],
+  "/metricas/superadmin": [],
+  // Configuración: accesible para todos los autenticados.
+  // Las sub-páginas (tiendas, etc.) manejan su propio guard por rol.
+  "/configuracion": [],
 };
 
 // Map sidebar items to required permissions
 export const SIDEBAR_ITEMS_PERMISSIONS: Record<string, string> = {
-  Dashboard: "VIEW_DASHBOARD",
-  "Crear Productos": "MANAGE_PRODUCTS",
-  Almacén: "MANAGE_ALMACEN",
-  Ventas: "VIEW_SALES",
-  "Registrar venta": "CREATE_SALE",
-  Operaciones: "MANAGE_OPERATIONS",
-  Seguimiento: "VIEW_TRACKING",
-  Finanzas: "VIEW_FINANCES",
-  Clientes: "MANAGE_CLIENTS",
-  Proveedores: "MANAGE_PROVIDERS",
-  Usuarios: "MANAGE_USERS",
-  Couriers: "MANAGE_OPERATIONS",
-  Configuración: "ACCESS_SETTINGS",
-  "Atención al cliente": "VIEW_CUSTOMER_SERVICE",
-  Facturación: "VIEW_FINANCES",
+  Dashboard: "",
+  "Crear Productos": "",
+  Almacén: "",
+  Ventas: "",
+  "Registrar venta": "",
+  Operaciones: "",
+  Seguimiento: "",
+  Finanzas: "",
+  Clientes: "",
+  Proveedores: "",
+  Usuarios: "",
+  Couriers: "",
+  Configuración: "",
+  "Atención al cliente": "",
+  Facturación: "",
   "Super Admin": "VIEW_SUPER_ADMIN",
 };
 
@@ -64,6 +75,7 @@ export const hasPermission = (
   userPermissions: string[] | undefined,
   requiredPermission: string,
 ): boolean => {
+  if (!requiredPermission || requiredPermission === "") return true;
   return userPermissions?.includes(requiredPermission) ?? false;
 };
 
@@ -72,7 +84,14 @@ export const hasAnyPermission = (
   userPermissions: string[] | undefined,
   requiredPermissions: string[],
 ): boolean => {
+  if (!requiredPermissions.length) return true; // Sin restricción → acceso libre
   return requiredPermissions.some((p) => hasPermission(userPermissions, p));
+};
+
+// Verificar si el usuario es admin para rutas de configuración
+export const hasAdminAccess = (role?: string): boolean => {
+  if (!role) return false;
+  return ADMIN_ROLES.includes(role);
 };
 
 // Get required permissions for a route

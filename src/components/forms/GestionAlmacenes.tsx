@@ -33,22 +33,28 @@ const GestionAlmacenes = () => {
   const [openModal, setOpenModal] = useState(false);
   const { auth, refreshInventories } = useAuth();
   const companyId = auth?.company?.id;
+  const stores = auth?.company?.stores ?? [];
 
   const fetchAlmacenes = useCallback(async () => {
-    if (!companyId) return;
+    if (!companyId || stores.length === 0) return;
     setLoading(true);
     try {
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_LOGISTICS}/inventory/company/${companyId}`,
+      const results = await Promise.all(
+        stores.map((store) =>
+          axios
+            .get(`${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${store.id}`)
+            .then((r) => r.data as Inventory[])
+            .catch(() => [] as Inventory[])
+        )
       );
-      setAlmacenes(response.data);
+      setAlmacenes(results.flat());
     } catch (error) {
       console.error("Error fetching almacenes:", error);
       toast.error("Error al cargar los almacenes");
     } finally {
       setLoading(false);
     }
-  }, [companyId]);
+  }, [companyId, stores]);
 
   useEffect(() => {
     fetchAlmacenes();

@@ -203,6 +203,11 @@ export default function SeguimientoPage() {
   );
   const [guideModalOpen, setGuideModalOpen] = useState(false);
 
+  // State for Selection
+  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
+    new Set(),
+  );
+
   // Modal state for order detail (CustomerServiceModal) - includes guide data
   const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -844,6 +849,54 @@ export default function SeguimientoPage() {
     );
   };
 
+  const handleSelectAll = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    items: EnvioItem[],
+  ) => {
+    if (e.target.checked) {
+      const allIds = new Set(items.map((v) => v.order.id));
+      setSelectedSaleIds(allIds);
+    } else {
+      setSelectedSaleIds(new Set());
+    }
+  };
+
+  const handleSelectRow = (saleId: string) => {
+    const newSelected = new Set(selectedSaleIds);
+    if (newSelected.has(saleId)) {
+      newSelected.delete(saleId);
+    } else {
+      newSelected.add(saleId);
+    }
+    setSelectedSaleIds(newSelected);
+  };
+
+  const handleBulkWhatsApp = (items: EnvioItem[]) => {
+    if (selectedSaleIds.size === 0) return;
+
+    // Filter items to only the selected ones
+    const selectedItems = items.filter((v) =>
+      selectedSaleIds.has(v.order.id)
+    );
+
+    if (selectedItems.length > 5) {
+      toast.info(
+        "Se abrirán múltiples pestañas. Asegúrate de permitir pop-ups en tu navegador.",
+        { duration: 5000 },
+      );
+    }
+
+    selectedItems.forEach((item, index) => {
+      setTimeout(() => {
+        handleWhatsApp(
+          item.order.customer?.phoneNumber || "",
+          item.order.orderNumber,
+          item.order.customer?.fullName,
+        );
+      }, index * 600); // 600ms stagger between each message
+    });
+  };
+
   if (!auth) return null;
 
   return (
@@ -879,17 +932,30 @@ export default function SeguimientoPage() {
                   <Package className="h-5 w-5" />
                   Pedidos En Envío ({filteredEnvios.length})
                 </CardTitle>
-                {isAdmin && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleExportExcel(filteredEnvios, "pedidos")}
-                    disabled={filteredEnvios.length === 0}
-                  >
-                    <FileDown className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {selectedSaleIds.size > 0 && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => handleBulkWhatsApp(filteredEnvios)}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      WhatsApp Masivo ({selectedSaleIds.size})
+                    </Button>
+                  )}
+                  {isAdmin && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleExportExcel(filteredEnvios, "pedidos")}
+                      disabled={filteredEnvios.length === 0}
+                    >
+                      <FileDown className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {/* Filters */}
@@ -1064,13 +1130,28 @@ export default function SeguimientoPage() {
                     <Table className="min-w-[1500px]">
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-30 bg-background border-r">
+                          <TableHead className="w-[50px] min-w-[50px] lg:sticky lg:left-0 lg:z-30 bg-background border-r text-center">
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 text-primary focus:ring-primary"
+                              checked={
+                                filteredEnvios.length > 0 &&
+                                filteredEnvios.every((v) =>
+                                  selectedSaleIds.has(v.order.id),
+                                )
+                              }
+                              onChange={(e) =>
+                                handleSelectAll(e, filteredEnvios)
+                              }
+                            />
+                          </TableHead>
+                          <TableHead className="w-[110px] min-w-[110px] lg:sticky lg:left-[50px] lg:z-30 bg-background border-r">
                             N° Orden
                           </TableHead>
-                          <TableHead className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-30 bg-background border-r">
+                          <TableHead className="w-[160px] min-w-[160px] lg:sticky lg:left-[160px] lg:z-30 bg-background border-r">
                             Cliente
                           </TableHead>
-                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-30 bg-background border-r">
+                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:left-[320px] lg:z-30 bg-background border-r">
                             Teléfono
                           </TableHead>
                           <TableHead className="w-[100px] min-w-[100px]">
@@ -1132,7 +1213,15 @@ export default function SeguimientoPage() {
                               key={order.id}
                               className={`hover:bg-muted/50 ${getDaysRowClass(daysSinceCreated)} ${isProvincia && daysSinceCreated < 25 ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}
                             >
-                              <TableCell className="font-medium w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-20 bg-background border-r">
+                              <TableCell className="w-[50px] min-w-[50px] lg:sticky lg:left-0 lg:z-20 bg-background border-r text-center">
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-gray-300 text-primary focus:ring-primary"
+                                  checked={selectedSaleIds.has(order.id)}
+                                  onChange={() => handleSelectRow(order.id)}
+                                />
+                              </TableCell>
+                              <TableCell className="font-medium w-[110px] min-w-[110px] lg:sticky lg:left-[50px] lg:z-20 bg-background border-r">
                                 <div className="flex items-center gap-1">
                                   {daysSinceCreated >= 25 && (
                                     <AlertTriangle
@@ -1142,7 +1231,7 @@ export default function SeguimientoPage() {
                                   {order.orderNumber}
                                 </div>
                               </TableCell>
-                              <TableCell className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-20 bg-background border-r">
+                              <TableCell className="w-[160px] min-w-[160px] lg:sticky lg:left-[160px] lg:z-20 bg-background border-r">
                                 <div className="flex items-center gap-1 group relative">
                                   <User className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                                   <span
@@ -1153,7 +1242,7 @@ export default function SeguimientoPage() {
                                   </span>
                                 </div>
                               </TableCell>
-                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-20 bg-background border-r">
+                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:left-[320px] lg:z-20 bg-background border-r">
                                 <div className="flex items-center gap-2">
                                   <div className="flex items-center gap-1">
                                     <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
@@ -1530,19 +1619,32 @@ export default function SeguimientoPage() {
                   <Check className="h-5 w-5 text-green-600" />
                   Pedidos Entregados ({filteredEntregados.length})
                 </CardTitle>
-                {isAdmin && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      handleExportExcel(filteredEntregados, "entregados")
-                    }
-                    disabled={filteredEntregados.length === 0}
-                  >
-                    <FileDown className="h-4 w-4 mr-2" />
-                    Exportar Excel
-                  </Button>
-                )}
+                <div className="flex items-center gap-2">
+                  {selectedSaleIds.size > 0 && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => handleBulkWhatsApp(filteredEntregados)}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      WhatsApp Masivo ({selectedSaleIds.size})
+                    </Button>
+                  )}
+                  {isAdmin && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        handleExportExcel(filteredEntregados, "entregados")
+                      }
+                      disabled={filteredEntregados.length === 0}
+                    >
+                      <FileDown className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
+                </div>
               </CardHeader>
               <CardContent>
                 {/* Filters */}
@@ -1715,13 +1817,28 @@ export default function SeguimientoPage() {
                     <Table className="min-w-[1500px]">
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-30 bg-background border-r">
+                          <TableHead className="w-[50px] min-w-[50px] lg:sticky lg:left-0 lg:z-30 bg-background border-r text-center">
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300 text-primary focus:ring-primary"
+                              checked={
+                                filteredEntregados.length > 0 &&
+                                filteredEntregados.every((v) =>
+                                  selectedSaleIds.has(v.order.id),
+                                )
+                              }
+                              onChange={(e) =>
+                                handleSelectAll(e, filteredEntregados)
+                              }
+                            />
+                          </TableHead>
+                          <TableHead className="w-[110px] min-w-[110px] lg:sticky lg:left-[50px] lg:z-30 bg-background border-r">
                             N° Orden
                           </TableHead>
-                          <TableHead className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-30 bg-background border-r">
+                          <TableHead className="w-[160px] min-w-[160px] lg:sticky lg:left-[160px] lg:z-30 bg-background border-r">
                             Cliente
                           </TableHead>
-                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-30 bg-background border-r">
+                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:left-[320px] lg:z-30 bg-background border-r">
                             Teléfono
                           </TableHead>
                           <TableHead className="w-[100px] min-w-[100px]">
@@ -1785,10 +1902,18 @@ export default function SeguimientoPage() {
                               key={order.id}
                               className="hover:bg-muted/50"
                             >
-                              <TableCell className="font-medium w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-20 bg-background border-r">
+                              <TableCell className="w-[50px] min-w-[50px] lg:sticky lg:left-0 lg:z-20 bg-background border-r text-center">
+                                <input
+                                  type="checkbox"
+                                  className="rounded border-gray-300 text-primary focus:ring-primary"
+                                  checked={selectedSaleIds.has(order.id)}
+                                  onChange={() => handleSelectRow(order.id)}
+                                />
+                              </TableCell>
+                              <TableCell className="font-medium w-[110px] min-w-[110px] lg:sticky lg:left-[50px] lg:z-20 bg-background border-r">
                                 {order.orderNumber}
                               </TableCell>
-                              <TableCell className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-20 bg-background border-r">
+                              <TableCell className="w-[160px] min-w-[160px] lg:sticky lg:left-[160px] lg:z-20 bg-background border-r">
                                 <span
                                   className="truncate max-w-[130px]"
                                   title={order.customer?.fullName || "-"}
@@ -1796,7 +1921,7 @@ export default function SeguimientoPage() {
                                   {order.customer?.fullName || "-"}
                                 </span>
                               </TableCell>
-                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-20 bg-background border-r">
+                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:left-[320px] lg:z-20 bg-background border-r">
                                 <span className="text-sm">
                                   {order.customer?.phoneNumber || "-"}
                                 </span>
