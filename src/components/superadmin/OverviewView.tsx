@@ -177,8 +177,8 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
               data={globalBilling}
               xKey="month"
               lines={[
-                { key: "2025", name: "Año Actual", color: "var(--primary)" },
-                { key: "2024", name: "Año Previo", color: "#94a3b8" },
+                { key: String(new Date().getFullYear()), name: "Año Actual", color: "var(--primary)" },
+                { key: String(new Date().getFullYear() - 1), name: "Año Previo", color: "#94a3b8" },
               ]}
             />
           </div>

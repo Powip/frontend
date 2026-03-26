@@ -10,10 +10,41 @@ export async function GET(request: Request) {
   const assignedTo = searchParams.get('assigned_to');
   const search = searchParams.get('search');
   const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '20');
+  const limit = parseInt(searchParams.get('limit') || '50');
   const offset = (page - 1) * limit;
 
   try {
+    // Auto-sync: import any landing_leads that don't yet exist in leads (by email)
+    const { data: landingLeads } = await supabase
+      .from('landing_leads')
+      .select('*');
+
+    if (landingLeads && landingLeads.length > 0) {
+      for (const ll of landingLeads) {
+        // Check if this email already exists in leads
+        const { data: existing } = await supabase
+          .from('leads')
+          .select('id')
+          .ilike('email', ll.email)
+          .limit(1);
+
+        if (!existing || existing.length === 0) {
+          await supabase.from('leads').insert({
+            contact_name: ll.full_name,
+            business_name: ll.company,
+            phone_whatsapp: ll.phone,
+            email: ll.email,
+            source: 'landing',
+            pipeline_stage: 'nuevo',
+            plan_interest: 'basic',
+            created_at: ll.created_at,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      }
+    }
+
+    // Now fetch all leads
     let query = supabase
       .from('leads')
       .select('*', { count: 'exact' });
@@ -25,7 +56,7 @@ export async function GET(request: Request) {
     
     // Search (Simple name or business search)
     if (search) {
-      query = query.or(`contact_name.ilike.%${search}%,business_name.ilike.%${search}%`);
+      query = query.or(`contact_name.ilike.%${search}%,business_name.ilike.%${search}%,email.ilike.%${search}%`);
     }
 
     // Pagination

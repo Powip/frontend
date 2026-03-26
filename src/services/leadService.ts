@@ -7,7 +7,7 @@ export interface Lead {
   phone_whatsapp: string;
   email: string;
   business_type: string;
-  source: 'instagram' | 'referido' | 'landing' | 'whatsapp' | 'otro';
+  source: 'instagram' | 'referido' | 'landing' | 'whatsapp' | 'google_form' | 'otro';
   pipeline_stage: 'nuevo' | 'contactado' | 'demo_agendada' | 'demo_realizada' | 'evaluacion' | 'cerrado' | 'perdido';
   plan_interest: 'basic' | 'standard' | 'full' | 'enterprise';
   created_at: string;

@@ -51,6 +51,7 @@ const SOURCE_COLORS: Record<string, string> = {
   whatsapp: 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400',
   landing: 'bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-400',
   referido: 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400',
+  google_form: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400',
 };
 
 export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
@@ -113,8 +114,8 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">Todas las fuentes</SelectItem>
-              {['instagram', 'whatsapp', 'landing', 'referido', 'otro'].map(s => (
-                <SelectItem key={s} value={s} className="capitalize">{s}</SelectItem>
+              {['instagram', 'whatsapp', 'landing', 'referido', 'google_form', 'otro'].map(s => (
+                <SelectItem key={s} value={s} className="capitalize">{s.replace('_', ' ')}</SelectItem>
               ))}
             </SelectContent>
           </Select>

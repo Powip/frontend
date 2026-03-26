@@ -266,13 +266,29 @@ export default function SuperadminPage() {
       });
 
       setAllUsers(users);
-      setGlobalBilling(
-        globalBillingData.map((b: any) => ({
-          ...b,
-          "2025": b.currentYear,
-          "2024": b.previousYear,
-        })),
-      );
+      // Build cumulative (running total) billing data for the global sales chart
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1; // 1-12
+      const currentFullYear = now.getFullYear();
+      const chartYear = currentFullYear; // dynamic year labels
+      const prevChartYear = currentFullYear - 1;
+
+      let cumulativeCurrent = 0;
+      let cumulativePrevious = 0;
+      const cumulativeData = globalBillingData
+        .map((b: any) => {
+          cumulativeCurrent += Number(b.currentYear) || 0;
+          cumulativePrevious += Number(b.previousYear) || 0;
+          return {
+            ...b,
+            [String(chartYear)]: Math.round(cumulativeCurrent * 100) / 100,
+            [String(prevChartYear)]: Math.round(cumulativePrevious * 100) / 100,
+          };
+        })
+        // Only include months up to the current month for current year data
+        .filter((b: any) => b.month <= currentMonth);
+
+      setGlobalBilling(cumulativeData);
       setOutOfStockItems(outOfStockList);
       setExpiringSubscriptions(expiringAlert);
 
