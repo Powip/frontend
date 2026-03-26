@@ -3,7 +3,7 @@ import Header from "@/components/header/Header";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
-import { Building2, Store, User } from "lucide-react";
+import { Building2, Store, User, Blocks } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
@@ -34,6 +34,14 @@ export default function ConfiguracionPage() {
       color: "text-green-600",
       bgColor: "bg-green-50",
     },
+    {
+      title: "Integraciones",
+      description: "Conexiones con servicios externos",
+      icon: Blocks,
+      href: "/configuracion/integraciones",
+      color: "text-indigo-600",
+      bgColor: "bg-indigo-50",
+    },
   ];
 
   return (
@@ -42,7 +50,7 @@ export default function ConfiguracionPage() {
         title="Configuración"
         description="Administra los parámetros de tu cuenta y empresa"
       />
-      <div className="grid gap-6 md:grid-cols-3 p-6">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 p-6">
         {configSections.map((section) => {
           const Icon = section.icon;
           return (

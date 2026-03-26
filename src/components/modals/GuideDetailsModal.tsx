@@ -34,6 +34,7 @@ import {
   Lock,
   Eye,
   EyeOff,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -282,20 +283,14 @@ export default function GuideDetailsModal({
           ),
         );
         const ordersResponses = await Promise.all(ordersPromises);
-        const orders = ordersResponses.map((r) => r.data);
+        const orders = ordersResponses.map((r) => ({
+          ...r.data,
+          id: r.data.id || r.data.orderId || "",
+        }));
         setOrdersDetails(orders);
 
         // Inicializar tracking fields por cada pedido
-        const trackingByOrder: Record<
-          string,
-          {
-            externalTrackingNumber: string;
-            shippingKey: string;
-            trackingUrl: string;
-            shippingOffice: string;
-            shippingCode: string;
-          }
-        > = {};
+        const trackingByOrder: Pick<typeof orderTrackingFields, string> = {};
         orders.forEach((order) => {
           trackingByOrder[order.id] = {
             externalTrackingNumber: order.externalTrackingNumber || "",
@@ -479,6 +474,36 @@ export default function GuideDetailsModal({
     } finally {
       setUploadingOrderId(null);
       e.target.value = "";
+    }
+  };
+
+  // Desvincular un pedido de la guía
+  const handleRemoveOrder = async (orderId: string) => {
+    if (!guide) return;
+    
+    if (confirm("¿Estás seguro de desvincular este pedido de la guía?")) {
+      try {
+        // 1. Quitar el pedido de la guía en ms-courier
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/orders/remove`,
+          { orderIds: [orderId] },
+        );
+
+        // 2. Restaurar el pedido en ms-ventas
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+          {
+            shipping_guide_id: null,
+            courier: null,
+          },
+        );
+
+        toast.success("Pedido desvinculado correctamente");
+        fetchGuide();
+        onGuideUpdated?.();
+      } catch (error: any) {
+        toast.error(error?.response?.data?.message || "Error al desvincular pedido");
+      }
     }
   };
 
@@ -957,7 +982,8 @@ export default function GuideDetailsModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <>
+      <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -1178,7 +1204,7 @@ export default function GuideDetailsModal({
                 </div>
               </div>
               <div className="divide-y max-h-[300px] overflow-y-auto">
-                {ordersDetails.map((order) => {
+                {ordersDetails.map((order, idx) => {
                   const isExpanded = expandedOrders.has(order.id);
                   const paid =
                     order.payments
@@ -1187,7 +1213,7 @@ export default function GuideDetailsModal({
                   const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
 
                   return (
-                    <div key={order.id} className="bg-background">
+                    <div key={`${order.id}-${idx}`} className="bg-background">
                       {/* Header del pedido */}
                       <div
                         className="flex items-center justify-between px-3 py-2 hover:bg-muted/30"
@@ -1262,6 +1288,22 @@ export default function GuideDetailsModal({
                             >
                               {order.status.replace("_", " ")}
                             </Badge>
+
+                            {/* Botón Eliminar Pedido */}
+                            {guide?.status !== "ENTREGADA" && guide?.status !== "CANCELADA" && (
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 ml-1"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveOrder(order.id);
+                                }}
+                                title="Desvincular pedido de esta guía"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1673,6 +1715,7 @@ export default function GuideDetailsModal({
           </div>
         </DialogFooter>
       </DialogContent>
+    </Dialog>
 
       {selectedPaymentOrder && (
         <PaymentVerificationModal
@@ -1699,6 +1742,8 @@ export default function GuideDetailsModal({
             orderNumber: o.orderNumber,
             recipientName: o.customer.fullName,
             recipientPhone: o.customer.phoneNumber,
+            province: o.customer.province,
+            city: o.customer.city,
             district: o.customer.district,
             content: o.items.map((i) => `${i.productName} x${i.quantity}`).join(", "),
           }))}
@@ -1709,6 +1754,6 @@ export default function GuideDetailsModal({
           }}
         />
       )}
-    </Dialog>
+    </>
   );
 }

@@ -28,6 +28,15 @@ export interface ShalomAgency {
   province?: string;
   department?: string;
   zone?: string;
+  abbreviation?: string;
+  lugar?: string;
+  lugar_over?: string;
+  telefono?: string;
+  hora_atencion?: string;
+  hora_domingo?: string;
+  detalles?: string;
+  ter_categoria_envia?: string;
+  ter_categoria_recibe?: string;
 }
 
 // ─── CONEXIÓN GLOBAL ─────────────────────────────────────
@@ -117,8 +126,31 @@ export const listShalomAgencies = async (
   const url = q
     ? `${API_INTEGRATIONS}/shalom/agencies/search/${encodeURIComponent(q)}`
     : `${API_INTEGRATIONS}/shalom/agencies`;
-  const res = await axios.get(url, { headers: headers(token) });
-  return res.data;
+    
+  try {
+    const res = await axios.get(url, { headers: headers(token) });
+    const data = res.data;
+    
+    console.log("SHALOM API RAW RESPONSE:", data);
+
+    let rawAgencies: any[] = [];
+    if (Array.isArray(data)) rawAgencies = data;
+    else if (data && Array.isArray(data.data)) rawAgencies = data.data;
+    else if (data && Array.isArray(data.agencies)) rawAgencies = data.agencies;
+    
+    return rawAgencies.map((ag: any) => ({
+      ...ag,
+      id: ag.ter_id ?? ag.id,
+      name: ag.nombre ?? ag.name,
+      abbreviation: ag.ter_abrebiatura ?? ag.abbreviation,
+      province: ag.provincia ?? ag.province,
+      department: ag.departamento ?? ag.department,
+      zone: ag.zona ?? ag.zone,
+    }));
+  } catch (error) {
+    console.error("SHALOM API ERROR:", error);
+    return [];
+  }
 };
 
 // ─── TRACKING ────────────────────────────────────────────
@@ -160,6 +192,18 @@ export const sendGuideToShalom = async (
     companyId: string;
     orderDestinations: Record<string, string>; // {orderId: agencyId}
     originAgencyId: string;
+    packageDetails: Record<
+      string,
+      {
+        weight: number;
+        height: number;
+        width: number;
+        length: number;
+        content: string;
+        recipientDoc: string;
+        recipientPhone: string;
+      }
+    >;
     securityCode?: string;
   }
 ): Promise<{
