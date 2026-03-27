@@ -58,6 +58,7 @@ interface NewStore {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CatalogoMarcas from "@/components/brands/CatalogoMarcas";
 import GestionAlmacenes from "@/components/forms/GestionAlmacenes";
+import GestionCouriers from "@/components/couriers/GestionCouriers";
 
 export default function TiendasPage() {
   const [stores, setStores] = useState<Store[]>([]);
@@ -306,10 +307,10 @@ export default function TiendasPage() {
       <div className="px-10">
         <Tabs defaultValue="tiendas" className="space-y-6">
           <TabsList className="bg-muted p-1">
-            <TabsTrigger value="tiendas">Tiendas</TabsTrigger>
             <TabsTrigger value="almacenes">Almacenes</TabsTrigger>
             <TabsTrigger value="marcas">Marcas</TabsTrigger>
             <TabsTrigger value="canales">Canales de Venta</TabsTrigger>
+            <TabsTrigger value="couriers">Couriers</TabsTrigger>
           </TabsList>
 
           <TabsContent value="tiendas" className="space-y-6">
@@ -780,9 +781,8 @@ export default function TiendasPage() {
                         key={channel}
                         className="inline-flex items-center gap-1 rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-sm text-teal-800"
                       >
-                        {channel.replace(/_/g, " ")}
+                        {channel}
                         <button
-                          type="button"
                           onClick={() => handleRemoveSalesChannel(channel)}
                           className="ml-1 rounded-full p-0.5 hover:bg-teal-200 transition-colors"
                         >
@@ -813,6 +813,9 @@ export default function TiendasPage() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+          <TabsContent value="couriers">
+            <GestionCouriers />
           </TabsContent>
         </Tabs>
       </div>

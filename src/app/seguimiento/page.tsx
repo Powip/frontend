@@ -55,6 +55,7 @@ import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
+import { fetchCouriers, Courier } from "@/services/courierService";
 import CustomerServiceModal, {
   ShippingGuideData,
 } from "@/components/modals/CustomerServiceModal";
@@ -128,8 +129,7 @@ const COURIERS = [
   "Motorizado Propio",
   "Shalom",
   "Olva Courier",
-  "Marvisur",
-  "Flores",
+  "Otros",
 ];
 
 const GUIDE_STATUSES = [
@@ -192,6 +192,8 @@ export default function SeguimientoPage() {
   const [filters, setFilters] = useState<SeguimientoFilters>(emptyFilters);
   const [guideSearch, setGuideSearch] = useState("");
   const [guideStatusFilter, setGuideStatusFilter] = useState("");
+  const [guideCourierFilter, setGuideCourierFilter] = useState("");
+  const [dynamicCouriers, setDynamicCouriers] = useState<Courier[]>([]);
 
   // Map of orderId -> orderNumber for quick lookup
   const [orderMap, setOrderMap] = useState<Record<string, string>>({});
@@ -251,6 +253,7 @@ export default function SeguimientoPage() {
   };
 
   const { auth, selectedStoreId } = useAuth();
+  const companyId = auth?.company?.id;
 
   // Helper function to check if user is admin
   const isAdmin =
@@ -380,10 +383,21 @@ export default function SeguimientoPage() {
     }
   }, [selectedStoreId]);
 
+  const fetchDynamicCouriers = useCallback(async () => {
+    if (!companyId) return;
+    try {
+      const data = await fetchCouriers(companyId);
+      setDynamicCouriers(data);
+    } catch (error) {
+      console.error("Error loading dynamic couriers:", error);
+    }
+  }, [companyId]);
+
   useEffect(() => {
     fetchEnvios();
     fetchGuides();
-  }, [selectedStoreId, fetchEnvios, fetchGuides]);
+    fetchDynamicCouriers();
+  }, [selectedStoreId, fetchEnvios, fetchGuides, fetchDynamicCouriers]);
 
   // Apply filters
   const filteredEnvios = useMemo(() => {
@@ -553,9 +567,26 @@ export default function SeguimientoPage() {
         return false;
       }
 
+      // Filtro por carrier (con match flexible)
+      if (guideCourierFilter) {
+        const courierName = (guide.courierName || "").toUpperCase();
+        const filterValue = guideCourierFilter.toUpperCase();
+
+        if (filterValue === "SHALOM") {
+          if (!courierName.includes("SHALOM")) return false;
+        } else if (filterValue === "OLVA COURIER") {
+          if (!courierName.includes("OLVA")) return false;
+        } else if (filterValue === "MOTORIZADO PROPIO") {
+          if (!courierName.includes("MOTORIZADO")) return false;
+        } else {
+          // Para otros carriers (dinámicos u "Otros"), match exacto o incluye
+          if (!courierName.includes(filterValue)) return false;
+        }
+      }
+
       return true;
     });
-  }, [guides, guideSearch, guideStatusFilter, orderMap]);
+  }, [guides, guideSearch, guideStatusFilter, guideCourierFilter, orderMap]);
 
   const updateFilter = <K extends keyof SeguimientoFilters>(
     key: K,
@@ -2180,14 +2211,41 @@ export default function SeguimientoPage() {
                         )}
                       </select>
                     </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Carrier / Courier</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={guideCourierFilter}
+                        onChange={(e) => setGuideCourierFilter(e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        <option value="Shalom">Shalom</option>
+                        <option value="Olva Courier">Olva Courier</option>
+                        <option value="Motorizado Propio">Motorizado Propio</option>
+                        <option value="Otros">Otros</option>
+                        {dynamicCouriers
+                          .filter(
+                            (c) =>
+                              !["Shalom", "Olva Courier", "Motorizado Propio", "Otros"].includes(
+                                c.name,
+                              ),
+                          )
+                          .map((c) => (
+                            <option key={c.id} value={c.name}>
+                              {c.name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
                     <div className="flex items-end">
-                      {(guideSearch || guideStatusFilter) && (
+                      {(guideSearch || guideStatusFilter || guideCourierFilter) && (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => {
                             setGuideSearch("");
                             setGuideStatusFilter("");
+                            setGuideCourierFilter("");
                           }}
                           className="text-xs"
                         >

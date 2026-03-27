@@ -169,6 +169,18 @@ export const trackShalomShipment = async (
   return res.data;
 };
 
+/** Rastrear usando el proxy de ms-courier que conoce la guía */
+export const trackShalomGuide = async (
+  token: string,
+  guideId: string
+): Promise<Record<string, unknown>> => {
+  const res = await axios.get(
+    `${API_COURIER}/shipping-guides/${guideId}/shalom/track`,
+    { headers: headers(token) }
+  );
+  return res.data;
+};
+
 // ─── DOCUMENTOS ──────────────────────────────────────────
 
 export const getShalomTicketPdfUrl = (
@@ -183,6 +195,47 @@ export const getShalomLabelPdfUrl = (
 ): string =>
   `${API_INTEGRATIONS}/shalom/label/${orderNumber}/${orderCode}`;
 
+/** Cotizar un envío individual */
+export const quoteShalom = async (
+  token: string,
+  data: {
+    origin: string;
+    destination: string;
+    content: string;
+    height: number;
+    width: number;
+    length: number;
+    weight: number;
+    quantity: number;
+  }
+): Promise<{ 
+  precio: number; 
+  moneda: string; 
+  status: string;
+  message?: string;
+}> => {
+  const res = await axios.post(
+    `${API_COURIER}/shipping-guides/shalom/quote`,
+    data,
+    { headers: headers(token) }
+  );
+  return res.data;
+};
+
+/** Actualizar la cotización de una guía en la DB */
+export const updateGuideQuote = async (
+  token: string,
+  guideId: string,
+  quotedAmount: number,
+  quotedCurrency: string = "PEN"
+): Promise<void> => {
+  await axios.patch(
+    `${API_COURIER}/shipping-guides/${guideId}/quote`,
+    { quotedAmount, quotedCurrency },
+    { headers: headers(token) }
+  );
+};
+
 // ─── ENVÍO DESDE GUÍA ────────────────────────────────────
 
 export const sendGuideToShalom = async (
@@ -191,7 +244,9 @@ export const sendGuideToShalom = async (
   data: {
     companyId: string;
     orderDestinations: Record<string, string>; // {orderId: agencyId}
+    orderDestinationNames: Record<string, string>; // {orderId: agencyName}
     originAgencyId: string;
+    originAgencyName: string;
     packageDetails: Record<
       string,
       {
@@ -202,9 +257,10 @@ export const sendGuideToShalom = async (
         content: string;
         recipientDoc: string;
         recipientPhone: string;
-      }
-    >;
+    }>;
     securityCode?: string;
+    quotedAmount?: number;
+    quotedCurrency?: string;
   }
 ): Promise<{
   success: boolean;

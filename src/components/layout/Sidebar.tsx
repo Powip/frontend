@@ -151,7 +151,7 @@ export function Sidebar({ className }: SidebarProps) {
       children: [
         { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
         { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
-        { name: "Couriers", href: "/couriers", icon: Truck },
+        { name: "Seguimiento Courier", href: "/couriers", icon: Activity },
       ],
     },
     {

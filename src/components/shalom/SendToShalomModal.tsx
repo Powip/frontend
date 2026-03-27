@@ -1,12 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 import {
-  listShalomAgencies,
   sendGuideToShalom,
   trackShalomShipment,
   getShalomTicketPdfUrl,
   getShalomLabelPdfUrl,
+  quoteShalom,
+  updateGuideQuote,
+  listShalomAgencies,
   ShalomAgency,
 } from "@/services/shalomService";
 import { useAuth } from "@/contexts/AuthContext";
@@ -16,6 +19,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Package } from "lucide-react";
 
 interface Order {
   id: string;
@@ -46,7 +57,7 @@ function AgencySelector({
 }: {
   token: string;
   value: string;
-  onChange: (val: string) => void;
+  onChange: (val: string, name?: string) => void;
   defaultSearch?: string;
   placeholder?: string;
 }) {
@@ -78,7 +89,7 @@ function AgencySelector({
   }, [search, token]);
 
   const selectedAgencyDefinition = agencies.find(
-    (a: any) => (a.lugar_over || a.lugar || String(a.id)) === value
+    (a: any) => String(a.id) === String(value)
   );
 
   return (
@@ -98,15 +109,11 @@ function AgencySelector({
         <select
           value={value}
           onChange={(e) => {
-            const val = e.target.value;
-            const found = agencies.find(
-              (a: any) => (a.lugar_over || a.lugar || String(a.id)) === val
-            );
-            if (found) {
-              console.log("📍 [Shalom] AGENCIA SELECCIONADA:", found.name);
-              console.log(JSON.stringify(found, null, 2));
-            }
-            onChange(val);
+            const id = e.target.value;
+            const ag = agencies.find((a: any) => String(a.id) === String(id));
+            // Priorizamos lugar_over o lugar que es lo que Shalom Pro espera en /register
+            const name = ag?.lugar_over || ag?.lugar || ag?.name || "";
+            onChange(id, name);
           }}
           className="w-full border rounded-lg px-2 py-1.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
           disabled={loading || agencies.length === 0}
@@ -121,7 +128,7 @@ function AgencySelector({
               : "Seleccionar agencia"}
           </option>
           {agencies.map((ag: any) => (
-            <option key={ag.id} value={ag.lugar_over || ag.lugar || ag.id} className="bg-background text-foreground">
+            <option key={ag.id} value={ag.id} className="bg-background text-foreground">
               {ag.name} {ag.province ? ` — ${ag.province}` : ""}
             </option>
           ))}
@@ -167,11 +174,14 @@ function AgencySelector({
 }
 
 const SHALOM_BOXES = [
-  { id: "XXS", name: "XXS", width: 10, length: 15, height: 10 },
-  { id: "XS", name: "XS", width: 15, length: 20, height: 12 },
-  { id: "S", name: "S", width: 20, length: 30, height: 12 },
-  { id: "M", name: "M", width: 24, length: 30, height: 20 },
-  { id: "L", name: "L", width: 30, length: 42, height: 23 },
+  { id: "SOBRE", name: "SOBRE", width: 5, length: 30, height: 20 },
+  { id: "XXS", name: "PAQUETE XXS", width: 10, length: 15, height: 10 },
+  { id: "XS", name: "PAQUETE XS", width: 15, length: 20, height: 12 },
+  { id: "S", name: "PAQUETE S", width: 20, length: 30, height: 12 },
+  { id: "M", name: "PAQUETE M", width: 24, length: 30, height: 20 },
+  { id: "L", name: "PAQUETE L", width: 30, length: 42, height: 23 },
+  { id: "CAJA", name: "CAJA", width: 30, length: 30, height: 30 },
+  { id: "BULTO", name: "BULTO", width: 40, length: 40, height: 40 },
 ];
 
 interface ShalomTrackingEntry {
@@ -204,9 +214,11 @@ export default function SendToShalomModal({
 
   // originAgencyId: una sola agencia de origen para toda la guía
   const [originAgencyId, setOriginAgencyId] = useState("");
+  const [originAgencyName, setOriginAgencyName] = useState("");
 
   // orderDestinations: {orderId → agencyId destino}
   const [orderDestinations, setOrderDestinations] = useState<Record<string, string>>({});
+  const [orderDestinationNames, setOrderDestinationNames] = useState<Record<string, string>>({});
 
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -231,30 +243,112 @@ export default function SendToShalomModal({
         content: string;
         recipientDoc: string;
         recipientPhone: string;
+        quantity: number;
       }
     >
   >({});
+  const [formErrors, setFormErrors] = useState<Record<string, Record<string, string>>>({});
+
+  // Quotation state
+  const [quotes, setQuotes] = useState<Record<string, number>>({});
+  const [quoting, setQuoting] = useState(false);
+  const [totalQuoted, setTotalQuoted] = useState<number | null>(null);
+
+  const formatShalomError = (err: string) => {
+    // Quitar etiquetas HTML y limpiar el mensaje
+    const clean = err
+      .replace(/<[^>]*>/g, " ")
+      .replace(/Upload not successful: /g, "")
+      .replace(/En la fila \d+ /g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    
+    // Traducciones comunes para que se vea "bonito"
+    if (clean.includes("las columnas teléfono del destinatario no es valido")) {
+      return "El número de teléfono del destinatario no es válido.";
+    }
+    if (clean.includes("no recibe envíos")) {
+      return clean; // Ya es bastante descriptivo: "La terminal X no recibe envíos"
+    }
+    return clean;
+  };
+
+  const validateField = (orderId: string, field: string, value: any, currentDetails: any) => {
+    let error = "";
+    
+    if (field === "recipientDoc") {
+      const val = String(value).trim();
+      if (val.length !== 8 && val.length !== 11) {
+        error = "Debe tener 8 (DNI) u 11 (RUC) dígitos.";
+      } else if (!/^\d+$/.test(val)) {
+        error = "Solo se permiten números.";
+      }
+    }
+
+    if (field === "recipientPhone") {
+      const val = String(value).replace(/[^0-9]/g, "");
+      if (val.length !== 9) {
+        error = "El teléfono debe tener 9 dígitos.";
+      }
+    }
+
+    if (["height", "width", "length"].includes(field)) {
+      const box = SHALOM_BOXES.find(b => b.name === currentDetails.content);
+      if (box) {
+        const val = Number(value);
+        if (field === "height" && val > box.height) error = `Máx. ${box.height}cm para esta categoría.`;
+        if (field === "width" && val > box.width) error = `Máx. ${box.width}cm para esta categoría.`;
+        if (field === "length" && val > box.length) error = `Máx. ${box.length}cm para esta categoría.`;
+      }
+    }
+
+    setFormErrors(prev => {
+      const orderErrors = { ...prev[orderId], [field]: error };
+      if (!error) delete orderErrors[field];
+      
+      const newErrors = { ...prev, [orderId]: orderErrors };
+      if (Object.keys(orderErrors).length === 0) delete newErrors[orderId];
+      return newErrors;
+    });
+  };
+
+  const cleanDigits = (str: string) => (str || "").replace(/[^0-9]/g, "");
 
   useEffect(() => {
-    if (orders.length > 0 && Object.keys(packageDetails).length === 0) {
-      const initial: Record<string, any> = {};
-      orders.forEach((o) => {
-        initial[o.id] = {
-          weight: "",
-          height: "",
-          width: "",
-          length: "",
-          content: "",
-          recipientDoc: o.customer?.identityDocument || "",
-          recipientPhone: o.customer?.phoneNumber || o.recipientPhone || "",
-        };
-      });
-      setPackageDetails(initial);
-    }
-  }, [orders, packageDetails]);
+    if (orders.length > 0) {
+      setPackageDetails((prev) => {
+        const next = { ...prev };
+        let hasChanges = false;
+        
+        orders.forEach((o) => {
+          if (!next[o.id]) {
+            const rawPhone = o.customer?.phoneNumber || "";
+            const rawDoc = o.customer?.identityDocument || "";
+            const phone = (rawPhone || "").replace(/[^0-9]/g, "");
+            const doc = (rawDoc || "").replace(/[^0-9]/g, "");
 
-  const setDestination = (orderId: string, agencyId: string) => {
+            next[o.id] = {
+              recipientDoc: doc,
+              recipientPhone: phone,
+              content: "PAQUETE XS (15x15x15 cm)",
+              weight: 1,
+              height: 15,
+              width: 15,
+              length: 15,
+              quantity: 1,
+            };
+            hasChanges = true;
+          }
+        });
+        
+        return hasChanges ? next : prev;
+      });
+    }
+  }, [orders]);
+
+  const setDestination = (orderId: string, agencyId: string, name?: string) => {
     setOrderDestinations((prev) => ({ ...prev, [orderId]: agencyId }));
+    setOrderDestinationNames((prev) => ({ ...prev, [orderId]: name || "" }));
   };
 
   const allDestinationsSet =
@@ -262,17 +356,61 @@ export default function SendToShalomModal({
     orders.every((o) => orderDestinations[o.id]) &&
     orders.every((o) => {
       const pd = packageDetails[o.id];
+      const hasErrors = formErrors[o.id] && Object.keys(formErrors[o.id]).length > 0;
       return (
         pd &&
-        pd.recipientDoc.trim().length >= 8 &&
-        pd.recipientPhone.trim().length >= 9 &&
-        pd.content.trim().length > 0 &&
-        pd.weight !== "" && pd.weight > 0 &&
-        pd.height !== "" && pd.height > 0 &&
-        pd.width !== "" && pd.width > 0 &&
-        pd.length !== "" && pd.length > 0
+        !hasErrors &&
+        (pd.recipientDoc || "").trim().length >= 8 &&
+        (pd.recipientPhone || "").replace(/[^0-9]/g, "").length === 9 &&
+        (pd.content || "").trim().length > 0 &&
+        pd.weight !== "" && Number(pd.weight) > 0 &&
+        pd.height !== "" && Number(pd.height) > 0 &&
+        pd.width !== "" && Number(pd.width) > 0 &&
+        pd.length !== "" && Number(pd.length) > 0 &&
+        pd.quantity > 0
       );
     });
+
+  const handleQuote = async () => {
+    if (!auth?.accessToken || !allDestinationsSet) return;
+    setQuoting(true);
+    setTotalQuoted(null);
+    const newQuotes: Record<string, number> = {};
+    let total = 0;
+
+    try {
+      for (const order of orders) {
+        const pd = packageDetails[order.id];
+        const quote = await quoteShalom(auth.accessToken, {
+          origin: originAgencyId,
+          destination: orderDestinations[order.id],
+          content: pd.content,
+          height: Number(pd.height) / 100,
+          width: Number(pd.width) / 100,
+          length: Number(pd.length) / 100,
+          weight: Number(pd.weight),
+          quantity: pd.quantity,
+        });
+        newQuotes[order.id] = quote.precio;
+        total += quote.precio;
+      }
+      setQuotes(newQuotes);
+      setTotalQuoted(total);
+      
+      // Persistir en DB inmediatamente
+      try {
+        await updateGuideQuote(auth.accessToken, guideId, total, "PEN");
+      } catch (persistErr) {
+        console.error("Error persistiendo cotización:", persistErr);
+      }
+
+      toast.success(`Cotización exitosa: S/ ${total.toFixed(2)}`);
+    } catch (e: any) {
+      toast.error("Error al cotizar: " + (e?.response?.data?.message || e.message));
+    } finally {
+      setQuoting(false);
+    }
+  };
 
   const handleSend = async () => {
     if (!auth?.accessToken || !allDestinationsSet) return;
@@ -281,19 +419,30 @@ export default function SendToShalomModal({
     try {
       const result = await sendGuideToShalom(auth.accessToken, guideId, {
         companyId,
-        orderDestinations,
-        originAgencyId,
+        orderDestinations: orderDestinations, // IDs numéricos
+        orderDestinationNames: orderDestinationNames, // Nombres literales
+        originAgencyId: originAgencyId, // ID numérico
+        originAgencyName: originAgencyName, // Nombre literal
         packageDetails: Object.fromEntries(
           Object.entries(packageDetails).map(([k, v]) => [
             k,
-            { ...v, weight: Number(v.weight), height: Number(v.height), width: Number(v.width), length: Number(v.length) }
+            { 
+              ...v, 
+              weight: Number(v.weight), 
+              height: Number(v.height) / 100, 
+              width: Number(v.width) / 100, 
+              length: Number(v.length) / 100 
+            }
           ])
         ),
+        quotedAmount: totalQuoted ?? undefined,
+        quotedCurrency: "PEN",
       });
       setTrackingData(result.trackingData);
       onSuccess?.(result.trackingData);
     } catch (e: any) {
-      setError(e?.response?.data?.message ?? "Error al enviar a Shalom");
+      const rawMsg = e?.response?.data?.message || e?.message || "Error al enviar a Shalom";
+      setError(formatShalomError(rawMsg));
     } finally {
       setSending(false);
     }
@@ -334,8 +483,11 @@ export default function SendToShalomModal({
           {/* Si ya hay tracking, mostrar estado */}
           {trackingData ? (
             <div>
-              <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 mb-4">
+              <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 mb-2">
                 ✓ Envíos registrados en Shalom correctamente.
+              </p>
+              <p className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 font-medium flex items-center gap-2">
+                <span className="text-lg">ℹ</span> Podrás gestionar estos envíos (etiquetas, tickets y rastreo) desde la sección de <strong>Seguimiento de Courier</strong>.
               </p>
               <table className="w-full text-sm border rounded-lg overflow-hidden">
                 <thead className="bg-gray-50">
@@ -343,7 +495,6 @@ export default function SendToShalomModal({
                     <th className="text-left p-3 font-medium">Orden</th>
                     <th className="text-left p-3 font-medium">Nro. Shalom</th>
                     <th className="text-left p-3 font-medium">Código</th>
-                    <th className="p-3" />
                   </tr>
                 </thead>
                 <tbody>
@@ -356,41 +507,6 @@ export default function SendToShalomModal({
                           {t?.orderNumber ?? "—"}
                         </td>
                         <td className="p-3 font-mono">{t?.orderCode ?? "—"}</td>
-                        <td className="p-3">
-                          {t && (
-                            <div className="flex gap-2 flex-wrap">
-                              <button
-                                onClick={() => handleTrack(order.id)}
-                                disabled={trackLoading && trackingOrderId === order.id}
-                                className="text-xs px-2 py-1 border rounded hover:bg-gray-50 disabled:opacity-50"
-                              >
-                                Rastrear
-                              </button>
-                              <a
-                                href={getShalomTicketPdfUrl(
-                                  t.orderNumber,
-                                  t.orderCode
-                                )}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded hover:bg-blue-100"
-                              >
-                                Ticket
-                              </a>
-                              <a
-                                href={getShalomLabelPdfUrl(
-                                  t.orderNumber,
-                                  t.orderCode
-                                )}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-xs px-2 py-1 bg-purple-50 text-purple-700 border border-purple-200 rounded hover:bg-purple-100"
-                              >
-                                Etiqueta
-                              </a>
-                            </div>
-                          )}
-                        </td>
                       </tr>
                     );
                   })}
@@ -420,7 +536,10 @@ export default function SendToShalomModal({
                 <AgencySelector
                   token={auth?.accessToken || ""}
                   value={originAgencyId}
-                  onChange={(val) => setOriginAgencyId(val)}
+                  onChange={(val, name) => {
+                    setOriginAgencyId(val);
+                    setOriginAgencyName(name || "");
+                  }}
                   placeholder="Escribe ciudad, provincia o distrito..."
                 />
               </div>
@@ -440,183 +559,255 @@ export default function SendToShalomModal({
                       content: "",
                       recipientDoc: "",
                       recipientPhone: "",
+                      quantity: 1,
                     };
-                    const updateField = (field: string, value: string | number) => {
-                      setPackageDetails((prev) => ({
-                        ...prev,
-                        [order.id]: {
+                    const updateField = (field: string, value: any) => {
+                      let finalValue = value;
+                      if (field === "recipientPhone") {
+                        // Limpiar espacios y símbolos al instante
+                        finalValue = String(value).replace(/[^0-9]/g, "");
+                      }
+
+                      setPackageDetails((prev) => {
+                        const newDetails = {
                           ...prev[order.id],
-                          [field]: value,
-                        },
-                      }));
+                          [field]: finalValue,
+                        };
+                        // Validar después de actualizar detalles (para tener acceso al 'content' actual)
+                        validateField(order.id, field, finalValue, newDetails);
+                        return {
+                          ...prev,
+                          [order.id]: newDetails,
+                        };
+                      });
                     };
 
                     return (
-                    <div
-                      key={`${order.id}-${idx}`}
-                      className="border rounded-lg p-3 flex flex-col gap-3 bg-muted/5 border-border"
-                    >
-                      <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold">
-                            #{order.orderNumber}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">
-                            {order.customer?.fullName ?? order.recipientName ?? "—"}
-                            <br />
-                            <span className="text-[10px] opacity-70">
-                              {(order.city ?? order.customer?.city)
-                                ? `${order.city ?? order.customer?.city}`
-                                : ""}
-                              {(order.district ?? order.customer?.district)
-                                ? `, ${order.district ?? order.customer?.district}`
-                                : ""}
-                              {(order.province)
-                                ? ` (${order.province})`
-                                : ""}
-                            </span>
-                          </p>
+                      <div
+                        key={`${order.id}-${idx}`}
+                        className="border rounded-lg p-3 flex flex-col gap-3 bg-muted/5 border-border"
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold">
+                              #{order.orderNumber}
+                            </p>
+                            <p className="text-xs text-muted-foreground truncate mt-0.5">
+                              {order.customer?.fullName ?? order.recipientName ?? "—"}
+                              <br />
+                              <span className="text-[10px] opacity-70">
+                                {(order.city ?? order.customer?.city)
+                                  ? `${order.city ?? order.customer?.city}`
+                                  : ""}
+                                {(order.district ?? order.customer?.district)
+                                  ? `, ${order.district ?? order.customer?.district}`
+                                  : ""}
+                                {(order.province)
+                                  ? ` (${order.province})`
+                                  : ""}
+                              </span>
+                            </p>
+                          </div>
+                          <div className="w-full sm:w-[250px]">
+                            <AgencySelector
+                              token={auth?.accessToken || ""}
+                              value={orderDestinations[order.id] ?? ""}
+                              onChange={(val, name) => setDestination(order.id, val, name)}
+                              placeholder="Buscar provincia, ciudad..."
+                              defaultSearch={order.district || order.city || order.province || order.customer?.district || order.customer?.city || ""}
+                            />
+                          </div>
                         </div>
-                        <div className="w-full sm:w-[250px]">
-                          <AgencySelector
-                            token={auth?.accessToken || ""}
-                            value={orderDestinations[order.id] ?? ""}
-                            onChange={(val) => setDestination(order.id, val)}
-                            placeholder="Buscar provincia, ciudad..."
-                            defaultSearch={order.district || order.city || order.province || order.customer?.district || order.customer?.city || ""}
-                          />
-                        </div>
-                      </div>
 
-                      <div className="pt-2 border-t border-border/50 mt-1">
-                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
-                          <label className="block text-[11px] font-bold text-foreground/80 lowercase tracking-wider uppercase">
+                        <div className="pt-2 border-t border-border/50 mt-1">
+                          <label className="block text-[11px] font-bold text-foreground/80 tracking-wider uppercase flex items-center gap-2 mb-3">
+                            <Package className="size-3.5" />
                             Detalles del Paquete <span className="text-destructive invisible sm:visible">*</span>
                           </label>
-                          
-                          {/* Box Presets */}
-                          <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] text-muted-foreground mr-1">Caja Shalom:</span>
-                            <div className="flex gap-1">
-                              {SHALOM_BOXES.map((box) => (
-                                <button
-                                  key={box.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setPackageDetails((prev) => ({
-                                      ...prev,
-                                      [order.id]: {
-                                        ...prev[order.id],
-                                        height: box.height,
-                                        width: box.width,
-                                        length: box.length,
-                                      },
-                                    }));
-                                  }}
-                                  className={`
-                                    w-7 h-7 rounded-full border text-[9px] font-bold flex items-center justify-center transition-all
-                                    ${(pd.height === box.height && pd.width === box.width && pd.length === box.length)
-                                      ? "bg-red-600 border-red-600 text-white shadow-md scale-110"
-                                      : "bg-background border-border text-foreground/70 hover:border-red-500 hover:text-red-500"
+
+                          <div className="grid grid-cols-1 mb-3">
+                            <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Mercadería (Tipo de Carga)</label>
+                            <Select
+                              value={pd.content}
+                              onValueChange={(val) => {
+                                const box = SHALOM_BOXES.find(b => b.name === val);
+                                if (box) {
+                                  setPackageDetails((prev) => ({
+                                    ...prev,
+                                    [order.id]: {
+                                      ...prev[order.id],
+                                      content: box.name,
+                                      height: box.height,
+                                      width: box.width,
+                                      length: box.length,
+                                    },
+                                  }));
+                                  // Limpiar errores de dimensiones al cambiar de caja
+                                  setFormErrors(prev => {
+                                    const next = { ...prev };
+                                    if (next[order.id]) {
+                                      const { height, width, length, ...rest } = next[order.id];
+                                      if (Object.keys(rest).length > 0) next[order.id] = rest;
+                                      else delete next[order.id];
                                     }
-                                  `}
-                                  title={`${box.name}: ${box.width}x${box.length}x${box.height} cm`}
-                                >
-                                  {box.id}
-                                </button>
-                              ))}
+                                    return next;
+                                  });
+                                } else {
+                                  updateField("content", val);
+                                }
+                              }}
+                            >
+                              <SelectTrigger className="w-full h-9 text-xs">
+                                <SelectValue placeholder="Seleccionar tipo de mercadería..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {SHALOM_BOXES.map((box) => (
+                                  <SelectItem key={box.id} value={box.name}>
+                                    {box.name} ({box.width}x{box.length}x{box.height} cm)
+                                  </SelectItem>
+                                ))}
+                                <SelectItem value="MERCADERIA">Mercadería General (Manual)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                            <div className="grid grid-cols-2 gap-3 mb-2">
+                              <div>
+                                <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">DNI / RUC (Destinatario)</label>
+                                <input
+                                  type="text"
+                                  className={`w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground transition-colors outline-none ${
+                                    formErrors[order.id]?.recipientDoc ? "border-destructive ring-1 ring-destructive/20" : "focus:ring-1 focus:ring-primary/30 border-border"
+                                  }`}
+                                  value={pd.recipientDoc}
+                                  onChange={(e) => updateField("recipientDoc", e.target.value)}
+                                />
+                                {formErrors[order.id]?.recipientDoc && (
+                                  <p className="text-[9px] text-destructive mt-1 font-medium">{formErrors[order.id].recipientDoc}</p>
+                                )}
+                              </div>
+                              <div>
+                                <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Teléfono (Destinatario)</label>
+                                <input
+                                  type="text"
+                                  maxLength={9}
+                                  className={`w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground transition-colors outline-none ${
+                                    formErrors[order.id]?.recipientPhone ? "border-destructive ring-1 ring-destructive/20" : "focus:ring-1 focus:ring-primary/30 border-border"
+                                  }`}
+                                  value={pd.recipientPhone}
+                                  onChange={(e) => updateField("recipientPhone", e.target.value)}
+                                  placeholder="9XXXXXXXX"
+                                />
+                                {formErrors[order.id]?.recipientPhone && (
+                                  <p className="text-[9px] text-destructive mt-1 font-medium">{formErrors[order.id].recipientPhone}</p>
+                                )}
+                              </div>
+                            </div>
+                          <div className="grid grid-cols-2 gap-3 mb-3">
+                            <div className="col-span-1">
+                              <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Bultos (Cant)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                className="w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground focus:ring-1 focus:ring-primary/30 outline-none"
+                                value={pd.quantity}
+                                onChange={(e) => updateField("quantity", e.target.value === "" ? 1 : Number(e.target.value))}
+                              />
+                            </div>
+                            <div className="col-span-1">
+                              <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Peso (Kg)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                className="w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground focus:ring-1 focus:ring-primary/30 outline-none"
+                                value={pd.weight}
+                                onChange={(e) => updateField("weight", e.target.value === "" ? "" : Number(e.target.value))}
+                              />
                             </div>
                           </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3 mb-2">
-                          <div>
-                            <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">DNI / RUC</label>
-                            <input
-                              type="text"
-                              className="w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground focus:ring-1 focus:ring-primary/30 outline-none"
-                              value={pd.recipientDoc}
-                              onChange={(e) => updateField("recipientDoc", e.target.value)}
-                            />
+                          <div className="grid grid-cols-3 gap-3 bg-muted/20 p-2 rounded-lg border border-border/40">
+                            <div>
+                              <label className="block text-[9px] text-muted-foreground mb-1 uppercase font-bold text-center">Alto (cm)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                className={`w-full border-b bg-transparent px-1 py-1 text-xs text-foreground outline-none text-center transition-colors ${
+                                  formErrors[order.id]?.height ? "border-destructive text-destructive" : "focus:border-primary border-border/40"
+                                }`}
+                                value={pd.height}
+                                onChange={(e) => updateField("height", e.target.value === "" ? "" : Number(e.target.value))}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[9px] text-muted-foreground mb-1 uppercase font-bold text-center">Ancho (cm)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                className={`w-full border-b bg-transparent px-1 py-1 text-xs text-foreground outline-none text-center transition-colors ${
+                                  formErrors[order.id]?.width ? "border-destructive text-destructive" : "focus:border-primary border-border/40"
+                                }`}
+                                value={pd.width}
+                                onChange={(e) => updateField("width", e.target.value === "" ? "" : Number(e.target.value))}
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[9px] text-muted-foreground mb-1 uppercase font-bold text-center">Largo (cm)</label>
+                              <input
+                                type="number"
+                                min="1"
+                                className={`w-full border-b bg-transparent px-1 py-1 text-xs text-foreground outline-none text-center transition-colors ${
+                                  formErrors[order.id]?.length ? "border-destructive text-destructive" : "focus:border-primary border-border/40"
+                                }`}
+                                value={pd.length}
+                                onChange={(e) => updateField("length", e.target.value === "" ? "" : Number(e.target.value))}
+                              />
+                            </div>
                           </div>
-                          <div>
-                            <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Teléfono</label>
-                            <input
-                              type="text"
-                              className="w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground focus:ring-1 focus:ring-primary/30 outline-none"
-                              value={pd.recipientPhone}
-                              onChange={(e) => updateField("recipientPhone", e.target.value)}
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-2 gap-3 mb-3">
-                          <div className="col-span-1">
-                            <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Contenido</label>
-                            <input
-                              type="text"
-                              className="w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground focus:ring-1 focus:ring-primary/30 outline-none"
-                              value={pd.content}
-                              onChange={(e) => updateField("content", e.target.value)}
-                            />
-                          </div>
-                          <div className="col-span-1">
-                            <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Peso (Kg)</label>
-                            <input
-                              type="number"
-                              min="1"
-                              className="w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground focus:ring-1 focus:ring-primary/30 outline-none"
-                              value={pd.weight}
-                              onChange={(e) => updateField("weight", e.target.value === "" ? "" : Number(e.target.value))}
-                            />
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-3 gap-3 bg-muted/20 p-2 rounded-lg border border-border/40">
-                          <div>
-                            <label className="block text-[9px] text-muted-foreground mb-1 uppercase font-bold">Alto (cm)</label>
-                            <input
-                              type="number"
-                              min="1"
-                              className="w-full border-b bg-transparent px-1 py-1 text-xs text-foreground focus:border-primary outline-none text-center"
-                              value={pd.height}
-                              onChange={(e) => updateField("height", e.target.value === "" ? "" : Number(e.target.value))}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] text-muted-foreground mb-1 uppercase font-bold">Ancho (cm)</label>
-                            <input
-                              type="number"
-                              min="1"
-                              className="w-full border-b bg-transparent px-1 py-1 text-xs text-foreground focus:border-primary outline-none text-center"
-                              value={pd.width}
-                              onChange={(e) => updateField("width", e.target.value === "" ? "" : Number(e.target.value))}
-                            />
-                          </div>
-                          <div>
-                            <label className="block text-[9px] text-muted-foreground mb-1 uppercase font-bold">Largo (cm)</label>
-                            <input
-                              type="number"
-                              min="1"
-                              className="w-full border-b bg-transparent px-1 py-1 text-xs text-foreground focus:border-primary outline-none text-center"
-                              value={pd.length}
-                              onChange={(e) => updateField("length", e.target.value === "" ? "" : Number(e.target.value))}
-                            />
-                          </div>
+                          {(formErrors[order.id]?.height || formErrors[order.id]?.width || formErrors[order.id]?.length) && (
+                            <p className="text-[9px] text-destructive mt-2 text-center font-medium">
+                              {formErrors[order.id]?.height || formErrors[order.id]?.width || formErrors[order.id]?.length}
+                            </p>
+                          )}
                         </div>
                       </div>
-                    </div>
-                  )})}
+                    );
+                  })}
                 </div>
               </div>
 
-              <button
-                onClick={handleSend}
-                disabled={!allDestinationsSet || sending}
-                className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 transition"
-              >
-                {sending
-                  ? "Enviando a Shalom Pro..."
-                  : "Confirmar y enviar a Shalom"}
-              </button>
+              {/* Cotización */}
+              <div className="flex flex-col gap-3">
+                <div className="flex gap-3">
+                  <button
+                    onClick={handleQuote}
+                    disabled={!allDestinationsSet || quoting || sending}
+                    className="flex-1 bg-muted border border-border text-foreground hover:bg-muted/80 py-2.5 rounded-lg text-sm font-medium disabled:opacity-40 transition"
+                  >
+                    {quoting ? "Cotizando..." : "Cotizar Envío"}
+                  </button>
+                  <button
+                    onClick={handleSend}
+                    disabled={!allDestinationsSet || sending || quoting}
+                    className="flex-[2] bg-blue-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 transition"
+                  >
+                    {sending
+                      ? "Enviando a Shalom Pro..."
+                      : "Confirmar y enviar a Shalom"}
+                  </button>
+                </div>
+
+                {totalQuoted !== null && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
+                    <div className="flex items-center gap-2">
+                      <div className="bg-blue-600 p-1.5 rounded-full text-white">
+                        <Package className="h-4 w-4" />
+                      </div>
+                      <span className="text-sm font-semibold text-blue-900">Total Estimado de Envío:</span>
+                    </div>
+                    <span className="text-xl font-bold text-blue-700">S/ {Number(totalQuoted).toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
             </>
           )}
         </div>

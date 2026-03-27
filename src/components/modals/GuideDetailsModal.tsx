@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -42,9 +42,12 @@ import axios from "axios";
 import { toast } from "sonner";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import SendToShalomModal from "@/components/shalom/SendToShalomModal";
-import { exportToExcel } from "@/lib/excel";
 import { FileSpreadsheet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { 
+  getShalomLabelPdfUrl, 
+  getShalomTicketPdfUrl 
+} from "@/services/shalomService";
 
 export interface ShippingGuide {
   id: string;
@@ -76,6 +79,9 @@ export interface ShippingGuide {
   trackingUrl?: string | null;
   externalCarrierId?: string | null;
   externalGuideReference?: string | null;
+  shalomTrackingData?: any | null;
+  quotedAmount?: number | null;
+  quotedCurrency?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -120,6 +126,10 @@ interface OrderDetail {
   shippingCode?: string | null;
   shippingProofUrl?: string | null;
   carrierShippingCost?: number | null;
+  trackingInfo?: {
+    orderNumber: string;
+    orderCode: string;
+  };
 }
 
 interface GuideDetailsModalProps {
@@ -240,6 +250,7 @@ export default function GuideDetailsModal({
   // Upload de foto de entrega
   const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
   const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
+  
 
   const toggleKeyReveal = (orderId: string) => {
     setRevealedKeys((prev) => ({
@@ -248,13 +259,7 @@ export default function GuideDetailsModal({
     }));
   };
 
-  useEffect(() => {
-    if (open && (orderId || guideId)) {
-      fetchGuide();
-    }
-  }, [open, orderId, guideId]);
-
-  const fetchGuide = async () => {
+  const fetchGuide = useCallback(async () => {
     setLoading(true);
     try {
       let url = "";
@@ -290,7 +295,7 @@ export default function GuideDetailsModal({
         setOrdersDetails(orders);
 
         // Inicializar tracking fields por cada pedido
-        const trackingByOrder: Pick<typeof orderTrackingFields, string> = {};
+        const trackingByOrder: Record<string, any> = {};
         orders.forEach((order) => {
           trackingByOrder[order.id] = {
             externalTrackingNumber: order.externalTrackingNumber || "",
@@ -308,7 +313,13 @@ export default function GuideDetailsModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [guideId, orderId, defaultCourier]);
+
+  useEffect(() => {
+    if (open && (orderId || guideId)) {
+      fetchGuide();
+    }
+  }, [open, orderId, guideId, fetchGuide]);
 
   // Guardar tracking de un pedido individual
   const handleSaveOrderTracking = async (orderId: string) => {
@@ -351,6 +362,11 @@ export default function GuideDetailsModal({
         [field]: value,
       },
     }));
+  };
+
+
+  const openDocument = (url: string) => {
+    window.open(url, "_blank");
   };
 
   const handleAssignCourier = async () => {
@@ -1167,6 +1183,7 @@ export default function GuideDetailsModal({
               )}
             </div>
 
+
             {/* Lista de pedidos con detalles */}
             <div className="border rounded-lg overflow-hidden">
               <div className="bg-muted/50 px-3 py-2 border-b flex items-center justify-between">
@@ -1290,7 +1307,7 @@ export default function GuideDetailsModal({
                             </Badge>
 
                             {/* Botón Eliminar Pedido */}
-                            {guide?.status !== "ENTREGADA" && guide?.status !== "CANCELADA" && (
+                            {guide?.status !== "ENTREGADA" && guide?.status !== "CANCELADA" && !guide?.shalomTrackingData && (
                               <Button
                                 size="icon"
                                 variant="outline"
@@ -1682,15 +1699,16 @@ export default function GuideDetailsModal({
                   ✓ Aprobar Guía
                 </Button>
               )}
-          {/* Botón Enviar a Shalom — solo si es Shalom y guía APROBADA */}
             {guide &&
               guide.status === "APROBADA" &&
-              normalizeCourier(guide.courierName) === "Shalom" && (
+              normalizeCourier(guide.courierName) === "Shalom" && 
+              !guide.shalomTrackingData && 
+              !ordersDetails.some(o => o.trackingInfo || o.externalTrackingNumber) && (
                 <Button
                   onClick={() => setShalomModalOpen(true)}
                   className="bg-orange-500 hover:bg-orange-600 text-white"
                 >
-                  📦 Enviar a Shalom
+                  <Truck className="h-4 w-4 mr-2" /> Enviar a Shalom
                 </Button>
               )}
             {guide && (
@@ -1715,45 +1733,37 @@ export default function GuideDetailsModal({
           </div>
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
 
-      {selectedPaymentOrder && (
-        <PaymentVerificationModal
-          open={paymentModalOpen}
-          onClose={() => {
-            setPaymentModalOpen(false);
-            fetchGuide();
-          }}
-          orderId={selectedPaymentOrder.id}
-          orderNumber={selectedPaymentOrder.number}
-          canApprove={false}
-        />
-      )}
+      {/* Modal de Pago / Verificación */}
+      <PaymentVerificationModal
+        open={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+        orderId={selectedPaymentOrder?.id || ""}
+        orderNumber={selectedPaymentOrder?.number || ""}
+        onPaymentUpdated={() => {
+          fetchGuide();
+          onGuideUpdated?.();
+        }}
+        canApprove={true}
+      />
 
-      {guide && companyId && shalomModalOpen && (
-        <SendToShalomModal
-          open={shalomModalOpen}
-          onClose={() => setShalomModalOpen(false)}
-          guideId={guide.id}
-          guideNumber={guide.guideNumber}
-          companyId={companyId}
-          orders={ordersDetails.map((o) => ({
-            id: o.id,
-            orderNumber: o.orderNumber,
-            recipientName: o.customer.fullName,
-            recipientPhone: o.customer.phoneNumber,
-            province: o.customer.province,
-            city: o.customer.city,
-            district: o.customer.district,
-            content: o.items.map((i) => `${i.productName} x${i.quantity}`).join(", "),
-          }))}
-          onSuccess={() => {
-            setShalomModalOpen(false);
-            fetchGuide();
-            onGuideUpdated?.();
-          }}
-        />
-      )}
+      {/* Modal de Envío a Shalom */}
+      <SendToShalomModal
+        open={shalomModalOpen}
+        guideId={guideId || guide?.id || ""}
+        companyId={companyId || ""}
+        onClose={() => setShalomModalOpen(false)}
+        orders={selectedOrderIds.size > 0 
+          ? ordersDetails.filter(o => selectedOrderIds.has(o.id)) 
+          : ordersDetails
+        }
+        onSuccess={() => {
+          fetchGuide();
+          onGuideUpdated?.();
+        }}
+      />
+
     </>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getShalomConfig,
@@ -30,12 +30,7 @@ export default function ShalomConfigPage() {
   const [connectStep, setConnectStep] = useState<ConnectStep | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!companyId || !auth?.accessToken) return;
-    loadStatus();
-  }, [companyId]);
-
-  const loadStatus = async () => {
+  const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
       const cfg = await getShalomConfig(auth!.accessToken, companyId!);
@@ -49,7 +44,12 @@ export default function ShalomConfigPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [auth?.accessToken, companyId]);
+
+  useEffect(() => {
+    if (!companyId || !auth?.accessToken) return;
+    loadStatus();
+  }, [companyId, auth?.accessToken, loadStatus]);
 
   /**
    * Flujo completo en un solo click:
