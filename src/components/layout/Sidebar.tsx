@@ -151,7 +151,7 @@ export function Sidebar({ className }: SidebarProps) {
       children: [
         { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
         { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
-        { name: "Couriers", href: "/couriers", icon: Truck },
+        { name: "Seguimiento Courier", href: "/couriers", icon: Activity },
       ],
     },
     {
@@ -297,7 +297,7 @@ export function Sidebar({ className }: SidebarProps) {
                             : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                         )}
                       >
-                        <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-primary")} />
+                        <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-gray-400")} />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent side="right" sideOffset={10} className="w-48 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
@@ -397,7 +397,7 @@ export function Sidebar({ className }: SidebarProps) {
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                       )}
                     >
-                      <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-primary")} />
+                      <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-gray-400")} />
                       {!isCollapsed && (
                         <span className="text-[13.5px] font-medium">{item.name}</span>
                       )}
