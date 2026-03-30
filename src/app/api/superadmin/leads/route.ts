@@ -10,7 +10,7 @@ export async function GET(request: Request) {
   const assignedTo = searchParams.get('assigned_to');
   const search = searchParams.get('search');
   const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '50');
+  const limit = parseInt(searchParams.get('limit') || '200');
   const offset = (page - 1) * limit;
 
   try {
@@ -79,6 +79,60 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     console.error('Error fetching leads:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
+}
+export async function POST(request: Request) {
+  const supabase = createRouteClient(request);
+  try {
+    const body = await request.json();
+    const {
+      contact_name,
+      business_name,
+      phone_whatsapp,
+      email,
+      source
+    } = body;
+
+    if (!contact_name || !phone_whatsapp) {
+      return NextResponse.json(
+        { error: 'Name and Phone are required' },
+        { status: 400 }
+      );
+    }
+
+    const { data: lead, error } = await supabase
+      .from('leads')
+      .insert({
+        contact_name,
+        business_name,
+        phone_whatsapp,
+        email,
+        source: source || 'otro',
+        pipeline_stage: 'nuevo',
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error creating lead:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // Log Activity
+    await supabase.from('lead_activities').insert({
+      lead_id: lead.id,
+      activity_type: 'other',
+      description: 'Lead creado manualmente',
+    });
+
+    return NextResponse.json(
+      { message: 'Lead created successfully', data: lead },
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error('Unexpected error in lead creation:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

@@ -9,6 +9,7 @@ import { LeadActivationFlow } from './LeadActivationFlow';
 
 interface LeadCardProps {
   lead: any;
+  token?: string;
 }
 
 // Source tag colors
@@ -98,7 +99,7 @@ function getStatusConfig(lead: any, hoursSinceCreation: number, daysInStage: num
   return null;
 }
 
-export const LeadCard: React.FC<LeadCardProps> = ({ lead }) => {
+export const LeadCard: React.FC<LeadCardProps> = ({ lead, token }) => {
   const [isActivationOpen, setIsActivationOpen] = useState(false);
 
   const createdAt = parseISO(lead.created_at);
@@ -180,12 +181,19 @@ export const LeadCard: React.FC<LeadCardProps> = ({ lead }) => {
             )}
 
             {/* Source badge */}
-            <span className={cn(
-              "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-current/20 ml-auto",
-              sourceColor
-            )}>
-              {lead.source || 'otro'}
-            </span>
+            <div className="flex flex-col items-end gap-1 ml-auto">
+              <span className={cn(
+                "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-current/20",
+                sourceColor
+              )}>
+                {lead.source || 'otro'}
+              </span>
+              {lead.imported_from_sheet && (
+                <span className="text-[8px] font-black uppercase tracking-wider px-1 py-0 rounded border border-purple-200 bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800">
+                  SHEET
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Activate CTA for cerrado leads */}
@@ -208,6 +216,7 @@ export const LeadCard: React.FC<LeadCardProps> = ({ lead }) => {
         lead={lead}
         open={isActivationOpen}
         onClose={() => setIsActivationOpen(false)}
+        token={token}
       />
     </>
   );

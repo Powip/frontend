@@ -36,5 +36,32 @@ export const leadService = {
     const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
     const response = await axios.post(`/api/superadmin/leads/${id}/activate`, {}, config);
     return response.data;
+  },
+  
+  deleteLead: async (id: string, token?: string) => {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    const response = await axios.delete(`/api/superadmin/leads/${id}`, config);
+    return response.data;
+  },
+
+  addActivity: async (id: string, activityType: string, description: string, token?: string) => {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    const response = await axios.post(`/api/superadmin/leads/${id}/activity`, {
+      activity_type: activityType,
+      description
+    }, config);
+    return response.data;
+  },
+
+  getLeadDetails: async (id: string, token?: string) => {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    const response = await axios.get(`/api/superadmin/leads/${id}`, config);
+    return response.data;
+  },
+
+  updateLead: async (id: string, data: Partial<Lead>, token?: string) => {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    const response = await axios.patch(`/api/superadmin/leads/${id}`, data, config);
+    return response.data;
   }
 };

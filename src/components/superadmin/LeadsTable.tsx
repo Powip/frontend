@@ -40,6 +40,15 @@ import { cn } from "@/lib/utils";
 import { useActivateLead } from "@/hooks/useLeads";
 import { toast } from "sonner";
 import { LeadActivationFlow } from './LeadActivationFlow';
+import { LeadDetailsModal } from './LeadDetailsModal';
+import { LeadActivitiesDrawer } from './LeadActivitiesDrawer';
+import { leadService } from '@/services/leadService';
+import { useRouter } from 'next/navigation';
+import { 
+  ChevronLeft, 
+  ChevronRight,
+  Loader2
+} from "lucide-react";
 
 interface LeadsTableProps {
   leads: any[];
@@ -60,6 +69,12 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
   const [sourceFilter, setSourceFilter] = useState('all');
   const [selectedLead, setSelectedLead] = useState<any>(null);
   const [isActivationOpen, setIsActivationOpen] = useState(false);
+  const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+  const [isActivitiesOpen, setIsActivitiesOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const itemsPerPage = 10;
+  const router = useRouter();
 
   // We are not using the hook's mutation here because LeadActivationFlow handles it,
   // but if we were using it in this file, we would pass the token.
@@ -80,6 +95,45 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
   const handleOpenActivation = (lead: any) => {
     setSelectedLead(lead);
     setIsActivationOpen(true);
+  };
+
+  const handleOpenDetails = (lead: any) => {
+    setSelectedLead(lead);
+    setIsDetailsOpen(true);
+  };
+
+  const handleOpenActivities = (lead: any) => {
+    setSelectedLead(lead);
+    setIsActivitiesOpen(true);
+  };
+
+  const handleDeleteLead = async (id: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar este prospecto? Esta acción no se puede deshacer.')) {
+      return;
+    }
+
+    setIsDeleting(id);
+    try {
+      await leadService.deleteLead(id, token);
+      toast.success('Lead eliminado correctamente');
+      router.refresh();
+    } catch (error) {
+      toast.error('Error al eliminar lead');
+    } finally {
+      setIsDeleting(null);
+    }
+  };
+
+  // Pagination logic
+  const totalPages = Math.ceil(filteredLeads.length / itemsPerPage);
+  const paginatedLeads = filteredLeads.slice(
+    (currentPage - 1) * itemsPerPage,
+    currentPage * itemsPerPage
+  );
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   return (
@@ -146,7 +200,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredLeads.map((lead) => (
+              {paginatedLeads.map((lead) => (
                 <TableRow key={lead.id} className="group hover:bg-gray-50/50 dark:hover:bg-gray-800/20 transition-colors border-b border-gray-50 dark:border-gray-800">
                   <TableCell className="py-4">
                     <div className="flex flex-col gap-0.5">
@@ -184,15 +238,25 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <Badge 
-                      variant="secondary" 
-                      className={cn(
-                        "capitalize text-[10px] font-bold px-2 py-0.5 border-none shadow-none",
-                        SOURCE_COLORS[lead.source?.toLowerCase()] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                    <div className="flex flex-col gap-1 items-start">
+                      <Badge 
+                        variant="secondary" 
+                        className={cn(
+                          "capitalize text-[10px] font-bold px-2 py-0.5 border-none shadow-none",
+                          SOURCE_COLORS[lead.source?.toLowerCase()] || 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                        )}
+                      >
+                        {lead.source}
+                      </Badge>
+                      {lead.imported_from_sheet && (
+                        <Badge 
+                          variant="outline" 
+                          className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0 border-purple-200 bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800"
+                        >
+                          Desde Sheet
+                        </Badge>
                       )}
-                    >
-                      {lead.source}
-                    </Badge>
+                    </div>
                   </TableCell>
                   <TableCell className="text-xs font-medium text-gray-500">
                     {new Date(lead.created_at).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}
@@ -206,10 +270,16 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-48 p-1">
                         <DropdownMenuLabel className="text-[10px] uppercase tracking-widest text-gray-400 px-2 py-1.5">Opciones de Lead</DropdownMenuLabel>
-                        <DropdownMenuItem className="gap-2 text-sm cursor-pointer rounded-md">
+                        <DropdownMenuItem 
+                          className="gap-2 text-sm cursor-pointer rounded-md"
+                          onClick={() => handleOpenDetails(lead)}
+                        >
                           <ExternalLink className="h-3.5 w-3.5 text-gray-400" /> Ver Detalles
                         </DropdownMenuItem>
-                        <DropdownMenuItem className="gap-2 text-sm cursor-pointer rounded-md">
+                        <DropdownMenuItem 
+                          className="gap-2 text-sm cursor-pointer rounded-md"
+                          onClick={() => handleOpenActivities(lead)}
+                        >
                           <History className="h-3.5 w-3.5 text-gray-400" /> Registro Actividades
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
@@ -221,8 +291,13 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
                             <Rocket className="h-3.5 w-3.5" /> Dar de alta
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem className="gap-2 text-sm cursor-pointer rounded-md text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/10">
-                          <Trash2 className="h-3.5 w-3.5" /> Eliminar Lead
+                        <DropdownMenuItem 
+                          className="gap-2 text-sm cursor-pointer rounded-md text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/10"
+                          disabled={isDeleting === lead.id}
+                          onClick={() => handleDeleteLead(lead.id)}
+                        >
+                          {isDeleting === lead.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} 
+                          Eliminar Lead
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -245,10 +320,74 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
             </TableBody>
           </Table>
         </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between px-4 py-4 bg-white dark:bg-gray-900 border border-gray-100 dark:border-gray-800 rounded-xl shadow-sm">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400">
+            Mostrando <span className="text-gray-900 dark:text-gray-100">{((currentPage - 1) * itemsPerPage) + 1}</span> a <span className="text-gray-900 dark:text-gray-100">{Math.min(currentPage * itemsPerPage, filteredLeads.length)}</span> de <span className="text-gray-900 dark:text-gray-100">{filteredLeads.length}</span> prospectos
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === 1}
+              onClick={() => handlePageChange(currentPage - 1)}
+              className="h-9 px-4 text-[11px] font-black uppercase tracking-widest gap-2"
+            >
+              <ChevronLeft className="h-4 w-4" /> Anterior
+            </Button>
+            <div className="flex items-center gap-1 mx-2">
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 1)
+                .map((p, i, arr) => (
+                  <React.Fragment key={p}>
+                    {i > 0 && arr[i-1] !== p - 1 && <span className="text-gray-300">...</span>}
+                    <Button
+                      variant={currentPage === p ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => handlePageChange(p)}
+                      className={cn(
+                        "h-8 w-8 text-[11px] font-bold rounded-lg",
+                        currentPage === p ? "bg-primary text-white shadow-lg shadow-primary/20" : "text-gray-500"
+                      )}
+                    >
+                      {p}
+                    </Button>
+                  </React.Fragment>
+                ))}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={currentPage === totalPages}
+              onClick={() => handlePageChange(currentPage + 1)}
+              className="h-9 px-4 text-[11px] font-black uppercase tracking-widest gap-2"
+            >
+              Siguiente <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <LeadActivationFlow 
         lead={selectedLead}
         open={isActivationOpen}
         onClose={() => setIsActivationOpen(false)}
+        token={token}
+      />
+
+      <LeadDetailsModal 
+        isOpen={isDetailsOpen}
+        onClose={() => setIsDetailsOpen(false)}
+        lead={selectedLead}
+        token={token}
+      />
+
+      <LeadActivitiesDrawer 
+        isOpen={isActivitiesOpen}
+        onClose={() => setIsActivitiesOpen(false)}
+        leadId={selectedLead?.id}
+        leadName={selectedLead?.contact_name}
         token={token}
       />
     </div>

@@ -80,10 +80,20 @@ interface LeadsKanbanProps {
 
 export const LeadsKanban: React.FC<LeadsKanbanProps> = ({ initialLeads, token }) => {
   const [leads, setLeads] = useState(initialLeads);
+  const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>(
+    STAGES.reduce((acc, stage) => ({ ...acc, [stage.id]: 10 }), {})
+  );
 
   useEffect(() => {
     setLeads(initialLeads);
   }, [initialLeads]);
+
+  const loadMore = (stageId: string) => {
+    setVisibleCounts(prev => ({
+      ...prev,
+      [stageId]: prev[stageId] + 20
+    }));
+  };
 
   const onDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result;
@@ -169,30 +179,41 @@ export const LeadsKanban: React.FC<LeadsKanbanProps> = ({ initialLeads, token })
                       {...provided.droppableProps}
                       ref={provided.innerRef}
                       className={cn(
-                        "flex-1 min-h-[500px] rounded-xl transition-all duration-200 p-1",
+                        "flex-1 min-h-[500px] max-h-[calc(100vh-280px)] overflow-y-auto overflow-x-hidden rounded-xl transition-all duration-200 p-1 custom-scrollbar",
                         snapshot.isDraggingOver
                           ? cn("border-2", stage.accentBorder, stage.accentBg)
                           : "border-2 border-transparent"
                       )}
                     >
                       {stageLeads.length > 0 ? (
-                        stageLeads.map((lead, index) => (
-                          <Draggable key={lead.id} draggableId={lead.id} index={index}>
-                            {(provided, snapshot) => (
-                              <div
-                                ref={provided.innerRef}
-                                {...provided.draggableProps}
-                                {...provided.dragHandleProps}
-                                className={cn(
-                                  "transition-all duration-150",
-                                  snapshot.isDragging && "scale-[1.03] rotate-1 z-50 shadow-2xl opacity-90"
-                                )}
-                              >
-                                <LeadCard lead={lead} />
-                              </div>
-                            )}
-                          </Draggable>
-                        ))
+                        <>
+                          {stageLeads.slice(0, visibleCounts[stage.id] || 10).map((lead, index) => (
+                            <Draggable key={lead.id} draggableId={lead.id} index={index}>
+                              {(provided, snapshot) => (
+                                <div
+                                  ref={provided.innerRef}
+                                  {...provided.draggableProps}
+                                  {...provided.dragHandleProps}
+                                  className={cn(
+                                    "transition-all duration-150",
+                                    snapshot.isDragging && "scale-[1.03] rotate-1 z-50 shadow-2xl opacity-90"
+                                  )}
+                                >
+                                  <LeadCard lead={lead} token={token} />
+                                </div>
+                              )}
+                            </Draggable>
+                          ))}
+                          
+                          {stageLeads.length > (visibleCounts[stage.id] || 10) && (
+                            <button
+                              onClick={() => loadMore(stage.id)}
+                              className="w-full py-2 mt-2 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-primary transition-colors border-t border-slate-100 dark:border-white/5"
+                            >
+                              + Ver {stageLeads.length - (visibleCounts[stage.id] || 10)} más
+                            </button>
+                          )}
+                        </>
                       ) : (
                         <div className={cn(
                           "h-[120px] flex items-center justify-center rounded-lg border-2 border-dashed transition-colors duration-200 mt-1",
