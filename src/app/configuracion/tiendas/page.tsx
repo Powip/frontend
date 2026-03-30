@@ -285,6 +285,7 @@ export default function TiendasPage() {
     }
   };
 
+
   if (!auth || (!hasAdminAccess(auth.user?.role) && !isSuperadmin(auth.user?.email))) return null;
 
   if (loading) {
@@ -301,7 +302,7 @@ export default function TiendasPage() {
     <div className="pb-10">
       <HeaderConfig
         title="Administración de la Empresa"
-        description="Gestiona tiendas, almacenes, marcas y canales de venta"
+        description="Gestiona tiendas, almacenes, marcas, canales de venta y couriers"
       />
 
       <div className="px-10">

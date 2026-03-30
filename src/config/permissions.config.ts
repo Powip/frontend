@@ -2,8 +2,8 @@
 
 export const SUPERADMIN_EMAILS = [
   "octatoledo7@gmail.com",
+  "joel@aranni.com.pe",
   "maurimartine01@gmail.com",
-  "joel@aranni.com.pe"
 ];
 
 export const isSuperadmin = (email?: string): boolean => {
@@ -12,7 +12,15 @@ export const isSuperadmin = (email?: string): boolean => {
 };
 
 // Roles que tienen acceso a configuración
-const ADMIN_ROLES = ["ADMIN", "OWNER", "SUPERADMIN", "admin", "owner"];
+const ADMIN_ROLES = [
+  "ADMIN",
+  "OWNER",
+  "SUPERADMIN",
+  "ADMINISTRADOR",
+  "admin",
+  "owner",
+  "administrador",
+];
 
 /**
  * Map de rutas a permisos requeridos.
