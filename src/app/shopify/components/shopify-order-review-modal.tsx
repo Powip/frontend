@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import Image from "next/image";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -245,12 +246,14 @@ export function ShopifyOrderReviewModal({
                                       <TableRow key={idx} className="h-12">
                                         <TableCell className="font-medium max-w-[300px]">
                                           <div className="flex items-center gap-3">
-                                            <div className="h-10 w-10 rounded border bg-muted overflow-hidden flex-shrink-0">
+                                            <div className="h-10 w-10 rounded border bg-muted overflow-hidden flex-shrink-0 relative">
                                               {item.image_url ? (
-                                                <img
+                                                <Image
                                                   src={item.image_url}
                                                   alt={item.title}
-                                                  className="h-full w-full object-cover"
+                                                  fill
+                                                  className="object-cover"
+                                                  unoptimized
                                                 />
                                               ) : (
                                                 <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground bg-muted/50 uppercase">

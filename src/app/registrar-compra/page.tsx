@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
@@ -185,14 +185,7 @@ export default function RegistrarCompraPage() {
   const [newSupplierName, setNewSupplierName] = useState("");
   const [isCreatingSupplier, setIsCreatingSupplier] = useState(false);
 
-  // Load purchase data if in edit mode
-  useEffect(() => {
-    if (editPurchaseId) {
-      loadPurchaseForEdit(editPurchaseId);
-    }
-  }, [editPurchaseId]);
-
-  const loadPurchaseForEdit = async (purchaseId: string) => {
+  const loadPurchaseForEdit = useCallback(async (purchaseId: string) => {
     setIsLoadingPurchase(true);
     setIsEditMode(true);
     try {
@@ -271,7 +264,14 @@ export default function RegistrarCompraPage() {
     } finally {
       setIsLoadingPurchase(false);
     }
-  };
+  }, [router]);
+
+  // Load purchase data if in edit mode
+  useEffect(() => {
+    if (editPurchaseId) {
+      loadPurchaseForEdit(editPurchaseId);
+    }
+  }, [editPurchaseId, loadPurchaseForEdit]);
 
   // Set default inventory
   useEffect(() => {
@@ -280,14 +280,7 @@ export default function RegistrarCompraPage() {
     }
   }, [inventories, selectedInventoryId, isEditMode]);
 
-  // Load suppliers
-  useEffect(() => {
-    if (companyId) {
-      fetchSuppliers();
-    }
-  }, [companyId]);
-
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = useCallback(async () => {
     if (!companyId) return;
     setSuppliersLoading(true);
     try {
@@ -301,7 +294,14 @@ export default function RegistrarCompraPage() {
     } finally {
       setSuppliersLoading(false);
     }
-  };
+  }, [companyId]);
+
+  // Load suppliers
+  useEffect(() => {
+    if (companyId) {
+      fetchSuppliers();
+    }
+  }, [companyId, fetchSuppliers]);
 
   const handleCreateSupplier = async () => {
     if (!newSupplierName.trim()) {
@@ -335,7 +335,7 @@ export default function RegistrarCompraPage() {
     }
   };
 
-  const searchProducts = async (page = 1) => {
+  const searchProducts = useCallback(async (page = 1) => {
     if (!selectedInventoryId) return;
 
     setProductsLoading(true);
@@ -364,14 +364,14 @@ export default function RegistrarCompraPage() {
     } finally {
       setProductsLoading(false);
     }
-  };
+  }, [selectedInventoryId, productQuery]);
 
   // Auto-search when entering step 2
   useEffect(() => {
     if (currentStep === 2 && selectedInventoryId) {
       searchProducts(1);
     }
-  }, [currentStep]);
+  }, [currentStep, selectedInventoryId, searchProducts]);
 
   const addToCart = (product: ProductVariant) => {
     const existing = cart.find((item) => item.variantId === product.variantId);

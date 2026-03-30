@@ -33,9 +33,8 @@ const GestionAlmacenes = () => {
   const [openModal, setOpenModal] = useState(false);
   const { auth, refreshInventories } = useAuth();
   const companyId = auth?.company?.id;
-  const stores = auth?.company?.stores ?? [];
-
   const fetchAlmacenes = useCallback(async () => {
+    const stores = auth?.company?.stores ?? [];
     if (!companyId || stores.length === 0) return;
     setLoading(true);
     try {
@@ -54,7 +53,7 @@ const GestionAlmacenes = () => {
     } finally {
       setLoading(false);
     }
-  }, [companyId, stores]);
+  }, [companyId, auth?.company?.stores]);
 
   useEffect(() => {
     fetchAlmacenes();

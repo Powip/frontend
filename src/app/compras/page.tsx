@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -95,13 +95,7 @@ export default function ComprasPage() {
     const [purchaseToDelete, setPurchaseToDelete] = useState<Purchase | null>(null);
     const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-    useEffect(() => {
-        if (companyId) {
-            fetchPurchases();
-        }
-    }, [companyId, currentPage]);
-
-    const fetchPurchases = async () => {
+    const fetchPurchases = useCallback(async () => {
         if (!companyId) return;
         setIsLoading(true);
         try {
@@ -119,7 +113,13 @@ export default function ComprasPage() {
         } finally {
             setIsLoading(false);
         }
-    };
+    }, [companyId, currentPage]);
+
+    useEffect(() => {
+        if (companyId) {
+            fetchPurchases();
+        }
+    }, [companyId, fetchPurchases]);
 
     const handleViewDetails = (purchase: Purchase) => {
         setSelectedPurchase(purchase);

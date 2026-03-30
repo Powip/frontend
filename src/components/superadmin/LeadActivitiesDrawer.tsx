@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Sheet,
   SheetContent,
@@ -44,13 +44,7 @@ export const LeadActivitiesDrawer: React.FC<LeadActivitiesDrawerProps> = ({
   const [newNote, setNewNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && leadId) {
-      fetchActivities();
-    }
-  }, [isOpen, leadId]);
-
-  const fetchActivities = async () => {
+  const fetchActivities = useCallback(async () => {
     setLoading(true);
     try {
       const data = await leadService.getLeadDetails(leadId, token);
@@ -60,7 +54,13 @@ export const LeadActivitiesDrawer: React.FC<LeadActivitiesDrawerProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [leadId, token]);
+
+  useEffect(() => {
+    if (isOpen && leadId) {
+      fetchActivities();
+    }
+  }, [isOpen, leadId, fetchActivities]);
 
   const handleAddNote = async () => {
     if (!newNote.trim()) return;

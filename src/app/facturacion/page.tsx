@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   FileText,
   Search,
@@ -85,7 +85,7 @@ export default function FacturacionPage() {
     }
   }, [auth, authLoading, router]);
 
-  const fetchSales = async () => {
+  const fetchSales = useCallback(async () => {
     if (!selectedStoreId) return;
     try {
       setLoading(true);
@@ -109,13 +109,13 @@ export default function FacturacionPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedStoreId]);
 
   useEffect(() => {
     if (selectedStoreId) {
       fetchSales();
     }
-  }, [selectedStoreId]);
+  }, [selectedStoreId, fetchSales]);
 
   const filteredSales = sales.filter(s =>
     s.customer.fullName.toLowerCase().includes(search.toLowerCase()) ||

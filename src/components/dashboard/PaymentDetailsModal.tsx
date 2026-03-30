@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import {
   Dialog,
@@ -45,7 +45,7 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
   const [payments, setPayments] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
 
-  const fetchPaymentDetails = async () => {
+  const fetchPaymentDetails = useCallback(async () => {
     if (!storeId || !open) return;
     setLoading(true);
     try {
@@ -66,11 +66,11 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [open, storeId, fromDate, toDate, statusFilter]);
 
   useEffect(() => {
     fetchPaymentDetails();
-  }, [open, storeId, fromDate, toDate, statusFilter]);
+  }, [fetchPaymentDetails]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useState, Fragment, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -93,13 +93,7 @@ export default function CouriersPage() {
     email: "",
   });
 
-  useEffect(() => {
-    if (companyId) {
-      loadCouriers();
-    }
-  }, [companyId]);
-
-  const loadCouriers = async () => {
+  const loadCouriers = useCallback(async () => {
     if (!companyId) return;
     setIsLoading(true);
     try {
@@ -111,7 +105,13 @@ export default function CouriersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [companyId]);
+
+  useEffect(() => {
+    if (companyId) {
+      loadCouriers();
+    }
+  }, [companyId, loadCouriers]);
 
   const toggleExpand = async (courierId: string) => {
     const newExpanded = new Set(expandedCouriers);

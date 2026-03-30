@@ -103,7 +103,7 @@ export default function MetricasCouriersPage() {
       }
     };
     fetchData();
-  }, [selectedStoreId, auth?.company?.id, fromDate, toDate]);
+  }, [selectedStoreId, auth?.company]);
 
   // Filter guides and orders for the period
   const periodGuides = useMemo(

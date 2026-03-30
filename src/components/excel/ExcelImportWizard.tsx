@@ -173,7 +173,7 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
     if (inventories.length === 1 && !selectedInventoryId) {
       setSelectedInventoryId(inventories[0].id);
     }
-  }, [inventories]);
+  }, [inventories, selectedInventoryId]);
 
   /* ════════════════════════════════════
      STEP 1: Generate & Download Template

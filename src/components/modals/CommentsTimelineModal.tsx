@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -59,7 +59,7 @@ export default function CommentsTimelineModal({
   const [isSending, setIsSending] = useState(false);
   const { auth } = useAuth();
 
-  const fetchLogs = async () => {
+  const fetchLogs = useCallback(async () => {
     if (!orderId) return;
     
     setIsLoading(true);
@@ -74,13 +74,13 @@ export default function CommentsTimelineModal({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [orderId]);
 
   useEffect(() => {
     if (open && orderId) {
       fetchLogs();
     }
-  }, [open, orderId]);
+  }, [open, orderId, fetchLogs]);
 
   const handleSendComment = async () => {
     if (!newComment.trim()) return;

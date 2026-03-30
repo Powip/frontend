@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Plus,
@@ -238,18 +239,18 @@ export default function VentasPage() {
   );
 
   // Helper para obtener el set actual según la pestaña
-  const getSelectedIdsForActiveTab = () => {
+  const getSelectedIdsForActiveTab = useCallback(() => {
     if (activeTab === "pendientes") return selectedPendientesIds;
     if (activeTab === "anuladas") return selectedAnuladosIds;
     return selectedTodasIds;
-  };
+  }, [activeTab, selectedPendientesIds, selectedAnuladosIds, selectedTodasIds]);
 
   // Helper para setear el set actual según la pestaña
-  const setSelectedIdsForActiveTab = (newSet: Set<string>) => {
+  const setSelectedIdsForActiveTab = useCallback((newSet: Set<string>) => {
     if (activeTab === "pendientes") setSelectedPendientesIds(newSet);
     else if (activeTab === "anuladas") setSelectedAnuladosIds(newSet);
     else setSelectedTodasIds(newSet);
-  };
+  }, [activeTab]);
 
   const selectedSaleIds = getSelectedIdsForActiveTab();
   const [pageConfirmados, setPageConfirmados] = useState(1);
@@ -285,13 +286,7 @@ export default function VentasPage() {
     });
 
     return intersection;
-  }, [
-    selectedPendientesIds,
-    selectedAnuladosIds,
-    selectedTodasIds,
-    activeTab,
-    sales,
-  ]);
+  }, [sales, getSelectedIdsForActiveTab]);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -935,9 +930,11 @@ Estado: ${sale.status}
                       title={item.productName}
                     >
                       {item.imageUrl ? (
-                        <img
+                        <Image
                           src={item.imageUrl}
                           alt={item.productName}
+                          width={32}
+                          height={32}
                           className="h-full w-full object-cover"
                         />
                       ) : (

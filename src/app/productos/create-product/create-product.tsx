@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
+import Image from "next/image";
 import { Loader2, Plus, Image as ImageIcon, X as XIcon } from "lucide-react";
 import { uploadImage } from "@/services/uploadService";
 
@@ -411,7 +412,7 @@ export default function ProductCreateForm({
       setFilteredBrands([]);
       setForm((prev) => ({ ...prev, brandId: "" }));
     }
-  }, [form.supplierId, brands]);
+  }, [form.supplierId, brands, form.brandId]);
 
   // =========================
   // Manejo inputs base
@@ -865,14 +866,17 @@ export default function ProductCreateForm({
                   <div className="flex items-center gap-4">
                     {mainImageFile || form.mainImageUrl ? (
                       <div className="relative h-20 w-20 rounded-lg border overflow-hidden">
-                        <img
+                        <Image
                           src={
                             mainImageFile
                               ? URL.createObjectURL(mainImageFile)
-                              : form.mainImageUrl
+                              : form.mainImageUrl || ""
                           }
                           alt="Preview"
+                          width={80}
+                          height={80}
                           className="h-full w-full object-cover"
+                          unoptimized={!!mainImageFile}
                         />
                         <button
                           type="button"

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import {
   LineChart,
@@ -126,7 +126,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
     }>
   >([]);
 
-  const fetchData = async (from?: string, to?: string) => {
+  const fetchData = useCallback(async (from?: string, to?: string) => {
     if (!selectedStoreId) return;
     setLoading(true);
     try {
@@ -207,13 +207,13 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedStoreId]);
 
   useEffect(() => {
     if (fromDate && toDate) {
       fetchData(fromDate, toDate);
     }
-  }, [selectedStoreId, fromDate, toDate]);
+  }, [fromDate, toDate, fetchData]);
 
   const getMonthFromDate = (dateStr: string) => {
     if (!dateStr) return 0;

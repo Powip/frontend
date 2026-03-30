@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -162,7 +162,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
     "category" | "brand"
   >("category");
 
-  const fetchData = async (from?: string, to?: string) => {
+  const fetchData = useCallback(async (from?: string, to?: string) => {
     if (!selectedStoreId) return;
 
     setLoading(true);
@@ -191,13 +191,13 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedStoreId]);
 
   useEffect(() => {
     if (fromDate && toDate) {
       fetchData(fromDate, toDate);
     }
-  }, [selectedStoreId, fromDate, toDate]);
+  }, [fetchData, fromDate, toDate]);
 
   // Derived data for charts
   const getChannelChartData = () => {

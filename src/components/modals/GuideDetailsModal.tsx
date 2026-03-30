@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
+import Image from "next/image";
 import {
   Dialog,
   DialogContent,
@@ -239,13 +240,7 @@ export default function GuideDetailsModal({
     }));
   };
 
-  useEffect(() => {
-    if (open && (orderId || guideId)) {
-      fetchGuide();
-    }
-  }, [open, orderId, guideId]);
-
-  const fetchGuide = async () => {
+  const fetchGuide = useCallback(async () => {
     setLoading(true);
     try {
       let url = "";
@@ -301,11 +296,17 @@ export default function GuideDetailsModal({
       }
     } catch (error) {
       console.error("Error fetching guide:", error);
-      setGuide(null);
+      toast.error("No se pudo cargar la información de la guía");
     } finally {
       setLoading(false);
     }
-  };
+  }, [guideId, orderId, defaultCourier]);
+
+  useEffect(() => {
+    if (open && (orderId || guideId)) {
+      fetchGuide();
+    }
+  }, [open, orderId, guideId, fetchGuide]);
 
   // Guardar tracking de un pedido individual
   const handleSaveOrderTracking = async (orderId: string) => {
@@ -1474,9 +1475,11 @@ export default function GuideDetailsModal({
                             </p>
                             {order.shippingProofUrl ? (
                               <div className="relative group w-fit">
-                                <img
+                                <Image
                                   src={order.shippingProofUrl}
                                   alt="Prueba"
+                                  width={400}
+                                  height={300}
                                   className="h-24 w-auto object-contain rounded border bg-muted"
                                 />
                                 <a

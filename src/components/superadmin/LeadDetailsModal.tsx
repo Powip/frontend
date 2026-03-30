@@ -290,7 +290,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           <div className="mt-2 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800">
             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-2">Comentarios iniciales</label>
             <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed italic">
-              "{lead.comments}"
+              &quot;{lead.comments}&quot;
             </p>
           </div>
         )}

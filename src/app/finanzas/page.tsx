@@ -236,12 +236,12 @@ export default function FinanzasPage() {
   }, [selectedStoreId]);
 
   // Helper: info del usuario actual para trazabilidad
-  const getUserInfo = () => ({
+  const getUserInfo = useCallback(() => ({
     userId: auth?.user?.id,
     sellerName:
       [auth?.user?.name, auth?.user?.surname].filter(Boolean).join(" ") ||
       undefined,
-  });
+  }), [auth?.user]);
 
   const handleChangeStatus = useCallback(
     async (
@@ -278,9 +278,7 @@ export default function FinanzasPage() {
         console.error("Error actualizando estado", error);
         toast.error("No se pudo actualizar el estado");
       }
-    },
-    [sales, fetchOrders],
-  );
+    }, [sales, fetchOrders, getUserInfo]);
 
   const handleConfirmCancellation = useCallback(
     async (reason: CancellationReason, notes?: string) => {
@@ -306,9 +304,7 @@ export default function FinanzasPage() {
       } finally {
         setIsCancelling(false);
       }
-    },
-    [saleToCancel, fetchOrders],
-  );
+    }, [saleToCancel, fetchOrders, getUserInfo]);
 
   const toggleSale = useCallback((id: string) => {
     setSelectedSaleIds((prev) => {

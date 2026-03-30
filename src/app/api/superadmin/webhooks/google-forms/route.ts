@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     const email = getVal(['Correo electrónico', 'Correo', 'Email']);
     
     // We assume 'nuevo' stage unless the form has an explicit 'ESTADO' column
-    let stageStr = getVal(['ESTADO', 'Stage', 'Pipeline']) || 'nuevo';
+    const stageStr = getVal(['ESTADO', 'Stage', 'Pipeline']) || 'nuevo';
     let stage = typeof stageStr === 'string' ? stageStr.toLowerCase() : 'nuevo';
     
     if (stage.includes('interesado') || stage.includes('propuesta')) {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   Building2, Plus, Search, TrendingUp, CreditCard, Users,
   CheckCircle2, Minus, ChevronRight, BarChart3,
@@ -363,6 +363,7 @@ export function CompaniesView({ companies, auth, plans, allUsers, onCreateSucces
         company={selectedCompany}
         plans={plans}
         auth={auth}
+        allUsers={allUsers}
       />
       <CreateCompanyModal
         isOpen={isCreateOpen}
@@ -395,12 +396,12 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── Company Detail Modal ──────────────────────────────────────────────────
 
-function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth }: any) {
+function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUsers }: any) {
   const [details, setDetails] = useState<any>({ users: [], productCount: 0, sales: { totalSales: 0, orderCount: 0 }, billing: [], loading: true });
   const [period, setPeriod] = useState('all');
   const [changingPlan, setChangingPlan] = useState(false);
 
-  const fetchDetails = async () => {
+  const fetchDetails = useCallback(async () => {
     if (!company || !auth?.accessToken) return;
     setDetails((p: any) => ({ ...p, loading: true }));
     try {
@@ -439,9 +440,9 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth }: any)
         loading: false,
       });
     } catch { setDetails((p: any) => ({ ...p, loading: false })); }
-  };
+  }, [company, auth?.accessToken, period]);
 
-  React.useEffect(() => { if (isOpen) fetchDetails(); }, [isOpen, company?.id, period]);
+  React.useEffect(() => { if (isOpen) fetchDetails(); }, [isOpen, fetchDetails]);
 
   const handlePlanChange = async (planId: string) => {
     if (!company || !auth?.accessToken) return;

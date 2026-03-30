@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -82,7 +82,7 @@ export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
-  const loadMovements = async () => {
+  const loadMovements = useCallback(async () => {
     if (!companyId) return;
     setIsLoading(true);
     try {
@@ -105,11 +105,11 @@ export function MovementHistoryTable({ companyId }: MovementHistoryTableProps) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [companyId, currentPage, typeFilter, userEmailFilter, startDate, endDate, search]);
 
   useEffect(() => {
     loadMovements();
-  }, [companyId, currentPage, typeFilter, userEmailFilter, startDate, endDate]);
+  }, [loadMovements]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

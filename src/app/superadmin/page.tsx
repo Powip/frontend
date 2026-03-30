@@ -658,7 +658,7 @@ function CompanyDetailModal({
   });
   const [period, setPeriod] = useState("all");
 
-  const fetchDetails = async () => {
+  const fetchDetails = useCallback(async () => {
     if (!company || !auth?.accessToken) return;
     setDetails((prev: any) => ({ ...prev, loading: true }));
     try {
@@ -727,11 +727,11 @@ function CompanyDetailModal({
       console.error(err);
       setDetails((prev: any) => ({ ...prev, loading: false }));
     }
-  };
+  }, [company, auth?.accessToken, period]);
 
   useEffect(() => {
     if (isOpen) fetchDetails();
-  }, [isOpen, company, period]);
+  }, [isOpen, fetchDetails]);
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] sm:max-w-7xl max-h-[90vh] overflow-y-auto">

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import {
   BarChart,
@@ -113,72 +113,86 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
   // State for Ventas View
   const [sellerSummary, setSellerSummary] = useState<any>(null);
 
-  const fetchStats = async (from?: string, to?: string) => {
-    if (!companyId || !selectedStoreId) return;
-    setLoading(true);
+  const fetchStats = useCallback(
+    async (from?: string, to?: string) => {
+      if (!companyId || !selectedStoreId) return;
+      setLoading(true);
 
-    try {
-      const params: Record<string, string> = {};
-      if (from) params.fromDate = from;
-      if (to) params.toDate = to;
+      try {
+        const params: Record<string, string> = {};
+        if (from) params.fromDate = from;
+        if (to) params.toDate = to;
 
-      if (isAdmin) {
-        // Fetch seller stats and delivery effectiveness in parallel
-        const [sellerRes, deliveryRes] = await Promise.all([
-          axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/summary/company/${companyId}/sellers`,
-            { params },
-          ),
-          axios
-            .get(
-              `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/delivery-by-seller`,
-              { params: { ...params, storeId: selectedStoreId } },
-            )
-            .catch(() => ({ data: [] })),
-        ]);
+        if (isAdmin) {
+          // Fetch seller stats and delivery effectiveness in parallel
+          const [sellerRes, deliveryRes] = await Promise.all([
+            axios.get(
+              `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/summary/company/${companyId}/sellers`,
+              { params },
+            ),
+            axios
+              .get(
+                `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/delivery-by-seller`,
+                { params: { ...params, storeId: selectedStoreId } },
+              )
+              .catch(() => ({ data: [] })),
+          ]);
 
-        const delStats: Record<string, { delivered: number; created: number }> = {};
-        (deliveryRes.data || []).forEach((d: any) => {
-          delStats[d.sellerId] = {
-            delivered: d.deliveredCount || 0,
-            created: d.createdCount || 0,
-          };
-        });
-        setDeliveryStats(delStats);
+          const delStats: Record<
+            string,
+            { delivered: number; created: number }
+          > = {};
+          (deliveryRes.data || []).forEach((d: any) => {
+            delStats[d.sellerId] = {
+              delivered: d.deliveredCount || 0,
+              created: d.createdCount || 0,
+            };
+          });
+          setDeliveryStats(delStats);
 
-        const enrichedSellers = (sellerRes.data || []).map((s: SellerStats) => {
-          const del = delStats[s.sellerId];
-          return {
-            ...s,
-            deliveredCount: del?.delivered || 0,
-            createdCount: del?.created || s.orderCount,
-            deliveryEffectiveness:
-              del && del.created > 0
-                ? Math.round((del.delivered / del.created) * 100)
-                : 0,
-          };
-        });
-        setSellers(enrichedSellers);
-      } else {
-        // Fetch personalized stats using backend sellerId filter
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
-          { params: { ...params, storeId: selectedStoreId, sellerId: currentUserId } }
-        );
-        setSellerSummary(res.data);
+          const enrichedSellers = (sellerRes.data || []).map(
+            (s: SellerStats) => {
+              const del = delStats[s.sellerId];
+              return {
+                ...s,
+                deliveredCount: del?.delivered || 0,
+                createdCount: del?.created || s.orderCount,
+                deliveryEffectiveness:
+                  del && del.created > 0
+                    ? Math.round((del.delivered / del.created) * 100)
+                    : 0,
+              };
+            },
+          );
+          setSellers(enrichedSellers);
+        } else {
+          // Fetch personalized stats using backend sellerId filter
+          const res = await axios.get(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
+            {
+              params: {
+                ...params,
+                storeId: selectedStoreId,
+                sellerId: currentUserId,
+              },
+            },
+          );
+          setSellerSummary(res.data);
+        }
+      } catch (error) {
+        console.error("Error fetching stats:", error);
+      } finally {
+        setLoading(false);
       }
-    } catch (error) {
-      console.error("Error fetching stats:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+    },
+    [companyId, selectedStoreId, isAdmin, currentUserId],
+  );
 
   useEffect(() => {
     if (companyId && selectedStoreId && fromDate && toDate) {
       fetchStats(fromDate, toDate);
     }
-  }, [companyId, selectedStoreId, fromDate, toDate, isAdmin, currentUserId]);
+  }, [companyId, selectedStoreId, fromDate, toDate, fetchStats]);
 
   // Calculations for ADMIN
   const activeSellers = (sellers || []).filter((s) => s && s.sellerId && s.sellerId !== "unknown");
