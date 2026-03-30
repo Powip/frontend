@@ -35,14 +35,20 @@ import {
   Lock,
   Eye,
   EyeOff,
+  Trash2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import axios from "axios";
 import { toast } from "sonner";
 import PaymentVerificationModal from "./PaymentVerificationModal";
-import { exportToExcel } from "@/lib/excel";
+import SendToShalomModal from "@/components/shalom/SendToShalomModal";
 import { FileSpreadsheet } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { 
+  getShalomLabelPdfUrl, 
+  getShalomTicketPdfUrl 
+} from "@/services/shalomService";
 
 export interface ShippingGuide {
   id: string;
@@ -74,6 +80,9 @@ export interface ShippingGuide {
   trackingUrl?: string | null;
   externalCarrierId?: string | null;
   externalGuideReference?: string | null;
+  shalomTrackingData?: any | null;
+  quotedAmount?: number | null;
+  quotedCurrency?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -118,6 +127,10 @@ interface OrderDetail {
   shippingCode?: string | null;
   shippingProofUrl?: string | null;
   carrierShippingCost?: number | null;
+  trackingInfo?: {
+    orderNumber: string;
+    orderCode: string;
+  };
 }
 
 interface GuideDetailsModalProps {
@@ -202,6 +215,12 @@ export default function GuideDetailsModal({
   onGuideUpdated,
   isCourierView = false,
 }: GuideDetailsModalProps) {
+  const { auth } = useAuth();
+  const companyId = auth?.company?.id;
+
+  // Shalom modal
+  const [shalomModalOpen, setShalomModalOpen] = useState(false);
+
   const [guide, setGuide] = useState<ShippingGuide | null>(null);
   const [loading, setLoading] = useState(false);
   const [assigning, setAssigning] = useState(false);
@@ -232,6 +251,7 @@ export default function GuideDetailsModal({
   // Upload de foto de entrega
   const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
   const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
+  
 
   const toggleKeyReveal = (orderId: string) => {
     setRevealedKeys((prev) => ({
@@ -269,20 +289,14 @@ export default function GuideDetailsModal({
           ),
         );
         const ordersResponses = await Promise.all(ordersPromises);
-        const orders = ordersResponses.map((r) => r.data);
+        const orders = ordersResponses.map((r) => ({
+          ...r.data,
+          id: r.data.id || r.data.orderId || "",
+        }));
         setOrdersDetails(orders);
 
         // Inicializar tracking fields por cada pedido
-        const trackingByOrder: Record<
-          string,
-          {
-            externalTrackingNumber: string;
-            shippingKey: string;
-            trackingUrl: string;
-            shippingOffice: string;
-            shippingCode: string;
-          }
-        > = {};
+        const trackingByOrder: Record<string, any> = {};
         orders.forEach((order) => {
           trackingByOrder[order.id] = {
             externalTrackingNumber: order.externalTrackingNumber || "",
@@ -349,6 +363,11 @@ export default function GuideDetailsModal({
         [field]: value,
       },
     }));
+  };
+
+
+  const openDocument = (url: string) => {
+    window.open(url, "_blank");
   };
 
   const handleAssignCourier = async () => {
@@ -472,6 +491,36 @@ export default function GuideDetailsModal({
     } finally {
       setUploadingOrderId(null);
       e.target.value = "";
+    }
+  };
+
+  // Desvincular un pedido de la guía
+  const handleRemoveOrder = async (orderId: string) => {
+    if (!guide) return;
+    
+    if (confirm("¿Estás seguro de desvincular este pedido de la guía?")) {
+      try {
+        // 1. Quitar el pedido de la guía en ms-courier
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/orders/remove`,
+          { orderIds: [orderId] },
+        );
+
+        // 2. Restaurar el pedido en ms-ventas
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+          {
+            shipping_guide_id: null,
+            courier: null,
+          },
+        );
+
+        toast.success("Pedido desvinculado correctamente");
+        fetchGuide();
+        onGuideUpdated?.();
+      } catch (error: any) {
+        toast.error(error?.response?.data?.message || "Error al desvincular pedido");
+      }
     }
   };
 
@@ -950,7 +999,8 @@ export default function GuideDetailsModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <>
+      <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -1134,6 +1184,7 @@ export default function GuideDetailsModal({
               )}
             </div>
 
+
             {/* Lista de pedidos con detalles */}
             <div className="border rounded-lg overflow-hidden">
               <div className="bg-muted/50 px-3 py-2 border-b flex items-center justify-between">
@@ -1171,7 +1222,7 @@ export default function GuideDetailsModal({
                 </div>
               </div>
               <div className="divide-y max-h-[300px] overflow-y-auto">
-                {ordersDetails.map((order) => {
+                {ordersDetails.map((order, idx) => {
                   const isExpanded = expandedOrders.has(order.id);
                   const paid =
                     order.payments
@@ -1180,7 +1231,7 @@ export default function GuideDetailsModal({
                   const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
 
                   return (
-                    <div key={order.id} className="bg-background">
+                    <div key={`${order.id}-${idx}`} className="bg-background">
                       {/* Header del pedido */}
                       <div
                         className="flex items-center justify-between px-3 py-2 hover:bg-muted/30"
@@ -1255,6 +1306,22 @@ export default function GuideDetailsModal({
                             >
                               {order.status.replace("_", " ")}
                             </Badge>
+
+                            {/* Botón Eliminar Pedido */}
+                            {guide?.status !== "ENTREGADA" && guide?.status !== "CANCELADA" && !guide?.shalomTrackingData && (
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 ml-1"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveOrder(order.id);
+                                }}
+                                title="Desvincular pedido de esta guía"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -1635,6 +1702,18 @@ export default function GuideDetailsModal({
                   ✓ Aprobar Guía
                 </Button>
               )}
+            {guide &&
+              guide.status === "APROBADA" &&
+              normalizeCourier(guide.courierName) === "Shalom" && 
+              !guide.shalomTrackingData && 
+              !ordersDetails.some(o => o.trackingInfo || o.externalTrackingNumber) && (
+                <Button
+                  onClick={() => setShalomModalOpen(true)}
+                  className="bg-orange-500 hover:bg-orange-600 text-white"
+                >
+                  <Truck className="h-4 w-4 mr-2" /> Enviar a Shalom
+                </Button>
+              )}
             {guide && (
               <>
                 <Button variant="outline" onClick={handleExportExcel}>
@@ -1657,19 +1736,37 @@ export default function GuideDetailsModal({
           </div>
         </DialogFooter>
       </DialogContent>
+      </Dialog>
 
-      {selectedPaymentOrder && (
-        <PaymentVerificationModal
-          open={paymentModalOpen}
-          onClose={() => {
-            setPaymentModalOpen(false);
-            fetchGuide(); // Refrescar para ver nuevos estados de pago si es necesario
-          }}
-          orderId={selectedPaymentOrder.id}
-          orderNumber={selectedPaymentOrder.number}
-          canApprove={false}
-        />
-      )}
-    </Dialog>
+      {/* Modal de Pago / Verificación */}
+      <PaymentVerificationModal
+        open={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+        orderId={selectedPaymentOrder?.id || ""}
+        orderNumber={selectedPaymentOrder?.number || ""}
+        onPaymentUpdated={() => {
+          fetchGuide();
+          onGuideUpdated?.();
+        }}
+        canApprove={true}
+      />
+
+      {/* Modal de Envío a Shalom */}
+      <SendToShalomModal
+        open={shalomModalOpen}
+        guideId={guideId || guide?.id || ""}
+        companyId={companyId || ""}
+        onClose={() => setShalomModalOpen(false)}
+        orders={selectedOrderIds.size > 0 
+          ? ordersDetails.filter(o => selectedOrderIds.has(o.id)) 
+          : ordersDetails
+        }
+        onSuccess={() => {
+          fetchGuide();
+          onGuideUpdated?.();
+        }}
+      />
+
+    </>
   );
 }

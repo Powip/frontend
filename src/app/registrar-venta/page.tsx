@@ -316,12 +316,18 @@ function RegistrarVentaContent() {
 
       const res = await searchInventoryItems({
         inventoryId: selectedInventory,
+        companyId,
         q: productQuery || undefined,
         page,
-        limit: 10,
+        limit: 50,
       });
 
-      setProducts(res.data);
+      if (page === 1) {
+        setProducts(res.data);
+      } else {
+        setProducts((prev) => [...prev, ...res.data]);
+      }
+
       setProductsMeta({
         total: res.meta.total,
         totalPages: res.meta.totalPages,
@@ -333,6 +339,11 @@ function RegistrarVentaContent() {
       setProductsLoading(false);
     }
   }, [selectedInventory, productQuery]);
+
+  const handleLoadMore = () => {
+    if (productsLoading || !productsMeta || productsPage >= productsMeta.totalPages) return;
+    searchProducts(productsPage + 1);
+  };
 
   const searchClient = useCallback(async () => {
     const phone = clientForm.phoneNumber?.trim();
@@ -1279,6 +1290,13 @@ function RegistrarVentaContent() {
                         if (p) addToCart(p);
                       }}
                       onSearchChange={setProductQuery}
+                      onLoadMore={handleLoadMore}
+                      hasMore={
+                        productsMeta
+                          ? products.length < productsMeta.total
+                          : false
+                      }
+                      isLoading={productsLoading}
                       placeholder="Buscar por nombre o SKU..."
                       searchPlaceholder="Escribe para buscar..."
                       renderLabel={(option: any) => (
