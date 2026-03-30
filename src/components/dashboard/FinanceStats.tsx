@@ -30,6 +30,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardCard } from "./DashboardCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { hasAdminAccess } from "@/config/permissions.config";
 import { Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -91,7 +92,7 @@ interface FinanceStatsProps {
 }
 
 export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) => {
-  const { selectedStoreId } = useAuth();
+  const { selectedStoreId, auth } = useAuth();
   const [loading, setLoading] = useState(true);
   const [billing, setBilling] = useState<BillingStats[]>([]);
   const [inventoryValue, setInventoryValue] = useState(0);
@@ -130,7 +131,11 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
     if (!selectedStoreId) return;
     setLoading(true);
     try {
-      const params: Record<string, string> = { storeId: selectedStoreId };
+      const isAdmin = hasAdminAccess(auth?.user?.role);
+      const params: Record<string, string> = { 
+        storeId: selectedStoreId,
+        ...(!isAdmin && { sellerId: auth?.user?.id })
+      };
       if (from) params.fromDate = from;
       if (to) params.toDate = to;
 

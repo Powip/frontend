@@ -24,6 +24,7 @@ import {
 } from "recharts";
 import { useAuth } from "@/contexts/AuthContext";
 import { DashboardCard } from "./DashboardCard";
+import { hasAdminAccess } from "@/config/permissions.config";
 // --- Types ---
 
 interface StatCardProps {
@@ -229,6 +230,7 @@ const FunnelCOD: React.FC<{
   fromDate: string;
   toDate: string;
 }> = ({ selectedStoreId, fromDate, toDate }) => {
+  const { auth } = useAuth();
   const [funnelData, setFunnelData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -236,9 +238,17 @@ const FunnelCOD: React.FC<{
     if (!selectedStoreId) return;
     setLoading(true);
     try {
+      const isAdmin = hasAdminAccess(auth?.user?.role);
       const res = await axios.get<DashboardData>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
-        { params: { storeId: selectedStoreId, fromDate, toDate } }
+        { 
+          params: { 
+            storeId: selectedStoreId, 
+            fromDate, 
+            toDate,
+            ...(!isAdmin && { sellerId: auth?.user?.id })
+          } 
+        }
       );
       setFunnelData(res.data);
     } catch (error) {
@@ -638,7 +648,7 @@ interface StatsProps {
 }
 
 export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
-  const { selectedStoreId } = useAuth();
+  const { selectedStoreId, auth } = useAuth();
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -647,6 +657,7 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
 
     setLoading(true);
     try {
+      const isAdmin = hasAdminAccess(auth?.user?.role);
       const summaryRes = await axios.get<DashboardData>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
         {
@@ -654,6 +665,7 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
             storeId: selectedStoreId,
             ...(fromDate && { fromDate }),
             ...(toDate && { toDate }),
+            ...(!isAdmin && { sellerId: auth?.user?.id }),
           },
         }
       );
