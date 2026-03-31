@@ -96,7 +96,9 @@ const StatCard: React.FC<{
         <div className="h-7 w-24 bg-muted animate-pulse rounded" />
       ) : (
         <>
-          <div className="text-2xl font-bold text-foreground tracking-tight leading-none">{value}</div>
+          <div className="text-2xl font-bold text-foreground tracking-tight leading-none">
+            {value}
+          </div>
           {subValue && (
             <p className="text-[10px] font-medium text-green-600 mt-1">
               {subValue}
@@ -169,9 +171,9 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
     setLoading(true);
     try {
       const isAdmin = hasAdminAccess(auth?.user?.role);
-      const params: any = { 
+      const params: any = {
         storeId: selectedStoreId,
-        ...(!isAdmin && { sellerId: auth?.user?.id })
+        ...(!isAdmin && { sellerId: auth?.user?.id }),
       };
       if (fromDate) params.fromDate = fromDate;
       if (toDate) params.toDate = toDate;
@@ -210,25 +212,14 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchLocationDetails = async (location: string) => {
-    if (!selectedStoreId) return;
-
-    setLoadingDetails(true);
-    setSelectedLocation(location);
-    setIsDetailsOpen(true);
-
-    try {
-      const isAdmin = hasAdminAccess(auth?.user?.role);
-      const params: any = {
-        storeId: selectedStoreId,
-        dimension: geoDimension,
-        value: location,
-        ...(!isAdmin && { sellerId: auth?.user?.id })
-      };
-      if (fromDate) params.fromDate = fromDate;
-      if (toDate) params.toDate = toDate;
+  }, [
+    selectedStoreId,
+    geoDimension,
+    fromDate,
+    toDate,
+    auth?.user?.id,
+    auth?.user?.role,
+  ]); // <- ¡Aquí faltaba esto!
 
   const fetchLocationDetails = useCallback(
     async (location: string) => {
@@ -239,10 +230,12 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
       setIsDetailsOpen(true);
 
       try {
+        const isAdmin = hasAdminAccess(auth?.user?.role);
         const params: any = {
           storeId: selectedStoreId,
           dimension: geoDimension,
           value: location,
+          ...(!isAdmin && { sellerId: auth?.user?.id }),
         };
         if (fromDate) params.fromDate = fromDate;
         if (toDate) params.toDate = toDate;
@@ -258,7 +251,14 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
         setLoadingDetails(false);
       }
     },
-    [selectedStoreId, geoDimension, fromDate, toDate],
+    [
+      selectedStoreId,
+      geoDimension,
+      fromDate,
+      toDate,
+      auth?.user?.id,
+      auth?.user?.role,
+    ], // <- Arreglado y unificado
   );
 
   const fetchBillingOrders = useCallback(async () => {
@@ -454,7 +454,13 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                   dataKey="percentage"
                   radius={[0, 6, 6, 0]}
                   barSize={16}
-                  label={{ position: "right", formatter: (v: any) => `${v}%`, fontSize: 10, fill: "#64748b", fontWeight: 700 }}
+                  label={{
+                    position: "right",
+                    formatter: (v: any) => `${v}%`,
+                    fontSize: 10,
+                    fill: "#64748b",
+                    fontWeight: 700,
+                  }}
                 >
                   {locationData.slice(0, 10).map((_, i) => (
                     <Cell
@@ -504,10 +510,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(value) => [
-                    `${value} pedidos`,
-                    "Cantidad",
-                  ]}
+                  formatter={(value) => [`${value} pedidos`, "Cantidad"]}
                   itemStyle={{ color: "var(--foreground)" }}
                   contentStyle={{
                     background: "var(--card)",
