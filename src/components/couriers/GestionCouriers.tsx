@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useState, useCallback, Fragment } from "react";
 import { toast } from "sonner";
 import {
   Plus,
@@ -90,13 +90,7 @@ export default function GestionCouriers() {
     email: "",
   });
 
-  useEffect(() => {
-    if (companyId) {
-      loadCouriers();
-    }
-  }, [companyId]);
-
-  const loadCouriers = async () => {
+  const loadCouriers = useCallback(async () => {
     if (!companyId) return;
     setIsLoading(true);
     try {
@@ -108,7 +102,13 @@ export default function GestionCouriers() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [companyId]);
+
+  useEffect(() => {
+    if (companyId) {
+      loadCouriers();
+    }
+  }, [companyId, loadCouriers]);
 
   const toggleExpand = async (courierId: string) => {
     const newExpanded = new Set(expandedCouriers);

@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useTheme } from "next-themes";
 import {
   Menu,
@@ -148,43 +148,7 @@ export function Sidebar({ className }: SidebarProps) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
 
-  // Auto-colapsar en móviles
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1024) {
-        setIsCollapsed(true);
-      } else {
-        setIsCollapsed(false);
-      }
-    };
-
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  // Mantener submenú abierto si el path actual es hijo
-  useEffect(() => {
-    const activeSubmenu = navigation.find(item => 
-      item.children?.some(child => pathname === child.href || pathname.startsWith(child.href + "/"))
-    );
-    if (activeSubmenu) {
-      setOpenSubmenus(prev => ({ ...prev, [activeSubmenu.name]: true }));
-    }
-  }, [pathname]);
-
-  const toggleTheme = () => {
-    setTheme(theme === "dark" ? "light" : "dark");
-  };
-
-  const toggleSubmenu = (name: string) => {
-    setOpenSubmenus((prev) => ({
-      ...prev,
-      [name]: !prev[name],
-    }));
-  };
-
-  const navigation: NavigationItem[] = [
+  const navigation: NavigationItem[] = useMemo(() => [
     {
       name: "Dashboard",
       icon: LayoutDashboard,
@@ -254,7 +218,43 @@ export function Sidebar({ className }: SidebarProps) {
       icon: ShieldCheck,
       href: "/superadmin",
     },
-  ];
+  ], []);
+
+  // Auto-colapsar en móviles
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setIsCollapsed(true);
+      } else {
+        setIsCollapsed(false);
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Mantener submenú abierto si el path actual es hijo
+  useEffect(() => {
+    const activeSubmenu = navigation.find(item => 
+      item.children?.some(child => pathname === child.href || pathname.startsWith(child.href + "/"))
+    );
+    if (activeSubmenu) {
+      setOpenSubmenus(prev => ({ ...prev, [activeSubmenu.name]: true }));
+    }
+  }, [pathname, navigation]);
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
+
+  const toggleSubmenu = (name: string) => {
+    setOpenSubmenus((prev) => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
+  };
 
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation

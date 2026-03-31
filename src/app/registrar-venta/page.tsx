@@ -338,7 +338,7 @@ function RegistrarVentaContent() {
     } finally {
       setProductsLoading(false);
     }
-  }, [selectedInventory, productQuery]);
+  }, [selectedInventory, productQuery, companyId]);
 
   const handleLoadMore = () => {
     if (productsLoading || !productsMeta || productsPage >= productsMeta.totalPages) return;
