@@ -19,24 +19,32 @@ export async function GET(request: Request) {
     const now = new Date();
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    // 1. Fetch data from microservices in parallel
+    // 1. Validate environment variables
+    if (!API_COMPANY || !API_VENTAS || !API_SUBS) {
+      console.error("Missing environment variables:", { API_COMPANY, API_VENTAS, API_SUBS });
+      // Don't throw, just log and proceed with empty values to avoid 500
+    }
+
+    // 2. Fetch data from microservices in parallel with individual error handling and timeouts
+    const fetchOptions = { ...config, timeout: 5000 };
+
     const [
       companyRes,
       salesRes,
       billingRes,
       subsRes
     ] = await Promise.allSettled([
-      axios.get(`${API_COMPANY}/company`, config), // Removed includeStores if not needed or ensures it exists
-      axios.get(`${API_VENTAS}/order-header/summary/global`, config),
-      axios.get(`${API_VENTAS}/stats/billing/global`, config),
-      axios.get(`${API_SUBS}/subscriptions`, config)
+      API_COMPANY ? axios.get(`${API_COMPANY}/company`, fetchOptions) : Promise.reject(new Error("API_COMPANY undefined")),
+      API_VENTAS ? axios.get(`${API_VENTAS}/order-header/summary/global`, fetchOptions) : Promise.reject(new Error("API_VENTAS undefined")),
+      API_VENTAS ? axios.get(`${API_VENTAS}/stats/billing/global`, fetchOptions) : Promise.reject(new Error("API_VENTAS (billing) undefined")),
+      API_SUBS ? axios.get(`${API_SUBS}/subscriptions`, fetchOptions) : Promise.reject(new Error("API_SUBS undefined"))
     ]);
 
     // Logging for debug in production
-    if (companyRes.status === 'rejected') console.error("MS-COMPANY failure:", companyRes.reason?.message);
-    if (salesRes.status === 'rejected') console.error("MS-VENTAS Summary failure:", salesRes.reason?.message);
-    if (billingRes.status === 'rejected') console.error("MS-VENTAS Billing failure:", billingRes.reason?.message);
-    if (subsRes.status === 'rejected') console.error("MS-SUBSCRIPTION failure:", subsRes.reason?.message);
+    if (companyRes.status === 'rejected') console.warn("MS-COMPANY failure:", companyRes.reason?.message);
+    if (salesRes.status === 'rejected') console.warn("MS-VENTAS Summary failure:", salesRes.reason?.message);
+    if (billingRes.status === 'rejected') console.warn("MS-VENTAS Billing failure:", billingRes.reason?.message);
+    if (subsRes.status === 'rejected') console.warn("MS-SUBSCRIPTION failure:", subsRes.reason?.message);
 
     // Handle results with safe data access
     const companies = companyRes.status === 'fulfilled' ? (companyRes.value.data || []) : [];
@@ -58,25 +66,35 @@ export async function GET(request: Request) {
     });
     
     const totalMrr = activeSubs.reduce((acc: number, s: any) => {
-      const price = s.plan?.price || s.price || 0;
-      return acc + Number(price);
+      const price = Number(s.plan?.price || s.price || 0);
+      return acc + (isNaN(price) ? 0 : price);
     }, 0);
     
     // MRR Nuevo (last 30 days)
     const newSubs = activeSubs.filter((s: any) => {
-      const date = new Date(s.createdAt || s.created_at || s.startDate || s.start_date);
-      return date >= thirtyDaysAgo;
+      const dateString = s.createdAt || s.created_at || s.startDate || s.start_date;
+      if (!dateString) return false;
+      const date = new Date(dateString);
+      return !isNaN(date.getTime()) && date >= thirtyDaysAgo;
     });
-    const mrrNuevo = newSubs.reduce((acc: number, s: any) => acc + (s.plan?.price || s.price || 0), 0);
+    const mrrNuevo = newSubs.reduce((acc: number, s: any) => {
+      const price = Number(s.plan?.price || s.price || 0);
+      return acc + (isNaN(price) ? 0 : price);
+    }, 0);
 
     // MRR Perdido (Proxy: Subscriptions cancelled/expired in last 30 days)
     const lostSubs = subscriptions.filter((s: any) => {
       const status = s.status?.toUpperCase();
       const isLost = status === 'CANCELLED' || status === 'INACTIVE' || status === 'EXPIRED';
-      const date = new Date(s.updatedAt || s.updated_at || now);
-      return isLost && date >= thirtyDaysAgo;
+      const dateString = s.updatedAt || s.updated_at;
+      if (!dateString) return isLost; // If no date, assume it's relevant if lost
+      const date = new Date(dateString);
+      return isLost && !isNaN(date.getTime()) && date >= thirtyDaysAgo;
     });
-    const mrrPerdido = lostSubs.reduce((acc: number, s: any) => acc + (s.plan?.price || s.price || 0), 0);
+    const mrrPerdido = lostSubs.reduce((acc: number, s: any) => {
+      const price = Number(s.plan?.price || s.price || 0);
+      return acc + (isNaN(price) ? 0 : price);
+    }, 0);
 
     // --- NRR & CHURN ---
     const mrrStartMonth = Math.max(0, totalMrr - mrrNuevo + mrrPerdido);

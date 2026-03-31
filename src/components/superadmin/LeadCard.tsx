@@ -9,6 +9,7 @@ import { LeadActivationFlow } from './LeadActivationFlow';
 
 interface LeadCardProps {
   lead: any;
+  token?: string;
 }
 
 // Source tag colors
@@ -17,6 +18,7 @@ const SOURCE_COLORS: Record<string, string> = {
   referido:  'bg-orange-100 text-orange-700 border-orange-200 dark:bg-orange-500/20 dark:text-orange-300 dark:border-orange-500/30',
   landing:   'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30',
   whatsapp:  'bg-green-100 text-green-700 border-green-200 dark:bg-green-500/20 dark:text-green-300 dark:border-green-500/30',
+  google_form: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-500/20 dark:text-purple-300 dark:border-purple-500/30',
   ig:        'bg-pink-100 text-pink-700 border-pink-200 dark:bg-pink-500/20 dark:text-pink-300 dark:border-pink-500/30',
   otro:      'bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-500/20 dark:text-slate-300 dark:border-slate-500/30',
 };
@@ -97,7 +99,7 @@ function getStatusConfig(lead: any, hoursSinceCreation: number, daysInStage: num
   return null;
 }
 
-export const LeadCard: React.FC<LeadCardProps> = ({ lead }) => {
+export const LeadCard: React.FC<LeadCardProps> = ({ lead, token }) => {
   const [isActivationOpen, setIsActivationOpen] = useState(false);
 
   const createdAt = parseISO(lead.created_at);
@@ -179,12 +181,19 @@ export const LeadCard: React.FC<LeadCardProps> = ({ lead }) => {
             )}
 
             {/* Source badge */}
-            <span className={cn(
-              "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-current/20 ml-auto",
-              sourceColor
-            )}>
-              {lead.source || 'otro'}
-            </span>
+            <div className="flex flex-col items-end gap-1 ml-auto">
+              <span className={cn(
+                "text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border border-current/20",
+                sourceColor
+              )}>
+                {lead.source || 'otro'}
+              </span>
+              {lead.imported_from_sheet && (
+                <span className="text-[8px] font-black uppercase tracking-wider px-1 py-0 rounded border border-purple-200 bg-purple-50 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800">
+                  SHEET
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Activate CTA for cerrado leads */}
@@ -207,6 +216,7 @@ export const LeadCard: React.FC<LeadCardProps> = ({ lead }) => {
         lead={lead}
         open={isActivationOpen}
         onClose={() => setIsActivationOpen(false)}
+        token={token}
       />
     </>
   );

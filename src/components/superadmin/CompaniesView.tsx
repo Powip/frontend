@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   Building2, Plus, Search, TrendingUp, CreditCard, Users,
   CheckCircle2, Minus, ChevronRight, BarChart3,
@@ -401,7 +401,7 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUse
   const [period, setPeriod] = useState('all');
   const [changingPlan, setChangingPlan] = useState(false);
 
-  const fetchDetails = async () => {
+  const fetchDetails = useCallback(async () => {
     if (!company || !auth?.accessToken) return;
     setDetails((p: any) => ({ ...p, loading: true }));
     try {
@@ -440,9 +440,9 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUse
         loading: false,
       });
     } catch { setDetails((p: any) => ({ ...p, loading: false })); }
-  };
+  }, [company, auth?.accessToken, period]);
 
-  React.useEffect(() => { if (isOpen) fetchDetails(); }, [isOpen, company?.id, period]);
+  React.useEffect(() => { if (isOpen) fetchDetails(); }, [isOpen, fetchDetails]);
 
   const handlePlanChange = async (planId: string) => {
     if (!company || !auth?.accessToken) return;

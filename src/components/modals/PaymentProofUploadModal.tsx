@@ -1,4 +1,4 @@
-"use client";
+import Image from "next/image";
 import { useState, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
@@ -128,10 +128,13 @@ export default function PaymentProofUploadModal({ open, paymentId, onClose, onSu
                         ) : (
                             <div className="space-y-2">
                                 {preview ? (
-                                    <img
+                                    <Image
                                         src={preview}
                                         alt="Preview"
-                                        className="max-h-40 mx-auto rounded-md"
+                                        width={400}
+                                        height={300}
+                                        className="max-h-40 mx-auto rounded-md object-contain"
+                                        unoptimized
                                     />
                                 ) : (
                                     <FileText className="h-10 w-10 mx-auto text-teal-600" />

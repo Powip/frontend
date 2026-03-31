@@ -1,24 +1,32 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { toast } from "sonner";
-import {
-  sendGuideToShalom,
-  trackShalomShipment,
-  getShalomTicketPdfUrl,
-  getShalomLabelPdfUrl,
-  quoteShalom,
-  updateGuideQuote,
-  listShalomAgencies,
-  ShalomAgency,
-} from "@/services/shalomService";
-import { useAuth } from "@/contexts/AuthContext";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { 
+  Loader2, 
+  Truck, 
+  Search, 
+  MapPin, 
+  AlertCircle, 
+  Package, 
+  ChevronRight,
+  Info,
+  CheckCircle2,
+  Package2,
+  ExternalLink,
+  Plus,
+  User,
+  Copy
+} from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Select,
   SelectContent,
@@ -26,791 +34,752 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Package } from "lucide-react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import axios from "axios";
+import { useAuth } from "@/contexts/AuthContext";
+import { API } from "@/lib/api";
 
-interface Order {
-  id: string;
-  orderNumber: string | number;
-  // Shape plana (desde GuideDetailsModal)
-  recipientName?: string;
-  recipientPhone?: string;
-  district?: string;
-  province?: string;
-  city?: string;
-  content?: string;
-  // Shape anidada (legacy)
-  customer?: {
-    fullName?: string;
-    city?: string;
-    district?: string;
-    identityDocument?: string;
-    phoneNumber?: string;
-  };
-}
-
-function AgencySelector({
-  token,
-  value,
-  onChange,
-  defaultSearch = "",
-  placeholder = "Buscar agencia...",
-}: {
-  token: string;
-  value: string;
-  onChange: (val: string, name?: string) => void;
-  defaultSearch?: string;
-  placeholder?: string;
-}) {
-  const [search, setSearch] = useState(defaultSearch);
-  const [agencies, setAgencies] = useState<ShalomAgency[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(async () => {
-      // 2 chars minimo para buscar
-      if (!search.trim()) {
-        setAgencies([]);
-        return;
-      }
-      setLoading(true);
-      try {
-        const list = await listShalomAgencies(token, search.trim());
-        setAgencies(list);
-        setHasSearched(true);
-      } catch (e) {
-        setAgencies([]);
-      } finally {
-        setLoading(false);
-      }
-    }, 600);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [search, token]);
-
-  const selectedAgencyDefinition = agencies.find(
-    (a: any) => String(a.id) === String(value)
-  );
-
-  return (
-    <div className="flex flex-col gap-2 w-full sm:w-64 flex-1">
-      <div>
-        <label className="block text-xs text-muted-foreground mb-1">Buscar distrito / provincia</label>
-        <input
-          type="text"
-          placeholder={placeholder}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="w-full border rounded-lg px-2 py-1.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-        />
-      </div>
-      <div>
-        <label className="block text-xs text-muted-foreground mb-1">Agencia (Destino)</label>
-        <select
-          value={value}
-          onChange={(e) => {
-            const id = e.target.value;
-            const ag = agencies.find((a: any) => String(a.id) === String(id));
-            // Priorizamos lugar_over o lugar que es lo que Shalom Pro espera en /register
-            const name = ag?.lugar_over || ag?.lugar || ag?.name || "";
-            onChange(id, name);
-          }}
-          className="w-full border rounded-lg px-2 py-1.5 text-sm bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-          disabled={loading || agencies.length === 0}
-        >
-          <option value="" className="bg-background text-foreground">
-            {loading
-              ? "Buscando agencias..."
-              : agencies.length === 0
-              ? hasSearched
-                ? "Sin resultados"
-                : "Escribe para buscar..."
-              : "Seleccionar agencia"}
-          </option>
-          {agencies.map((ag: any) => (
-            <option key={ag.id} value={ag.id} className="bg-background text-foreground">
-              {ag.name} {ag.province ? ` — ${ag.province}` : ""}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {selectedAgencyDefinition && (
-        <div className="mt-1 p-2 bg-muted/30 border border-border rounded-lg text-[10px] text-muted-foreground space-y-1.5 shadow-inner">
-          {selectedAgencyDefinition.telefono && (
-            <p className="flex gap-1.5 items-center">
-              <span>📞</span>
-              <span className="font-semibold text-foreground/80">Teléfono:</span> 
-              <span>{selectedAgencyDefinition.telefono}</span>
-            </p>
-          )}
-          {selectedAgencyDefinition.hora_atencion && (
-            <div className="flex gap-1.5 items-start">
-              <span>🕒</span>
-              <span className="font-semibold text-foreground/80">Horario:</span>
-              <div className="leading-tight">
-                <div>{selectedAgencyDefinition.hora_atencion}</div>
-                {selectedAgencyDefinition.hora_domingo && <div>{selectedAgencyDefinition.hora_domingo}</div>}
-              </div>
-            </div>
-          )}
-          {selectedAgencyDefinition.ter_categoria_recibe && selectedAgencyDefinition.ter_categoria_recibe.trim() !== "" && (
-            <p className="flex gap-1.5 items-center">
-              <span>📦</span>
-              <span className="font-semibold text-foreground/80">Límite:</span> 
-              <span>Recepción {selectedAgencyDefinition.ter_categoria_recibe.toLowerCase()}</span>
-            </p>
-          )}
-          {selectedAgencyDefinition.detalles && selectedAgencyDefinition.detalles.trim() !== "" && (
-            <div className="flex gap-1.5 items-start mt-2 pt-2 border-t border-border/50">
-              <span>⚠️</span>
-              <span className="leading-tight text-amber-500 font-medium text-[9px]">{selectedAgencyDefinition.detalles}</span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-const SHALOM_BOXES = [
-  { id: "SOBRE", name: "SOBRE", width: 5, length: 30, height: 20 },
-  { id: "XXS", name: "PAQUETE XXS", width: 10, length: 15, height: 10 },
-  { id: "XS", name: "PAQUETE XS", width: 15, length: 20, height: 12 },
-  { id: "S", name: "PAQUETE S", width: 20, length: 30, height: 12 },
-  { id: "M", name: "PAQUETE M", width: 24, length: 30, height: 20 },
-  { id: "L", name: "PAQUETE L", width: 30, length: 42, height: 23 },
-  { id: "CAJA", name: "CAJA", width: 30, length: 30, height: 30 },
-  { id: "BULTO", name: "BULTO", width: 40, length: 40, height: 40 },
+const PACKAGE_TYPES = [
+  { label: "SOBRE (5x30x20 cm)", value: "SOBRE", h: 5, w: 30, l: 20 },
+  { label: "PAQUETE XXS (10x15x10 cm)", value: "PAQUETE XXS", h: 10, w: 15, l: 10 },
+  { label: "PAQUETE XS (15x20x12 cm)", value: "PAQUETE XS", h: 15, w: 20, l: 12 },
+  { label: "PAQUETE S (20x30x12 cm)", value: "PAQUETE S", h: 20, w: 30, l: 12 },
+  { label: "PAQUETE M (24x30x20 cm)", value: "PAQUETE M", h: 24, w: 30, l: 20 },
+  { label: "PAQUETE L (30x42x23 cm)", value: "PAQUETE L", h: 30, w: 42, l: 23 },
+  { label: "CAJA (30x30x30 cm)", value: "CAJA", h: 30, w: 30, l: 30 },
+  { label: "BULTO (40x40x40 cm)", value: "BULTO", h: 40, w: 40, l: 40 },
+  { label: "Mercadería General (Manual)", value: "MERCADERIA" }
 ];
 
-interface ShalomTrackingEntry {
-  orderNumber: string;
-  orderCode: string;
+interface Agency {
+  id_agencia: string;
+  nombre_agencia: string;
+  direccion: string;
+  api_name: string;
 }
 
-interface Props {
-  open?: boolean;
-  guideId: string;
-  guideNumber?: string;
-  companyId: string;
-  orders: Order[];
-  existingTrackingData?: Record<string, ShalomTrackingEntry> | null;
+interface District {
+  id_distrito: string;
+  nombre_distrito: string;
+}
+
+interface AgencySelectorProps {
+  label: string;
+  agencyLabel?: string;
+  searchPlaceholder: string;
+  agencies: Agency[];
+  searchValue: string;
+  selectedAgency: string;
+  onSearchChange: (val: string) => void;
+  onAgencyChange: (id: string) => void;
+  isLoadingAgencies?: boolean;
+  error?: boolean;
+}
+
+const AgencySelector = ({
+  label,
+  agencyLabel = "Agencia (Destino)",
+  searchPlaceholder,
+  agencies,
+  searchValue,
+  selectedAgency,
+  onSearchChange,
+  onAgencyChange,
+  isLoadingAgencies,
+  error
+}: AgencySelectorProps) => (
+  <div className="space-y-3">
+    <div className="flex items-center justify-between">
+      <Label className="text-sm font-bold text-slate-700">{label}</Label>
+      {error && !selectedAgency && (
+        <span className="text-[10px] font-bold text-red-500">FALTANTE</span>
+      )}
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="space-y-1">
+        <Label className="text-[9px] font-bold text-slate-400 uppercase">Buscar distrito / provincia</Label>
+        <Input
+          placeholder={searchPlaceholder}
+          value={searchValue}
+          onChange={(e) => onSearchChange(e.target.value)}
+          className={cn(
+            "h-9 bg-white border-slate-200 focus:border-blue-400 focus:ring-blue-100 placeholder:text-slate-300",
+            error && !searchValue && "border-red-200 bg-red-50/10"
+          )}
+        />
+      </div>
+
+      <div className="space-y-1">
+        <Label className="text-[9px] font-bold text-slate-400 uppercase">{agencyLabel}</Label>
+        <Select
+          value={selectedAgency}
+          onValueChange={onAgencyChange}
+          disabled={isLoadingAgencies}
+        >
+          <SelectTrigger className={cn(
+            "h-9 bg-white border-slate-200 focus:border-blue-400 focus:ring-blue-100",
+            error && !selectedAgency && "border-red-200 bg-red-50/10"
+          )}>
+            <SelectValue placeholder={
+              isLoadingAgencies ? "Buscando..." : 
+              !searchValue ? "Escribe para buscar..." : "Seleccionar agencia"
+            } />
+          </SelectTrigger>
+          <SelectContent className="max-h-[250px]">
+            {agencies.length === 0 && searchValue ? (
+              <div className="p-3 text-center text-xs text-slate-400">
+                No se encontraron agencias
+              </div>
+            ) : (
+              agencies.map((a) => (
+                <SelectItem key={a.id_agencia} value={a.api_name} className="py-1 focus:bg-slate-50">
+                  <div className="flex flex-col gap-0 max-w-[280px]">
+                    <span className="font-normal text-[12px] text-slate-700 line-clamp-1">{a.nombre_agencia}</span>
+                    <span className="text-[10px] text-slate-400 font-normal line-clamp-1 italic">{a.direccion}</span>
+                  </div>
+                </SelectItem>
+              ))
+            )}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  </div>
+);
+
+interface SendToShalomModalProps {
+  open: boolean;
   onClose: () => void;
-  onSuccess?: (trackingData?: Record<string, ShalomTrackingEntry> | null) => void;
+  orders: any[];
+  onSuccess?: () => void;
+  guideId?: string;
+  companyId?: string;
 }
 
 export default function SendToShalomModal({
-  open = true,
-  guideId,
-  guideNumber,
-  companyId,
-  orders,
-  existingTrackingData,
+  open,
   onClose,
+  orders,
   onSuccess,
-}: Props) {
+  guideId,
+  companyId: providedCompanyId,
+}: SendToShalomModalProps) {
   const { auth } = useAuth();
-
-  // originAgencyId: una sola agencia de origen para toda la guía
-  const [originAgencyId, setOriginAgencyId] = useState("");
-  const [originAgencyName, setOriginAgencyName] = useState("");
-
-  // orderDestinations: {orderId → agencyId destino}
-  const [orderDestinations, setOrderDestinations] = useState<Record<string, string>>({});
-  const [orderDestinationNames, setOrderDestinationNames] = useState<Record<string, string>>({});
-
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [trackingData, setTrackingData] = useState<
-    Record<string, ShalomTrackingEntry> | null
-  >(existingTrackingData ?? null);
-
-  // Track view
-  const [trackResult, setTrackResult] = useState<Record<string, unknown> | null>(null);
-  const [trackingOrderId, setTrackingOrderId] = useState<string | null>(null);
-  const [trackLoading, setTrackLoading] = useState(false);
-
-  // Local state for Package Details
-  const [packageDetails, setPackageDetails] = useState<
-    Record<
-      string,
-      {
-        weight: number | "";
-        height: number | "";
-        width: number | "";
-        length: number | "";
-        content: string;
-        recipientDoc: string;
-        recipientPhone: string;
-        quantity: number;
-      }
-    >
-  >({});
-  const [formErrors, setFormErrors] = useState<Record<string, Record<string, string>>>({});
-
-  // Quotation state
-  const [quotes, setQuotes] = useState<Record<string, number>>({});
+  const companyId = providedCompanyId || auth?.company?.id;
+  const [originAgencies, setOriginAgencies] = useState<Agency[]>([]);
+  const [originSearch, setOriginSearch] = useState<string>("");
+  const [originAgency, setOriginAgency] = useState<string>("");
+  const [loadingOrigins, setLoadingOrigins] = useState(false);
   const [quoting, setQuoting] = useState(false);
+  const [sending, setSending] = useState(false);
   const [totalQuoted, setTotalQuoted] = useState<number | null>(null);
+  const [inspectingOrderId, setInspectingOrderId] = useState<string | null>(null);
+  const [isSuccess, setIsSuccess] = useState(false);
 
-  const formatShalomError = (err: string) => {
-    // Quitar etiquetas HTML y limpiar el mensaje
-    const clean = err
-      .replace(/<[^>]*>/g, " ")
-      .replace(/Upload not successful: /g, "")
-      .replace(/En la fila \d+ /g, "")
-      .replace(/\s+/g, " ")
-      .trim();
-    
-    // Traducciones comunes para que se vea "bonito"
-    if (clean.includes("las columnas teléfono del destinatario no es valido")) {
-      return "El número de teléfono del destinatario no es válido.";
-    }
-    if (clean.includes("no recibe envíos")) {
-      return clean; // Ya es bastante descriptivo: "La terminal X no recibe envíos"
-    }
-    return clean;
-  };
+  const [shipmentsData, setShipmentsData] = useState<Record<string, any>>({});
 
-  const validateField = (orderId: string, field: string, value: any, currentDetails: any) => {
-    let error = "";
-    
-    if (field === "recipientDoc") {
-      const val = String(value).trim();
-      if (val.length !== 8 && val.length !== 11) {
-        error = "Debe tener 8 (DNI) u 11 (RUC) dígitos.";
-      } else if (!/^\d+$/.test(val)) {
-        error = "Solo se permiten números.";
+  const fetchAgencies = useCallback(async (q: string, type: "origin" | string) => {
+    if (!q || q.length < 3) return;
+    try {
+      if (type === "origin") setLoadingOrigins(true);
+      else {
+        setShipmentsData(prev => ({
+          ...prev,
+          [type]: { ...prev[type], loadingAgencies: true }
+        }));
       }
-    }
 
-    if (field === "recipientPhone") {
-      const val = String(value).replace(/[^0-9]/g, "");
-      if (val.length !== 9) {
-        error = "El teléfono debe tener 9 dígitos.";
-      }
-    }
-
-    if (["height", "width", "length"].includes(field)) {
-      const box = SHALOM_BOXES.find(b => b.name === currentDetails.content);
-      if (box) {
-        const val = Number(value);
-        if (field === "height" && val > box.height) error = `Máx. ${box.height}cm para esta categoría.`;
-        if (field === "width" && val > box.width) error = `Máx. ${box.width}cm para esta categoría.`;
-        if (field === "length" && val > box.length) error = `Máx. ${box.length}cm para esta categoría.`;
-      }
-    }
-
-    setFormErrors(prev => {
-      const orderErrors = { ...prev[orderId], [field]: error };
-      if (!error) delete orderErrors[field];
+      const res = await axios.get(`${API.integrations}/shalom/agencies/search/${encodeURIComponent(q)}`);
       
-      const newErrors = { ...prev, [orderId]: orderErrors };
-      if (Object.keys(orderErrors).length === 0) delete newErrors[orderId];
-      return newErrors;
-    });
-  };
+      if (res.data.success) {
+        // Map from results if they differ in structure
+        const agencies = (res.data.data || []).map((a: any) => ({
+          id_agencia: a.ter_id || a.id || a.id_agencia,
+          nombre_agencia: a.nombre || a.name || a.nombre_agencia,
+          api_name: a.lugar_over || a.nombre || a.name,
+          direccion: a.lugar || a.direccion || "",
+        }));
 
-  const cleanDigits = (str: string) => (str || "").replace(/[^0-9]/g, "");
+        if (type === "origin") {
+          setOriginAgencies(agencies);
+        } else {
+          setShipmentsData(prev => ({
+            ...prev,
+            [type]: { 
+              ...prev[type], 
+              destinationAgencies: agencies,
+              loadingAgencies: false 
+            }
+          }));
+        }
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      if (type === "origin") setLoadingOrigins(false);
+      else {
+        setShipmentsData(prev => ({
+          ...prev,
+          [type]: { ...prev[type], loadingAgencies: false }
+        }));
+      }
+    }
+  }, []);
 
   useEffect(() => {
-    if (orders.length > 0) {
-      setPackageDetails((prev) => {
-        const next = { ...prev };
-        let hasChanges = false;
-        
-        orders.forEach((o) => {
-          if (!next[o.id]) {
-            const rawPhone = o.customer?.phoneNumber || "";
-            const rawDoc = o.customer?.identityDocument || "";
-            const phone = (rawPhone || "").replace(/[^0-9]/g, "");
-            const doc = (rawDoc || "").replace(/[^0-9]/g, "");
+    if (open && orders.length > 0) {
+      // Pre-fill origin from company if available
+      const storeDistrict = (auth?.user as any)?.company_district || (auth?.user as any)?.city || "";
+      setOriginSearch(storeDistrict);
+      if (storeDistrict) fetchAgencies(storeDistrict, "origin");
 
-            next[o.id] = {
-              recipientDoc: doc,
-              recipientPhone: phone,
-              content: "PAQUETE XS (15x15x15 cm)",
-              weight: 1,
-              height: 15,
-              width: 15,
-              length: 15,
-              quantity: 1,
-            };
-            hasChanges = true;
+      const initialData: Record<string, any> = {};
+      orders.forEach((order) => {
+        const destSearch = order.customer?.district || order.customer?.city || order.city || "";
+        initialData[order.id] = {
+          recipientDoc: order.customer?.identityDocument || "",
+          recipientPhone: order.recipientPhone || order.customer?.phoneNumber || "",
+          content: "ROPA",
+          destinationSearch: destSearch,
+          destinationAgencyId: "",
+          destinationAgencies: [],
+          loadingAgencies: false,
+          securityCode: "",
+          packageDetails: {
+            quantity: 1,
+            weight: 1,
+            height: 10,
+            width: 10,
+            length: 10,
           }
-        });
-        
-        return hasChanges ? next : prev;
+        };
+        // Fetch agencies for each destination
+        if (destSearch) fetchAgencies(destSearch, order.id);
       });
+      setShipmentsData(initialData);
     }
-  }, [orders]);
+  }, [open, orders, auth, fetchAgencies]);
 
-  const setDestination = (orderId: string, agencyId: string, name?: string) => {
-    setOrderDestinations((prev) => ({ ...prev, [orderId]: agencyId }));
-    setOrderDestinationNames((prev) => ({ ...prev, [orderId]: name || "" }));
-  };
+  const updateShipmentField = (orderId: string, field: string, value: any) => {
+    setShipmentsData(prev => {
+      const current = prev[orderId] || {};
+      const newShipment = { ...current, [field]: value };
 
-  const allDestinationsSet =
-    originAgencyId &&
-    orders.every((o) => orderDestinations[o.id]) &&
-    orders.every((o) => {
-      const pd = packageDetails[o.id];
-      const hasErrors = formErrors[o.id] && Object.keys(formErrors[o.id]).length > 0;
-      return (
-        pd &&
-        !hasErrors &&
-        (pd.recipientDoc || "").trim().length >= 8 &&
-        (pd.recipientPhone || "").replace(/[^0-9]/g, "").length === 9 &&
-        (pd.content || "").trim().length > 0 &&
-        pd.weight !== "" && Number(pd.weight) > 0 &&
-        pd.height !== "" && Number(pd.height) > 0 &&
-        pd.width !== "" && Number(pd.width) > 0 &&
-        pd.length !== "" && Number(pd.length) > 0 &&
-        pd.quantity > 0
-      );
+      // If choosing a package type, sync dimensions
+      if (field === "content") {
+        const pkg = PACKAGE_TYPES.find(p => p.value === value);
+        if (pkg && pkg.h) {
+          newShipment.packageDetails = {
+            ...(current.packageDetails || {}),
+            height: pkg.h,
+            width: pkg.w,
+            length: pkg.l
+          };
+        }
+      }
+
+      return {
+        ...prev,
+        [orderId]: newShipment
+      };
     });
 
+    if (field === "destinationSearch" && value.length >= 3) {
+      fetchAgencies(value, orderId);
+    }
+  };
+
+  const updatePackageDetail = (orderId: string, field: string, value: any) => {
+    setShipmentsData(prev => ({
+      ...prev,
+      [orderId]: {
+        ...prev[orderId],
+        packageDetails: {
+          ...prev[orderId].packageDetails,
+          [field]: value
+        }
+      }
+    }));
+  };
+
   const handleQuote = async () => {
-    if (!auth?.accessToken || !allDestinationsSet) return;
-    setQuoting(true);
-    setTotalQuoted(null);
-    const newQuotes: Record<string, number> = {};
-    let total = 0;
-
     try {
-      for (const order of orders) {
-        const pd = packageDetails[order.id];
-        const quote = await quoteShalom(auth.accessToken, {
-          origin: originAgencyId,
-          destination: orderDestinations[order.id],
-          content: pd.content,
-          height: Number(pd.height) / 100,
-          width: Number(pd.width) / 100,
-          length: Number(pd.length) / 100,
-          weight: Number(pd.weight),
-          quantity: pd.quantity,
-        });
-        newQuotes[order.id] = quote.precio;
-        total += quote.precio;
-      }
-      setQuotes(newQuotes);
-      setTotalQuoted(total);
-      
-      // Persistir en DB inmediatamente
-      try {
-        await updateGuideQuote(auth.accessToken, guideId, total, "PEN");
-      } catch (persistErr) {
-        console.error("Error persistiendo cotización:", persistErr);
-      }
+      setQuoting(true);
+      const payload = {
+        companyId: auth?.company?.id,
+        shipments: orders.map(order => {
+          const data = shipmentsData[order.id];
+          return {
+            origin: originAgency,
+            destination: data.destinationAgencyId,
+            content: data.content,
+            weight: String(data.packageDetails.weight),
+            height: (Number(data.packageDetails.height) / 100).toFixed(2),
+            width: (Number(data.packageDetails.width) / 100).toFixed(2),
+            length: (Number(data.packageDetails.length) / 100).toFixed(2),
+            quantity: String(data.packageDetails.quantity)
+          };
+        })
+      };
 
-      toast.success(`Cotización exitosa: S/ ${total.toFixed(2)}`);
-    } catch (e: any) {
-      toast.error("Error al cotizar: " + (e?.response?.data?.message || e.message));
+      const res = await axios.post(`${API.integrations}/shalom/quote`, payload);
+      if (res.data.success) {
+        setTotalQuoted(res.data.data.total_amount);
+        toast.success(`Total: S/ ${res.data.data.total_amount}`);
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "Algo salió mal");
     } finally {
       setQuoting(false);
     }
   };
 
   const handleSend = async () => {
-    if (!auth?.accessToken || !allDestinationsSet) return;
-    setSending(true);
-    setError(null);
     try {
-      const result = await sendGuideToShalom(auth.accessToken, guideId, {
-        companyId,
-        orderDestinations: orderDestinations, // IDs numéricos
-        orderDestinationNames: orderDestinationNames, // Nombres literales
-        originAgencyId: originAgencyId, // ID numérico
-        originAgencyName: originAgencyName, // Nombre literal
-        packageDetails: Object.fromEntries(
-          Object.entries(packageDetails).map(([k, v]) => [
-            k,
-            { 
-              ...v, 
-              weight: Number(v.weight), 
-              height: Number(v.height) / 100, 
-              width: Number(v.width) / 100, 
-              length: Number(v.length) / 100 
-            }
-          ])
-        ),
-        quotedAmount: totalQuoted ?? undefined,
-        quotedCurrency: "PEN",
+      setSending(true);
+      
+      const firstOrderId = orders[0]?.id;
+      const globalSecurityCode = firstOrderId ? shipmentsData[firstOrderId]?.securityCode : "";
+
+      const originAgencyObj = originAgencies.find(a => a.api_name === originAgency);
+      
+      const orderDestinations: Record<string, string> = {};
+      const orderDestinationNames: Record<string, string> = {};
+      const packageDetails: Record<string, any> = {};
+
+      orders.forEach(order => {
+        const data = shipmentsData[order.id];
+        orderDestinations[order.id] = data.destinationAgencyId;
+        
+        const destAgencyObj = data.destinationAgencies?.find((a: any) => a.api_name === data.destinationAgencyId);
+        orderDestinationNames[order.id] = destAgencyObj?.api_name || data.destinationAgencyId;
+
+        packageDetails[order.id] = {
+          weight: data.packageDetails.weight,
+          height: data.packageDetails.height,
+          width: data.packageDetails.width,
+          length: data.packageDetails.length,
+          content: data.content,
+          recipientDoc: data.recipientDoc,
+          recipientPhone: data.recipientPhone,
+          quantity: data.packageDetails.quantity
+        };
       });
-      setTrackingData(result.trackingData);
-      onSuccess?.(result.trackingData);
-    } catch (e: any) {
-      const rawMsg = e?.response?.data?.message || e?.message || "Error al enviar a Shalom";
-      setError(formatShalomError(rawMsg));
+
+      const payload = {
+        companyId: auth?.company?.id,
+        id: guideId,
+        originAgencyId: originAgency,
+        originAgencyName: originAgencyObj?.api_name || originAgency,
+        orderDestinations,
+        orderDestinationNames,
+        packageDetails,
+        securityCode: globalSecurityCode || "",
+        quotedAmount: totalQuoted || undefined,
+        quotedCurrency: "PEN"
+      };
+
+      const res = await axios.post(`${API.courier}/shipping-guides/${guideId}/send-to-shalom`, payload);
+      
+      if (res.data.success) {
+        toast.success("Las guías han sido generadas en Shalom Pro");
+        setIsSuccess(true);
+        onSuccess?.();
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || "No se pudieron registrar las guías");
     } finally {
       setSending(false);
     }
   };
 
-  const handleTrack = async (orderId: string) => {
-    if (!auth?.accessToken) return;
-    const tracking = trackingData?.[orderId];
-    if (!tracking) return;
-    setTrackingOrderId(orderId);
-    setTrackLoading(true);
-    setTrackResult(null);
-    try {
-      const result = await trackShalomShipment(
-        auth.accessToken,
-        companyId,
-        tracking.orderNumber,
-        tracking.orderCode
-      );
-      setTrackResult(result as Record<string, unknown>);
-    } catch {
-      setTrackResult({ error: "No se pudo obtener el tracking" });
-    } finally {
-      setTrackLoading(false);
-    }
+  const allDestinationsSet = useMemo(() => {
+    if (!originAgency) return false;
+    return orders.every(order => {
+      const data = shipmentsData[order.id];
+      return data?.destinationAgencyId && 
+             data?.recipientDoc?.length >= 8 && 
+             data?.recipientPhone?.length === 9;
+    });
+  }, [originAgency, orders, shipmentsData]);
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success(`${label} copiado al portapapeles`);
   };
 
+  const inspectingOrder = orders.find(o => o.id === inspectingOrderId);
+
   return (
-    <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-background border-border shadow-2xl text-foreground">
-        <DialogHeader>
-          <DialogTitle>
-            {trackingData ? "Tracking Shalom" : "Enviar a Shalom Pro"}
-          </DialogTitle>
-        </DialogHeader>
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] overflow-y-auto p-0 bg-white">
+        <div className="sticky top-0 z-10 bg-white border-b p-6 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h2 className="text-xl font-bold text-slate-800">Enviar a Shalom Pro</h2>
+          </div>
+        </div>
 
-        <div className="space-y-5 py-2">
-          {/* Si ya hay tracking, mostrar estado */}
-          {trackingData ? (
-            <div>
-              <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-lg p-3 mb-2">
-                ✓ Envíos registrados en Shalom correctamente.
-              </p>
-              <p className="text-xs text-blue-600 bg-blue-50 border border-blue-100 rounded-lg p-3 mb-4 font-medium flex items-center gap-2">
-                <span className="text-lg">ℹ</span> Podrás gestionar estos envíos (etiquetas, tickets y rastreo) desde la sección de <strong>Seguimiento de Courier</strong>.
-              </p>
-              <table className="w-full text-sm border rounded-lg overflow-hidden">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left p-3 font-medium">Orden</th>
-                    <th className="text-left p-3 font-medium">Nro. Shalom</th>
-                    <th className="text-left p-3 font-medium">Código</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((order, idx) => {
-                    const t = trackingData[order.id];
-                    return (
-                      <tr key={`${order.id}-${idx}`} className="border-t">
-                        <td className="p-3">#{order.orderNumber}</td>
-                        <td className="p-3 font-mono">
-                          {t?.orderNumber ?? "—"}
-                        </td>
-                        <td className="p-3 font-mono">{t?.orderCode ?? "—"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-
-              {/* Track result */}
-              {trackResult && (
-                <div className="mt-4 bg-gray-50 border rounded-lg p-3 text-xs font-mono overflow-x-auto">
-                  <pre>{JSON.stringify(trackResult, null, 2)}</pre>
-                </div>
-              )}
+        <div className="p-6 space-y-6">
+          {orders.length === 0 ? (
+            <div className="py-20 text-center text-slate-400">
+              No hay pedidos seleccionados
+            </div>
+          ) : isSuccess ? (
+            <div className="flex flex-col items-center justify-center py-16 space-y-8 animate-in fade-in zoom-in duration-500">
+              <div className="relative">
+                <div className="absolute inset-0 bg-green-100 rounded-full animate-ping opacity-20 scale-150" />
+                <CheckCircle2 className="h-28 w-28 text-green-500 relative z-10" />
+              </div>
+              <div className="text-center space-y-3 max-w-md">
+                <h2 className="text-3xl font-black text-slate-900 tracking-tight">¡Registro Exitoso!</h2>
+                <p className="text-slate-500 font-medium text-base leading-relaxed">
+                  Estas órdenes han sido creadas en Shalom Pro correctamente. 
+                  Ahora puedes realizar el seguimiento detallado en la vista de <span className="text-blue-600 font-bold italic underline underline-offset-4 decoration-blue-200">Seguimiento Courier</span>.
+                </p>
+              </div>
+              <Button 
+                onClick={onClose} 
+                className="bg-slate-900 hover:bg-black text-white px-12 h-14 font-bold rounded-2xl shadow-xl shadow-slate-200 transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+              >
+                Entendido, cerrar
+              </Button>
             </div>
           ) : (
             <>
-              {error && (
-                <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-3 text-sm text-destructive">
-                  {error}
-                </div>
-              )}
-
-              {/* Agencia origen */}
-              <div>
-                <label className="block text-sm font-medium mb-1">
-                  Agencia de origen (tu tienda)
-                </label>
+              {/* Origen Card */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 mb-8 space-y-6">
                 <AgencySelector
-                  token={auth?.accessToken || ""}
-                  value={originAgencyId}
-                  onChange={(val, name) => {
-                    setOriginAgencyId(val);
-                    setOriginAgencyName(name || "");
+                  label="Agencia de origen (tu tienda)"
+                  agencyLabel="Agencia (Origen)"
+                  searchPlaceholder="Lima, Arequipa, etc."
+                  agencies={originAgencies}
+                  searchValue={originSearch}
+                  selectedAgency={originAgency}
+                  onSearchChange={(val) => {
+                    setOriginSearch(val);
+                    if (val.length >= 3) fetchAgencies(val, "origin");
                   }}
-                  placeholder="Escribe ciudad, provincia o distrito..."
+                  onAgencyChange={setOriginAgency}
+                  isLoadingAgencies={loadingOrigins}
+                  error={!originAgency}
                 />
               </div>
 
-              {/* Destino y Detalles por orden */}
-              <div className="pt-2">
-                <label className="block text-sm font-medium mb-2">
-                  Destino y Detalles por Orden
-                </label>
-                <div className="space-y-4">
-                  {orders.map((order, idx) => {
-                    const pd = packageDetails[order.id] || {
-                      weight: "",
-                      height: "",
-                      width: "",
-                      length: "",
-                      content: "",
-                      recipientDoc: "",
-                      recipientPhone: "",
-                      quantity: 1,
-                    };
-                    const updateField = (field: string, value: any) => {
-                      let finalValue = value;
-                      if (field === "recipientPhone") {
-                        // Limpiar espacios y símbolos al instante
-                        finalValue = String(value).replace(/[^0-9]/g, "");
-                      }
+              <div className="space-y-4">
+                <h3 className="text-sm font-bold text-slate-700 uppercase tracking-wider">Destino y Detalles por Orden</h3>
 
-                      setPackageDetails((prev) => {
-                        const newDetails = {
-                          ...prev[order.id],
-                          [field]: finalValue,
-                        };
-                        // Validar después de actualizar detalles (para tener acceso al 'content' actual)
-                        validateField(order.id, field, finalValue, newDetails);
-                        return {
-                          ...prev,
-                          [order.id]: newDetails,
-                        };
-                      });
-                    };
+                {orders.map((order) => {
+                  const data = shipmentsData[order.id] || {};
+                  const details = data.packageDetails || {};
 
-                    return (
-                      <div
-                        key={`${order.id}-${idx}`}
-                        className="border rounded-lg p-3 flex flex-col gap-3 bg-muted/5 border-border"
-                      >
-                        <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold">
-                              #{order.orderNumber}
-                            </p>
-                            <p className="text-xs text-muted-foreground truncate mt-0.5">
-                              {order.customer?.fullName ?? order.recipientName ?? "—"}
-                              <br />
-                              <span className="text-[10px] opacity-70">
-                                {(order.city ?? order.customer?.city)
-                                  ? `${order.city ?? order.customer?.city}`
-                                  : ""}
-                                {(order.district ?? order.customer?.district)
-                                  ? `, ${order.district ?? order.customer?.district}`
-                                  : ""}
-                                {(order.province)
-                                  ? ` (${order.province})`
-                                  : ""}
-                              </span>
-                            </p>
+                  return (
+                    <Card key={order.id} className="overflow-hidden border-slate-200">
+                      <CardContent className="p-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                          {/* Info Cliente */}
+                          <div className="lg:col-span-4 space-y-6 border-r pr-8">
+                            <div className="flex justify-between items-start">
+                              <div>
+                                <h4 className="font-bold text-lg text-slate-800">#{order.orderNumber}</h4>
+                                <p className="text-sm text-slate-500 font-medium">{order.customer?.fullName}</p>
+                                <p className="text-[11px] text-slate-400 italic">{order.customer?.address || order.address}</p>
+                              </div>
+                              <Button 
+                                variant="ghost" 
+                                size="sm" 
+                                className="h-8 text-blue-600 hover:bg-blue-50 gap-2 px-2"
+                                onClick={() => setInspectingOrderId(order.id)}
+                              >
+                                <Info className="h-4 w-4" />
+                                <span className="text-xs font-bold uppercase tracking-tight">Ver datos</span>
+                              </Button>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="space-y-1">
+                                <Label className="text-[9px] font-bold text-slate-400 uppercase">DNI / RUC (DESTINATARIO)</Label>
+                                <Input
+                                  value={data.recipientDoc}
+                                  onChange={(e) => updateShipmentField(order.id, "recipientDoc", e.target.value)}
+                                  className={cn("h-8 text-xs", !data.recipientDoc && "border-red-500 bg-white")}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label className="text-[9px] font-bold text-slate-400 uppercase">TELÉFONO (DESTINATARIO)</Label>
+                                <Input
+                                  value={data.recipientPhone}
+                                  onChange={(e) => updateShipmentField(order.id, "recipientPhone", e.target.value)}
+                                  className={cn("h-8 text-xs", data.recipientPhone?.length !== 9 && "border-red-500 bg-white")}
+                                />
+                                <span className="text-[8px] text-slate-400 font-medium ml-1 italic">(9 dígitos)</span>
+                              </div>
+                            </div>
+
+                            <div className="space-y-1 pt-1">
+                              <Label className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">CÓDIGO DE SEGURIDAD (OPCIONAL)</Label>
+                              <Input
+                                value={data.securityCode}
+                                onChange={(e) => updateShipmentField(order.id, "securityCode", e.target.value)}
+                                placeholder="Ejem: 1234"
+                                className="h-8 text-xs bg-slate-50/50"
+                              />
+                            </div>
                           </div>
-                          <div className="w-full sm:w-[250px]">
+
+                          {/* Selección Agencia */}
+                          <div className="lg:col-span-5 space-y-6">
                             <AgencySelector
-                              token={auth?.accessToken || ""}
-                              value={orderDestinations[order.id] ?? ""}
-                              onChange={(val, name) => setDestination(order.id, val, name)}
-                              placeholder="Buscar provincia, ciudad..."
-                              defaultSearch={order.district || order.city || order.province || order.customer?.district || order.customer?.city || ""}
+                              label={`Agencia de Destino (${order.customer?.city || "Provincia"})`}
+                              searchPlaceholder="Buscar distrito / provincia"
+                              agencies={data.destinationAgencies || []}
+                              searchValue={data.destinationSearch}
+                              selectedAgency={data.destinationAgencyId}
+                              onSearchChange={(val) => updateShipmentField(order.id, "destinationSearch", val)}
+                              onAgencyChange={(id) => updateShipmentField(order.id, "destinationAgencyId", id)}
+                              isLoadingAgencies={data.loadingAgencies}
+                              error={!data.destinationAgencyId}
                             />
-                          </div>
-                        </div>
 
-                        <div className="pt-2 border-t border-border/50 mt-1">
-                          <label className="block text-[11px] font-bold text-foreground/80 tracking-wider uppercase flex items-center gap-2 mb-3">
-                            <Package className="size-3.5" />
-                            Detalles del Paquete <span className="text-destructive invisible sm:visible">*</span>
-                          </label>
-
-                          <div className="grid grid-cols-1 mb-3">
-                            <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Mercadería (Tipo de Carga)</label>
-                            <Select
-                              value={pd.content}
-                              onValueChange={(val) => {
-                                const box = SHALOM_BOXES.find(b => b.name === val);
-                                if (box) {
-                                  setPackageDetails((prev) => ({
-                                    ...prev,
-                                    [order.id]: {
-                                      ...prev[order.id],
-                                      content: box.name,
-                                      height: box.height,
-                                      width: box.width,
-                                      length: box.length,
-                                    },
-                                  }));
-                                  // Limpiar errores de dimensiones al cambiar de caja
-                                  setFormErrors(prev => {
-                                    const next = { ...prev };
-                                    if (next[order.id]) {
-                                      const { height, width, length, ...rest } = next[order.id];
-                                      if (Object.keys(rest).length > 0) next[order.id] = rest;
-                                      else delete next[order.id];
-                                    }
-                                    return next;
-                                  });
-                                } else {
-                                  updateField("content", val);
-                                }
-                              }}
-                            >
-                              <SelectTrigger className="w-full h-9 text-xs">
-                                <SelectValue placeholder="Seleccionar tipo de mercadería..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {SHALOM_BOXES.map((box) => (
-                                  <SelectItem key={box.id} value={box.name}>
-                                    {box.name} ({box.width}x{box.length}x{box.height} cm)
-                                  </SelectItem>
-                                ))}
-                                <SelectItem value="MERCADERIA">Mercadería General (Manual)</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-
-                            <div className="grid grid-cols-2 gap-3 mb-2">
-                              <div>
-                                <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">DNI / RUC (Destinatario)</label>
-                                <input
-                                  type="text"
-                                  className={`w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground transition-colors outline-none ${
-                                    formErrors[order.id]?.recipientDoc ? "border-destructive ring-1 ring-destructive/20" : "focus:ring-1 focus:ring-primary/30 border-border"
-                                  }`}
-                                  value={pd.recipientDoc}
-                                  onChange={(e) => updateField("recipientDoc", e.target.value)}
-                                />
-                                {formErrors[order.id]?.recipientDoc && (
-                                  <p className="text-[9px] text-destructive mt-1 font-medium">{formErrors[order.id].recipientDoc}</p>
-                                )}
-                              </div>
-                              <div>
-                                <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Teléfono (Destinatario)</label>
-                                <input
-                                  type="text"
-                                  maxLength={9}
-                                  className={`w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground transition-colors outline-none ${
-                                    formErrors[order.id]?.recipientPhone ? "border-destructive ring-1 ring-destructive/20" : "focus:ring-1 focus:ring-primary/30 border-border"
-                                  }`}
-                                  value={pd.recipientPhone}
-                                  onChange={(e) => updateField("recipientPhone", e.target.value)}
-                                  placeholder="9XXXXXXXX"
-                                />
-                                {formErrors[order.id]?.recipientPhone && (
-                                  <p className="text-[9px] text-destructive mt-1 font-medium">{formErrors[order.id].recipientPhone}</p>
-                                )}
+                            <div className="space-y-1.5">
+                              <Label className="text-[10px] font-bold text-slate-400 uppercase">DETALLES DEL PAQUETE</Label>
+                              <div className="grid grid-cols-2 gap-4 pt-1">
+                                <div className="space-y-1.5">
+                                  <Label className="text-[9px] font-bold text-slate-400">MERCADERÍA (TIPO DE CARGA)</Label>
+                                  <Select
+                                    value={data.content}
+                                    onValueChange={(val) => updateShipmentField(order.id, "content", val)}
+                                  >
+                                    <SelectTrigger className="h-9 bg-white">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {PACKAGE_TYPES.map(pkg => (
+                                        <SelectItem key={pkg.label} value={pkg.value}>{pkg.label}</SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label className="text-[9px] font-bold text-slate-400">BULTOS (CANT)</Label>
+                                  <Input
+                                    type="number"
+                                    value={details.quantity}
+                                    onChange={(e) => updatePackageDetail(order.id, "quantity", Number(e.target.value))}
+                                    className="h-9"
+                                  />
+                                </div>
                               </div>
                             </div>
-                          <div className="grid grid-cols-2 gap-3 mb-3">
-                            <div className="col-span-1">
-                              <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Bultos (Cant)</label>
-                              <input
+                          </div>
+
+                          {/* Medidas */}
+                          <div className="lg:col-span-3 bg-slate-50/50 p-4 rounded-lg space-y-4">
+                            <div className="space-y-1.5">
+                              <Label className="text-[10px] font-bold text-slate-400 uppercase">PESO (KG)</Label>
+                              <Input
                                 type="number"
-                                min="1"
-                                className="w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground focus:ring-1 focus:ring-primary/30 outline-none"
-                                value={pd.quantity}
-                                onChange={(e) => updateField("quantity", e.target.value === "" ? 1 : Number(e.target.value))}
+                                value={details.weight}
+                                onChange={(e) => updatePackageDetail(order.id, "weight", Number(e.target.value))}
+                                className="h-9 bg-white"
                               />
                             </div>
-                            <div className="col-span-1">
-                              <label className="block text-[10px] text-muted-foreground mb-1 uppercase tracking-tight font-medium">Peso (Kg)</label>
-                              <input
-                                type="number"
-                                min="1"
-                                className="w-full border rounded px-2 py-1.5 text-xs bg-background text-foreground focus:ring-1 focus:ring-primary/30 outline-none"
-                                value={pd.weight}
-                                onChange={(e) => updateField("weight", e.target.value === "" ? "" : Number(e.target.value))}
-                              />
+                            <div className="grid grid-cols-3 gap-2">
+                              <div className="space-y-1 text-center">
+                                <Label className="text-[8px] font-bold text-slate-400 uppercase">ALTO (CM)</Label>
+                                <Input
+                                  type="number"
+                                  value={details.height}
+                                  onChange={(e) => updatePackageDetail(order.id, "height", Number(e.target.value))}
+                                  className="h-8 text-center text-xs bg-white"
+                                />
+                              </div>
+                              <div className="space-y-1 text-center">
+                                <Label className="text-[8px] font-bold text-slate-400 uppercase">ANCHO (CM)</Label>
+                                <Input
+                                  type="number"
+                                  value={details.width}
+                                  onChange={(e) => updatePackageDetail(order.id, "width", Number(e.target.value))}
+                                  className="h-8 text-center text-xs bg-white"
+                                />
+                              </div>
+                              <div className="space-y-1 text-center">
+                                <Label className="text-[8px] font-bold text-slate-400 uppercase">LARGO (CM)</Label>
+                                <Input
+                                  type="number"
+                                  value={details.length}
+                                  onChange={(e) => updatePackageDetail(order.id, "length", Number(e.target.value))}
+                                  className="h-8 text-center text-xs bg-white"
+                                />
+                              </div>
                             </div>
                           </div>
-                          <div className="grid grid-cols-3 gap-3 bg-muted/20 p-2 rounded-lg border border-border/40">
-                            <div>
-                              <label className="block text-[9px] text-muted-foreground mb-1 uppercase font-bold text-center">Alto (cm)</label>
-                              <input
-                                type="number"
-                                min="1"
-                                className={`w-full border-b bg-transparent px-1 py-1 text-xs text-foreground outline-none text-center transition-colors ${
-                                  formErrors[order.id]?.height ? "border-destructive text-destructive" : "focus:border-primary border-border/40"
-                                }`}
-                                value={pd.height}
-                                onChange={(e) => updateField("height", e.target.value === "" ? "" : Number(e.target.value))}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[9px] text-muted-foreground mb-1 uppercase font-bold text-center">Ancho (cm)</label>
-                              <input
-                                type="number"
-                                min="1"
-                                className={`w-full border-b bg-transparent px-1 py-1 text-xs text-foreground outline-none text-center transition-colors ${
-                                  formErrors[order.id]?.width ? "border-destructive text-destructive" : "focus:border-primary border-border/40"
-                                }`}
-                                value={pd.width}
-                                onChange={(e) => updateField("width", e.target.value === "" ? "" : Number(e.target.value))}
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-[9px] text-muted-foreground mb-1 uppercase font-bold text-center">Largo (cm)</label>
-                              <input
-                                type="number"
-                                min="1"
-                                className={`w-full border-b bg-transparent px-1 py-1 text-xs text-foreground outline-none text-center transition-colors ${
-                                  formErrors[order.id]?.length ? "border-destructive text-destructive" : "focus:border-primary border-border/40"
-                                }`}
-                                value={pd.length}
-                                onChange={(e) => updateField("length", e.target.value === "" ? "" : Number(e.target.value))}
-                              />
-                            </div>
-                          </div>
-                          {(formErrors[order.id]?.height || formErrors[order.id]?.width || formErrors[order.id]?.length) && (
-                            <p className="text-[9px] text-destructive mt-2 text-center font-medium">
-                              {formErrors[order.id]?.height || formErrors[order.id]?.width || formErrors[order.id]?.length}
-                            </p>
-                          )}
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
               </div>
 
-              {/* Cotización */}
-              <div className="flex flex-col gap-3">
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleQuote}
-                    disabled={!allDestinationsSet || quoting || sending}
-                    className="flex-1 bg-muted border border-border text-foreground hover:bg-muted/80 py-2.5 rounded-lg text-sm font-medium disabled:opacity-40 transition"
-                  >
-                    {quoting ? "Cotizando..." : "Cotizar Envío"}
-                  </button>
-                  <button
-                    onClick={handleSend}
-                    disabled={!allDestinationsSet || sending || quoting}
-                    className="flex-[2] bg-blue-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 transition"
-                  >
-                    {sending
-                      ? "Enviando a Shalom Pro..."
-                      : "Confirmar y enviar a Shalom"}
-                  </button>
-                </div>
-
+              <div className="flex flex-col gap-4 mt-8 pt-6 border-t">
                 {totalQuoted !== null && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 flex justify-between items-center animate-in fade-in slide-in-from-top-2">
-                    <div className="flex items-center gap-2">
-                      <div className="bg-blue-600 p-1.5 rounded-full text-white">
-                        <Package className="h-4 w-4" />
-                      </div>
-                      <span className="text-sm font-semibold text-blue-900">Total Estimado de Envío:</span>
-                    </div>
-                    <span className="text-xl font-bold text-blue-700">S/ {Number(totalQuoted).toFixed(2)}</span>
+                  <div className="bg-blue-50 border border-blue-200 text-blue-700 rounded-lg p-4 flex justify-between items-center">
+                    <span className="font-bold">Total Cotizado: S/ {Number(totalQuoted).toFixed(2)}</span>
+                    <span className="text-xs font-medium uppercase tracking-widest">{orders.length} pedidos</span>
                   </div>
                 )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Button
+                    variant="outline"
+                    onClick={handleQuote}
+                    disabled={!allDestinationsSet || quoting || sending}
+                    className="h-12 text-blue-600 border-blue-200 hover:bg-blue-50"
+                  >
+                    {quoting ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Cotizando...</> : "Cotizar Envío"}
+                  </Button>
+                  <Button
+                    onClick={handleSend}
+                    disabled={!allDestinationsSet || sending || quoting}
+                    className="h-12 bg-blue-500 hover:bg-blue-600 text-white font-bold"
+                  >
+                    {sending ? <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Enviando...</> : "Confirmar y enviar a Shalom"}
+                  </Button>
+                </div>
               </div>
             </>
           )}
         </div>
+      
+        {/* Side Panel for Customer Details */}
+        {inspectingOrderId && inspectingOrder && (
+          <div className="fixed inset-0 z-[60] flex justify-end animate-in fade-in duration-200">
+            <div 
+              className="absolute inset-0 bg-black/30 backdrop-blur-sm" 
+              onClick={() => setInspectingOrderId(null)}
+            />
+            <div className="relative w-full max-w-sm bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 border-l border-slate-200">
+              <div className="p-6 border-b bg-slate-50 flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-slate-800">Detalles del Cliente</h3>
+                  <p className="text-xs text-slate-500 font-medium">Pedido #{inspectingOrder.orderNumber}</p>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="rounded-full hover:bg-slate-200" 
+                  onClick={() => setInspectingOrderId(null)}
+                >
+                  <Plus className="h-5 w-5 rotate-45" />
+                </Button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-blue-600 mb-2">
+                    <User className="h-4 w-4" />
+                    <span className="text-sm font-bold uppercase tracking-tight">Información Personal</span>
+                  </div>
+                  
+                  <div className="space-y-1 group">
+                    <Label className="text-[10px] font-bold text-slate-400 uppercase">Nombre Completo</Label>
+                    <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-lg border border-slate-100 group-hover:border-slate-200 transition-colors">
+                      <span className="text-sm font-semibold text-slate-700">{inspectingOrder.customer?.fullName || "—"}</span>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-blue-600" onClick={() => copyToClipboard(inspectingOrder.customer?.fullName || "", "Nombre")}>
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 group">
+                    <Label className="text-[10px] font-bold text-slate-400 uppercase">Teléfono</Label>
+                    <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-lg border border-slate-100 group-hover:border-slate-200 transition-colors">
+                      <span className="text-sm font-semibold text-slate-700">{inspectingOrder.recipientPhone || inspectingOrder.customer?.phoneNumber || "—"}</span>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-blue-600" onClick={() => copyToClipboard(inspectingOrder.recipientPhone || inspectingOrder.customer?.phoneNumber || "", "Teléfono")}>
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 group">
+                    <Label className="text-[10px] font-bold text-slate-400 uppercase">Documento (DNI/RUC)</Label>
+                    <div className={cn(
+                      "flex items-center justify-between p-2.5 rounded-lg border transition-colors",
+                      !inspectingOrder.customer?.identityDocument ? "bg-red-50 border-red-100" : "bg-slate-50 border-slate-100 group-hover:border-slate-200"
+                    )}>
+                      <span className={cn(
+                        "text-sm font-semibold",
+                        !inspectingOrder.customer?.identityDocument ? "text-red-600" : "text-slate-700"
+                      )}>{inspectingOrder.customer?.identityDocument || "FALTANTE"}</span>
+                      {inspectingOrder.customer?.identityDocument && (
+                        <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-blue-600" onClick={() => copyToClipboard(inspectingOrder.customer?.identityDocument || "", "Documento")}>
+                          <Copy className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-4 border-t border-slate-100">
+                  <div className="flex items-center gap-2 text-green-600 mb-2">
+                    <Truck className="h-4 w-4" />
+                    <span className="text-sm font-bold uppercase tracking-tight">Dirección de Entrega</span>
+                  </div>
+
+                  <div className="space-y-1 group">
+                    <Label className="text-[10px] font-bold text-slate-400 uppercase">Dirección</Label>
+                    <div className="flex items-start justify-between bg-slate-50 p-2.5 rounded-lg border border-slate-100 group-hover:border-slate-200 transition-colors">
+                      <span className="text-sm font-semibold text-slate-700 leading-tight pr-2">{inspectingOrder.customer?.address || "—"}</span>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-slate-400 hover:text-blue-600 flex-shrink-0" onClick={() => copyToClipboard(inspectingOrder.customer?.address || "", "Dirección")}>
+                        <Copy className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1 group">
+                      <Label className="text-[10px] font-bold text-slate-400 uppercase">Distrito</Label>
+                      <div className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        <span className="text-xs font-semibold text-slate-700 truncate">{inspectingOrder.district || inspectingOrder.customer?.district || "—"}</span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400" onClick={() => copyToClipboard(inspectingOrder.district || inspectingOrder.customer?.district || "", "Distrito")}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-1 group">
+                      <Label className="text-[10px] font-bold text-slate-400 uppercase">Ciudad/Prov</Label>
+                      <div className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-100">
+                        <span className="text-xs font-semibold text-slate-700 truncate">{inspectingOrder.city || inspectingOrder.province || "—"}</span>
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-slate-400" onClick={() => copyToClipboard(inspectingOrder.city || inspectingOrder.province || "", "Ubicación")}>
+                          <Copy className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {inspectingOrder.customer?.reference && (
+                    <div className="space-y-1 group">
+                      <Label className="text-[10px] font-bold text-slate-400 uppercase">Referencia</Label>
+                      <div className="bg-slate-50 p-2.5 rounded-lg border border-slate-100 text-xs font-medium text-slate-600">
+                        {inspectingOrder.customer.reference}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-6 bg-slate-50 border-t">
+                <Button 
+                  className="w-full bg-slate-800 hover:bg-slate-900 font-bold" 
+                  onClick={() => setInspectingOrderId(null)}
+                >
+                  Cerrar Detalle
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

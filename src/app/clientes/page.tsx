@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +56,7 @@ export default function ClientesPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const { auth } = useAuth();
 
-  const fetchClients = async (companyId: string) => {
+  const fetchClients = useCallback(async (companyId: string) => {
     setLoading(true);
     try {
       const filters = {
@@ -70,9 +70,9 @@ export default function ClientesPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedBrand, selectedCategory]);
 
-  const loadFilters = async () => {
+  const loadFilters = useCallback(async () => {
     try {
       const [brandsRes, categoriesRes] = await Promise.all([
         getBrands(),
@@ -83,17 +83,17 @@ export default function ClientesPage() {
     } catch (error) {
       console.error("Error cargando filtros:", error);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (auth?.company?.id) {
       fetchClients(auth?.company?.id);
     }
-  }, [auth?.company?.id, selectedBrand, selectedCategory]);
+  }, [auth?.company?.id, fetchClients]);
 
   useEffect(() => {
     loadFilters();
-  }, []);
+  }, [loadFilters]);
 
   const filtered = clients.filter((c) => {
     const q = searchQuery.toLowerCase();

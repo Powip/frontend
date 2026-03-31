@@ -132,7 +132,7 @@ const EditProducto = () => {
     // Si la subcategoría previa no pertenece a la nueva categoría, limpiarla
     const stillValid = activeSubs.some((s) => s.id === product.subcategoryId);
     if (!stillValid) handleChange("subcategoryId", "");
-  }, [product.categoryId, categories]);
+  }, [product.categoryId, categories, product.subcategoryId]);
 
   // === Cargar marcas cuando cambia proveedor ===
   useEffect(() => {

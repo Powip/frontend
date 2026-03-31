@@ -172,7 +172,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [silentRefresh]);
 
   // ---- INVENTORIES ----
-  const fetchInventories = async () => {
+  const fetchInventories = useCallback(async () => {
     if (!auth?.accessToken || !selectedStoreId) return;
 
     try {
@@ -183,15 +183,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (err) {
       console.error("Error loading inventories", err);
     }
-  };
+  }, [auth?.accessToken, selectedStoreId]);
 
-  const refreshInventories = async () => {
+  const refreshInventories = useCallback(async () => {
     await fetchInventories();
-  };
+  }, [fetchInventories]);
 
   useEffect(() => {
     fetchInventories();
-  }, [auth, selectedStoreId]);
+  }, [fetchInventories]);
 
   // ---- LOGIN ----
   const login = async ({

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, Fragment } from "react";
+import { useEffect, useState, Fragment, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -88,13 +88,7 @@ export default function ProveedoresPage() {
     supplierId: "",
   });
 
-  useEffect(() => {
-    if (companyId) {
-      fetchSuppliers();
-    }
-  }, [companyId]);
-
-  const fetchSuppliers = async () => {
+  const fetchSuppliers = useCallback(async () => {
     if (!companyId) return;
     setIsLoading(true);
     try {
@@ -108,8 +102,13 @@ export default function ProveedoresPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [companyId]);
 
+  useEffect(() => {
+    if (companyId) {
+      fetchSuppliers();
+    }
+  }, [companyId, fetchSuppliers]);
   const toggleExpand = (supplierId: string) => {
     const newExpanded = new Set(expandedSuppliers);
     if (newExpanded.has(supplierId)) {

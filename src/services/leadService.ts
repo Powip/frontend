@@ -7,7 +7,7 @@ export interface Lead {
   phone_whatsapp: string;
   email: string;
   business_type: string;
-  source: 'instagram' | 'referido' | 'landing' | 'whatsapp' | 'otro';
+  source: 'instagram' | 'referido' | 'landing' | 'whatsapp' | 'google_form' | 'otro';
   pipeline_stage: 'nuevo' | 'contactado' | 'demo_agendada' | 'demo_realizada' | 'evaluacion' | 'cerrado' | 'perdido';
   plan_interest: 'basic' | 'standard' | 'full' | 'enterprise';
   created_at: string;
@@ -35,6 +35,33 @@ export const leadService = {
   activateLead: async (id: string, token?: string) => {
     const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
     const response = await axios.post(`/api/superadmin/leads/${id}/activate`, {}, config);
+    return response.data;
+  },
+  
+  deleteLead: async (id: string, token?: string) => {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    const response = await axios.delete(`/api/superadmin/leads/${id}`, config);
+    return response.data;
+  },
+
+  addActivity: async (id: string, activityType: string, description: string, token?: string) => {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    const response = await axios.post(`/api/superadmin/leads/${id}/activity`, {
+      activity_type: activityType,
+      description
+    }, config);
+    return response.data;
+  },
+
+  getLeadDetails: async (id: string, token?: string) => {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    const response = await axios.get(`/api/superadmin/leads/${id}`, config);
+    return response.data;
+  },
+
+  updateLead: async (id: string, data: Partial<Lead>, token?: string) => {
+    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
+    const response = await axios.patch(`/api/superadmin/leads/${id}`, data, config);
     return response.data;
   }
 };

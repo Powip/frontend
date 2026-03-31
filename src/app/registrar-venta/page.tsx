@@ -1,8 +1,9 @@
 "use client";
 
-import { Suspense, useEffect, useState, useRef, useMemo } from "react";
+import { Suspense, useEffect, useState, useRef, useMemo, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowLeft, Plus, Trash2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -175,22 +176,22 @@ function RegistrarVentaContent() {
 
   const formEnabled = !isIdle;
 
-  useEffect(() => {
+  const loadOrder = useCallback(async () => {
     if (!orderId) return;
+    try {
+      const response = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      );
 
-    const loadOrder = async () => {
-      try {
-        const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        );
-
-        setOrderData(response.data);
-      } catch (error) {
-        console.log("Error al obtener la Order", error);
-      }
-    };
-    loadOrder();
+      setOrderData(response.data);
+    } catch (error) {
+      console.log("Error al obtener la Order", error);
+    }
   }, [orderId]);
+
+  useEffect(() => {
+    loadOrder();
+  }, [loadOrder]);
 
   useEffect(() => {
     if (!orderData) return;
@@ -303,38 +304,11 @@ function RegistrarVentaContent() {
     setSelectedInventory(inventories[0]?.id || "");
     setProducts([]);
     setProductsMeta(null);
-  }, [selectedStoreId]);
-
-  // Auto-calcular salesRegion basándose en el departamento del cliente
-  useEffect(() => {
-    if (clientForm.department) {
-      const autoRegion =
-        clientForm.department.toUpperCase() === "LIMA" ? "LIMA" : "PROVINCIA";
-      setSalesRegion(autoRegion);
-    }
-  }, [clientForm.department]);
-
-  // Auto-cargar productos cuando cambia el inventario
-  useEffect(() => {
-    if (selectedInventory) {
-      searchProducts(1);
-    }
-  }, [selectedInventory]);
-
-  // Búsqueda debounced cuando cambia el query del producto
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      // Solo buscar si hay un inventario seleccionado
-      if (selectedInventory) {
-        searchProducts(1);
-      }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [productQuery, selectedInventory]);
+  }, [selectedStoreId, inventories]);
 
   /* ---------------- Actions ---------------- */
 
-  const searchProducts = async (page = 1) => {
+  const searchProducts = useCallback(async (page = 1) => {
     if (!selectedInventory) return;
 
     try {
@@ -364,14 +338,14 @@ function RegistrarVentaContent() {
     } finally {
       setProductsLoading(false);
     }
-  };
+  }, [selectedInventory, productQuery, companyId]);
 
   const handleLoadMore = () => {
     if (productsLoading || !productsMeta || productsPage >= productsMeta.totalPages) return;
     searchProducts(productsPage + 1);
   };
 
-  const searchClient = async () => {
+  const searchClient = useCallback(async () => {
     const phone = clientForm.phoneNumber?.trim();
     if (!phone) return;
 
@@ -399,7 +373,7 @@ function RegistrarVentaContent() {
     } finally {
       setLoadingClient(false);
     }
-  };
+  }, [clientForm.phoneNumber, companyId]);
 
   const clearClient = () => {
     setClientFound(null);
@@ -445,6 +419,33 @@ function RegistrarVentaContent() {
     // Order data (para modo edición)
     setOrderData(null);
   };
+
+  // Auto-calcular salesRegion basándose en el departamento del cliente
+  useEffect(() => {
+    if (clientForm.department) {
+      const autoRegion =
+        clientForm.department.toUpperCase() === "LIMA" ? "LIMA" : "PROVINCIA";
+      setSalesRegion(autoRegion);
+    }
+  }, [clientForm.department]);
+
+  // Auto-cargar productos cuando cambia el inventario
+  useEffect(() => {
+    if (selectedInventory) {
+      searchProducts(1);
+    }
+  }, [selectedInventory, searchProducts]);
+
+  // Búsqueda debounced cuando cambia el query del producto
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      // Solo buscar si hay un inventario seleccionado
+      if (selectedInventory) {
+        searchProducts(1);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [productQuery, selectedInventory, searchProducts]);
 
   const validateClientForm = () => {
     const errors: Partial<Record<keyof typeof emptyClientForm, string>> = {};
@@ -1854,10 +1855,12 @@ function RegistrarVentaContent() {
                 ) : (
                   <div className="space-y-2">
                     {paymentProofPreview ? (
-                      <img
+                      <Image
                         src={paymentProofPreview}
                         alt="Preview"
-                        className="max-h-24 mx-auto rounded-md"
+                        width={200}
+                        height={100}
+                        className="max-h-24 mx-auto rounded-md object-contain"
                       />
                     ) : (
                       <p className="text-sm text-teal-600 font-medium">

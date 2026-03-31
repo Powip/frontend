@@ -1,12 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { LayoutGrid, List, Download, Plus, GitBranch } from 'lucide-react';
+import { LayoutGrid, List, Download, Plus, GitBranch, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { CrmPipelineKpis } from './CrmPipelineKpis';
 import { LeadsKanban } from './LeadsKanban';
 import { LeadsTable } from './LeadsTable';
+import { CreateLeadModal } from './CreateLeadModal';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
 
 interface CrmPipelineViewProps {
   leads: any[];
@@ -20,6 +23,39 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
   isLoading,
 }) => {
   const [view, setView] = useState<'kanban' | 'table'>('kanban');
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const router = useRouter();
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await fetch('/api/superadmin/sheets/sync', { 
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({}) // Trigger default sheet sync
+      });
+      const result = await response.json();
+      
+      if (!response.ok) throw new Error(result.error || 'Error en sincronización');
+      
+      toast.success(`${result.result?.imported || 0} leads sincronizados desde Sheets`);
+      
+      // Delay to show toast before refreshing
+      setTimeout(() => {
+        window.location.reload(); 
+      }, 1500);
+      
+    } catch (error: any) {
+      console.error('[Sync] Error:', error);
+      toast.error(error.message || 'Error al conectar con Google Sheets');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -73,6 +109,18 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
             </button>
           </div>
 
+          {/* Sync Sheets */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="gap-2 h-9 border-indigo-200 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/10 text-[11px] font-bold uppercase tracking-wider"
+          >
+            <RefreshCw className={cn("h-3.5 w-3.5", isSyncing && "animate-spin")} />
+            {isSyncing ? 'Sincronizando...' : 'Sincronizar Sheets'}
+          </Button>
+
           {/* Export */}
           <Button
             variant="outline"
@@ -86,6 +134,7 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
           {/* New Lead */}
           <Button
             size="sm"
+            onClick={() => setIsModalOpen(true)}
             className="gap-2 h-9 bg-primary hover:bg-primary/90 text-white text-[11px] font-black uppercase tracking-wider shadow-lg shadow-primary/20"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -105,6 +154,16 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
           <LeadsTable leads={leads} token={token} />
         )}
       </div>
+
+      <CreateLeadModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        onSuccess={() => {
+          toast.success('Lead creado correctamente');
+          setTimeout(() => window.location.reload(), 1000);
+        }} 
+        token={token}
+      />
     </div>
   );
 };

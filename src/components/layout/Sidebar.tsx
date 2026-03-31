@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useTheme } from "next-themes";
 import {
   Menu,
@@ -67,6 +67,80 @@ interface NavigationItem {
   children?: { name: string; href: string; icon?: React.ElementType; group?: string }[];
 }
 
+
+
+const navigation: NavigationItem[] = [
+  {
+    name: "Dashboard",
+    icon: LayoutDashboard,
+    children: [
+      { name: "Principal", href: "/dashboard", icon: LayoutDashboard },
+      { name: "Ventas", href: "/metricas/ventas", icon: ShoppingCart },
+      { name: "Inventario", href: "/metricas/inventario", icon: Package },
+      { name: "Operaciones", href: "/metricas/operaciones", icon: Truck },
+      { name: "Seguimiento", href: "/metricas/seguimientos", icon: MapPin },
+      { name: "Atención Cliente", href: "/metricas/atencion-cliente", icon: Headphones },
+      { name: "Call Center", href: "/metricas/call-center", icon: Phone },
+      { name: "Courier", href: "/metricas/couriers", icon: Truck },
+      { name: "Clientes", href: "/metricas/clientes", icon: Users },
+    ],
+  },
+  {
+    name: "Comercial",
+    icon: ShoppingCart,
+    children: [
+      { name: "Ventas", href: "/ventas", icon: ShoppingCart },
+      { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
+      { name: "Clientes", href: "/clientes", icon: Users },
+    ],
+  },
+  {
+    name: "Productos",
+    icon: Package,
+    children: [
+      { name: "Lista de productos", href: "/productos", icon: Tags },
+      { name: "Inventario", href: "/inventario", icon: Package },
+      { name: "Compras", href: "/compras", icon: PackagePlus },
+      { name: "Proveedores", href: "/proveedores", icon: Building2 },
+    ],
+  },
+  {
+    name: "Operaciones",
+    icon: Truck,
+    children: [
+      { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
+      { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
+      { name: "Couriers", href: "/couriers", icon: Truck },
+    ],
+  },
+  {
+    name: "Atención al cliente",
+    icon: Headphones,
+    href: "/atencion-cliente",
+  },
+  {
+    name: "Finanzas",
+    icon: DollarSign,
+    children: [
+      { name: "Resumen", href: "/finanzas", icon: BarChart },
+      { name: "Facturación", href: "/facturacion", icon: FileText },
+    ],
+  },
+  {
+    name: "Administración",
+    icon: Settings,
+    children: [
+      { name: "Usuarios", href: "/usuarios", icon: UserCog },
+      { name: "Configuración", href: "/configuracion", icon: Settings },
+    ],
+  },
+  {
+    name: "Super Admin",
+    icon: ShieldCheck,
+    href: "/superadmin",
+  },
+];
+
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({});
@@ -75,43 +149,7 @@ export function Sidebar({ className }: SidebarProps) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
 
-  // Auto-colapsar en móviles
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth < 1024) {
-        setIsCollapsed(true);
-      } else {
-        setIsCollapsed(false);
-      }
-    };
-
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  // Mantener submenú abierto si el path actual es hijo
-  useEffect(() => {
-    const activeSubmenu = navigation.find(item => 
-      item.children?.some(child => pathname === child.href || pathname.startsWith(child.href + "/"))
-    );
-    if (activeSubmenu) {
-      setOpenSubmenus(prev => ({ ...prev, [activeSubmenu.name]: true }));
-    }
-  }, [pathname]);
-
-  const toggleTheme = () => {
-    setTheme(theme === "dark" ? "light" : "dark");
-  };
-
-  const toggleSubmenu = (name: string) => {
-    setOpenSubmenus((prev) => ({
-      ...prev,
-      [name]: !prev[name],
-    }));
-  };
-
-  const navigation: NavigationItem[] = [
+  const navigation: NavigationItem[] = useMemo(() => [
     {
       name: "Dashboard",
       icon: LayoutDashboard,
@@ -181,7 +219,43 @@ export function Sidebar({ className }: SidebarProps) {
       icon: ShieldCheck,
       href: "/superadmin",
     },
-  ];
+  ], []);
+
+  // Auto-colapsar en móviles
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1024) {
+        setIsCollapsed(true);
+      } else {
+        setIsCollapsed(false);
+      }
+    };
+
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Mantener submenú abierto si el path actual es hijo
+  useEffect(() => {
+    const activeSubmenu = navigation.find(item => 
+      item.children?.some(child => pathname === child.href || pathname.startsWith(child.href + "/"))
+    );
+    if (activeSubmenu) {
+      setOpenSubmenus(prev => ({ ...prev, [activeSubmenu.name]: true }));
+    }
+  }, [pathname, navigation]);
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
+
+  const toggleSubmenu = (name: string) => {
+    setOpenSubmenus((prev) => ({
+      ...prev,
+      [name]: !prev[name],
+    }));
+  };
 
   // Filtrar navegación por permisos y mostrar Superadmin solo a autorizados
   const filteredNavigation = navigation

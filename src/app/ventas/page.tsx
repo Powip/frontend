@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Plus,
@@ -211,6 +212,10 @@ export default function VentasPage() {
   const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
   const [pendingPrintSales, setPendingPrintSales] = useState<Sale[]>([]);
 
+  // Estado para alerta de stock bajo/nulo post-impresión
+  const [stockAlertOpen, setStockAlertOpen] = useState(false);
+  const [ordersWithStockIssue, setOrdersWithStockIssue] = useState<Sale[]>([]);
+
   // State for inline tracking field editing
   const [trackingEdits, setTrackingEdits] = useState<
     Record<
@@ -238,18 +243,18 @@ export default function VentasPage() {
   );
 
   // Helper para obtener el set actual según la pestaña
-  const getSelectedIdsForActiveTab = () => {
+  const getSelectedIdsForActiveTab = useCallback(() => {
     if (activeTab === "pendientes") return selectedPendientesIds;
     if (activeTab === "anuladas") return selectedAnuladosIds;
     return selectedTodasIds;
-  };
+  }, [activeTab, selectedPendientesIds, selectedAnuladosIds, selectedTodasIds]);
 
   // Helper para setear el set actual según la pestaña
-  const setSelectedIdsForActiveTab = (newSet: Set<string>) => {
+  const setSelectedIdsForActiveTab = useCallback((newSet: Set<string>) => {
     if (activeTab === "pendientes") setSelectedPendientesIds(newSet);
     else if (activeTab === "anuladas") setSelectedAnuladosIds(newSet);
     else setSelectedTodasIds(newSet);
-  };
+  }, [activeTab]);
 
   const selectedSaleIds = getSelectedIdsForActiveTab();
   const [pageConfirmados, setPageConfirmados] = useState(1);
@@ -285,13 +290,7 @@ export default function VentasPage() {
     });
 
     return intersection;
-  }, [
-    selectedPendientesIds,
-    selectedAnuladosIds,
-    selectedTodasIds,
-    activeTab,
-    sales,
-  ]);
+  }, [sales, getSelectedIdsForActiveTab]);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -540,6 +539,10 @@ Estado: ${sale.status}
     let successCount = 0;
     let errorCount = 0;
 
+    // Identificar órdenes con problemas de stock para informar al usuario al final
+    const issues = pendingPrintSales.filter((s) => s.hasStockIssue);
+    setOrdersWithStockIssue(issues);
+
     for (const sale of pendingPrintSales) {
       const newStatus = "PREPARADO";
       try {
@@ -566,6 +569,11 @@ Estado: ${sale.status}
     setPendingPrintSales([]);
     setPrintConfirmOpen(false);
     setIsPrinting(false);
+
+    // Si hubo órdenes con problemas de stock, mostrar el modal de alerta
+    if (issues.length > 0) {
+      setStockAlertOpen(true);
+    }
   };
 
   // Cancelar confirmación de impresión
@@ -935,9 +943,11 @@ Estado: ${sale.status}
                       title={item.productName}
                     >
                       {item.imageUrl ? (
-                        <img
+                        <Image
                           src={item.imageUrl}
                           alt={item.productName}
+                          width={32}
+                          height={32}
                           className="h-full w-full object-cover"
                         />
                       ) : (
@@ -1870,6 +1880,55 @@ Estado: ${sale.status}
               disabled={isPrinting}
             >
               {isPrinting ? "Actualizando..." : "Sí, confirmar"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {/* Modal de alerta de stock insuficiente */}
+      <AlertDialog open={stockAlertOpen} onOpenChange={setStockAlertOpen}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <div className="flex items-center gap-2 text-amber-600 mb-2">
+              <AlertTriangle className="h-5 w-5" />
+              <AlertDialogTitle>Atención: Stock Insuficiente</AlertDialogTitle>
+            </div>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4 text-sm">
+                <p className="text-muted-foreground">
+                  Se han actualizado los estados a <strong>PREPARADO</strong>, pero se ha detectado que los siguientes pedidos tienen productos con <strong>stock insuficiente o nulo</strong>:
+                </p>
+                <div className="max-h-60 overflow-y-auto rounded-md border bg-muted/30 p-3">
+                  <ul className="space-y-3">
+                    {ordersWithStockIssue.map((sale) => (
+                      <li key={sale.id} className="border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                        <div className="font-bold text-foreground mb-1">
+                          Pedido: {sale.orderNumber}
+                        </div>
+                        <div className="text-xs text-muted-foreground flex flex-col gap-1">
+                          <span className="flex items-center gap-1">
+                            <strong>Cliente:</strong> {sale.clientName}
+                          </span>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {sale.items.map((item, idx) => (
+                              <span key={idx} className="bg-background px-2 py-0.5 rounded border border-border text-[10px]">
+                                {item.productName} (x{item.quantity})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="text-amber-700 bg-amber-50 p-2 rounded border border-amber-100 italic">
+                  Por favor, revise el inventario físico antes de proceder con el despacho de estos pedidos.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction className="bg-amber-600 hover:bg-amber-700">
+              Entendido
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

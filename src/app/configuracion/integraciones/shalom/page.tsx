@@ -44,7 +44,7 @@ export default function ShalomConfigPage() {
     } finally {
       setLoading(false);
     }
-  }, [auth?.accessToken, companyId]);
+  }, [auth, auth?.accessToken, companyId]);
 
   useEffect(() => {
     if (!companyId || !auth?.accessToken) return;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { usePathname } from "next/navigation";
 import {
   Dialog,
@@ -100,7 +100,7 @@ export default function PaymentVerificationModal({
   const [paymentMethod, setPaymentMethod] = useState("");
   const [file, setFile] = useState<File | null>(null);
 
-  const fetchOrderData = async () => {
+  const fetchOrderData = useCallback(async () => {
     if (!orderId) return;
 
     setIsLoading(true);
@@ -118,7 +118,7 @@ export default function PaymentVerificationModal({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [orderId]);
 
   useEffect(() => {
     if (open && orderId) {
@@ -127,7 +127,7 @@ export default function PaymentVerificationModal({
       setPaymentMethod("");
       setFile(null);
     }
-  }, [open, orderId]);
+  }, [open, orderId, fetchOrderData]);
 
   const totalPaid =
     orderData?.payments

@@ -35,13 +35,14 @@ import {
   PackagePlus,
 } from "lucide-react";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import Image from "next/image";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 
@@ -142,9 +143,7 @@ export default function AlmacenPage() {
     setCurrentPage(1);
   }, [searchQuery, selectedInventoryId]);
 
-  if (!auth) return null;
-
-  const refreshItems = async () => {
+  const refreshItems = useCallback(async () => {
     if (!selectedInventoryId) return;
     setIsLoading(true);
     try {
@@ -162,7 +161,9 @@ export default function AlmacenPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedInventoryId, searchQuery, currentPage]);
+
+  if (!auth) return null;
 
   const handleExportExcel = async () => {
     if (productsWithDetails.length === 0) {
@@ -383,9 +384,11 @@ export default function AlmacenPage() {
                           <TableRow key={prod.inventoryItemId} className="hover:bg-muted/30 transition-colors">
                             <TableCell className="border-r">
                               {prod.imageUrl ? (
-                                <img 
+                                <Image 
                                   src={prod.imageUrl} 
-                                  alt={prod.productName} 
+                                  alt={prod.productName || "Producto"} 
+                                  width={64}
+                                  height={64}
                                   className="h-16 w-16 rounded-md object-cover border"
                                 />
                               ) : (

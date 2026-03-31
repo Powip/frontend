@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   Dialog,
   DialogContent,
@@ -67,6 +67,19 @@ export function UserDetailModal({
   const [editing, setEditing] = useState(false);
   const [formData, setFormData] = useState<any>(null);
 
+  const fetchSubscription = useCallback(async () => {
+    if (!user?.id || !auth?.accessToken) return;
+    setLoadingSub(true);
+    try {
+      const subs = await getSubscriptionByUserId(auth.accessToken, user.id);
+      setSubscription(subs.length > 0 ? subs[0] : null);
+    } catch (error) {
+      console.error("Error fetching subscription:", error);
+    } finally {
+      setLoadingSub(false);
+    }
+  }, [user?.id, auth?.accessToken]);
+
   useEffect(() => {
     if (isOpen && user) {
       setFormData({
@@ -82,20 +95,7 @@ export function UserDetailModal({
       });
       fetchSubscription();
     }
-  }, [isOpen, user]);
-
-  const fetchSubscription = async () => {
-    if (!user?.id || !auth?.accessToken) return;
-    setLoadingSub(true);
-    try {
-      const subs = await getSubscriptionByUserId(auth.accessToken, user.id);
-      setSubscription(subs.length > 0 ? subs[0] : null);
-    } catch (error) {
-      console.error("Error fetching subscription:", error);
-    } finally {
-      setLoadingSub(false);
-    }
-  };
+  }, [isOpen, user, fetchSubscription]);
 
   const handleUpdate = async () => {
     if (!user?.id || !auth?.accessToken) return;

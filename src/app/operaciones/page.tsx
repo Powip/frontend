@@ -380,6 +380,7 @@ export default function OperacionesPage() {
     selectedDespachadosIds,
     selectedEntregadosIds,
     selectedAnuladosOpsIds,
+    getSelectedIdsForActiveTab,
     activeTab,
     sales,
   ]);

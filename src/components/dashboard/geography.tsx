@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -163,7 +163,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
     "city" | "province" | "district"
   >("city");
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!selectedStoreId) return;
 
     setLoading(true);
@@ -230,19 +230,38 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
       if (fromDate) params.fromDate = fromDate;
       if (toDate) params.toDate = toDate;
 
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-location/details`,
-        { params },
-      );
-      setDetailedOrders(res.data);
-    } catch (error) {
-      console.error("Error al obtener detalle por ubicación:", error);
-    } finally {
-      setLoadingDetails(false);
-    }
-  };
+  const fetchLocationDetails = useCallback(
+    async (location: string) => {
+      if (!selectedStoreId) return;
 
-  const fetchBillingOrders = async () => {
+      setLoadingDetails(true);
+      setSelectedLocation(location);
+      setIsDetailsOpen(true);
+
+      try {
+        const params: any = {
+          storeId: selectedStoreId,
+          dimension: geoDimension,
+          value: location,
+        };
+        if (fromDate) params.fromDate = fromDate;
+        if (toDate) params.toDate = toDate;
+
+        const res = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-location/details`,
+          { params },
+        );
+        setDetailedOrders(res.data);
+      } catch (error) {
+        console.error("Error al obtener detalle por ubicación:", error);
+      } finally {
+        setLoadingDetails(false);
+      }
+    },
+    [selectedStoreId, geoDimension, fromDate, toDate],
+  );
+
+  const fetchBillingOrders = useCallback(async () => {
     if (!selectedStoreId) return;
     setLoadingDetails(true);
     setIsBillingModalOpen(true);
@@ -291,13 +310,13 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
     } finally {
       setLoadingDetails(false);
     }
-  };
+  }, [selectedStoreId, fromDate, toDate]);
 
   useEffect(() => {
     if (fromDate && toDate) {
       fetchData();
     }
-  }, [selectedStoreId, geoDimension, fromDate, toDate]);
+  }, [fetchData, fromDate, toDate]);
 
   const periodBilling = summaryData.deliveredAmount;
   const topLocation = locationData[0];
