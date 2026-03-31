@@ -143,6 +143,7 @@ function RegistrarVentaContent() {
   const [shippingTotal, setShippingTotal] = useState(0);
   const [shippingTotalDisplay, setShippingTotalDisplay] = useState(""); // Para manejar input con decimales
   const [advancePayment, setAdvancePayment] = useState(0);
+  const [advancePaymentDisplay, setAdvancePaymentDisplay] = useState(""); // Para manejar input con decimales
 
   const [taxMode, setTaxMode] = useState<"AUTOMATICO" | "INCLUIDO">("INCLUIDO");
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
@@ -264,7 +265,9 @@ function RegistrarVentaContent() {
         .reduce((sum, p) => sum + Number(p.amount), 0);
 
       // Mostrar el total de pagos (aprobados + pendientes)
-      setAdvancePayment(totalPaidApproved + totalPending);
+      const totalAdv = totalPaidApproved + totalPending;
+      setAdvancePayment(totalAdv);
+      setAdvancePaymentDisplay(totalAdv === 0 ? "" : String(totalAdv));
 
       // Usar el método del primer pago (sea PAID o PENDING)
       const firstPayment = orderData.payments[0];
@@ -412,6 +415,7 @@ function RegistrarVentaContent() {
     setShippingTotal(0);
     setShippingTotalDisplay("");
     setAdvancePayment(0);
+    setAdvancePaymentDisplay("");
     setPaymentProofFile(null);
     setPaymentProofPreview(null);
     setTaxMode("INCLUIDO");
@@ -516,7 +520,67 @@ function RegistrarVentaContent() {
     // para evitar que Radix quede en estado inconsistente si hay error
     (document.activeElement as HTMLElement)?.blur();
 
-    if (!clientFound?.id) {
+    let activeClient = clientFound;
+
+    // Auto-crear cliente nuevo si no existe en el sistema
+    if (isNotFound) {
+      if (!auth?.company?.id) return;
+      if (!validateClientForm()) {
+        toast.error("Por favor completa los campos del cliente correctamente.");
+        return;
+      }
+      try {
+        const createdClient = await createClient({
+          companyId: auth.company.id,
+          fullName: clientForm.fullName,
+          phoneNumber: clientForm.phoneNumber || undefined,
+          documentType: clientForm.documentType,
+          documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
+          clientType: clientForm.clientType,
+          province: clientForm.province,
+          city: clientForm.department,
+          district: clientForm.district,
+          address: clientForm.address,
+          reference: clientForm.reference || undefined,
+        });
+        setClientFound(createdClient);
+        setOriginalClient(createdClient);
+        setSearchState("found");
+        setClientErrors({});
+        activeClient = createdClient;
+      } catch (error) {
+        console.error(error);
+        toast.error("Error al crear el cliente. Verifica los datos.");
+        return;
+      }
+    }
+    // Auto-guardar cambios del cliente si tiene modificaciones sin guardar
+    else if (isFound && hasClientChanges && clientFound?.id) {
+      try {
+        const updated = await updateClient(clientFound.id, {
+          companyId: auth?.company?.id,
+          fullName: clientForm.fullName,
+          phoneNumber: clientForm.phoneNumber,
+          documentType: clientForm.documentType,
+          documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
+          clientType: clientForm.clientType,
+          province: clientForm.province,
+          city: clientForm.department,
+          district: clientForm.district,
+          address: clientForm.address,
+          reference: clientForm.reference || undefined,
+        } as any);
+        setClientFound(updated);
+        setOriginalClient(updated);
+        activeClient = updated;
+      } catch (error) {
+        console.error(error);
+        toast.error("Error al guardar los cambios del cliente.");
+        return;
+      }
+    }
+
+    if (!activeClient?.id) {
       console.error("❌ No hay customerId");
       return;
     }
@@ -551,7 +615,7 @@ function RegistrarVentaContent() {
       notes: orderDetails.notes ?? null,
 
       // --- Cliente ---
-      customerId: clientFound.id,
+      customerId: activeClient.id,
 
       // --- Ítems ---
       items: cart.map((item) => ({
@@ -646,7 +710,7 @@ function RegistrarVentaContent() {
           courier: orderDetails.enviaPor ?? null,
           taxMode: taxMode,
           notes: orderDetails.notes ?? null,
-          customerId: clientFound.id,
+          customerId: activeClient.id,
           items: cart.map((item) => ({
             productVariantId: item.variantId,
             sku: item.sku,
@@ -824,11 +888,20 @@ function RegistrarVentaContent() {
 
   const hasValidPayments = !!paymentMethod;
 
+  // Cliente válido: ya encontrado/creado, o nuevo con los datos mínimos requeridos
+  const hasValidClientForNew =
+    isNotFound &&
+    !!clientForm.fullName.trim() &&
+    !!clientForm.province.trim() &&
+    !!clientForm.department.trim() &&
+    !!clientForm.district.trim() &&
+    !!clientForm.address.trim() &&
+    (!clientForm.documentType || !!clientForm.documentNumber.trim());
+
   const canSubmit =
-    !!clientFound &&
+    (!!clientFound || hasValidClientForNew) &&
     hasValidCart &&
-    (orderDetails.orderType === OrderType.VENTA ||
-      orderDetails.orderType === OrderType.CAMBIO) &&
+    !!orderDetails.orderType &&
     !!orderDetails.salesChannel &&
     !!orderDetails.closingChannel &&
     hasValidDelivery &&
@@ -844,7 +917,7 @@ function RegistrarVentaContent() {
         documentNumber: originalClient.documentNumber,
         clientType: originalClient.clientType,
         province: originalClient.province,
-        city: originalClient.city,
+        department: originalClient.city,
         district: originalClient.district,
         address: originalClient.address,
         reference: originalClient.reference,
@@ -1208,12 +1281,18 @@ function RegistrarVentaContent() {
               </div>
 
               {/* Acciones */}
-              {isNotFound && (
-                <Button onClick={handleCreateClient}>Crear cliente</Button>
+              {isNotFound && clientForm.fullName.trim() && (
+                <div className="flex items-start gap-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700">
+                  <span>ℹ️</span>
+                  <span>Se creará un nuevo cliente al confirmar la venta.</span>
+                </div>
               )}
 
               {isFound && hasClientChanges && (
-                <Button onClick={handleUpdateClient}>Guardar cambios</Button>
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  <span>⚠️</span>
+                  <span>Los datos del cliente se actualizarán automáticamente al confirmar la venta.</span>
+                </div>
               )}
             </div>
           </CardContent>
@@ -1428,6 +1507,7 @@ function RegistrarVentaContent() {
                             type="text"
                             inputMode="numeric"
                             value={item.quantity === 0 ? "" : item.quantity}
+                            className={item.quantity === 0 ? "border-destructive" : ""}
                             onChange={(e) => {
                               const val = e.target.value;
                               if (val === "" || /^\d+$/.test(val)) {
@@ -1438,6 +1518,9 @@ function RegistrarVentaContent() {
                               }
                             }}
                           />
+                          {item.quantity === 0 && (
+                            <p className="text-xs text-destructive mt-1">La cantidad debe ser mayor a 0.</p>
+                          )}
                         </div>
 
                         {/* Precio editable */}
@@ -1565,7 +1648,7 @@ function RegistrarVentaContent() {
           <CardContent className="grid md:grid-cols-2 gap-4">
             {/* Tipo de orden */}
             <div className="space-y-1">
-              <Label>Tipo de orden</Label>
+              <Label>Tipo de orden <span className="text-destructive">*</span></Label>
               <Select
                 disabled={isSubmitting}
                 value={orderDetails.orderType}
@@ -1594,7 +1677,7 @@ function RegistrarVentaContent() {
 
             {/* Canal de venta */}
             <div className="space-y-1">
-              <Label>Canal de venta</Label>
+              <Label>Canal de venta <span className="text-destructive">*</span></Label>
               <Select
                 disabled={isSubmitting}
                 value={orderDetails.salesChannel}
@@ -1620,7 +1703,7 @@ function RegistrarVentaContent() {
 
             {/* Canal de cierre */}
             <div className="space-y-1">
-              <Label>Canal de cierre</Label>
+              <Label>Canal de cierre <span className="text-destructive">*</span></Label>
               <Select
                 disabled={isSubmitting}
                 value={orderDetails.closingChannel}
@@ -1646,7 +1729,7 @@ function RegistrarVentaContent() {
 
             {/* Tipo de entrega */}
             <div className="space-y-1">
-              <Label>Tipo de entrega</Label>
+              <Label>Tipo de entrega <span className="text-destructive">*</span></Label>
               <Select
                 disabled={isSubmitting}
                 value={orderDetails.deliveryType}
@@ -1675,7 +1758,7 @@ function RegistrarVentaContent() {
             {/* Método de envío */}
             {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
               <div className="space-y-1">
-                <Label>Método de envío</Label>
+                <Label>Método de envío <span className="text-destructive">*</span></Label>
                 <Select
                   disabled={isSubmitting}
                   value={orderDetails.enviaPor}
@@ -1722,7 +1805,7 @@ function RegistrarVentaContent() {
           <CardContent className="space-y-4">
             {/* Método de pago */}
             <div className="space-y-1">
-              <Label>Método de pago</Label>
+              <Label>Método de pago <span className="text-destructive">*</span></Label>
               <Select
                 disabled={isSubmitting}
                 value={paymentMethod}
@@ -1783,13 +1866,23 @@ function RegistrarVentaContent() {
             <div className="space-y-1">
               <Label>Adelanto de Pago</Label>
               <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={advancePayment}
+                type="text"
+                inputMode="decimal"
+                value={advancePaymentDisplay}
                 onChange={(e) => {
                   const val = e.target.value;
-                  setAdvancePayment(val === "" ? 0 : Number(val));
+                  if (val === "" || /^\d*\.?\d*$/.test(val)) {
+                    setAdvancePaymentDisplay(val);
+                    if (val === "" || !val.endsWith(".")) {
+                      setAdvancePayment(val === "" ? 0 : Number(val));
+                    }
+                  }
+                }}
+                onBlur={(e) => {
+                  const val = e.target.value;
+                  const numVal = parseFloat(val) || 0;
+                  setAdvancePayment(numVal);
+                  setAdvancePaymentDisplay(numVal === 0 ? "" : String(numVal));
                 }}
               />
             </div>
