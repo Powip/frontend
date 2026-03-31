@@ -241,7 +241,7 @@ export default function SendToShalomModal({
         initialData[order.id] = {
           recipientDoc: order.customer?.identityDocument || "",
           recipientPhone: order.recipientPhone || order.customer?.phoneNumber || "",
-          content: "ROPA",
+          content: "PAQUETE XXS",
           destinationSearch: destSearch,
           destinationAgencyId: "",
           destinationAgencies: [],
@@ -251,7 +251,7 @@ export default function SendToShalomModal({
             quantity: 1,
             weight: 1,
             height: 10,
-            width: 10,
+            width: 15,
             length: 10,
           }
         };
