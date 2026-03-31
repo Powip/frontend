@@ -27,6 +27,7 @@ import {
   Target,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 import { DashboardCard } from "./DashboardCard";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,7 +101,7 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
   const companyId = auth?.company?.id;
   const currentUserId = auth?.user?.id;
   const currentUserRole = auth?.user?.role;
-  const isAdmin = currentUserRole === "ADMIN" || currentUserRole === "ADMINISTRADOR" || currentUserRole === "superadmin";
+  const isAdmin = isSuperadmin(auth?.user?.email) || hasAdminAccess(currentUserRole);
 
   const [loading, setLoading] = useState(true);
   

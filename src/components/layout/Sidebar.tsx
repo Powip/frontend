@@ -45,6 +45,7 @@ import { useRouter, usePathname } from "next/navigation";
 import {
   SIDEBAR_ITEMS_PERMISSIONS,
   isSuperadmin,
+  hasAdminAccess,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -262,6 +263,11 @@ export function Sidebar({ className }: SidebarProps) {
       // Si es Super Admin, verificar específicamente por email
       if (item.name === "Super Admin") {
         return isSuperadmin(auth?.user.email);
+      }
+
+      // Si es Administración, verificar si es admin o superadmin
+      if (item.name === "Administración") {
+        return isSuperadmin(auth?.user.email) || hasAdminAccess(auth?.user.role);
       }
 
       const requiredPermission = SIDEBAR_ITEMS_PERMISSIONS[item.name];

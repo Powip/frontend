@@ -46,6 +46,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { DashboardCard } from "./DashboardCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { hasAdminAccess } from "@/config/permissions.config";
 
 interface LocationStats {
   name: string;
@@ -167,7 +168,11 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
 
     setLoading(true);
     try {
-      const params: any = { storeId: selectedStoreId };
+      const isAdmin = hasAdminAccess(auth?.user?.role);
+      const params: any = { 
+        storeId: selectedStoreId,
+        ...(!isAdmin && { sellerId: auth?.user?.id })
+      };
       if (fromDate) params.fromDate = fromDate;
       if (toDate) params.toDate = toDate;
 
@@ -205,7 +210,25 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId, geoDimension, fromDate, toDate]);
+  };
+
+  const fetchLocationDetails = async (location: string) => {
+    if (!selectedStoreId) return;
+
+    setLoadingDetails(true);
+    setSelectedLocation(location);
+    setIsDetailsOpen(true);
+
+    try {
+      const isAdmin = hasAdminAccess(auth?.user?.role);
+      const params: any = {
+        storeId: selectedStoreId,
+        dimension: geoDimension,
+        value: location,
+        ...(!isAdmin && { sellerId: auth?.user?.id })
+      };
+      if (fromDate) params.fromDate = fromDate;
+      if (toDate) params.toDate = toDate;
 
   const fetchLocationDetails = useCallback(
     async (location: string) => {
@@ -255,9 +278,13 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
       const start = fromDate ? new Date(fromDate + "T00:00:00") : null;
       const end = toDate ? new Date(toDate + "T23:59:59") : null;
 
+      const isAdmin = hasAdminAccess(auth?.user?.role);
       const filteredOrders = allOrders.filter((o: any) => {
         // Filter by state (ENTREGADO for billing)
         if (o.status !== "ENTREGADO") return false;
+
+        // Filter by seller if not admin
+        if (!isAdmin && o.sellerId !== auth?.user?.id) return false;
 
         // Filter by date range
         const orderDate = new Date(o.created_at);
@@ -504,7 +531,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
         <DialogContent className="sm:max-w-4xl w-[90vw]">
           <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
             <DialogTitle>Detalle de Zonas</DialogTitle>
-            {auth?.user?.role === "ADMIN" && (
+            {hasAdminAccess(auth?.user?.role) && (
               <Button
                 size="sm"
                 variant="outline"
@@ -560,7 +587,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
         <DialogContent className="sm:max-w-4xl w-[90vw]">
           <DialogHeader className="flex flex-row items-center justify-between border-b pb-4">
             <DialogTitle>Detalle de Métodos de Pago</DialogTitle>
-            {auth?.user?.role === "ADMIN" && (
+            {hasAdminAccess(auth?.user?.role) && (
               <Button
                 size="sm"
                 variant="outline"
@@ -622,7 +649,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                 Órdenes entregadas en el periodo seleccionado
               </p>
             </div>
-            {auth?.user?.role === "ADMIN" && (
+            {hasAdminAccess(auth?.user?.role) && (
               <Button
                 size="sm"
                 variant="outline"
@@ -704,7 +731,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
                     : "Distrito"}
               </p>
             </div>
-            {auth?.user?.role === "ADMIN" && (
+            {hasAdminAccess(auth?.user?.role) && (
               <Button
                 onClick={() =>
                   exportToExcel(

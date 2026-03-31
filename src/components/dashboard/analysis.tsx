@@ -30,6 +30,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DashboardCard } from "./DashboardCard";
+import { hasAdminAccess } from "@/config/permissions.config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import {
@@ -167,7 +168,11 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
 
     setLoading(true);
     try {
-      const params: Record<string, string> = { storeId: selectedStoreId };
+      const isAdmin = hasAdminAccess(auth?.user?.role);
+      const params: Record<string, string> = { 
+        storeId: selectedStoreId,
+        ...(!isAdmin && { sellerId: auth?.user?.id })
+      };
       if (from) params.fromDate = from;
       if (to) params.toDate = to;
 
@@ -360,7 +365,7 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
     <div className="flex flex-col h-full w-full overflow-hidden bg-background">
 
       {/* Export / Actions Header within component if needed */}
-      {auth?.user?.role === "ADMIN" && (
+      {hasAdminAccess(auth?.user?.role) && (
         <div className="px-8 pt-4 pb-2 flex justify-end">
           <Button
             onClick={handleExportFacturacion}
