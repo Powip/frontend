@@ -256,7 +256,7 @@ const FunnelCOD: React.FC<{
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId, fromDate, toDate]);
+  }, [selectedStoreId, fromDate, toDate, auth?.user?.id, auth?.user?.role]);
 
   useEffect(() => {
     fetchFunnelData();
@@ -675,7 +675,7 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId, fromDate, toDate]);
+  }, [selectedStoreId, fromDate, toDate, auth?.user?.id, auth?.user?.role]);
 
   useEffect(() => {
     if (fromDate && toDate) {

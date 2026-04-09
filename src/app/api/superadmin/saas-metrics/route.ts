@@ -11,13 +11,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No authorization header" }, { status: 401 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const from = searchParams.get("from");
+  const to = searchParams.get("to");
+
   const config = {
     headers: { Authorization: authHeader }
   };
 
   try {
     const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = from ? new Date(from) : new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const endDate = to ? new Date(to) : now;
 
     // 1. Validate environment variables
     if (!API_COMPANY || !API_VENTAS || !API_SUBS) {
@@ -75,7 +80,7 @@ export async function GET(request: Request) {
       const dateString = s.createdAt || s.created_at || s.startDate || s.start_date;
       if (!dateString) return false;
       const date = new Date(dateString);
-      return !isNaN(date.getTime()) && date >= thirtyDaysAgo;
+      return !isNaN(date.getTime()) && date >= thirtyDaysAgo && date <= endDate;
     });
     const mrrNuevo = newSubs.reduce((acc: number, s: any) => {
       const price = Number(s.plan?.price || s.price || 0);
@@ -89,7 +94,7 @@ export async function GET(request: Request) {
       const dateString = s.updatedAt || s.updated_at;
       if (!dateString) return isLost; // If no date, assume it's relevant if lost
       const date = new Date(dateString);
-      return isLost && !isNaN(date.getTime()) && date >= thirtyDaysAgo;
+      return isLost && !isNaN(date.getTime()) && date >= thirtyDaysAgo && date <= endDate;
     });
     const mrrPerdido = lostSubs.reduce((acc: number, s: any) => {
       const price = Number(s.plan?.price || s.price || 0);
@@ -101,10 +106,21 @@ export async function GET(request: Request) {
     const churnRate = mrrStartMonth > 0 ? (mrrPerdido / mrrStartMonth) * 100 : 0;
     const nrr = mrrStartMonth > 0 ? ((totalMrr) / mrrStartMonth) * 100 : 100;
 
-    // --- ACTIVATION RATE ---
-    // Activation: Percentage of active companies
+    // --- ACTIVATION RATE & ALTAS ---
     const activeCompanies = companies.filter((c: any) => c.is_active || c.status?.toUpperCase() === 'ACTIVE').length;
     const activationRate = companies.length > 0 ? (activeCompanies / companies.length) * 100 : 0;
+
+    const previousMonthStart = new Date(thirtyDaysAgo.getTime() - 30 * 24 * 60 * 60 * 1000);
+    let newCompaniesCurrentMonth = 0;
+    let newCompaniesPrevMonth = 0;
+
+    companies.forEach((c: any) => {
+      const created = c.created_at ? new Date(c.created_at) : null;
+      if (created) {
+        if (created >= thirtyDaysAgo && created <= endDate) newCompaniesCurrentMonth++;
+        else if (created >= previousMonthStart && created < thirtyDaysAgo) newCompaniesPrevMonth++;
+      }
+    });
 
     // --- GMV TOTAL ---
     const gmvTotal = Number(salesSummary.totalSales || salesSummary.total || 0);
@@ -113,6 +129,15 @@ export async function GET(request: Request) {
     // If we have billing stats, use them as proxy for active users
     const currentMonthData = globalBilling[globalBilling.length - 1];
     const stickiness = currentMonthData ? (Number(currentMonthData.currentOrders || 0) / (Math.max(1, companies.length) * 10)) * 100 : 25;
+
+    // --- PAYMENT METHODS DISTRIBUTION ---
+    const paymentMethodsMap: Record<string, number> = {};
+    activeSubs.forEach((s: any) => {
+      const method = s.payment_method || s.paymentMethod || s.system || 'Transferencia'; // Default or extracted
+      paymentMethodsMap[method] = (paymentMethodsMap[method] || 0) + 1;
+    });
+
+    const paymentMethodsDistribution = Object.entries(paymentMethodsMap).map(([name, value]) => ({ name, value }));
 
     return NextResponse.json({
       mrr: totalMrr,
@@ -125,6 +150,16 @@ export async function GET(request: Request) {
       dauMau: Math.min(100, stickiness),
       gmvTotal,
       totalCompanies: companies.length,
+      altas: {
+        current: newCompaniesCurrentMonth,
+        previous: newCompaniesPrevMonth,
+        growth: newCompaniesPrevMonth > 0 
+          ? ((newCompaniesCurrentMonth - newCompaniesPrevMonth) / newCompaniesPrevMonth) * 100 
+          : 100
+      },
+      paymentDistribution: paymentMethodsDistribution.length > 0 
+        ? paymentMethodsDistribution 
+        : [{ name: 'Suscripción Manual', value: activeSubs.length }],
       targets: {
         mrr: { meta: 80000, alert: 60000 },
         activation: { meta: 80, alert: 60 },

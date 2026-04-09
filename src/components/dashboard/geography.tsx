@@ -219,7 +219,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
     toDate,
     auth?.user?.id,
     auth?.user?.role,
-  ]); // <- ¡Aquí faltaba esto!
+  ]);
 
   const fetchLocationDetails = useCallback(
     async (location: string) => {
@@ -258,7 +258,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
       toDate,
       auth?.user?.id,
       auth?.user?.role,
-    ], // <- Arreglado y unificado
+    ],
   );
 
   const fetchBillingOrders = useCallback(async () => {
@@ -310,7 +310,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
     } finally {
       setLoadingDetails(false);
     }
-  }, [selectedStoreId, fromDate, toDate]);
+  }, [selectedStoreId, fromDate, toDate, auth?.user?.id, auth?.user?.role]);
 
   useEffect(() => {
     if (fromDate && toDate) {

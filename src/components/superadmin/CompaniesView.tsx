@@ -11,7 +11,7 @@ import { es } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import StatsChart from '@/components/superadmin/StatsChart';
 import { toast } from 'sonner';
@@ -23,8 +23,11 @@ import {
 } from '@/services/salesService';
 import { getCompanyProductCount } from '@/services/productService';
 import { getUsersByCompany } from '@/services/userService';
-import { createCompany as createCompanyService } from '@/services/companyService';
+import { createCompany as createCompanyService, deleteCompany as deleteCompanyService } from '@/services/companyService';
 import { Pagination } from '@/components/ui/pagination';
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { type DateRange } from "react-day-picker";
+import { Label } from "@/components/ui/label";
 
 const ITEMS_PER_PAGE = 8;
 
@@ -137,11 +140,12 @@ export function CompaniesView({ companies, auth, plans, allUsers, onCreateSucces
   }, [companies]);
 
   // ── Top 5 by price (proxy for GMV) ───────────────────────────
-  const top5 = useMemo(() => (
-    [...companies]
+  const top5 = useMemo(() => {
+    const unique = Array.from(new Map(companies.map(c => [c.id, c])).values());
+    return [...unique]
       .sort((a, b) => (b.price || 0) - (a.price || 0))
-      .slice(0, 5)
-  ), [companies]);
+      .slice(0, 5);
+  }, [companies]);
 
   // ── Filtered list ─────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -298,7 +302,7 @@ export function CompaniesView({ companies, auth, plans, allUsers, onCreateSucces
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-white/5">
-                {['Empresa', 'Plan', 'Monto MRR', 'Vencimiento', 'Estado'].map(h => (
+                {['Empresa', 'Plan', 'Facturación Total', 'Facturación Diaria', 'Estado', 'Última Sesión'].map(h => (
                   <th key={h} className="px-5 py-3 text-left text-[10px] font-black uppercase tracking-widest text-gray-500">{h}</th>
                 ))}
                 <th className="w-8" />
@@ -318,14 +322,19 @@ export function CompaniesView({ companies, auth, plans, allUsers, onCreateSucces
                     </div>
                   </td>
                   <td className="px-5 py-3.5"><PlanBadge plan={c.plan} /></td>
-                  <td className="px-5 py-3.5 font-bold text-cyan-400 font-mono text-xs">S/ {c.price || 0}</td>
+                  <td className="px-5 py-3.5 font-bold text-cyan-400 font-mono text-xs">S/ {(c.totalSales || 0).toLocaleString()}</td>
+                  <td className="px-5 py-3.5 font-bold text-emerald-400 font-mono text-xs">S/ {(c.dailySales || 0).toLocaleString()}</td>
+                  <td className="px-5 py-3.5"><StatusBadge status={c.status} /></td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-1.5 text-xs text-gray-400">
                       <Calendar className="h-3 w-3 text-gray-600" />
-                      {c.expiry || 'N/A'}
+                      {c.userId ? (
+                        allUsers.find((u: any) => u.id === c.userId)?.lastSignInAt 
+                          ? formatDistanceToNow(parseISO(allUsers.find((u: any) => u.id === c.userId).lastSignInAt), { addSuffix: true, locale: es })
+                          : "Nunca"
+                      ) : "N/A"}
                     </div>
                   </td>
-                  <td className="px-5 py-3.5"><StatusBadge status={c.status} /></td>
                   <td className="px-5 py-3.5">
                     <ChevronRight className="h-4 w-4 text-gray-600 group-hover:text-gray-400 transition-colors" />
                   </td>
@@ -364,6 +373,7 @@ export function CompaniesView({ companies, auth, plans, allUsers, onCreateSucces
         plans={plans}
         auth={auth}
         allUsers={allUsers}
+        onDeleteSuccess={onCreateSuccess}
       />
       <CreateCompanyModal
         isOpen={isCreateOpen}
@@ -396,51 +406,67 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── Company Detail Modal ──────────────────────────────────────────────────
 
-function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUsers }: any) {
-  const [details, setDetails] = useState<any>({ users: [], productCount: 0, sales: { totalSales: 0, orderCount: 0 }, billing: [], loading: true });
-  const [period, setPeriod] = useState('all');
+function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUsers, onDeleteSuccess }: any) {
+  const [details, setDetails] = useState<any>({ users: [], productCount: 0, sales: { totalSales: 0, orderCount: 0 }, income: [], loading: true });
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: new Date(new Date().getTime() - 30 * 24 * 60 * 60 * 1000),
+    to: new Date()
+  });
   const [changingPlan, setChangingPlan] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchDetails = useCallback(async () => {
     if (!company || !auth?.accessToken) return;
     setDetails((p: any) => ({ ...p, loading: true }));
     try {
       const token = auth.accessToken;
-      const now = new Date();
-      const today = now.toISOString().split('T')[0];
-      let from: string | undefined;
-      if (period === 'weekly') from = new Date(now.getTime() - 7 * 86400000).toISOString().split('T')[0];
-      if (period === 'monthly') from = new Date(now.getTime() - 30 * 86400000).toISOString().split('T')[0];
-      if (period === 'yearly') from = new Date(now.getTime() - 365 * 86400000).toISOString().split('T')[0];
+      let fromStr: string | undefined;
+      let toStr: string | undefined;
+      if (date?.from) fromStr = date.from.toISOString().split('T')[0];
+      if (date?.to) toStr = date.to.toISOString().split('T')[0];
 
-      const [users, productCount, sales, billing] = await Promise.all([
+      const { getCompanySalesSummary } = await import('@/services/salesService');
+
+      const [users, productCount, sales] = await Promise.all([
         getUsersByCompany(company.id, token).catch(() => []),
         getCompanyProductCount(token, company.id).catch(() => 0),
-        getCompanySalesSummary(token, company.id, from, from ? today : undefined).catch(() => ({ totalSales: 0, orderCount: 0 })),
-        getCompanyBilling(token, company.id).catch(() => []),
+        getCompanySalesSummary(token, company.id, fromStr, toStr).catch(() => ({ totalSales: 0, orderCount: 0, income: [] })),
       ]);
 
-      // Calculate trend
+      const income = sales.income || [];
+
+      // Calculate trend based on income if possible
       let trend = "0%";
-      if (billing.length >= 2) {
-        const current = billing[billing.length - 1].ordersCount || 0;
-        const prev = billing[billing.length - 2].ordersCount || 0;
+      if (income.length >= 2) {
+        const current = income[income.length - 1].amount || 0;
+        const prev = income[income.length - 2].amount || 0;
         if (prev > 0) {
           const diff = ((current - prev) / prev) * 100;
           trend = `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`;
+        } else if (current > 0) {
+          trend = '+100%';
         }
       }
+
+      let cumulative = 0;
+      const cumulativeIncome = income.map((i: any) => {
+        cumulative += (i.amount || 0);
+        return {
+          ...i,
+          incomeVal: cumulative
+        };
+      });
 
       setDetails({
         users,
         productCount,
         sales,
         trend,
-        billing: billing.map((b: any) => ({ ...b, '2025': b.ordersCount, '2024': b.previousOrdersCount })),
+        income: cumulativeIncome,
         loading: false,
       });
     } catch { setDetails((p: any) => ({ ...p, loading: false })); }
-  }, [company, auth?.accessToken, period]);
+  }, [company, auth?.accessToken, date]);
 
   React.useEffect(() => { if (isOpen) fetchDetails(); }, [isOpen, fetchDetails]);
 
@@ -448,22 +474,47 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUse
     if (!company || !auth?.accessToken) return;
     setChangingPlan(true);
     try {
+      if (!company.userId) {
+        toast.error('Empresa sin owner (usuario) no puede tener plan asociado');
+        return;
+      }
       const subs = await getSubscriptionByUserId(auth.accessToken, company.userId);
       const active = subs.find((s: any) => s.status === 'ACTIVE') || subs[0];
       if (active) {
         await updateSubscription(auth.accessToken, active.id, { planId });
         toast.success('Plan actualizado correctamente');
       } else {
-        await createSubscription(auth.accessToken, { userId: company.userId, planId, payerEmail: company.billingEmail || company.email || 'support@powip.com' });
+        await createSubscription(auth.accessToken, { userId: company.userId, planId, payerEmail: company.billingEmail || 'support@powip.com' });
         toast.success('Suscripción creada');
       }
-    } catch { toast.error('Error al actualizar el plan'); }
+      onDeleteSuccess?.(); // Repull data
+    } catch(err) {
+      console.error("Plan change error", err);
+      toast.error('Error al actualizar el plan');
+    }
     finally { setChangingPlan(false); }
+  };
+
+  const handleDelete = async () => {
+    if (!company || !auth?.accessToken) return;
+    if (!confirm('¿Estás seguro de que deseas eliminar esta empresa?')) return;
+    setDeleting(true);
+    try {
+      await deleteCompanyService(auth.accessToken, company.id);
+      toast.success('Empresa eliminada');
+      onOpenChange(false);
+      onDeleteSuccess?.();
+    } catch (err) {
+      console.error(err);
+      toast.error('Error al eliminar empresa');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[96vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-[#12151f] border border-white/10 text-white p-0">
+      <DialogContent showCloseButton={false} className="w-[96vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto bg-[#12151f] border border-white/10 text-white p-0">
         {/* Header */}
         <div className="flex items-start justify-between px-6 pt-6 pb-5 border-b border-white/5">
           <div className="flex items-center gap-3">
@@ -471,8 +522,8 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUse
               <Building2 className="h-5 w-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-lg font-black text-white">{company?.name}</h2>
-              <p className="text-[11px] text-gray-500 font-mono mt-0.5">ID: {company?.id}</p>
+              <DialogTitle className="text-lg font-black text-white">{company?.name}</DialogTitle>
+              <DialogDescription className="text-[11px] text-gray-500 font-mono mt-0.5">ID: {company?.id}</DialogDescription>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -491,20 +542,13 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUse
         ) : (
           <div className="px-6 py-5 space-y-6">
             {/* Period selector */}
-            <div className="flex items-center justify-end gap-2">
-              <span className="text-[11px] text-gray-500">Período:</span>
-              <div className="flex bg-white/5 border border-white/10 p-0.5 rounded-lg text-[11px]">
-                {[['all', 'Todo'], ['weekly', '7d'], ['monthly', '30d'], ['yearly', '1a']].map(([val, label]) => (
-                  <button
-                    key={val}
-                    onClick={() => setPeriod(val)}
-                    className={cn(
-                      'px-3 py-1.5 rounded-md font-bold transition-all',
-                      period === val ? 'bg-primary text-white' : 'text-gray-400 hover:text-gray-200'
-                    )}
-                  >{label}</button>
-                ))}
-              </div>
+            <div className="flex flex-col sm:flex-row items-end sm:items-center justify-end mb-4 gap-2">
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mr-2">Filtrar por fecha</Label>
+              <DateRangePicker 
+                date={date} 
+                onDateChange={setDate as any} 
+                className="w-full max-w-[260px] bg-white/5 border-white/10" 
+              />
             </div>
 
             {/* KPI mini grid */}
@@ -544,17 +588,22 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUse
             </div>
 
             {/* Billing chart */}
-            {details.billing.length > 0 && (
-              <StatsChart
-                title="Comparativa de Órdenes Mensuales"
-                data={details.billing}
-                xKey="month"
-                lines={[
-                  { key: '2025', name: 'Año Actual', color: 'var(--primary)' },
-                  { key: '2024', name: 'Año Previo', color: '#475569' },
-                ]}
-              />
-            )}
+            <div className="min-h-[300px]">
+              {details.income.length > 0 ? (
+                <StatsChart
+                  title="Crecimiento Acumulado de Ventas Globales"
+                  data={details.income}
+                  xKey="date"
+                  lines={[
+                    { key: 'incomeVal', name: 'Ventas (S/)', color: 'var(--primary)' },
+                  ]}
+                />
+              ) : (
+                <div className="h-[300px] flex items-center justify-center border border-dashed border-white/10 rounded-xl bg-white/5">
+                  <span className="text-gray-500 text-sm">No hay datos de ventas en el período seleccionado.</span>
+                </div>
+              )}
+            </div>
 
             {/* Subscription management */}
             <div className="bg-white/5 border border-white/5 rounded-xl p-5 space-y-4">
@@ -590,8 +639,8 @@ function CompanyDetailModal({ isOpen, onOpenChange, company, plans, auth, allUse
                     ))}
                   </SelectContent>
                 </Select>
-                <Button variant="ghost" size="sm" className="h-9 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 border border-rose-500/20 text-[11px] font-bold uppercase tracking-wider">
-                  Cancelar suscripción
+                <Button variant="ghost" size="sm" onClick={handleDelete} disabled={deleting} className="h-9 text-rose-400 hover:bg-rose-500/10 hover:text-rose-300 border border-rose-500/20 text-[11px] font-bold uppercase tracking-wider">
+                  {deleting ? 'Eliminando...' : 'Eliminar Empresa'}
                 </Button>
               </div>
             </div>
@@ -679,7 +728,7 @@ function CreateCompanyModal({ isOpen, onOpenChange, auth, allUsers, onSaveSucces
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg bg-[#12151f] border border-white/10 text-white p-0">
+      <DialogContent showCloseButton={false} className="sm:max-w-lg bg-[#12151f] border border-white/10 text-white p-0">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-6 pb-5 border-b border-white/5">
           <div className="flex items-center gap-3">
@@ -687,8 +736,8 @@ function CreateCompanyModal({ isOpen, onOpenChange, auth, allUsers, onSaveSucces
               <Plus className="h-4 w-4 text-primary" />
             </div>
             <div>
-              <h2 className="text-base font-black text-white">Nueva Empresa</h2>
-              <p className="text-[11px] text-gray-500">Registrar un negocio en la plataforma</p>
+              <DialogTitle className="text-base font-black text-white">Nueva Empresa</DialogTitle>
+              <DialogDescription className="text-[11px] text-gray-500">Registrar un negocio en la plataforma</DialogDescription>
             </div>
           </div>
           <button onClick={() => onOpenChange(false)} className="p-1.5 rounded-lg hover:bg-white/5 text-gray-500 hover:text-gray-300 transition-colors">

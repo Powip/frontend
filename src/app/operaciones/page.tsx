@@ -373,15 +373,7 @@ export default function OperacionesPage() {
 
     return intersection;
   }, [
-    selectedPreparadosIds,
-    selectedNoConfirmadosIds,
-    selectedConfirmadosIds,
-    selectedContactadosIds,
-    selectedDespachadosIds,
-    selectedEntregadosIds,
-    selectedAnuladosOpsIds,
     getSelectedIdsForActiveTab,
-    activeTab,
     sales,
   ]);
 
