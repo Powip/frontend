@@ -2,17 +2,16 @@ import { createRouteClient } from "@/utils/supabase/api";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const supabase = await createRouteClient(request);
-  const now = new Date();
-  
-  // Current month
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-  
-  // Previous month
-  const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
-  const endOfPreviousMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString();
-
   try {
+    const supabase = await createRouteClient(request);
+    
+    const now = new Date();
+    // Current month
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    // Previous month
+    const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
+    const endOfPreviousMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString();
+
     // 1. All leads (Simplified to basic data first for stability)
     const { data: allLeads, error } = await supabase
       .from("leads")
@@ -24,8 +23,7 @@ export async function GET(request: Request) {
     }
 
     const leads = allLeads || [];
-    // ... logic continues ...
-
+    
     // Current month leads
     const currentMonthLeads = leads.filter(l => l.created_at >= startOfMonth);
     const previousMonthLeads = leads.filter(l => l.created_at >= startOfPreviousMonth && l.created_at <= endOfPreviousMonth);
@@ -43,7 +41,7 @@ export async function GET(request: Request) {
       pago_recibido: 0,
       cerrado: 0,
       perdido: 0,
-      cancelado: 0, // In case
+      cancelado: 0, 
     };
 
     leads.forEach(lead => {
@@ -56,18 +54,16 @@ export async function GET(request: Request) {
     });
 
     // 3. Effectiveness calculate (Altas Concretadas / Leads Contactados) * 100
-    // Conceptually: cerrado (pago_recibido too) / (all leads NOT in "nuevo")
     const contactedLeads = leads.filter(l => l.pipeline_stage && l.pipeline_stage !== "nuevo").length;
     const closedLeads = leads.filter(l => l.pipeline_stage === "cerrado" || l.pipeline_stage === "pago_recibido").length;
     
-    // MoM Closed Leads (based on created_at of the lead for simplicity, assuming they were generated in that month)
+    // MoM Closed Leads
     const closedThisMonth = currentMonthLeads.filter(l => l.pipeline_stage === "cerrado" || l.pipeline_stage === "pago_recibido").length;
     const closedPreviousMonth = previousMonthLeads.filter(l => l.pipeline_stage === "cerrado" || l.pipeline_stage === "pago_recibido").length;
 
     const effectiveness = contactedLeads > 0 ? (closedLeads / contactedLeads) * 100 : 0;
 
     // 4. Salesperson Breakdown
-    // map of assigned_to => { managed_leads: 0, closed_leads: 0 }
     const salespersonMap: Record<string, { salesperson: string, managed_leads: number, closed_leads: number }> = {};
     
     leads.forEach(lead => {
@@ -95,13 +91,12 @@ export async function GET(request: Request) {
       effectiveness: parseFloat(effectiveness.toFixed(1)),
       states_count: statesCount,
       salesperson_breakdown: salespersonBreakdown,
-      // Keeping these for potential backward compatibility if needed temporarily
       contact_count: contactedLeads,
       close_rate: effectiveness,
       closed_count: closedLeads,
     });
   } catch (error: any) {
     console.error("Error calculating pipeline summary:", error);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+    return NextResponse.json({ error: "Internal Server Error", details: error.message }, { status: 500 });
   }
 }

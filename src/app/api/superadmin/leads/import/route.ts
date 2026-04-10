@@ -3,9 +3,8 @@ import { createRouteClient } from '@/utils/supabase/api';
 import * as XLSX from 'xlsx';
 
 export async function POST(request: Request) {
-  const supabase = await createRouteClient(request);
-  
   try {
+    const supabase = await createRouteClient(request);
     const formData = await request.formData();
     const file = formData.get('file') as File;
     
@@ -25,8 +24,9 @@ export async function POST(request: Request) {
 
     // Skip header row
     const dataRows = rows.slice(1);
-    const importedLeads = [];
     let importedCount = 0;
+    let failedCount = 0;
+    const errors: string[] = [];
 
     const normalizePhone = (phone: any) => {
       if (!phone) return '';
@@ -52,69 +52,86 @@ export async function POST(request: Request) {
       }
     };
 
-    for (const row of dataRows) {
-      // mapping based on user provide list (0-indexed)
-      const contact_name = String(row[0] || '').trim();
-      const phone_whatsapp = normalizePhone(row[2]);
-      const email = String(row[3] || '').trim();
-      const business_name = String(row[6] || '').trim();
-      const city = String(row[8] || '').trim();
-      const orders_per_day = parseOrders(row[13]);
-      const estadoRaw = String(row[18] || '').toLowerCase();
-      const demo_date = parseDate(row[19]);
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      try {
+        const contact_name = String(row[0] || '').trim();
+        const phone_whatsapp = normalizePhone(row[2]);
+        const email = String(row[3] || '').trim();
+        const business_name = String(row[6] || '').trim();
+        const city = String(row[8] || '').trim();
+        const orders_per_day = parseOrders(row[13]);
+        const estadoRaw = String(row[18] || '').toLowerCase();
+        const demo_date = parseDate(row[19]);
 
-      if (!contact_name || !phone_whatsapp) continue;
+        if (!contact_name || !phone_whatsapp) {
+          continue;
+        }
 
-      // Map ESTADO to pipeline_stage
-      let pipeline_stage = 'nuevo';
-      if (estadoRaw.includes('contact')) pipeline_stage = 'contactado';
-      if (estadoRaw.includes('demo') || estadoRaw.includes('agend')) pipeline_stage = 'demo_agendada';
-      if (estadoRaw.includes('cerrado') || estadoRaw.includes('exito')) pipeline_stage = 'cerrado';
-      if (estadoRaw.includes('perdido') || estadoRaw.includes('rechaz')) pipeline_stage = 'perdido';
+        // Map ESTADO to pipeline_stage
+        let pipeline_stage = 'nuevo';
+        if (estadoRaw.includes('contact')) pipeline_stage = 'contactado';
+        if (estadoRaw.includes('demo') || estadoRaw.includes('agend')) pipeline_stage = 'demo_agendada';
+        if (estadoRaw.includes('cerrado') || estadoRaw.includes('exito')) pipeline_stage = 'cerrado';
+        if (estadoRaw.includes('perdido') || estadoRaw.includes('rechaz')) pipeline_stage = 'perdido';
 
-      const leadData = {
-        contact_name,
-        phone_whatsapp,
-        email,
-        business_name,
-        city,
-        orders_per_day,
-        pipeline_stage,
-        demo_scheduled_at: demo_date,
-        source: 'otro', // Manual import
-        imported_from_sheet: true,
-        updated_at: new Date().toISOString(),
-      };
+        const leadData = {
+          contact_name,
+          phone_whatsapp,
+          email,
+          business_name,
+          city,
+          orders_per_day,
+          pipeline_stage,
+          demo_scheduled_at: demo_date,
+          source: 'otro', 
+          imported_from_sheet: true,
+          updated_at: new Date().toISOString(),
+        };
 
-      // Perform upsert by phone or email
-      // We prioritize phone_whatsapp as unique identifier for leads in this logic
-      const { data: lead, error: upsertError } = await supabase
-        .from('leads')
-        .upsert(leadData, { onConflict: 'phone_whatsapp' })
-        .select()
-        .single();
+        const { data: lead, error: upsertError } = await supabase
+          .from('leads')
+          .upsert(leadData, { onConflict: 'phone_whatsapp' })
+          .select()
+          .single();
 
-      if (!upsertError && lead) {
-        importedCount++;
-        // Log Activity
-        await supabase.from('lead_activities').insert({
-          lead_id: lead.id,
-          activity_type: 'other',
-          description: 'Lead importado mediante carga manual de Excel/CSV',
-        });
-      } else if (upsertError) {
-        console.error('[Import API] Upsert Error:', upsertError);
+        if (upsertError) {
+          console.error(`[Import API] Row ${i+2} Upsert Error:`, upsertError);
+          failedCount++;
+          errors.push(`Fila ${i+2}: ${upsertError.message}`);
+          continue;
+        }
+
+        if (lead) {
+          importedCount++;
+          // Log Activity safely
+          await supabase.from('lead_activities').insert({
+            lead_id: lead.id,
+            activity_type: 'other',
+            description: 'Lead importado mediante carga manual de Excel/CSV',
+          });
+        }
+      } catch (rowErr: any) {
+        console.error(`[Import API] Row ${i+2} Processing Error:`, rowErr);
+        failedCount++;
       }
     }
 
     return NextResponse.json({ 
       success: true, 
-      message: `Se importaron ${importedCount} leads correctamente`,
-      imported: importedCount 
+      message: `Proceso finalizado. ${importedCount} importados, ${failedCount} fallidos.`,
+      imported: importedCount,
+      failed: failedCount,
+      errors: errors.slice(0, 5) // Return first 5 errors to frontend
     });
 
   } catch (error: any) {
-    console.error('[Import API] Crash:', error);
-    return NextResponse.json({ error: 'Error interno del servidor', details: error.message }, { status: 500 });
+    console.error('[Import API] Critical Crash:', error);
+    return NextResponse.json({ 
+      error: 'Error crítico en el servidor', 
+      details: error.message,
+      hint: 'Revisa que el archivo tenga el formato correcto y variables de entorno configuradas.'
+    }, { status: 500 });
   }
 }
+

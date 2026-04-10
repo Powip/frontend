@@ -2,18 +2,18 @@ import { NextResponse } from 'next/server';
 import { createRouteClient } from '@/utils/supabase/api';
 
 export async function GET(request: Request) {
-  const supabase = await createRouteClient(request);
-  const { searchParams } = new URL(request.url);
-
-  const stage = searchParams.get('stage');
-  const source = searchParams.get('source');
-  const assignedTo = searchParams.get('assigned_to');
-  const search = searchParams.get('search');
-  const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '200');
-  const offset = (page - 1) * limit;
-
   try {
+    const supabase = await createRouteClient(request);
+    const { searchParams } = new URL(request.url);
+
+    const stage = searchParams.get('stage');
+    const source = searchParams.get('source');
+    const assignedTo = searchParams.get('assigned_to');
+    const search = searchParams.get('search');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '200');
+    const offset = (page - 1) * limit;
+
     // 1. Fetch all leads (Simplified: removed synchronous landing_leads import for stability)
     let query = supabase
       .from('leads')
@@ -55,9 +55,10 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = await createRouteClient(request);
   try {
+    const supabase = await createRouteClient(request);
     const body = await request.json();
+
     const {
       contact_name,
       business_name,

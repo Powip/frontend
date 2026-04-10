@@ -6,18 +6,18 @@ const API_COMPANY = process.env.NEXT_PUBLIC_API_COMPANY;
 const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS;
 
 export async function GET(request: Request) {
-  const supabase = await createRouteClient(request);
-  const authHeader = request.headers.get("Authorization");
-
-  if (!authHeader) {
-    return NextResponse.json({ error: "No authorization header" }, { status: 401 });
-  }
-
-  const config = {
-    headers: { Authorization: authHeader }
-  };
-
   try {
+    const supabase = await createRouteClient(request);
+    const authHeader = request.headers.get("Authorization");
+
+    if (!authHeader) {
+      return NextResponse.json({ error: "No authorization header" }, { status: 401 });
+    }
+
+    const config = {
+      headers: { Authorization: authHeader }
+    };
+
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
