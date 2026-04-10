@@ -256,6 +256,14 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
                           Desde Sheet
                         </Badge>
                       )}
+                      {lead.is_landing && (
+                        <Badge 
+                          variant="outline" 
+                          className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0 border-blue-200 bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800"
+                        >
+                          Landing Page
+                        </Badge>
+                      )}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs font-medium text-gray-500">
