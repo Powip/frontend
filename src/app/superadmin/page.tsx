@@ -189,7 +189,8 @@ export default function SuperadminPage() {
 
   const { data: leads = [], isLoading: isLoadingLeads } = useLeads(auth?.accessToken);
   const { data: saasMetrics, isLoading: isLoadingMetrics } = useSaasMetrics(auth?.accessToken, dateRange.from, dateRange.to);
-  const { data: churnAlerts = [], refetch: refetchAlerts } = useChurnAlerts(auth?.accessToken);
+  const { data: churnData, refetch: refetchAlerts } = useChurnAlerts(auth?.accessToken);
+  const churnAlerts = churnData?.alerts || [];
   const { data: funnelData, isLoading: isLoadingFunnel } = useConversionFunnel(auth?.accessToken, dateRange.from, dateRange.to);
 
   useEffect(() => {
