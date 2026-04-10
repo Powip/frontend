@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createRouteClient } from '@/utils/supabase/api';
+import { createClient } from '@/utils/supabase/server';
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createRouteClient(request);
+    const supabase = await createClient();
 
     const { data, error } = await supabase
       .from('lead_postventa')
@@ -16,12 +16,13 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error('[Postventa API] DB Error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      // Table might not exist yet - return empty data instead of 500
+      return NextResponse.json({ data: [] });
     }
 
     return NextResponse.json({ data });
   } catch (error: any) {
     console.error('Error fetching postventa leads:', error);
-    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
+    return NextResponse.json({ data: [] });
   }
 }

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
-import { createRouteClient } from '@/utils/supabase/api';
+import { createClient } from '@/utils/supabase/server';
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createRouteClient(request);
+    const supabase = await createClient();
     const { searchParams } = new URL(request.url);
 
     const stage = searchParams.get('stage');
@@ -103,7 +103,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createRouteClient(request);
+    const supabase = await createClient();
     const body = await request.json();
 
     const {
