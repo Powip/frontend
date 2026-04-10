@@ -6,8 +6,9 @@ const API_COMPANY = process.env.NEXT_PUBLIC_API_COMPANY;
 const API_AUTH = process.env.NEXT_PUBLIC_API_USERS?.replace("/api/v1", "");
 
 export async function GET(request: Request) {
-  const supabase = createRouteClient(request);
+  const supabase = await createRouteClient(request);
   const authHeader = request.headers.get("Authorization");
+
 
   if (!authHeader) {
     return NextResponse.json({ error: "No authorization header" }, { status: 401 });

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createRouteClient } from '@/utils/supabase/api';
 
 export async function GET(request: Request) {
-  const supabase = createRouteClient(request);
+  const supabase = await createRouteClient(request);
 
   try {
     const { data, error } = await supabase
@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = createRouteClient(request);
+  const supabase = await createRouteClient(request);
 
   try {
     const body = await request.json();

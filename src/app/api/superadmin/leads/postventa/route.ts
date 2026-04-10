@@ -2,15 +2,15 @@ import { NextResponse } from 'next/server';
 import { createRouteClient } from '@/utils/supabase/api';
 
 export async function GET(request: Request) {
-  const supabase = createRouteClient(request);
+  const supabase = await createRouteClient(request);
 
   try {
     const { data, error } = await supabase
       .from('lead_postventa')
       .select(`
         *,
-        lead:leads(id, contact_name, business_name, phone_whatsapp, email, source, created_at),
-        activation:lead_activations(id, plan, activation_date, activation_status)
+        lead:leads(contact_name, business_name, phone_whatsapp, email),
+        activation:lead_activations(activation_date, plan)
       `)
       .order('created_at', { ascending: false });
 
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({ data });
   } catch (error: any) {
-    console.error('Error fetching postventa:', error);
+    console.error('Error fetching postventa leads:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }

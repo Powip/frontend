@@ -5,8 +5,9 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const supabase = createRouteClient(request);
+  const supabase = await createRouteClient(request);
   const { id } = await params;
+
   const body = await request.json();
 
   try {

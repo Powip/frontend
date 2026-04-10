@@ -2,7 +2,7 @@ import { createRouteClient } from "@/utils/supabase/api";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
-  const supabase = createRouteClient(request);
+  const supabase = await createRouteClient(request);
   const now = new Date();
   
   // Current month
@@ -13,17 +13,18 @@ export async function GET(request: Request) {
   const endOfPreviousMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString();
 
   try {
-    // 1. All leads
+    // 1. All leads (Simplified to basic data first for stability)
     const { data: allLeads, error } = await supabase
       .from("leads")
       .select("id, pipeline_stage, assigned_to, created_at");
 
     if (error) {
-      console.error("Error fetching leads:", error);
+      console.error("[Pipeline Summary] DB Error:", error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     const leads = allLeads || [];
+    // ... logic continues ...
 
     // Current month leads
     const currentMonthLeads = leads.filter(l => l.created_at >= startOfMonth);

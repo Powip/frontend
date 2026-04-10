@@ -1,8 +1,21 @@
 import { createRouteClient } from "@/utils/supabase/api";
 import { NextResponse } from "next/server";
+import axios from "axios";
+
+const API_COMPANY = process.env.NEXT_PUBLIC_API_COMPANY;
+const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS;
 
 export async function GET(request: Request) {
-  const supabase = createRouteClient(request);
+  const supabase = await createRouteClient(request);
+  const authHeader = request.headers.get("Authorization");
+
+  if (!authHeader) {
+    return NextResponse.json({ error: "No authorization header" }, { status: 401 });
+  }
+
+  const config = {
+    headers: { Authorization: authHeader }
+  };
 
   try {
     const { searchParams } = new URL(request.url);
@@ -13,56 +26,63 @@ export async function GET(request: Request) {
     const startDate = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const endDate = to || now.toISOString();
 
-    // 1. Leads del mes
-    const { count: totalLeads } = await supabase
+    // 1. Leads del mes (Public Schema)
+    const { count: totalLeads, error: err1 } = await supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
       .gte("created_at", startDate)
       .lte("created_at", endDate);
 
-    // 2. Prospectos (Contactados o más allá)
-    const { count: prospects } = await supabase
+    if (err1) throw err1;
+
+    // 2. Prospectos (Public Schema)
+    const { count: prospects, error: err2 } = await supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
       .gte("created_at", startDate)
       .lte("created_at", endDate)
       .neq("pipeline_stage", "nuevo");
 
-    // 3. Cerrados (Activados como negocio)
-    const { count: closed } = await supabase
+    if (err2) throw err2;
+
+    // 3. Cerrados (Public Schema)
+    const { count: closed, error: err3 } = await supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
       .gte("created_at", startDate)
       .lte("created_at", endDate)
       .eq("pipeline_stage", "cerrado");
 
-    // 4. Clientes Activos (Al menos 1 pedido en el mes)
-    const { data: activeOrders } = await supabase
-      .from("orderHeader")
-      .select("storeId")
-      .gte("created_at", startDate)
-      .lte("created_at", endDate);
+    if (err3) throw err3;
 
-    const storeIds = Array.from(new Set(activeOrders?.map(o => o.storeId).filter(Boolean)));
-    let uniqueActiveBusinesses = 0;
+    // 4. Clientes Activos (Fetch via Microservices for cross-schema data)
+    let activeCount = 0;
     
-    if (storeIds.length > 0) {
-      const { data: activeStores } = await supabase
-        .from("stores")
-        .select("company_id")
-        .in("id", storeIds);
+    try {
+      if (API_COMPANY) {
+        const companiesRes = await axios.get(`${API_COMPANY}/company`, config);
+        const companies = Array.isArray(companiesRes.data) ? companiesRes.data : [];
         
-      uniqueActiveBusinesses = new Set(activeStores?.map(s => s.company_id).filter(Boolean)).size;
+        // Count companies that are active (this matches saas-metrics logic)
+        activeCount = companies.filter((c: any) => 
+          c.is_active || c.status?.toUpperCase() === 'ACTIVE'
+        ).length;
+      }
+    } catch (apiErr) {
+      console.warn("Falling back for active count due to API error:", apiErr);
+      // If API fails, we could use the 'closed' count as a conservative estimate
+      activeCount = closed || 0;
     }
 
     return NextResponse.json({
       leads: totalLeads || 0,
       prospects: prospects || 0,
       closed: closed || 0,
-      active: uniqueActiveBusinesses || 0,
+      active: activeCount || 0,
     });
   } catch (err: any) {
     console.error("Error fetching conversion funnel:", err);
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+

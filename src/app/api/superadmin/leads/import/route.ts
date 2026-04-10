@@ -1,135 +1,120 @@
-import { createClient } from '@/utils/supabase/server';
 import { NextResponse } from 'next/server';
-
-export const dynamic = 'force-dynamic';
-
-const normalizePhone = (phone: string) => {
-  if (!phone) return "";
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length === 9) return "+51" + digits;
-  if (digits.startsWith("51") && digits.length === 11) return "+" + digits;
-  if (digits.length > 0) return "+" + digits;
-  return "";
-};
+import { createRouteClient } from '@/utils/supabase/api';
+import * as XLSX from 'xlsx';
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
+  const supabase = await createRouteClient(request);
+  
   try {
-    const body = await request.json();
+    const formData = await request.formData();
+    const file = formData.get('file') as File;
     
-    const {
-      contact_name,
-      business_name,
-      phone_whatsapp: rawPhone,
-      email,
-      source = 'google_form',
-      pipeline_stage = 'nuevo',
-      plan_interest = 'basic',
-      sheet_row_id,
-      observations
-    } = body;
-
-    const phone_whatsapp = normalizePhone(rawPhone);
-
-    if (!rawPhone) {
-      return NextResponse.json(
-        { error: 'phone_whatsapp is required' },
-        { status: 400 }
-      );
+    if (!file) {
+      return NextResponse.json({ error: 'No se recibió ningún archivo' }, { status: 400 });
     }
 
-    let existingLead = null;
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const sheetName = workbook.SheetNames[0];
+    const sheet = workbook.Sheets[sheetName];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
 
-    // 1. Try resolving by sheet_row_id first if provided
-    if (sheet_row_id) {
-      const { data } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('sheet_row_id', sheet_row_id)
-        .single();
-      existingLead = data;
+    if (!rows || rows.length <= 1) {
+      return NextResponse.json({ error: 'El archivo está vacío o no tiene datos' }, { status: 400 });
     }
 
-    // 2. If no match by sheet_row_id, try resolving via normalized phone (fallback for Webhooks)
-    if (!existingLead && phone_whatsapp) {
-      const { data } = await supabase
-        .from('leads')
-        .select('*')
-        .eq('phone_whatsapp', phone_whatsapp)
-        .limit(1)
-        .single();
-      existingLead = data;
-    }
+    // Skip header row
+    const dataRows = rows.slice(1);
+    const importedLeads = [];
+    let importedCount = 0;
 
-    let resultData;
-    let actionLog = '';
+    const normalizePhone = (phone: any) => {
+      if (!phone) return '';
+      const s = String(phone).replace(/\D/g, '');
+      if (s.length === 9) return '+51' + s;
+      if (s.startsWith('51') && s.length === 11) return '+' + s;
+      return '+' + s;
+    };
 
-    if (existingLead) {
-      // Setup payload for update
-      const updatePayload: any = {
+    const parseOrders = (val: any) => {
+      if (!val) return null;
+      const match = String(val).match(/\d+/);
+      return match ? parseInt(match[0]) : null;
+    };
+
+    const parseDate = (val: any) => {
+      if (!val) return null;
+      try {
+        const d = new Date(val);
+        return isNaN(d.getTime()) ? null : d.toISOString();
+      } catch {
+        return null;
+      }
+    };
+
+    for (const row of dataRows) {
+      // mapping based on user provide list (0-indexed)
+      const contact_name = String(row[0] || '').trim();
+      const phone_whatsapp = normalizePhone(row[2]);
+      const email = String(row[3] || '').trim();
+      const business_name = String(row[6] || '').trim();
+      const city = String(row[8] || '').trim();
+      const orders_per_day = parseOrders(row[13]);
+      const estadoRaw = String(row[18] || '').toLowerCase();
+      const demo_date = parseDate(row[19]);
+
+      if (!contact_name || !phone_whatsapp) continue;
+
+      // Map ESTADO to pipeline_stage
+      let pipeline_stage = 'nuevo';
+      if (estadoRaw.includes('contact')) pipeline_stage = 'contactado';
+      if (estadoRaw.includes('demo') || estadoRaw.includes('agend')) pipeline_stage = 'demo_agendada';
+      if (estadoRaw.includes('cerrado') || estadoRaw.includes('exito')) pipeline_stage = 'cerrado';
+      if (estadoRaw.includes('perdido') || estadoRaw.includes('rechaz')) pipeline_stage = 'perdido';
+
+      const leadData = {
+        contact_name,
+        phone_whatsapp,
+        email,
+        business_name,
+        city,
+        orders_per_day,
+        pipeline_stage,
+        demo_scheduled_at: demo_date,
+        source: 'otro', // Manual import
+        imported_from_sheet: true,
         updated_at: new Date().toISOString(),
       };
-      
-      // We only update non-empty webhook fields so we don't accidentally erase data
-      if (contact_name) updatePayload.contact_name = contact_name;
-      if (business_name) updatePayload.business_name = business_name;
-      if (email) updatePayload.email = email;
-      if (observations) updatePayload.observations = observations;
-      if (sheet_row_id && !existingLead.sheet_row_id) {
-        updatePayload.sheet_row_id = sheet_row_id;
+
+      // Perform upsert by phone or email
+      // We prioritize phone_whatsapp as unique identifier for leads in this logic
+      const { data: lead, error: upsertError } = await supabase
+        .from('leads')
+        .upsert(leadData, { onConflict: 'phone_whatsapp' })
+        .select()
+        .single();
+
+      if (!upsertError && lead) {
+        importedCount++;
+        // Log Activity
+        await supabase.from('lead_activities').insert({
+          lead_id: lead.id,
+          activity_type: 'other',
+          description: 'Lead importado mediante carga manual de Excel/CSV',
+        });
+      } else if (upsertError) {
+        console.error('[Import API] Upsert Error:', upsertError);
       }
-      
-      const { data: updatedLead, error } = await supabase
-        .from('leads')
-        .update(updatePayload)
-        .eq('id', existingLead.id)
-        .select()
-        .single();
-
-      if (error) throw error;
-      resultData = updatedLead;
-      actionLog = 'Lead actualizado mediante Webhook';
-    } else {
-      // Create new lead
-      const generateRowId = `webhook_${Date.now()}`;
-      
-      const { data: newLead, error } = await supabase
-        .from('leads')
-        .insert({
-          contact_name,
-          business_name,
-          phone_whatsapp,
-          email,
-          source,
-          pipeline_stage,
-          plan_interest,
-          sheet_row_id: sheet_row_id || generateRowId,
-          imported_from_sheet: true,
-          observations,
-        })
-        .select()
-        .single();
-
-      if (error) throw error;
-      resultData = newLead;
-      actionLog = 'Nuevo lead creado mediante Webhook';
     }
 
-    // Register activity
-    if (resultData) {
-       await supabase.from("lead_activities").insert({
-         lead_id: resultData.id,
-         activity_type: "importado",
-         description: `${actionLog}. Origen: ${source}. Tel: ${phone_whatsapp}`,
-       });
-    }
+    return NextResponse.json({ 
+      success: true, 
+      message: `Se importaron ${importedCount} leads correctamente`,
+      imported: importedCount 
+    });
 
-    return NextResponse.json(
-      { message: actionLog, data: resultData },
-      { status: 200 }
-    );
   } catch (error: any) {
-    console.error('[Webhook] Unexpected error in lead import:', error);
-    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
+    console.error('[Import API] Crash:', error);
+    return NextResponse.json({ error: 'Error interno del servidor', details: error.message }, { status: 500 });
   }
 }
