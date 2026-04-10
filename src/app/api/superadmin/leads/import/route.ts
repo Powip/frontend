@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
+import { createAdminClient as createClient } from '@/utils/supabase/admin';
 import * as XLSX from 'xlsx';
 
 export async function POST(request: Request) {
@@ -112,20 +112,21 @@ export async function POST(request: Request) {
       }, { status: 500 });
     }
 
-    // 3. Log bulk activity
-    const { data: { user } } = await supabase.auth.getUser();
+    // 3. Log bulk activity (best effort, don't fail if lead_activities doesn't exist)
     if (upsertedData && upsertedData.length > 0) {
-      const activities = upsertedData.map(lead => ({
-        lead_id: lead.id,
-        activity_type: 'other',
-        description: `Lead importado mediante carga manual de Excel (${validLeads.length} total)`,
-        performed_by: user?.id || null
-      }));
+      try {
+        const activities = upsertedData.map(lead => ({
+          lead_id: lead.id,
+          activity_type: 'other',
+          description: `Lead importado mediante carga manual de Excel (${validLeads.length} total)`,
+        }));
 
-      // Insert activities in chunks to avoid URL limit or payload limit issues if very large
-      const chunkSize = 50;
-      for (let i = 0; i < activities.length; i += chunkSize) {
-        await supabase.from('lead_activities').insert(activities.slice(i, i + chunkSize));
+        const chunkSize = 50;
+        for (let i = 0; i < activities.length; i += chunkSize) {
+          await supabase.from('lead_activities').insert(activities.slice(i, i + chunkSize));
+        }
+      } catch (actErr) {
+        console.warn('[Import API] Activity logging failed (non-critical):', actErr);
       }
     }
 
