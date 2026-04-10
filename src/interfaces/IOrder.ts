@@ -66,6 +66,18 @@ export type OrderStatus =
   | "ANULADO";
 
 /* -----------------------------------------
+   ✅ NUEVO: Estados de Shalom
+----------------------------------------- */
+export type ShalomStatus =
+  | "PENDIENTE" // Registrado exitosamente, esperando despacho
+  | "EXITOSO" // Alternativa a PENDIENTE
+  | "FALLIDO" // Registro fallido
+  | "EN_TRANSITO" // En camino (del tracking de Shalom)
+  | "ENTREGADO" // Entregado (del tracking de Shalom)
+  | "DEVUELTO" // Devuelto al remitente
+  | "CANCELADO"; // Cancelado
+
+/* -----------------------------------------
    Sub-entidades
 ----------------------------------------- */
 export interface OrderCustomer {
@@ -150,15 +162,27 @@ export interface OrderHeader {
   items: OrderItem[];
   payments: OrderPayment[];
   hasStockIssue?: boolean;
+
+  // ========================================
+  // ✅ CAMPOS DE TRACKING EXISTENTES
+  // ========================================
   externalTrackingNumber?: string | null;
   shippingCode?: string | null;
   shippingKey?: string | null;
   shippingOffice?: string | null;
   shippingProofUrl?: string | null;
-  sellerName?: string | null;
+  trackingUrl?: string | null;
   carrierShippingCost?: string | number | null;
+
+  // ========================================
+  // ✅ NUEVOS CAMPOS DE SHALOM
+  // ========================================
+  shalomStatus?: ShalomStatus | null; // ⬅️ NUEVO: Estado del envío en Shalom
+  shalomError?: string | null; // ⬅️ NUEVO: Mensaje de error si falló
+
+  // Campos existentes
+  sellerName?: string | null;
   externalSource?: string | null;
   created_at: string;
-
   updated_at: string;
 }

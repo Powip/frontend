@@ -99,6 +99,7 @@ export interface ShippingGuideData {
   notes?: string | null;
   trackingUrl?: string | null;
   shippingKey?: string | null;
+  shippingCode?: string | null;
   shippingOffice?: string | null;
   shippingProofUrl?: string | null;
   created_at: string;
@@ -147,6 +148,10 @@ interface OrderReceipt {
     subtotal: number;
     discountAmount: number;
     attributes?: Record<string, any>;
+    isPromoItem?: boolean;
+    addedByUserId?: string | null;
+    addedByUserName?: string | null;
+    addedAt?: string | null;
   }[];
   payments: {
     id: string;
@@ -168,6 +173,11 @@ interface OrderReceipt {
   shippingCode?: string | null;
   shippingKey?: string | null;
   shippingOffice?: string | null;
+
+  // Upsell tracking
+  upsellOffered?: boolean;
+  upsellAccepted?: boolean;
+  upsellDetails?: string | null;
 }
 
 export default function CustomerServiceModal({
@@ -1076,9 +1086,16 @@ export default function CustomerServiceModal({
                           key={i}
                           className="border border-border rounded-md p-3 bg-muted"
                         >
-                          <p className="font-medium text-base">
-                            {item.productName}
-                          </p>
+                          <div className="flex items-center justify-between gap-2 mb-1">
+                            <p className="font-medium text-base">
+                              {item.productName}
+                            </p>
+                            {item.isPromoItem && (
+                              <span className="bg-amber-100 text-amber-800 text-[10px] font-bold px-2 py-0.5 rounded whitespace-nowrap">
+                                Promo del Día
+                              </span>
+                            )}
+                          </div>
                           {item.attributes &&
                             Object.keys(item.attributes).length > 0 && (
                               <div className="text-xs text-muted-foreground mt-1">
@@ -2004,6 +2021,31 @@ export default function CustomerServiceModal({
                               )}
                           </div>
                         </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Upsell Tracking */}
+                  {(receipt.upsellOffered || receipt.upsellAccepted) && (
+                    <div className={`border rounded-lg p-4 ${
+                      receipt.upsellAccepted
+                        ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/30"
+                        : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30"
+                    }`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="font-semibold text-green-700 dark:text-green-400">
+                          {receipt.upsellAccepted ? "✓ Upsell Aceptado" : "Upsell Ofrecido"}
+                        </h3>
+                      </div>
+                      {receipt.upsellDetails && (
+                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+                          {receipt.upsellDetails}
+                        </p>
+                      )}
+                      {!receipt.upsellDetails && receipt.upsellOffered && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400">
+                          Se ofreció un producto complementario al cliente
+                        </p>
                       )}
                     </div>
                   )}

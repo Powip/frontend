@@ -18,6 +18,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SourceBadge } from "@/components/shared/SourceBadge";
 import {
   Table,
   TableBody,
@@ -213,6 +214,8 @@ export default function OperacionesPage() {
     useState<SalesFilters>(emptySalesFilters);
   const [filtersAnulados, setFiltersAnulados] =
     useState<SalesFilters>(emptySalesFilters);
+  const [filtersReprogramados, setFiltersReprogramados] =
+    useState<SalesFilters>(emptySalesFilters);
   const [isPrinting, setIsPrinting] = useState(false);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
 
@@ -245,6 +248,9 @@ export default function OperacionesPage() {
   const [selectedAnuladosOpsIds, setSelectedAnuladosOpsIds] = useState<
     Set<string>
   >(new Set());
+  const [selectedReprogramadosIds, setSelectedReprogramadosIds] = useState<
+    Set<string>
+  >(new Set());
 
   // Helper para obtener el set actual según la pestaña
   const getSelectedIdsForActiveTab = useCallback(() => {
@@ -263,6 +269,8 @@ export default function OperacionesPage() {
         return selectedEntregadosIds;
       case "anulados":
         return selectedAnuladosOpsIds;
+      case "reprogramados":
+        return selectedReprogramadosIds;
       default:
         return new Set<string>();
     }
@@ -275,6 +283,7 @@ export default function OperacionesPage() {
     selectedDespachadosIds,
     selectedEntregadosIds,
     selectedAnuladosOpsIds,
+    selectedReprogramadosIds,
   ]);
 
   // Helper para setear el set actual según la pestaña
@@ -301,6 +310,9 @@ export default function OperacionesPage() {
           break;
         case "anulados":
           setSelectedAnuladosOpsIds(newSet);
+          break;
+        case "reprogramados":
+          setSelectedReprogramadosIds(newSet);
           break;
       }
     },
@@ -373,6 +385,14 @@ export default function OperacionesPage() {
 
     return intersection;
   }, [
+    selectedPreparadosIds,
+    selectedNoConfirmadosIds,
+    selectedConfirmadosIds,
+    selectedContactadosIds,
+    selectedDespachadosIds,
+    selectedEntregadosIds,
+    selectedAnuladosOpsIds,
+    selectedReprogramadosIds,
     getSelectedIdsForActiveTab,
     sales,
   ]);
@@ -1058,6 +1078,7 @@ Estado: ${sale.status}
             <TableHead>Region</TableHead>
             <TableHead>Distrito</TableHead>
             <TableHead>Zona</TableHead>
+            <TableHead className="w-[90px] min-w-[90px]">Origen</TableHead>
             <TableHead className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-20 bg-background border-l">
               Resumen
             </TableHead>
@@ -1201,6 +1222,9 @@ Estado: ${sale.status}
                   <span className="text-muted-foreground text-xs">-</span>
                 )}
               </TableCell>
+              <TableCell className="w-[90px] min-w-[90px]">
+                <SourceBadge source={sale.externalSource} />
+              </TableCell>
               <TableCell className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
                 <Button
                   size="sm"
@@ -1305,6 +1329,15 @@ Estado: ${sale.status}
     return applyFilters(statusFiltered, filtersNoConfirmados);
   }, [sales, filtersNoConfirmados]);
 
+  // Reprogramados: status = PREPARADO y callStatus = SCHEDULED
+  const reprogramados = useMemo(() => {
+    const statusFiltered = sales.filter(
+      (s) =>
+        s.status === ORDER_STATUS.PREPARADO && s.callStatus === "SCHEDULED",
+    );
+    return applyFilters(statusFiltered, filtersReprogramados);
+  }, [sales, filtersReprogramados]);
+
   // Confirmados: status = LLAMADO (ya confirmaron)
   const confirmados = useMemo(() => {
     const statusFiltered = sales.filter(
@@ -1393,19 +1426,22 @@ Estado: ${sale.status}
             <TabsTrigger value="preparados">
               Preparados ({preparados.length})
             </TabsTrigger>
-            <TabsTrigger value="no_confirmados" className="text-red-600">
+            <TabsTrigger value="no_confirmados" className="text-red-600 dark:text-red-400">
               No Confirmados ({noConfirmados.length})
             </TabsTrigger>
-            <TabsTrigger value="contactados" className="text-green-600">
+            <TabsTrigger value="reprogramados" className="text-indigo-600 dark:text-indigo-400">
+              Reprogramados ({reprogramados.length})
+            </TabsTrigger>
+            <TabsTrigger value="contactados" className="text-green-600 dark:text-green-400">
               Contactados ({contactados.length})
             </TabsTrigger>
             <TabsTrigger value="despachados">
               En Envío ({despachados.length})
             </TabsTrigger>
-            <TabsTrigger value="entregados" className="text-green-700">
+            <TabsTrigger value="entregados" className="text-green-700 dark:text-green-400">
               Entregados ({entregadosAll.length})
             </TabsTrigger>
-            <TabsTrigger value="anulados" className="text-gray-500">
+            <TabsTrigger value="anulados" className="text-gray-500 dark:text-gray-400">
               Anulados ({anuladosAll.length})
             </TabsTrigger>
           </TabsList>
@@ -1454,7 +1490,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    className="w-full lg:w-auto bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30 border-green-200 dark:border-green-800"
                     disabled={
                       preparados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1501,9 +1537,9 @@ Estado: ${sale.status}
 
           {/* Tab No Confirmados */}
           <TabsContent value="no_confirmados">
-            <Card className="border-red-200">
-              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-red-50">
-                <CardTitle className="text-red-700">
+            <Card className="border-red-200 dark:border-red-900/50">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-red-50 dark:bg-red-950/20">
+                <CardTitle className="text-red-700 dark:text-red-400">
                   Pedidos NO CONFIRMADOS
                 </CardTitle>
                 <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
@@ -1549,7 +1585,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    className="w-full lg:w-auto bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30 border-green-200 dark:border-green-800"
                     disabled={
                       noConfirmados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1593,6 +1629,101 @@ Estado: ${sale.status}
               />
             </Card>
           </TabsContent>
+          
+          {/* Tab Reprogramados */}
+          <TabsContent value="reprogramados">
+            <Card className="border-indigo-200 dark:border-indigo-900/50">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-indigo-50 dark:bg-indigo-950/20">
+                <CardTitle className="text-indigo-700 dark:text-indigo-400">
+                  Pedidos REPROGRAMADOS
+                </CardTitle>
+                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                  <BulkStatusSelect
+                    selectedCount={selectedSaleIds.size}
+                    availableStatuses={bulkAvailableStatuses}
+                    onStatusChange={handleBulkStatusChange}
+                    isLoading={isBulkLoading}
+                  />
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto"
+                    disabled={
+                      reprogramados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0 || isPrinting
+                    }
+                    onClick={() => handleBulkPrintForStatus(reprogramados)}
+                  >
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir seleccionados (
+                    {
+                      reprogramados.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto"
+                    disabled={
+                      reprogramados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleCopySelected(reprogramados)}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copiar seleccionados (
+                    {
+                      reprogramados.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
+                    )
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30 border-green-200 dark:border-green-800"
+                    disabled={
+                      reprogramados.filter((s) => selectedSaleIds.has(s.id))
+                        .length === 0
+                    }
+                    onClick={() => handleBulkWhatsApp(reprogramados)}
+                  >
+                    <MessageCircle className="h-4 w-4 mr-2" />
+                    WhatsApp Masivo (
+                    {reprogramados.filter((s) => selectedSaleIds.has(s.id)).length}
+                    )
+                  </Button>
+                  {auth?.user?.role === "ADMIN" && (
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      onClick={() =>
+                        handleExportExcel(reprogramados, "reprogramados")
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Exportar Excel
+                    </Button>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                <SalesTableFilters
+                  filters={filtersReprogramados}
+                  onFiltersChange={setFiltersReprogramados}
+                  showRegionFilter={true}
+                />
+                {renderTable(reprogramados, true, false)}
+              </CardContent>
+              <Pagination
+                currentPage={1}
+                totalPages={Math.ceil(reprogramados.length / 10) || 1}
+                totalItems={reprogramados.length}
+                itemsPerPage={10}
+                onPageChange={() => {}}
+                itemName="pedidos"
+              />
+            </Card>
+          </TabsContent>
 
           {/* Tab Contactados */}
           <TabsContent value="contactados">
@@ -1620,7 +1751,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full sm:w-auto border-emerald-600 text-emerald-600 hover:bg-emerald-50"
+                    className="w-full sm:w-auto border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
                     disabled={
                       getSelectedLlamadosForGuide().length === 0 ||
                       isAddingToGuide
@@ -1666,7 +1797,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full sm:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    className="w-full sm:w-auto bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30 border-green-200 dark:border-green-800"
                     disabled={
                       contactados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1761,7 +1892,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    className="w-full lg:w-auto bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30 border-green-200 dark:border-green-800"
                     disabled={
                       despachados.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0
@@ -1814,7 +1945,7 @@ Estado: ${sale.status}
           <TabsContent value="entregados">
             <Card>
               <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <CardTitle className="text-green-700">
+                <CardTitle className="text-green-700 dark:text-green-400">
                   Pedidos Entregados
                 </CardTitle>
                 <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
@@ -1860,7 +1991,7 @@ Estado: ${sale.status}
                   </Button>
                   <Button
                     variant="outline"
-                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                    className="w-full lg:w-auto bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30 border-green-200 dark:border-green-800"
                     disabled={
                       entregadosAll.filter((s) => selectedSaleIds.has(s.id))
                         .length === 0

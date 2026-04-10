@@ -13,6 +13,7 @@ import { MessageSquare, Send, Clock, User, Settings, MessageCircle } from "lucid
 import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { shouldDisplayNote } from "@/lib/logFilters";
 
 interface LogEntry {
   id: number;
@@ -144,13 +145,20 @@ export default function CommentsTimelineModal({
             </div>
           ) : (
             <div className="space-y-4">
-              {logs.map((log, index) => (
-                <div
-                  key={log.id}
-                  className={`relative pl-6 pb-4 ${
-                    index < logs.length - 1 ? "border-l-2 border-muted ml-2" : "ml-2"
-                  }`}
-                >
+              {logs
+                .filter(
+                  (log) =>
+                    !log.isSystemGenerated || shouldDisplayNote(log.comentarios),
+                )
+                .map((log, index, filteredLogs) => (
+                  <div
+                    key={log.id}
+                    className={`relative pl-6 pb-4 ${
+                      index < filteredLogs.length - 1
+                        ? "border-l-2 border-muted ml-2"
+                        : "ml-2"
+                    }`}
+                  >
                   {/* Dot */}
                   <div
                     className={`absolute -left-[9px] top-0 w-4 h-4 rounded-full border-2 flex items-center justify-center ${

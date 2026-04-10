@@ -32,6 +32,7 @@ import {
   Camera,
   ImageIcon,
   CheckCircle2,
+  XCircle,
   Lock,
   Eye,
   EyeOff,
@@ -45,10 +46,12 @@ import PaymentVerificationModal from "./PaymentVerificationModal";
 import SendToShalomModal from "@/components/shalom/SendToShalomModal";
 import { FileSpreadsheet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { 
-  getShalomLabelPdfUrl, 
-  getShalomTicketPdfUrl 
+import {
+  getShalomLabelPdfUrl,
+  getShalomTicketPdfUrl,
 } from "@/services/shalomService";
+import { shouldDisplayNote } from "@/lib/logFilters";
+import { normalizeCourier } from "@/utils/courierNormalizer";
 
 export interface ShippingGuide {
   id: string;
@@ -101,6 +104,7 @@ interface OrderDetail {
     city?: string;
     district?: string;
     address?: string;
+    dni?: string | null;
   };
   payments: Array<{
     id?: string;
@@ -119,14 +123,35 @@ interface OrderDetail {
     totalPaid: number;
     pendingAmount: number;
   };
-  // Campos de tracking por pedido
+
+  // ✅ AGREGAR AMBAS VERSIONES (snake_case Y camelCase)
   externalTrackingNumber?: string | null;
+  external_tracking_number?: string | null; // ⬅️ NUEVA
+
   shippingKey?: string | null;
+  shipping_key?: string | null; // ⬅️ NUEVA
+
   trackingUrl?: string | null;
+  tracking_url?: string | null; // ⬅️ NUEVA
+
   shippingOffice?: string | null;
+  shipping_office?: string | null; // ⬅️ NUEVA
+
   shippingCode?: string | null;
+  shipping_code?: string | null; // ⬅️ NUEVA
+
   shippingProofUrl?: string | null;
+  shipping_proof_url?: string | null; // ⬅️ NUEVA
+
   carrierShippingCost?: number | null;
+  carrier_shipping_cost?: number | null; // ⬅️ NUEVA
+
+  shalomStatus?: string | null;
+  shalom_status?: string | null; // ⬅️ NUEVA
+
+  shalomError?: string | null;
+  shalom_error?: string | null; // ⬅️ NUEVA
+
   trackingInfo?: {
     orderNumber: string;
     orderCode: string;
@@ -174,6 +199,14 @@ const ORDER_STATUS_COLORS: Record<string, string> = {
   ANULADO: "bg-red-100 text-red-800",
 };
 
+const SHALOM_STATUS_COLORS: Record<string, string> = {
+  PENDIENTE: "bg-blue-100 text-blue-800 border-blue-200",
+  EN_ENVIO: "bg-amber-100 text-amber-800 border-amber-200",
+  ENTREGADO: "bg-green-100 text-green-800 border-green-200",
+  EXITOSO: "bg-green-100 text-green-800 border-green-200",
+  FALLIDO: "bg-red-100 text-red-800 border-red-200",
+};
+
 const CHARGE_TYPE_LABELS: Record<string, string> = {
   PREPAGADO: "Prepagado",
   CONTRA_ENTREGA: "Contra entrega",
@@ -187,24 +220,6 @@ const COURIERS = [
   "Marvisur",
   "Flores",
 ];
-
-const COURIER_NORMALIZE_MAP: Record<string, string> = {
-  MOTORIZADO_PROPIO: "Motorizado Propio",
-  "Motorizado Propio": "Motorizado Propio",
-  SHALOM: "Shalom",
-  Shalom: "Shalom",
-  OLVA_COURIER: "Olva Courier",
-  "Olva Courier": "Olva Courier",
-  MARVISUR: "Marvisur",
-  Marvisur: "Marvisur",
-  FLORES: "Flores",
-  Flores: "Flores",
-};
-
-const normalizeCourier = (courier?: string | null): string => {
-  if (!courier) return "";
-  return COURIER_NORMALIZE_MAP[courier] || courier;
-};
 
 export default function GuideDetailsModal({
   open,
@@ -232,7 +247,9 @@ export default function GuideDetailsModal({
     id: string;
     number: string;
   } | null>(null);
-  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   // Estado para tracking por pedido (key = orderId)
   const [orderTrackingFields, setOrderTrackingFields] = useState<
@@ -251,7 +268,6 @@ export default function GuideDetailsModal({
   // Upload de foto de entrega
   const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
   const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
-  
 
   const toggleKeyReveal = (orderId: string) => {
     setRevealedKeys((prev) => ({
@@ -276,9 +292,9 @@ export default function GuideDetailsModal({
       setGuide(res.data);
 
       if (res.data?.courierName) {
-        setSelectedCourier(normalizeCourier(res.data.courierName));
+        setSelectedCourier(normalizeCourier(res.data.courierName) || "");
       } else if (defaultCourier) {
-        setSelectedCourier(normalizeCourier(defaultCourier));
+        setSelectedCourier(normalizeCourier(defaultCourier) || "");
       }
 
       // Fetch order details for all orders in the guide using /receipt endpoint
@@ -293,6 +309,14 @@ export default function GuideDetailsModal({
           ...r.data,
           id: r.data.id || r.data.orderId || "",
         }));
+        // 🔥 DEBUG: Ver qué datos llegan del endpoint
+        console.log("📦 ORDERS LOADED:", orders);
+        console.log("📦 FIRST ORDER FIELDS:", {
+          shalomStatus: orders[0]?.shalomStatus,
+          shalom_status: orders[0]?.shalom_status,
+          externalTrackingNumber: orders[0]?.externalTrackingNumber,
+          external_tracking_number: orders[0]?.external_tracking_number,
+        });
         setOrdersDetails(orders);
 
         // Inicializar tracking fields por cada pedido
@@ -365,7 +389,6 @@ export default function GuideDetailsModal({
     }));
   };
 
-
   const openDocument = (url: string) => {
     window.open(url, "_blank");
   };
@@ -414,7 +437,7 @@ export default function GuideDetailsModal({
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`,
         {
           status: "APROBADA",
-          courierName: guide.courierName,
+          courierName: normalizeCourier(guide.courierName), // ✅ Normalizar antes de guardar
         },
       );
 
@@ -497,7 +520,7 @@ export default function GuideDetailsModal({
   // Desvincular un pedido de la guía
   const handleRemoveOrder = async (orderId: string) => {
     if (!guide) return;
-    
+
     if (confirm("¿Estás seguro de desvincular este pedido de la guía?")) {
       try {
         // 1. Quitar el pedido de la guía en ms-courier
@@ -519,7 +542,9 @@ export default function GuideDetailsModal({
         fetchGuide();
         onGuideUpdated?.();
       } catch (error: any) {
-        toast.error(error?.response?.data?.message || "Error al desvincular pedido");
+        toast.error(
+          error?.response?.data?.message || "Error al desvincular pedido",
+        );
       }
     }
   };
@@ -574,7 +599,9 @@ export default function GuideDetailsModal({
   };
 
   const handleBulkWhatsApp = () => {
-    const selectedOrders = ordersDetails.filter((o) => selectedOrderIds.has(o.id));
+    const selectedOrders = ordersDetails.filter((o) =>
+      selectedOrderIds.has(o.id),
+    );
 
     if (selectedOrders.length === 0) {
       toast.warning("No hay pedidos seleccionados para enviar WhatsApp");
@@ -582,9 +609,13 @@ export default function GuideDetailsModal({
     }
 
     if (selectedOrders.length > 5) {
-      toast.info(`Se abrirán ${selectedOrders.length} ventanas de WhatsApp. Asegúrate de permitir las ventanas emergentes (pop-ups).`);
+      toast.info(
+        `Se abrirán ${selectedOrders.length} ventanas de WhatsApp. Asegúrate de permitir las ventanas emergentes (pop-ups).`,
+      );
     } else {
-      toast.success(`Preparando envío múltiple a ${selectedOrders.length} clientes...`);
+      toast.success(
+        `Preparando envío múltiple a ${selectedOrders.length} clientes...`,
+      );
     }
 
     selectedOrders.forEach((order, index) => {
@@ -593,9 +624,17 @@ export default function GuideDetailsModal({
           order.payments
             ?.filter((p) => p.status === "PAID")
             .reduce((s, p) => s + Number(p.amount), 0) || 0;
-        const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
+        const pending = Math.max(
+          Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid,
+          0,
+        );
 
-        handleWhatsApp(order.customer.phoneNumber, order.orderNumber, order.customer.fullName, pending);
+        handleWhatsApp(
+          order.customer.phoneNumber,
+          order.orderNumber,
+          order.customer.fullName,
+          pending,
+        );
       }, index * 600);
     });
   };
@@ -611,7 +650,10 @@ export default function GuideDetailsModal({
         order.payments
           ?.filter((p) => p.status === "PENDING_APPROVAL")
           .reduce((s, p) => s + Number(p.amount), 0) || 0;
-      const totalPending = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid - pendingApproval;
+      const totalPending =
+        Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) -
+        paid -
+        pendingApproval;
 
       return {
         totalPending: acc.totalPending + Math.max(totalPending, 0),
@@ -725,13 +767,14 @@ export default function GuideDetailsModal({
     // Filas de datos
     ordersDetails.forEach((order: OrderDetail) => {
       // /receipt endpoint retorna el total bajo totals.grandTotal
-      const grandTotal = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0);
+      const grandTotal = Number(
+        order.totals?.grandTotal ?? order.grandTotal ?? 0,
+      );
       const adelanto =
         order.payments
           ?.filter((p) => p.status === "PAID")
           .reduce((s, p) => s + Number(p.amount), 0) ?? 0;
       const saldo = Math.max(grandTotal - adelanto, 0);
-
 
       const productosStr = (order.items ?? [])
         .map((item) => {
@@ -852,7 +895,11 @@ export default function GuideDetailsModal({
                 order.payments
                   ?.filter((p) => p.status === "PAID")
                   .reduce((s, p) => s + Number(p.amount), 0) || 0;
-              const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
+              const pending = Math.max(
+                Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) -
+                  paid,
+                0,
+              );
               return `
               <div class="order">
                 <div class="order-header">
@@ -899,843 +946,1076 @@ export default function GuideDetailsModal({
     }
   };
 
-  // Imprimir comprobantes de envío
-  const handlePrintReceipts = async () => {
+  // Imprimir etiquetas de envío (una ventana, múltiples páginas)
+  const handlePrintShippingLabels = () => {
     if (ordersDetails.length === 0) {
       toast.warning("No hay pedidos para imprimir");
       return;
     }
 
-    toast.info(`Preparando ${ordersDetails.length} comprobante(s) de envío...`);
+    const company = auth?.company;
+    const companyName = company?.name || "MI EMPRESA";
+    const companyCuit = company?.cuit || "";
+    const companyAddress = company?.billingAddress || "";
+    const companyPhone = company?.phone || "";
+    const courierName = guide?.courierName || "COURIER";
 
-    // Generar todos los comprobantes
-    for (const order of ordersDetails) {
-      const content = `
-        <html>
-        <head>
-          <title>Comprobante ${order.orderNumber}</title>
-          <style>
-            body { font-family: Arial; padding: 15px; font-size: 11px; max-width: 280px; margin: 0 auto; }
-            .header { text-align: center; border-bottom: 1px dashed #000; padding-bottom: 10px; margin-bottom: 10px; }
-            .header h2 { margin: 0 0 5px; font-size: 14px; }
-            .section { margin-bottom: 10px; }
-            .section-title { font-weight: bold; font-size: 10px; text-transform: uppercase; margin-bottom: 5px; }
-            .row { display: flex; justify-content: space-between; padding: 2px 0; }
-            .items { border-top: 1px dashed #000; border-bottom: 1px dashed #000; padding: 8px 0; }
-            .item { margin-bottom: 5px; }
-            .totals { font-weight: bold; }
-            .pending { color: red; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h2>COMPROBANTE DE ENVÍO</h2>
-            <p>${order.orderNumber}</p>
-          </div>
-          <div class="section">
-            <div class="section-title">Cliente</div>
-            <p>${order.customer.fullName}</p>
-            <p>${order.customer.phoneNumber}</p>
-            <p>${order.customer.district || ""} - ${order.customer.address || ""}</p>
-          </div>
-          <div class="section items">
-            <div class="section-title">Productos</div>
-            ${
-              order.items
-                ?.map(
-                  (item) => `
-              <div class="item">
-                <div class="row">
-                  <span>${item.productName}</span>
-                  <span>x${item.quantity}</span>
-                </div>
-                <div class="row" style="color: #666; font-size: 10px;">
-                  <span>${item.sku}</span>
-                  <span>S/${Number(item.unitPrice).toFixed(2)}</span>
+    // Generar HTML de todas las etiquetas
+    const labelsHtml = ordersDetails
+      .map((order, index) => {
+        const isLast = index === ordersDetails.length - 1;
+        const customerAddress = order.shippingOffice
+          ? `${courierName} ${order.shippingOffice}`
+          : order.customer.address || "-";
+
+        return `
+          <div class="label-page" style="${isLast ? "" : "page-break-after: always;"}">
+            <div class="label-container">
+              <div class="label-header">
+                <div class="company-info">
+                  <strong>${companyName}</strong>
+                  ${companyCuit ? `<br/>${companyCuit}` : ""}
+                  ${companyAddress ? `<br/>${companyAddress}` : ""}
+                  ${companyPhone ? `<br/>${companyPhone}` : ""}
                 </div>
               </div>
-            `,
-                )
-                .join("") || ""
-            }
-          </div>
-          <div class="section totals">
-            <div class="row">
-              <span>TOTAL:</span>
-              <span>S/${Number(order.totals?.grandTotal ?? order.grandTotal ?? 0).toFixed(2)}</span>
-            </div>
-            ${(() => {
-              const paid =
-                order.payments
-                  ?.filter((p) => p.status === "PAID")
-                  .reduce((s, p) => s + Number(p.amount), 0) || 0;
-              const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
-              return pending > 0
-                ? `
-                <div class="row pending">
-                  <span>A COBRAR:</span>
-                  <span>S/${pending.toFixed(2)}</span>
-                </div>
-              `
-                : "";
-            })()}
-          </div>
-          <div style="text-align: center; margin-top: 15px; font-size: 10px; color: #666;">
-            Guía: ${guide?.guideNumber || "-"}<br/>
-            Courier: ${guide?.courierName || "-"}
-          </div>
-        </body>
-        </html>
-      `;
 
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(content);
-        printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
-      }
+              <div class="label-consignado">
+                <div class="consignado-title">CONSIGNADO</div>
+                <strong>${order.customer.fullName}</strong><br/>
+                DNI: ${order.customer.dni || "-"}<br/>
+                Tel: ${order.customer.phoneNumber || "-"}<br/>
+                ${order.customer.province || "-"} - ${order.customer.city || "-"} - ${order.customer.district || "-"}<br/>
+                ${customerAddress}
+              </div>
+
+              <div class="label-courier">
+                <strong>${courierName}</strong><br/>
+                ${order.orderNumber}
+              </div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Etiquetas de Envío — ${guide?.guideNumber || ""}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 400px;
+            margin: 0 auto;
+          }
+          .label-page {
+            margin-bottom: 20px;
+          }
+          .label-container {
+            border: 2px solid #000;
+            padding: 15px;
+            font-size: 11px;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+          }
+          .label-header {
+            text-align: left;
+            margin-bottom: 15px;
+            font-weight: bold;
+          }
+          .company-info {
+            font-size: 9px;
+            line-height: 1.3;
+          }
+          .label-consignado {
+            text-align: right;
+            margin-bottom: 15px;
+            line-height: 1.4;
+          }
+          .consignado-title {
+            font-weight: bold;
+            font-size: 10px;
+            margin-bottom: 3px;
+          }
+          .label-courier {
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            border-top: 1px dashed #000;
+            padding-top: 10px;
+          }
+          @media print {
+            body { padding: 0; }
+            .label-page { margin-bottom: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        ${labelsHtml}
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      toast.success(
+        `${ordersDetails.length} etiqueta(s) enviada(s) a imprimir`,
+      );
     }
   };
 
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Detalles de Guía
-          </DialogTitle>
-        </DialogHeader>
+        <DialogContent className="sm:max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5" />
+              Detalles de Guía
+            </DialogTitle>
+          </DialogHeader>
 
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : guide ? (
-          <div className="space-y-4 py-4">
-            {/* Header con número y estado */}
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-lg font-semibold">{guide.guideNumber}</p>
-                <p className="text-sm text-muted-foreground">
-                  Creada:{" "}
-                  {new Date(guide.created_at).toLocaleDateString("es-PE")}
-                </p>
-              </div>
-              <Badge className={STATUS_COLORS[guide.status]}>
-                {guide.status.replace("_", " ")}
-              </Badge>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-
-            {/* Resumen de la guía en grilla */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-muted/30 rounded-lg">
-              {/* Zona y Tipo */}
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <MapPin className="h-3 w-3" /> Zona
-                </p>
-                <div className="flex flex-wrap gap-1">
-                  {guide.deliveryType && (
-                    <Badge
-                      className={
-                        guide.deliveryType === "MOTO"
-                          ? "bg-blue-100 text-blue-800"
-                          : "bg-orange-100 text-orange-800"
-                      }
-                    >
-                      {guide.deliveryType === "MOTO" ? "🏍️" : "📦"}{" "}
-                      {guide.deliveryType}
-                    </Badge>
-                  )}
-                  {guide.deliveryZones?.map((zone) => (
-                    <Badge key={zone} variant="outline" className="text-xs">
-                      {ZONE_LABELS[zone] || zone}
-                    </Badge>
-                  ))}
-                  {(!guide.deliveryZones || guide.deliveryZones.length === 0) &&
-                    !guide.deliveryType &&
-                    "-"}
-                </div>
-              </div>
-
-              {/* Fecha programada */}
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <Calendar className="h-3 w-3" /> Fecha
-                </p>
-                <p className="font-medium">
-                  {guide.scheduledDate
-                    ? new Date(guide.scheduledDate).toLocaleDateString("es-PE")
-                    : guide.created_at
-                      ? new Date(guide.created_at).toLocaleDateString("es-PE")
-                      : "-"}
-                </p>
-              </div>
-
-              {/* Total pedidos */}
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <ShoppingBag className="h-3 w-3" /> Pedidos
-                </p>
-                <p className="font-medium">{guide.orderIds.length}</p>
-              </div>
-
-              {/* Cobranza total */}
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                  <DollarSign className="h-3 w-3" /> Cobranza Total
-                </p>
-                <p className="font-medium text-red-600">
-                  S/{totalCobranza.toFixed(2)}
-                </p>
-              </div>
-
-              {/* Desglose de cobranza */}
-              {cobranzaStats.totalPending > 0 && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    Pendiente Pago
-                  </p>
-                  <p className="font-medium text-amber-600">
-                    S/{cobranzaStats.totalPending.toFixed(2)}
+          ) : guide ? (
+            <div className="space-y-4 py-4">
+              {/* Header con número y estado */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-lg font-semibold">{guide.guideNumber}</p>
+                  <p className="text-sm text-muted-foreground">
+                    Creada:{" "}
+                    {new Date(guide.created_at).toLocaleDateString("es-PE")}
                   </p>
                 </div>
-              )}
-
-              {cobranzaStats.pendingApproval > 0 && (
-                <div className="space-y-1">
-                  <p className="text-xs text-muted-foreground flex items-center gap-1">
-                    Pend. Aprobación
-                  </p>
-                  <p className="font-medium text-blue-600">
-                    S/{cobranzaStats.pendingApproval.toFixed(2)}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Cobro */}
-            {guide.chargeType && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-muted-foreground">Tipo de cobro:</span>
-                <Badge variant="outline">
-                  {CHARGE_TYPE_LABELS[guide.chargeType]}
+                <Badge className={STATUS_COLORS[guide.status]}>
+                  {guide.status.replace("_", " ")}
                 </Badge>
               </div>
-            )}
 
-            {/* Courier asignado */}
-            <div className="border rounded-lg p-3 space-y-2">
-              <Label className="flex items-center gap-2 text-sm font-medium">
-                <Truck className="h-4 w-4" />
-                Courier / Repartidor
-              </Label>
-              {guide.courierName ? (
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
-                      <User className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">{guide.courierName}</p>
-                      {guide.courierPhone && (
-                        <p className="text-sm text-muted-foreground flex items-center gap-1">
-                          <Phone className="h-3 w-3" />
-                          {guide.courierPhone}
-                        </p>
-                      )}
-                    </div>
+              {/* Resumen de la guía en grilla */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 p-3 bg-muted/30 rounded-lg">
+                {/* Zona y Tipo */}
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <MapPin className="h-3 w-3" /> Zona
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {guide.deliveryType && (
+                      <Badge
+                        className={
+                          guide.deliveryType === "MOTO"
+                            ? "bg-blue-100 text-blue-800"
+                            : "bg-orange-100 text-orange-800"
+                        }
+                      >
+                        {guide.deliveryType === "MOTO" ? "🏍️" : "📦"}{" "}
+                        {guide.deliveryType}
+                      </Badge>
+                    )}
+                    {guide.deliveryZones?.map((zone) => (
+                      <Badge key={zone} variant="outline" className="text-xs">
+                        {ZONE_LABELS[zone] || zone}
+                      </Badge>
+                    ))}
+                    {(!guide.deliveryZones ||
+                      guide.deliveryZones.length === 0) &&
+                      !guide.deliveryType &&
+                      "-"}
                   </div>
-                  <Badge
-                    variant="outline"
-                    className="text-green-600 border-green-600"
-                  >
-                    Asignado
+                </div>
+
+                {/* Fecha programada */}
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Calendar className="h-3 w-3" /> Fecha
+                  </p>
+                  <p className="font-medium">
+                    {guide.scheduledDate
+                      ? new Date(guide.scheduledDate).toLocaleDateString(
+                          "es-PE",
+                        )
+                      : guide.created_at
+                        ? new Date(guide.created_at).toLocaleDateString("es-PE")
+                        : "-"}
+                  </p>
+                </div>
+
+                {/* Total pedidos */}
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <ShoppingBag className="h-3 w-3" /> Pedidos
+                  </p>
+                  <p className="font-medium">{guide.orderIds.length}</p>
+                </div>
+
+                {/* Cobranza total */}
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground flex items-center gap-1">
+                    <DollarSign className="h-3 w-3" /> Cobranza Total
+                  </p>
+                  <p className="font-medium text-red-600">
+                    S/{totalCobranza.toFixed(2)}
+                  </p>
+                </div>
+
+                {/* Desglose de cobranza */}
+                {cobranzaStats.totalPending > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      Pendiente Pago
+                    </p>
+                    <p className="font-medium text-amber-600">
+                      S/{cobranzaStats.totalPending.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+
+                {cobranzaStats.pendingApproval > 0 && (
+                  <div className="space-y-1">
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      Pend. Aprobación
+                    </p>
+                    <p className="font-medium text-blue-600">
+                      S/{cobranzaStats.pendingApproval.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Cobro */}
+              {guide.chargeType && (
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">Tipo de cobro:</span>
+                  <Badge variant="outline">
+                    {CHARGE_TYPE_LABELS[guide.chargeType]}
                   </Badge>
                 </div>
-              ) : (
-                <div className="flex gap-2">
-                  <select
-                    className="flex-1 border rounded-md px-3 py-2 bg-background text-foreground"
-                    value={selectedCourier}
-                    onChange={(e) => setSelectedCourier(e.target.value)}
-                  >
-                    <option value="">Seleccionar courier...</option>
-                    {COURIERS.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    onClick={handleAssignCourier}
-                    disabled={!selectedCourier || assigning}
-                    size="sm"
-                  >
-                    {assigning ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      "Asignar"
-                    )}
-                  </Button>
-                </div>
               )}
-            </div>
 
-
-            {/* Lista de pedidos con detalles */}
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-muted/50 px-3 py-2 border-b flex items-center justify-between">
-                <h4 className="font-medium flex items-center gap-2">
-                  <Package className="h-4 w-4" />
-                  Pedidos ({ordersDetails.length})
-                </h4>
-                <div className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="h-4 w-4 rounded border-gray-300 mr-2"
-                    checked={
-                      ordersDetails.length > 0 &&
-                      selectedOrderIds.size === ordersDetails.length
-                    }
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedOrderIds(new Set(ordersDetails.map((o) => o.id)));
-                      } else {
-                        setSelectedOrderIds(new Set());
-                      }
-                    }}
-                  />
-                  <span className="text-muted-foreground mr-2">Seleccionar todos</span>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
-                    disabled={selectedOrderIds.size === 0}
-                    onClick={handleBulkWhatsApp}
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    WhatsApp Masivo ({selectedOrderIds.size})
-                  </Button>
-                </div>
+              {/* Courier asignado */}
+              <div className="border rounded-lg p-3 space-y-2">
+                <Label className="flex items-center gap-2 text-sm font-medium">
+                  <Truck className="h-4 w-4" />
+                  Courier / Repartidor
+                </Label>
+                {guide.courierName ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 bg-primary/10 rounded-full flex items-center justify-center">
+                        <User className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{guide.courierName}</p>
+                        {guide.courierPhone && (
+                          <p className="text-sm text-muted-foreground flex items-center gap-1">
+                            <Phone className="h-3 w-3" />
+                            {guide.courierPhone}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <Badge
+                      variant="outline"
+                      className="text-green-600 border-green-600"
+                    >
+                      Asignado
+                    </Badge>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <select
+                      className="flex-1 border rounded-md px-3 py-2 bg-background text-foreground"
+                      value={selectedCourier}
+                      onChange={(e) => setSelectedCourier(e.target.value)}
+                    >
+                      <option value="">Seleccionar courier...</option>
+                      {COURIERS.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      onClick={handleAssignCourier}
+                      disabled={!selectedCourier || assigning}
+                      size="sm"
+                    >
+                      {assigning ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        "Asignar"
+                      )}
+                    </Button>
+                  </div>
+                )}
               </div>
-              <div className="divide-y max-h-[300px] overflow-y-auto">
-                {ordersDetails.map((order, idx) => {
-                  const isExpanded = expandedOrders.has(order.id);
-                  const paid =
-                    order.payments
-                      ?.filter((p) => p.status === "PAID")
-                      .reduce((s, p) => s + Number(p.amount), 0) || 0;
-                  const pending = Math.max(Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) - paid, 0);
 
-                  return (
-                    <div key={`${order.id}-${idx}`} className="bg-background">
-                      {/* Header del pedido */}
-                      <div
-                        className="flex items-center justify-between px-3 py-2 hover:bg-muted/30"
-                      >
-                        <div className="flex items-center gap-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedOrderIds.has(order.id)}
-                            onChange={(e) => {
-                              const newSelected = new Set(selectedOrderIds);
-                              if (e.target.checked) newSelected.add(order.id);
-                              else newSelected.delete(order.id);
-                              setSelectedOrderIds(newSelected);
-                            }}
-                            className="h-4 w-4 rounded border-gray-300 mt-0.5"
-                          />
-                          <button className="text-muted-foreground cursor-pointer" onClick={() => toggleOrderExpand(order.id)}>
-                            {isExpanded ? (
-                              <ChevronDown className="h-4 w-4" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4" />
-                            )}
-                          </button>
-                          <div className="cursor-pointer" onClick={() => toggleOrderExpand(order.id)}>
-                            <p className="font-medium">{order.orderNumber}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {order.customer.fullName} •{" "}
-                              {order.customer.district || "-"}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <div className="text-right">
-                            <p className="font-medium">
-                              S/{Number(order.totals?.grandTotal ?? order.grandTotal ?? 0).toFixed(2)}
-                            </p>
-                            {pending > 0 && (
-                              <p className="text-xs text-red-600">
-                                Cobrar: S/{pending.toFixed(2)}
+              {/* Lista de pedidos con detalles */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="bg-muted/50 px-3 py-2 border-b flex items-center justify-between">
+                  <h4 className="font-medium flex items-center gap-2">
+                    <Package className="h-4 w-4" />
+                    Pedidos ({ordersDetails.length})
+                    {/* ✅ AGREGAR CONTADOR DE ESTADOS */}
+                    {normalizeCourier(guide?.courierName) === "Shalom" && (
+                      <div className="flex items-center gap-2 ml-4">
+                        {(() => {
+                          const registered = ordersDetails.filter(
+                            (o) =>
+                              o.shalomStatus === "PENDIENTE" ||
+                              o.shalomStatus === "EXITOSO",
+                          ).length;
+                          const failed = ordersDetails.filter(
+                            (o) => o.shalomStatus === "FALLIDO",
+                          ).length;
+                          const pending = ordersDetails.filter(
+                            (o) => !o.shalomStatus,
+                          ).length;
+
+                          return (
+                            <>
+                              {registered > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-green-50 text-green-700 border-green-200 text-xs"
+                                >
+                                  ✅ {registered} OK
+                                </Badge>
+                              )}
+                              {failed > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-red-50 text-red-700 border-red-200 text-xs"
+                                >
+                                  ❌ {failed} Fallidos
+                                </Badge>
+                              )}
+                              {pending > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-gray-50 text-gray-600 border-gray-300 text-xs"
+                                >
+                                  ⏳ {pending} Sin enviar
+                                </Badge>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </h4>
+                  <div className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 mr-2"
+                      checked={
+                        ordersDetails.length > 0 &&
+                        selectedOrderIds.size === ordersDetails.length
+                      }
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedOrderIds(
+                            new Set(ordersDetails.map((o) => o.id)),
+                          );
+                        } else {
+                          setSelectedOrderIds(new Set());
+                        }
+                      }}
+                    />
+                    <span className="text-muted-foreground mr-2">
+                      Seleccionar todos
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                      disabled={selectedOrderIds.size === 0}
+                      onClick={handleBulkWhatsApp}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      WhatsApp Masivo ({selectedOrderIds.size})
+                    </Button>
+                  </div>
+                </div>
+                <div className="divide-y max-h-[300px] overflow-y-auto">
+                  {ordersDetails.map((order, idx) => {
+                    const isExpanded = expandedOrders.has(order.id);
+                    const paid =
+                      order.payments
+                        ?.filter((p) => p.status === "PAID")
+                        .reduce((s, p) => s + Number(p.amount), 0) || 0;
+                    const pending = Math.max(
+                      Number(
+                        order.totals?.grandTotal ?? order.grandTotal ?? 0,
+                      ) - paid,
+                      0,
+                    );
+
+                    return (
+                      <div key={`${order.id}-${idx}`} className="bg-background">
+                        {/* Header del pedido */}
+                        <div className="flex items-center justify-between px-3 py-2 hover:bg-muted/30">
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="checkbox"
+                              checked={selectedOrderIds.has(order.id)}
+                              onChange={(e) => {
+                                const newSelected = new Set(selectedOrderIds);
+                                if (e.target.checked) newSelected.add(order.id);
+                                else newSelected.delete(order.id);
+                                setSelectedOrderIds(newSelected);
+                              }}
+                              className="h-4 w-4 rounded border-gray-300 mt-0.5"
+                            />
+                            <button
+                              className="text-muted-foreground cursor-pointer"
+                              onClick={() => toggleOrderExpand(order.id)}
+                            >
+                              {isExpanded ? (
+                                <ChevronDown className="h-4 w-4" />
+                              ) : (
+                                <ChevronRight className="h-4 w-4" />
+                              )}
+                            </button>
+                            <div
+                              className="cursor-pointer"
+                              onClick={() => toggleOrderExpand(order.id)}
+                            >
+                              <p className="font-medium">{order.orderNumber}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {order.customer.fullName} •{" "}
+                                {order.customer.district || "-"}
                               </p>
-                            )}
-                            {order.carrierShippingCost &&
-                              Number(order.carrierShippingCost) > 0 && (
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <div className="text-right">
+                              <p className="font-medium">
+                                S/
+                                {Number(
+                                  order.totals?.grandTotal ??
+                                    order.grandTotal ??
+                                    0,
+                                ).toFixed(2)}
+                              </p>
+                              {pending > 0 && (
+                                <p className="text-xs text-red-600">
+                                  Cobrar: S/{pending.toFixed(2)}
+                                </p>
+                              )}
+                              {Number(order.carrierShippingCost) > 0 && (
                                 <p className="text-[10px] text-blue-600 font-medium">
                                   Envío: S/
                                   {Number(order.carrierShippingCost).toFixed(2)}
                                 </p>
                               )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className="h-8 w-8 text-green-600 border-green-200 hover:bg-green-50"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedPaymentOrder({
-                                  id: order.id,
-                                  number: order.orderNumber,
-                                });
-                                setPaymentModalOpen(true);
-                              }}
-                              title="Gestión de Pagos"
-                            >
-                              <DollarSign className="h-4 w-4" />
-                            </Button>
-                            <Badge
-                              className={
-                                ORDER_STATUS_COLORS[order.status] ||
-                                "bg-gray-100"
-                              }
-                            >
-                              {order.status.replace("_", " ")}
-                            </Badge>
-
-                            {/* Botón Eliminar Pedido */}
-                            {guide?.status !== "ENTREGADA" && guide?.status !== "CANCELADA" && !guide?.shalomTrackingData && (
+                            </div>
+                            <div className="flex items-center gap-2">
                               <Button
                                 size="icon"
                                 variant="outline"
-                                className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 ml-1"
+                                className="h-8 w-8 text-green-600 border-green-200 hover:bg-green-50"
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleRemoveOrder(order.id);
+                                  setSelectedPaymentOrder({
+                                    id: order.id,
+                                    number: order.orderNumber,
+                                  });
+                                  setPaymentModalOpen(true);
                                 }}
-                                title="Desvincular pedido de esta guía"
+                                title="Gestión de Pagos"
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <DollarSign className="h-4 w-4" />
                               </Button>
-                            )}
+                              <Badge
+                                className={
+                                  ORDER_STATUS_COLORS[order.status] ||
+                                  "bg-gray-100"
+                                }
+                              >
+                                {order.status.replace("_", " ")}
+                              </Badge>
+
+                              {/* Estado Shalom - Badge mejorado */}
+                              <div className="flex items-center gap-2">
+                                {(() => {
+                                  // 1. No enviado
+                                  if (
+                                    !order.externalTrackingNumber &&
+                                    !order.shalomStatus
+                                  ) {
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-gray-50 text-gray-600 border-gray-300 text-xs"
+                                      >
+                                        <div className="h-1.5 w-1.5 rounded-full bg-gray-400 mr-1.5" />
+                                        Sin enviar
+                                      </Badge>
+                                    );
+                                  }
+
+                                  // 2. Fallido
+                                  if (order.shalomStatus === "FALLIDO") {
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-red-50 text-red-700 border-red-200 text-xs"
+                                        title={
+                                          order.shalomError ||
+                                          "Error al enviar a Shalom"
+                                        }
+                                      >
+                                        <XCircle className="h-3 w-3 mr-1" />
+                                        Falló Shalom
+                                      </Badge>
+                                    );
+                                  }
+
+                                  // 3. Exitoso/Pendiente
+                                  if (
+                                    order.shalomStatus === "PENDIENTE" ||
+                                    order.shalomStatus === "EXITOSO"
+                                  ) {
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-green-50 text-green-700 border-green-200 text-xs"
+                                        title={`Nro. Guía: ${order.externalTrackingNumber || "-"}`}
+                                      >
+                                        <CheckCircle2 className="h-3 w-3 mr-1" />
+                                        Shalom OK{" "}
+                                        {/* ⬅️ CAMBIAR de "Enviado" a "Shalom OK" */}
+                                      </Badge>
+                                    );
+                                  }
+
+                                  // 4. En proceso (ENTREGADO, EN_ENVIO, etc.)
+                                  if (order.shalomStatus) {
+                                    return (
+                                      <Badge
+                                        variant="outline"
+                                        className="bg-blue-50 text-blue-700 border-blue-200 text-xs"
+                                      >
+                                        <div className="h-3 w-3 rounded-full border-2 border-blue-500 border-t-transparent animate-spin mr-1" />
+                                        {order.shalomStatus}
+                                      </Badge>
+                                    );
+                                  }
+
+                                  return null;
+                                })()}
+                              </div>
+
+                              {/* Botón Eliminar Pedido */}
+                              {guide?.status !== "ENTREGADA" &&
+                                guide?.status !== "CANCELADA" &&
+                                !order.externalTrackingNumber && (
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8 text-red-600 border-red-200 hover:bg-red-50 ml-1"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleRemoveOrder(order.id);
+                                    }}
+                                    title="Desvincular pedido de esta guía"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              {order.shalomStatus === "FALLIDO" &&
+                                guide?.courierName === "Shalom" && (
+                                  <Button
+                                    size="icon"
+                                    variant="outline"
+                                    className="h-8 w-8 text-blue-600 border-blue-200 hover:bg-blue-50"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedOrderIds(new Set([order.id]));
+                                      setShalomModalOpen(true);
+                                    }}
+                                    title="Reintentar envío a Shalom"
+                                  >
+                                    <Truck className="h-4 w-4" />
+                                  </Button>
+                                )}
+                            </div>
                           </div>
                         </div>
-                      </div>
 
-                      {/* Items del pedido (expandible) */}
-                      {isExpanded && (
-                        <div className="px-3 pb-3 pl-10 space-y-2 bg-muted/20">
-                          <p className="text-xs font-medium text-muted-foreground pt-2">
-                            Items ({order.items?.length || 0}):
-                          </p>
-                          {order.items?.map((item, idx) => (
-                            <div
-                              key={idx}
-                              className="flex justify-between items-center text-sm bg-background rounded px-2 py-1.5"
-                            >
-                              <div className="flex-1">
-                                <p className="font-medium">
-                                  {item.productName}
-                                </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {item.sku}
-                                  {item.attributes &&
-                                    Object.entries(item.attributes).map(
-                                      ([k, v]) => ` • ${k}: ${v}`,
-                                    )}
-                                </p>
-                              </div>
-                              <div className="text-right">
-                                <p>x{item.quantity}</p>
-                                <p className="text-muted-foreground">
-                                  S/{Number(item.unitPrice).toFixed(2)}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                          {/* Info cliente */}
-                          <div className="text-xs text-muted-foreground pt-1 border-t">
-                            <p>
-                              <Phone className="h-3 w-3 inline mr-1" />
-                              {order.customer.phoneNumber}
+                        {/* Items del pedido (expandible) */}
+                        {isExpanded && (
+                          <div className="px-3 pb-3 pl-10 space-y-2 bg-muted/20">
+                            <p className="text-xs font-medium text-muted-foreground pt-2">
+                              Items ({order.items?.length || 0}):
                             </p>
-                            {order.customer.address && (
+                            {order.items?.map((item, idx) => (
+                              <div
+                                key={idx}
+                                className="flex justify-between items-center text-sm bg-background rounded px-2 py-1.5"
+                              >
+                                <div className="flex-1">
+                                  <p className="font-medium">
+                                    {item.productName}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {item.sku}
+                                    {item.attributes &&
+                                      Object.entries(item.attributes).map(
+                                        ([k, v]) => ` • ${k}: ${v}`,
+                                      )}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p>x{item.quantity}</p>
+                                  <p className="text-muted-foreground">
+                                    S/{Number(item.unitPrice).toFixed(2)}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                            {/* Info cliente */}
+                            <div className="text-xs text-muted-foreground pt-1 border-t">
                               <p>
-                                <MapPin className="h-3 w-3 inline mr-1" />
-                                {order.customer.address}
+                                <Phone className="h-3 w-3 inline mr-1" />
+                                {order.customer.phoneNumber}
                               </p>
-                            )}
-                          </div>
+                              {order.customer.address && (
+                                <p>
+                                  <MapPin className="h-3 w-3 inline mr-1" />
+                                  {order.customer.address}
+                                </p>
+                              )}
+                            </div>
 
-                          {/* Tracking del pedido */}
-                          <div className="pt-2 border-t mt-2">
-                            <p className="text-xs font-medium text-orange-700 mb-2 flex items-center gap-1">
-                              📦 Datos de Tracking
-                            </p>
-                            <div className="grid grid-cols-2 gap-2">
-                              <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground">
-                                  Nro. Guía Courier
-                                </label>
-                                <input
-                                  type="text"
-                                  className="w-full border rounded px-2 py-1 text-xs bg-background"
-                                  placeholder="Ej: OLV-123456"
-                                  value={
-                                    orderTrackingFields[order.id]
-                                      ?.externalTrackingNumber || ""
-                                  }
-                                  onChange={(e) =>
-                                    updateOrderTrackingField(
-                                      order.id,
-                                      "externalTrackingNumber",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground">
-                                  Clave de Envío
-                                </label>
-                                <div className="relative">
+                            {/* Tracking del pedido */}
+                            <div className="pt-2 border-t mt-2">
+                              <p className="text-xs font-medium text-orange-700 mb-2 flex items-center gap-1">
+                                📦 Datos de Tracking
+                              </p>
+                              <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                  <label className="text-xs text-muted-foreground">
+                                    Nro. Guía Courier
+                                  </label>
                                   <input
-                                    type={
-                                      pending > 0 && !revealedKeys[order.id]
-                                        ? "password"
-                                        : "text"
-                                    }
-                                    className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 ${
-                                      pending > 0
-                                        ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
-                                        : "focus:border-orange-500"
-                                    }`}
-                                    placeholder="Ej: ABC123"
+                                    type="text"
+                                    className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                    placeholder="Ej: OLV-123456"
                                     value={
                                       orderTrackingFields[order.id]
-                                        ?.shippingKey || ""
+                                        ?.externalTrackingNumber || ""
                                     }
                                     onChange={(e) =>
                                       updateOrderTrackingField(
                                         order.id,
-                                        "shippingKey",
+                                        "externalTrackingNumber",
                                         e.target.value,
                                       )
                                     }
                                     onClick={(e) => e.stopPropagation()}
                                   />
-                                  {pending > 0 && (
-                                    <button
-                                      type="button"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        toggleKeyReveal(order.id);
-                                      }}
-                                      className="absolute right-2 top-1/2 -translate-y-1/2 text-red-400 hover:text-red-600 focus:outline-none"
-                                      title={
-                                        revealedKeys[order.id]
-                                          ? "Ocultar clave"
-                                          : "Revelar clave"
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs text-muted-foreground">
+                                    Clave de Envío
+                                  </label>
+                                  <div className="relative">
+                                    <input
+                                      type={
+                                        pending > 0 && !revealedKeys[order.id]
+                                          ? "password"
+                                          : "text"
                                       }
-                                    >
-                                      {revealedKeys[order.id] ? (
-                                        <EyeOff className="h-3.5 w-3.5" />
+                                      className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 ${
+                                        pending > 0
+                                          ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
+                                          : "focus:border-orange-500"
+                                      }`}
+                                      placeholder="Ej: ABC123"
+                                      value={
+                                        orderTrackingFields[order.id]
+                                          ?.shippingKey || ""
+                                      }
+                                      onChange={(e) =>
+                                        updateOrderTrackingField(
+                                          order.id,
+                                          "shippingKey",
+                                          e.target.value,
+                                        )
+                                      }
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                    {pending > 0 && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleKeyReveal(order.id);
+                                        }}
+                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-red-400 hover:text-red-600 focus:outline-none"
+                                        title={
+                                          revealedKeys[order.id]
+                                            ? "Ocultar clave"
+                                            : "Revelar clave"
+                                        }
+                                      >
+                                        {revealedKeys[order.id] ? (
+                                          <EyeOff className="h-3.5 w-3.5" />
+                                        ) : (
+                                          <Eye className="h-3.5 w-3.5" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs text-muted-foreground">
+                                    URL Tracking
+                                  </label>
+                                  <input
+                                    type="text"
+                                    className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                    placeholder="https://..."
+                                    value={
+                                      orderTrackingFields[order.id]
+                                        ?.trackingUrl || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateOrderTrackingField(
+                                        order.id,
+                                        "trackingUrl",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs text-muted-foreground">
+                                    Oficina de Retiro
+                                  </label>
+                                  <input
+                                    type="text"
+                                    className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                    placeholder="Ej: Olva Lima Centro"
+                                    value={
+                                      orderTrackingFields[order.id]
+                                        ?.shippingOffice || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateOrderTrackingField(
+                                        order.id,
+                                        "shippingOffice",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <label className="text-xs text-muted-foreground">
+                                    Código
+                                  </label>
+                                  <input
+                                    type="text"
+                                    className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                    placeholder="Ej: COD-001"
+                                    value={
+                                      orderTrackingFields[order.id]
+                                        ?.shippingCode || ""
+                                    }
+                                    onChange={(e) =>
+                                      updateOrderTrackingField(
+                                        order.id,
+                                        "shippingCode",
+                                        e.target.value,
+                                      )
+                                    }
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </div>
+                              </div>
+
+                              <Button
+                                size="sm"
+                                className="mt-2 w-full bg-orange-600 hover:bg-orange-700 text-xs"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSaveOrderTracking(order.id);
+                                }}
+                                disabled={savingOrderId === order.id}
+                              >
+                                {savingOrderId === order.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                ) : null}
+                                Guardar Tracking
+                              </Button>
+                            </div>
+
+                            {/* Prueba de Entrega por Pedido */}
+                            <div className="pt-2 border-t mt-2">
+                              <p className="text-xs font-medium text-green-700 mb-2 flex items-center gap-1">
+                                <Camera className="h-3 w-3" /> Prueba de Entrega
+                              </p>
+                              {order.shippingProofUrl ? (
+                                <div className="relative group w-fit">
+                                  <Image
+                                    src={order.shippingProofUrl}
+                                    alt="Prueba"
+                                    width={400}
+                                    height={300}
+                                    className="h-24 w-auto object-contain rounded border bg-muted"
+                                  />
+                                  <a
+                                    href={order.shippingProofUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white rounded"
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                  </a>
+                                  <div className="absolute top-1 right-1 bg-green-500 text-white p-0.5 rounded-full">
+                                    <CheckCircle2 className="h-3 w-3" />
+                                  </div>
+                                </div>
+                              ) : (
+                                <div>
+                                  {isCourierView &&
+                                  [
+                                    "CREADA",
+                                    "ASIGNADA",
+                                    "APROBADA",
+                                    "EN_RUTA",
+                                    "ENTREGADA",
+                                    "PARCIAL",
+                                    "FALLIDA",
+                                  ].includes(guide?.status || "") ? (
+                                    <label className="inline-flex items-center gap-2 cursor-pointer bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs hover:bg-primary/90 transition-colors">
+                                      {uploadingOrderId === order.id ? (
+                                        <Loader2 className="h-3 w-3 animate-spin" />
                                       ) : (
-                                        <Eye className="h-3.5 w-3.5" />
+                                        <Camera className="h-3 w-3" />
                                       )}
-                                    </button>
+                                      {uploadingOrderId === order.id
+                                        ? "Subiendo..."
+                                        : "Subir Foto"}
+                                      <input
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) =>
+                                          handleUploadOrderProof(order.id, e)
+                                        }
+                                        disabled={!!uploadingOrderId}
+                                      />
+                                    </label>
+                                  ) : (
+                                    <p className="text-xs text-muted-foreground italic flex items-center gap-1">
+                                      <ImageIcon className="h-3 w-3" /> Sin
+                                      prueba de entrega
+                                    </p>
                                   )}
                                 </div>
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground">
-                                  URL Tracking
-                                </label>
-                                <input
-                                  type="text"
-                                  className="w-full border rounded px-2 py-1 text-xs bg-background"
-                                  placeholder="https://..."
-                                  value={
-                                    orderTrackingFields[order.id]
-                                      ?.trackingUrl || ""
-                                  }
-                                  onChange={(e) =>
-                                    updateOrderTrackingField(
-                                      order.id,
-                                      "trackingUrl",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground">
-                                  Oficina de Retiro
-                                </label>
-                                <input
-                                  type="text"
-                                  className="w-full border rounded px-2 py-1 text-xs bg-background"
-                                  placeholder="Ej: Olva Lima Centro"
-                                  value={
-                                    orderTrackingFields[order.id]
-                                      ?.shippingOffice || ""
-                                  }
-                                  onChange={(e) =>
-                                    updateOrderTrackingField(
-                                      order.id,
-                                      "shippingOffice",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              </div>
-                              <div className="space-y-1">
-                                <label className="text-xs text-muted-foreground">
-                                  Código
-                                </label>
-                                <input
-                                  type="text"
-                                  className="w-full border rounded px-2 py-1 text-xs bg-background"
-                                  placeholder="Ej: COD-001"
-                                  value={
-                                    orderTrackingFields[order.id]
-                                      ?.shippingCode || ""
-                                  }
-                                  onChange={(e) =>
-                                    updateOrderTrackingField(
-                                      order.id,
-                                      "shippingCode",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              </div>
+                              )}
                             </div>
-                            <Button
-                              size="sm"
-                              className="mt-2 w-full bg-orange-600 hover:bg-orange-700 text-xs"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSaveOrderTracking(order.id);
-                              }}
-                              disabled={savingOrderId === order.id}
-                            >
-                              {savingOrderId === order.id ? (
-                                <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                              ) : null}
-                              Guardar Tracking
-                            </Button>
                           </div>
-
-                          {/* Prueba de Entrega por Pedido */}
-                          <div className="pt-2 border-t mt-2">
-                            <p className="text-xs font-medium text-green-700 mb-2 flex items-center gap-1">
-                              <Camera className="h-3 w-3" /> Prueba de Entrega
-                            </p>
-                            {order.shippingProofUrl ? (
-                              <div className="relative group w-fit">
-                                <Image
-                                  src={order.shippingProofUrl}
-                                  alt="Prueba"
-                                  width={400}
-                                  height={300}
-                                  className="h-24 w-auto object-contain rounded border bg-muted"
-                                />
-                                <a
-                                  href={order.shippingProofUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity text-white rounded"
-                                >
-                                  <ExternalLink className="h-4 w-4" />
-                                </a>
-                                <div className="absolute top-1 right-1 bg-green-500 text-white p-0.5 rounded-full">
-                                  <CheckCircle2 className="h-3 w-3" />
-                                </div>
-                              </div>
-                            ) : (
-                              <div>
-                                {isCourierView &&
-                                [
-                                  "CREADA",
-                                  "ASIGNADA",
-                                  "APROBADA",
-                                  "EN_RUTA",
-                                  "ENTREGADA",
-                                  "PARCIAL",
-                                  "FALLIDA",
-                                ].includes(guide?.status || "") ? (
-                                  <label className="inline-flex items-center gap-2 cursor-pointer bg-primary text-primary-foreground px-3 py-1.5 rounded-md text-xs hover:bg-primary/90 transition-colors">
-                                    {uploadingOrderId === order.id ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <Camera className="h-3 w-3" />
-                                    )}
-                                    {uploadingOrderId === order.id
-                                      ? "Subiendo..."
-                                      : "Subir Foto"}
-                                    <input
-                                      type="file"
-                                      accept="image/*"
-                                      className="hidden"
-                                      onChange={(e) =>
-                                        handleUploadOrderProof(order.id, e)
-                                      }
-                                      disabled={!!uploadingOrderId}
-                                    />
-                                  </label>
-                                ) : (
-                                  <p className="text-xs text-muted-foreground italic flex items-center gap-1">
-                                    <ImageIcon className="h-3 w-3" /> Sin prueba
-                                    de entrega
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
+                    );
+                  })}
+                  {ordersDetails.length === 0 && (
+                    <div className="px-3 py-4 text-center text-muted-foreground text-sm">
+                      No hay pedidos en esta guía
                     </div>
-                  );
-                })}
-                {ordersDetails.length === 0 && (
-                  <div className="px-3 py-4 text-center text-muted-foreground text-sm">
-                    No hay pedidos en esta guía
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Notas */}
-            {guide.notes && (
-              <div className="border-t pt-3 space-y-2">
-                <p className="text-sm font-medium flex items-center gap-1.5 text-muted-foreground">
-                  <MessageSquare className="h-4 w-4" /> Notas / Historial:
-                </p>
-                <div className="space-y-3 max-h-[150px] overflow-y-auto pr-2">
-                  {(() => {
-                    try {
-                      const notes = JSON.parse(guide.notes || "[]");
-                      if (!Array.isArray(notes))
-                        return <p className="text-sm">{guide.notes}</p>;
-
-                      return notes.map((note: any, idx: number) => (
-                        <div
-                          key={idx}
-                          className="bg-muted/50 rounded-lg p-2 text-sm border border-muted"
-                        >
-                          <div className="flex justify-between items-center mb-1">
-                            <span className="font-semibold text-xs text-primary">
-                              {note.user}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {note.date
-                                ? format(
-                                    new Date(note.date),
-                                    "dd/MM/yy HH:mm",
-                                    { locale: es },
-                                  )
-                                : "-"}
-                            </span>
-                          </div>
-                          <p className="text-sm leading-relaxed">{note.text}</p>
-                        </div>
-                      ));
-                    } catch (e) {
-                      return <p className="text-sm">{guide.notes}</p>;
-                    }
-                  })()}
+                  )}
                 </div>
               </div>
-            )}
 
-            {/* Tracking URL */}
-            {guide.trackingUrl && (
-              <a
-                href={guide.trackingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-blue-600 hover:underline"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Ver tracking
-              </a>
-            )}
-          </div>
-        ) : (
-          <div className="py-8 text-center text-muted-foreground">
-            No se encontró información de la guía
-          </div>
-        )}
+              {/* Notas */}
+              {guide.notes && (
+                <div className="border-t pt-3 space-y-2">
+                  <p className="text-sm font-medium flex items-center gap-1.5 text-muted-foreground">
+                    <MessageSquare className="h-4 w-4" /> Notas / Historial:
+                  </p>
+                  <div className="space-y-3 max-h-[150px] overflow-y-auto pr-2">
+                    {(() => {
+                      try {
+                        const rawNotes = JSON.parse(guide.notes || "[]");
+                        if (!Array.isArray(rawNotes)) {
+                          return shouldDisplayNote(guide.notes) ? (
+                            <p className="text-sm">{guide.notes}</p>
+                          ) : null;
+                        }
 
-        <DialogFooter className="flex flex-col gap-2">
-          {/* Texto informativo encima de todos los botones */}
-          {guide &&
-            (guide.status === "CREADA" || guide.status === "ASIGNADA") &&
-            !guide.courierName && (
-              <p className="text-sm text-amber-600 flex items-center gap-1 w-full justify-center">
-                ⚠️ Primero asigna un courier usando el botón &quot;Asignar&quot;
-                antes de aprobar la guía
-              </p>
-            )}
+                        const notes = rawNotes.filter((n: any) =>
+                          shouldDisplayNote(n.text),
+                        );
 
-          {/* Botones en fila */}
-          <div className="flex flex-wrap gap-2 justify-end w-full">
-            {guide &&
-              (guide.status === "CREADA" || guide.status === "ASIGNADA") && (
-                <Button
-                  onClick={handleApproveGuide}
-                  disabled={assigning || !guide.courierName}
-                  className="bg-teal-600 hover:bg-teal-700"
-                >
-                  {assigning ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : null}
-                  ✓ Aprobar Guía
-                </Button>
+                        if (notes.length === 0) {
+                          return (
+                            <p className="text-xs text-muted-foreground italic">
+                              No hay notas relevantes para mostrar
+                            </p>
+                          );
+                        }
+
+                        return notes.map((note: any, idx: number) => (
+                          <div
+                            key={idx}
+                            className="bg-muted/50 rounded-lg p-2 text-sm border border-muted"
+                          >
+                            <div className="flex justify-between items-center mb-1">
+                              <span className="font-semibold text-xs text-primary">
+                                {note.user}
+                              </span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {note.date
+                                  ? format(
+                                      new Date(note.date),
+                                      "dd/MM/yy HH:mm",
+                                      { locale: es },
+                                    )
+                                  : "-"}
+                              </span>
+                            </div>
+                            <p className="text-sm leading-relaxed">
+                              {note.text}
+                            </p>
+                          </div>
+                        ));
+                      } catch (e) {
+                        return shouldDisplayNote(guide.notes) ? (
+                          <p className="text-sm">{guide.notes}</p>
+                        ) : null;
+                      }
+                    })()}
+                  </div>
+                </div>
               )}
-            {guide &&
-              guide.status === "APROBADA" &&
-              normalizeCourier(guide.courierName) === "Shalom" && 
-              !guide.shalomTrackingData && 
-              !ordersDetails.some(o => o.trackingInfo || o.externalTrackingNumber) && (
-                <Button
-                  onClick={() => setShalomModalOpen(true)}
-                  className="bg-orange-500 hover:bg-orange-600 text-white"
+
+              {/* Tracking URL */}
+              {guide.trackingUrl && (
+                <a
+                  href={guide.trackingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm text-blue-600 hover:underline"
                 >
-                  <Truck className="h-4 w-4 mr-2" /> Enviar a Shalom
-                </Button>
+                  <ExternalLink className="h-4 w-4" />
+                  Ver tracking
+                </a>
               )}
-            {guide && (
-              <>
-                <Button variant="outline" onClick={handleExportExcel}>
-                  <FileSpreadsheet className="h-4 w-4 mr-2" />
-                  Exportar Excel
-                </Button>
-                <Button variant="outline" onClick={handlePrintGuide}>
-                  <Printer className="h-4 w-4 mr-2" />
-                  Imprimir Guía
-                </Button>
-                <Button variant="outline" onClick={handlePrintReceipts}>
-                  <FileText className="h-4 w-4 mr-2" />
-                  Imprimir etiqueta de envío
-                </Button>
-              </>
-            )}
-            <Button variant="outline" onClick={handleClose}>
-              Cerrar
-            </Button>
-          </div>
-        </DialogFooter>
-      </DialogContent>
+            </div>
+          ) : (
+            <div className="py-8 text-center text-muted-foreground">
+              No se encontró información de la guía
+            </div>
+          )}
+
+          <DialogFooter className="flex flex-col gap-2">
+            {/* Texto informativo encima de todos los botones */}
+            {guide &&
+              (guide.status === "CREADA" || guide.status === "ASIGNADA") &&
+              !guide.courierName && (
+                <p className="text-sm text-amber-600 flex items-center gap-1 w-full justify-center">
+                  ⚠️ Primero asigna un courier usando el botón
+                  &quot;Asignar&quot; antes de aprobar la guía
+                </p>
+              )}
+
+            {/* Botones en fila */}
+            <div className="flex flex-wrap gap-2 justify-end w-full">
+              {guide &&
+                (guide.status === "CREADA" || guide.status === "ASIGNADA") && (
+                  <Button
+                    onClick={handleApproveGuide}
+                    disabled={assigning || !guide.courierName}
+                    className="bg-teal-600 hover:bg-teal-700"
+                  >
+                    {assigning ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : null}
+                    ✓ Aprobar Guía
+                  </Button>
+                )}
+              {guide &&
+                guide.status === "APROBADA" &&
+                normalizeCourier(guide.courierName) === "Shalom" &&
+                (() => {
+                  // ✅ Calcular cuántos pedidos necesitan envío
+                  const needsShalom = ordersDetails.filter(
+                    (o) =>
+                      !o.shalomStatus || // Sin status
+                      o.shalomStatus === "FALLIDO", // Fallidos
+                  );
+
+                  // ✅ Solo mostrar botón si hay pedidos pendientes
+                  if (needsShalom.length === 0) return null;
+
+                  return (
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => {
+                          // Si no hay seleccionados, seleccionar los que necesitan envío
+                          if (selectedOrderIds.size === 0) {
+                            setSelectedOrderIds(
+                              new Set(needsShalom.map((o) => o.id)),
+                            );
+                          }
+                          setShalomModalOpen(true);
+                        }}
+                        className={
+                          selectedOrderIds.size > 0
+                            ? "bg-blue-600 hover:bg-blue-700 text-white"
+                            : "bg-orange-500 hover:bg-orange-600 text-white"
+                        }
+                      >
+                        <Truck className="h-4 w-4 mr-2" />
+                        {selectedOrderIds.size > 0
+                          ? `Enviar a Shalom (${selectedOrderIds.size})`
+                          : `Registrar en Shalom (${needsShalom.length})`}
+                      </Button>
+                    </div>
+                  );
+                })()}
+              {guide && (
+                <>
+                  <Button variant="outline" onClick={handleExportExcel}>
+                    <FileSpreadsheet className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
+                  <Button variant="outline" onClick={handlePrintGuide}>
+                    <Printer className="h-4 w-4 mr-2" />
+                    Imprimir Guía
+                  </Button>
+                  <Button variant="outline" onClick={handlePrintShippingLabels}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Imprimir etiqueta de envío
+                  </Button>
+                </>
+              )}
+              <Button variant="outline" onClick={handleClose}>
+                Cerrar
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
 
       {/* Modal de Pago / Verificación */}
@@ -1757,16 +2037,16 @@ export default function GuideDetailsModal({
         guideId={guideId || guide?.id || ""}
         companyId={companyId || ""}
         onClose={() => setShalomModalOpen(false)}
-        orders={selectedOrderIds.size > 0 
-          ? ordersDetails.filter(o => selectedOrderIds.has(o.id)) 
-          : ordersDetails
+        orders={
+          selectedOrderIds.size > 0
+            ? ordersDetails.filter((o) => selectedOrderIds.has(o.id))
+            : ordersDetails
         }
         onSuccess={() => {
           fetchGuide();
           onGuideUpdated?.();
         }}
       />
-
     </>
   );
 }

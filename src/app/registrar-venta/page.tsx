@@ -157,6 +157,7 @@ function RegistrarVentaContent() {
   const [receiptOrderId, setReceiptOrderId] = useState("");
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
@@ -516,236 +517,244 @@ function RegistrarVentaContent() {
   const handleConfirmSale = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
 
-    // Cerrar cualquier Select/Popover abierto antes de iniciar el submit
-    // para evitar que Radix quede en estado inconsistente si hay error
-    (document.activeElement as HTMLElement)?.blur();
+    // Guard: prevent double-click submission
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
 
-    let activeClient = clientFound;
-
-    // Auto-crear cliente nuevo si no existe en el sistema
-    if (isNotFound) {
-      if (!auth?.company?.id) return;
-      if (!validateClientForm()) {
-        toast.error("Por favor completa los campos del cliente correctamente.");
-        return;
-      }
-      try {
-        const createdClient = await createClient({
-          companyId: auth.company.id,
-          fullName: clientForm.fullName,
-          phoneNumber: clientForm.phoneNumber || undefined,
-          documentType: clientForm.documentType,
-          documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
-          clientType: clientForm.clientType,
-          province: clientForm.province,
-          city: clientForm.department,
-          district: clientForm.district,
-          address: clientForm.address,
-          reference: clientForm.reference || undefined,
-        });
-        setClientFound(createdClient);
-        setOriginalClient(createdClient);
-        setSearchState("found");
-        setClientErrors({});
-        activeClient = createdClient;
-      } catch (error) {
-        console.error(error);
-        toast.error("Error al crear el cliente. Verifica los datos.");
-        return;
-      }
-    }
-    // Auto-guardar cambios del cliente si tiene modificaciones sin guardar
-    else if (isFound && hasClientChanges && clientFound?.id) {
-      try {
-        const updated = await updateClient(clientFound.id, {
-          companyId: auth?.company?.id,
-          fullName: clientForm.fullName,
-          phoneNumber: clientForm.phoneNumber,
-          documentType: clientForm.documentType,
-          documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
-          clientType: clientForm.clientType,
-          province: clientForm.province,
-          city: clientForm.department,
-          district: clientForm.district,
-          address: clientForm.address,
-          reference: clientForm.reference || undefined,
-        } as any);
-        setClientFound(updated);
-        setOriginalClient(updated);
-        activeClient = updated;
-      } catch (error) {
-        console.error(error);
-        toast.error("Error al guardar los cambios del cliente.");
-        return;
-      }
-    }
-
-    if (!activeClient?.id) {
-      console.error("❌ No hay customerId");
-      return;
-    }
-
-    const sellerDisplayName = `${auth?.user?.name || ""} ${
-      auth?.user?.surname || ""
-    }`.trim();
-
-    const payload = {
-      // --- Comprobante ---
-      receiptType: "BOLETA",
-      orderType: orderDetails.orderType, // VENTA
-
-      // --- Contexto ---
-      storeId: selectedStoreId,
-
-      // --- Canales ---
-      salesChannel: orderDetails.salesChannel,
-      closingChannel: orderDetails.closingChannel,
-      deliveryType: orderDetails.deliveryType,
-      salesRegion: salesRegion,
-
-      // --- Envío ---
-      shippingTotal: shippingTotal ?? 0,
-      courier: orderDetails.enviaPor ?? null,
-      sellerName: sellerDisplayName || null,
-
-      // --- Modo de impuestos ---
-      taxMode: taxMode,
-
-      // --- Notas ---
-      notes: orderDetails.notes ?? null,
-
-      // --- Cliente ---
-      customerId: activeClient.id,
-
-      // --- Ítems ---
-      items: cart.map((item) => ({
-        productVariantId: item.variantId,
-        sku: item.sku,
-        productName: item.productName,
-        quantity: item.quantity,
-        unitPrice: item.price,
-        discountType: item.discount > 0 ? "FIXED" : "NONE",
-        discountAmount: item.discount || 0,
-        attributes: item.attributes,
-      })),
-
-      // --- Pagos (siempre incluir) ---
-      payments:
-        advancePayment > 0
-          ? [
-              {
-                paymentMethod,
-                amount: advancePayment,
-                paymentDate: new Date().toISOString(),
-              },
-            ]
-          : [
-              {
-                paymentMethod: paymentMethod || "EFECTIVO",
-                amount: 0,
-                paymentDate: new Date().toISOString(),
-              },
-            ],
-
-      // --- Usuario (para log de auditoría) ---
-      userId: auth?.user?.id ?? null,
-    };
-
-    setIsSubmitting(true);
     try {
-      if (!orderData) {
-        const response = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header`,
-          payload,
-        );
+      // Cerrar cualquier Select/Popover abierto antes de iniciar el submit
+      // para evitar que Radix quede en estado inconsistente si hay error
+      (document.activeElement as HTMLElement)?.blur();
 
-        const createdOrderId = response.data.id;
+      let activeClient = clientFound;
 
-        // Si hay comprobante de pago, subirlo al pago recién creado
-        if (paymentProofFile && response.data.payments?.length > 0) {
-          const firstPaymentId = response.data.payments[0].id;
-          try {
-            const formData = new FormData();
-            formData.append("file", paymentProofFile);
-
-            await axios.patch(
-              `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${firstPaymentId}/upload-proof`,
-              formData,
-              {
-                headers: {
-                  "Content-Type": "multipart/form-data",
-                },
-              },
-            );
-          } catch (proofError) {
-            console.error("Error subiendo comprobante", proofError);
-            toast.warning(
-              "Venta creada pero hubo un error al subir el comprobante",
-            );
-          }
+      // Auto-crear cliente nuevo si no existe en el sistema
+      if (isNotFound) {
+        if (!auth?.company?.id) return;
+        if (!validateClientForm()) {
+          toast.error("Por favor completa los campos del cliente correctamente.");
+          return;
         }
-
-        toast.success("Venta registrada");
-        setReceiptOrderId(createdOrderId);
-        setReceiptOpen(true);
-
-        // Limpiar todo el formulario después de venta exitosa
-        resetForm();
-      } else {
-        // Actualizar orden existente
-        // El status solo se resetea a PENDIENTE si el usuario seleccionó manualmente el tipo CAMBIO
-        const newStatus =
-          orderDetails.orderType === OrderType.CAMBIO
-            ? "PENDIENTE"
-            : orderData.status;
-
-        const updatePayload = {
-          orderType: orderDetails.orderType,
-          status: newStatus,
-          salesChannel: orderDetails.salesChannel,
-          closingChannel: orderDetails.closingChannel,
-          deliveryType: orderDetails.deliveryType,
-          salesRegion: salesRegion,
-          shippingTotal: shippingTotal ?? 0,
-          courier: orderDetails.enviaPor ?? null,
-          taxMode: taxMode,
-          notes: orderDetails.notes ?? null,
-          customerId: activeClient.id,
-          items: cart.map((item) => ({
-            productVariantId: item.variantId,
-            sku: item.sku,
-            productName: item.productName,
-            quantity: item.quantity,
-            unitPrice: item.price,
-            discountType: item.discount > 0 ? "FIXED" : "NONE",
-            discountAmount: item.discount || 0,
-            attributes: item.attributes,
-            // Campos de promo del día (solo para items nuevos cuando isPromo=true)
-            isPromoItem: isPromo ? true : undefined,
-            addedByUserId: isPromo ? auth?.user?.id : undefined,
-            addedAt: isPromo ? new Date().toISOString() : undefined,
-          })),
-          userId: auth?.user?.id ?? null,
-          // Datos de pago
-          paymentMethod: paymentMethod || null,
-          paymentAmount: advancePayment,
-          sellerName: sellerDisplayName || null,
-        };
-
-        await axios.put(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderData.id}`,
-          updatePayload,
-        );
-
-        toast.success("Venta actualizada correctamente");
-        setReceiptOrderId(orderData.id);
-        setReceiptOpen(true);
+        try {
+          const createdClient = await createClient({
+            companyId: auth.company.id,
+            fullName: clientForm.fullName,
+            phoneNumber: clientForm.phoneNumber || undefined,
+            documentType: clientForm.documentType,
+            documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
+            clientType: clientForm.clientType,
+            province: clientForm.province,
+            city: clientForm.department,
+            district: clientForm.district,
+            address: clientForm.address,
+            reference: clientForm.reference || undefined,
+          });
+          setClientFound(createdClient);
+          setOriginalClient(createdClient);
+          setSearchState("found");
+          setClientErrors({});
+          activeClient = createdClient;
+        } catch (error) {
+          console.error(error);
+          toast.error("Error al crear el cliente. Verifica los datos.");
+          return;
+        }
       }
-    } catch (error) {
-      console.error("❌ Error creating sale", error);
-      toast.error("Error al registrar la venta");
+      // Auto-guardar cambios del cliente si tiene modificaciones sin guardar
+      else if (isFound && hasClientChanges && clientFound?.id) {
+        try {
+          const updated = await updateClient(clientFound.id, {
+            companyId: auth?.company?.id,
+            fullName: clientForm.fullName,
+            phoneNumber: clientForm.phoneNumber,
+            documentType: clientForm.documentType,
+            documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
+            clientType: clientForm.clientType,
+            province: clientForm.province,
+            city: clientForm.department,
+            district: clientForm.district,
+            address: clientForm.address,
+            reference: clientForm.reference || undefined,
+          } as any);
+          setClientFound(updated);
+          setOriginalClient(updated);
+          activeClient = updated;
+        } catch (error) {
+          console.error(error);
+          toast.error("Error al guardar los cambios del cliente.");
+          return;
+        }
+      }
+
+      if (!activeClient?.id) {
+        console.error("❌ No hay customerId");
+        return;
+      }
+
+      const sellerDisplayName = `${auth?.user?.name || ""} ${
+        auth?.user?.surname || ""
+      }`.trim();
+
+      const payload = {
+        // --- Comprobante ---
+        receiptType: "BOLETA",
+        orderType: orderDetails.orderType, // VENTA
+
+        // --- Contexto ---
+        storeId: selectedStoreId,
+
+        // --- Canales ---
+        salesChannel: orderDetails.salesChannel,
+        closingChannel: orderDetails.closingChannel,
+        deliveryType: orderDetails.deliveryType,
+        salesRegion: salesRegion,
+
+        // --- Envío ---
+        shippingTotal: shippingTotal ?? 0,
+        courier: orderDetails.enviaPor ?? null,
+        sellerName: sellerDisplayName || null,
+
+        // --- Modo de impuestos ---
+        taxMode: taxMode,
+
+        // --- Notas ---
+        notes: orderDetails.notes ?? null,
+
+        // --- Cliente ---
+        customerId: activeClient.id,
+
+        // --- Ítems ---
+        items: cart.map((item) => ({
+          productVariantId: item.variantId,
+          sku: item.sku,
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          discountType: item.discount > 0 ? "FIXED" : "NONE",
+          discountAmount: item.discount || 0,
+          attributes: item.attributes,
+        })),
+
+        // --- Pagos (siempre incluir) ---
+        payments:
+          advancePayment > 0
+            ? [
+                {
+                  paymentMethod,
+                  amount: advancePayment,
+                  paymentDate: new Date().toISOString(),
+                },
+              ]
+            : [
+                {
+                  paymentMethod: paymentMethod || "EFECTIVO",
+                  amount: 0,
+                  paymentDate: new Date().toISOString(),
+                },
+              ],
+
+        // --- Usuario (para log de auditoría) ---
+        userId: auth?.user?.id ?? null,
+      };
+
+      setIsSubmitting(true);
+      try {
+        if (!orderData) {
+          const response = await axios.post(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header`,
+            payload,
+          );
+
+          const createdOrderId = response.data.id;
+
+          // Si hay comprobante de pago, subirlo al pago recién creado
+          if (paymentProofFile && response.data.payments?.length > 0) {
+            const firstPaymentId = response.data.payments[0].id;
+            try {
+              const formData = new FormData();
+              formData.append("file", paymentProofFile);
+
+              await axios.patch(
+                `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${firstPaymentId}/upload-proof`,
+                formData,
+                {
+                  headers: {
+                    "Content-Type": "multipart/form-data",
+                  },
+                },
+              );
+            } catch (proofError) {
+              console.error("Error subiendo comprobante", proofError);
+              toast.warning(
+                "Venta creada pero hubo un error al subir el comprobante",
+              );
+            }
+          }
+
+          toast.success("Venta registrada");
+          setReceiptOrderId(createdOrderId);
+          setReceiptOpen(true);
+
+          // Limpiar todo el formulario después de venta exitosa
+          resetForm();
+        } else {
+          // Actualizar orden existente
+          // El status solo se resetea a PENDIENTE si el usuario seleccionó manualmente el tipo CAMBIO
+          const newStatus =
+            orderDetails.orderType === OrderType.CAMBIO
+              ? "PENDIENTE"
+              : orderData.status;
+
+          const updatePayload = {
+            orderType: orderDetails.orderType,
+            status: newStatus,
+            salesChannel: orderDetails.salesChannel,
+            closingChannel: orderDetails.closingChannel,
+            deliveryType: orderDetails.deliveryType,
+            salesRegion: salesRegion,
+            shippingTotal: shippingTotal ?? 0,
+            courier: orderDetails.enviaPor ?? null,
+            taxMode: taxMode,
+            notes: orderDetails.notes ?? null,
+            customerId: activeClient.id,
+            items: cart.map((item) => ({
+              productVariantId: item.variantId,
+              sku: item.sku,
+              productName: item.productName,
+              quantity: item.quantity,
+              unitPrice: item.price,
+              discountType: item.discount > 0 ? "FIXED" : "NONE",
+              discountAmount: item.discount || 0,
+              attributes: item.attributes,
+              // Campos de promo del día (solo para items nuevos cuando isPromo=true)
+              isPromoItem: isPromo ? true : undefined,
+              addedByUserId: isPromo ? auth?.user?.id : undefined,
+              addedAt: isPromo ? new Date().toISOString() : undefined,
+            })),
+            userId: auth?.user?.id ?? null,
+            // Datos de pago
+            paymentMethod: paymentMethod || null,
+            paymentAmount: advancePayment,
+            sellerName: sellerDisplayName || null,
+          };
+
+          await axios.put(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderData.id}`,
+            updatePayload,
+          );
+
+          toast.success("Venta actualizada correctamente");
+          setReceiptOrderId(orderData.id);
+          setReceiptOpen(true);
+        }
+      } catch (error) {
+        console.error("❌ Error creating sale", error);
+        toast.error("Error al registrar la venta");
+      } finally {
+        setIsSubmitting(false);
+      }
     } finally {
-      setIsSubmitting(false);
+      isSubmittingRef.current = false;
     }
   };
 

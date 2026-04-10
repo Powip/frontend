@@ -17,6 +17,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { ScrollArea } from "../ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
+import { shouldDisplayNote } from "@/lib/logFilters";
 
 interface Note {
   user: string;
@@ -49,9 +50,14 @@ export default function ShippingNotesModal({
   useEffect(() => {
     try {
       const parsed = JSON.parse(initialNotes || "[]");
-      setNotes(Array.isArray(parsed) ? parsed : []);
+      const filtered = Array.isArray(parsed)
+        ? parsed.filter((n: Note) => shouldDisplayNote(n.text))
+        : shouldDisplayNote(initialNotes)
+          ? [{ user: "Sistema", date: new Date().toISOString(), text: initialNotes }]
+          : [];
+      setNotes(filtered);
     } catch (e) {
-      if (initialNotes) {
+      if (initialNotes && shouldDisplayNote(initialNotes)) {
         setNotes([{ user: "Sistema", date: new Date().toISOString(), text: initialNotes }]);
       } else {
         setNotes([]);

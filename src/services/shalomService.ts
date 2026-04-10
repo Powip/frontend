@@ -43,7 +43,7 @@ export interface ShalomAgency {
 
 /** Verifica que el servidor Shalom responde (sin empresa, admin key global) */
 export const testShalomConnection = async (
-  token: string
+  token: string,
 ): Promise<{ ok: boolean; agenciesCount: number }> => {
   const res = await axios.get(`${API_INTEGRATIONS}/shalom/connection-test`, {
     headers: headers(token),
@@ -56,7 +56,7 @@ export const testShalomConnection = async (
 /** Solo guarda usuario + contraseña Shalom Pro */
 export const saveShalomConfig = async (
   token: string,
-  data: { companyId: string; username: string; password: string }
+  data: { companyId: string; username: string; password: string },
 ): Promise<ShalomConfig> => {
   const res = await axios.post(`${API_INTEGRATIONS}/shalom/config`, data, {
     headers: headers(token),
@@ -67,12 +67,12 @@ export const saveShalomConfig = async (
 /** Retorna la config de la empresa (sin contraseña) */
 export const getShalomConfig = async (
   token: string,
-  companyId: string
+  companyId: string,
 ): Promise<ShalomConfig | null> => {
   try {
     const res = await axios.get(
       `${API_INTEGRATIONS}/shalom/config/${companyId}`,
-      { headers: headers(token) }
+      { headers: headers(token) },
     );
     return res.data;
   } catch {
@@ -84,35 +84,39 @@ export const getShalomConfig = async (
 
 export const createShalomInstance = async (
   token: string,
-  companyId: string
+  companyId: string,
 ): Promise<{ instanceId: string }> => {
   const res = await axios.post(
     `${API_INTEGRATIONS}/shalom/instance/${companyId}`,
     {},
-    { headers: headers(token) }
+    { headers: headers(token) },
   );
   return res.data;
 };
 
 export const loginShalom = async (
   token: string,
-  companyId: string
+  companyId: string,
 ): Promise<{ success: boolean; message: string }> => {
   const res = await axios.post(
     `${API_INTEGRATIONS}/shalom/login`,
     { companyId },
-    { headers: headers(token) }
+    { headers: headers(token) },
   );
   return res.data;
 };
 
 export const getShalomStatus = async (
   token: string,
-  companyId: string
-): Promise<{ isLoggedIn: boolean; username: string | null; hasInstance: boolean }> => {
+  companyId: string,
+): Promise<{
+  isLoggedIn: boolean;
+  username: string | null;
+  hasInstance: boolean;
+}> => {
   const res = await axios.get(
     `${API_INTEGRATIONS}/shalom/status/${companyId}`,
-    { headers: headers(token) }
+    { headers: headers(token) },
   );
   return res.data;
 };
@@ -121,23 +125,23 @@ export const getShalomStatus = async (
 
 export const listShalomAgencies = async (
   token: string,
-  q?: string
+  q?: string,
 ): Promise<ShalomAgency[]> => {
   const url = q
     ? `${API_INTEGRATIONS}/shalom/agencies/search/${encodeURIComponent(q)}`
     : `${API_INTEGRATIONS}/shalom/agencies`;
-    
+
   try {
     const res = await axios.get(url, { headers: headers(token) });
     const data = res.data;
-    
+
     console.log("SHALOM API RAW RESPONSE:", data);
 
     let rawAgencies: any[] = [];
     if (Array.isArray(data)) rawAgencies = data;
     else if (data && Array.isArray(data.data)) rawAgencies = data.data;
     else if (data && Array.isArray(data.agencies)) rawAgencies = data.agencies;
-    
+
     return rawAgencies.map((ag: any) => ({
       ...ag,
       id: ag.ter_id ?? ag.id,
@@ -157,14 +161,18 @@ export const listShalomAgencies = async (
 
 export const trackShalomShipment = async (
   token: string,
-  companyId: string,
-  orderNumber: string,
-  orderCode: string
+  companyId: string, // ⬅️ SÍ es necesario
+  externalTrackingNumber: string, // ⬅️ 8 dígitos de Shalom
+  shippingCode: string, // ⬅️ 4 caracteres de Shalom
 ): Promise<Record<string, unknown>> => {
   const res = await axios.post(
     `${API_INTEGRATIONS}/shalom/track`,
-    { companyId, orderNumber, orderCode },
-    { headers: headers(token) }
+    {
+      companyId, // ✅ Enviar companyId
+      orderNumber: externalTrackingNumber,
+      orderCode: shippingCode,
+    },
+    { headers: headers(token) },
   );
   return res.data;
 };
@@ -172,11 +180,11 @@ export const trackShalomShipment = async (
 /** Rastrear usando el proxy de ms-courier que conoce la guía */
 export const trackShalomGuide = async (
   token: string,
-  guideId: string
+  guideId: string,
 ): Promise<Record<string, unknown>> => {
   const res = await axios.get(
     `${API_COURIER}/shipping-guides/${guideId}/shalom/track`,
-    { headers: headers(token) }
+    { headers: headers(token) },
   );
   return res.data;
 };
@@ -185,15 +193,30 @@ export const trackShalomGuide = async (
 
 export const getShalomTicketPdfUrl = (
   orderNumber: string,
-  orderCode: string
+  orderCode: string,
 ): string =>
   `${API_INTEGRATIONS}/shalom/ticket-pdf/${orderNumber}/${orderCode}`;
 
+export const generateShalomTicketPdf = async (
+  token: string,
+  externalTrackingNumber: string, // ⬅️ 8 dígitos de Shalom
+  shippingCode: string, // ⬅️ 4 caracteres de Shalom
+): Promise<Blob> => {
+  // ✅ CAMBIO: GET con parámetros de ruta en lugar de POST con body
+  const res = await axios.get(
+    `${API_INTEGRATIONS}/shalom/ticket-pdf/${externalTrackingNumber}/${shippingCode}`,
+    {
+      headers: headers(token),
+      responseType: "blob",
+    },
+  );
+  return res.data;
+};
+
 export const getShalomLabelPdfUrl = (
   orderNumber: string,
-  orderCode: string
-): string =>
-  `${API_INTEGRATIONS}/shalom/label/${orderNumber}/${orderCode}`;
+  orderCode: string,
+): string => `${API_INTEGRATIONS}/shalom/label/${orderNumber}/${orderCode}`;
 
 /** Cotizar un envío individual */
 export const quoteShalom = async (
@@ -207,17 +230,17 @@ export const quoteShalom = async (
     length: number;
     weight: number;
     quantity: number;
-  }
-): Promise<{ 
-  precio: number; 
-  moneda: string; 
+  },
+): Promise<{
+  precio: number;
+  moneda: string;
   status: string;
   message?: string;
 }> => {
   const res = await axios.post(
     `${API_COURIER}/shipping-guides/shalom/quote`,
     data,
-    { headers: headers(token) }
+    { headers: headers(token) },
   );
   return res.data;
 };
@@ -227,12 +250,12 @@ export const updateGuideQuote = async (
   token: string,
   guideId: string,
   quotedAmount: number,
-  quotedCurrency: string = "PEN"
+  quotedCurrency: string = "PEN",
 ): Promise<void> => {
   await axios.patch(
     `${API_COURIER}/shipping-guides/${guideId}/quote`,
     { quotedAmount, quotedCurrency },
-    { headers: headers(token) }
+    { headers: headers(token) },
   );
 };
 
@@ -257,19 +280,23 @@ export const sendGuideToShalom = async (
         content: string;
         recipientDoc: string;
         recipientPhone: string;
-    }>;
+      }
+    >;
     securityCode?: string;
     quotedAmount?: number;
     quotedCurrency?: string;
-  }
+  },
 ): Promise<{
   success: boolean;
-  trackingData: Record<string, { orderNumber: string; orderCode: string }> | null;
+  trackingData: Record<
+    string,
+    { orderNumber: string; orderCode: string }
+  > | null;
 }> => {
   const res = await axios.post(
     `${API_COURIER}/shipping-guides/${guideId}/send-to-shalom`,
     data,
-    { headers: headers(token) }
+    { headers: headers(token) },
   );
   return res.data;
 };

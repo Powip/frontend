@@ -156,7 +156,7 @@ const AgencySelector = ({
               }
             />
           </SelectTrigger>
-          <SelectContent className="max-h-[250px] dark:bg-slate-800 dark:border-slate-700">
+          <SelectContent className="max-h-[250px] w-full dark:bg-slate-800 dark:border-slate-700 z-50">
             {agencies.length === 0 && searchValue ? (
               <div className="p-3 text-center text-xs text-slate-400 dark:text-slate-500">
                 No se encontraron agencias
@@ -168,11 +168,11 @@ const AgencySelector = ({
                   value={a.api_name}
                   className="py-1 focus:bg-slate-50 dark:focus:bg-slate-700"
                 >
-                  <div className="flex flex-col gap-0 max-w-[280px]">
-                    <span className="font-normal text-[12px] text-slate-700 dark:text-slate-200 line-clamp-1">
+                  <div className="flex flex-col gap-0 max-w-none min-w-[300px]">
+                    <span className="font-normal text-[12px] text-slate-700 dark:text-slate-200 truncate">
                       {a.nombre_agencia}
                     </span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal line-clamp-1 italic">
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal truncate italic">
                       {a.direccion}
                     </span>
                   </div>
@@ -315,7 +315,7 @@ export default function SendToShalomModal({
         const destSearch =
           order.customer?.district || order.customer?.city || order.city || "";
         initialData[order.id] = {
-          recipientDoc: order.customer?.identityDocument || "",
+          recipientDoc: order.customer?.dni || "",
           recipientPhone:
             order.recipientPhone || order.customer?.phoneNumber || "",
           content: "PAQUETE XXS",
@@ -417,11 +417,6 @@ export default function SendToShalomModal({
     try {
       setSending(true);
 
-      const firstOrderId = orders[0]?.id;
-      const globalSecurityCode = firstOrderId
-        ? shipmentsData[firstOrderId]?.securityCode
-        : "";
-
       const originAgencyObj = originAgencies.find(
         (a) => a.api_name === originAgency,
       );
@@ -449,6 +444,7 @@ export default function SendToShalomModal({
           recipientDoc: data.recipientDoc,
           recipientPhone: data.recipientPhone,
           quantity: data.packageDetails.quantity,
+          securityCode: data.securityCode, // Código individual
         };
       });
 
@@ -460,7 +456,7 @@ export default function SendToShalomModal({
         orderDestinations,
         orderDestinationNames,
         packageDetails,
-        securityCode: globalSecurityCode || "",
+        securityCode: orders[0] ? shipmentsData[orders[0].id]?.securityCode : "", // Fallback
         quotedAmount: totalQuoted || undefined,
         quotedCurrency: "PEN",
       };
@@ -474,7 +470,6 @@ export default function SendToShalomModal({
         const summary = res.data.summary || {};
         const errors = res.data.errors || [];
 
-        // Guardar resumen para mostrar en la pantalla de éxito
         setSuccessSummary({
           total: summary.total || orders.length,
           successful: summary.successful || 0,
@@ -483,18 +478,11 @@ export default function SendToShalomModal({
         });
 
         if (errors.length > 0) {
-          const errorDetails = errors
-            .map(
-              (e: any, idx: number) =>
-                `${idx + 1}. ${e.shipmentInfo?.recipientName || "Cliente sin nombre"}: ${e.error}`,
-            )
-            .join("\n");
-
           toast.warning(
-            `${summary.successful} de ${summary.total} guías creadas correctamente`,
+            `${summary.successful} de ${summary.total} procesados correctamente`,
             {
               duration: 8000,
-              description: `${summary.failed} envíos fallaron:\n\n${errorDetails}`,
+              description: `${summary.failed} envíos fallaron. Revisa el resumen.`,
             },
           );
         } else {
@@ -537,7 +525,7 @@ export default function SendToShalomModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-6xl max-h-[90vh] p-0 bg-white dark:bg-slate-900 overflow-hidden">
+      <DialogContent className="sm:max-w-6xl max-h-[90vh] p-0 bg-white dark:bg-slate-900 overflow-visible">
         {/* Wrapper interno que maneja el layout — DialogContent mantiene su comportamiento nativo de Radix UI */}
         <div
           className="relative flex flex-col"
@@ -735,9 +723,14 @@ export default function SendToShalomModal({
                                 </div>
 
                                 <div className="space-y-1 pt-1">
-                                  <Label className="text-[9px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-tight">
-                                    CÓDIGO DE SEGURIDAD (OBLIGATORIO)
-                                  </Label>
+                                  <div className="flex items-center justify-between">
+                                    <Label className="text-[9px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-tight">
+                                      CÓDIGO DE SEGURIDAD (OBLIGATORIO)
+                                    </Label>
+                                    {!isValidSecurityCode(data.securityCode || "") && (
+                                      <span className="text-[10px] font-bold text-red-500">FALTANTE</span>
+                                    )}
+                                  </div>
                                   <Input
                                     value={data.securityCode}
                                     onChange={(e) => {
@@ -762,8 +755,9 @@ export default function SendToShalomModal({
                                     maxLength={4}
                                     className={cn(
                                       "h-8 text-xs bg-slate-50/50 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100 dark:placeholder:text-slate-500",
-                                      ((data.securityCode?.length > 0 &&
-                                        data.securityCode.length < 4) ||
+                                      (!data.securityCode ||
+                                        (data.securityCode?.length > 0 &&
+                                          data.securityCode.length < 4) ||
                                         (data.securityCode?.length === 4 &&
                                           !isValidSecurityCode(
                                             data.securityCode,
@@ -1085,7 +1079,7 @@ export default function SendToShalomModal({
                       <div
                         className={cn(
                           "flex items-center justify-between p-2.5 rounded-lg border transition-colors",
-                          !inspectingOrder.customer?.identityDocument
+                          !inspectingOrder.customer?.dni
                             ? "bg-red-50 dark:bg-red-950/30 border-red-100 dark:border-red-900"
                             : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 group-hover:border-slate-200 dark:group-hover:border-slate-600",
                         )}
@@ -1093,22 +1087,22 @@ export default function SendToShalomModal({
                         <span
                           className={cn(
                             "text-sm font-semibold",
-                            !inspectingOrder.customer?.identityDocument
+                            !inspectingOrder.customer?.dni
                               ? "text-red-600 dark:text-red-400"
                               : "text-slate-700 dark:text-slate-200",
                           )}
                         >
-                          {inspectingOrder.customer?.identityDocument ||
+                          {inspectingOrder.customer?.dni ||
                             "FALTANTE"}
                         </span>
-                        {inspectingOrder.customer?.identityDocument && (
+                        {inspectingOrder.customer?.dni && (
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-7 w-7 text-slate-400 hover:text-blue-600 dark:text-slate-500 dark:hover:text-blue-400"
                             onClick={() =>
                               copyToClipboard(
-                                inspectingOrder.customer?.identityDocument ||
+                                inspectingOrder.customer?.dni ||
                                   "",
                                 "Documento",
                               )

@@ -50,12 +50,12 @@ import { MessageSquare } from "lucide-react";
 import ShippingNotesModal from "@/components/modals/ShippingNotesModal";
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { SourceBadge } from "@/components/shared/SourceBadge";
 
 import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
-import { fetchCouriers, Courier } from "@/services/courierService";
 import CustomerServiceModal, {
   ShippingGuideData,
 } from "@/components/modals/CustomerServiceModal";
@@ -129,7 +129,8 @@ const COURIERS = [
   "Motorizado Propio",
   "Shalom",
   "Olva Courier",
-  "Otros",
+  "Marvisur",
+  "Flores",
 ];
 
 const GUIDE_STATUSES = [
@@ -192,8 +193,6 @@ export default function SeguimientoPage() {
   const [filters, setFilters] = useState<SeguimientoFilters>(emptyFilters);
   const [guideSearch, setGuideSearch] = useState("");
   const [guideStatusFilter, setGuideStatusFilter] = useState("");
-  const [guideCourierFilter, setGuideCourierFilter] = useState("");
-  const [dynamicCouriers, setDynamicCouriers] = useState<Courier[]>([]);
 
   // Map of orderId -> orderNumber for quick lookup
   const [orderMap, setOrderMap] = useState<Record<string, string>>({});
@@ -204,11 +203,6 @@ export default function SeguimientoPage() {
     null,
   );
   const [guideModalOpen, setGuideModalOpen] = useState(false);
-
-  // State for Selection
-  const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
-    new Set(),
-  );
 
   // Modal state for order detail (CustomerServiceModal) - includes guide data
   const [orderModalOpen, setOrderModalOpen] = useState(false);
@@ -253,7 +247,6 @@ export default function SeguimientoPage() {
   };
 
   const { auth, selectedStoreId } = useAuth();
-  const companyId = auth?.company?.id;
 
   // Helper function to check if user is admin
   const isAdmin =
@@ -383,21 +376,10 @@ export default function SeguimientoPage() {
     }
   }, [selectedStoreId]);
 
-  const fetchDynamicCouriers = useCallback(async () => {
-    if (!companyId) return;
-    try {
-      const data = await fetchCouriers(companyId);
-      setDynamicCouriers(data);
-    } catch (error) {
-      console.error("Error loading dynamic couriers:", error);
-    }
-  }, [companyId]);
-
   useEffect(() => {
     fetchEnvios();
     fetchGuides();
-    fetchDynamicCouriers();
-  }, [selectedStoreId, fetchEnvios, fetchGuides, fetchDynamicCouriers]);
+  }, [selectedStoreId, fetchEnvios, fetchGuides]);
 
   // Apply filters
   const filteredEnvios = useMemo(() => {
@@ -436,14 +418,14 @@ export default function SeguimientoPage() {
         const itemDate = new Date(guide?.created_at || order.created_at);
 
         if (filters.startDate) {
-          const [y, m, d] = filters.startDate.split("-").map(Number);
-          const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+          const start = new Date(filters.startDate);
+          start.setHours(0, 0, 0, 0);
           if (itemDate < start) return false;
         }
 
         if (filters.endDate) {
-          const [y, m, d] = filters.endDate.split("-").map(Number);
-          const end = new Date(y, m - 1, d, 23, 59, 59, 999);
+          const end = new Date(filters.endDate);
+          end.setHours(23, 59, 59, 999);
           if (itemDate > end) return false;
         }
       }
@@ -508,14 +490,14 @@ export default function SeguimientoPage() {
         const itemDate = new Date(guide?.created_at || order.created_at);
 
         if (filters.startDate) {
-          const [y, m, d] = filters.startDate.split("-").map(Number);
-          const start = new Date(y, m - 1, d, 0, 0, 0, 0);
+          const start = new Date(filters.startDate);
+          start.setHours(0, 0, 0, 0);
           if (itemDate < start) return false;
         }
 
         if (filters.endDate) {
-          const [y, m, d] = filters.endDate.split("-").map(Number);
-          const end = new Date(y, m - 1, d, 23, 59, 59, 999);
+          const end = new Date(filters.endDate);
+          end.setHours(23, 59, 59, 999);
           if (itemDate > end) return false;
         }
       }
@@ -567,26 +549,9 @@ export default function SeguimientoPage() {
         return false;
       }
 
-      // Filtro por carrier (con match flexible)
-      if (guideCourierFilter) {
-        const courierName = (guide.courierName || "").toUpperCase();
-        const filterValue = guideCourierFilter.toUpperCase();
-
-        if (filterValue === "SHALOM") {
-          if (!courierName.includes("SHALOM")) return false;
-        } else if (filterValue === "OLVA COURIER") {
-          if (!courierName.includes("OLVA")) return false;
-        } else if (filterValue === "MOTORIZADO PROPIO") {
-          if (!courierName.includes("MOTORIZADO")) return false;
-        } else {
-          // Para otros carriers (dinámicos u "Otros"), match exacto o incluye
-          if (!courierName.includes(filterValue)) return false;
-        }
-      }
-
       return true;
     });
-  }, [guides, guideSearch, guideStatusFilter, guideCourierFilter, orderMap]);
+  }, [guides, guideSearch, guideStatusFilter, orderMap]);
 
   const updateFilter = <K extends keyof SeguimientoFilters>(
     key: K,
@@ -655,10 +620,6 @@ export default function SeguimientoPage() {
           shippingCode: data.shippingCode || null,
           shippingKey: data.shippingKey || null,
           shippingOffice: data.shippingOffice || null,
-          userId: auth?.user?.id,
-          sellerName:
-            [auth?.user?.name, auth?.user?.surname].filter(Boolean).join(" ") ||
-            undefined,
         },
       );
       // Update local state to sync original values (avoids table refresh)
@@ -880,54 +841,6 @@ export default function SeguimientoPage() {
     );
   };
 
-  const handleSelectAll = (
-    e: React.ChangeEvent<HTMLInputElement>,
-    items: EnvioItem[],
-  ) => {
-    if (e.target.checked) {
-      const allIds = new Set(items.map((v) => v.order.id));
-      setSelectedSaleIds(allIds);
-    } else {
-      setSelectedSaleIds(new Set());
-    }
-  };
-
-  const handleSelectRow = (saleId: string) => {
-    const newSelected = new Set(selectedSaleIds);
-    if (newSelected.has(saleId)) {
-      newSelected.delete(saleId);
-    } else {
-      newSelected.add(saleId);
-    }
-    setSelectedSaleIds(newSelected);
-  };
-
-  const handleBulkWhatsApp = (items: EnvioItem[]) => {
-    if (selectedSaleIds.size === 0) return;
-
-    // Filter items to only the selected ones
-    const selectedItems = items.filter((v) =>
-      selectedSaleIds.has(v.order.id)
-    );
-
-    if (selectedItems.length > 5) {
-      toast.info(
-        "Se abrirán múltiples pestañas. Asegúrate de permitir pop-ups en tu navegador.",
-        { duration: 5000 },
-      );
-    }
-
-    selectedItems.forEach((item, index) => {
-      setTimeout(() => {
-        handleWhatsApp(
-          item.order.customer?.phoneNumber || "",
-          item.order.orderNumber,
-          item.order.customer?.fullName,
-        );
-      }, index * 600); // 600ms stagger between each message
-    });
-  };
-
   if (!auth) return null;
 
   return (
@@ -963,30 +876,17 @@ export default function SeguimientoPage() {
                   <Package className="h-5 w-5" />
                   Pedidos En Envío ({filteredEnvios.length})
                 </CardTitle>
-                <div className="flex items-center gap-2">
-                  {selectedSaleIds.size > 0 && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                      onClick={() => handleBulkWhatsApp(filteredEnvios)}
-                    >
-                      <MessageCircle className="h-4 w-4 mr-2" />
-                      WhatsApp Masivo ({selectedSaleIds.size})
-                    </Button>
-                  )}
-                  {isAdmin && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleExportExcel(filteredEnvios, "pedidos")}
-                      disabled={filteredEnvios.length === 0}
-                    >
-                      <FileDown className="h-4 w-4 mr-2" />
-                      Exportar Excel
-                    </Button>
-                  )}
-                </div>
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleExportExcel(filteredEnvios, "pedidos")}
+                    disabled={filteredEnvios.length === 0}
+                  >
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 {/* Filters */}
@@ -1161,28 +1061,13 @@ export default function SeguimientoPage() {
                     <Table className="min-w-[1500px]">
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[50px] min-w-[50px] lg:sticky lg:left-0 lg:z-30 bg-background border-r text-center">
-                            <input
-                              type="checkbox"
-                              className="rounded border-gray-300 text-primary focus:ring-primary"
-                              checked={
-                                filteredEnvios.length > 0 &&
-                                filteredEnvios.every((v) =>
-                                  selectedSaleIds.has(v.order.id),
-                                )
-                              }
-                              onChange={(e) =>
-                                handleSelectAll(e, filteredEnvios)
-                              }
-                            />
-                          </TableHead>
-                          <TableHead className="w-[110px] min-w-[110px] lg:sticky lg:left-[50px] lg:z-30 bg-background border-r">
+                          <TableHead className="w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-30 bg-background border-r">
                             N° Orden
                           </TableHead>
-                          <TableHead className="w-[160px] min-w-[160px] lg:sticky lg:left-[160px] lg:z-30 bg-background border-r">
+                          <TableHead className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-30 bg-background border-r">
                             Cliente
                           </TableHead>
-                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:left-[320px] lg:z-30 bg-background border-r">
+                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-30 bg-background border-r">
                             Teléfono
                           </TableHead>
                           <TableHead className="w-[100px] min-w-[100px]">
@@ -1198,9 +1083,8 @@ export default function SeguimientoPage() {
                             Vendedor
                           </TableHead>
                           <TableHead className="w-[100px] min-w-[100px]">
-                            Costo Carrier
+                            Origen
                           </TableHead>
-
                           <TableHead className="w-[100px] min-w-[100px]">
                             Días
                           </TableHead>
@@ -1244,15 +1128,7 @@ export default function SeguimientoPage() {
                               key={order.id}
                               className={`hover:bg-muted/50 ${getDaysRowClass(daysSinceCreated)} ${isProvincia && daysSinceCreated < 25 ? "bg-amber-50/50 dark:bg-amber-950/20" : ""}`}
                             >
-                              <TableCell className="w-[50px] min-w-[50px] lg:sticky lg:left-0 lg:z-20 bg-background border-r text-center">
-                                <input
-                                  type="checkbox"
-                                  className="rounded border-gray-300 text-primary focus:ring-primary"
-                                  checked={selectedSaleIds.has(order.id)}
-                                  onChange={() => handleSelectRow(order.id)}
-                                />
-                              </TableCell>
-                              <TableCell className="font-medium w-[110px] min-w-[110px] lg:sticky lg:left-[50px] lg:z-20 bg-background border-r">
+                              <TableCell className="font-medium w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-20 bg-background border-r">
                                 <div className="flex items-center gap-1">
                                   {daysSinceCreated >= 25 && (
                                     <AlertTriangle
@@ -1262,7 +1138,7 @@ export default function SeguimientoPage() {
                                   {order.orderNumber}
                                 </div>
                               </TableCell>
-                              <TableCell className="w-[160px] min-w-[160px] lg:sticky lg:left-[160px] lg:z-20 bg-background border-r">
+                              <TableCell className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-20 bg-background border-r">
                                 <div className="flex items-center gap-1 group relative">
                                   <User className="h-3 w-3 text-muted-foreground flex-shrink-0" />
                                   <span
@@ -1273,7 +1149,7 @@ export default function SeguimientoPage() {
                                   </span>
                                 </div>
                               </TableCell>
-                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:left-[320px] lg:z-20 bg-background border-r">
+                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-20 bg-background border-r">
                                 <div className="flex items-center gap-2">
                                   <div className="flex items-center gap-1">
                                     <Phone className="h-3 w-3 text-muted-foreground flex-shrink-0" />
@@ -1338,10 +1214,7 @@ export default function SeguimientoPage() {
                                 </span>
                               </TableCell>
                               <TableCell className="w-[100px] min-w-[100px]">
-                                S/{" "}
-                                {Number(order.carrierShippingCost || 0).toFixed(
-                                  2,
-                                )}
+                                <SourceBadge source={order.externalSource} />
                               </TableCell>
                               <TableCell className="w-[100px] min-w-[100px]">
                                 <div className="flex items-center gap-1">
@@ -1650,32 +1523,19 @@ export default function SeguimientoPage() {
                   <Check className="h-5 w-5 text-green-600" />
                   Pedidos Entregados ({filteredEntregados.length})
                 </CardTitle>
-                <div className="flex items-center gap-2">
-                  {selectedSaleIds.size > 0 && (
-                    <Button
-                      variant="default"
-                      size="sm"
-                      className="bg-green-600 hover:bg-green-700 text-white"
-                      onClick={() => handleBulkWhatsApp(filteredEntregados)}
-                    >
-                      <MessageCircle className="h-4 w-4 mr-2" />
-                      WhatsApp Masivo ({selectedSaleIds.size})
-                    </Button>
-                  )}
-                  {isAdmin && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        handleExportExcel(filteredEntregados, "entregados")
-                      }
-                      disabled={filteredEntregados.length === 0}
-                    >
-                      <FileDown className="h-4 w-4 mr-2" />
-                      Exportar Excel
-                    </Button>
-                  )}
-                </div>
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() =>
+                      handleExportExcel(filteredEntregados, "entregados")
+                    }
+                    disabled={filteredEntregados.length === 0}
+                  >
+                    <FileDown className="h-4 w-4 mr-2" />
+                    Exportar Excel
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 {/* Filters */}
@@ -1848,28 +1708,13 @@ export default function SeguimientoPage() {
                     <Table className="min-w-[1500px]">
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-[50px] min-w-[50px] lg:sticky lg:left-0 lg:z-30 bg-background border-r text-center">
-                            <input
-                              type="checkbox"
-                              className="rounded border-gray-300 text-primary focus:ring-primary"
-                              checked={
-                                filteredEntregados.length > 0 &&
-                                filteredEntregados.every((v) =>
-                                  selectedSaleIds.has(v.order.id),
-                                )
-                              }
-                              onChange={(e) =>
-                                handleSelectAll(e, filteredEntregados)
-                              }
-                            />
-                          </TableHead>
-                          <TableHead className="w-[110px] min-w-[110px] lg:sticky lg:left-[50px] lg:z-30 bg-background border-r">
+                          <TableHead className="w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-30 bg-background border-r">
                             N° Orden
                           </TableHead>
-                          <TableHead className="w-[160px] min-w-[160px] lg:sticky lg:left-[160px] lg:z-30 bg-background border-r">
+                          <TableHead className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-30 bg-background border-r">
                             Cliente
                           </TableHead>
-                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:left-[320px] lg:z-30 bg-background border-r">
+                          <TableHead className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-30 bg-background border-r">
                             Teléfono
                           </TableHead>
                           <TableHead className="w-[100px] min-w-[100px]">
@@ -1903,7 +1748,7 @@ export default function SeguimientoPage() {
                             Vendedor
                           </TableHead>
                           <TableHead className="w-[100px] min-w-[100px]">
-                            Costo Carrier
+                            Origen
                           </TableHead>
                           <TableHead className="w-[100px] min-w-[100px]">
                             Estado
@@ -1933,18 +1778,10 @@ export default function SeguimientoPage() {
                               key={order.id}
                               className="hover:bg-muted/50"
                             >
-                              <TableCell className="w-[50px] min-w-[50px] lg:sticky lg:left-0 lg:z-20 bg-background border-r text-center">
-                                <input
-                                  type="checkbox"
-                                  className="rounded border-gray-300 text-primary focus:ring-primary"
-                                  checked={selectedSaleIds.has(order.id)}
-                                  onChange={() => handleSelectRow(order.id)}
-                                />
-                              </TableCell>
-                              <TableCell className="font-medium w-[110px] min-w-[110px] lg:sticky lg:left-[50px] lg:z-20 bg-background border-r">
+                              <TableCell className="font-medium w-[110px] min-w-[110px] lg:sticky lg:left-0 lg:z-20 bg-background border-r">
                                 {order.orderNumber}
                               </TableCell>
-                              <TableCell className="w-[160px] min-w-[160px] lg:sticky lg:left-[160px] lg:z-20 bg-background border-r">
+                              <TableCell className="w-[160px] min-w-[160px] lg:sticky lg:left-[110px] lg:z-20 bg-background border-r">
                                 <span
                                   className="truncate max-w-[130px]"
                                   title={order.customer?.fullName || "-"}
@@ -1952,7 +1789,7 @@ export default function SeguimientoPage() {
                                   {order.customer?.fullName || "-"}
                                 </span>
                               </TableCell>
-                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:left-[320px] lg:z-20 bg-background border-r">
+                              <TableCell className="w-[120px] min-w-[120px] lg:sticky lg:left-[270px] lg:z-20 bg-background border-r">
                                 <span className="text-sm">
                                   {order.customer?.phoneNumber || "-"}
                                 </span>
@@ -2101,11 +1938,8 @@ export default function SeguimientoPage() {
                                   {order.sellerName || "-"}
                                 </span>
                               </TableCell>
-                              <TableCell className="w-[100px] min-w-[100px] font-medium text-blue-600">
-                                S/{" "}
-                                {Number(order.carrierShippingCost || 0).toFixed(
-                                  2,
-                                )}
+                              <TableCell className="w-[100px] min-w-[100px]">
+                                <SourceBadge source={order.externalSource} />
                               </TableCell>
                               <TableCell className="w-[100px] min-w-[100px]">
                                 <Badge className="text-[10px]">
@@ -2211,41 +2045,14 @@ export default function SeguimientoPage() {
                         )}
                       </select>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Carrier / Courier</Label>
-                      <select
-                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
-                        value={guideCourierFilter}
-                        onChange={(e) => setGuideCourierFilter(e.target.value)}
-                      >
-                        <option value="">Todos</option>
-                        <option value="Shalom">Shalom</option>
-                        <option value="Olva Courier">Olva Courier</option>
-                        <option value="Motorizado Propio">Motorizado Propio</option>
-                        <option value="Otros">Otros</option>
-                        {dynamicCouriers
-                          .filter(
-                            (c) =>
-                              !["Shalom", "Olva Courier", "Motorizado Propio", "Otros"].includes(
-                                c.name,
-                              ),
-                          )
-                          .map((c) => (
-                            <option key={c.id} value={c.name}>
-                              {c.name}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
                     <div className="flex items-end">
-                      {(guideSearch || guideStatusFilter || guideCourierFilter) && (
+                      {(guideSearch || guideStatusFilter) && (
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => {
                             setGuideSearch("");
                             setGuideStatusFilter("");
-                            setGuideCourierFilter("");
                           }}
                           className="text-xs"
                         >

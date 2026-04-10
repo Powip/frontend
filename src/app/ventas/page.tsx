@@ -18,6 +18,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SourceBadge } from "@/components/shared/SourceBadge";
 import {
   Table,
   TableBody,
@@ -893,6 +894,7 @@ Estado: ${sale.status}
             <TableHead>Vendedor</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead>Region</TableHead>
+            <TableHead>Origen</TableHead>
             {showTracking && (
               <>
                 <TableHead>Nro Tracking</TableHead>
@@ -1005,6 +1007,9 @@ Estado: ${sale.status}
                 </select>
               </TableCell>
               <TableCell>{sale.salesRegion}</TableCell>
+              <TableCell>
+                <SourceBadge source={sale.externalSource} />
+              </TableCell>
               {showTracking && (
                 <>
                   {/* Nro Tracking */}
@@ -1231,6 +1236,7 @@ Estado: ${sale.status}
             <TableHead>Vendedor</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead>Region</TableHead>
+            <TableHead>Origen</TableHead>
             {showTracking && (
               <>
                 <TableHead>Nro Tracking</TableHead>
@@ -1306,6 +1312,9 @@ Estado: ${sale.status}
                 </select>
               </TableCell>
               <TableCell>{sale.salesRegion}</TableCell>
+              <TableCell>
+                <SourceBadge source={sale.externalSource} />
+              </TableCell>
               {showTracking && (
                 <>
                   {/* Nro Tracking */}

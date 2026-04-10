@@ -17,6 +17,7 @@ import {
   User,
   CheckCircle2,
   X,
+  Eye,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -49,6 +50,7 @@ import {
   updateGuideQuote
 } from "@/services/shalomService";
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
+import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 
 interface TrackingGuide {
   id: string;
@@ -260,150 +262,189 @@ export default function CourierTrackingView() {
           <TabsTrigger value="todos">Todos</TabsTrigger>
         </TabsList>
 
-        <Card className="border-border shadow-sm">
-          <CardHeader className="pb-3 px-4">
-            <div className="flex justify-between items-center">
-              <div>
-                <CardTitle className="text-lg">Guías Registradas</CardTitle>
-                <CardDescription>Visualiza y gestiona las guías enviadas a través de carriers.</CardDescription>
-              </div>
-              <div className="text-muted-foreground text-xs font-medium bg-muted/50 px-2 py-1 rounded">
-                {filteredGuides.length} guías
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="p-0">
-            <div className="border-t border-border overflow-hidden">
-              <Table>
-                <TableHeader className="bg-muted/30">
-                  <TableRow>
-                    <TableHead className="font-semibold px-4 h-10 text-xs">N° Guía</TableHead>
-                    <TableHead className="font-semibold px-4 h-10 text-xs text-center">Fecha</TableHead>
-                    <TableHead className="font-semibold px-4 h-10 text-xs text-center">Courier</TableHead>
-                    <TableHead className="font-semibold px-4 h-10 text-xs text-center">Nro Shalom</TableHead>
-                    <TableHead className="font-semibold px-4 h-10 text-xs text-center">Código</TableHead>
-                    <TableHead className="font-semibold px-4 h-10 text-xs text-center">Costo</TableHead>
-                    <TableHead className="font-semibold px-4 h-10 text-right text-xs">Acciones</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    Array.from({ length: 3 }).map((_, i) => (
-                      <TableRow key={i}>
-                        <TableCell colSpan={6} className="h-16 animate-pulse bg-muted/10 px-4" />
-                      </TableRow>
-                    ))
-                  ) : filteredGuides.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={6} className="h-32 text-center text-muted-foreground text-sm">
-                        No se encontraron guías para este filtro.
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                     filteredGuides.map((guide) => {
-                      const shalomData = guide.shalomTrackingData;
-                      // Si hay múltiples órdenes, tomamos la primera para mostrar Nro/Código en la tabla
-                      const firstOrderId = Object.keys(shalomData || {})[0];
-                      const t = firstOrderId ? shalomData[firstOrderId] : null;
+        <TabsContent value="shalom">
+          <Card className="border-border shadow-sm">
+            <CardHeader className="pb-3 px-4">
+              <CardTitle className="text-lg">Seguimiento Detallado Shalom</CardTitle>
+              <CardDescription>Gestiona las órdenes de Shalom con información de rastreo granular.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ShalomOrderTrackingView />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-                      return (
+        <TabsContent value="olva">
+          <Card className="border-border shadow-sm">
+            <CardHeader className="pb-3 px-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="text-lg">Guías Registradas Olva</CardTitle>
+                  <CardDescription>Visualiza y gestiona las guías enviadas a través de Olva Courier.</CardDescription>
+                </div>
+                <div className="text-muted-foreground text-xs font-medium bg-muted/50 px-2 py-1 rounded">
+                  {filteredGuides.length} guías
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="border-t border-border overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-muted/30">
+                    <TableRow>
+                      <TableHead className="font-semibold px-4 h-10 text-xs">N° Guía</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Fecha</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Courier</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Nro Canal</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Código</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Costo</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-right text-xs">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      Array.from({ length: 3 }).map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell colSpan={7} className="h-16 animate-pulse bg-muted/10 px-4" />
+                        </TableRow>
+                      ))
+                    ) : filteredGuides.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="h-32 text-center text-muted-foreground text-sm">
+                          No se encontraron guías para este filtro.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredGuides.map((guide) => {
+                        const shalomData = guide.shalomTrackingData;
+                        const firstOrderId = Object.keys(shalomData || {})[0];
+                        const t = firstOrderId ? shalomData[firstOrderId] : null;
+
+                        return (
+                          <TableRow 
+                            key={guide.id} 
+                            className="hover:bg-muted/40 transition-colors cursor-pointer group"
+                            onClick={() => handleRowClick(guide.id)}
+                          >
+                            <TableCell className="font-medium px-4 py-3">
+                              <Button 
+                                variant="link" 
+                                className="p-0 h-auto text-primary text-xs font-semibold hover:no-underline group-hover:underline"
+                              >
+                                {guide.guideNumber}
+                              </Button>
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-[10px] text-center whitespace-nowrap text-muted-foreground font-medium">
+                              {new Date(guide.created_at).toLocaleDateString()}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-center">
+                              <Badge 
+                                variant={guide.courierName?.toUpperCase().includes("SHALOM") ? "default" : "secondary"} 
+                                className={`text-[10px] px-1.5 py-0 h-5 font-bold ${guide.courierName?.toUpperCase().includes("OLVA") ? "bg-yellow-500 hover:bg-yellow-600 text-black border-none" : ""}`}
+                              >
+                                {guide.courierName || "Sin nombre"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-center text-[10px] font-mono whitespace-nowrap">
+                              {t?.orderNumber || "—"}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-center text-[10px] font-mono whitespace-nowrap">
+                              {t?.orderCode || "—"}
+                            </TableCell>
+                            <TableCell className={`px-4 py-3 text-[10px] text-center whitespace-nowrap ${guide.quotedAmount ? "font-bold" : "italic text-muted-foreground"}`}>
+                              {guide.quotedAmount 
+                                ? `${guide.quotedCurrency || "S/"} ${Number(guide.quotedAmount).toFixed(2)}` 
+                                : "No calculado"}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex justify-end gap-1.5">
+                                <Button 
+                                  size="sm" 
+                                  variant="outline" 
+                                  className="h-7 w-7 p-0 flex items-center justify-center border-blue-200 text-blue-600 hover:bg-blue-50"
+                                  onClick={() => handleRowClick(guide.id)}
+                                  title="Editar Guía"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="todos">
+          <Card className="border-border shadow-sm">
+            <CardHeader className="pb-3 px-4">
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="text-lg">Todas las Guías</CardTitle>
+                  <CardDescription>Resumen general de guías de todos los couriers.</CardDescription>
+                </div>
+                <div className="text-muted-foreground text-xs font-medium bg-muted/50 px-2 py-1 rounded">
+                  {filteredGuides.length} guías
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+               <div className="border-t border-border overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-muted/30">
+                    <TableRow>
+                      <TableHead className="font-semibold px-4 h-10 text-xs">N° Guía</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Fecha</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Courier</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Costo</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-right text-xs">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loading ? (
+                      Array.from({ length: 3 }).map((_, i) => (
+                        <TableRow key={i}>
+                          <TableCell colSpan={5} className="h-16 animate-pulse bg-muted/10 px-4" />
+                        </TableRow>
+                      ))
+                    ) : filteredGuides.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="h-32 text-center text-muted-foreground text-sm">
+                          No hay guías para mostrar.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredGuides.map((guide) => (
                         <TableRow 
                           key={guide.id} 
-                          className="hover:bg-muted/40 transition-colors cursor-pointer group"
+                          className="hover:bg-muted/40 transition-colors cursor-pointer"
                           onClick={() => handleRowClick(guide.id)}
                         >
-                          <TableCell className="font-medium px-4 py-3">
-                            <Button 
-                              variant="link" 
-                              className="p-0 h-auto text-primary text-xs font-semibold hover:no-underline group-hover:underline"
-                            >
-                              {guide.guideNumber}
-                            </Button>
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-[10px] text-center whitespace-nowrap text-muted-foreground font-medium">
-                            {new Date(guide.created_at).toLocaleDateString()}
-                          </TableCell>
+                          <TableCell className="font-medium px-4 py-3 text-xs">{guide.guideNumber}</TableCell>
+                          <TableCell className="px-4 py-3 text-[10px] text-center whitespace-nowrap">{new Date(guide.created_at).toLocaleDateString()}</TableCell>
                           <TableCell className="px-4 py-3 text-center">
-                            <Badge 
-                              variant={guide.courierName?.toUpperCase().includes("SHALOM") ? "default" : "secondary"} 
-                              className={`text-[10px] px-1.5 py-0 h-5 font-bold ${guide.courierName?.toUpperCase().includes("OLVA") ? "bg-yellow-500 hover:bg-yellow-600 text-black border-none" : ""}`}
-                            >
-                              {guide.courierName || "Sin nombre"}
-                            </Badge>
+                            <Badge variant="outline" className="text-[10px]">{guide.courierName}</Badge>
                           </TableCell>
-                          <TableCell className="px-4 py-3 text-center text-[10px] font-mono whitespace-nowrap">
-                            {t?.orderNumber || "—"}
+                          <TableCell className="px-4 py-3 text-center text-[10px]">
+                            {guide.quotedAmount ? `${guide.quotedCurrency || "S/"} ${guide.quotedAmount}` : "-"}
                           </TableCell>
-                          <TableCell className="px-4 py-3 text-center text-[10px] font-mono whitespace-nowrap">
-                            {t?.orderCode || "—"}
-                          </TableCell>
-                          <TableCell className={`px-4 py-3 text-[10px] text-center whitespace-nowrap ${guide.quotedAmount ? "font-bold" : "italic text-muted-foreground"}`}>
-                            {guide.quotedAmount 
-                              ? `${guide.quotedCurrency || "S/"} ${Number(guide.quotedAmount).toFixed(2)}` 
-                              : "No calculado"}
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                            <div className="flex justify-end gap-1.5">
-                              {guide.courierName?.toUpperCase().includes("SHALOM") && t && (
-                                <>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="h-7 w-7 p-0 flex items-center justify-center border-primary/20 text-primary hover:bg-primary/5"
-                                    onClick={() => handleTrackShalom(guide)}
-                                    title="Rastrear en Shalom"
-                                  >
-                                    <Truck className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="h-7 w-7 p-0 flex items-center justify-center border-blue-200 text-blue-600 hover:bg-blue-50"
-                                    onClick={() => openDocument(getShalomLabelPdfUrl(t.orderNumber, t.orderCode))}
-                                    title="Etiqueta"
-                                  >
-                                    <Printer className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="h-7 w-7 p-0 flex items-center justify-center border-purple-200 text-purple-600 hover:bg-purple-50"
-                                    onClick={() => openDocument(getShalomTicketPdfUrl(t.orderNumber, t.orderCode))}
-                                    title="Ticket"
-                                  >
-                                    <FileText className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="h-7 w-7 p-0 flex items-center justify-center border-amber-200 text-amber-600 hover:bg-amber-50"
-                                    onClick={() => handleQuoteDirectly(guide)}
-                                    title="Cotizar"
-                                  >
-                                    <Calculator className="h-3.5 w-3.5" />
-                                  </Button>
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    className="h-7 w-7 p-0 flex items-center justify-center border-blue-200 text-blue-600 hover:bg-blue-50"
-                                    onClick={() => handleRowClick(guide.id)}
-                                    title="Editar Guía"
-                                  >
-                                    <Pencil className="h-3.5 w-3.5" />
-                                  </Button>
-                                </>
-                              )}
-                            </div>
+                          <TableCell className="px-4 py-3 text-right">
+                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleRowClick(guide.id)}><Eye className="h-3.5 w-3.5" /></Button>
                           </TableCell>
                         </TableRow>
-                      );
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
 
       {/* MODAL DE TRACKING */}
