@@ -82,14 +82,10 @@ export async function POST(request: Request) {
       validLeads.push({
         contact_name,
         phone_whatsapp,
-        email,
-        business_name,
-        city,
-        orders_per_day,
+        email: email || null,
+        business_name: business_name || null,
         pipeline_stage,
-        demo_scheduled_at: demo_date,
-        source: 'excel_import', 
-        imported_from_sheet: true,
+        source: 'otro',
         updated_at: new Date().toISOString(),
       });
     }

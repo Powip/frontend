@@ -1,47 +1,41 @@
-import { createRouteClient } from "@/utils/supabase/api";
+import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   try {
-    const supabase = await createRouteClient(request);
+    const supabase = await createClient();
     
     const now = new Date();
-    // Current month
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-    // Previous month
     const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
     const endOfPreviousMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString();
 
-    // 1. All leads (Simplified to basic data first for stability)
+    // 1. All leads
     const { data: allLeads, error } = await supabase
       .from("leads")
       .select("id, pipeline_stage, assigned_to, created_at");
 
     if (error) {
       console.error("[Pipeline Summary] DB Error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({
+        leads_this_month: 0, leads_previous_month: 0,
+        closed_this_month: 0, closed_previous_month: 0,
+        effectiveness: 0, states_count: {}, salesperson_breakdown: [],
+        contact_count: 0, close_rate: 0, closed_count: 0,
+      });
     }
 
     const leads = allLeads || [];
     
-    // Current month leads
     const currentMonthLeads = leads.filter(l => l.created_at >= startOfMonth);
     const previousMonthLeads = leads.filter(l => l.created_at >= startOfPreviousMonth && l.created_at <= endOfPreviousMonth);
 
-    // 2. Leads grouped by the 11 states
+    // 2. Leads grouped by states
     const statesCount: Record<string, number> = {
-      nuevo: 0,
-      contactado: 0,
-      respondio: 0,
-      demo_pendiente: 0,
-      demo_agendada: 0,
-      demo_realizada: 0,
-      pendiente_decision: 0,
-      pendiente_pago: 0,
-      pago_recibido: 0,
-      cerrado: 0,
-      perdido: 0,
-      cancelado: 0, 
+      nuevo: 0, contactado: 0, respondio: 0,
+      demo_pendiente: 0, demo_agendada: 0, demo_realizada: 0,
+      pendiente_decision: 0, pendiente_pago: 0, pago_recibido: 0,
+      cerrado: 0, perdido: 0, cancelado: 0, 
     };
 
     leads.forEach(lead => {
@@ -53,11 +47,10 @@ export async function GET(request: Request) {
       }
     });
 
-    // 3. Effectiveness calculate (Altas Concretadas / Leads Contactados) * 100
+    // 3. Effectiveness
     const contactedLeads = leads.filter(l => l.pipeline_stage && l.pipeline_stage !== "nuevo").length;
     const closedLeads = leads.filter(l => l.pipeline_stage === "cerrado" || l.pipeline_stage === "pago_recibido").length;
     
-    // MoM Closed Leads
     const closedThisMonth = currentMonthLeads.filter(l => l.pipeline_stage === "cerrado" || l.pipeline_stage === "pago_recibido").length;
     const closedPreviousMonth = previousMonthLeads.filter(l => l.pipeline_stage === "cerrado" || l.pipeline_stage === "pago_recibido").length;
 
@@ -71,11 +64,9 @@ export async function GET(request: Request) {
       if (!salespersonMap[sp]) {
         salespersonMap[sp] = { salesperson: sp, managed_leads: 0, closed_leads: 0 };
       }
-      
       if (lead.pipeline_stage !== "nuevo") {
          salespersonMap[sp].managed_leads++;
       }
-      
       if (lead.pipeline_stage === "cerrado" || lead.pipeline_stage === "pago_recibido") {
         salespersonMap[sp].closed_leads++;
       }
@@ -97,6 +88,11 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     console.error("Error calculating pipeline summary:", error);
-    return NextResponse.json({ error: "Internal Server Error", details: error.message }, { status: 500 });
+    return NextResponse.json({
+      leads_this_month: 0, leads_previous_month: 0,
+      closed_this_month: 0, closed_previous_month: 0,
+      effectiveness: 0, states_count: {}, salesperson_breakdown: [],
+      contact_count: 0, close_rate: 0, closed_count: 0,
+    });
   }
 }
