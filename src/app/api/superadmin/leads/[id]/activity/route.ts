@@ -1,4 +1,4 @@
-import { createClient } from "@/utils/supabase/server";
+import { createAdminClient as createClient } from '@/utils/supabase/admin';
 import { NextResponse } from "next/server";
 
 export async function POST(
@@ -16,9 +16,8 @@ export async function POST(
       return NextResponse.json({ error: "activity_type and description are required" }, { status: 400 });
     }
 
-    // 1. Get current user for attribution
-    const { data: { user } } = await supabase.auth.getUser();
-    
+    // 1. Attribution (admin client has no session user)
+
     // 2. Check if lead exists in main leads table (required for foreign key)
     const { data: existingLead } = await supabase
       .from("leads")
@@ -57,7 +56,7 @@ export async function POST(
         lead_id: id,
         activity_type,
         description,
-        performed_by: performed_by || user?.id, // Use UUID from body or current user
+        performed_by: performed_by || null,
         metadata: metadata || {},
         created_at: new Date().toISOString()
       })
