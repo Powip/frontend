@@ -212,7 +212,7 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId]);
+  }, [selectedStoreId, auth?.user?.id, auth?.user?.role]);
 
   useEffect(() => {
     if (fromDate && toDate) {

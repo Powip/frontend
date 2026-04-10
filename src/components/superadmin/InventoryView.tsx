@@ -26,11 +26,13 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-
 interface InventoryViewProps {
   outOfStockItems: any[];
   metrics: any;
   companies: any[];
+  accessToken?: string;
+  fromDate?: string;
+  toDate?: string;
 }
 
 const ITEMS_PER_PAGE = 8;
@@ -38,7 +40,10 @@ const ITEMS_PER_PAGE = 8;
 export function InventoryView({
   outOfStockItems,
   metrics,
-  companies
+  companies,
+  accessToken,
+  fromDate,
+  toDate
 }: InventoryViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [currentPage, setCurrentPage] = useState(1);

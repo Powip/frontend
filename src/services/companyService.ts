@@ -151,3 +151,18 @@ export const updateCompany = async (
   );
   return response.data;
 };
+
+export const deleteCompany = async (
+  token: string,
+  companyId: string,
+) => {
+  const response = await axios.delete(
+    `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${companyId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+  );
+  return response.data;
+};

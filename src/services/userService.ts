@@ -129,3 +129,16 @@ export const createPlatformUser = async (
   });
   return response.data;
 };
+
+// Eliminar usuario de la plataforma (Rollback)
+export const deleteUser = async (
+  userId: string,
+  accessToken: string,
+) => {
+  const response = await axios.delete(`${API_AUTH}/api/v1/auth/user/${userId}`, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+  return response.data;
+};

@@ -16,13 +16,16 @@ export async function POST(
       return NextResponse.json({ error: "activity_type and description are required" }, { status: 400 });
     }
 
+    const { data: { user } } = await supabase.auth.getUser();
+    const finalPerformedBy = performed_by || user?.email || 'Superadmin';
+
     const { data: activity, error } = await supabase
       .from("lead_activities")
       .insert({
         lead_id: id,
         activity_type,
         description,
-        performed_by,
+        performed_by: finalPerformedBy,
         metadata: metadata || {},
         created_at: new Date().toISOString()
       })

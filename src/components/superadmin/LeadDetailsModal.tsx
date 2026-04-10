@@ -65,6 +65,11 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
         source: lead.source || '',
         plan_interest: lead.plan_interest || '',
         city: lead.city || '',
+        orders_per_day: lead.orders_per_day || '',
+        courier: lead.courier || '',
+        interested_in: lead.interested_in || '',
+        assigned_to: lead.assigned_to || '',
+        observations: lead.observations || '',
       });
     }
   }, [lead]);
@@ -83,6 +88,11 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
       source: lead.source || '',
       plan_interest: lead.plan_interest || '',
       city: lead.city || '',
+      orders_per_day: lead.orders_per_day || '',
+      courier: lead.courier || '',
+      interested_in: lead.interested_in || '',
+      assigned_to: lead.assigned_to || '',
+      observations: lead.observations || '',
     });
   };
 
@@ -134,7 +144,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
           </div>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-6 scrollbar-hide">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-6 scrollbar-hide max-h-[65vh] overflow-y-auto pr-2">
           <div className="space-y-4">
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Nombre de Contacto</label>
@@ -203,6 +213,58 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 </div>
               )}
             </div>
+
+            <div className="space-y-1 mt-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Pedidos por día</label>
+              {isEditing ? (
+                <Input 
+                  name="orders_per_day" 
+                  type="number"
+                  value={formData.orders_per_day} 
+                  onChange={handleInputChange}
+                  className="h-9 text-sm font-semibold"
+                />
+              ) : (
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  <div className="h-4 w-4 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-[8px] font-bold">#</div>
+                  {lead.orders_per_day || 'No especificado'}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Courier preferido</label>
+              {isEditing ? (
+                <Input 
+                  name="courier" 
+                  value={formData.courier} 
+                  onChange={handleInputChange}
+                  className="h-9 text-sm font-semibold"
+                />
+              ) : (
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  <Globe className="h-4 w-4 text-slate-400" />
+                  {lead.courier || 'No especificado'}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Responsable (Vendedor)</label>
+              {isEditing ? (
+                <Input 
+                  name="assigned_to" 
+                  value={formData.assigned_to} 
+                  onChange={handleInputChange}
+                  className="h-9 text-sm font-semibold"
+                />
+              ) : (
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  <User className="h-4 w-4 text-blue-400" />
+                  {lead.assigned_to || 'Sin asignar'}
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="space-y-4">
@@ -253,6 +315,23 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
               )}
             </div>
 
+            <div className="space-y-1 mt-4 border-t border-slate-100 dark:border-slate-800 pt-4">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Servicio de interés</label>
+              {isEditing ? (
+                <Input 
+                  name="interested_in" 
+                  value={formData.interested_in} 
+                  onChange={handleInputChange}
+                  className="h-9 text-sm font-semibold"
+                />
+              ) : (
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  <Tag className="h-4 w-4 text-slate-400" />
+                  {lead.interested_in || 'No especificado'}
+                </div>
+              )}
+            </div>
+
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ubicación / Ciudad</label>
               {isEditing ? (
@@ -266,6 +345,23 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
                   <MapPin className="h-4 w-4 text-slate-400" />
                   {lead.city || 'No especificada'}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Observaciones</label>
+              {isEditing ? (
+                <Input 
+                  name="observations" 
+                  value={formData.observations} 
+                  onChange={handleInputChange}
+                  className="h-9 text-sm font-semibold"
+                />
+              ) : (
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
+                  <Tag className="h-4 w-4 text-slate-400" />
+                  {lead.observations || 'Sin observaciones adicionales'}
                 </div>
               )}
             </div>

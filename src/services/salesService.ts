@@ -6,6 +6,12 @@ const API_VENTAS =
 export interface GlobalSalesSummary {
   totalSales: number;
   orderCount: number;
+  income?: Array<{ date: string; amount: number }>;
+}
+
+export interface DailyIncome {
+  date: string;
+  totalIncome: number;
 }
 
 export interface RejectedPaymentAlert {
@@ -117,3 +123,26 @@ export const getGlobalBilling = async (
   });
   return response.data;
 };
+
+export const getCompanyDailyIncome = async (
+  accessToken: string,
+  companyId: string,
+  fromDate?: string,
+  toDate?: string,
+): Promise<DailyIncome[]> => {
+  const params: any = { storeId: companyId };
+  if (fromDate) params.fromDate = fromDate;
+  if (toDate) params.toDate = toDate;
+
+  const response = await axios.get(
+    `${API_VENTAS}/stats/daily-income`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      params,
+    },
+  );
+  return response.data;
+};
+

@@ -32,6 +32,12 @@ interface SaasMetricsProps {
     dauMau: number;
     gmvTotal: number;
     totalCompanies: number;
+    altas?: {
+      current: number;
+      previous: number;
+      growth: number;
+    };
+    paymentDistribution?: Array<{ name: string; value: number }>;
     targets?: {
       mrr: MetricTarget;
       activation: MetricTarget;
@@ -118,13 +124,12 @@ export const SaasMetrics: React.FC<SaasMetricsProps> = ({ metrics }) => {
       metaLabel: metrics.targets?.activation ? `Meta: ${metrics.targets.activation.meta}%` : null
     },
     {
-      title: "TTFV",
-      value: `${metrics.ttfv.toFixed(1)} d`,
-      label: "Time to First Value",
-      icon: Clock,
-      status: getStatusColor(metrics.ttfv, metrics.targets?.ttfv, true),
-      progress: metrics.targets?.ttfv ? (metrics.ttfv / metrics.targets.ttfv.alert) * 100 : null,
-      metaLabel: metrics.targets?.ttfv ? `Meta: <${metrics.targets.ttfv.meta} d` : null
+      title: "Altas (Signups)",
+      value: `${metrics.altas?.current || 0}`,
+      label: "vs Mes Anterior",
+      icon: Users,
+      status: (metrics.altas?.growth || 0) >= 0 ? "text-emerald-500 bg-emerald-500/10" : "text-amber-500 bg-amber-500/10",
+      metaLabel: `${(metrics.altas?.growth || 0) > 0 ? '+' : ''}${(metrics.altas?.growth || 0).toFixed(1)}%`
     },
     {
       title: "Stickiness",

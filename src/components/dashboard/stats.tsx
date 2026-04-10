@@ -54,6 +54,7 @@ interface DashboardData {
     date: string;
     orders: number;
     amount: number;
+    products: number;
   }>;
   funnelMetrics: {
     ingresados: number;
@@ -256,7 +257,7 @@ const FunnelCOD: React.FC<{
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId, fromDate, toDate]);
+  }, [selectedStoreId, fromDate, toDate, auth?.user?.id, auth?.user?.role]);
 
   useEffect(() => {
     fetchFunnelData();
@@ -479,12 +480,12 @@ const FunnelCOD: React.FC<{
 
     {/* Charts Section — separate cards */}
     {!loading && funnelData && (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Ingresos Diarios */}
+      <div className="grid grid-cols-1 gap-6">
+        {/* Ventas Diarias */}
         <Card className="bg-card border border-border shadow-sm">
           <CardContent className="p-6">
             <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-black text-foreground tracking-tight">Ingresos Diarios</h3>
+              <h3 className="text-sm font-black text-foreground tracking-tight">Ventas Diarias</h3>
               <div className="flex items-center gap-4 text-[10px] font-bold">
                 <div className="flex items-center gap-1.5">
                   <div className="w-2.5 h-2.5 rounded-sm bg-[#3b82f6]" />
@@ -494,22 +495,44 @@ const FunnelCOD: React.FC<{
                   <div className="w-2.5 h-2.5 rounded-full bg-[#a78bfa]" />
                   <span className="text-muted-foreground">Órdenes</span>
                 </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2.5 h-2.5 rounded-full bg-[#00f2ad]" />
+                  <span className="text-muted-foreground">Unidades</span>
+                </div>
               </div>
             </div>
-            <div className="h-[220px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart
-                  data={(funnelData.dailySales || []).map((d) => {
-                    const dateStr = typeof d.date === "string" && d.date.length === 10 ? `${d.date}T12:00:00` : d.date;
-                    const dateObj = new Date(dateStr);
-                    const formattedDate = dateObj.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
-                    
-                    return {
-                      dayLabel: formattedDate,
-                      amount: d.amount,
-                      orders: d.orders,
-                    };
-                  })}
+            <div className="h-[300px]">
+              {(() => {
+                const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
+                const to   = toDate   ? new Date(`${toDate}T23:59:59`)   : null;
+
+                const filteredDailySales = (funnelData.dailySales || []).filter((d) => {
+                  if (!from || !to) return true;
+                  const itemDate = new Date(`${d.date}T12:00:00`);
+                  return itemDate >= from && itemDate <= to;
+                });
+
+                return filteredDailySales.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center gap-2">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                      Sin datos para el período seleccionado
+                    </p>
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart
+                      data={filteredDailySales.map((d) => {
+                        const dateStr = typeof d.date === "string" && d.date.length === 10 ? `${d.date}T12:00:00` : d.date;
+                        const dateObj = new Date(dateStr);
+                        const formattedDate = dateObj.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+
+                        return {
+                          dayLabel: formattedDate,
+                          amount: d.amount,
+                          orders: d.orders,
+                          units: d.products,
+                        };
+                      })}
                   margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -518,6 +541,8 @@ const FunnelCOD: React.FC<{
                     axisLine={false}
                     tickLine={false}
                     tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
+                    interval="preserveStartEnd"
+                    minTickGap={40}
                   />
                   <YAxis
                     yAxisId="left"
@@ -545,10 +570,12 @@ const FunnelCOD: React.FC<{
                       fontWeight: 700,
                       color: "var(--foreground)",
                     }}
-                    formatter={(value: number, name: string) => [
-                      name === "amount" ? `S/ ${value.toLocaleString("es-PE")}` : value,
-                      name === "amount" ? "Ventas" : "Órdenes",
-                    ]}
+                    formatter={(value: number, name: string) => {
+                      if (name === "amount") return [`S/ ${value.toLocaleString("es-PE")}`, "Ventas"];
+                      if (name === "orders") return [value, "Órdenes"];
+                      if (name === "units") return [value, "Unidades"];
+                      return [value, name];
+                    }}
                     labelFormatter={(label) => `${label}`}
                   />
                   <Bar
@@ -568,8 +595,20 @@ const FunnelCOD: React.FC<{
                     dot={false}
                     activeDot={{ r: 3, fill: "#a78bfa" }}
                   />
-                </ComposedChart>
-              </ResponsiveContainer>
+                  <Line
+                    yAxisId="right"
+                    dataKey="units"
+                    type="monotone"
+                    stroke="#00f2ad"
+                    strokeWidth={2}
+                    dot={false}
+                    activeDot={{ r: 3, fill: "#00f2ad" }}
+                    strokeDasharray="4 2"
+                  />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                );
+              })()}
             </div>
           </CardContent>
         </Card>
@@ -675,7 +714,7 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId, fromDate, toDate]);
+  }, [selectedStoreId, fromDate, toDate, auth?.user?.id, auth?.user?.role]);
 
   useEffect(() => {
     if (fromDate && toDate) {

@@ -18,6 +18,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { SourceBadge } from "@/components/shared/SourceBadge";
 import {
   Table,
   TableBody,
@@ -223,7 +224,11 @@ export default function AtencionClientePage() {
       const res = await axios.get(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
-      const mapped = res.data.map(mapOrderToSale);
+      const sorted = [...res.data].sort(
+        (a: any, b: any) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+      const mapped = sorted.map(mapOrderToSale);
       setSales(mapped);
     } catch (error) {
       console.error("Error fetching orders", error);
@@ -373,6 +378,7 @@ Estado: ${sale.status}
           <TableHead>Estado</TableHead>
           <TableHead>Region</TableHead>
           <TableHead>Distrito</TableHead>
+          <TableHead>Origen</TableHead>
           <TableHead>Resumen</TableHead>
           <TableHead className="text-right">Acciones</TableHead>
         </TableRow>
@@ -420,6 +426,9 @@ Estado: ${sale.status}
             </TableCell>
             <TableCell>{sale.salesRegion}</TableCell>
             <TableCell>{sale.district}</TableCell>
+            <TableCell>
+              <SourceBadge source={sale.externalSource} />
+            </TableCell>
             <TableCell>
               <Button
                 size="sm"

@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { format, startOfMonth, endOfMonth } from "date-fns";
 import { Stats } from "@/components/dashboard/stats";
 import Header from "@/components/header/Header";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -10,8 +11,12 @@ import { FinanceStats } from "@/components/dashboard/FinanceStats";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 
 export default function DashboardPage() {
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
+  const [fromDate, setFromDate] = useState<string>(
+    format(startOfMonth(new Date()), "yyyy-MM-dd")
+  );
+  const [toDate, setToDate] = useState<string>(
+    format(endOfMonth(new Date()), "yyyy-MM-dd")
+  );
 
   console.log("[DEBUG] DashboardPage renderizando");
 

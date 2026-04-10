@@ -3,15 +3,22 @@ import axios from "axios";
 
 export interface PipelineSummary {
   leads_this_month: number;
+  leads_previous_month: number;
+  closed_count: number;
+  closed_this_month: number;
+  closed_previous_month: number;
   contact_count: number;
   contact_rate: number;
   demo_count: number;
   demo_rate: number;
   close_rate: number;
+  effectiveness: number;
   avg_cycle_time_days: number;
   uncontacted_24h: number;
   at_risk_7d: number;
   mrr_generated: number;
+  states_count: Record<string, number>;
+  salesperson_breakdown: Array<{ salesperson: string; managed_leads: number; closed_leads: number }>;
   targets: {
     contact: { meta: number; alert: number };
     demo: { meta: number; alert: number };

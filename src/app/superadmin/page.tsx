@@ -85,6 +85,9 @@ import { CreateUserModal } from "@/components/superadmin/CreateUserModal";
 import { useSaasMetrics, useChurnAlerts } from "@/hooks/useSaasMetrics";
 import { useConversionFunnel } from "@/hooks/useConversionFunnel";
 import { Pagination } from "@/components/ui/pagination";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
+import { DateRange } from "react-day-picker";
+import { subDays, startOfDay, endOfDay } from "date-fns";
 
 
 import {
@@ -169,14 +172,14 @@ export default function SuperadminPage() {
   // Company detail modal states
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
-  const [period, setPeriod] = useState<"all" | "weekly" | "monthly" | "yearly">("all");
+  
+  // Date range state (default to last 30 days)
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: startOfDay(subDays(new Date(), 30)),
+    to: endOfDay(new Date()),
+  });
 
-  const ITEMS_PER_PAGE = 10;
-  const [companiesPage, setCompaniesPage] = useState(1);
-
-  const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>(
-    {},
-  );
+  const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({});
 
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
@@ -185,9 +188,9 @@ export default function SuperadminPage() {
 
 
   const { data: leads = [], isLoading: isLoadingLeads } = useLeads(auth?.accessToken);
-  const { data: saasMetrics, isLoading: isLoadingMetrics } = useSaasMetrics(auth?.accessToken);
+  const { data: saasMetrics, isLoading: isLoadingMetrics } = useSaasMetrics(auth?.accessToken, dateRange.from, dateRange.to);
   const { data: churnAlerts = [], refetch: refetchAlerts } = useChurnAlerts(auth?.accessToken);
-  const { data: funnelData, isLoading: isLoadingFunnel } = useConversionFunnel(auth?.accessToken);
+  const { data: funnelData, isLoading: isLoadingFunnel } = useConversionFunnel(auth?.accessToken, dateRange.from, dateRange.to);
 
   useEffect(() => {
     if (auth?.accessToken) {
@@ -195,36 +198,16 @@ export default function SuperadminPage() {
       getRoles(auth.accessToken).then(setRoles).catch(console.error);
     }
   }, [auth]);
-  const calculateDates = useCallback(() => {
-    const to = new Date();
-    const from = new Date();
-
-    if (period === "all") {
+  useEffect(() => {
+    if (!date?.from) {
       setDateRange({});
       return;
     }
-
-    switch (period) {
-      case "weekly":
-        from.setDate(to.getDate() - 7);
-        break;
-      case "monthly":
-        from.setMonth(to.getMonth() - 1);
-        break;
-      case "yearly":
-        from.setFullYear(to.getFullYear() - 1);
-        break;
-    }
-
     setDateRange({
-      from: from.toISOString().split("T")[0],
-      to: to.toISOString().split("T")[0],
+      from: date.from.toISOString().split("T")[0],
+      to: date.to?.toISOString().split("T")[0],
     });
-  }, [period]);
-
-  useEffect(() => {
-    calculateDates();
-  }, [calculateDates]);
+  }, [date]);
 
   const refreshData = useCallback(async () => {
     if (!auth?.accessToken) return;
@@ -292,24 +275,31 @@ export default function SuperadminPage() {
       setOutOfStockItems(outOfStockList);
       setExpiringSubscriptions(expiringAlert);
 
+      const today = new Date().toISOString().split("T")[0];
+
       const enrichedCompanies = await Promise.all(
         allCompanies.map(async (company) => {
           try {
-            const subs = await getSubscriptionByUserId(
-              token,
-              company.userId,
-            );
+            const [subs, totalSummary, dailySummary] = await Promise.all([
+              getSubscriptionByUserId(token, company.userId),
+              getCompanySalesSummary(token, company.id),
+              getCompanySalesSummary(token, company.id, today, today),
+            ]);
+
             const activeSub =
               subs.find(
-                (s) =>
+                (s: any) =>
                   s.status === "ACTIVE" || s.status === "PENDING_PAYMENT",
               ) || subs[0];
+
             return {
               ...company,
               plan: activeSub?.plan?.name || "N/A",
               price: activeSub?.plan?.price || 0,
               expiry: activeSub?.endDate || "N/A",
               status: activeSub?.status || "ACTIVE",
+              totalSales: totalSummary?.totalSales || 0,
+              dailySales: dailySummary?.totalSales || 0,
             };
           } catch {
             return {
@@ -318,6 +308,8 @@ export default function SuperadminPage() {
               price: 0,
               expiry: "N/A",
               status: "ACTIVE",
+              totalSales: 0,
+              dailySales: 0,
             };
           }
         }),
@@ -386,22 +378,7 @@ export default function SuperadminPage() {
         </Button>
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Select value={period} onValueChange={(v) => setPeriod(v as any)}>
-            <SelectTrigger className="w-[180px]">
-              <Calendar className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Periodo" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todo el tiempo</SelectItem>
-              <SelectItem value="weekly">Última semana</SelectItem>
-              <SelectItem value="monthly">Último mes</SelectItem>
-              <SelectItem value="yearly">Último año</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+
 
       {/* Tabbed Content */}
       <Tabs defaultValue="overview" className="space-y-6">
@@ -445,6 +422,13 @@ export default function SuperadminPage() {
             isLoadingFunnel={isLoadingFunnel}
             globalBilling={globalBilling}
             refetchAlerts={refetchAlerts}
+            date={date}
+            onDateChange={setDate}
+            companies={companies}
+            allUsers={allUsers}
+            accessToken={auth?.accessToken}
+            fromDate={dateRange.from}
+            toDate={dateRange.to}
           />
         </TabsContent>
 
@@ -512,6 +496,9 @@ export default function SuperadminPage() {
             outOfStockItems={outOfStockItems}
             metrics={metrics}
             companies={companies}
+            accessToken={auth?.accessToken}
+            fromDate={dateRange.from}
+            toDate={dateRange.to}
           />
         </TabsContent>
 
@@ -520,6 +507,8 @@ export default function SuperadminPage() {
             leads={leads}
             token={auth?.accessToken}
             isLoading={isLoadingLeads}
+            auth={auth}
+            plans={plans}
           />
         </TabsContent>
 

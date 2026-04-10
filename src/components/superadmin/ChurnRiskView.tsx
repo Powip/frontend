@@ -18,7 +18,7 @@ import {
   Clock,
   History
 } from "lucide-react";
-import { formatDistanceToNow, parseISO } from 'date-fns';
+import { formatDistanceToNow, parseISO, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 interface ChurnAlert {
@@ -34,6 +34,7 @@ interface ChurnAlert {
     price?: number;
     phone?: string;
     lastSignInAt?: string | null;
+    expiry?: string | null;
   };
 }
 
@@ -248,6 +249,10 @@ const AlertCard = ({
     window.open(`https://wa.me/${phone.replace(/\D/g, '')}?text=${encodedMessage}`, '_blank');
   };
 
+  const daysToRenewal = churnAlert.company?.expiry && churnAlert.company.expiry !== "N/A"
+    ? differenceInDays(parseISO(churnAlert.company.expiry), new Date())
+    : null;
+
   return (
     <div className={`relative flex flex-col md:flex-row md:items-center justify-between p-4 md:p-6 rounded-xl border border-slate-200 dark:border-white/5 ${config.color} transition-all hover:shadow-md dark:hover:border-white/20 group`}>
       {/* Severity Indicator Line */}
@@ -282,6 +287,22 @@ const AlertCard = ({
               </span>
             )}
           </div>
+        </div>
+      </div>
+
+      <div className="flex flex-row md:flex-col items-center md:items-end gap-3 mt-4 md:mt-0 px-4 md:px-8 border-l border-slate-200 dark:border-white/5">
+        <div className="text-right flex flex-col items-end">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Renovación en</span>
+          {daysToRenewal !== null ? (
+            <div className="flex items-baseline gap-1">
+              <span className={`text-2xl font-black ${daysToRenewal <= 3 ? 'text-red-500' : daysToRenewal <= 7 ? 'text-amber-500' : 'text-emerald-500'}`}>
+                {daysToRenewal > 0 ? daysToRenewal : 0}
+              </span>
+              <span className="text-xs font-bold text-slate-500">días</span>
+            </div>
+          ) : (
+            <span className="text-xs font-bold text-slate-500">Sin datos</span>
+          )}
         </div>
       </div>
 

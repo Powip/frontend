@@ -90,7 +90,7 @@ const GUIDE_OPTIONS = [
 
 const SOURCE_OPTIONS = [
   { value: "", label: "Todos" },
-  { value: "manual", label: "Manual" },
+  { value: "manual", label: "Powip" },
   { value: "shopify", label: "Shopify" },
 ];
 
@@ -445,12 +445,18 @@ export function applyFilters<T extends {
       return false;
     }
 
-    // Source filter (Manual / Shopify)
+    // Source filter (Powip / Shopify)
     if (filters.source) {
-      if (filters.source === "shopify" && item.externalSource !== "shopify") {
+      if (
+        filters.source === "shopify" &&
+        item.externalSource?.toLowerCase() !== "shopify"
+      ) {
         return false;
       }
-      if (filters.source === "manual" && item.externalSource) {
+      if (
+        filters.source === "manual" &&
+        item.externalSource?.toLowerCase() === "shopify"
+      ) {
         return false;
       }
     }

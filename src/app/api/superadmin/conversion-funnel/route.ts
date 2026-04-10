@@ -5,36 +5,45 @@ export async function GET(request: Request) {
   const supabase = createRouteClient(request);
 
   try {
+    const { searchParams } = new URL(request.url);
+    const from = searchParams.get("from");
+    const to = searchParams.get("to");
+
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const startDate = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const endDate = to || now.toISOString();
 
     // 1. Leads del mes
     const { count: totalLeads } = await supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
-      .gte("created_at", startOfMonth);
+      .gte("created_at", startDate)
+      .lte("created_at", endDate);
 
     // 2. Prospectos (Contactados o más allá)
     const { count: prospects } = await supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
-      .gte("created_at", startOfMonth)
+      .gte("created_at", startDate)
+      .lte("created_at", endDate)
       .neq("pipeline_stage", "nuevo");
 
     // 3. Cerrados (Activados como negocio)
     const { count: closed } = await supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
-      .gte("created_at", startOfMonth)
+      .gte("created_at", startDate)
+      .lte("created_at", endDate)
       .eq("pipeline_stage", "cerrado");
 
     // 4. Clientes Activos (Al menos 1 pedido en el mes)
-    const { data: activeOrderBusinesses } = await supabase
+    const { data: activeOrders } = await supabase
       .from("orderHeader")
       .select("storeId")
-      .gte("created_at", startOfMonth);
+      .gte("created_at", startDate)
+      .lte("created_at", endDate);
 
-    const storeIds = Array.from(new Set(activeOrderBusinesses?.map(o => o.storeId).filter(Boolean)));
+    const storeIds = Array.from(new Set(activeOrders?.map(o => o.storeId).filter(Boolean)));
     let uniqueActiveBusinesses = 0;
     
     if (storeIds.length > 0) {
