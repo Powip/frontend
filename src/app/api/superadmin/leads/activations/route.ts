@@ -2,9 +2,9 @@ import { NextResponse } from 'next/server';
 import { createRouteClient } from '@/utils/supabase/api';
 
 export async function GET(request: Request) {
-  const supabase = await createRouteClient(request);
-
   try {
+    const supabase = await createRouteClient(request);
+    
     const { data, error } = await supabase
       .from('lead_activations')
       .select(`
@@ -14,20 +14,20 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false });
 
     if (error) {
+      console.error('[Activations API] DB Error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ data });
   } catch (error: any) {
     console.error('Error fetching activations:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
-  const supabase = await createRouteClient(request);
-
   try {
+    const supabase = await createRouteClient(request);
     const body = await request.json();
     const { lead_id, business_name, contact_name, plan, assigned_to, observations } = body;
 
@@ -62,6 +62,7 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
+      console.error('[Activations API] Insert Error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -75,6 +76,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ data }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating activation:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
   }
 }

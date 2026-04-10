@@ -165,12 +165,13 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 relative">
-      {(isSyncing || isImporting) && (
+      {isImporting && (
         <SyncOverlay 
-          title={isSyncing ? "Sincronizando Sheets" : "Importando Archivo"} 
-          desc={isSyncing ? "Extrayendo la información más reciente desde la hoja de cálculo..." : "Procesando el archivo Excel/CSV y realizando la carga masiva..."} 
+          title="Importando Archivo" 
+          desc="Procesando el archivo Excel/CSV y realizando la carga masiva..." 
         />
       )}
+      
       {/* Header strip */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -189,32 +190,19 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
             type="file" 
             ref={fileInputRef} 
             onChange={handleFileUpload} 
-            accept=".xlsx,.xls,.csv" 
+            accept=".xlsx,.xls,.cvs" 
             className="hidden" 
           />
           <Button
             variant="outline"
             size="sm"
             onClick={() => fileInputRef.current?.click()}
-            disabled={isImporting || isSyncing}
+            disabled={isImporting}
             className="gap-2 h-9 border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/5 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/10 text-[11px] font-bold uppercase tracking-wider"
           >
             <Download className="h-3.5 w-3.5 rotate-180" />
             {isImporting ? 'Importando...' : 'Importar Excel'}
           </Button>
-
-          {/* Sync Sheets */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleSync}
-            disabled={isSyncing || isImporting}
-            className="gap-2 h-9 border-indigo-200 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/10 text-[11px] font-bold uppercase tracking-wider"
-          >
-            <RefreshCw className={cn('h-3.5 w-3.5', isSyncing && 'animate-spin')} />
-            {isSyncing ? 'Sincronizando...' : 'Sincronizar Sheets'}
-          </Button>
-
 
           {/* Export */}
           <Button

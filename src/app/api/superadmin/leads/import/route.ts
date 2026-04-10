@@ -1,11 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createRouteClient } from '@/utils/supabase/api';
+import { createClient } from '@/utils/supabase/server';
 import * as XLSX from 'xlsx';
 
 export async function POST(request: Request) {
-  const supabase = await createRouteClient(request);
-  
   try {
+    const supabase = await createClient();
     const formData = await request.formData();
     const file = formData.get('file') as File;
     
@@ -17,16 +16,17 @@ export async function POST(request: Request) {
     const workbook = XLSX.read(buffer, { type: 'buffer' });
     const sheetName = workbook.SheetNames[0];
     const sheet = workbook.Sheets[sheetName];
+    // Read as JSON with headers to make mapping more robust
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
 
     if (!rows || rows.length <= 1) {
       return NextResponse.json({ error: 'El archivo está vacío o no tiene datos' }, { status: 400 });
     }
 
-    // Skip header row
     const dataRows = rows.slice(1);
-    const importedLeads = [];
-    let importedCount = 0;
+    const validLeads: any[] = [];
+    const errors: string[] = [];
+    let failedCount = 0;
 
     const normalizePhone = (phone: any) => {
       if (!phone) return '';
@@ -52,10 +52,20 @@ export async function POST(request: Request) {
       }
     };
 
-    for (const row of dataRows) {
-      // mapping based on user provide list (0-indexed)
+    // 1. Map and Validate rows for bulk upsert
+    for (let i = 0; i < dataRows.length; i++) {
+      const row = dataRows[i];
+      if (row.length === 0) continue;
+
       const contact_name = String(row[0] || '').trim();
       const phone_whatsapp = normalizePhone(row[2]);
+      
+      if (!contact_name || !phone_whatsapp || phone_whatsapp.length < 5) {
+        failedCount++;
+        errors.push(`Fila ${i+2}: Nombre o Teléfono faltante/inválido`);
+        continue;
+      }
+
       const email = String(row[3] || '').trim();
       const business_name = String(row[6] || '').trim();
       const city = String(row[8] || '').trim();
@@ -63,16 +73,13 @@ export async function POST(request: Request) {
       const estadoRaw = String(row[18] || '').toLowerCase();
       const demo_date = parseDate(row[19]);
 
-      if (!contact_name || !phone_whatsapp) continue;
-
-      // Map ESTADO to pipeline_stage
       let pipeline_stage = 'nuevo';
       if (estadoRaw.includes('contact')) pipeline_stage = 'contactado';
       if (estadoRaw.includes('demo') || estadoRaw.includes('agend')) pipeline_stage = 'demo_agendada';
       if (estadoRaw.includes('cerrado') || estadoRaw.includes('exito')) pipeline_stage = 'cerrado';
       if (estadoRaw.includes('perdido') || estadoRaw.includes('rechaz')) pipeline_stage = 'perdido';
 
-      const leadData = {
+      validLeads.push({
         contact_name,
         phone_whatsapp,
         email,
@@ -81,40 +88,66 @@ export async function POST(request: Request) {
         orders_per_day,
         pipeline_stage,
         demo_scheduled_at: demo_date,
-        source: 'otro', // Manual import
+        source: 'excel_import', 
         imported_from_sheet: true,
         updated_at: new Date().toISOString(),
-      };
+      });
+    }
 
-      // Perform upsert by phone or email
-      // We prioritize phone_whatsapp as unique identifier for leads in this logic
-      const { data: lead, error: upsertError } = await supabase
-        .from('leads')
-        .upsert(leadData, { onConflict: 'phone_whatsapp' })
-        .select()
-        .single();
+    if (validLeads.length === 0) {
+      return NextResponse.json({ 
+        success: false, 
+        error: 'No se encontraron registros válidos para importar',
+        details: errors.slice(0, 10)
+      }, { status: 400 });
+    }
 
-      if (!upsertError && lead) {
-        importedCount++;
-        // Log Activity
-        await supabase.from('lead_activities').insert({
-          lead_id: lead.id,
-          activity_type: 'other',
-          description: 'Lead importado mediante carga manual de Excel/CSV',
-        });
-      } else if (upsertError) {
-        console.error('[Import API] Upsert Error:', upsertError);
+    // 2. Perform Bulk Upsert
+    const { data: upsertedData, error: upsertError } = await supabase
+      .from('leads')
+      .upsert(validLeads, { onConflict: 'phone_whatsapp' })
+      .select('id');
+
+    if (upsertError) {
+      console.error('[Import API] Bulk Upsert Error:', upsertError);
+      return NextResponse.json({ 
+        error: 'Error al persistir los datos en la base de datos', 
+        details: upsertError.message 
+      }, { status: 500 });
+    }
+
+    // 3. Log bulk activity
+    const { data: { user } } = await supabase.auth.getUser();
+    if (upsertedData && upsertedData.length > 0) {
+      const activities = upsertedData.map(lead => ({
+        lead_id: lead.id,
+        activity_type: 'other',
+        description: `Lead importado mediante carga manual de Excel (${validLeads.length} total)`,
+        performed_by: user?.id || null
+      }));
+
+      // Insert activities in chunks to avoid URL limit or payload limit issues if very large
+      const chunkSize = 50;
+      for (let i = 0; i < activities.length; i += chunkSize) {
+        await supabase.from('lead_activities').insert(activities.slice(i, i + chunkSize));
       }
     }
 
     return NextResponse.json({ 
       success: true, 
-      message: `Se importaron ${importedCount} leads correctamente`,
-      imported: importedCount 
+      message: `Importación completada con éxito.`,
+      imported: upsertedData?.length || 0,
+      failed: failedCount,
+      errors: errors.slice(0, 5)
     });
 
   } catch (error: any) {
-    console.error('[Import API] Crash:', error);
-    return NextResponse.json({ error: 'Error interno del servidor', details: error.message }, { status: 500 });
+    console.error('[Import API] Critical Crash:', error);
+    return NextResponse.json({ 
+      error: 'Error crítico en el servidor', 
+      details: error.message
+    }, { status: 500 });
   }
 }
+
+
