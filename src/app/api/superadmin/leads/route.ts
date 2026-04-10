@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createRouteClient } from '@/utils/supabase/api';
 
 export async function GET(request: Request) {
-  const supabase = createRouteClient(request);
+  const supabase = await createRouteClient(request);
   const { searchParams } = new URL(request.url);
 
   const stage = searchParams.get('stage');
@@ -14,37 +14,7 @@ export async function GET(request: Request) {
   const offset = (page - 1) * limit;
 
   try {
-    // Auto-sync: import any landing_leads that don't yet exist in leads (by email)
-    const { data: landingLeads } = await supabase
-      .from('landing_leads')
-      .select('*');
-
-    if (landingLeads && landingLeads.length > 0) {
-      for (const ll of landingLeads) {
-        // Check if this email already exists in leads
-        const { data: existing } = await supabase
-          .from('leads')
-          .select('id')
-          .ilike('email', ll.email)
-          .limit(1);
-
-        if (!existing || existing.length === 0) {
-          await supabase.from('leads').insert({
-            contact_name: ll.full_name,
-            business_name: ll.company,
-            phone_whatsapp: ll.phone,
-            email: ll.email,
-            source: 'landing',
-            pipeline_stage: 'nuevo',
-            plan_interest: 'basic',
-            created_at: ll.created_at,
-            updated_at: new Date().toISOString(),
-          });
-        }
-      }
-    }
-
-    // Now fetch all leads
+    // 1. Fetch all leads (Simplified: removed synchronous landing_leads import for stability)
     let query = supabase
       .from('leads')
       .select('*', { count: 'exact' });
@@ -54,7 +24,7 @@ export async function GET(request: Request) {
     if (source) query = query.eq('source', source);
     if (assignedTo) query = query.eq('assigned_to', assignedTo);
     
-    // Search (Simple name or business search)
+    // Search
     if (search) {
       query = query.or(`contact_name.ilike.%${search}%,business_name.ilike.%${search}%,email.ilike.%${search}%`);
     }
@@ -65,25 +35,27 @@ export async function GET(request: Request) {
       .range(offset, offset + limit - 1);
 
     if (error) {
+      console.error('[Leads API] DB Error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({
-      data,
+      data: data || [],
       pagination: {
         page,
         limit,
-        total: count,
+        total: count || 0,
         total_pages: Math.ceil((count || 0) / limit)
       }
     });
   } catch (error: any) {
-    console.error('Error fetching leads:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error('[Leads API] Crash:', error);
+    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
   }
 }
+
 export async function POST(request: Request) {
-  const supabase = createRouteClient(request);
+  const supabase = await createRouteClient(request);
   try {
     const body = await request.json();
     const {
@@ -93,6 +65,7 @@ export async function POST(request: Request) {
       email,
       source
     } = body;
+
 
     if (!contact_name || !phone_whatsapp) {
       return NextResponse.json(
