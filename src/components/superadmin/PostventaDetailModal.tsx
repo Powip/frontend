@@ -196,8 +196,9 @@ export const PostventaDetailModal: React.FC<PostventaDetailModalProps> = ({
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 block">Regla de Contraseña</label>
                           <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
-                            La contraseña es una combinación del número de teléfono: <span className="font-black text-slate-900 dark:text-white underline decoration-emerald-500/30">{data.phone_whatsapp}</span> y el nombre: <span className="font-black text-slate-900 dark:text-white underline decoration-emerald-500/30">{data.contact_name?.split(' ')[0]}</span>.
+                            La contraseña es la combinación en <span className="font-black text-slate-900 dark:text-white">minúsculas</span> del número de teléfono: <span className="font-black text-slate-900 dark:text-white underline decoration-emerald-500/30">{data.phone_whatsapp}</span> y el nombre: <span className="font-black text-slate-900 dark:text-white underline decoration-emerald-500/30">{data.contact_name?.split(' ')[0]?.toLowerCase()}</span>.
                           </p>
+                          <p className="text-[10px] text-slate-400 mt-1">Ejemplo: <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 rounded">{`${data.phone_whatsapp || ''}${data.contact_name?.split(' ')[0]?.toLowerCase() || ''}`.replace(/\s/g, '')}</code></p>
                         </div>
                       </div>
                     </div>
