@@ -1963,7 +1963,7 @@ Estado: ${sale.status}
         }}
         storeId={selectedStoreId || ""}
         userId={auth.user?.id}
-        sellerName={auth.user?.fullName}
+        sellerName={auth.user ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim() : undefined}
       />
     </div>
   );

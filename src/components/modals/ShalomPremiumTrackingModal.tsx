@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   X,
   Package,
@@ -59,11 +59,54 @@ export default function ShalomPremiumTrackingModal({
   const [dynamicPdfUrl, setDynamicPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
 
+  const loadPdf = useCallback(async () => {
+    // ✅ Validar que existan los campos correctos
+    if (
+      !auth?.accessToken ||
+      !order?.externalTrackingNumber ||
+      !order?.shippingKey
+    ) {
+      console.warn("⚠️ No hay datos de Shalom para generar PDF:", {
+        hasToken: !!auth?.accessToken,
+        hasTracking: !!order?.externalTrackingNumber,
+        hasKey: !!order?.shippingKey,
+      });
+      return;
+    }
+
+    setLoadingPdf(true);
+    setDynamicPdfUrl(null);
+
+    try {
+      console.log("📄 Generando PDF con:", {
+        externalTrackingNumber: order.externalTrackingNumber,
+        shippingKey: order.shippingKey,
+      });
+
+      // ✅ Usar shippingKey en lugar de shippingCode
+      const blob = await generateShalomTicketPdf(
+        auth.accessToken,
+        order.externalTrackingNumber,
+        order.shippingKey,
+      );
+
+      const url = URL.createObjectURL(blob);
+      setDynamicPdfUrl(url);
+
+      console.log("✅ PDF generado exitosamente");
+    } catch (error: any) {
+      console.error("❌ Error loading PDF:", error);
+      console.error("❌ Error details:", error.response?.data);
+    } finally {
+      setLoadingPdf(false);
+    }
+  }, [auth?.accessToken, order?.externalTrackingNumber, order?.shippingKey]);
+
   useEffect(() => {
     if (
       open &&
       order?.externalTrackingNumber &&
-      order?.shippingKey && // ⬅️ CAMBIO: shippingKey
+      order?.shippingKey &&
       auth?.accessToken
     ) {
       loadPdf();
@@ -78,70 +121,11 @@ export default function ShalomPremiumTrackingModal({
     order?.externalTrackingNumber,
     order?.shippingKey,
     auth?.accessToken,
+    loadPdf,
+    dynamicPdfUrl,
   ]);
 
-  const loadPdf = async () => {
-    // ✅ Validar que existan los campos correctos
-    if (
-      !auth?.accessToken ||
-      !order?.externalTrackingNumber ||
-      !order?.shippingKey
-    ) {
-      console.warn("⚠️ No hay datos de Shalom para generar PDF:", {
-        hasToken: !!auth?.accessToken,
-        hasTracking: !!order?.externalTrackingNumber,
-        hasKey: !!order?.shippingKey, // ⬅️ CAMBIO: shippingKey en vez de shippingCode
-      });
-      return;
-    }
-
-    setLoadingPdf(true);
-    setDynamicPdfUrl(null);
-
-    try {
-      console.log("📄 Generando PDF con:", {
-        externalTrackingNumber: order.externalTrackingNumber,
-        shippingKey: order.shippingKey, // ⬅️ CAMBIO: shippingKey
-      });
-
-      // ✅ Usar shippingKey en lugar de shippingCode
-      const blob = await generateShalomTicketPdf(
-        auth.accessToken,
-        order.externalTrackingNumber, // ✅ "81019016"
-        order.shippingKey, // ✅ "1357" (CAMBIO)
-      );
-
-      const url = URL.createObjectURL(blob);
-      setDynamicPdfUrl(url);
-
-      console.log("✅ PDF generado exitosamente");
-    } catch (error: any) {
-      console.error("❌ Error loading PDF:", error);
-      console.error("❌ Error details:", error.response?.data);
-    } finally {
-      setLoadingPdf(false);
-    }
-  };
-
-  useEffect(() => {
-    if (
-      open &&
-      order?.externalTrackingNumber &&
-      order?.shippingKey && // ⬅️ CAMBIO: shippingKey
-      auth?.accessToken &&
-      auth?.company?.id
-    ) {
-      loadTracking();
-    }
-  }, [
-    open,
-    order?.externalTrackingNumber,
-    order?.shippingKey,
-    auth?.accessToken,
-    auth?.company?.id,
-  ]);
-
-  const loadTracking = async () => {
+  const loadTracking = useCallback(async () => {
     // ✅ Validar que existan los campos correctos
     if (
       !auth?.accessToken ||
@@ -149,12 +133,11 @@ export default function ShalomPremiumTrackingModal({
       !order?.externalTrackingNumber ||
       !order?.shippingKey
     ) {
-      // ⬅️ CAMBIO: shippingKey
       console.warn("⚠️ No hay datos de Shalom para tracking:", {
         hasToken: !!auth?.accessToken,
         hasCompanyId: !!auth?.company?.id,
         hasTracking: !!order?.externalTrackingNumber,
-        hasKey: !!order?.shippingKey, // ⬅️ CAMBIO
+        hasKey: !!order?.shippingKey,
       });
       return;
     }
@@ -165,15 +148,15 @@ export default function ShalomPremiumTrackingModal({
       console.log("🔍 Rastreando con:", {
         companyId: auth.company.id,
         externalTrackingNumber: order.externalTrackingNumber,
-        shippingKey: order.shippingKey, // ⬅️ CAMBIO: shippingKey
+        shippingKey: order.shippingKey,
       });
 
       // ✅ Usar shippingKey en lugar de shippingCode
       const data = await trackShalomShipment(
         auth.accessToken,
         auth.company.id,
-        order.externalTrackingNumber, // ✅ "81019016"
-        order.shippingKey, // ✅ "1357" (CAMBIO)
+        order.externalTrackingNumber,
+        order.shippingKey,
       );
 
       console.log("✅ Shalom tracking data:", data);
@@ -195,7 +178,31 @@ export default function ShalomPremiumTrackingModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    auth?.accessToken,
+    auth?.company?.id,
+    order?.externalTrackingNumber,
+    order?.shippingKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      open &&
+      order?.externalTrackingNumber &&
+      order?.shippingKey &&
+      auth?.accessToken &&
+      auth?.company?.id
+    ) {
+      loadTracking();
+    }
+  }, [
+    open,
+    order?.externalTrackingNumber,
+    order?.shippingKey,
+    auth?.accessToken,
+    auth?.company?.id,
+    loadTracking,
+  ]);
 
   if (!order) return null;
 
