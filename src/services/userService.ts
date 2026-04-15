@@ -183,6 +183,38 @@ export const createPlatformUser = async (
   }
 };
 
+// Obtener perfil completo de un usuario por ID
+export interface UserProfile {
+  id: string;
+  name: string;
+  surname: string;
+  email: string;
+  address?: string;
+  city?: string;       // Departamento
+  province?: string;
+  district?: string;
+  phoneNumber?: string;
+  identityDocument?: string;
+  status: boolean;
+}
+
+export const getUserProfile = async (
+  userId: string,
+  accessToken: string,
+): Promise<UserProfile | null> => {
+  try {
+    const response = await axios.get(
+      `${API_AUTH}/api/v1/auth/user/${userId}`,
+      {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
+    return response.data;
+  } catch {
+    return null;
+  }
+};
+
 // Eliminar usuario de la plataforma (Rollback)
 export const deleteUser = async (
   userId: string,

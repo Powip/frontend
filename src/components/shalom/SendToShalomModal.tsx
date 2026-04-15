@@ -13,18 +13,11 @@ import { Label } from "@/components/ui/label";
 import {
   Loader2,
   Truck,
-  Search,
-  MapPin,
   AlertCircle,
   Package,
-  ChevronRight,
-  Info,
   CheckCircle2,
-  Package2,
-  ExternalLink,
   Plus,
-  User,
-  Copy,
+  Printer,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -39,6 +32,7 @@ import { cn } from "@/lib/utils";
 import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import { API } from "@/lib/api";
+import { getUserProfile } from "@/services/userService";
 
 const PACKAGE_TYPES = [
   { label: "SOBRE (5x30x20 cm)", value: "SOBRE", h: 5, w: 30, l: 20 },
@@ -69,6 +63,7 @@ interface Agency {
   nombre_agencia: string;
   direccion: string;
   api_name: string;
+  ter_aereo: number; // 1 = permite envío aéreo, 0 = solo terrestre
 }
 
 interface District {
@@ -168,13 +163,24 @@ const AgencySelector = ({
                   value={a.api_name}
                   className="py-1 focus:bg-slate-50 dark:focus:bg-slate-700"
                 >
-                  <div className="flex flex-col gap-0 max-w-none min-w-[300px]">
-                    <span className="font-normal text-[12px] text-slate-700 dark:text-slate-200 truncate">
-                      {a.nombre_agencia}
-                    </span>
-                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal truncate italic">
-                      {a.direccion}
-                    </span>
+                  <div className="flex items-start gap-2 max-w-none min-w-[300px]">
+                    <div className="flex flex-col gap-0 flex-1 min-w-0">
+                      <span className="font-normal text-[12px] text-slate-700 dark:text-slate-200 truncate">
+                        {a.nombre_agencia}
+                      </span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal truncate italic">
+                        {a.direccion}
+                      </span>
+                    </div>
+                    {a.ter_aereo === 1 ? (
+                      <span className="shrink-0 mt-0.5 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800">
+                        Terrestre + Aéreo
+                      </span>
+                    ) : (
+                      <span className="shrink-0 mt-0.5 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700">
+                        Solo terrestre
+                      </span>
+                    )}
                   </div>
                 </SelectItem>
               ))
@@ -229,13 +235,11 @@ export default function SendToShalomModal({
   const [originAgencies, setOriginAgencies] = useState<Agency[]>([]);
   const [originSearch, setOriginSearch] = useState<string>("");
   const [originAgency, setOriginAgency] = useState<string>("");
+  const [globalSecurityCode, setGlobalSecurityCode] = useState<string>("");
   const [loadingOrigins, setLoadingOrigins] = useState(false);
   const [quoting, setQuoting] = useState(false);
   const [sending, setSending] = useState(false);
   const [totalQuoted, setTotalQuoted] = useState<number | null>(null);
-  const [inspectingOrderId, setInspectingOrderId] = useState<string | null>(
-    null,
-  );
   const [isSuccess, setIsSuccess] = useState(false);
 
   const [shipmentsData, setShipmentsData] = useState<Record<string, any>>({});
@@ -270,6 +274,7 @@ export default function SendToShalomModal({
             nombre_agencia: a.nombre || a.name || a.nombre_agencia,
             api_name: a.lugar_over || a.nombre || a.name,
             direccion: a.lugar || a.direccion || "",
+            ter_aereo: a.ter_aereo ?? 0,
           }));
 
           if (type === "origin") {
@@ -301,43 +306,62 @@ export default function SendToShalomModal({
   );
 
   useEffect(() => {
-    if (open && orders.length > 0) {
-      // Pre-fill origin from company if available
-      const storeDistrict =
-        (auth?.user as any)?.company_district ||
-        (auth?.user as any)?.city ||
-        "";
-      setOriginSearch(storeDistrict);
-      if (storeDistrict) fetchAgencies(storeDistrict, "origin");
+    if (!open || orders.length === 0) return;
 
-      const initialData: Record<string, any> = {};
-      orders.forEach((order) => {
-        const destSearch =
-          order.customer?.district || order.customer?.city || order.city || "";
-        initialData[order.id] = {
-          recipientDoc: order.customer?.dni || "",
-          recipientPhone:
-            order.recipientPhone || order.customer?.phoneNumber || "",
-          content: "PAQUETE XXS",
-          destinationSearch: destSearch,
-          destinationAgencyId: "",
-          destinationAgencies: [],
-          loadingAgencies: false,
-          securityCode: "",
-          packageDetails: {
-            quantity: 1,
-            weight: 1,
-            height: 10,
-            width: 15,
-            length: 10,
-          },
-        };
-        // Fetch agencies for each destination
-        if (destSearch) fetchAgencies(destSearch, order.id);
+    setGlobalSecurityCode("");
+
+    // Pre-fill origin: fetch perfil completo del usuario para obtener district/province
+    const userId = auth?.user?.id;
+    const accessToken = auth?.accessToken;
+    if (userId && accessToken) {
+      getUserProfile(userId, accessToken).then((profile) => {
+        const storeDistrict =
+          profile?.district || profile?.province || profile?.city || "";
+        setOriginSearch(storeDistrict);
+        if (storeDistrict) fetchAgencies(storeDistrict, "origin");
       });
-      setShipmentsData(initialData);
     }
+
+    const initialData: Record<string, any> = {};
+    orders.forEach((order) => {
+      const destSearch =
+        order.customer?.district || order.customer?.city || order.city || "";
+      initialData[order.id] = {
+        recipientDoc: order.customer?.dni || "",
+        recipientPhone:
+          order.recipientPhone || order.customer?.phoneNumber || "",
+        content: "PAQUETE XXS",
+        destinationSearch: destSearch,
+        destinationAgencyId: "",
+        destinationAgencies: [],
+        loadingAgencies: false,
+        securityCode: "",
+        packageDetails: {
+          quantity: 1,
+          weight: 1,
+          height: 10,
+          width: 15,
+          length: 10,
+        },
+      };
+      if (destSearch) fetchAgencies(destSearch, order.id);
+    });
+    setShipmentsData(initialData);
   }, [open, orders, auth, fetchAgencies]);
+
+  // Propagar código global a todos los pedidos cuando cambia
+  useEffect(() => {
+    if (orders.length === 0) return;
+    setShipmentsData((prev) => {
+      const next = { ...prev };
+      orders.forEach((order) => {
+        if (next[order.id]) {
+          next[order.id] = { ...next[order.id], securityCode: globalSecurityCode };
+        }
+      });
+      return next;
+    });
+  }, [globalSecurityCode, orders]);
 
   const updateShipmentField = (orderId: string, field: string, value: any) => {
     setShipmentsData((prev) => {
@@ -444,7 +468,7 @@ export default function SendToShalomModal({
           recipientDoc: data.recipientDoc,
           recipientPhone: data.recipientPhone,
           quantity: data.packageDetails.quantity,
-          securityCode: data.securityCode, // Código individual
+          securityCode: data.securityCode,
         };
       });
 
@@ -456,7 +480,7 @@ export default function SendToShalomModal({
         orderDestinations,
         orderDestinationNames,
         packageDetails,
-        securityCode: orders[0] ? shipmentsData[orders[0].id]?.securityCode : "", // Fallback
+        securityCode: orders[0] ? shipmentsData[orders[0].id]?.securityCode : "",
         quotedAmount: totalQuoted || undefined,
         quotedCurrency: "PEN",
       };
@@ -516,12 +540,166 @@ export default function SendToShalomModal({
     });
   }, [originAgency, orders, shipmentsData]);
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast.success(`${label} copiado al portapapeles`);
-  };
+  // Calcula todos los problemas de validación para mostrar en el panel
+  const validationIssues = useMemo(() => {
+    const issues: { label: string; field: string; orderId?: string }[] = [];
 
-  const inspectingOrder = orders.find((o) => o.id === inspectingOrderId);
+    if (!originAgency)
+      issues.push({ label: "Agencia de origen", field: "origen" });
+
+    if (!globalSecurityCode || !isValidSecurityCode(globalSecurityCode))
+      issues.push({ label: "Código de seguridad global", field: "securityCode" });
+
+    orders.forEach((order) => {
+      const data = shipmentsData[order.id];
+      const tag = `#${order.orderNumber}`;
+
+      if (!data?.destinationAgencyId)
+        issues.push({ label: "Agencia destino", field: "destino", orderId: tag });
+
+      if (!data?.recipientDoc || data.recipientDoc.length < 8)
+        issues.push({ label: "DNI / RUC", field: "doc", orderId: tag });
+
+      if (!data?.recipientPhone || data.recipientPhone.length !== 9)
+        issues.push({ label: "Teléfono (9 dígitos)", field: "phone", orderId: tag });
+
+      if (!isValidSecurityCode(data?.securityCode || ""))
+        issues.push({ label: "Código de seguridad", field: "code", orderId: tag });
+    });
+
+    return issues;
+  }, [originAgency, globalSecurityCode, orders, shipmentsData]);
+
+  const handlePrintLabels = () => {
+    const successfulOrders = successSummary?.failed === 0
+      ? orders
+      : orders.filter((o) => {
+          // Excluir las que fallaron si podemos identificarlas por nombre
+          const failedNames = (successSummary?.errors || []).map(
+            (e: any) => e.shipmentInfo?.recipientName,
+          );
+          return !failedNames.includes(o.customer?.fullName);
+        });
+
+    if (successfulOrders.length === 0) {
+      toast.warning("No hay pedidos exitosos para imprimir");
+      return;
+    }
+
+    const company = auth?.company;
+    const companyName = company?.name || "MI EMPRESA";
+    const companyCuit = company?.cuit || "";
+    const companyAddress = company?.billingAddress || "";
+    const companyPhone = company?.phone || "";
+    const courierName = "Shalom";
+
+    const labelsHtml = successfulOrders
+      .map((order, index) => {
+        const isLast = index === successfulOrders.length - 1;
+        const data = shipmentsData[order.id] || {};
+        // Usar los datos del formulario (lo que se envió a Shalom), no los del pedido original
+        const recipientDoc = data.recipientDoc || order.customer?.dni || "-";
+        const recipientPhone = data.recipientPhone || order.customer?.phoneNumber || order.recipientPhone || "-";
+        const destinationAgency = data.destinationAgencyId || "";
+        const customerAddress = destinationAgency
+          ? `${courierName} ${destinationAgency}`
+          : order.customer?.address || order.address || "-";
+        const province =
+          order.customer?.province || order.province || "-";
+        const city =
+          order.customer?.city || order.city || "-";
+        const district =
+          order.customer?.district || order.district || "-";
+
+        return `
+          <div class="label-page" style="${isLast ? "" : "page-break-after: always;"}">
+            <div class="label-container">
+              <div class="label-header">
+                <div class="company-info">
+                  <strong>${companyName}</strong>
+                  ${companyCuit ? `<br/>${companyCuit}` : ""}
+                  ${companyAddress ? `<br/>${companyAddress}` : ""}
+                  ${companyPhone ? `<br/>${companyPhone}` : ""}
+                </div>
+              </div>
+
+              <div class="label-consignado">
+                <div class="consignado-title">CONSIGNADO</div>
+                <strong>${order.customer?.fullName || "-"}</strong><br/>
+                DNI: ${recipientDoc}<br/>
+                Tel: ${recipientPhone}<br/>
+                ${province} - ${city} - ${district}<br/>
+                ${customerAddress}
+              </div>
+
+              <div class="label-courier">
+                <strong>${courierName}</strong><br/>
+                ${order.orderNumber}
+              </div>
+            </div>
+          </div>
+        `;
+      })
+      .join("");
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>Etiquetas Shalom</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            max-width: 400px;
+            margin: 0 auto;
+          }
+          .label-page { margin-bottom: 20px; }
+          .label-container {
+            border: 2px solid #000;
+            padding: 15px;
+            font-size: 11px;
+            min-height: 200px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+          }
+          .label-header { text-align: left; margin-bottom: 15px; font-weight: bold; }
+          .company-info { font-size: 9px; line-height: 1.3; }
+          .label-consignado {
+            text-align: right;
+            margin-bottom: 15px;
+            line-height: 1.4;
+          }
+          .consignado-title { font-weight: bold; font-size: 10px; margin-bottom: 3px; }
+          .label-courier {
+            text-align: center;
+            font-size: 12px;
+            font-weight: bold;
+            border-top: 1px dashed #000;
+            padding-top: 10px;
+          }
+          @media print {
+            body { padding: 0; }
+            .label-page { margin-bottom: 0; }
+          }
+        </style>
+      </head>
+      <body>${labelsHtml}</body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(printContent);
+      printWindow.document.close();
+      printWindow.focus();
+      printWindow.print();
+      toast.success(`${successfulOrders.length} etiqueta(s) enviadas a imprimir`);
+    }
+  };
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -603,16 +781,31 @@ export default function SendToShalomModal({
                     </p>
                   </div>
 
-                  <Button
-                    onClick={onClose}
-                    className="bg-slate-900 hover:bg-black dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white px-12 h-14 font-bold rounded-2xl shadow-xl shadow-slate-200 transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
-                  >
-                    Entendido, cerrar
-                  </Button>
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Button
+                      onClick={handlePrintLabels}
+                      variant="outline"
+                      className="gap-2 h-12 px-8 font-bold border-slate-300 dark:border-slate-600 dark:text-slate-200"
+                    >
+                      <Printer className="h-4 w-4" />
+                      Imprimir etiquetas
+                      {successSummary && successSummary.successful > 0 && (
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          ({successSummary.successful})
+                        </span>
+                      )}
+                    </Button>
+                    <Button
+                      onClick={onClose}
+                      className="bg-slate-900 hover:bg-black dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white px-12 h-12 font-bold rounded-2xl shadow-xl shadow-slate-200 transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
+                    >
+                      Entendido, cerrar
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <>
-                  {/* Origen Card */}
+                  {/* Configuración Global */}
                   <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl p-6 mb-8 space-y-6">
                     <AgencySelector
                       label="Agencia de origen (tu tienda)"
@@ -629,6 +822,60 @@ export default function SendToShalomModal({
                       isLoadingAgencies={loadingOrigins}
                       error={!originAgency}
                     />
+
+                    {/* Código de seguridad global */}
+                    <div className="border-t dark:border-slate-700 pt-5">
+                      <div className="flex items-center justify-between mb-2">
+                        <Label className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                          Código de seguridad{" "}
+                          <span className="text-blue-500 text-xs font-medium">
+                            — aplica a todos los pedidos
+                          </span>
+                        </Label>
+                        {globalSecurityCode &&
+                          !isValidSecurityCode(globalSecurityCode) && (
+                            <span className="text-[10px] font-bold text-red-500">
+                              INVÁLIDO
+                            </span>
+                          )}
+                        {!globalSecurityCode && (
+                          <span className="text-[10px] font-bold text-red-500">
+                            FALTANTE
+                          </span>
+                        )}
+                      </div>
+                      <div className="max-w-xs space-y-1">
+                        <Input
+                          value={globalSecurityCode}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, "").slice(0, 4);
+                            setGlobalSecurityCode(val);
+                            if (
+                              val.length === 4 &&
+                              !isValidSecurityCode(val)
+                            ) {
+                              toast.error(
+                                "Código inválido: no uses números consecutivos (ej: 1234, 4321) ni repetidos (ej: 1111)",
+                              );
+                            }
+                          }}
+                          placeholder="Ej: 1357"
+                          maxLength={4}
+                          className={cn(
+                            "h-9 bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100",
+                            (!globalSecurityCode ||
+                              (globalSecurityCode.length > 0 &&
+                                globalSecurityCode.length < 4) ||
+                              (globalSecurityCode.length === 4 &&
+                                !isValidSecurityCode(globalSecurityCode))) &&
+                              "border-red-500",
+                          )}
+                        />
+                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic">
+                          4 dígitos sin secuencias ni repetidos
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-4">
@@ -649,31 +896,30 @@ export default function SendToShalomModal({
                             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
                               {/* Info Cliente */}
                               <div className="lg:col-span-4 space-y-6 border-r dark:border-slate-700 pr-8">
-                                <div className="flex justify-between items-start">
-                                  <div>
-                                    <h4 className="font-bold text-lg text-slate-800 dark:text-slate-100">
-                                      #{order.orderNumber}
-                                    </h4>
-                                    <p className="text-sm text-slate-500 dark:text-slate-400 font-medium">
-                                      {order.customer?.fullName}
+                                <div>
+                                  <h4 className="font-bold text-lg text-slate-800 dark:text-slate-100">
+                                    #{order.orderNumber}
+                                  </h4>
+                                  <div className="mt-1.5 space-y-0.5">
+                                    <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                                      {order.customer?.fullName || "—"}
                                     </p>
-                                    <p className="text-[11px] text-slate-400 dark:text-slate-500 italic">
-                                      {order.customer?.address || order.address}
+                                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                                      {order.customer?.address || order.address || "—"}
+                                    </p>
+                                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                                      DNI:{" "}
+                                      <span className="font-medium text-slate-600 dark:text-slate-300">
+                                        {order.customer?.dni || "—"}
+                                      </span>
+                                    </p>
+                                    <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                                      Tel:{" "}
+                                      <span className="font-medium text-slate-600 dark:text-slate-300">
+                                        {order.customer?.phoneNumber || order.recipientPhone || "—"}
+                                      </span>
                                     </p>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/30 gap-2 px-2"
-                                    onClick={() =>
-                                      setInspectingOrderId(order.id)
-                                    }
-                                  >
-                                    <Info className="h-4 w-4" />
-                                    <span className="text-xs font-bold uppercase tracking-tight">
-                                      Ver datos
-                                    </span>
-                                  </Button>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-3">
@@ -722,53 +968,41 @@ export default function SendToShalomModal({
                                   </div>
                                 </div>
 
-                                <div className="space-y-1 pt-1">
+                                {/* Código de seguridad por orden */}
+                                <div className="space-y-1">
                                   <div className="flex items-center justify-between">
                                     <Label className="text-[9px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-tight">
-                                      CÓDIGO DE SEGURIDAD (OBLIGATORIO)
+                                      Cód. Seguridad
                                     </Label>
                                     {!isValidSecurityCode(data.securityCode || "") && (
-                                      <span className="text-[10px] font-bold text-red-500">FALTANTE</span>
+                                      <span className="text-[9px] font-bold text-red-500">
+                                        FALTANTE
+                                      </span>
                                     )}
                                   </div>
                                   <Input
-                                    value={data.securityCode}
+                                    value={data.securityCode || ""}
                                     onChange={(e) => {
-                                      const value = e.target.value;
-                                      updateShipmentField(
-                                        order.id,
-                                        "securityCode",
-                                        value,
-                                      );
-
-                                      // Validar en tiempo real
-                                      if (
-                                        value.length === 4 &&
-                                        !isValidSecurityCode(value)
-                                      ) {
+                                      const val = e.target.value.replace(/\D/g, "").slice(0, 4);
+                                      updateShipmentField(order.id, "securityCode", val);
+                                      if (val.length === 4 && !isValidSecurityCode(val)) {
                                         toast.error(
-                                          "Código inválido: no uses números consecutivos (ej: 1234, 4321) ni repetidos (ej: 1111)",
+                                          "Código inválido: sin secuencias ni repetidos",
                                         );
                                       }
                                     }}
-                                    placeholder="Ejem: 1357"
+                                    placeholder="Ej: 1357"
                                     maxLength={4}
                                     className={cn(
-                                      "h-8 text-xs bg-slate-50/50 dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100 dark:placeholder:text-slate-500",
+                                      "h-8 text-xs dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100",
                                       (!data.securityCode ||
-                                        (data.securityCode?.length > 0 &&
-                                          data.securityCode.length < 4) ||
-                                        (data.securityCode?.length === 4 &&
-                                          !isValidSecurityCode(
-                                            data.securityCode,
-                                          ))) &&
-                                        "border-red-500 bg-red-50",
+                                        (data.securityCode.length > 0 && data.securityCode.length < 4) ||
+                                        (data.securityCode.length === 4 && !isValidSecurityCode(data.securityCode))) &&
+                                        "border-red-500",
                                     )}
                                   />
-                                  <span className="text-[8px] text-slate-400 dark:text-slate-500 font-medium ml-1 italic">
-                                    (4 dígitos sin secuencias)
-                                  </span>
                                 </div>
+
                               </div>
 
                               {/* Selección Agencia */}
@@ -982,252 +1216,6 @@ export default function SendToShalomModal({
             </div>
           </div>{" "}
           {/* fin scroll wrapper */}
-          {/* Panel lateral para detalles de cliente.
-            CLAVE: absolute inset-0 es relativo al wrapper div (relative).
-            Cubre el 100% del modal sin importar cuánto se haya scrolleado. */}
-          {inspectingOrderId && inspectingOrder && (
-            <div className="absolute inset-0 z-[60] flex justify-end animate-in fade-in duration-200">
-              <div
-                className="absolute inset-0 bg-black/30 dark:bg-black/50 backdrop-blur-sm"
-                onClick={() => setInspectingOrderId(null)}
-              />
-              <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 border-l border-slate-200 dark:border-slate-700">
-                <div className="p-6 border-b dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center justify-between">
-                  <div>
-                    <h3 className="font-black text-slate-800 dark:text-slate-100">
-                      Detalles del Cliente
-                    </h3>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                      Pedido #{inspectingOrder.orderNumber}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 dark:text-slate-300"
-                    onClick={() => setInspectingOrderId(null)}
-                  >
-                    <Plus className="h-5 w-5 rotate-45" />
-                  </Button>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 text-blue-500 dark:text-blue-400 mb-2">
-                      <User className="h-4 w-4" />
-                      <span className="text-sm font-bold uppercase tracking-tight">
-                        Información Personal
-                      </span>
-                    </div>
-
-                    <div className="space-y-1 group">
-                      <Label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                        Nombre Completo
-                      </Label>
-                      <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700 group-hover:border-slate-200 dark:group-hover:border-slate-600 transition-colors">
-                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          {inspectingOrder.customer?.fullName || "—"}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-slate-400 hover:text-blue-600 dark:text-slate-500 dark:hover:text-blue-400"
-                          onClick={() =>
-                            copyToClipboard(
-                              inspectingOrder.customer?.fullName || "",
-                              "Nombre",
-                            )
-                          }
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1 group">
-                      <Label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                        Teléfono
-                      </Label>
-                      <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700 group-hover:border-slate-200 dark:group-hover:border-slate-600 transition-colors">
-                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          {inspectingOrder.recipientPhone ||
-                            inspectingOrder.customer?.phoneNumber ||
-                            "—"}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-slate-400 hover:text-blue-600 dark:text-slate-500 dark:hover:text-blue-400"
-                          onClick={() =>
-                            copyToClipboard(
-                              inspectingOrder.recipientPhone ||
-                                inspectingOrder.customer?.phoneNumber ||
-                                "",
-                              "Teléfono",
-                            )
-                          }
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1 group">
-                      <Label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                        Documento (DNI/RUC)
-                      </Label>
-                      <div
-                        className={cn(
-                          "flex items-center justify-between p-2.5 rounded-lg border transition-colors",
-                          !inspectingOrder.customer?.dni
-                            ? "bg-red-50 dark:bg-red-950/30 border-red-100 dark:border-red-900"
-                            : "bg-slate-50 dark:bg-slate-800 border-slate-100 dark:border-slate-700 group-hover:border-slate-200 dark:group-hover:border-slate-600",
-                        )}
-                      >
-                        <span
-                          className={cn(
-                            "text-sm font-semibold",
-                            !inspectingOrder.customer?.dni
-                              ? "text-red-600 dark:text-red-400"
-                              : "text-slate-700 dark:text-slate-200",
-                          )}
-                        >
-                          {inspectingOrder.customer?.dni ||
-                            "FALTANTE"}
-                        </span>
-                        {inspectingOrder.customer?.dni && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-slate-400 hover:text-blue-600 dark:text-slate-500 dark:hover:text-blue-400"
-                            onClick={() =>
-                              copyToClipboard(
-                                inspectingOrder.customer?.dni ||
-                                  "",
-                                "Documento",
-                              )
-                            }
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 pt-4 border-t border-slate-100 dark:border-slate-700">
-                    <div className="flex items-center gap-2 text-green-600 dark:text-green-500 mb-2">
-                      <Truck className="h-4 w-4" />
-                      <span className="text-sm font-bold uppercase tracking-tight">
-                        Dirección de Entrega
-                      </span>
-                    </div>
-
-                    <div className="space-y-1 group">
-                      <Label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                        Dirección
-                      </Label>
-                      <div className="flex items-start justify-between bg-slate-50 dark:bg-slate-800 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700 group-hover:border-slate-200 dark:group-hover:border-slate-600 transition-colors">
-                        <span className="text-sm font-semibold text-slate-700 dark:text-slate-200 leading-tight pr-2">
-                          {inspectingOrder.customer?.address || "—"}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 text-slate-400 hover:text-blue-600 dark:text-slate-500 dark:hover:text-blue-400 flex-shrink-0"
-                          onClick={() =>
-                            copyToClipboard(
-                              inspectingOrder.customer?.address || "",
-                              "Dirección",
-                            )
-                          }
-                        >
-                          <Copy className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1 group">
-                        <Label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                          Distrito
-                        </Label>
-                        <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700">
-                          <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
-                            {inspectingOrder.district ||
-                              inspectingOrder.customer?.district ||
-                              "—"}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-slate-400 dark:text-slate-500"
-                            onClick={() =>
-                              copyToClipboard(
-                                inspectingOrder.district ||
-                                  inspectingOrder.customer?.district ||
-                                  "",
-                                "Distrito",
-                              )
-                            }
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="space-y-1 group">
-                        <Label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                          Ciudad/Prov
-                        </Label>
-                        <div className="flex items-center justify-between bg-slate-50 dark:bg-slate-800 p-2 rounded-lg border border-slate-100 dark:border-slate-700">
-                          <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
-                            {inspectingOrder.city ||
-                              inspectingOrder.province ||
-                              "—"}
-                          </span>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="h-6 w-6 text-slate-400 dark:text-slate-500"
-                            onClick={() =>
-                              copyToClipboard(
-                                inspectingOrder.city ||
-                                  inspectingOrder.province ||
-                                  "",
-                                "Ubicación",
-                              )
-                            }
-                          >
-                            <Copy className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-
-                    {inspectingOrder.customer?.reference && (
-                      <div className="space-y-1 group">
-                        <Label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
-                          Referencia
-                        </Label>
-                        <div className="bg-slate-50 dark:bg-slate-800 p-2.5 rounded-lg border border-slate-100 dark:border-slate-700 text-xs font-medium text-slate-600 dark:text-slate-300">
-                          {inspectingOrder.customer.reference}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="p-6 bg-slate-50 dark:bg-slate-800 border-t dark:border-slate-700">
-                  <Button
-                    className="w-full bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 font-bold"
-                    onClick={() => setInspectingOrderId(null)}
-                  >
-                    Cerrar Detalle
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>{" "}
         {/* fin relative wrapper */}
       </DialogContent>

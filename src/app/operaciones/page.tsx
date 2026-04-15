@@ -2227,6 +2227,20 @@ Estado: ${sale.status}
         storeId={selectedStoreId || ""}
         onConfirm={handleCreateGuide}
         isLoading={isCreatingGuide}
+        defaultCourierId={(() => {
+          const orders = getSelectedLlamadosForGuide();
+          const first = orders[0]?.courierId;
+          return orders.length > 0 && orders.every((s) => s.courierId === first)
+            ? first
+            : undefined;
+        })()}
+        defaultCourierName={(() => {
+          const orders = getSelectedLlamadosForGuide();
+          const first = orders[0]?.courier;
+          return orders.length > 0 && orders.every((s) => s.courier === first)
+            ? first
+            : undefined;
+        })()}
       />
 
       <AddToExistingGuideModal
