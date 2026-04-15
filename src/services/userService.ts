@@ -128,11 +128,8 @@ export const createPlatformUser = async (
     province: request.province || 'LIMA',
     district: request.district || 'LIMA',
     phoneNumber: request.phoneNumber,
-    // roleName no existe en RegisterRequest del backend — se omite intencionalmente
+    role: { name: request.roleName }
   };
-
-  console.log('[createPlatformUser] Endpoint:', `${API_AUTH}/api/v1/auth/register`);
-  console.log('[createPlatformUser] Payload (sin password):', { ...registerPayload, password: '***' });
 
   // Validaciones previas al envío
   const missingFields: string[] = [];
@@ -160,35 +157,22 @@ export const createPlatformUser = async (
   }
 
   try {
-    const response = await axios.post(`${API_AUTH}/api/v1/auth/register`, registerPayload, {
+    const response = await axios.post(`${API_AUTH}/api/v1/auth/admin/register`, registerPayload, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
-    console.log('[createPlatformUser] Respuesta exitosa:', response.status);
-    console.log('[createPlatformUser] Response data completa:', response.data);
-
-    // Si el userId no viene en el body, intentar extraerlo del JWT (accessToken)
     const data = response.data;
-    if (!data.userId && data.accessToken) {
-      try {
-        // Decodificar el JWT (sin verificar firma) para extraer el sub (userId)
-        const payloadBase64 = data.accessToken.split('.')[1];
-        const decoded = JSON.parse(atob(payloadBase64));
-        console.log('[createPlatformUser] JWT decoded payload:', decoded);
-        // IMPORTANTE: decoded.id = UUID, decoded.sub = email. Usar id.
-        data.userId = decoded.id || decoded.userId || decoded.sub;
-        console.log('[createPlatformUser] userId extraído del JWT:', data.userId);
-      } catch (jwtErr) {
-        console.warn('[createPlatformUser] No se pudo decodificar el JWT:', jwtErr);
-      }
+    
+    // Normalizar userId (el backend devuelve el objeto User)
+    if (!data.userId && data.id) {
+       data.userId = data.id;
     }
 
     return data;
   } catch (err: any) {
     const backendError = err?.response?.data;
-    console.error('[createPlatformUser] Error del backend (status:', err?.response?.status, '):', backendError);
     // Relanzar con mensaje legible
     const errorMsg =
       backendError?.message ||
