@@ -95,6 +95,15 @@ const navigation: NavigationItem[] = [
     ],
   },
   {
+    name: "Operaciones",
+    icon: Truck,
+    children: [
+      { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
+      { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
+      { name: "Couriers", href: "/couriers", icon: Truck },
+    ],
+  },
+  {
     name: "Productos",
     icon: Package,
     children: [
@@ -102,15 +111,6 @@ const navigation: NavigationItem[] = [
       { name: "Inventario", href: "/inventario", icon: Package },
       { name: "Compras", href: "/compras", icon: PackagePlus },
       { name: "Proveedores", href: "/proveedores", icon: Building2 },
-    ],
-  },
-  {
-    name: "Operaciones",
-    icon: Truck,
-    children: [
-      { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
-      { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
-      { name: "Couriers", href: "/couriers", icon: Truck },
     ],
   },
   {
@@ -175,6 +175,15 @@ export function Sidebar({ className }: SidebarProps) {
       ],
     },
     {
+      name: "Operaciones",
+      icon: Truck,
+      children: [
+        { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
+        { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
+        { name: "Seguimiento Courier", href: "/couriers", icon: Activity },
+      ],
+    },
+    {
       name: "Productos",
       icon: Package,
       children: [
@@ -182,15 +191,6 @@ export function Sidebar({ className }: SidebarProps) {
         { name: "Inventario", href: "/inventario", icon: Package },
         { name: "Compras", href: "/compras", icon: PackagePlus },
         { name: "Proveedores", href: "/proveedores", icon: Building2 },
-      ],
-    },
-    {
-      name: "Operaciones",
-      icon: Truck,
-      children: [
-        { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
-        { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
-        { name: "Seguimiento Courier", href: "/couriers", icon: Activity },
       ],
     },
     {

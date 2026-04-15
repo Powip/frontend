@@ -177,8 +177,14 @@ export interface OrderHeader {
   // ========================================
   // ✅ NUEVOS CAMPOS DE SHALOM
   // ========================================
-  shalomStatus?: ShalomStatus | null; // ⬅️ NUEVO: Estado del envío en Shalom
-  shalomError?: string | null; // ⬅️ NUEVO: Mensaje de error si falló
+  shalomStatus?: ShalomStatus | null;
+  shalomError?: string | null;
+  shalomSerie?: string | null;
+  shalomOriginAgency?: string | null;
+  shalomDestinationAgency?: string | null;
+  shalomRecipientDoc?: string | null;
+  shalomRecipientPhone?: string | null;
+  shalomContent?: string | null;
 
   // Campos existentes
   sellerName?: string | null;

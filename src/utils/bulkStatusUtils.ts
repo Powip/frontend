@@ -6,63 +6,85 @@ interface BulkUpdateResult {
   failed: { id: string; error: string }[];
 }
 
-interface ProgressCallback {
-  (processed: number, total: number): void;
-}
-
 /**
- * Processes status updates in batches to handle high concurrency (e.g. 300 orders).
- * Includes user identity for audit traceability.
+ * Cambia el estado de múltiples órdenes usando el endpoint bulk del backend.
+ * Una sola request HTTP → una sola query UPDATE en la DB.
+ *
+ * Fallback automático a requests individuales si el endpoint bulk no existe (404).
  */
 export async function processBulkStatusChange(
   orderIds: string[],
   newStatus: OrderStatus,
   apiBaseUrl: string,
-  onProgress?: ProgressCallback,
-  batchSize: number = 10,
+  onProgress?: (processed: number, total: number) => void,
+  _batchSize: number = 10, // mantenido por compatibilidad, no se usa con bulk
   userInfo?: { userId: string; sellerName: string },
 ): Promise<BulkUpdateResult> {
-  const result: BulkUpdateResult = {
-    success: [],
-    failed: [],
-  };
+  if (orderIds.length === 0) return { success: [], failed: [] };
 
-  const total = orderIds.length;
-  let processed = 0;
-
-  // Split into chunks
-  for (let i = 0; i < total; i += batchSize) {
-    const chunk = orderIds.slice(i, i + batchSize);
-
-    // Process chunk in parallel
-    const segmentResults = await Promise.allSettled(
-      chunk.map((id) =>
-        axios.patch(`${apiBaseUrl}/order-header/${id}`, {
-          status: newStatus,
-          ...(userInfo && {
-            userId: userInfo.userId,
-            sellerName: userInfo.sellerName,
-          }),
-        }),
-      ),
-    );
-
-    segmentResults.forEach((res, index) => {
-      const orderId = chunk[index];
-      if (res.status === "fulfilled") {
-        result.success.push(orderId);
-      } else {
-        const errorMessage =
-          res.reason?.response?.data?.message || "Error desconocido";
-        result.failed.push({ id: orderId, error: errorMessage });
-      }
+  try {
+    const response = await axios.patch(`${apiBaseUrl}/order-header/bulk-status`, {
+      ids: orderIds,
+      status: newStatus,
+      ...(userInfo && {
+        userId: userInfo.userId,
+        sellerName: userInfo.sellerName,
+      }),
     });
 
-    processed += chunk.length;
-    if (onProgress) {
-      onProgress(processed, total);
-    }
-  }
+    const data = response.data as {
+      updated: string[];
+      skipped: { id: string; reason: string }[];
+    };
 
+    onProgress?.(orderIds.length, orderIds.length);
+
+    return {
+      success: data.updated ?? [],
+      failed: (data.skipped ?? []).map((s) => ({ id: s.id, error: s.reason })),
+    };
+  } catch (err: any) {
+    // Si el endpoint bulk no existe aún en el backend desplegado, fallback individual
+    if (err?.response?.status === 404) {
+      return processBulkIndividual(orderIds, newStatus, apiBaseUrl, onProgress, userInfo);
+    }
+    throw err;
+  }
+}
+
+async function processBulkIndividual(
+  orderIds: string[],
+  newStatus: OrderStatus,
+  apiBaseUrl: string,
+  onProgress?: (processed: number, total: number) => void,
+  userInfo?: { userId: string; sellerName: string },
+): Promise<BulkUpdateResult> {
+  const result: BulkUpdateResult = { success: [], failed: [] };
+
+  const results = await Promise.allSettled(
+    orderIds.map((id) =>
+      axios.patch(`${apiBaseUrl}/order-header/${id}`, {
+        status: newStatus,
+        ...(userInfo && {
+          userId: userInfo.userId,
+          sellerName: userInfo.sellerName,
+        }),
+      }),
+    ),
+  );
+
+  results.forEach((res, index) => {
+    const id = orderIds[index];
+    if (res.status === "fulfilled") {
+      result.success.push(id);
+    } else {
+      result.failed.push({
+        id,
+        error: res.reason?.response?.data?.message ?? "Error desconocido",
+      });
+    }
+  });
+
+  onProgress?.(orderIds.length, orderIds.length);
   return result;
 }

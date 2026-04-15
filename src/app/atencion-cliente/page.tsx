@@ -47,6 +47,7 @@ import {
 } from "@/components/ventas/SalesTableFilters";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useOrdersByStore } from "@/hooks/useOrdersByStore";
 
 /* -----------------------------------------
    Types
@@ -143,8 +144,14 @@ export default function AtencionClientePage() {
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
 
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { data: ordersData, isLoading: loading, refetch: refetchOrders } = useOrdersByStore(selectedStoreId);
+
+  const sales = useMemo(() => {
+    if (!ordersData) return [];
+    return [...ordersData]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map(mapOrderToSale);
+  }, [ordersData]);
 
   // Modals
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -217,27 +224,6 @@ export default function AtencionClientePage() {
     );
   };
 
-  const fetchOrders = useCallback(async () => {
-    if (!selectedStoreId) return;
-    try {
-      setLoading(true);
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-      const sorted = [...res.data].sort(
-        (a: any, b: any) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
-      const mapped = sorted.map(mapOrderToSale);
-      setSales(mapped);
-    } catch (error) {
-      console.error("Error fetching orders", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId]);
-
-
   // Fetch promo items
   const fetchPromoItems = useCallback(async () => {
     if (!selectedStoreId) return;
@@ -261,9 +247,8 @@ export default function AtencionClientePage() {
 
   useEffect(() => {
     if (!selectedStoreId) return;
-    fetchOrders();
     fetchPromoItems();
-  }, [selectedStoreId, fetchOrders, fetchPromoItems]);
+  }, [selectedStoreId, fetchPromoItems]);
 
   const toggleSale = (id: string) => {
     setSelectedSaleIds((prev) => {
@@ -971,7 +956,7 @@ Estado: ${sale.status}
         open={receiptOpen}
         orderId={selectedOrderId || ""}
         onClose={() => setReceiptOpen(false)}
-        onStatusChange={fetchOrders}
+        onStatusChange={refetchOrders}
       />
 
       {/* Modal de Comentarios */}
@@ -994,7 +979,7 @@ Estado: ${sale.status}
         }}
         orderId={selectedSaleForPayment?.id || ""}
         orderNumber={selectedSaleForPayment?.orderNumber || ""}
-        onPaymentUpdated={fetchOrders}
+        onPaymentUpdated={refetchOrders}
         canApprove={true}
       />
 
@@ -1006,7 +991,7 @@ Estado: ${sale.status}
           setSelectedSaleForService(null);
         }}
         orderId={selectedSaleForService?.id || ""}
-        onOrderUpdated={fetchOrders}
+        onOrderUpdated={refetchOrders}
       />
     </div>
   );

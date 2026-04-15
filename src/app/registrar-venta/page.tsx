@@ -84,11 +84,11 @@ function RegistrarVentaContent() {
   /* ---------------- Detalles ---------------- */
 
   const [orderDetails, setOrderDetails] = useState({
-    orderType: undefined as OrderType | undefined,
+    orderType: OrderType.VENTA as OrderType | undefined,
     salesChannel: undefined as SalesChannel | undefined,
     closingChannel: undefined as SalesChannel | undefined,
-    deliveryType: undefined as DeliveryType | undefined,
-    entregaEn: undefined as "DOMICILIO" | "SUCURSAL" | undefined,
+    deliveryType: DeliveryType.DOMICILIO as DeliveryType | undefined,
+    entregaEn: "DOMICILIO" as "DOMICILIO" | "SUCURSAL" | undefined,
     enviaPor: undefined as string | undefined,
     notes: "",
   });
@@ -171,6 +171,22 @@ function RegistrarVentaContent() {
     : defaultSalesChannels;
   // Los canales de cierre usan la misma lista que los canales de venta
   const closingChannels = salesChannels;
+
+  /* ---------------- Couriers ---------------- */
+  const [couriers, setCouriers] = useState<{ id: string; name: string }[]>([]);
+  const [isLoadingCouriers, setIsLoadingCouriers] = useState(false);
+
+  useEffect(() => {
+    if (!companyId) return;
+    setIsLoadingCouriers(true);
+    axios
+      .get<{ id: string; name: string; companyId: string }[]>(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/couriers/company/${companyId}`,
+      )
+      .then((res) => setCouriers(res.data))
+      .catch(() => setCouriers([]))
+      .finally(() => setIsLoadingCouriers(false));
+  }, [companyId]);
 
   const isIdle = searchState === "idle";
   const isFound = searchState === "found";
@@ -972,6 +988,7 @@ function RegistrarVentaContent() {
                       phoneNumber: e.target.value,
                     })
                   }
+                  onKeyDown={(e) => e.key === "Enter" && searchClient()}
                 />
                 <Button
                   onClick={searchClient}
@@ -1769,7 +1786,7 @@ function RegistrarVentaContent() {
               <div className="space-y-1">
                 <Label>Método de envío <span className="text-destructive">*</span></Label>
                 <Select
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || isLoadingCouriers}
                   value={orderDetails.enviaPor}
                   onValueChange={(v) =>
                     setOrderDetails({
@@ -1779,12 +1796,20 @@ function RegistrarVentaContent() {
                   }
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar método de envío" />
+                    <SelectValue
+                      placeholder={
+                        isLoadingCouriers
+                          ? "Cargando..."
+                          : "Seleccionar método de envío"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="MOTORIZADO_PROPIO">
-                      Motorizado Propio
-                    </SelectItem>
+                    {couriers.map((courier) => (
+                      <SelectItem key={courier.id} value={courier.name}>
+                        {courier.name}
+                      </SelectItem>
+                    ))}
                     <SelectItem value="OTROS">Otros</SelectItem>
                   </SelectContent>
                 </Select>
@@ -2091,6 +2116,34 @@ function RegistrarVentaContent() {
                 </tbody>
               </table>
             </div>
+
+            {!canSubmit && (
+              <div className="rounded-md border border-muted bg-muted/30 p-3 text-sm space-y-1">
+                <p className="font-medium text-muted-foreground mb-2">
+                  Para confirmar la venta:
+                </p>
+                {[
+                  { ok: hasValidCart, msg: "Agregá al menos un producto al carrito" },
+                  { ok: !!clientFound || hasValidClientForNew, msg: "Completá los datos del cliente (nombre, dirección, distrito)" },
+                  { ok: !!orderDetails.orderType, msg: "Seleccioná el tipo de orden" },
+                  { ok: !!orderDetails.salesChannel, msg: "Seleccioná el canal de venta" },
+                  { ok: !!orderDetails.closingChannel, msg: "Seleccioná el canal de cierre" },
+                  { ok: hasValidDelivery, msg: "Configurá el método de entrega" },
+                  { ok: hasValidPayments, msg: "Seleccioná el método de pago" },
+                ].map(({ ok, msg }) => (
+                  <div key={msg} className="flex items-center gap-2">
+                    {ok ? (
+                      <span className="text-green-600 text-xs">✓</span>
+                    ) : (
+                      <span className="text-destructive text-xs">✗</span>
+                    )}
+                    <span className={ok ? "text-muted-foreground line-through" : "text-foreground"}>
+                      {msg}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <Button
               className="w-full bg-teal-600 hover:bg-teal-700"

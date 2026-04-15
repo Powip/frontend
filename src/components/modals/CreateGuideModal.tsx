@@ -43,6 +43,8 @@ interface CreateGuideModalProps {
   storeId: string;
   onConfirm: (guidesData: CreateGuideData[]) => Promise<void>;
   isLoading?: boolean;
+  defaultCourierId?: string | null;
+  defaultCourierName?: string | null;
 }
 
 export interface CreateGuideData {
@@ -100,6 +102,8 @@ export default function CreateGuideModal({
   storeId,
   onConfirm,
   isLoading = false,
+  defaultCourierId,
+  defaultCourierName,
 }: CreateGuideModalProps) {
   const { auth } = useAuth();
   const [couriers, setCouriers] = useState<Courier[]>([]);
@@ -128,6 +132,33 @@ export default function CreateGuideModal({
       fetchCouriers(auth.company.id).then(setCouriers).catch(console.error);
     }
   }, [open, auth?.company?.id]);
+
+  // Pre-seleccionar courier del pedido una vez que los couriers carguen
+  useEffect(() => {
+    if (!open || couriers.length === 0 || selectedCourierId) return;
+
+    if (defaultCourierId) {
+      const match = couriers.find((c) => c.id === defaultCourierId);
+      if (match) {
+        setSelectedCourierId(match.id);
+        return;
+      }
+    }
+
+    if (defaultCourierName) {
+      const match = couriers.find((c) => c.name === defaultCourierName);
+      if (match) {
+        setSelectedCourierId(match.id);
+        return;
+      }
+      if (
+        defaultCourierName.toUpperCase() === "OTROS" ||
+        defaultCourierName === "Otros"
+      ) {
+        setSelectedCourierId("OTROS");
+      }
+    }
+  }, [open, couriers, defaultCourierId, defaultCourierName]);
 
   const totalAmount = useMemo(() => {
     return selectedOrders.reduce((acc, o) => acc + o.pendingPayment, 0);
@@ -180,6 +211,7 @@ export default function CreateGuideModal({
     setNotes("");
     setSelectedCourierId("");
     setCarrierCosts({});
+    setCouriers([]);
     onClose();
   };
 

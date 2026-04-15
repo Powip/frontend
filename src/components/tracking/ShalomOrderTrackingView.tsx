@@ -39,6 +39,7 @@ import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import ShippingNotesModal from "@/components/modals/ShippingNotesModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import ShalomPremiumTrackingModal from "@/components/modals/ShalomPremiumTrackingModal";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 
 interface ShippingGuide {
   id: string;
@@ -68,6 +69,9 @@ export default function ShalomOrderTrackingView() {
   const [loading, setLoading] = useState(true);
   const [guideSearch, setGuideSearch] = useState("");
   const [guideStatusFilter, setGuideStatusFilter] = useState("");
+  const [pendingFilter, setPendingFilter] = useState<"all" | "pending" | "paid">("all");
+  const [dateFrom, setDateFrom] = useState<string | null>(null);
+  const [dateTo, setDateTo] = useState<string | null>(null);
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
     new Set(),
   );
@@ -156,9 +160,7 @@ export default function ShalomOrderTrackingView() {
     return shalomOrders.filter(({ order, guide }) => {
       if (guideSearch) {
         const search = guideSearch.toLowerCase();
-        const matchesName = order.customer?.fullName
-          ?.toLowerCase()
-          .includes(search);
+        const matchesName = order.customer?.fullName?.toLowerCase().includes(search);
         const matchesNum = order.orderNumber.toLowerCase().includes(search);
         const matchesGuide =
           guide?.guideNumber?.toLowerCase().includes(search) ||
@@ -166,13 +168,31 @@ export default function ShalomOrderTrackingView() {
         if (!matchesName && !matchesNum && !matchesGuide) return false;
       }
 
-      // ✅ CAMBIAR: Filtrar por shalomStatus en lugar de order.status
       if (guideStatusFilter && order.shalomStatus !== guideStatusFilter)
         return false;
 
+      if (pendingFilter !== "all") {
+        const pending = calculatePendingPayment(order);
+        if (pendingFilter === "pending" && pending <= 0) return false;
+        if (pendingFilter === "paid" && pending > 0) return false;
+      }
+
+      if (dateFrom || dateTo) {
+        const orderDate = new Date(order.created_at);
+        orderDate.setHours(0, 0, 0, 0);
+        if (dateFrom) {
+          const from = new Date(dateFrom + "T00:00:00");
+          if (orderDate < from) return false;
+        }
+        if (dateTo) {
+          const to = new Date(dateTo + "T23:59:59");
+          if (orderDate > to) return false;
+        }
+      }
+
       return true;
     });
-  }, [shalomOrders, guideSearch, guideStatusFilter]);
+  }, [shalomOrders, guideSearch, guideStatusFilter, pendingFilter, dateFrom, dateTo]);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -240,7 +260,7 @@ export default function ShalomOrderTrackingView() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4 border rounded-xl bg-muted/20">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 p-4 border rounded-xl bg-muted/20">
         <div className="space-y-1">
           <Label className="text-xs font-semibold">Búsqueda rápida</Label>
           <div className="relative">
@@ -254,18 +274,36 @@ export default function ShalomOrderTrackingView() {
           </div>
         </div>
         <div className="space-y-1">
-          <Label className="text-xs font-semibold">Estado</Label>
+          <Label className="text-xs font-semibold">Período</Label>
+          <PeriodSelector
+            onPeriodChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
+            className="w-full [&>div>button]:w-full [&>div>button]:h-9"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold">Estado Shalom</Label>
           <select
             className="w-full h-9 text-sm border rounded-md px-3 bg-background"
             value={guideStatusFilter}
             onChange={(e) => setGuideStatusFilter(e.target.value)}
           >
             <option value="">Todos los estados</option>
-            <option value="PENDIENTE">Registrado (Pendiente)</option>
-            <option value="EXITOSO">Exitoso</option>
-            <option value="FALLIDO">Fallido</option>
-            <option value="EN_TRANSITO">En Tránsito</option>
-            <option value="ENTREGADO">Entregado</option>
+            <option value="PENDIENTE">✅ Registrado</option>
+            <option value="FALLIDO">❌ Fallido</option>
+            <option value="EN_TRANSITO">🚚 En tránsito</option>
+            <option value="ENTREGADO">📦 Entregado</option>
+          </select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold">Saldo</Label>
+          <select
+            className="w-full h-9 text-sm border rounded-md px-3 bg-background"
+            value={pendingFilter}
+            onChange={(e) => setPendingFilter(e.target.value as "all" | "pending" | "paid")}
+          >
+            <option value="all">Todos</option>
+            <option value="pending">Con saldo pendiente</option>
+            <option value="paid">Pagado completo</option>
           </select>
         </div>
       </div>
@@ -312,6 +350,12 @@ export default function ShalomOrderTrackingView() {
                 Fecha
               </TableHead>
               <TableHead className="text-[11px] uppercase font-bold text-center">
+                Días
+              </TableHead>
+              <TableHead className="text-[11px] uppercase font-bold text-right">
+                Saldo
+              </TableHead>
+              <TableHead className="text-[11px] uppercase font-bold text-center">
                 Estado
               </TableHead>
               <TableHead className="text-[11px] uppercase font-bold text-center">
@@ -323,6 +367,24 @@ export default function ShalomOrderTrackingView() {
               <TableHead className="text-[11px] uppercase font-bold">
                 Cliente
               </TableHead>
+              <TableHead className="text-[11px] uppercase font-bold">
+                N° Guía Shalom
+              </TableHead>
+              <TableHead className="text-[11px] uppercase font-bold">
+                Código
+              </TableHead>
+              <TableHead className="text-[11px] uppercase font-bold">
+                Origen
+              </TableHead>
+              <TableHead className="text-[11px] uppercase font-bold">
+                Destino
+              </TableHead>
+              <TableHead className="text-[11px] uppercase font-bold">
+                DNI
+              </TableHead>
+              <TableHead className="text-[11px] uppercase font-bold">
+                Teléfono
+              </TableHead>
               <TableHead className="text-[11px] uppercase font-bold text-right">
                 Acciones
               </TableHead>
@@ -333,7 +395,7 @@ export default function ShalomOrderTrackingView() {
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell
-                    colSpan={7}
+                    colSpan={15}
                     className="h-12 animate-pulse bg-muted/20"
                   />
                 </TableRow>
@@ -341,7 +403,7 @@ export default function ShalomOrderTrackingView() {
             ) : filteredOrders.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={15}
                   className="h-32 text-center text-muted-foreground"
                 >
                   No hay órdenes Shalom
@@ -367,6 +429,32 @@ export default function ShalomOrderTrackingView() {
                     </TableCell>
                     <TableCell className="text-xs">
                       {new Date(order.created_at).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {(() => {
+                        const today = new Date(); today.setHours(0,0,0,0);
+                        const created = new Date(order.created_at); created.setHours(0,0,0,0);
+                        const days = Math.max(0, Math.floor((today.getTime() - created.getTime()) / 86400000));
+                        const color = days <= 3
+                          ? "bg-green-50 text-green-700 border-green-200"
+                          : days <= 7
+                          ? "bg-amber-50 text-amber-700 border-amber-200"
+                          : "bg-red-50 text-red-700 border-red-200";
+                        return (
+                          <Badge variant="outline" className={`text-[10px] font-bold ${color}`}>
+                            {days}d
+                          </Badge>
+                        );
+                      })()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {(() => {
+                        const pending = calculatePendingPayment(order);
+                        if (pending <= 0) {
+                          return <span className="text-[10px] font-bold text-green-600">Pagado</span>;
+                        }
+                        return <span className="text-xs font-bold text-red-600">S/ {pending.toFixed(2)}</span>;
+                      })()}
                     </TableCell>
                     <TableCell className="text-center">
                       {(() => {
@@ -510,6 +598,35 @@ export default function ShalomOrderTrackingView() {
                     </TableCell>
                     <TableCell className="text-xs max-w-[120px] truncate">
                       {order.customer?.fullName}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">
+                      {order.externalTrackingNumber ? (
+                        <a
+                          href={order.trackingUrl || "#"}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline"
+                        >
+                          {order.externalTrackingNumber}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">
+                      {order.shippingCode || <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="text-xs max-w-[130px] truncate">
+                      {order.shalomOriginAgency || <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="text-xs max-w-[130px] truncate">
+                      {order.shalomDestinationAgency || <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">
+                      {order.shalomRecipientDoc || <span className="text-muted-foreground">-</span>}
+                    </TableCell>
+                    <TableCell className="text-xs font-mono">
+                      {order.shalomRecipientPhone || <span className="text-muted-foreground">-</span>}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">

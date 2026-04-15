@@ -261,9 +261,23 @@ export default function SeguimientoPage() {
 
     setLoading(true);
     try {
-      const ordersRes = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
+      // 2 requests en paralelo: órdenes + todas las guías de la tienda
+      const [ordersRes, guidesRes] = await Promise.all([
+        axios.get<OrderHeader[]>(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+        ),
+        axios.get<ShippingGuide[]>(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
+        ),
+      ]);
+
+      // Mapa orderId → guía para lookup O(1)
+      const guideByOrderId = new Map<string, ShippingGuide>();
+      for (const guide of guidesRes.data) {
+        for (const orderId of guide.orderIds) {
+          guideByOrderId.set(orderId, guide);
+        }
+      }
 
       const ordersEnEnvio = ordersRes.data.filter(
         (o) => o.status === "EN_ENVIO",
@@ -272,46 +286,26 @@ export default function SeguimientoPage() {
         (o) => o.status === "ENTREGADO",
       );
 
-      const processOrders = async (orders: OrderHeader[]) => {
-        return await Promise.all(
-          orders.map(async (order) => {
-            let guide: ShippingGuide | null = null;
-            let daysSinceCreated = 0;
+      const processOrders = (orders: OrderHeader[]) => {
+        return orders.map((order) => {
+          const guide = guideByOrderId.get(order.id) ?? null;
+          let daysSinceCreated = 0;
 
-            if (order.guideNumber) {
-              try {
-                const guideRes = await axios.get<ShippingGuide>(
-                  `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${order.id}`,
-                );
-                guide = guideRes.data;
+          if (guide?.created_at) {
+            const createdDate = new Date(guide.created_at);
+            const today = new Date();
+            const diffTime = Math.abs(
+              today.getTime() - createdDate.getTime(),
+            );
+            daysSinceCreated = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          }
 
-                if (guide?.created_at) {
-                  const createdDate = new Date(guide.created_at);
-                  const today = new Date();
-                  const diffTime = Math.abs(
-                    today.getTime() - createdDate.getTime(),
-                  );
-                  daysSinceCreated = Math.ceil(
-                    diffTime / (1000 * 60 * 60 * 24),
-                  );
-                }
-              } catch (error) {
-                console.error(
-                  `Error fetching guide for order ${order.id}:`,
-                  error,
-                );
-              }
-            }
-
-            return { order, guide, daysSinceCreated };
-          }),
-        );
+          return { order, guide, daysSinceCreated };
+        });
       };
 
-      const [envioItems, entregadoItems] = await Promise.all([
-        processOrders(ordersEnEnvio),
-        processOrders(ordersEntregado),
-      ]);
+      const envioItems = processOrders(ordersEnEnvio);
+      const entregadoItems = processOrders(ordersEntregado);
 
       setEnvios(envioItems);
       setEntregados(entregadoItems);

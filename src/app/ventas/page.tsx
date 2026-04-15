@@ -70,6 +70,7 @@ import {
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
 import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
+import { useOrdersByStore } from "@/hooks/useOrdersByStore";
 
 /* -----------------------------------------
    Types
@@ -264,6 +265,8 @@ export default function VentasPage() {
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
 
+  const { data: ordersData, refetch: refetchOrders } = useOrdersByStore(selectedStoreId);
+
   // Calcular estados disponibles comunes para la selección de la pestaña activa
   const bulkAvailableStatuses = useMemo(() => {
     const currentSelectedIds = getSelectedIdsForActiveTab();
@@ -293,40 +296,36 @@ export default function VentasPage() {
     return intersection;
   }, [sales, getSelectedIdsForActiveTab]);
 
-  const fetchOrders = useCallback(async () => {
-    try {
-      const res = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
+  // Sincronizar datos del hook → estado local (permite actualizaciones optimistas locales)
+  useEffect(() => {
+    if (!ordersData) return;
 
-      res.data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    const sorted = [...ordersData].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+    const mappedSales = sorted.map(mapOrderToSale);
+    setSales(mappedSales);
 
-      const mappedSales = res.data.map(mapOrderToSale);
-      setSales(mappedSales);
-
-      // Initialize tracking edits
-      const edits: Record<
-        string,
-        {
-          externalTrackingNumber: string;
-          shippingCode: string;
-          shippingKey: string;
-          shippingOffice: string;
-        }
-      > = {};
-      mappedSales.forEach((s) => {
-        edits[s.id] = {
-          externalTrackingNumber: s.externalTrackingNumber,
-          shippingCode: s.shippingCode,
-          shippingKey: s.shippingKey,
-          shippingOffice: s.shippingOffice,
-        };
-      });
-      setTrackingEdits(edits);
-    } catch (error) {
-      console.error("Error fetching orders", error);
-    }
-  }, [selectedStoreId]);
+    // Initialize tracking edits
+    const edits: Record<
+      string,
+      {
+        externalTrackingNumber: string;
+        shippingCode: string;
+        shippingKey: string;
+        shippingOffice: string;
+      }
+    > = {};
+    mappedSales.forEach((s) => {
+      edits[s.id] = {
+        externalTrackingNumber: s.externalTrackingNumber,
+        shippingCode: s.shippingCode,
+        shippingKey: s.shippingKey,
+        shippingOffice: s.shippingOffice,
+      };
+    });
+    setTrackingEdits(edits);
+  }, [ordersData]);
 
   // Helper: info del usuario actual para trazabilidad
   const getUserInfo = () => ({
@@ -365,7 +364,7 @@ export default function VentasPage() {
         payload,
       );
       toast.success(`Estado actualizado a ${newStatus}`);
-      fetchOrders();
+      refetchOrders();
     } catch (error) {
       console.error("Error actualizando estado", error);
       toast.error("No se pudo actualizar el estado");
@@ -392,7 +391,7 @@ export default function VentasPage() {
       toast.success(`Venta ${saleToCancel.orderNumber} anulada`);
       setCancellationModalOpen(false);
       setSaleToCancel(null);
-      fetchOrders();
+      refetchOrders();
     } catch (error) {
       console.error("Error anulando venta", error);
       toast.error("No se pudo anular la venta");
@@ -411,18 +410,13 @@ export default function VentasPage() {
     setSelectedIdsForActiveTab(next);
   };
 
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    fetchOrders();
-  }, [selectedStoreId, fetchOrders]);
-
   const handleDelete = async (id: string) => {
     try {
       await axios.delete(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`,
       );
       toast.success("Venta eliminada");
-      fetchOrders();
+      refetchOrders();
     } catch (error) {
       console.error("Error eliminando venta", error);
       toast.error("No se pudo eliminar la venta");
@@ -565,7 +559,7 @@ Estado: ${sale.status}
       toast.error(`${errorCount} pedido(s) no pudieron ser actualizados`);
     }
 
-    fetchOrders();
+    refetchOrders();
     setSelectedIdsForActiveTab(new Set());
     setPendingPrintSales([]);
     setPrintConfirmOpen(false);
@@ -668,7 +662,7 @@ Estado: ${sale.status}
       }
 
       setSelectedIdsForActiveTab(new Set());
-      fetchOrders();
+      refetchOrders();
     } catch (error) {
       toast.error("Error crítico durante la actualización masiva.");
     } finally {
@@ -1816,7 +1810,7 @@ Estado: ${sale.status}
           setReceiptOpen(false);
           setSelectedShippingGuide(null);
         }}
-        onOrderUpdated={fetchOrders}
+        onOrderUpdated={refetchOrders}
         hideCallManagement={true}
         shippingGuide={selectedShippingGuide}
         showTracking={activeTab === "todas"}
@@ -1851,7 +1845,7 @@ Estado: ${sale.status}
         }}
         orderId={selectedSaleForPayment?.id || ""}
         orderNumber={selectedSaleForPayment?.orderNumber || ""}
-        onPaymentUpdated={fetchOrders}
+        onPaymentUpdated={refetchOrders}
       />
 
       {/* Modal de confirmación de impresión */}
