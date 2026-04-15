@@ -1,5 +1,6 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Dialog,
   DialogContent,
@@ -35,6 +36,8 @@ interface LeadActivationFlowProps {
 export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({ 
   lead, open, onClose, token, auth, plans = [] 
 }) => {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   
@@ -128,8 +131,6 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
       const leadId = lead.lead?.id || lead.lead_id || lead.id;
       const businessName = formData.businessName || lead.business_name || lead.lead?.business_name;
       
-      console.log("[LeadActivation] Actualizando estado a 'alta_completa'...");
-      
       // 1. Actualizar tabla lead_activations con la contraseña temporal y marcar como alta_completa
       await supabase
         .from('lead_activations')
@@ -141,17 +142,16 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
         .eq('id', activationId);
       
       // 2. Crear registro en lead_postventa para visibilidad en la tab de Seguimiento
-      console.log("[LeadActivation] Creando registro en lead_postventa...");
       await supabase
         .from('lead_postventa')
-        .insert({
+        .upsert({
           lead_id: leadId,
           activation_id: activationId,
           business_name: businessName,
           activation_date: new Date().toISOString(),
           client_status: 'onboarding',
           assigned_to: lead.assigned_to || auth?.user?.id
-        });
+        }, { onConflict: 'lead_id' });
 
       // 3. Actualizar lead principal a estado 'cerrado'
       await fetch(`/api/superadmin/leads/${leadId}`, {
@@ -167,12 +167,12 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
       });
 
       // 4. Log Final Activity as alta_generada
-      await supabase.from('lead_activities').insert({
+      await supabase.from('lead_activities').upsert({
         lead_id: leadId,
         activity_type: 'alta_generada',
         description: `Alta generada exitosamente para ${businessName}. Business ID: ${businessId}`,
         performed_by: auth?.user?.id
-      });
+      }, { onConflict: 'lead_id' });
 
     } catch(e) {
       console.error("Error updating lead status:", e);
@@ -213,9 +213,6 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
     let createdBusinessId = '';
 
     try {
-      console.log("[LeadActivation] Iniciando creación de usuario...");
-      console.log("[LeadActivation] Nombre:", formData.name, "| Apellido:", formData.surname, "| Email:", formData.email, "| Teléfono:", formData.phoneNumber);
-      console.log("[LeadActivation] Password generada cumple regex:", passwordRegex.test(generatedPassword));
       // 1. Create User
       const userPayload = {
         name: formData.name || 'Admin',
@@ -229,32 +226,25 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
         department: 'LIMA',
         province: 'LIMA',
         district: 'LIMA',
-        roleName: 'Administrador',
+        roleName: 'ADMINISTRADOR',
       };
       
       const createdUser = await createPlatformUser(userPayload, auth.accessToken);
-      console.log("[LeadActivation] createPlatformUser respuesta completa:", createdUser);
       createdUserId = createdUser?.userId || createdUser?.id || createdUser?.user?.id;
-      console.log("[LeadActivation] userId extraído:", createdUserId);
       
       if (!createdUserId) throw new Error(`No se pudo obtener el ID del usuario creado. Respuesta: ${JSON.stringify(createdUser)}`);
 
-      console.log("Usuario creado:", createdUserId);
-
       // 2. Create Subscription (non-blocking — si falla, continúa con la empresa)
       if (formData.planId) {
-        console.log("[LeadActivation] Iniciando creación de suscripción...");
         const subPayload = {
           userId: createdUserId,
           planId: formData.planId,
           payerEmail: formData.email,
           status: 'ACTIVE',
         };
-        console.log("[LeadActivation] Subscription payload:", subPayload);
         try {
           const sub = await createSubscription(auth.accessToken, subPayload);
           createdSubscriptionId = sub?.id;
-          console.log("[LeadActivation] Suscripción creada:", createdSubscriptionId);
         } catch (subErr: any) {
           const subErrData = subErr?.response?.data;
           const subErrStatus = subErr?.response?.status;
@@ -266,7 +256,6 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
       }
 
       // 3. Create Business
-      console.log("[LeadActivation] Iniciando creación de negocio...");
       const companyPayload = {
         name: formData.businessName,
         userId: createdUserId,
@@ -275,34 +264,30 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
         billingAddress: formData.address || 'Pendiente',
         billingEmail: formData.email,
       };
-      console.log("[LeadActivation] Company payload:", companyPayload);
-      
       try {
         const company = await createCompany(auth.accessToken, companyPayload);
         createdBusinessId = company?.id;
-        console.log("[LeadActivation] Negocio creado:", createdBusinessId);
       } catch (compErr: any) {
         const compErrData = compErr?.response?.data;
-        console.error("[LeadActivation] Error ms-company (status:", compErr?.response?.status, "):", compErrData);
         throw new Error(`Error al crear empresa: ${compErrData?.message || JSON.stringify(compErrData) || compErr.message}`);
       }
       
       if (!createdBusinessId) throw new Error("Error al crear la empresa: respuesta sin ID");
 
       // EXIT MODAL IMMEDIATELY
-      setIsLoading(false);
-      toast.success("¡Alta completada! Consulta las credenciales en Postventa.");
-      
-      // Side effects in background OR before closing
+      // Side effects in background
       await initOnboarding(createdBusinessId);
       await updateLeadStatus(createdBusinessId, generatedPassword);
       
-      // Close and Refresh
-      onClose();
-      // Pequeño delay para que el toast se vea antes del refresh si es que el refresh es agresivo
-      setTimeout(() => {
-        window.location.reload();
-      }, 500);
+      // Notify success
+      toast.success("¡Alta completada! Consulta las credenciales en Postventa.");
+
+      // Clean Refresh and Close
+      startTransition(() => {
+        router.refresh();
+        // Cerramos el modal solo después de iniciar la transición
+        onClose();
+      });
 
     } catch (error: any) {
       console.error("[LeadActivation] Error en flujo de alta:", error);
@@ -477,12 +462,12 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
             disabled={isLoading}
             className="flex-[2] h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold uppercase tracking-widest text-xs shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98]"
           >
-            {isLoading ? (
+            {isLoading || isPending ? (
               <Loader2 className="h-4 w-4 animate-spin mr-2" />
             ) : step === 3 ? (
               <Rocket className="h-4 w-4 mr-2" />
             ) : null}
-            {isLoading ? 'Activando...' : step === 3 ? 'Confirmar Alta' : 'Siguiente'}
+            {isLoading || isPending ? 'Activando...' : step === 3 ? 'Confirmar Alta' : 'Siguiente'}
           </Button>
         </DialogFooter>
       </DialogContent>
