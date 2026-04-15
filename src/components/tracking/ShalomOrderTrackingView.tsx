@@ -15,6 +15,7 @@ import {
   X,
   Edit2,
   ClipboardList,
+  Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -104,6 +105,7 @@ export default function ShalomOrderTrackingView() {
   >({});
 
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
+  const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
   const [selectedEnvio, setSelectedEnvio] = useState<EnvioItem | null>(null);
 
   const fetchShalomOrders = useCallback(async () => {
@@ -630,6 +632,23 @@ export default function ShalomOrderTrackingView() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Copiar link de rastreo"
+                          onClick={() => {
+                            const url = `https://www.powip.lat/rastreo/${order.orderNumber}`;
+                            navigator.clipboard.writeText(url);
+                            setCopiedOrderId(order.id);
+                            setTimeout(() => setCopiedOrderId(null), 2000);
+                          }}
+                        >
+                          {copiedOrderId === order.id
+                            ? <Check className="h-4 w-4 text-green-500" />
+                            : <Link2 className="h-4 w-4 text-purple-500" />
+                          }
+                        </Button>
                         <Button
                           variant="ghost"
                           size="icon"
