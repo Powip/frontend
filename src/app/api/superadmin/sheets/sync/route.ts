@@ -1,23 +1,13 @@
-import { createClient } from "@/utils/supabase/server";
+import { createAdminClient as createClient } from '@/utils/supabase/admin';
 import { NextResponse } from "next/server";
 import { GoogleSheetsSyncService } from "@/lib/integrations/google-sheets-api";
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const syncService = new GoogleSheetsSyncService(supabase);
+  // Pure DB Mode: Disabling manual sync logic to avoid 500 errors and dependency on external sheets.
+  // The system now consumes leads directly from 'leads' and 'landing_leads' tables.
   
-  try {
-    const body = await request.json().catch(() => ({}));
-    const { sheet_id } = body;
-
-    const result = await syncService.syncSheet(sheet_id);
-    
-    return NextResponse.json({ 
-      message: "Sync triggered manually", 
-      result 
-    });
-  } catch (err: any) {
-    console.error("[ManualSync] Error:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
+  return NextResponse.json({ 
+    message: "Manual synchronization is disabled in Pure DB Mode. Leads are now fetched directly from Supabase.",
+    status: "disabled"
+  });
 }

@@ -47,6 +47,40 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
   const { data: postventa = [], refetch: refetchPostventa } = useLeadPostventa(token);
   const createActivation = useCreateActivation(token);
 
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await fetch('/api/superadmin/leads/import', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        body: formData,
+      });
+
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Error al importar archivo');
+
+      toast.success(result.message || 'Importación completada');
+      setTimeout(() => window.location.reload(), 1500);
+    } catch (error: any) {
+      console.error('[Import] Error:', error);
+      toast.error(error.message || 'Error al procesar el archivo Excel/CSV');
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleSync = async () => {
     setIsSyncing(true);
     try {
@@ -58,7 +92,15 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
         },
         body: JSON.stringify({}),
       });
-      const result = await response.json();
+
+      // Handle non-JSON 500 errors safely
+      let result;
+      const text = await response.text();
+      try {
+        result = JSON.parse(text);
+      } catch (e) {
+        throw new Error('El servidor devolvió un error inesperado (no-JSON). Contacta a soporte.');
+      }
 
       if (!response.ok) throw new Error(result.error || 'Error en sincronización');
 
@@ -107,14 +149,14 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
 
   // If we are actively syncing, we show a full overlay on top of the content
   // so the user knows we are performing the extraction from Google Sheets
-  const SyncOverlay = () => (
+  const SyncOverlay = ({ title, desc }: { title: string, desc: string }) => (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-white/80 dark:bg-[#0f1117]/80 backdrop-blur-sm animate-in fade-in">
       <div className="flex flex-col items-center gap-4 bg-white dark:bg-gray-900 p-8 rounded-2xl shadow-2xl border border-primary/20">
         <RefreshCw className="h-10 w-10 text-primary animate-spin" />
         <div className="text-center">
-          <h3 className="text-lg font-black text-slate-900 dark:text-white">Sincronizando con Google Sheets</h3>
+          <h3 className="text-lg font-black text-slate-900 dark:text-white uppercase tracking-tighter">{title}</h3>
           <p className="text-sm text-slate-500 dark:text-gray-400 mt-1 max-w-xs">
-            Extrayendo la información más reciente desde la hoja de cálculo y cruzando duplicados...
+            {desc}
           </p>
         </div>
       </div>
@@ -123,7 +165,13 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 relative">
-      {isSyncing && <SyncOverlay />}
+      {isImporting && (
+        <SyncOverlay 
+          title="Importando Archivo" 
+          desc="Procesando el archivo Excel/CSV y realizando la carga masiva..." 
+        />
+      )}
+      
       {/* Header strip */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -137,16 +185,23 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Sync Sheets */}
+          {/* Import Manual */}
+          <input 
+            type="file" 
+            ref={fileInputRef} 
+            onChange={handleFileUpload} 
+            accept=".xlsx,.xls,.cvs" 
+            className="hidden" 
+          />
           <Button
             variant="outline"
             size="sm"
-            onClick={handleSync}
-            disabled={isSyncing}
-            className="gap-2 h-9 border-indigo-200 dark:border-indigo-500/20 bg-indigo-50 dark:bg-indigo-500/5 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-500/10 text-[11px] font-bold uppercase tracking-wider"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isImporting}
+            className="gap-2 h-9 border-amber-200 dark:border-amber-500/20 bg-amber-50 dark:bg-amber-500/5 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-500/10 text-[11px] font-bold uppercase tracking-wider"
           >
-            <RefreshCw className={cn('h-3.5 w-3.5', isSyncing && 'animate-spin')} />
-            {isSyncing ? 'Sincronizando...' : 'Sincronizar Sheets'}
+            <Download className="h-3.5 w-3.5 rotate-180" />
+            {isImporting ? 'Importando...' : 'Importar Excel'}
           </Button>
 
           {/* Export */}

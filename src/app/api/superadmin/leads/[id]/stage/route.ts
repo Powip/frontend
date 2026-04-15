@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
-import { syncLeadToGoogleSheets } from '@/lib/integrations/google-sheets';
+import { createAdminClient as createClient } from '@/utils/supabase/admin';
 
 export async function PATCH(
   request: Request,
@@ -16,7 +15,40 @@ export async function PATCH(
       return NextResponse.json({ error: 'new_stage is required' }, { status: 400 });
     }
 
-    // Update lead stage
+    // 1. Check if lead exists in main table
+    const { data: existingLead } = await supabase
+      .from('leads')
+      .select('id')
+      .eq('id', id)
+      .single();
+
+    if (!existingLead) {
+      // 2. Check in landing_leads and migrate if found
+      const { data: landingLead } = await supabase
+        .from('landing_leads')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (landingLead) {
+        // Migrate to leads table
+        await supabase.from('leads').insert({
+          id: landingLead.id,
+          contact_name: landingLead.full_name,
+          business_name: landingLead.company,
+          phone_whatsapp: landingLead.phone,
+          email: landingLead.email,
+          source: 'landing',
+          observations: landingLead.message,
+          created_at: landingLead.created_at,
+          pipeline_stage: new_stage // Use the new stage directly
+        });
+      } else {
+        return NextResponse.json({ error: 'Lead not found in any source' }, { status: 404 });
+      }
+    }
+
+    // 3. Update lead stage in leads table
     const { data: lead, error: updateError } = await supabase
       .from('leads')
       .update({ 
@@ -31,20 +63,15 @@ export async function PATCH(
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
 
-    // Log activity
+    // 4. Log activity
     await supabase.from('lead_activities').insert({
       lead_id: id,
       activity_type: 'status_change',
       old_stage: old_stage,
       new_stage: new_stage,
       description: `Stage changed from ${old_stage} to ${new_stage}`,
-      performed_by: performed_by // Optional, could be null if not provided
+      performed_by: performed_by
     });
-
-    // 3. Trigger Google Sheets Sync (Architecture)
-    if (lead.sheet_row_id) {
-       await syncLeadToGoogleSheets(id, new_stage);
-    }
 
     return NextResponse.json({ message: 'Stage updated successfully', data: lead });
   } catch (error: any) {
@@ -52,3 +79,4 @@ export async function PATCH(
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
+

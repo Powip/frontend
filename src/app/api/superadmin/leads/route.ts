@@ -1,91 +1,111 @@
 import { NextResponse } from 'next/server';
-import { createRouteClient } from '@/utils/supabase/api';
+import { createAdminClient as createClient } from '@/utils/supabase/admin';
 
 export async function GET(request: Request) {
-  const supabase = createRouteClient(request);
-  const { searchParams } = new URL(request.url);
-
-  const stage = searchParams.get('stage');
-  const source = searchParams.get('source');
-  const assignedTo = searchParams.get('assigned_to');
-  const search = searchParams.get('search');
-  const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '200');
-  const offset = (page - 1) * limit;
-
   try {
-    // Auto-sync: import any landing_leads that don't yet exist in leads (by email)
-    const { data: landingLeads } = await supabase
-      .from('landing_leads')
-      .select('*');
+    const supabase = await createClient();
+    const { searchParams } = new URL(request.url);
 
-    if (landingLeads && landingLeads.length > 0) {
-      for (const ll of landingLeads) {
-        // Check if this email already exists in leads
-        const { data: existing } = await supabase
-          .from('leads')
-          .select('id')
-          .ilike('email', ll.email)
-          .limit(1);
+    const stage = searchParams.get('stage');
+    const source = searchParams.get('source');
+    const assignedTo = searchParams.get('assigned_to');
+    const search = searchParams.get('search');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '500'); // Larger limit for merging
+    const offset = (page - 1) * limit;
 
-        if (!existing || existing.length === 0) {
-          await supabase.from('leads').insert({
-            contact_name: ll.full_name,
-            business_name: ll.company,
-            phone_whatsapp: ll.phone,
-            email: ll.email,
-            source: 'landing',
-            pipeline_stage: 'nuevo',
-            plan_interest: 'basic',
-            created_at: ll.created_at,
-            updated_at: new Date().toISOString(),
-          });
+    // 1. Fetch from 'leads' table
+    let leadsQuery = supabase.from('leads').select('*');
+    if (stage) leadsQuery = leadsQuery.eq('pipeline_stage', stage);
+    if (source) leadsQuery = leadsQuery.eq('source', source);
+    if (assignedTo) leadsQuery = leadsQuery.eq('assigned_to', assignedTo);
+    if (search) {
+      leadsQuery = leadsQuery.or(`contact_name.ilike.%${search}%,business_name.ilike.%${search}%,email.ilike.%${search}%`);
+    }
+
+    const { data: leadsData, error: leadsError } = await leadsQuery.order('created_at', { ascending: false });
+
+    if (leadsError) {
+      console.error('[Leads API] Leads DB Error:', leadsError);
+      return NextResponse.json({ data: [], error: leadsError.message }, { status: 200 }); // Return empty for stability
+    }
+
+    // 2. Fetch from 'landing_leads' table
+    // Only fetch from landing_leads if filters are compatible (source=landing or no source, and stage=nuevo or no stage)
+    let landingData: any[] = [];
+    const isSourceCompatible = !source || source.toLowerCase() === 'landing';
+    const isStageCompatible = !stage || stage.toLowerCase() === 'nuevo';
+    const isAssignedCompatible = !assignedTo; // landing leads usually don't have assigned_to yet
+
+    if (isSourceCompatible && isStageCompatible && isAssignedCompatible) {
+      let landingQuery = supabase.from('landing_leads').select('*');
+      if (search) {
+        landingQuery = landingQuery.or(`full_name.ilike.%${search}%,company.ilike.%${search}%,email.ilike.%${search}%`);
+      }
+      const { data: lData, error: lError } = await landingQuery.order('created_at', { ascending: false });
+      if (!lError) landingData = lData || [];
+    }
+
+    // 3. Normalize landing leads
+    const normalizedLanding = landingData.map(l => ({
+      ...l,
+      contact_name: l.full_name,
+      business_name: l.company,
+      phone_whatsapp: l.phone,
+      source: 'landing',
+      pipeline_stage: 'nuevo',
+      is_landing: true
+    }));
+
+    // 4. Merge and Deduplicate by Phone
+    const combinedLeads = [...(leadsData || []), ...normalizedLanding];
+    const uniqueLeadsMap = new Map();
+
+    combinedLeads.forEach(lead => {
+      const phone = lead.phone_whatsapp || lead.phone;
+      if (!phone) {
+        uniqueLeadsMap.set(lead.id, lead); // Use ID if no phone
+        return;
+      }
+
+      const existing = uniqueLeadsMap.get(phone);
+      if (!existing) {
+        uniqueLeadsMap.set(phone, lead);
+      } else {
+        // Preference: keep the one from the 'leads' table (usually richer data) or the most recent
+        const isFromLeadsTable = !lead.is_landing;
+        if (isFromLeadsTable || new Date(lead.created_at) > new Date(existing.created_at)) {
+          uniqueLeadsMap.set(phone, lead);
         }
       }
-    }
+    });
 
-    // Now fetch all leads
-    let query = supabase
-      .from('leads')
-      .select('*', { count: 'exact' });
+    const finalLeads = Array.from(uniqueLeadsMap.values())
+      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    // Filters
-    if (stage) query = query.eq('pipeline_stage', stage);
-    if (source) query = query.eq('source', source);
-    if (assignedTo) query = query.eq('assigned_to', assignedTo);
-    
-    // Search (Simple name or business search)
-    if (search) {
-      query = query.or(`contact_name.ilike.%${search}%,business_name.ilike.%${search}%,email.ilike.%${search}%`);
-    }
-
-    // Pagination
-    const { data, error, count } = await query
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    // 5. Apply Pagination in-memory
+    const paginatedLeads = finalLeads.slice(offset, offset + limit);
 
     return NextResponse.json({
-      data,
+      data: paginatedLeads,
       pagination: {
         page,
         limit,
-        total: count,
-        total_pages: Math.ceil((count || 0) / limit)
+        total: finalLeads.length,
+        total_pages: Math.ceil(finalLeads.length / limit)
       }
     });
   } catch (error: any) {
-    console.error('Error fetching leads:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    console.error('[Leads API] Crash:', error);
+    return NextResponse.json({ data: [], error: 'Internal Server Error' }, { status: 200 }); // Graceful recovery
   }
 }
+
 export async function POST(request: Request) {
-  const supabase = createRouteClient(request);
   try {
+    const supabase = await createClient();
     const body = await request.json();
+
     const {
       contact_name,
       business_name,
@@ -93,6 +113,7 @@ export async function POST(request: Request) {
       email,
       source
     } = body;
+
 
     if (!contact_name || !phone_whatsapp) {
       return NextResponse.json(

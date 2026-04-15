@@ -14,6 +14,7 @@ import {
   Download,
   MessageCircle,
   Loader2,
+  UploadCloud,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ import axios from "axios";
 import CustomerServiceModal, {
   ShippingGuideData,
 } from "@/components/modals/CustomerServiceModal";
+import ImportSalesModal from "@/components/modals/ImportSalesModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -213,6 +215,8 @@ export default function VentasPage() {
   // Estado para modal de confirmación de impresión
   const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
   const [pendingPrintSales, setPendingPrintSales] = useState<Sale[]>([]);
+
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   // Estado para alerta de stock bajo/nulo post-impresión
   const [stockAlertOpen, setStockAlertOpen] = useState(false);
@@ -1511,6 +1515,13 @@ Estado: ${sale.status}
         </div>
 
         <div className="flex flex-col lg:flex-row justify-end gap-2 mb-4">
+          <Button 
+            className="w-full lg:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+            onClick={() => setImportModalOpen(true)}
+          >
+            <UploadCloud className="h-4 w-4 mr-2" />
+            Importar Excel
+          </Button>
           <Link href="/registrar-venta" className="w-full lg:w-auto">
             <Button className="w-full lg:w-auto bg-teal-600 hover:bg-teal-700">
               <Plus className="h-4 w-4 mr-2" />
@@ -1936,6 +1947,18 @@ Estado: ${sale.status}
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ImportSalesModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onSuccess={() => {
+          refetchOrders();
+          setImportModalOpen(false);
+        }}
+        storeId={selectedStoreId || ""}
+        userId={auth.user?.id}
+        sellerName={auth.user ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim() : undefined}
+      />
     </div>
   );
 }

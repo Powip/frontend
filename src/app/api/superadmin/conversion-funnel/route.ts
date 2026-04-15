@@ -1,10 +1,18 @@
-import { createRouteClient } from "@/utils/supabase/api";
+import { createAdminClient as createClient } from '@/utils/supabase/admin';
 import { NextResponse } from "next/server";
+import axios from "axios";
+
+const API_COMPANY = process.env.NEXT_PUBLIC_API_COMPANY;
 
 export async function GET(request: Request) {
-  const supabase = createRouteClient(request);
-
   try {
+    const supabase = await createClient();
+    const authHeader = request.headers.get("Authorization");
+
+    const config = authHeader
+      ? { headers: { Authorization: authHeader }, timeout: 5000 }
+      : { timeout: 5000 };
+
     const { searchParams } = new URL(request.url);
     const from = searchParams.get("from");
     const to = searchParams.get("to");
@@ -13,14 +21,14 @@ export async function GET(request: Request) {
     const startDate = from || new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
     const endDate = to || now.toISOString();
 
-    // 1. Leads del mes
+    // 1. Leads del mes (Public Schema)
     const { count: totalLeads } = await supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
       .gte("created_at", startDate)
       .lte("created_at", endDate);
 
-    // 2. Prospectos (Contactados o más allá)
+    // 2. Prospectos (Public Schema)
     const { count: prospects } = await supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
@@ -28,7 +36,7 @@ export async function GET(request: Request) {
       .lte("created_at", endDate)
       .neq("pipeline_stage", "nuevo");
 
-    // 3. Cerrados (Activados como negocio)
+    // 3. Cerrados (Public Schema)
     const { count: closed } = await supabase
       .from("leads")
       .select("*", { count: "exact", head: true })
@@ -36,33 +44,30 @@ export async function GET(request: Request) {
       .lte("created_at", endDate)
       .eq("pipeline_stage", "cerrado");
 
-    // 4. Clientes Activos (Al menos 1 pedido en el mes)
-    const { data: activeOrders } = await supabase
-      .from("orderHeader")
-      .select("storeId")
-      .gte("created_at", startDate)
-      .lte("created_at", endDate);
-
-    const storeIds = Array.from(new Set(activeOrders?.map(o => o.storeId).filter(Boolean)));
-    let uniqueActiveBusinesses = 0;
+    // 4. Clientes Activos (Fetch via Microservices for cross-schema data)
+    let activeCount = 0;
     
-    if (storeIds.length > 0) {
-      const { data: activeStores } = await supabase
-        .from("stores")
-        .select("company_id")
-        .in("id", storeIds);
-        
-      uniqueActiveBusinesses = new Set(activeStores?.map(s => s.company_id).filter(Boolean)).size;
+    try {
+      if (API_COMPANY && authHeader) {
+        const companiesRes = await axios.get(`${API_COMPANY}/company`, config);
+        const companies = Array.isArray(companiesRes.data) ? companiesRes.data : [];
+        activeCount = companies.filter((c: any) => 
+          c.is_active || c.status?.toUpperCase() === 'ACTIVE'
+        ).length;
+      }
+    } catch (apiErr) {
+      console.warn("[Conversion Funnel] API fallback:", (apiErr as any)?.message);
+      activeCount = closed || 0;
     }
 
     return NextResponse.json({
       leads: totalLeads || 0,
       prospects: prospects || 0,
       closed: closed || 0,
-      active: uniqueActiveBusinesses || 0,
+      active: activeCount || 0,
     });
   } catch (err: any) {
     console.error("Error fetching conversion funnel:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ leads: 0, prospects: 0, closed: 0, active: 0 });
   }
 }

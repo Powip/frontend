@@ -1,72 +1,78 @@
-import { createRouteClient } from "@/utils/supabase/api";
+import { createAdminClient as createClient } from '@/utils/supabase/admin';
 import { NextResponse } from "next/server";
-import axios from "axios";
-
-const API_COMPANY = process.env.NEXT_PUBLIC_API_COMPANY;
-const API_AUTH = process.env.NEXT_PUBLIC_API_USERS?.replace("/api/v1", "");
 
 export async function GET(request: Request) {
-  const supabase = createRouteClient(request);
-  const authHeader = request.headers.get("Authorization");
-
-  if (!authHeader) {
-    return NextResponse.json({ error: "No authorization header" }, { status: 401 });
-  }
-
-  const config = {
-    headers: { Authorization: authHeader }
-  };
-
   try {
-    // 1. Refresh alerts via RPC
-    await supabase.rpc("generate_churn_alerts");
+    const supabase = await createClient();
 
-    // 2. Fetch data in parallel
-    const [alertsRes, companiesRes, usersRes] = await Promise.allSettled([
-      supabase
-        .from("churn_alerts")
-        .select("*")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false }),
-      axios.get(`${API_COMPANY}/company`, config),
-      API_AUTH ? axios.get(`${API_AUTH}/api/v1/auth/users`, config) : Promise.resolve({ data: [] })
-    ]);
+    // 1. Try the real churn_alerts table first
+    const { data: realAlerts, error: alertsError } = await supabase
+      .from("churn_alerts")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50);
 
-    // Logging errors
-    if (alertsRes.status === 'rejected') console.error("DB alerts fetch failure:", alertsRes.reason);
-    if (companiesRes.status === 'rejected') console.error("MS-COMPANY fetch failure:", companiesRes.reason?.message);
-    if (usersRes.status === 'rejected') console.error("MS-AUTH fetch failure:", (usersRes as any).reason?.message);
+    if (!alertsError && realAlerts && realAlerts.length > 0) {
+      return NextResponse.json({
+        alerts: realAlerts,
+        total: realAlerts.length
+      });
+    }
 
-    // Handle results safely
-    const alerts = alertsRes.status === 'fulfilled' ? (alertsRes.value.data || []) : [];
-    const companies = companiesRes.status === 'fulfilled' ? (companiesRes.value.data || []) : [];
-    const users = (usersRes.status === 'fulfilled' && (usersRes.value as any).data) ? (usersRes.value as any).data : [];
+    // 2. Fallback: generate alerts from stale leads if churn_alerts table is empty or doesn't exist
+    if (alertsError) {
+      console.warn("[Churn Alerts] churn_alerts table error, falling back to leads:", alertsError.message);
+    }
 
-    // Create maps for efficient lookup
-    const userMap = new Map<string, any>(users.map((u: any) => [u.id, u]));
-    const companyMap = new Map<string, any>(companies.map((c: any) => [c.id, c]));
+    const { searchParams } = new URL(request.url);
+    const days = parseInt(searchParams.get("days") || "30");
 
-    // 3. Map company and user details to alerts in-memory
-    const enrichedAlerts = alerts.map((alert: any) => {
-      const companyData = companyMap.get(alert.business_id);
-      const userData = companyData?.user_id ? userMap.get(companyData.user_id) : null;
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+
+    const { data: atRiskLeads, error: leadsError } = await supabase
+      .from("leads")
+      .select("*")
+      .neq("pipeline_stage", "cerrado")
+      .neq("pipeline_stage", "perdido")
+      .lt("updated_at", cutoffDate.toISOString())
+      .limit(50);
+
+    if (leadsError) {
+      console.error("[Churn Alerts] Leads fallback error:", leadsError);
+      return NextResponse.json({ alerts: [], total: 0 });
+    }
+
+    // Map leads into the ChurnAlert shape that the frontend component expects
+    const alerts = (atRiskLeads || []).map(lead => {
+      const daysInactive = Math.floor(
+        (new Date().getTime() - new Date(lead.updated_at).getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      let severity: 'low' | 'medium' | 'high' = 'low';
+      if (daysInactive > 14) severity = 'high';
+      else if (daysInactive > 7) severity = 'medium';
 
       return {
-        ...alert,
-        company: companyData ? {
-          name: companyData.name,
-          plan: companyData.plan || "N/A",
-          price: companyData.price || 0,
-          phone: companyData.phone || companyData.billing_phone || "No registrado",
-          email: companyData.billing_email,
-          lastSignInAt: userData?.lastSignInAt || null
-        } : { name: "Empresa desconocida", plan: "N/A", price: 0 }
+        id: lead.id,
+        business_id: lead.id, // Use lead id as reference
+        alert_type: daysInactive > 14 ? 'no_login' : 'low_usage',
+        severity,
+        details: `Lead "${lead.contact_name}" (${lead.business_name || 'Sin empresa'}) lleva ${daysInactive} días sin actividad. Etapa actual: ${lead.pipeline_stage || 'nuevo'}.`,
+        created_at: lead.updated_at,
+        company: {
+          name: lead.business_name || lead.contact_name,
+          phone: lead.phone_whatsapp,
+        }
       };
     });
 
-    return NextResponse.json(enrichedAlerts);
+    return NextResponse.json({
+      alerts,
+      total: alerts.length
+    });
   } catch (err: any) {
-    console.error("Error fetching churn alerts via aggregation:", err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    console.error("Error fetching churn alerts:", err);
+    return NextResponse.json({ alerts: [], total: 0 });
   }
 }

@@ -97,11 +97,12 @@ export const PostventaDetailModal: React.FC<PostventaDetailModalProps> = ({
   };
 
   const activation = data?.activations?.[0];
-  const tempPassword = activation?.temp_password || 'No disponible';
+  const firstName = data?.contact_name?.split(' ')[0]?.toLowerCase() || '';
+  const tempPassword = data ? `${data.phone_whatsapp || ''}${firstName}`.replace(/\s/g, '') : 'No disponible';
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[600px] p-0 overflow-hidden border-none shadow-2xl bg-white dark:bg-slate-900">
+      <DialogContent className="sm:max-w-[700px] p-0 overflow-hidden border-none shadow-2xl bg-white dark:bg-slate-900">
         <DialogHeader className="sr-only">
           <DialogTitle>Detalle del Cliente - {data?.business_name || 'Cargando...'}</DialogTitle>
           <DialogDescription>
@@ -152,15 +153,15 @@ export const PostventaDetailModal: React.FC<PostventaDetailModalProps> = ({
                 
                 <div className="grid grid-cols-1 gap-3">
                   <div className="bg-slate-50 dark:bg-slate-800/10 border border-slate-100 dark:border-slate-800 p-4 rounded-2xl group transition-all hover:border-primary/20">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="space-y-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr,auto] items-center gap-4">
+                      <div className="space-y-1 min-w-0">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block">URL de Acceso</label>
-                        <span className="text-sm font-mono font-bold text-slate-700 dark:text-slate-200">www.powip.tech</span>
+                        <span className="text-sm font-mono font-bold text-slate-700 dark:text-slate-200 break-all block">www.powip.tech</span>
                       </div>
                       <Button 
                         size="sm" 
                         variant="ghost" 
-                        className="h-8 px-3 text-[10px] font-black uppercase gap-2 text-primary hover:bg-primary/10"
+                        className="h-9 px-4 text-[10px] font-black uppercase gap-2 text-primary hover:bg-primary/10 shrink-0"
                         onClick={() => copyToClipboard("https://www.powip.tech", "URL")}
                       >
                         <Copy className="h-3.5 w-3.5" />
@@ -170,17 +171,17 @@ export const PostventaDetailModal: React.FC<PostventaDetailModalProps> = ({
                   </div>
 
                   <div className="bg-slate-50 dark:bg-slate-800/10 border border-slate-100 dark:border-slate-800 p-5 rounded-2xl space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="space-y-1 flex-1">
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr,auto] items-center gap-4">
+                      <div className="space-y-1 min-w-0">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400 block mb-1">Email de Inicio de Sesión</label>
-                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200 truncate block">
+                        <span className="text-sm font-bold text-slate-700 dark:text-slate-200 break-all block">
                           {data.email}
                         </span>
                       </div>
                       <Button 
                         size="sm" 
                         variant="outline" 
-                        className="h-8 px-4 text-[10px] font-black uppercase gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
+                        className="h-9 px-4 text-[10px] font-black uppercase gap-2 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 shrink-0"
                         onClick={() => copyToClipboard(data.email, "Email")}
                       >
                         <Copy className="h-3.5 w-3.5" />
@@ -193,19 +194,37 @@ export const PostventaDetailModal: React.FC<PostventaDetailModalProps> = ({
                         <div className="p-2 bg-emerald-100 dark:bg-emerald-500/20 rounded-lg shrink-0">
                           <Lock className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1 flex-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 block">Regla de Contraseña</label>
                           <p className="text-xs text-slate-600 dark:text-slate-300 font-medium leading-relaxed">
-                            La contraseña es una combinación del número de teléfono: <span className="font-black text-slate-900 dark:text-white underline decoration-emerald-500/30">{data.phone_whatsapp}</span> y el nombre: <span className="font-black text-slate-900 dark:text-white underline decoration-emerald-500/30">{data.contact_name?.split(' ')[0]}</span>.
+                            La contraseña es la combinación en <span className="font-black text-slate-900 dark:text-white">minúsculas</span> del teléfono y el nombre.
                           </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <code className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded text-sm font-bold border border-slate-200 dark:border-slate-700">
+                              {tempPassword}
+                            </code>
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              className="h-8 w-8 text-emerald-600 hover:bg-emerald-50"
+                              onClick={() => copyToClipboard(tempPassword, "Contraseña")}
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20 p-3 rounded-xl flex items-center gap-3">
-                    <Badge className="bg-blue-100 text-blue-700 border-blue-200 text-[10px] font-black uppercase">Rol</Badge>
-                    <span className="text-sm font-bold text-blue-800 dark:text-blue-300">Administrador / Owner</span>
+                  <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/20 p-4 rounded-2xl flex items-center gap-4 transition-all hover:bg-blue-100/50 dark:hover:bg-blue-900/20">
+                    <div className="flex items-center justify-center p-2 bg-blue-100 dark:bg-blue-800 rounded-lg">
+                      <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+                    </div>
+                    <div className="space-y-0.5">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400 block">Rol Asignado</label>
+                      <span className="text-sm font-black text-blue-800 dark:text-blue-200">Administrador / Owner</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -238,26 +257,47 @@ export const PostventaDetailModal: React.FC<PostventaDetailModalProps> = ({
               )}
             </div>
 
-            <DialogFooter className="p-6 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row gap-3">
-              <Button 
-                onClick={() => setIsDeleteDialogOpen(true)} 
-                variant="ghost" 
-                className="h-10 px-4 text-[11px] font-black uppercase tracking-widest text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/10"
-              >
-                <Trash2 className="h-4 w-4 mr-2" />
-                Eliminar Cuenta
-              </Button>
-              <div className="flex-1" />
-              <Button onClick={onClose} variant="secondary" className="h-10 px-8 text-[11px] font-black uppercase tracking-widest border-slate-200">
-                Cerrar Detalle
-              </Button>
-              <Button 
-                className="h-10 px-8 bg-primary hover:bg-primary/90 text-white text-[11px] font-black uppercase tracking-widest gap-2 shadow-lg shadow-primary/20"
-                onClick={() => window.open("https://www.powip.tech", "_blank")}
-              >
-                <ExternalLink className="h-4 w-4" />
-                Ir al Panel
-              </Button>
+            <DialogFooter className="p-6 bg-slate-50 dark:bg-slate-900/50 border-t border-slate-100 dark:border-slate-800">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
+                <div>
+                  <Button 
+                    onClick={() => setIsDeleteDialogOpen(true)} 
+                    variant="ghost" 
+                    className="h-10 px-4 text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-2" />
+                    Eliminar Cuenta
+                  </Button>
+                </div>
+                
+                <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2">
+                  <Button 
+                    onClick={onClose} 
+                    variant="outline" 
+                    className="h-10 px-6 text-[10px] font-black uppercase tracking-widest border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all active:scale-95"
+                  >
+                    Cerrar Detalle
+                  </Button>
+                  <Button 
+                    className="h-10 px-6 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-widest gap-2 shadow-lg shadow-emerald-600/20 transition-all active:scale-95"
+                    onClick={() => {
+                      const name = data.contact_name?.split(' ')[0] || 'Cliente';
+                      const message = `¡Hola ${name}! Bienvenido a Powip. Aquí tienes tus credenciales de acceso:\n\nEmail: ${data.email}\nContraseña: ${tempPassword}\n\nPuedes ingresar aquí: https://www.powip.tech`;
+                      window.open(`https://wa.me/${data.phone_whatsapp?.replace(/\D/g, '')}?text=${encodeURIComponent(message)}`, "_blank");
+                    }}
+                  >
+                    <Phone className="h-3.5 w-3.5" />
+                    WhatsApp
+                  </Button>
+                  <Button 
+                    className="h-10 px-6 bg-primary hover:bg-primary/90 text-white text-[10px] font-black uppercase tracking-widest gap-2 shadow-lg shadow-primary/20 transition-all active:scale-95"
+                    onClick={() => window.open("https://www.powip.tech", "_blank")}
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Ir al Panel
+                  </Button>
+                </div>
+              </div>
             </DialogFooter>
           </>
         ) : (

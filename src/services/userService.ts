@@ -116,18 +116,71 @@ export const createPlatformUser = async (
   accessToken: string,
 ) => {
   // Mapear CreateCompanyUserRequest a lo que RegisterRequest (backend) espera
+  // El backend espera: identityDocument, name, surname, email, password, address, city, province, district, phoneNumber
   const registerPayload = {
-    ...request,
-    city: request.department, // El backend para registro usa 'city'
+    identityDocument: request.identityDocument,
+    name: request.name,
+    surname: request.surname,
+    email: request.email,
+    password: request.password,
+    address: request.address || 'Pendiente',
+    city: request.department || 'LIMA',
+    province: request.province || 'LIMA',
+    district: request.district || 'LIMA',
+    phoneNumber: request.phoneNumber,
+    role: { name: request.roleName }
   };
 
-  const response = await axios.post(`${API_AUTH}/api/v1/auth/register`, registerPayload, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-    },
-  });
-  return response.data;
+  // Validaciones previas al envío
+  const missingFields: string[] = [];
+  if (!registerPayload.identityDocument) missingFields.push('identityDocument');
+  if (!registerPayload.name) missingFields.push('name');
+  if (!registerPayload.surname) missingFields.push('surname');
+  if (!registerPayload.email) missingFields.push('email');
+  if (!registerPayload.password) missingFields.push('password');
+  if (!registerPayload.address) missingFields.push('address');
+  if (!registerPayload.district) missingFields.push('district');
+  if (!registerPayload.phoneNumber) missingFields.push('phoneNumber');
+
+  if (missingFields.length > 0) {
+    const msg = `Campos requeridos faltantes: ${missingFields.join(', ')}`;
+    console.error('[createPlatformUser] Validación fallida:', msg);
+    throw new Error(msg);
+  }
+
+  // Validar regex de password del backend: al menos 6 chars, una minúscula y un número
+  const passwordRegex = /^(?=.*[a-z])(?=.*\d).{6,}$/;
+  if (!passwordRegex.test(registerPayload.password)) {
+    const msg = `La contraseña '${registerPayload.password.slice(0, 4)}...' no cumple el formato requerido (mín. 6 chars, una minúscula, un número)`;
+    console.error('[createPlatformUser] Password inválida:', msg);
+    throw new Error(msg);
+  }
+
+  try {
+    const response = await axios.post(`${API_AUTH}/api/v1/auth/admin/register`, registerPayload, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+    });
+    const data = response.data;
+    
+    // Normalizar userId (el backend devuelve el objeto User)
+    if (!data.userId && data.id) {
+       data.userId = data.id;
+    }
+
+    return data;
+  } catch (err: any) {
+    const backendError = err?.response?.data;
+    // Relanzar con mensaje legible
+    const errorMsg =
+      backendError?.message ||
+      (Array.isArray(backendError?.errors) ? backendError.errors.join(', ') : null) ||
+      JSON.stringify(backendError) ||
+      err.message;
+    throw new Error(`ms-auth 400: ${errorMsg}`);
+  }
 };
 
 // Obtener perfil completo de un usuario por ID

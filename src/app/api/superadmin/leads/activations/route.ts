@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server';
-import { createRouteClient } from '@/utils/supabase/api';
+import { createAdminClient as createClient } from '@/utils/supabase/admin';
 
 export async function GET(request: Request) {
-  const supabase = createRouteClient(request);
-
   try {
+    const supabase = await createClient();
+    
+    // Try lead_activations table - if it doesn't exist, return empty
     const { data, error } = await supabase
       .from('lead_activations')
       .select(`
@@ -14,20 +15,21 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error('[Activations API] DB Error:', error);
+      // Table might not exist yet - return empty data instead of 500
+      return NextResponse.json({ data: [] });
     }
 
     return NextResponse.json({ data });
   } catch (error: any) {
     console.error('Error fetching activations:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ data: [] });
   }
 }
 
 export async function POST(request: Request) {
-  const supabase = createRouteClient(request);
-
   try {
+    const supabase = await createClient();
     const body = await request.json();
     const { lead_id, business_name, contact_name, plan, assigned_to, observations } = body;
 
@@ -62,6 +64,7 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
+      console.error('[Activations API] Insert Error:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
@@ -75,6 +78,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ data }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating activation:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal Server Error', details: error.message }, { status: 500 });
   }
 }

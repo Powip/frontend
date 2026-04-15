@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
   X,
   Package,
@@ -61,135 +61,61 @@ export default function ShalomPremiumTrackingModal({
   const [dynamicPdfUrl, setDynamicPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
 
-  useEffect(() => {
-    if (
-      open &&
-      order?.externalTrackingNumber &&
-      order?.shippingCode &&
-      auth?.accessToken
-    ) {
-      loadPdf();
-    }
-    return () => {
-      if (dynamicPdfUrl) {
-        URL.revokeObjectURL(dynamicPdfUrl);
-      }
-    };
-  }, [
-    open,
-    order?.externalTrackingNumber,
-    order?.shippingCode,
-    auth?.accessToken,
-  ]);
-
-  const loadPdf = async () => {
-    if (
-      !auth?.accessToken ||
-      !order?.externalTrackingNumber ||
-      !order?.shippingCode
-    ) {
-      console.warn("⚠️ No hay datos de Shalom para generar PDF:", {
-        hasToken: !!auth?.accessToken,
-        externalTrackingNumber: order?.externalTrackingNumber,
-        shippingCode: order?.shippingCode,
-      });
-      return;
-    }
+  const loadPdf = useCallback(async () => {
+    if (!auth?.accessToken || !order?.externalTrackingNumber || !order?.shippingCode) return;
 
     setLoadingPdf(true);
     setDynamicPdfUrl(null);
-
     try {
-      console.log("📄 Generando PDF con:", {
-        externalTrackingNumber: order.externalTrackingNumber,
-        shippingCode: order.shippingCode,
-      });
-
       const blob = await generateShalomTicketPdf(
         auth.accessToken,
         order.externalTrackingNumber,
-        order.shippingCode, // ✅ código 4 chars ej: "PDMW"
+        order.shippingCode,
       );
-
-      // Parámetros para ocultar barra de herramientas del visor nativo
       const url = URL.createObjectURL(blob) + "#toolbar=0&navpanes=0&scrollbar=0&view=FitH";
       setDynamicPdfUrl(url);
-
-      console.log("✅ PDF generado exitosamente");
     } catch (error: any) {
-      console.error("❌ Error loading PDF:", error);
-      console.error("❌ Error details:", error.response?.data);
+      console.error("❌ Error loading PDF:", error.response?.data ?? error);
     } finally {
       setLoadingPdf(false);
     }
-  };
+  }, [auth?.accessToken, order?.externalTrackingNumber, order?.shippingCode]);
 
-  useEffect(() => {
-    if (
-      open &&
-      order?.externalTrackingNumber &&
-      order?.shippingCode &&
-      auth?.accessToken &&
-      auth?.company?.id
-    ) {
-      loadTracking();
-    }
-  }, [
-    open,
-    order?.externalTrackingNumber,
-    order?.shippingCode,
-    auth?.accessToken,
-    auth?.company?.id,
-  ]);
-
-  const loadTracking = async () => {
-    if (
-      !auth?.accessToken ||
-      !auth?.company?.id ||
-      !order?.externalTrackingNumber ||
-      !order?.shippingCode
-    ) {
-      console.warn("⚠️ No hay datos de Shalom para tracking:", {
-        hasToken: !!auth?.accessToken,
-        hasCompanyId: !!auth?.company?.id,
-        externalTrackingNumber: order?.externalTrackingNumber,
-        shippingCode: order?.shippingCode,
-      });
-      return;
-    }
+  const loadTracking = useCallback(async () => {
+    if (!auth?.accessToken || !auth?.company?.id || !order?.externalTrackingNumber || !order?.shippingCode) return;
 
     setLoading(true);
-
     try {
-      console.log("🔍 Rastreando con:", {
-        companyId: auth.company.id,
-        orderNumber: order.externalTrackingNumber,
-        orderCode: order.shippingCode,
-      });
-
       const raw = await trackShalomShipment(
         auth.accessToken,
         auth.company.id,
         order.externalTrackingNumber,
         order.shippingCode,
       );
-
-      // Desenvuelve { success, data: { ... } } hasta encontrar { search, statuses }
       let payload: any = raw;
       for (let i = 0; i < 3; i++) {
         if (payload?.search || payload?.statuses) break;
         if (payload?.data) { payload = payload.data; continue; }
         break;
       }
-      console.log("✅ Shalom tracking payload:", JSON.stringify(payload, null, 2));
       setTrackingData(payload);
     } catch (error: any) {
-      console.error("❌ Error loading tracking:", error);
-      console.error("❌ Error details:", error.response?.data);
+      console.error("❌ Error loading tracking:", error.response?.data ?? error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [auth?.accessToken, auth?.company?.id, order?.externalTrackingNumber, order?.shippingCode]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (order?.externalTrackingNumber && order?.shippingCode && auth?.accessToken) {
+      loadPdf();
+      if (auth?.company?.id) loadTracking();
+    }
+    return () => {
+      setDynamicPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev.split("#")[0]); return null; });
+    };
+  }, [open, order?.externalTrackingNumber, order?.shippingCode, auth?.accessToken, auth?.company?.id, loadPdf, loadTracking]);
 
   if (!order) return null;
 

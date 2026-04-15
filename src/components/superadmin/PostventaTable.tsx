@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -207,6 +207,8 @@ export const PostventaTable: React.FC<PostventaTableProps> = ({
   const [onboardingData, setOnboardingData] = useState<Record<string, any>>({});
   const [loadingOnboarding, setLoadingOnboarding] = useState(false);
 
+  const paginatedIds = useMemo(() => paginatedData.map(i => i.id).join(','), [paginatedData]);
+
   useEffect(() => {
     const fetchOnboarding = async () => {
       const bizIds = paginatedData
@@ -241,7 +243,7 @@ export const PostventaTable: React.FC<PostventaTableProps> = ({
     };
 
     fetchOnboarding();
-  }, [paginatedData.map(i => i.id).join(','), currentPage]);
+  }, [paginatedIds, currentPage, paginatedData]);
 
   // Count items per state for sub-tabs
   const stateCounts = POSTVENTA_STATES.reduce((acc, state) => {

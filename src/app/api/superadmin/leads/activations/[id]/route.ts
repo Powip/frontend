@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import { createRouteClient } from '@/utils/supabase/api';
+import { createAdminClient as createClient } from '@/utils/supabase/admin';
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const supabase = createRouteClient(request);
+  const supabase = await createClient();
   const { id } = await params;
+
   const body = await request.json();
 
   try {
