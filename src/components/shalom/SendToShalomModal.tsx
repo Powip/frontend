@@ -204,7 +204,7 @@ interface SendToShalomModalProps {
 const extractShalomErrorMessage = (rawError: string): string => {
   if (!rawError) return "Error desconocido";
   try {
-    const jsonMatch = rawError.match(/\{.*\}/s);
+    const jsonMatch = rawError.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       const parsed = JSON.parse(jsonMatch[0]);
       if (parsed.error) return parsed.error;
