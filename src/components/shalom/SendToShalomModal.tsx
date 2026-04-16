@@ -201,6 +201,20 @@ interface SendToShalomModalProps {
   companyId?: string;
 }
 
+const extractShalomErrorMessage = (rawError: string): string => {
+  if (!rawError) return "Error desconocido";
+  try {
+    const jsonMatch = rawError.match(/\{.*\}/s);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.error) return parsed.error;
+      if (parsed.message) return parsed.message;
+    }
+  } catch {}
+  // Quitar el prefijo "Error en Shalom API: " si existe
+  return rawError.replace(/^Error en Shalom API:\s*/i, "").trim();
+};
+
 const isValidSecurityCode = (code: string): boolean => {
   if (!code || code.length !== 4) return false;
 
@@ -308,6 +322,9 @@ export default function SendToShalomModal({
   useEffect(() => {
     if (!open || orders.length === 0) return;
 
+    setIsSuccess(false);
+    setSuccessSummary(null);
+    setTotalQuoted(null);
     setGlobalSecurityCode("");
 
     // Pre-fill origin: fetch perfil completo del usuario para obtener district/province
@@ -492,21 +509,35 @@ export default function SendToShalomModal({
 
       if (res.data.success) {
         const summary = res.data.summary || {};
-        const errors = res.data.errors || [];
+        const rawErrors = res.data.errors || [];
+
+        // Enriquecer errores con el nro de orden cruzando por recipientDoc (dni) o por index
+        const enrichedErrors = rawErrors.map((e: any) => {
+          const byDoc = orders.find(
+            (o) => o.customer?.dni && o.customer.dni === e.shipmentInfo?.recipientDoc,
+          );
+          const byIndex = typeof e.index === "number" ? orders[e.index] : undefined;
+          const matchedOrder = byDoc || byIndex;
+          return { ...e, orderNumber: matchedOrder?.orderNumber || null };
+        });
 
         setSuccessSummary({
           total: summary.total || orders.length,
           successful: summary.successful || 0,
           failed: summary.failed || 0,
-          errors: errors,
+          errors: enrichedErrors,
         });
 
-        if (errors.length > 0) {
+        if (enrichedErrors.length > 0) {
+          const firstError = enrichedErrors[0];
+          const orderLabel = firstError.orderNumber ? `[${firstError.orderNumber}] ` : "";
+          const errorMsg = extractShalomErrorMessage(firstError?.error || "");
+          const extraCount = enrichedErrors.length > 1 ? ` (+${enrichedErrors.length - 1} más)` : "";
           toast.warning(
             `${summary.successful} de ${summary.total} procesados correctamente`,
             {
-              duration: 8000,
-              description: `${summary.failed} envíos fallaron. Revisa el resumen.`,
+              duration: 10000,
+              description: `❌ ${orderLabel}${errorMsg}${extraCount}`,
             },
           );
         } else {
@@ -757,11 +788,12 @@ export default function SendToShalomModal({
                                     </span>
                                     <span>
                                       <span className="font-semibold">
-                                        {e.shipmentInfo?.recipientName ||
-                                          "Sin nombre"}
+                                        {e.orderNumber
+                                          ? `${e.orderNumber} — ${e.shipmentInfo?.recipientName || "Sin nombre"}`
+                                          : e.shipmentInfo?.recipientName || "Sin nombre"}
                                         :
                                       </span>{" "}
-                                      {e.error}
+                                      {extractShalomErrorMessage(e.error)}
                                     </span>
                                   </div>
                                 ),

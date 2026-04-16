@@ -16,6 +16,7 @@ import {
   Edit2,
   ClipboardList,
   Link2,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -260,6 +261,118 @@ export default function ShalomOrderTrackingView() {
     setVisibleKeyOrders((prev) => ({ ...prev, [orderId]: !prev[orderId] }));
   };
 
+  const handleExportExcel = async () => {
+    if (filteredOrders.length === 0) {
+      toast.warning("No hay datos para exportar");
+      return;
+    }
+
+    const ExcelJS = (await import("exceljs")).default;
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet("Seguimiento Shalom");
+
+    const DARK_NAVY = "FF1B2A3B";
+    const HEADER_FONT: any = { bold: true, color: { argb: "FFFFFFFF" }, size: 10 };
+    const TITLE_FONT: any = { bold: true, size: 13, color: { argb: "FF1B2A3B" } };
+    const THIN_BORDER: any = {
+      top: { style: "thin", color: { argb: "FFDDDDDD" } },
+      left: { style: "thin", color: { argb: "FFDDDDDD" } },
+      bottom: { style: "thin", color: { argb: "FFDDDDDD" } },
+      right: { style: "thin", color: { argb: "FFDDDDDD" } },
+    };
+
+    const COLUMNS = [
+      { header: "Fecha", width: 14 },
+      { header: "Días", width: 8 },
+      { header: "Saldo", width: 14 },
+      { header: "Estado", width: 16 },
+      { header: "Clave", width: 12 },
+      { header: "N° Orden", width: 16 },
+      { header: "Cliente", width: 26 },
+      { header: "N° Guía Shalom", width: 20 },
+      { header: "Código", width: 14 },
+      { header: "Origen", width: 22 },
+      { header: "Destino", width: 22 },
+      { header: "DNI", width: 14 },
+      { header: "Teléfono", width: 14 },
+    ];
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const fecha = today.toLocaleDateString("es-PE");
+
+    ws.addRow([`SEGUIMIENTO SHALOM — ${fecha}`]);
+    ws.mergeCells(1, 1, 1, COLUMNS.length);
+    const titleCell = ws.getCell("A1");
+    titleCell.font = TITLE_FONT;
+    titleCell.alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(1).height = 28;
+
+    ws.addRow([`Total registros: ${filteredOrders.length}`]);
+    ws.addRow([]);
+
+    const headerRow = ws.addRow(COLUMNS.map((c) => c.header));
+    headerRow.height = 22;
+    headerRow.eachCell((cell) => {
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK_NAVY } };
+      cell.font = HEADER_FONT;
+      cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+      cell.border = THIN_BORDER;
+    });
+
+    const STATUS_LABELS: Record<string, string> = {
+      PENDIENTE: "Registrado",
+      EXITOSO: "Registrado",
+      FALLIDO: "Fallido",
+      EN_TRANSITO: "En tránsito",
+      ENTREGADO: "Entregado",
+    };
+
+    filteredOrders.forEach(({ order }) => {
+      const created = new Date(order.created_at); created.setHours(0, 0, 0, 0);
+      const days = Math.max(0, Math.floor((today.getTime() - created.getTime()) / 86400000));
+      const pending = calculatePendingPayment(order);
+      const saldoText = pending <= 0 ? "Pagado" : `S/ ${pending.toFixed(2)}`;
+      const estadoText = order.shalomStatus ? (STATUS_LABELS[order.shalomStatus] || order.shalomStatus) : "Sin registrar";
+
+      const dataRow = ws.addRow([
+        new Date(order.created_at).toLocaleDateString("es-PE"),
+        days,
+        saldoText,
+        estadoText,
+        order.shippingKey || "-",
+        order.orderNumber,
+        order.customer?.fullName || "-",
+        order.externalTrackingNumber || "-",
+        order.shippingCode || "-",
+        order.shalomOriginAgency || "-",
+        order.shalomDestinationAgency || "-",
+        order.shalomRecipientDoc || "-",
+        order.shalomRecipientPhone || "-",
+      ]);
+
+      dataRow.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = THIN_BORDER;
+        cell.alignment = { vertical: "middle" };
+      });
+    });
+
+    COLUMNS.forEach((col, i) => { ws.getColumn(i + 1).width = col.width; });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Shalom_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    toast.success(`${filteredOrders.length} registros exportados`);
+  };
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 p-4 border rounded-xl bg-muted/20">
@@ -308,6 +421,22 @@ export default function ShalomOrderTrackingView() {
             <option value="paid">Pagado completo</option>
           </select>
         </div>
+      </div>
+
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-muted-foreground">
+          {filteredOrders.length} registro{filteredOrders.length !== 1 ? "s" : ""}
+        </span>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={handleExportExcel}
+          disabled={filteredOrders.length === 0}
+          className="gap-2 text-green-700 border-green-200 hover:bg-green-50"
+        >
+          <FileSpreadsheet className="h-4 w-4" />
+          Exportar Excel
+        </Button>
       </div>
 
       {selectedSaleIds.size > 0 && (
