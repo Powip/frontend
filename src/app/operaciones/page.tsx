@@ -354,6 +354,9 @@ export default function OperacionesPage() {
   const [addToGuideModalOpen, setAddToGuideModalOpen] = useState(false);
   const [isAddingToGuide, setIsAddingToGuide] = useState(false);
 
+  // Órdenes seleccionadas para los modales de guía (se setean al abrir el modal)
+  const [guideSourceOrders, setGuideSourceOrders] = useState<Sale[]>([]);
+
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
 
@@ -674,6 +677,16 @@ export default function OperacionesPage() {
     );
   };
 
+  // Obtener ventas seleccionadas en estado PREPARADO para crear guía
+  const getSelectedPreparadosForGuide = () => {
+    return preparados.filter(
+      (s) =>
+        selectedSaleIds.has(s.id) &&
+        s.status === ORDER_STATUS.PREPARADO &&
+        s.deliveryType.toUpperCase() === "DOMICILIO",
+    );
+  };
+
   // Crear guía(s) de envío y actualizar órdenes con el guideNumber
   const handleCreateGuide = async (guidesData: CreateGuideData[]) => {
     setIsCreatingGuide(true);
@@ -770,8 +783,8 @@ export default function OperacionesPage() {
     guideId: string,
     guideNumber: string,
   ) => {
-    const selectedLlamados = getSelectedLlamadosForGuide();
-    if (selectedLlamados.length === 0) {
+    const selectedOrders = guideSourceOrders;
+    if (selectedOrders.length === 0) {
       toast.warning("No hay pedidos aptos seleccionados");
       return;
     }
@@ -781,11 +794,11 @@ export default function OperacionesPage() {
       // 1. Agregar órdenes en ms-courier
       await axios.post(
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}/orders`,
-        { orderIds: selectedLlamados.map((s) => s.id) },
+        { orderIds: selectedOrders.map((s) => s.id) },
       );
 
       // 2. Actualizar cada orden en ms-ventas con el número de guía y nuevo estado
-      for (const sale of selectedLlamados) {
+      for (const sale of selectedOrders) {
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
           {
@@ -797,7 +810,7 @@ export default function OperacionesPage() {
       }
 
       toast.success(
-        `${selectedLlamados.length} pedido(s) agregados a la guía ${guideNumber}`,
+        `${selectedOrders.length} pedido(s) agregados a la guía ${guideNumber}`,
       );
       setAddToGuideModalOpen(false);
       setSelectedIdsForActiveTab(new Set());
@@ -1502,6 +1515,36 @@ Estado: ${sale.status}
                     {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
                     )
                   </Button>
+                  <Button
+                    variant="default"
+                    className="w-full lg:w-auto bg-emerald-600 hover:bg-emerald-700"
+                    disabled={
+                      getSelectedPreparadosForGuide().length === 0 ||
+                      isCreatingGuide
+                    }
+                    onClick={() => {
+                      setGuideSourceOrders(getSelectedPreparadosForGuide());
+                      setCreateGuideModalOpen(true);
+                    }}
+                  >
+                    <PackagePlus className="h-4 w-4 mr-2" />
+                    Generar Guía ({getSelectedPreparadosForGuide().length})
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full lg:w-auto border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                    disabled={
+                      getSelectedPreparadosForGuide().length === 0 ||
+                      isAddingToGuide
+                    }
+                    onClick={() => {
+                      setGuideSourceOrders(getSelectedPreparadosForGuide());
+                      setAddToGuideModalOpen(true);
+                    }}
+                  >
+                    <PackagePlus className="h-4 w-4 mr-2" />
+                    Agregar a Guía ({getSelectedPreparadosForGuide().length})
+                  </Button>
                   {auth?.user?.role === "ADMIN" && (
                     <Button
                       variant="outline"
@@ -1744,7 +1787,10 @@ Estado: ${sale.status}
                       getSelectedLlamadosForGuide().length === 0 ||
                       isCreatingGuide
                     }
-                    onClick={() => setCreateGuideModalOpen(true)}
+                    onClick={() => {
+                      setGuideSourceOrders(getSelectedLlamadosForGuide());
+                      setCreateGuideModalOpen(true);
+                    }}
                   >
                     <PackagePlus className="h-4 w-4 mr-2" />
                     Generar Guía ({getSelectedLlamadosForGuide().length})
@@ -1756,7 +1802,10 @@ Estado: ${sale.status}
                       getSelectedLlamadosForGuide().length === 0 ||
                       isAddingToGuide
                     }
-                    onClick={() => setAddToGuideModalOpen(true)}
+                    onClick={() => {
+                      setGuideSourceOrders(getSelectedLlamadosForGuide());
+                      setAddToGuideModalOpen(true);
+                    }}
                   >
                     <PackagePlus className="h-4 w-4 mr-2" />
                     Agregar a Guía ({getSelectedLlamadosForGuide().length})
@@ -2214,7 +2263,7 @@ Estado: ${sale.status}
       <CreateGuideModal
         open={createGuideModalOpen}
         onClose={() => setCreateGuideModalOpen(false)}
-        selectedOrders={getSelectedLlamadosForGuide().map((s) => ({
+        selectedOrders={guideSourceOrders.map((s) => ({
           id: s.id,
           orderNumber: s.orderNumber,
           clientName: s.clientName,
@@ -2228,16 +2277,14 @@ Estado: ${sale.status}
         onConfirm={handleCreateGuide}
         isLoading={isCreatingGuide}
         defaultCourierId={(() => {
-          const orders = getSelectedLlamadosForGuide();
-          const first = orders[0]?.courierId;
-          return orders.length > 0 && orders.every((s) => s.courierId === first)
+          const first = guideSourceOrders[0]?.courierId;
+          return guideSourceOrders.length > 0 && guideSourceOrders.every((s) => s.courierId === first)
             ? first
             : undefined;
         })()}
         defaultCourierName={(() => {
-          const orders = getSelectedLlamadosForGuide();
-          const first = orders[0]?.courier;
-          return orders.length > 0 && orders.every((s) => s.courier === first)
+          const first = guideSourceOrders[0]?.courier;
+          return guideSourceOrders.length > 0 && guideSourceOrders.every((s) => s.courier === first)
             ? first
             : undefined;
         })()}
@@ -2246,7 +2293,7 @@ Estado: ${sale.status}
       <AddToExistingGuideModal
         open={addToGuideModalOpen}
         onClose={() => setAddToGuideModalOpen(false)}
-        selectedOrders={getSelectedLlamadosForGuide()}
+        selectedOrders={guideSourceOrders}
         storeId={selectedStoreId || ""}
         onConfirm={handleAddToExistingGuide}
         isLoading={isAddingToGuide}
