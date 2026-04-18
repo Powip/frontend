@@ -67,6 +67,7 @@ export interface InventoryItemForSale {
   priceVta?: number;
   availableStock: number;
   physicalStock: number;
+  reservedStock: number;
   min_stock?: number;
   attributes?: Record<string, string>;
   imageUrl?: string | null;

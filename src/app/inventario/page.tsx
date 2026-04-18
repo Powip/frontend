@@ -33,7 +33,14 @@ import {
   History,
   LayoutList,
   PackagePlus,
+  HelpCircle,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -178,6 +185,8 @@ export default function AlmacenPage() {
       { header: "SKU", key: "sku", width: 20 },
       { header: "Nombre", key: "name", width: 30 },
       { header: "Stock", key: "stock", width: 12 },
+      { header: "Reservado", key: "reservado", width: 12 },
+      { header: "Disponible", key: "disponible", width: 12 },
       { header: "Precio", key: "precio", width: 15 },
     ];
 
@@ -194,6 +203,8 @@ export default function AlmacenPage() {
         sku: prod.sku,
         name: prod.productName,
         stock: prod.physicalStock,
+        reservado: prod.reservedStock,
+        disponible: prod.availableStock,
         precio: prod.priceVta,
       });
     });
@@ -333,7 +344,51 @@ export default function AlmacenPage() {
                         <TableHead className="border-r w-[130px]">SKU</TableHead>
                         <TableHead className="border-r min-w-[200px] max-w-[250px]">Nombre</TableHead>
                         <TableHead className="border-r">Variantes</TableHead>
-                        <TableHead className="border-r">Stock</TableHead>
+                        <TableHead className="border-r">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center gap-1 cursor-default">
+                                  Stock
+                                  <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[220px] text-xs">
+                                Stock real en almacén. Solo disminuye cuando una venta llega al estado <strong>Entregado</strong>.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableHead>
+                        <TableHead className="border-r">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center gap-1 cursor-default">
+                                  Reservado
+                                  <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[220px] text-xs">
+                                Unidades comprometidas en ventas activas (Pendiente, Preparado, Llamado, En envío). Aún no descontadas del stock real.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableHead>
+                        <TableHead className="border-r">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="flex items-center gap-1 cursor-default">
+                                  Disponible
+                                  <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-[220px] text-xs">
+                                Stock − Reservado. Lo que podés vender sin afectar pedidos en curso.
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </TableHead>
                         <TableHead className="border-r">Precio base</TableHead>
                         <TableHead className="border-r">Precio venta</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
@@ -360,6 +415,12 @@ export default function AlmacenPage() {
                               <Skeleton className="h-4 w-12" />
                             </TableCell>
                             <TableCell className="border-r">
+                              <Skeleton className="h-4 w-12" />
+                            </TableCell>
+                            <TableCell className="border-r">
+                              <Skeleton className="h-4 w-12" />
+                            </TableCell>
+                            <TableCell className="border-r">
                               <Skeleton className="h-4 w-16" />
                             </TableCell>
                             <TableCell className="border-r">
@@ -373,7 +434,7 @@ export default function AlmacenPage() {
                       ) : productsWithDetails.length === 0 ? (
                         <TableRow>
                           <TableCell
-                            colSpan={8}
+                            colSpan={10}
                             className="text-center py-6 text-muted-foreground"
                           >
                             No hay productos en este almacén
@@ -408,8 +469,22 @@ export default function AlmacenPage() {
                                 .map(([k, v]) => `${k}: ${v}`)
                                 .join(" / ")}
                             </TableCell>
-                            <TableCell className="border-r font-semibold">
+                            <TableCell className="border-r font-semibold text-center">
                               {prod.physicalStock}
+                            </TableCell>
+                            <TableCell className="border-r text-center">
+                              {prod.reservedStock > 0 ? (
+                                <span className="text-amber-600 dark:text-amber-400 font-medium">
+                                  {prod.reservedStock}
+                                </span>
+                              ) : (
+                                <span className="text-muted-foreground">0</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="border-r text-center">
+                              <span className={prod.availableStock <= 0 ? "text-destructive font-semibold" : prod.availableStock <= (prod.min_stock ?? 0) ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-emerald-600 dark:text-emerald-400 font-semibold"}>
+                                {prod.availableStock}
+                              </span>
                             </TableCell>
                             <TableCell className="border-r text-sm">
                               ${prod.priceBase}
