@@ -345,7 +345,7 @@ export default function AlmacenPage() {
                         <TableHead className="border-r min-w-[200px] max-w-[250px]">Nombre</TableHead>
                         <TableHead className="border-r">Variantes</TableHead>
                         <TableHead className="border-r">
-                          <TooltipProvider>
+                          <TooltipProvider delayDuration={200}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="flex items-center gap-1 cursor-default">
@@ -360,7 +360,7 @@ export default function AlmacenPage() {
                           </TooltipProvider>
                         </TableHead>
                         <TableHead className="border-r">
-                          <TooltipProvider>
+                          <TooltipProvider delayDuration={200}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="flex items-center gap-1 cursor-default">
@@ -375,7 +375,7 @@ export default function AlmacenPage() {
                           </TooltipProvider>
                         </TableHead>
                         <TableHead className="border-r">
-                          <TooltipProvider>
+                          <TooltipProvider delayDuration={200}>
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span className="flex items-center gap-1 cursor-default">
