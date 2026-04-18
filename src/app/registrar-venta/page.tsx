@@ -536,6 +536,7 @@ function RegistrarVentaContent() {
     // Guard: prevent double-click submission
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
+    setIsSubmitting(true);
 
     try {
       // Cerrar cualquier Select/Popover abierto antes de iniciar el submit
@@ -673,7 +674,6 @@ function RegistrarVentaContent() {
         userId: auth?.user?.id ?? null,
       };
 
-      setIsSubmitting(true);
       try {
         if (!orderData) {
           const response = await axios.post(
@@ -771,6 +771,7 @@ function RegistrarVentaContent() {
       }
     } finally {
       isSubmittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -2146,6 +2147,7 @@ function RegistrarVentaContent() {
             )}
 
             <Button
+              type="button"
               className="w-full bg-teal-600 hover:bg-teal-700"
               disabled={!canSubmit || isSubmitting}
               onClick={handleConfirmSale}

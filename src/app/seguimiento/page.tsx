@@ -193,6 +193,7 @@ export default function SeguimientoPage() {
   const [filters, setFilters] = useState<SeguimientoFilters>(emptyFilters);
   const [guideSearch, setGuideSearch] = useState("");
   const [guideStatusFilter, setGuideStatusFilter] = useState("");
+  const [guideCourierFilter, setGuideCourierFilter] = useState("");
 
   // Map of orderId -> orderNumber for quick lookup
   const [orderMap, setOrderMap] = useState<Record<string, string>>({});
@@ -543,9 +544,21 @@ export default function SeguimientoPage() {
         return false;
       }
 
+      // Filtro por courier
+      if (guideCourierFilter && (guide.courierName || "") !== guideCourierFilter) {
+        return false;
+      }
+
       return true;
     });
-  }, [guides, guideSearch, guideStatusFilter, orderMap]);
+  }, [guides, guideSearch, guideStatusFilter, guideCourierFilter, orderMap]);
+
+  const guideCourierOptions = useMemo(() => {
+    const names = guides
+      .map((g) => g.courierName)
+      .filter((n): n is string => !!n);
+    return Array.from(new Set(names)).sort();
+  }, [guides]);
 
   const updateFilter = <K extends keyof SeguimientoFilters>(
     key: K,
@@ -2039,22 +2052,38 @@ export default function SeguimientoPage() {
                         )}
                       </select>
                     </div>
-                    <div className="flex items-end">
-                      {(guideSearch || guideStatusFilter) && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setGuideSearch("");
-                            setGuideStatusFilter("");
-                          }}
-                          className="text-xs"
-                        >
-                          Limpiar filtros
-                        </Button>
-                      )}
+                    <div className="space-y-1">
+                      <Label className="text-xs">Courier</Label>
+                      <select
+                        className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                        value={guideCourierFilter}
+                        onChange={(e) => setGuideCourierFilter(e.target.value)}
+                      >
+                        <option value="">Todos</option>
+                        {guideCourierOptions.map((name) => (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   </div>
+                  {(guideSearch || guideStatusFilter || guideCourierFilter) && (
+                    <div className="mt-3">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setGuideSearch("");
+                          setGuideStatusFilter("");
+                          setGuideCourierFilter("");
+                        }}
+                        className="text-xs"
+                      >
+                        Limpiar filtros
+                      </Button>
+                    </div>
+                  )}
                 </div>
 
                 {loadingGuides ? (
