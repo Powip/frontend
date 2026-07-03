@@ -17,7 +17,7 @@ export interface SalesFilters {
   courier: string;
   zone: string;
   hasGuide: "" | "yes" | "no";
-  source: "" | "shopify" | "manual";
+  source: "" | "shopify" | "google_sheets" | "manual";
 }
 
 export const emptySalesFilters: SalesFilters = {
@@ -92,6 +92,7 @@ const SOURCE_OPTIONS = [
   { value: "", label: "Todos" },
   { value: "manual", label: "Powip" },
   { value: "shopify", label: "Shopify" },
+  { value: "google_sheets", label: "Google Sheets" },
 ];
 
 export function SalesTableFilters({
@@ -271,21 +272,21 @@ export function SalesTableFilters({
               </select>
             </div>
 
-            {/* Courier / Enviado Por */}
+            {/* Courier */}
             {showCourierFilter && (
               <div className="space-y-1">
-                <Label className="text-xs">Enviado Por</Label>
+                <Label className="text-xs">Courier</Label>
                 <select
                   className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.courier}
                   onChange={(e) => updateFilter("courier", e.target.value)}
                 >
                   <option value="">Todos</option>
-                  <option value="Motorizado Propio">Motorizado Propio</option>
-                  <option value="Shalom">Shalom</option>
-                  <option value="Olva Courier">Olva Courier</option>
-                  <option value="Marvisur">Marvisur</option>
-                  <option value="Flores">Flores</option>
+                  {availableCouriers.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
                 </select>
               </div>
             )}
@@ -336,7 +337,7 @@ export function SalesTableFilters({
                   className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
                   value={filters.source}
                   onChange={(e) =>
-                    updateFilter("source", e.target.value as "" | "shopify" | "manual")
+                    updateFilter("source", e.target.value as "" | "shopify" | "google_sheets" | "manual")
                   }
                 >
                   {SOURCE_OPTIONS.map((opt) => (
@@ -445,19 +446,18 @@ export function applyFilters<T extends {
       return false;
     }
 
-    // Source filter (Powip / Shopify)
+    // Source filter (Powip / Shopify / Google Sheets)
     if (filters.source) {
-      if (
-        filters.source === "shopify" &&
-        item.externalSource?.toLowerCase() !== "shopify"
-      ) {
-        return false;
+      const itemSource = item.externalSource?.toLowerCase();
+
+      if (filters.source === "shopify") {
+        return itemSource === "shopify";
       }
-      if (
-        filters.source === "manual" &&
-        item.externalSource?.toLowerCase() === "shopify"
-      ) {
-        return false;
+      if (filters.source === "google_sheets") {
+        return itemSource === "google_sheets";
+      }
+      if (filters.source === "manual") {
+        return !itemSource || itemSource === "" || itemSource === "manual";
       }
     }
 

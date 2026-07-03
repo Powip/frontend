@@ -14,18 +14,22 @@ interface BulkUpdateResult {
  */
 export async function processBulkStatusChange(
   orderIds: string[],
-  newStatus: OrderStatus,
+  newStatus: OrderStatus | undefined,
   apiBaseUrl: string,
   onProgress?: (processed: number, total: number) => void,
   _batchSize: number = 10, // mantenido por compatibilidad, no se usa con bulk
   userInfo?: { userId: string; sellerName: string },
+  callStatus?: string,
+  callbackAt?: string,
 ): Promise<BulkUpdateResult> {
   if (orderIds.length === 0) return { success: [], failed: [] };
 
   try {
     const response = await axios.patch(`${apiBaseUrl}/order-header/bulk-status`, {
       ids: orderIds,
-      status: newStatus,
+      ...(newStatus !== undefined && { status: newStatus }),
+      ...(callStatus !== undefined && { callStatus }),
+      ...(callbackAt !== undefined && { callbackAt }),
       ...(userInfo && {
         userId: userInfo.userId,
         sellerName: userInfo.sellerName,
@@ -46,7 +50,7 @@ export async function processBulkStatusChange(
   } catch (err: any) {
     // Si el endpoint bulk no existe aún en el backend desplegado, fallback individual
     if (err?.response?.status === 404) {
-      return processBulkIndividual(orderIds, newStatus, apiBaseUrl, onProgress, userInfo);
+      return processBulkIndividual(orderIds, newStatus, apiBaseUrl, onProgress, userInfo, callStatus, callbackAt);
     }
     throw err;
   }
@@ -54,17 +58,21 @@ export async function processBulkStatusChange(
 
 async function processBulkIndividual(
   orderIds: string[],
-  newStatus: OrderStatus,
+  newStatus: OrderStatus | undefined,
   apiBaseUrl: string,
   onProgress?: (processed: number, total: number) => void,
   userInfo?: { userId: string; sellerName: string },
+  callStatus?: string,
+  callbackAt?: string,
 ): Promise<BulkUpdateResult> {
   const result: BulkUpdateResult = { success: [], failed: [] };
 
   const results = await Promise.allSettled(
     orderIds.map((id) =>
       axios.patch(`${apiBaseUrl}/order-header/${id}`, {
-        status: newStatus,
+        ...(newStatus !== undefined && { status: newStatus }),
+        ...(callStatus !== undefined && { callStatus }),
+        ...(callbackAt !== undefined && { callbackAt }),
         ...(userInfo && {
           userId: userInfo.userId,
           sellerName: userInfo.sellerName,

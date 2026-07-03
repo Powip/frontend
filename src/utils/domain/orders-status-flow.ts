@@ -2,6 +2,8 @@ import { OrderStatus } from "@/interfaces/IOrder";
 
 // Flujo unificado para LIMA y PROVINCIA (mismo flujo para ambas regiones)
 export const ORDER_STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
+  INCOMPLETE: ["PREVENTA", "PENDIENTE", "ANULADO"],
+  PREVENTA: ["PENDIENTE", "ANULADO"],
   PENDIENTE: ["PREPARADO", "ANULADO"],
   PREPARADO: ["LLAMADO", "ANULADO"],
   LLAMADO: ["ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO", "ANULADO"],
@@ -9,6 +11,7 @@ export const ORDER_STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   EN_ENVIO: ["ENTREGADO", "ANULADO"],
   ENTREGADO: ["ANULADO"],
   ANULADO: [],
+  PAGADO: ["ANULADO"],
 };
 
 /**

@@ -3,6 +3,7 @@ import { useState, useEffect, FormEvent } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Image from "next/image";
 import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
 import Container from "../ui/container";
 import Header from "../ui/header";
@@ -32,6 +33,7 @@ const EditProducto = () => {
   const params = useParams();
   const id = params?.id as string;
   const companyId = "5d5b824c-2b81-4b17-960f-855bfc7806e2";
+  const { auth } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -304,13 +306,15 @@ const EditProducto = () => {
               </select>
             </div>
 
-            <div>
-              <Label>Precio Compra*</Label>
-              <Input
-                value={product.priceBase}
-                onChange={(e) => handleChange("priceBase", e.target.value)}
-              />
-            </div>
+            {auth?.user?.role !== 'VENTAS' && (
+              <div>
+                <Label>Precio Compra*</Label>
+                <Input
+                  value={product.priceBase}
+                  onChange={(e) => handleChange("priceBase", e.target.value)}
+                />
+              </div>
+            )}
 
             <div>
               <Label>Precio Venta*</Label>

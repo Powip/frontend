@@ -10,15 +10,16 @@ export interface Company {
   name: string;
   userId: string;
   stores?: Store[];
-  // Datos adicionales para comprobante de envío
-  cuit?: string; // RUC/CUIT
-  billingAddress?: string; // Dirección
-  phone?: string; // Teléfono
-  billingEmail?: string; // Email de facturación
-  logoUrl?: string; // URL del logo (para futuro)
+  cuit?: string;
+  billingAddress?: string;
+  phone?: string;
+  billingEmail?: string;
+  logoUrl?: string;
   sales_channels?: string[];
   closing_channels?: string[];
   createdAt?: string;
+  iva?: number;
+  powipCommissionRate?: number;
 }
 
 export const fetchUserCompany = async (
@@ -46,9 +47,10 @@ export const fetchUserCompany = async (
       sales_channels: response.data.sales_channels,
       closing_channels: response.data.closing_channels,
       billingEmail: response.data.billing_email,
+      iva: response.data.iva != null ? Number(response.data.iva) : undefined,
+      powipCommissionRate: response.data.powipCommissionRate != null ? Number(response.data.powipCommissionRate) : undefined,
     };
   } catch (error) {
-    // Es normal que falle si el usuario es personal operativo (no es el dueño registrado en ms-company)
     return null;
   }
 };
@@ -76,6 +78,8 @@ export const fetchCompanyById = async (
       sales_channels: response.data.sales_channels,
       closing_channels: response.data.closing_channels,
       billingEmail: response.data.billing_email,
+      iva: response.data.iva != null ? Number(response.data.iva) : undefined,
+      powipCommissionRate: response.data.powipCommissionRate != null ? Number(response.data.powipCommissionRate) : undefined,
     };
   } catch (error) {
     console.error("Error al obtener company by id:", error);
@@ -142,6 +146,7 @@ export const updateCompany = async (
       logo_url: data.logoUrl,
       sales_channels: data.sales_channels,
       closing_channels: data.closing_channels,
+      powip_commission_rate: data.powipCommissionRate,
     },
     {
       headers: {

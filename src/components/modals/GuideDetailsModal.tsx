@@ -44,6 +44,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import SendToShalomModal from "@/components/shalom/SendToShalomModal";
+import SendToAliclikGuideModal from "@/components/aliclik/SendToAliclikGuideModal";
 import { FileSpreadsheet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -51,7 +52,11 @@ import {
   getShalomTicketPdfUrl,
 } from "@/services/shalomService";
 import { shouldDisplayNote } from "@/lib/logFilters";
-import { normalizeCourier } from "@/utils/courierNormalizer";
+import {
+  normalizeCourier,
+  isShalomCourier,
+  isAliclikCourier,
+} from "@/utils/courierNormalizer";
 
 export interface ShippingGuide {
   id: string;
@@ -152,6 +157,9 @@ interface OrderDetail {
   shalomError?: string | null;
   shalom_error?: string | null; // ⬅️ NUEVA
 
+  aliclikDispatchStatus?: string | null;
+  aliclik_dispatch_status?: string | null; // ⬅️ NUEVA
+
   trackingInfo?: {
     orderNumber: string;
     orderCode: string;
@@ -216,6 +224,7 @@ const CHARGE_TYPE_LABELS: Record<string, string> = {
 const COURIERS = [
   "Motorizado Propio",
   "Shalom",
+  "Aliclik",
   "Olva Courier",
   "Marvisur",
   "Flores",
@@ -235,6 +244,8 @@ export default function GuideDetailsModal({
 
   // Shalom modal
   const [shalomModalOpen, setShalomModalOpen] = useState(false);
+  // Aliclik modal
+  const [aliclikModalOpen, setAliclikModalOpen] = useState(false);
 
   const [guide, setGuide] = useState<ShippingGuide | null>(null);
   const [loading, setLoading] = useState(false);
@@ -309,14 +320,6 @@ export default function GuideDetailsModal({
           ...r.data,
           id: r.data.id || r.data.orderId || "",
         }));
-        // 🔥 DEBUG: Ver qué datos llegan del endpoint
-        console.log("📦 ORDERS LOADED:", orders);
-        console.log("📦 FIRST ORDER FIELDS:", {
-          shalomStatus: orders[0]?.shalomStatus,
-          shalom_status: orders[0]?.shalom_status,
-          externalTrackingNumber: orders[0]?.externalTrackingNumber,
-          external_tracking_number: orders[0]?.external_tracking_number,
-        });
         setOrdersDetails(orders);
 
         // Inicializar tracking fields por cada pedido
@@ -523,27 +526,18 @@ export default function GuideDetailsModal({
 
     if (confirm("¿Estás seguro de desvincular este pedido de la guía?")) {
       try {
-        // 1. Quitar el pedido de la guía en ms-courier
         await axios.patch(
           `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/orders/remove`,
           { orderIds: [orderId] },
         );
 
-        // 2. Restaurar el pedido en ms-ventas
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-          {
-            shipping_guide_id: null,
-            courier: null,
-          },
-        );
-
         toast.success("Pedido desvinculado correctamente");
         fetchGuide();
         onGuideUpdated?.();
-      } catch (error: any) {
+      } catch (error: unknown) {
+        const axiosError = error as { response?: { data?: { message?: string } } };
         toast.error(
-          error?.response?.data?.message || "Error al desvincular pedido",
+          axiosError?.response?.data?.message || "Error al desvincular pedido",
         );
       }
     }
@@ -1317,6 +1311,52 @@ export default function GuideDetailsModal({
                         })()}
                       </div>
                     )}
+                    {isAliclikCourier(guide?.courierName) && (
+                      <div className="flex items-center gap-2 ml-4">
+                        {(() => {
+                          const sent = ordersDetails.filter(
+                            (o) =>
+                              o.aliclikDispatchStatus &&
+                              o.aliclikDispatchStatus !== "CANCELED",
+                          ).length;
+                          const cancelled = ordersDetails.filter(
+                            (o) => o.aliclikDispatchStatus === "CANCELED",
+                          ).length;
+                          const pending = ordersDetails.filter(
+                            (o) => !o.aliclikDispatchStatus,
+                          ).length;
+
+                          return (
+                            <>
+                              {sent > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-green-50 text-green-700 border-green-200 text-xs"
+                                >
+                                  ✅ {sent} OK
+                                </Badge>
+                              )}
+                              {cancelled > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-red-50 text-red-700 border-red-200 text-xs"
+                                >
+                                  ❌ {cancelled} Cancelados
+                                </Badge>
+                              )}
+                              {pending > 0 && (
+                                <Badge
+                                  variant="outline"
+                                  className="bg-gray-50 text-gray-600 border-gray-300 text-xs"
+                                >
+                                  ⏳ {pending} Sin enviar
+                                </Badge>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
                   </h4>
                   <div className="flex items-center gap-2 text-sm">
                     <input
@@ -1539,7 +1579,7 @@ export default function GuideDetailsModal({
                                   </Button>
                                 )}
                               {order.shalomStatus === "FALLIDO" &&
-                                guide?.courierName === "Shalom" && (
+                                isShalomCourier(guide?.courierName) && (
                                   <Button
                                     size="icon"
                                     variant="outline"
@@ -1994,6 +2034,41 @@ export default function GuideDetailsModal({
                     </div>
                   );
                 })()}
+              {guide &&
+                guide.status === "APROBADA" &&
+                isAliclikCourier(guide.courierName) &&
+                (() => {
+                  const needsAliclik = ordersDetails.filter(
+                    (o) => !o.aliclikDispatchStatus,
+                  );
+
+                  if (needsAliclik.length === 0) return null;
+
+                  return (
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => {
+                          if (selectedOrderIds.size === 0) {
+                            setSelectedOrderIds(
+                              new Set(needsAliclik.map((o) => o.id)),
+                            );
+                          }
+                          setAliclikModalOpen(true);
+                        }}
+                        className={
+                          selectedOrderIds.size > 0
+                            ? "bg-blue-600 hover:bg-blue-700 text-white"
+                            : "bg-orange-500 hover:bg-orange-600 text-white"
+                        }
+                      >
+                        <Truck className="h-4 w-4 mr-2" />
+                        {selectedOrderIds.size > 0
+                          ? `Enviar a Aliclik (${selectedOrderIds.size})`
+                          : `Registrar en Aliclik (${needsAliclik.length})`}
+                      </Button>
+                    </div>
+                  );
+                })()}
               {guide && (
                 <>
                   <Button variant="outline" onClick={handleExportExcel}>
@@ -2042,6 +2117,23 @@ export default function GuideDetailsModal({
             ? ordersDetails.filter((o) => selectedOrderIds.has(o.id))
             : ordersDetails
         }
+        onSuccess={() => {
+          fetchGuide();
+          onGuideUpdated?.();
+        }}
+      />
+
+      {/* Modal de Envío a Aliclik */}
+      <SendToAliclikGuideModal
+        open={aliclikModalOpen}
+        guideId={guideId || guide?.id || ""}
+        companyId={companyId || ""}
+        orders={
+          selectedOrderIds.size > 0
+            ? ordersDetails.filter((o) => selectedOrderIds.has(o.id))
+            : ordersDetails
+        }
+        onClose={() => setAliclikModalOpen(false)}
         onSuccess={() => {
           fetchGuide();
           onGuideUpdated?.();

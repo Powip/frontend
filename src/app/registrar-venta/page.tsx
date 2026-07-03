@@ -51,11 +51,14 @@ const emptyClientForm = {
   district: "",
   address: "",
   reference: "",
+  latitude: "",
+  longitude: "",
 };
 
 function RegistrarVentaContent() {
   /* ---------------- Params ---------------- */
   const searchParams = useSearchParams();
+  const router = useRouter();
   const orderId = searchParams.get("orderId");
   const isPromo = searchParams.get("isPromo") === "true";
 
@@ -162,6 +165,9 @@ function RegistrarVentaContent() {
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
 
+  /* ---------------- Meta Publi ID ---------------- */
+  const [metaPubliId, setMetaPubliId] = useState("");
+
   const { auth, selectedStoreId, setSelectedStore, inventories } = useAuth();
 
   const companyId = auth?.company?.id;
@@ -195,7 +201,10 @@ function RegistrarVentaContent() {
   const formEnabled = !isIdle;
 
   const loadOrder = useCallback(async () => {
-    if (!orderId) return;
+    if (!orderId) {
+      setOrderData(null);
+      return;
+    }
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
@@ -203,7 +212,7 @@ function RegistrarVentaContent() {
 
       setOrderData(response.data);
     } catch (error) {
-      console.log("Error al obtener la Order", error);
+      console.error("Error al obtener la Order", error);
     }
   }, [orderId]);
 
@@ -229,6 +238,8 @@ function RegistrarVentaContent() {
       district: cust.district ?? "",
       address: cust.address ?? "",
       reference: cust.reference ?? "",
+      latitude: cust.latitude != null ? String(cust.latitude) : "",
+      longitude: cust.longitude != null ? String(cust.longitude) : "",
     });
     setSearchState("found");
 
@@ -307,6 +318,8 @@ function RegistrarVentaContent() {
         district: clientFound.district ?? "",
         address: clientFound.address ?? "",
         reference: clientFound.reference ?? "",
+        latitude: clientFound.latitude != null ? String(clientFound.latitude) : "",
+        longitude: clientFound.longitude != null ? String(clientFound.longitude) : "",
       });
     }
   }, [searchState, clientFound]);
@@ -439,6 +452,9 @@ function RegistrarVentaContent() {
 
     // Order data (para modo edición)
     setOrderData(null);
+
+    // Meta Publi ID
+    setMetaPubliId("");
   };
 
   // Auto-calcular salesRegion basándose en el departamento del cliente
@@ -518,6 +534,8 @@ function RegistrarVentaContent() {
         district: clientForm.district,
         address: clientForm.address,
         reference: clientForm.reference || undefined, // Evita "" que falla en backend
+        latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
+        longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
       });
       setClientFound(createdClient);
       setOriginalClient(createdClient);
@@ -565,6 +583,8 @@ function RegistrarVentaContent() {
             district: clientForm.district,
             address: clientForm.address,
             reference: clientForm.reference || undefined,
+            latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
+            longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
           });
           setClientFound(createdClient);
           setOriginalClient(createdClient);
@@ -592,7 +612,9 @@ function RegistrarVentaContent() {
             district: clientForm.district,
             address: clientForm.address,
             reference: clientForm.reference || undefined,
-          } as any);
+            latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
+            longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
+          });
           setClientFound(updated);
           setOriginalClient(updated);
           activeClient = updated;
@@ -605,6 +627,7 @@ function RegistrarVentaContent() {
 
       if (!activeClient?.id) {
         console.error("❌ No hay customerId");
+        toast.error("No se pudo identificar el cliente");
         return;
       }
 
@@ -672,6 +695,9 @@ function RegistrarVentaContent() {
 
         // --- Usuario (para log de auditoría) ---
         userId: auth?.user?.id ?? null,
+
+        // --- Meta Publi ID (opcional) ---
+        ...(metaPubliId.trim() ? { metaPubliId: metaPubliId.trim() } : {}),
       };
 
       try {
@@ -710,8 +736,6 @@ function RegistrarVentaContent() {
           toast.success("Venta registrada");
           setReceiptOrderId(createdOrderId);
           setReceiptOpen(true);
-
-          // Limpiar todo el formulario después de venta exitosa
           resetForm();
         } else {
           // Actualizar orden existente
@@ -759,8 +783,10 @@ function RegistrarVentaContent() {
             updatePayload,
           );
 
+          const updatedId = orderData.id;
           toast.success("Venta actualizada correctamente");
-          setReceiptOrderId(orderData.id);
+          resetForm();
+          setReceiptOrderId(updatedId);
           setReceiptOpen(true);
         }
       } catch (error) {
@@ -871,7 +897,9 @@ function RegistrarVentaContent() {
         district: clientForm.district,
         address: clientForm.address,
         reference: clientForm.reference || undefined,
-      } as any);
+        latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
+        longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
+      });
 
       setClientFound(updated);
       setOriginalClient(updated);
@@ -947,6 +975,8 @@ function RegistrarVentaContent() {
         district: originalClient.district,
         address: originalClient.address,
         reference: originalClient.reference,
+        latitude: originalClient.latitude != null ? String(originalClient.latitude) : "",
+        longitude: originalClient.longitude != null ? String(originalClient.longitude) : "",
       });
 
   if (!auth) return null;
@@ -1272,6 +1302,39 @@ function RegistrarVentaContent() {
                     setClientForm({ ...clientForm, reference: e.target.value })
                   }
                 />
+
+                {/* Coordenadas para Aliclik */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Latitud (opcional)</Label>
+                    <Input
+                      disabled={!formEnabled}
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="-12.046374"
+                      value={clientForm.latitude}
+                      onChange={(e) =>
+                        setClientForm({ ...clientForm, latitude: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Longitud (opcional)</Label>
+                    <Input
+                      disabled={!formEnabled}
+                      type="text"
+                      inputMode="decimal"
+                      placeholder="-77.042793"
+                      value={clientForm.longitude}
+                      onChange={(e) =>
+                        setClientForm({ ...clientForm, longitude: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Coordenadas para envíos Aliclik
+                </p>
               </div>
 
               {/* Región de Venta - Toggle Pills */}
@@ -1678,7 +1741,7 @@ function RegistrarVentaContent() {
               <Label>Tipo de orden <span className="text-destructive">*</span></Label>
               <Select
                 disabled={isSubmitting}
-                value={orderDetails.orderType}
+                value={orderDetails.orderType ?? ""}
                 onValueChange={(v) =>
                   setOrderDetails({
                     ...orderDetails,
@@ -1707,7 +1770,7 @@ function RegistrarVentaContent() {
               <Label>Canal de venta <span className="text-destructive">*</span></Label>
               <Select
                 disabled={isSubmitting}
-                value={orderDetails.salesChannel}
+                value={orderDetails.salesChannel ?? ""}
                 onValueChange={(v) =>
                   setOrderDetails({
                     ...orderDetails,
@@ -1733,7 +1796,7 @@ function RegistrarVentaContent() {
               <Label>Canal de cierre <span className="text-destructive">*</span></Label>
               <Select
                 disabled={isSubmitting}
-                value={orderDetails.closingChannel}
+                value={orderDetails.closingChannel ?? ""}
                 onValueChange={(v) =>
                   setOrderDetails({
                     ...orderDetails,
@@ -1759,7 +1822,7 @@ function RegistrarVentaContent() {
               <Label>Tipo de entrega <span className="text-destructive">*</span></Label>
               <Select
                 disabled={isSubmitting}
-                value={orderDetails.deliveryType}
+                value={orderDetails.deliveryType ?? ""}
                 onValueChange={(v) =>
                   setOrderDetails({
                     ...orderDetails,
@@ -1788,7 +1851,7 @@ function RegistrarVentaContent() {
                 <Label>Método de envío <span className="text-destructive">*</span></Label>
                 <Select
                   disabled={isSubmitting || isLoadingCouriers}
-                  value={orderDetails.enviaPor}
+                  value={orderDetails.enviaPor ?? ""}
                   onValueChange={(v) =>
                     setOrderDetails({
                       ...orderDetails,
@@ -1826,6 +1889,17 @@ function RegistrarVentaContent() {
                 onChange={(e) =>
                   setOrderDetails({ ...orderDetails, notes: e.target.value })
                 }
+              />
+            </div>
+
+            {/* ID de publicidad (Meta) */}
+            <div className="space-y-1">
+              <Label>ID de publicidad (Meta)</Label>
+              <Input
+                type="text"
+                placeholder="Opcional — ID del panel de ads"
+                value={metaPubliId}
+                onChange={(e) => setMetaPubliId(e.target.value)}
               />
             </div>
           </CardContent>
@@ -2169,7 +2243,10 @@ function RegistrarVentaContent() {
       <OrderReceiptModal
         open={receiptOpen}
         orderId={receiptOrderId}
-        onClose={() => setReceiptOpen(false)}
+        onClose={() => {
+          setReceiptOpen(false);
+          router.push("/ventas");
+        }}
       />
     </div>
   );

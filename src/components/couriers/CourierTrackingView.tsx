@@ -51,6 +51,7 @@ import {
 } from "@/services/shalomService";
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
+import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
 
 interface TrackingGuide {
   id: string;
@@ -105,8 +106,7 @@ export default function CourierTrackingView() {
         }
       );
       setGuides(res.data);
-    } catch (error) {
-      console.error("Error fetching guides", error);
+    } catch {
       toast.error("No se pudieron cargar las guías de envío");
     } finally {
       setLoading(false);
@@ -195,8 +195,7 @@ export default function CourierTrackingView() {
         toast.success(`Cotización actualizada: ${quoteRes.moneda} ${quoteRes.precio}`);
         fetchGuides(); // Recargar tabla
       }
-    } catch (error) {
-      console.error("Error al cotizar directamente:", error);
+    } catch {
       toast.error("No se pudo calcular la cotización automáticamente");
     } finally {
       setLoading(false);
@@ -256,10 +255,11 @@ export default function CourierTrackingView() {
       </div>
 
       <Tabs value={activeCarrierTab} onValueChange={setActiveCarrierTab} className="w-full">
-        <TabsList className="grid w-full max-w-sm grid-cols-3 mb-6">
+        <TabsList className="grid w-full max-w-md grid-cols-4 mb-6">
           <TabsTrigger value="shalom">Shalom</TabsTrigger>
           <TabsTrigger value="olva">Olva</TabsTrigger>
           <TabsTrigger value="todos">Todos</TabsTrigger>
+          <TabsTrigger value="aliclik">Aliclik</TabsTrigger>
         </TabsList>
 
         <TabsContent value="shalom">
@@ -376,6 +376,18 @@ export default function CourierTrackingView() {
                   </TableBody>
                 </Table>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="aliclik">
+          <Card className="border-border shadow-sm">
+            <CardHeader className="pb-3 px-4">
+              <CardTitle className="text-lg">Seguimiento Aliclik</CardTitle>
+              <CardDescription>Gestiona los pedidos enviados a Aliclik con información de estado y cancelación.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <AliclikOrderTrackingView />
             </CardContent>
           </Card>
         </TabsContent>

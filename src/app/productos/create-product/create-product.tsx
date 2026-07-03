@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import Image from "next/image";
@@ -113,6 +113,7 @@ export default function ProductCreateForm({
   const [isEditMode, setIsEditMode] = useState(false);
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
   const [editProductId, setEditProductId] = useState<string | null>(null);
+  const editLoadComplete = useRef(false);
 
   const [form, setForm] = useState<CreateProductBase>({
     name: "",
@@ -304,6 +305,22 @@ export default function ProductCreateForm({
           finalAttrVals[attr.id] = vals.join(", ");
         });
         setAttributeValues(finalAttrVals);
+
+        // Cargar atributos personalizados: los que aparecen en las variantes
+        // pero no corresponden a ningún atributo default de la subcategoría
+        const defaultAttrNames = new Set(attrs.map((a: DefaultAttribute) => a.name));
+        const customAttrsFromVariants = Object.entries(attrVals)
+          .filter(([name]) => !defaultAttrNames.has(name))
+          .map(([name, vals], idx) => ({
+            id: `custom_edit_${idx}_${Date.now()}`,
+            name,
+            rawValues: vals.join(", "),
+          }));
+        if (customAttrsFromVariants.length > 0) {
+          setCustomAttributes(customAttrsFromVariants);
+        }
+
+        editLoadComplete.current = true;
       } catch (error) {
         console.error("Error cargando producto para editar:", error);
         toast.error("Error al cargar el producto");
@@ -333,17 +350,13 @@ export default function ProductCreateForm({
   // Cargar subcategorías al cambiar categoría
   // =========================
   useEffect(() => {
-    // No resetear en modo edición durante la carga inicial
-    if (isEditMode && isLoadingProduct) return;
+    if (isEditMode && !editLoadComplete.current) return;
 
-    // Solo resetear si el usuario cambió la categoría manualmente
-    if (!isEditMode || (isEditMode && !isLoadingProduct)) {
-      setSubcategories([]);
-      setDefaultAttributes([]);
-      setAttributeValues({});
-      setCustomAttributes([]);
-      setVariants([]);
-    }
+    setSubcategories([]);
+    setDefaultAttributes([]);
+    setAttributeValues({});
+    setCustomAttributes([]);
+    setVariants([]);
 
     if (!form.categoryId) return;
 
@@ -353,22 +366,18 @@ export default function ProductCreateForm({
       )
       .then((res) => setSubcategories(res.data))
       .catch((err) => console.error("Error al cargar subcategorías", err));
-  }, [form.categoryId, isEditMode, isLoadingProduct]);
+  }, [form.categoryId, isEditMode]);
 
   // =========================
   // Cargar atributos default al cambiar subcategoría
   // =========================
   useEffect(() => {
-    // No resetear en modo edición durante la carga inicial
-    if (isEditMode && isLoadingProduct) return;
+    if (isEditMode && !editLoadComplete.current) return;
 
-    // Solo resetear si el usuario cambió la subcategoría manualmente
-    if (!isEditMode || (isEditMode && !isLoadingProduct)) {
-      setDefaultAttributes([]);
-      setAttributeValues({});
-      setCustomAttributes([]);
-      setVariants([]);
-    }
+    setDefaultAttributes([]);
+    setAttributeValues({});
+    setCustomAttributes([]);
+    setVariants([]);
 
     if (!form.subcategoryId) return;
 
@@ -380,7 +389,6 @@ export default function ProductCreateForm({
         const attrs: DefaultAttribute[] = res.data.defaultAttributes || [];
         setDefaultAttributes(attrs);
 
-        // Solo inicializar valores vacíos si no estamos en modo edición
         if (!isEditMode) {
           const initialValues: Record<string, string> = {};
           attrs.forEach((attr) => {
@@ -390,7 +398,7 @@ export default function ProductCreateForm({
         }
       })
       .catch((err) => console.error("Error cargando atributos default", err));
-  }, [form.subcategoryId, isEditMode, isLoadingProduct]);
+  }, [form.subcategoryId, isEditMode]);
 
   // Filtrar marcas cuando cambia el proveedor
   useEffect(() => {
@@ -506,14 +514,30 @@ export default function ProductCreateForm({
 
     const combos = generateCartesian(mapByName);
 
-    const newVariants: VariantForm[] = combos.map((combo) => ({
-      attributes: combo as Record<string, string>,
-      priceBase: 0,
-      priceVta: 0,
-      stock: 0,
-      minStock: 0,
-      imageFile: null,
-    }));
+    const newVariants: VariantForm[] = combos.map((combo) => {
+      const comboAttrs = combo as Record<string, string>;
+      const comboKeys = Object.keys(comboAttrs);
+
+      // En edit mode: preservar id y precios si la combinación ya existe en BD
+      const existing = isEditMode
+        ? variants.find(
+            (v) =>
+              v.id &&
+              comboKeys.length === Object.keys(v.attributes).length &&
+              comboKeys.every((key) => v.attributes[key] === comboAttrs[key]),
+          )
+        : undefined;
+
+      return {
+        id: existing?.id,
+        attributes: comboAttrs,
+        priceBase: existing?.priceBase ?? 0,
+        priceVta: existing?.priceVta ?? 0,
+        stock: existing?.stock ?? 0,
+        minStock: existing?.minStock ?? 0,
+        imageFile: null,
+      };
+    });
 
     setVariants(newVariants);
     setMessage(`✅ ${newVariants.length} variantes generadas`);
@@ -535,7 +559,8 @@ export default function ProductCreateForm({
               [field]:
                 field === "priceBase" ||
                 field === "priceVta" ||
-                field === "stock"
+                field === "stock" ||
+                field === "minStock"
                   ? Number(value)
                   : value,
             }
@@ -758,27 +783,10 @@ export default function ProductCreateForm({
           return;
         }
       }
-      if (isEditMode && editVariantId && editProductId) {
-        // Modo edición: actualizar la variante existente
-        const variantToUpdate = variants[0];
-        const variantPayload = {
-          priceBase: variantToUpdate.priceBase,
-          priceVta: variantToUpdate.priceVta,
-          minStock: variantToUpdate.minStock,
-          attributeValues: variantToUpdate.attributes,
-        };
-
-        // Actualizar la variante
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${editVariantId}`,
-          variantPayload,
-        );
-
-        // Actualizar el producto (nombre, descripción)
+      if (isEditMode && editProductId) {
         const productPayload = {
           name: form.name,
           description: form.description,
-          imageUrl: payload.imageUrl,
         };
 
         await axios.patch(
@@ -786,8 +794,29 @@ export default function ProductCreateForm({
           productPayload,
         );
 
+        await Promise.all(
+          variants.map((v) => {
+            const variantPayload = {
+              priceBase: Number(v.priceBase),
+              priceVta: Number(v.priceVta),
+              attributeValues: v.attributes,
+            };
+
+            if (v.id) {
+              return axios.patch(
+                `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${v.id}`,
+                variantPayload,
+              );
+            } else {
+              return axios.post(
+                `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant`,
+                { ...variantPayload, productId: editProductId },
+              );
+            }
+          }),
+        );
+
         toast.success("¡Producto actualizado exitosamente!");
-        // Redirigir al inventario
         window.history.back();
       } else {
         // Modo creación

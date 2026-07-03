@@ -37,6 +37,7 @@ import {
   emptySalesFilters,
   applyFilters,
 } from "@/components/ventas/SalesTableFilters";
+import { LiquidacionesCourierTab } from "@/components/finanzas/LiquidacionesCourierTab";
 import { Copy, Printer, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CancellationModal, {
@@ -102,6 +103,7 @@ export interface Sale {
   paymentCreatedAt: string | null;
   sellerName: string | null;
   externalSource?: string | null;
+  externalId?: string | null;
 }
 
 /* -----------------------------------------
@@ -153,6 +155,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
         : null,
     sellerName: order.sellerName ?? null,
     externalSource: order.externalSource ?? null,
+    externalId: order.externalId ?? null,
   };
 }
 
@@ -236,12 +239,15 @@ export default function FinanzasPage() {
   }, [selectedStoreId]);
 
   // Helper: info del usuario actual para trazabilidad
-  const getUserInfo = useCallback(() => ({
-    userId: auth?.user?.id,
-    sellerName:
-      [auth?.user?.name, auth?.user?.surname].filter(Boolean).join(" ") ||
-      undefined,
-  }), [auth?.user]);
+  const getUserInfo = useCallback(
+    () => ({
+      userId: auth?.user?.id,
+      sellerName:
+        [auth?.user?.name, auth?.user?.surname].filter(Boolean).join(" ") ||
+        undefined,
+    }),
+    [auth?.user],
+  );
 
   const handleChangeStatus = useCallback(
     async (
@@ -278,7 +284,9 @@ export default function FinanzasPage() {
         console.error("Error actualizando estado", error);
         toast.error("No se pudo actualizar el estado");
       }
-    }, [sales, fetchOrders, getUserInfo]);
+    },
+    [sales, fetchOrders, getUserInfo],
+  );
 
   const handleConfirmCancellation = useCallback(
     async (reason: CancellationReason, notes?: string) => {
@@ -304,7 +312,9 @@ export default function FinanzasPage() {
       } finally {
         setIsCancelling(false);
       }
-    }, [saleToCancel, fetchOrders, getUserInfo]);
+    },
+    [saleToCancel, fetchOrders, getUserInfo],
+  );
 
   const toggleSale = useCallback((id: string) => {
     setSelectedSaleIds((prev) => {
@@ -351,19 +361,30 @@ export default function FinanzasPage() {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
     if (selectedSales.length === 0) {
-      toast.warning("No hay pedidos seleccionados en esta vista para enviar WhatsApp");
+      toast.warning(
+        "No hay pedidos seleccionados en esta vista para enviar WhatsApp",
+      );
       return;
     }
 
     if (selectedSales.length > 5) {
-      toast.info(`Se abrirán ${selectedSales.length} ventanas de WhatsApp. Asegúrate de permitir las ventanas emergentes (pop-ups).`);
+      toast.info(
+        `Se abrirán ${selectedSales.length} ventanas de WhatsApp. Asegúrate de permitir las ventanas emergentes (pop-ups).`,
+      );
     } else {
-      toast.success(`Preparando envío múltiple a ${selectedSales.length} clientes...`);
+      toast.success(
+        `Preparando envío múltiple a ${selectedSales.length} clientes...`,
+      );
     }
 
     selectedSales.forEach((sale, index) => {
       setTimeout(() => {
-        handleWhatsApp(sale.phoneNumber, sale.orderNumber, sale.clientName, sale.pendingPayment);
+        handleWhatsApp(
+          sale.phoneNumber,
+          sale.orderNumber,
+          sale.clientName,
+          sale.pendingPayment,
+        );
       }, index * 600);
     });
   };
@@ -683,6 +704,7 @@ Estado: ${sale.status}
             />
           </TableHead>
           <TableHead className="w-[100px] min-w-[100px]">N° Orden</TableHead>
+          <TableHead className="w-[100px] min-w-[100px]">ID Externo</TableHead>
           <TableHead className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-20 bg-background border-r">
             Cliente
           </TableHead>
@@ -719,6 +741,9 @@ Estado: ${sale.status}
             </TableCell>
             <TableCell className="font-medium w-[100px] min-w-[100px]">
               {sale.orderNumber}
+            </TableCell>
+            <TableCell className="w-[100px] min-w-[100px] text-xs text-muted-foreground truncate max-w-[100px]">
+              {sale.externalId || "-"}
             </TableCell>
             <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
               {sale.clientName}
@@ -866,6 +891,9 @@ Estado: ${sale.status}
             <TabsTrigger value="entregados">
               Entregados ({entregados.length})
             </TabsTrigger>
+            <TabsTrigger value="liquidacionesCourier">
+              Liquidaciones Courier
+            </TabsTrigger>
           </TabsList>
 
           {/* Tab Pagos Pendientes */}
@@ -890,7 +918,10 @@ Estado: ${sale.status}
                   >
                     <MessageCircle className="h-4 w-4 mr-2" />
                     WhatsApp Masivo (
-                    {pagosPendientes.filter((s) => selectedSaleIds.has(s.id)).length}
+                    {
+                      pagosPendientes.filter((s) => selectedSaleIds.has(s.id))
+                        .length
+                    }
                     )
                   </Button>
                   {auth?.user?.role === "ADMIN" && (
@@ -917,6 +948,9 @@ Estado: ${sale.status}
                     <TableRow>
                       <TableHead className="w-[100px] min-w-[100px]">
                         N° Orden
+                      </TableHead>
+                      <TableHead className="w-[100px] min-w-[100px]">
+                        ID Externo
                       </TableHead>
                       <TableHead className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-20 bg-background border-r">
                         Cliente
@@ -964,6 +998,9 @@ Estado: ${sale.status}
                       <TableRow key={sale.id}>
                         <TableCell className="font-medium w-[100px] min-w-[100px]">
                           {sale.orderNumber}
+                        </TableCell>
+                        <TableCell className="w-[100px] min-w-[100px] text-xs text-muted-foreground truncate max-w-[100px]">
+                          {sale.externalId || "-"}
                         </TableCell>
                         <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
                           {sale.clientName}
@@ -1159,6 +1196,11 @@ Estado: ${sale.status}
                 itemName="pedidos"
               />
             </Card>
+          </TabsContent>
+
+          {/* Tab Liquidaciones Courier */}
+          <TabsContent value="liquidacionesCourier">
+            <LiquidacionesCourierTab />
           </TabsContent>
         </Tabs>
       </main>

@@ -8,6 +8,16 @@ const STATUS_STYLES: Record<
   OrderStatus,
   { bg: string; text: string; label: string }
 > = {
+  INCOMPLETE: {
+    bg: "bg-orange-100",
+    text: "text-orange-700",
+    label: "Incompleto",
+  },
+  PREVENTA: {
+    bg: "bg-violet-100",
+    text: "text-violet-700",
+    label: "Pre-Venta",
+  },
   PENDIENTE: {
     bg: "bg-red-500",
     text: "text-white",
@@ -42,6 +52,11 @@ const STATUS_STYLES: Record<
     bg: "bg-gray-500",
     text: "text-white",
     label: "Anulado",
+  },
+  PAGADO: {
+    bg: "bg-green-100",
+    text: "text-green-700",
+    label: "Pagado",
   },
 };
 

@@ -182,7 +182,8 @@ export default function AlmacenPage() {
     const worksheet = workbook.addWorksheet("Almacén");
 
     worksheet.columns = [
-      { header: "SKU", key: "sku", width: 20 },
+      { header: "SKU Empresa", key: "companySku", width: 20 },
+      { header: "SKU POWIP", key: "sku", width: 20 },
       { header: "Nombre", key: "name", width: 30 },
       { header: "Stock", key: "stock", width: 12 },
       { header: "Reservado", key: "reservado", width: 12 },
@@ -200,6 +201,7 @@ export default function AlmacenPage() {
 
     productsWithDetails.forEach((prod) => {
       worksheet.addRow({
+        companySku: prod.companySku ?? "",
         sku: prod.sku,
         name: prod.productName,
         stock: prod.physicalStock,
@@ -389,7 +391,6 @@ export default function AlmacenPage() {
                             </Tooltip>
                           </TooltipProvider>
                         </TableHead>
-                        <TableHead className="border-r">Precio base</TableHead>
                         <TableHead className="border-r">Precio venta</TableHead>
                         <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
@@ -458,8 +459,15 @@ export default function AlmacenPage() {
                                 </div>
                               )}
                             </TableCell>
-                            <TableCell className="border-r font-medium text-xs max-w-[130px] truncate" title={prod.sku}>
-                              {prod.sku}
+                            <TableCell className="border-r font-medium text-xs max-w-[130px]" title={prod.companySku ? `${prod.companySku} (POWIP: ${prod.sku})` : prod.sku}>
+                              {prod.companySku ? (
+                                <div className="flex flex-col">
+                                  <span className="font-semibold truncate">{prod.companySku}</span>
+                                  <span className="text-[10px] text-muted-foreground truncate">{prod.sku}</span>
+                                </div>
+                              ) : (
+                                <span className="truncate block">{prod.sku}</span>
+                              )}
                             </TableCell>
                             <TableCell className="border-r text-sm max-w-[250px] truncate" title={prod.productName}>
                               {prod.productName}
@@ -473,7 +481,7 @@ export default function AlmacenPage() {
                               {prod.physicalStock}
                             </TableCell>
                             <TableCell className="border-r text-center">
-                              {prod.reservedStock > 0 ? (
+                              {(prod.reservedStock ?? 0) > 0 ? (
                                 <span className="text-amber-600 dark:text-amber-400 font-medium">
                                   {prod.reservedStock}
                                 </span>
@@ -485,9 +493,6 @@ export default function AlmacenPage() {
                               <span className={prod.availableStock <= 0 ? "text-destructive font-semibold" : prod.availableStock <= (prod.min_stock ?? 0) ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-emerald-600 dark:text-emerald-400 font-semibold"}>
                                 {prod.availableStock}
                               </span>
-                            </TableCell>
-                            <TableCell className="border-r text-sm">
-                              ${prod.priceBase}
                             </TableCell>
                             <TableCell className="border-r text-sm">
                               ${prod.priceVta}

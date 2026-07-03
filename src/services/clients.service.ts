@@ -58,7 +58,9 @@ export async function createClient(payload: {
   district: string;
   address: string;
   reference?: string;
-}) {
+  latitude?: number;
+  longitude?: number;
+}): Promise<Client> {
   const res = await fetch(`${API_VENTAS}/clients`, {
     method: "POST",
     headers: {
@@ -71,7 +73,7 @@ export async function createClient(payload: {
     throw new Error("Error creating client");
   }
 
-  return res.json();
+  return res.json() as Promise<Client>;
 }
 
 export async function updateClient(
@@ -88,8 +90,10 @@ export async function updateClient(
     district: string;
     address: string;
     reference?: string;
+    latitude?: number;
+    longitude?: number;
   }>
-) {
+): Promise<Client> {
   const res = await fetch(`${API_VENTAS}/clients/${id}`, {
     method: "PATCH",
     headers: {
@@ -102,5 +106,5 @@ export async function updateClient(
     throw new Error("Error updating client");
   }
 
-  return res.json();
+  return res.json() as Promise<Client>;
 }

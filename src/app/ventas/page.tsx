@@ -15,6 +15,7 @@ import {
   MessageCircle,
   Loader2,
   UploadCloud,
+  MapPin,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -71,8 +72,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
+import type { BulkExtraAction } from "@/components/ventas/BulkStatusSelect";
 import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
+import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
 import { useOrdersByStore } from "@/hooks/useOrdersByStore";
+import { enviarPedidoALima, reassignSeller } from "@/services/atencionClienteService";
+import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
+import { UserPen } from "lucide-react";
 
 /* -----------------------------------------
    Types
@@ -98,6 +104,7 @@ const ALL_STATUSES: OrderStatus[] = [
 
 export interface Sale {
   id: string;
+  customerId: string;
   orderNumber: string;
   clientName: string;
   phoneNumber: string;
@@ -125,6 +132,9 @@ export interface Sale {
   sellerName: string | null;
   items: OrderItem[];
   externalSource?: string | null;
+  externalId?: string | null;
+  aliclikDispatchStatus?: string | null;
+  aliclikSyncedAt?: string | null;
 }
 
 /* -----------------------------------------
@@ -143,6 +153,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    customerId: order.customer.id,
     orderNumber: order.orderNumber,
     clientName: order.customer.fullName,
     phoneNumber: order.customer.phoneNumber ?? "999",
@@ -171,6 +182,9 @@ function mapOrderToSale(order: OrderHeader): Sale {
     sellerName: order.sellerName ?? null,
     items: order.items || [],
     externalSource: order.externalSource ?? null,
+    externalId: order.externalId ?? null,
+    aliclikDispatchStatus: order.aliclikDispatchStatus ?? null,
+    aliclikSyncedAt: order.aliclikSyncedAt ?? null,
   };
 }
 
@@ -235,6 +249,7 @@ export default function VentasPage() {
     >
   >({});
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
+  const [sendingLimaId, setSendingLimaId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("pendientes");
 
   // Estados de selección independientes por pestaña
@@ -265,6 +280,13 @@ export default function VentasPage() {
   const selectedSaleIds = getSelectedIdsForActiveTab();
   const [pageConfirmados, setPageConfirmados] = useState(1);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [rescheduleDialogSaleId, setRescheduleDialogSaleId] = useState<string | null>(null);
+
+  const [reassignSellerModalOpen, setReassignSellerModalOpen] = useState(false);
+  const [saleToReassign, setSaleToReassign] = useState<Sale | null>(null);
+  const [isReassigningLoading, setIsReassigningLoading] = useState(false);
+
+  const BULK_ACTION_REPROGRAMAR = "__REPROGRAMAR__";
 
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
@@ -674,6 +696,58 @@ Estado: ${sale.status}
     }
   };
 
+  const handleBulkReprogramar = async () => {
+    const selectedIds = Array.from(selectedSaleIds);
+    if (selectedIds.length === 0) return;
+
+    const callbackAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    setIsBulkLoading(true);
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
+    try {
+      const uInfo = getUserInfo();
+      const result = await processBulkStatusChange(
+        selectedIds,
+        undefined,
+        apiBaseUrl,
+        undefined,
+        10,
+        uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
+        "SCHEDULED",
+        callbackAt,
+      );
+      if (result.success.length > 0) toast.success(`${result.success.length} pedido(s) reprogramados`);
+      if (result.failed.length > 0) toast.error(`${result.failed.length} pedido(s) no pudieron reprogramarse`);
+      setSelectedIdsForActiveTab(new Set());
+      refetchOrders();
+    } catch {
+      toast.error("Error al reprogramar pedidos");
+    } finally {
+      setIsBulkLoading(false);
+    }
+  };
+
+  const handleIndividualReprogramar = async (saleId: string, callbackAt: Date) => {
+    try {
+      await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`, {
+        callStatus: "SCHEDULED",
+        callbackAt: callbackAt.toISOString(),
+        ...getUserInfo(),
+      });
+      toast.success("Pedido reprogramado");
+      refetchOrders();
+    } catch {
+      toast.error("Error al reprogramar el pedido");
+    }
+  };
+
+  const bulkExtraActions: BulkExtraAction[] = [
+    { value: BULK_ACTION_REPROGRAMAR, label: "Reprogramar", colorClassName: "text-violet-600" },
+  ];
+
+  const handleBulkExtraAction = (actionValue: string) => {
+    if (actionValue === BULK_ACTION_REPROGRAMAR) handleBulkReprogramar();
+  };
+
   const handleBulkWhatsApp = (salesList: Sale[]) => {
     const selectedSales = salesList.filter((s) => selectedSaleIds.has(s.id));
 
@@ -838,6 +912,41 @@ Estado: ${sale.status}
     setReceiptOpen(true);
   };
 
+  const handleEnviarLima = async (saleId: string) => {
+    setSendingLimaId(saleId);
+    try {
+      await enviarPedidoALima(saleId);
+      toast.success("Pedido enviado a CC Lima correctamente");
+      refetchOrders();
+    } catch {
+      toast.error("No se pudo enviar el pedido a CC Lima");
+    } finally {
+      setSendingLimaId(null);
+    }
+  };
+
+  const handleReassignSeller = async (sellerId: string, sellerName: string) => {
+    if (!saleToReassign) return;
+    setIsReassigningLoading(true);
+    try {
+      await reassignSeller(
+        saleToReassign.id,
+        sellerId,
+        sellerName,
+        auth?.user?.id,
+        auth?.user ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim() : undefined,
+      );
+      toast.success("Vendedor reasignado correctamente");
+      setReassignSellerModalOpen(false);
+      setSaleToReassign(null);
+      refetchOrders();
+    } catch {
+      toast.error("No se pudo reasignar el vendedor");
+    } finally {
+      setIsReassigningLoading(false);
+    }
+  };
+
   // Tabla para Pendientes (sin delete)
   const renderPendientesTable = (
     data: Sale[],
@@ -871,7 +980,10 @@ Estado: ${sale.status}
             <TableHead className="lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
               N° Orden
             </TableHead>
-            <TableHead className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-20 bg-background border-r">
+            <TableHead className="lg:sticky lg:left-[145px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
+              ID Externo
+            </TableHead>
+            <TableHead className="lg:sticky lg:left-[245px] w-[150px] min-w-[150px] lg:z-20 bg-background border-r">
               Cliente
             </TableHead>
             <TableHead className="w-[100px] min-w-[100px] text-xs">
@@ -931,7 +1043,10 @@ Estado: ${sale.status}
                   {sale.orderNumber}
                 </div>
               </TableCell>
-              <TableCell className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-10 bg-background text-xs truncate max-w-[150px] border-r">
+              <TableCell className="lg:sticky lg:left-[145px] w-[100px] min-w-[100px] lg:z-10 bg-background text-xs truncate max-w-[100px]">
+                {sale.externalId || "-"}
+              </TableCell>
+              <TableCell className="lg:sticky lg:left-[245px] w-[150px] min-w-[150px] lg:z-10 bg-background text-xs truncate max-w-[150px] border-r">
                 {sale.clientName}
               </TableCell>
               <TableCell>
@@ -985,14 +1100,31 @@ Estado: ${sale.status}
                 ${sale.pendingPayment.toFixed(2)}
               </TableCell>
               <TableCell className="text-xs">
-                {sale.sellerName || "—"}
+                <span className="inline-flex items-center gap-1">
+                  <span>{sale.sellerName || "—"}</span>
+                  <button
+                    title="Reasignar vendedor"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => {
+                      setSaleToReassign(sale);
+                      setReassignSellerModalOpen(true);
+                    }}
+                  >
+                    <UserPen className="h-3 w-3" />
+                  </button>
+                </span>
               </TableCell>
               <TableCell>
                 <select
                   value={sale.status}
-                  onChange={(e) =>
-                    handleChangeStatus(sale.id, e.target.value as OrderStatus)
-                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "__REPROGRAMAR__") {
+                      setRescheduleDialogSaleId(sale.id);
+                    } else {
+                      handleChangeStatus(sale.id, val as OrderStatus);
+                    }
+                  }}
                   className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
                 >
                   {getAvailableStatuses(sale.status, sale.salesRegion).map(
@@ -1002,6 +1134,8 @@ Estado: ${sale.status}
                       </option>
                     ),
                   )}
+                  <option disabled>──────────</option>
+                  <option value="__REPROGRAMAR__">Reprogramar</option>
                 </select>
               </TableCell>
               <TableCell>{sale.salesRegion}</TableCell>
@@ -1167,6 +1301,22 @@ Estado: ${sale.status}
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
+                  {sale.status === "PENDIENTE" && (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      className="bg-purple-50 hover:bg-purple-100 text-purple-600 border-purple-200"
+                      title="Enviar a CC Lima"
+                      disabled={sendingLimaId === sale.id}
+                      onClick={() => handleEnviarLima(sale.id)}
+                    >
+                      {sendingLimaId === sale.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <MapPin className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
                 </div>
               </TableCell>
             </TableRow>
@@ -1216,7 +1366,10 @@ Estado: ${sale.status}
             <TableHead className="lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
               N° Orden
             </TableHead>
-            <TableHead className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-20 bg-background border-r">
+            <TableHead className="lg:sticky lg:left-[145px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
+              ID Externo
+            </TableHead>
+            <TableHead className="lg:sticky lg:left-[245px] w-[150px] min-w-[150px] lg:z-20 bg-background border-r">
               Cliente
             </TableHead>
             <TableHead>Teléfono</TableHead>
@@ -1266,7 +1419,10 @@ Estado: ${sale.status}
               <TableCell className="font-medium lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-10 bg-background text-xs">
                 {sale.orderNumber}
               </TableCell>
-              <TableCell className="lg:sticky lg:left-[145px] w-[150px] min-w-[150px] lg:z-10 bg-background text-xs truncate max-w-[150px] border-r">
+              <TableCell className="lg:sticky lg:left-[145px] w-[100px] min-w-[100px] lg:z-10 bg-background text-xs truncate max-w-[100px]">
+                {sale.externalId || "-"}
+              </TableCell>
+              <TableCell className="lg:sticky lg:left-[245px] w-[150px] min-w-[150px] lg:z-10 bg-background text-xs truncate max-w-[150px] border-r">
                 {sale.clientName}
               </TableCell>
               {/* Columnas scrolleables */}
@@ -1290,23 +1446,34 @@ Estado: ${sale.status}
                 ${sale.pendingPayment.toFixed(2)}
               </TableCell>
               <TableCell className="text-xs">
-                {sale.sellerName || "—"}
+                <span className="inline-flex items-center gap-1">
+                  <span>{sale.sellerName || "—"}</span>
+                  <button
+                    title="Reasignar vendedor"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => {
+                      setSaleToReassign(sale);
+                      setReassignSellerModalOpen(true);
+                    }}
+                  >
+                    <UserPen className="h-3 w-3" />
+                  </button>
+                </span>
               </TableCell>
               <TableCell>
                 <select
                   value={sale.status}
-                  onChange={(e) =>
-                    handleChangeStatus(sale.id, e.target.value as OrderStatus)
-                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "__RECUPERAR__") {
+                      handleChangeStatus(sale.id, "PENDIENTE");
+                    }
+                  }}
                   className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
                 >
-                  {getAvailableStatuses(sale.status, sale.salesRegion).map(
-                    (status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ),
-                  )}
+                  <option value={sale.status}>{sale.status}</option>
+                  <option disabled>──────────</option>
+                  <option value="__RECUPERAR__">Recuperar venta</option>
                 </select>
               </TableCell>
               <TableCell>{sale.salesRegion}</TableCell>
@@ -1559,6 +1726,8 @@ Estado: ${sale.status}
                     availableStatuses={bulkAvailableStatuses}
                     onStatusChange={handleBulkStatusChange}
                     isLoading={isBulkLoading}
+                    extraActions={bulkExtraActions}
+                    onExtraAction={handleBulkExtraAction}
                   />
                   <Button
                     variant="outline"
@@ -1632,6 +1801,8 @@ Estado: ${sale.status}
                     availableStatuses={bulkAvailableStatuses}
                     onStatusChange={handleBulkStatusChange}
                     isLoading={isBulkLoading}
+                    extraActions={bulkExtraActions}
+                    onExtraAction={handleBulkExtraAction}
                   />
                   <Button
                     variant="outline"
@@ -1715,6 +1886,8 @@ Estado: ${sale.status}
                     availableStatuses={bulkAvailableStatuses}
                     onStatusChange={handleBulkStatusChange}
                     isLoading={isBulkLoading}
+                    extraActions={bulkExtraActions}
+                    onExtraAction={handleBulkExtraAction}
                   />
                   <Button
                     variant="outline"
@@ -1959,6 +2132,34 @@ Estado: ${sale.status}
         userId={auth.user?.id}
         sellerName={auth.user ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim() : undefined}
       />
+
+      <RescheduleDialog
+        open={rescheduleDialogSaleId !== null}
+        onOpenChange={(open) => {
+          if (!open) setRescheduleDialogSaleId(null);
+        }}
+        onConfirm={(date) => {
+          if (rescheduleDialogSaleId) {
+            handleIndividualReprogramar(rescheduleDialogSaleId, date);
+            setRescheduleDialogSaleId(null);
+          }
+        }}
+      />
+
+      {saleToReassign && (
+        <ReassignSellerModal
+          open={reassignSellerModalOpen}
+          onClose={() => {
+            setReassignSellerModalOpen(false);
+            setSaleToReassign(null);
+          }}
+          orderNumber={saleToReassign.orderNumber}
+          currentSellerName={saleToReassign.sellerName}
+          companyId={auth?.company?.id ?? ""}
+          onConfirm={handleReassignSeller}
+          isLoading={isReassigningLoading}
+        />
+      )}
     </div>
   );
 }

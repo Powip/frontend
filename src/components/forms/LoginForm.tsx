@@ -1,14 +1,11 @@
 "use client";
 import axios from "axios";
-import { redirect, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, ArrowRight } from "lucide-react";
 
 import { Input } from "../ui/input";
-import Link from "next/link";
-import { Button } from "../ui/button";
-import { Separator } from "../ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import ForgotPassword from "../modals/forgotPasswortModal";
 import { Label } from "../ui/label";
@@ -31,11 +28,6 @@ export default function LoginForm() {
   );
   const [open, setOpen] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState(false);
-
-  const handleSocialLogin = (provider: string) => {
-    console.log(`[v0] Logging in with ${provider}`);
-    // Handle social login
-  };
 
   const validateForm = () => {
     const newErrors: { email?: string; password?: string } = {};
@@ -105,8 +97,8 @@ export default function LoginForm() {
 
   return (
     <div>
-      <form className="space-y-4">
-        <div className="space-y-2">
+      <form className="flex flex-col gap-5">
+        <div>
           <Label htmlFor="email">Correo electrónico</Label>
           <Input
             value={loginData.email}
@@ -115,25 +107,25 @@ export default function LoginForm() {
             }
             id="email"
             type="email"
-            placeholder="tu@email.com"
+            placeholder="tu@negocio.com"
             required
-            className={`${errors.email ? "border-red-500" : ""}`}
+            className={`mt-1.5 rounded-xl ${errors.email ? "border-red-400" : ""}`}
           />
           {errors.email && (
-            <p className="text-xs text-red-500">{errors.email}</p>
+            <p className="text-xs text-red-500 mt-1">{errors.email}</p>
           )}
         </div>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
             <Label htmlFor="password">Contraseña</Label>
-            <p
-              onClick={() => {
-                setOpen(true);
-              }}
-              className="text-xs text-primary hover:underline cursor-pointer"
+            <button
+              type="button"
+              onClick={() => setOpen(true)}
+              className="text-xs font-medium hover:opacity-80 transition-opacity"
+              style={{ color: "#4F3A96" }}
             >
               ¿Olvidaste tu contraseña?
-            </p>
+            </button>
           </div>
           <div className="relative">
             <Input
@@ -145,33 +137,43 @@ export default function LoginForm() {
               type={showPassword ? "text" : "password"}
               placeholder="••••••••"
               required
-              className={`pr-10 ${errors.password ? "border-red-500" : ""}`}
+              className={`rounded-xl pr-10 ${errors.password ? "border-red-400" : ""}`}
             />
             <button
               type="button"
-              className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground"
+              className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
               onClick={() => setShowPassword(!showPassword)}
               tabIndex={-1}
             >
               {showPassword ? (
-                <EyeOff className="h-4 w-4" />
+                <EyeOff className="w-4 h-4" />
               ) : (
-                <Eye className="h-4 w-4" />
+                <Eye className="w-4 h-4" />
               )}
             </button>
           </div>
           {errors.password && (
-            <p className="text-xs text-red-500">{errors.password}</p>
+            <p className="text-xs text-red-500 mt-1">{errors.password}</p>
           )}
         </div>
-        <Button
+        <button
           type="submit"
           onClick={(e) => handleOnLogin(e)}
-          className="w-full"
           disabled={isLoading}
+          className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-70 mt-1"
+          style={{ background: "#4F3A96" }}
         >
-          {isLoading ? "Iniciando sesión..." : "Iniciar sesión"}
-        </Button>
+          {isLoading ? (
+            <>
+              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Iniciando sesión...
+            </>
+          ) : (
+            <>
+              Ingresar <ArrowRight className="w-4 h-4" />
+            </>
+          )}
+        </button>
       </form>
 
       <ForgotPassword open={open} onClose={() => setOpen(false)} />

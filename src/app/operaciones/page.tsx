@@ -14,6 +14,7 @@ import {
   PackagePlus,
   Eye,
   Download,
+  UserPen,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -73,7 +74,13 @@ import { Badge } from "@/components/ui/badge";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 import AddToExistingGuideModal from "@/components/modals/AddToExistingGuideModal";
 import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
+import type { BulkExtraAction } from "@/components/ventas/BulkStatusSelect";
 import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
+import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
+import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
+import { reassignSeller } from "@/services/atencionClienteService";
+import { fetchCouriers } from "@/services/courierService";
+import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 
 /* -----------------------------------------
    Types
@@ -101,6 +108,7 @@ const ALL_STATUSES: OrderStatus[] = [
 
 export interface Sale {
   id: string;
+  customerId: string;
   orderNumber: string;
   clientName: string;
   phoneNumber: string;
@@ -128,6 +136,9 @@ export interface Sale {
   hasPendingApprovalPayments: boolean;
   sellerName: string | null;
   externalSource?: string | null;
+  externalId?: string | null;
+  aliclikDispatchStatus?: string | null;
+  aliclikSyncedAt?: string | null;
 }
 
 /* -----------------------------------------
@@ -146,6 +157,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    customerId: order.customer.id,
     orderNumber: order.orderNumber,
     clientName: order.customer.fullName,
     phoneNumber: order.customer.phoneNumber ?? "999",
@@ -174,6 +186,9 @@ function mapOrderToSale(order: OrderHeader): Sale {
     hasPendingApprovalPayments,
     sellerName: order.sellerName ?? null,
     externalSource: order.externalSource ?? null,
+    externalId: order.externalId ?? null,
+    aliclikDispatchStatus: order.aliclikDispatchStatus ?? null,
+    aliclikSyncedAt: order.aliclikSyncedAt ?? null,
   };
 }
 
@@ -190,6 +205,11 @@ export default function OperacionesPage() {
   );
   const [selectedShippingGuide, setSelectedShippingGuide] =
     useState<ShippingGuideData | null>(null);
+
+  // Reasignación de vendedor
+  const [reassignSellerModalOpen, setReassignSellerModalOpen] = useState(false);
+  const [saleToReassign, setSaleToReassign] = useState<Sale | null>(null);
+  const [isReassigningLoading, setIsReassigningLoading] = useState(false);
 
   // Modal de observaciones
   const [notesOpen, setNotesOpen] = useState(false);
@@ -216,8 +236,11 @@ export default function OperacionesPage() {
     useState<SalesFilters>(emptySalesFilters);
   const [filtersReprogramados, setFiltersReprogramados] =
     useState<SalesFilters>(emptySalesFilters);
+  const [apiCouriers, setApiCouriers] = useState<string[]>([]);
+
   const [isPrinting, setIsPrinting] = useState(false);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [rescheduleDialogSaleId, setRescheduleDialogSaleId] = useState<string | null>(null);
 
   // Paginación
   const ITEMS_PER_PAGE = 10;
@@ -360,6 +383,13 @@ export default function OperacionesPage() {
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
 
+  useEffect(() => {
+    if (!auth?.company?.id) return;
+    fetchCouriers(auth.company.id)
+      .then((data) => setApiCouriers(data.map((c) => c.name)))
+      .catch(() => toast.error("No se pudieron cargar los couriers"));
+  }, [auth?.company?.id]);
+
   // Calcular estados disponibles comunes para la selección de la pestaña activa
   const bulkAvailableStatuses = useMemo(() => {
     const currentSelectedIds = getSelectedIdsForActiveTab();
@@ -399,6 +429,22 @@ export default function OperacionesPage() {
     getSelectedIdsForActiveTab,
     sales,
   ]);
+
+  const BULK_ACTION_REPROGRAMAR = "__REPROGRAMAR__";
+  const BULK_ACTION_NO_CONTESTA = "__NO_CONTESTA__";
+  const BULK_ACTION_CONTACTADO  = "__CONTACTADO__";
+
+  const bulkExtraActions = useMemo((): BulkExtraAction[] => {
+    if (activeTab === "reprogramados") {
+      return [
+        { value: BULK_ACTION_NO_CONTESTA, label: "No Contesta", colorClassName: "text-amber-600" },
+        { value: BULK_ACTION_CONTACTADO,  label: "Contactado",  colorClassName: "text-green-600" },
+      ];
+    }
+    return [
+      { value: BULK_ACTION_REPROGRAMAR, label: "Reprogramar", colorClassName: "text-violet-600" },
+    ];
+  }, [activeTab]);
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -450,6 +496,28 @@ export default function OperacionesPage() {
       [auth?.user?.name, auth?.user?.surname].filter(Boolean).join(" ") ||
       undefined,
   });
+
+  const handleReassignSeller = async (sellerId: string, sellerName: string) => {
+    if (!saleToReassign) return;
+    setIsReassigningLoading(true);
+    try {
+      await reassignSeller(
+        saleToReassign.id,
+        sellerId,
+        sellerName,
+        auth?.user?.id,
+        [auth?.user?.name, auth?.user?.surname].filter(Boolean).join(" ") || undefined,
+      );
+      toast.success("Vendedor reasignado correctamente");
+      setReassignSellerModalOpen(false);
+      setSaleToReassign(null);
+      fetchOrders();
+    } catch {
+      toast.error("No se pudo reasignar el vendedor");
+    } finally {
+      setIsReassigningLoading(false);
+    }
+  };
 
   const handleChangeStatus = async (
     saleId: string,
@@ -568,6 +636,130 @@ export default function OperacionesPage() {
       toast.error("Error crítico durante la actualización masiva.");
     } finally {
       setIsBulkLoading(false);
+    }
+  };
+
+  const handleBulkReprogramar = async () => {
+    const selectedIds = Array.from(selectedSaleIds);
+    if (selectedIds.length === 0) return;
+
+    const callbackAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    setIsBulkLoading(true);
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
+    try {
+      const uInfo = getUserInfo();
+      const result = await processBulkStatusChange(
+        selectedIds,
+        undefined,
+        apiBaseUrl,
+        undefined,
+        15,
+        uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
+        "SCHEDULED",
+        callbackAt,
+      );
+      if (result.success.length > 0) toast.success(`${result.success.length} pedido(s) reprogramados`);
+      if (result.failed.length > 0) toast.error(`${result.failed.length} pedido(s) no pudieron reprogramarse`);
+      setSelectedIdsForActiveTab(new Set());
+      fetchOrders();
+    } catch {
+      toast.error("Error al reprogramar pedidos");
+    } finally {
+      setIsBulkLoading(false);
+    }
+  };
+
+  const handleBulkNoContesta = async () => {
+    const selectedIds = Array.from(selectedSaleIds);
+    if (selectedIds.length === 0) return;
+
+    setIsBulkLoading(true);
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
+    try {
+      const uInfo = getUserInfo();
+      const result = await processBulkStatusChange(
+        selectedIds,
+        undefined,
+        apiBaseUrl,
+        undefined,
+        15,
+        uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
+        "NO_ANSWER",
+      );
+      if (result.success.length > 0) toast.success(`${result.success.length} pedido(s) marcados como No Contesta`);
+      if (result.failed.length > 0) toast.error(`${result.failed.length} pedido(s) fallaron`);
+      setSelectedIdsForActiveTab(new Set());
+      fetchOrders();
+    } catch {
+      toast.error("Error al actualizar pedidos");
+    } finally {
+      setIsBulkLoading(false);
+    }
+  };
+
+  const handleBulkContactado = async () => {
+    const selectedIds = Array.from(selectedSaleIds);
+    if (selectedIds.length === 0) return;
+
+    setIsBulkLoading(true);
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
+    try {
+      const uInfo = getUserInfo();
+      const result = await processBulkStatusChange(
+        selectedIds,
+        "LLAMADO" as OrderStatus,
+        apiBaseUrl,
+        undefined,
+        15,
+        uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
+        "CONFIRMED",
+      );
+      if (result.success.length > 0) toast.success(`${result.success.length} pedido(s) marcados como Contactado`);
+      if (result.failed.length > 0) toast.error(`${result.failed.length} pedido(s) fallaron`);
+      setSelectedIdsForActiveTab(new Set());
+      fetchOrders();
+    } catch {
+      toast.error("Error al actualizar pedidos");
+    } finally {
+      setIsBulkLoading(false);
+    }
+  };
+
+  const handleBulkExtraAction = (actionValue: string) => {
+    if (actionValue === BULK_ACTION_REPROGRAMAR) handleBulkReprogramar();
+    else if (actionValue === BULK_ACTION_NO_CONTESTA) handleBulkNoContesta();
+    else if (actionValue === BULK_ACTION_CONTACTADO)  handleBulkContactado();
+  };
+
+  const handleIndividualCallStatus = async (
+    saleId: string,
+    callStatus: "NO_ANSWER" | "CONFIRMED",
+  ) => {
+    try {
+      const payload: Record<string, unknown> = {
+        callStatus,
+        ...(callStatus === "CONFIRMED" && { status: "LLAMADO" as OrderStatus }),
+        ...getUserInfo(),
+      };
+      await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`, payload);
+      toast.success("Estado actualizado");
+      fetchOrders();
+    } catch {
+      toast.error("Error al actualizar el pedido");
+    }
+  };
+
+  const handleIndividualReprogramar = async (saleId: string, callbackAt: Date) => {
+    try {
+      await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`, {
+        callStatus: "SCHEDULED",
+        callbackAt: callbackAt.toISOString(),
+        ...getUserInfo(),
+      });
+      toast.success("Pedido reprogramado");
+      fetchOrders();
+    } catch {
+      toast.error("Error al reprogramar el pedido");
     }
   };
 
@@ -1086,6 +1278,7 @@ Estado: ${sale.status}
             <TableHead>Por Cobrar</TableHead>
             <TableHead>Vendedor</TableHead>
             <TableHead>Estado</TableHead>
+            <TableHead>Aliclik</TableHead>
             {showGuideColumn && <TableHead>Guía</TableHead>}
             {showGuideColumn && <TableHead>Courier</TableHead>}
             <TableHead>Region</TableHead>
@@ -1139,14 +1332,35 @@ Estado: ${sale.status}
                 ${sale.pendingPayment.toFixed(2)}
               </TableCell>
               <TableCell className="text-xs">
-                {sale.sellerName || "—"}
+                <span className="inline-flex items-center gap-1">
+                  <span>{sale.sellerName || "—"}</span>
+                  <button
+                    title="Reasignar vendedor"
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => {
+                      setSaleToReassign(sale);
+                      setReassignSellerModalOpen(true);
+                    }}
+                  >
+                    <UserPen className="h-3 w-3" />
+                  </button>
+                </span>
               </TableCell>
               <TableCell>
                 <select
                   value={sale.status}
-                  onChange={(e) =>
-                    handleChangeStatus(sale.id, e.target.value as OrderStatus)
-                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val === "__REPROGRAMAR__") {
+                      setRescheduleDialogSaleId(sale.id);
+                    } else if (val === "__NO_CONTESTA__") {
+                      handleIndividualCallStatus(sale.id, "NO_ANSWER");
+                    } else if (val === "__CONTACTADO__") {
+                      handleIndividualCallStatus(sale.id, "CONFIRMED");
+                    } else {
+                      handleChangeStatus(sale.id, val as OrderStatus);
+                    }
+                  }}
                   className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
                 >
                   {getAvailableStatuses(sale.status, sale.salesRegion).map(
@@ -1156,7 +1370,22 @@ Estado: ${sale.status}
                       </option>
                     ),
                   )}
+                  <option disabled>──────────</option>
+                  {sale.callStatus === "SCHEDULED" ? (
+                    <>
+                      <option value="__NO_CONTESTA__">No Contesta</option>
+                      <option value="__CONTACTADO__">Contactado</option>
+                    </>
+                  ) : (
+                    <option value="__REPROGRAMAR__">Reprogramar</option>
+                  )}
                 </select>
+              </TableCell>
+              <TableCell>
+                <AliclikStatusBadge
+                  aliclikDispatchStatus={sale.aliclikDispatchStatus}
+                  aliclikSyncedAt={sale.aliclikSyncedAt}
+                />
               </TableCell>
               {showGuideColumn && (
                 <TableCell>
@@ -1307,7 +1536,7 @@ Estado: ${sale.status}
           {data.length === 0 && (
             <TableRow>
               <TableCell
-                colSpan={15}
+                colSpan={16}
                 className="text-center text-muted-foreground py-6"
               >
                 No hay ventas en este estado
@@ -1409,13 +1638,14 @@ Estado: ${sale.status}
     [anuladosAll, pageAnulados],
   );
 
-  // Extraer lista de couriers únicos para el filtro
+  // Unión de couriers del API (activos) + nombres únicos en ventas actuales (legacy)
   const availableCouriers = useMemo(() => {
-    const couriers = sales
+    const fromSales = sales
       .map((s) => s.courier)
       .filter((c): c is string => !!c);
-    return [...new Set(couriers)];
-  }, [sales]);
+    const union = new Set([...apiCouriers, ...fromSales]);
+    return [...union].sort();
+  }, [apiCouriers, sales]);
 
   if (!auth) return null;
 
@@ -1462,101 +1692,104 @@ Estado: ${sale.status}
           {/* Tab Preparados */}
           <TabsContent value="preparados">
             <Card>
-              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <CardHeader className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                 <CardTitle>Pedidos Preparados</CardTitle>
-                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
-                  <BulkStatusSelect
-                    selectedCount={selectedSaleIds.size}
-                    availableStatuses={ALL_STATUSES.filter(
-                      (s) => s !== "ANULADO",
-                    )}
-                    onStatusChange={handleBulkStatusChange}
-                    isLoading={isBulkLoading}
-                  />
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    disabled={
-                      preparados.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0 || isPrinting
-                    }
-                    onClick={() => handleBulkPrintForStatus(preparados)}
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados (
-                    {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
-                    )
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    disabled={
-                      preparados.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0
-                    }
-                    onClick={() => handleCopySelected(preparados)}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados (
-                    {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
-                    )
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30 border-green-200 dark:border-green-800"
-                    disabled={
-                      preparados.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0
-                    }
-                    onClick={() => handleBulkWhatsApp(preparados)}
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    WhatsApp Masivo (
-                    {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
-                    )
-                  </Button>
-                  <Button
-                    variant="default"
-                    className="w-full lg:w-auto bg-emerald-600 hover:bg-emerald-700"
-                    disabled={
-                      getSelectedPreparadosForGuide().length === 0 ||
-                      isCreatingGuide
-                    }
-                    onClick={() => {
-                      setGuideSourceOrders(getSelectedPreparadosForGuide());
-                      setCreateGuideModalOpen(true);
-                    }}
-                  >
-                    <PackagePlus className="h-4 w-4 mr-2" />
-                    Generar Guía ({getSelectedPreparadosForGuide().length})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
-                    disabled={
-                      getSelectedPreparadosForGuide().length === 0 ||
-                      isAddingToGuide
-                    }
-                    onClick={() => {
-                      setGuideSourceOrders(getSelectedPreparadosForGuide());
-                      setAddToGuideModalOpen(true);
-                    }}
-                  >
-                    <PackagePlus className="h-4 w-4 mr-2" />
-                    Agregar a Guía ({getSelectedPreparadosForGuide().length})
-                  </Button>
-                  {auth?.user?.role === "ADMIN" && (
+                <div className="flex flex-col gap-2 w-full lg:w-auto">
+                  <div className="flex flex-wrap gap-2">
+                    <BulkStatusSelect
+                      selectedCount={selectedSaleIds.size}
+                      availableStatuses={ALL_STATUSES.filter(
+                        (s) => s !== "ANULADO",
+                      )}
+                      onStatusChange={handleBulkStatusChange}
+                      isLoading={isBulkLoading}
+                      extraActions={bulkExtraActions}
+                      onExtraAction={handleBulkExtraAction}
+                    />
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
-                      onClick={() =>
-                        handleExportExcel(preparados, "preparados")
+                      disabled={
+                        preparados.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0 || isPrinting
                       }
+                      onClick={() => handleBulkPrintForStatus(preparados)}
                     >
-                      <Download className="h-4 w-4 mr-2" />
-                      Exportar Excel
+                      <Printer className="h-4 w-4 mr-2" />
+                      Imprimir (
+                      {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
+                      )
                     </Button>
-                  )}
+                    <Button
+                      variant="outline"
+                      disabled={
+                        preparados.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0
+                      }
+                      onClick={() => handleCopySelected(preparados)}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copiar (
+                      {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
+                      )
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-950/30 border-green-200 dark:border-green-800"
+                      disabled={
+                        preparados.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0
+                      }
+                      onClick={() => handleBulkWhatsApp(preparados)}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      WhatsApp (
+                      {preparados.filter((s) => selectedSaleIds.has(s.id)).length}
+                      )
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="default"
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                      disabled={
+                        getSelectedPreparadosForGuide().length === 0 ||
+                        isCreatingGuide
+                      }
+                      onClick={() => {
+                        setGuideSourceOrders(getSelectedPreparadosForGuide());
+                        setCreateGuideModalOpen(true);
+                      }}
+                    >
+                      <PackagePlus className="h-4 w-4 mr-2" />
+                      Generar Guía ({getSelectedPreparadosForGuide().length})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="border-emerald-600 dark:border-emerald-500 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                      disabled={
+                        getSelectedPreparadosForGuide().length === 0 ||
+                        isAddingToGuide
+                      }
+                      onClick={() => {
+                        setGuideSourceOrders(getSelectedPreparadosForGuide());
+                        setAddToGuideModalOpen(true);
+                      }}
+                    >
+                      <PackagePlus className="h-4 w-4 mr-2" />
+                      Agregar a Guía ({getSelectedPreparadosForGuide().length})
+                    </Button>
+                    {auth?.user?.role === "ADMIN" && (
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          handleExportExcel(preparados, "preparados")
+                        }
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Exportar Excel
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
@@ -1564,6 +1797,8 @@ Estado: ${sale.status}
                   filters={filtersPreparados}
                   onFiltersChange={setFiltersPreparados}
                   showRegionFilter={true}
+                  showCourierFilter={true}
+                  availableCouriers={availableCouriers}
                 />
                 {renderTable(preparados, true, false)}
               </CardContent>
@@ -1591,6 +1826,8 @@ Estado: ${sale.status}
                     availableStatuses={bulkAvailableStatuses}
                     onStatusChange={handleBulkStatusChange}
                     isLoading={isBulkLoading}
+                    extraActions={bulkExtraActions}
+                    onExtraAction={handleBulkExtraAction}
                   />
                   <Button
                     variant="outline"
@@ -1659,6 +1896,8 @@ Estado: ${sale.status}
                   filters={filtersNoConfirmados}
                   onFiltersChange={setFiltersNoConfirmados}
                   showRegionFilter={true}
+                  showCourierFilter={true}
+                  availableCouriers={availableCouriers}
                 />
                 {renderTable(noConfirmados, true, false)}
               </CardContent>
@@ -1686,6 +1925,8 @@ Estado: ${sale.status}
                     availableStatuses={bulkAvailableStatuses}
                     onStatusChange={handleBulkStatusChange}
                     isLoading={isBulkLoading}
+                    extraActions={bulkExtraActions}
+                    onExtraAction={handleBulkExtraAction}
                   />
                   <Button
                     variant="outline"
@@ -1754,6 +1995,8 @@ Estado: ${sale.status}
                   filters={filtersReprogramados}
                   onFiltersChange={setFiltersReprogramados}
                   showRegionFilter={true}
+                  showCourierFilter={true}
+                  availableCouriers={availableCouriers}
                 />
                 {renderTable(reprogramados, true, false)}
               </CardContent>
@@ -1779,6 +2022,8 @@ Estado: ${sale.status}
                     availableStatuses={bulkAvailableStatuses}
                     onStatusChange={handleBulkStatusChange}
                     isLoading={isBulkLoading}
+                    extraActions={bulkExtraActions}
+                    onExtraAction={handleBulkExtraAction}
                   />
                   <Button
                     variant="default"
@@ -1879,6 +2124,8 @@ Estado: ${sale.status}
                   showZoneFilter={true}
                   showRegionFilter={true}
                   showGuideFilter={true}
+                  showCourierFilter={true}
+                  availableCouriers={availableCouriers}
                 />
                 {renderTable(contactados, true, true)}
               </CardContent>
@@ -2159,6 +2406,8 @@ Estado: ${sale.status}
                     setPageAnulados(1);
                   }}
                   showRegionFilter={true}
+                  showCourierFilter={true}
+                  availableCouriers={availableCouriers}
                 />
                 {renderTable(anuladosPaginated, true, false)}
               </CardContent>
@@ -2191,6 +2440,7 @@ Estado: ${sale.status}
           selectedSaleForModal?.status === "ENTREGADO"
         }
         shippingGuide={selectedShippingGuide}
+        isOperaciones
       />
 
       {/* Modal de Observaciones */}
@@ -2309,6 +2559,34 @@ Estado: ${sale.status}
         defaultCourier={selectedSaleForGuide?.courier}
         onGuideUpdated={fetchOrders}
       />
+
+      <RescheduleDialog
+        open={rescheduleDialogSaleId !== null}
+        onOpenChange={(open) => {
+          if (!open) setRescheduleDialogSaleId(null);
+        }}
+        onConfirm={(date) => {
+          if (rescheduleDialogSaleId) {
+            handleIndividualReprogramar(rescheduleDialogSaleId, date);
+            setRescheduleDialogSaleId(null);
+          }
+        }}
+      />
+
+      {saleToReassign && (
+        <ReassignSellerModal
+          open={reassignSellerModalOpen}
+          onClose={() => {
+            setReassignSellerModalOpen(false);
+            setSaleToReassign(null);
+          }}
+          orderNumber={saleToReassign.orderNumber}
+          currentSellerName={saleToReassign.sellerName}
+          companyId={auth?.company?.id ?? ""}
+          onConfirm={handleReassignSeller}
+          isLoading={isReassigningLoading}
+        />
+      )}
     </div>
   );
 }

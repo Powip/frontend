@@ -124,58 +124,39 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
   };
 
   const updateLeadStatus = async (businessId?: string, password?: string) => {
-    try {
-      if (!token) return;
-      const supabase = await createClient();
-      const activationId = lead.id;
-      const leadId = lead.lead?.id || lead.lead_id || lead.id;
-      const businessName = formData.businessName || lead.business_name || lead.lead?.business_name;
-      
-      // 1. Actualizar tabla lead_activations con la contraseña temporal y marcar como alta_completa
-      await supabase
-        .from('lead_activations')
-        .update({ 
-          activation_status: 'alta_completa',
-          activation_date: new Date().toISOString(),
-          temp_password: password || 'No disponible'
-        })
-        .eq('id', activationId);
-      
-      // 2. Crear registro en lead_postventa para visibilidad en la tab de Seguimiento
-      await supabase
-        .from('lead_postventa')
-        .upsert({
-          lead_id: leadId,
-          activation_id: activationId,
-          business_name: businessName,
-          activation_date: new Date().toISOString(),
-          client_status: 'onboarding',
-          assigned_to: lead.assigned_to || auth?.user?.id
-        }, { onConflict: 'lead_id' });
+    if (!token) return;
+    const activationId = lead.id;
+    const leadId = lead.lead?.id || lead.lead_id || lead.id;
 
-      // 3. Actualizar lead principal a estado 'cerrado'
-      await fetch(`/api/superadmin/leads/${leadId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ 
-          pipeline_stage: 'cerrado',
-          business_id: businessId 
-        })
-      });
+    // 1+2+4: PATCH activation → server route handles postventa insert and activity log
+    // Uses service_role key (admin client), avoids RLS and the upsert onConflict 400s
+    const activationRes = await fetch(`/api/superadmin/leads/activations/${activationId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        activation_status: 'alta_completa',
+        activation_date: new Date().toISOString(),
+        temp_password: password || 'No disponible',
+        business_id: businessId,
+      }),
+    });
 
-      // 4. Log Final Activity as alta_generada
-      await supabase.from('lead_activities').upsert({
-        lead_id: leadId,
-        activity_type: 'alta_generada',
-        description: `Alta generada exitosamente para ${businessName}. Business ID: ${businessId}`,
-        performed_by: auth?.user?.id
-      }, { onConflict: 'lead_id' });
+    if (!activationRes.ok) {
+      const err = await activationRes.json().catch(() => ({}));
+      throw new Error(`Error al actualizar activación: ${err?.error || activationRes.statusText}`);
+    }
 
-    } catch(e) {
-      console.error("Error updating lead status:", e);
+    // 3. Actualizar lead principal a estado 'cerrado'
+    const leadRes = await fetch(`/api/superadmin/leads/${leadId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ pipeline_stage: 'cerrado', business_id: businessId }),
+    });
+
+    if (!leadRes.ok) {
+      const err = await leadRes.json().catch(() => ({}));
+      // Non-fatal: log warning but don't abort — activation already saved
+      console.warn('[updateLeadStatus] No se pudo cerrar el lead:', err?.error || leadRes.statusText);
     }
   };
 
@@ -274,26 +255,27 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
       
       if (!createdBusinessId) throw new Error("Error al crear la empresa: respuesta sin ID");
 
-      // EXIT MODAL IMMEDIATELY
-      // Side effects in background
-      await initOnboarding(createdBusinessId);
-      await updateLeadStatus(createdBusinessId, generatedPassword);
-      
-      // Notify success
+      // Platform entities created — show success immediately
       toast.success("¡Alta completada! Consulta las credenciales en Postventa.");
 
-      // Clean Refresh and Close
+      // CRM side-effects: non-critical — don't roll back platform entities if these fail
+      try {
+        await initOnboarding(createdBusinessId);
+        await updateLeadStatus(createdBusinessId, generatedPassword);
+      } catch (crmErr: any) {
+        console.error("[LeadActivation] Error actualizando estado CRM:", crmErr);
+        toast.warning(`Alta creada, pero el estado del lead no se pudo actualizar: ${crmErr.message}`);
+      }
+
       startTransition(() => {
         router.refresh();
-        // Cerramos el modal solo después de iniciar la transición
         onClose();
       });
 
     } catch (error: any) {
       console.error("[LeadActivation] Error en flujo de alta:", error);
-      setIsLoading(false);
-      
-      // ROLLBACK LOGIC
+
+      // ROLLBACK platform entities (user/subscription/company creation failed)
       try {
         if (createdBusinessId) await deleteCompany(auth.accessToken, createdBusinessId);
         if (createdSubscriptionId) await cancelSubscription(auth.accessToken, createdSubscriptionId);

@@ -4,9 +4,9 @@ import { createClient } from '@supabase/supabase-js';
 export async function POST(request: Request) {
   try {
     const authHeader = request.headers.get('X-Webhook-Secret');
-    const SECRET = "powip_sheet_sync_2026"; 
+    const secret = process.env.WEBHOOK_SECRET_GOOGLE_FORMS;
 
-    if (authHeader !== SECRET) {
+    if (!secret || authHeader !== secret) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

@@ -123,8 +123,8 @@ export default function ShalomConfigPage() {
   if (loading) {
     return (
       <div className="max-w-xl mx-auto py-8 px-4">
-        <div className="h-8 w-48 bg-gray-100 rounded animate-pulse mb-4" />
-        <div className="h-32 bg-gray-50 rounded-xl animate-pulse" />
+        <div className="h-8 w-48 bg-gray-100 dark:bg-slate-700 rounded animate-pulse mb-4" />
+        <div className="h-32 bg-gray-50 dark:bg-slate-800 rounded-xl animate-pulse" />
       </div>
     );
   }
@@ -133,8 +133,8 @@ export default function ShalomConfigPage() {
     <div className="max-w-xl mx-auto py-8 px-4 space-y-4">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Integración Shalom</h1>
-        <p className="text-sm text-gray-500 mt-1">
+        <h1 className="text-2xl font-bold dark:text-slate-100">Integración Shalom</h1>
+        <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
           Conectá tu cuenta Shalom Pro para registrar envíos directamente desde
           las guías de despacho.
         </p>
@@ -142,12 +142,12 @@ export default function ShalomConfigPage() {
 
       {/* Estado CONECTADO */}
       {isConnected && config ? (
-        <div className="bg-white border border-green-200 rounded-xl p-5 space-y-4">
+        <div className="bg-white dark:bg-slate-800 border border-green-200 dark:border-emerald-800 rounded-xl p-5 space-y-4">
           {/* Badge conectado */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+            <div className="w-10 h-10 rounded-full bg-green-100 dark:bg-emerald-900/40 flex items-center justify-center flex-shrink-0">
               <svg
-                className="w-5 h-5 text-green-600"
+                className="w-5 h-5 text-green-600 dark:text-emerald-400"
                 fill="none"
                 viewBox="0 0 24 24"
                 stroke="currentColor"
@@ -161,33 +161,33 @@ export default function ShalomConfigPage() {
               </svg>
             </div>
             <div>
-              <p className="text-sm font-semibold text-green-800">
+              <p className="text-sm font-semibold text-green-800 dark:text-emerald-400">
                 Cuenta conectada
               </p>
-              <p className="text-xs text-gray-500">{config.username}</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">{config.username}</p>
             </div>
           </div>
 
-          <p className="text-xs text-gray-500 border-t pt-3">
+          <p className="text-xs text-gray-500 dark:text-slate-400 border-t border-gray-200 dark:border-slate-700 pt-3">
             Ya podés enviar guías de despacho a Shalom Pro directamente desde
             el detalle de cada guía.
           </p>
 
           <button
             onClick={handleDisconnect}
-            className="text-xs text-gray-400 hover:text-red-500 transition"
+            className="text-xs text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition"
           >
             Reconectar con otra cuenta →
           </button>
         </div>
       ) : (
         /* Estado NO CONECTADO — formulario */
-        <div className="bg-white border rounded-xl p-5 space-y-4">
+        <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl p-5 space-y-4">
           {connecting ? (
             /* Loading durante la conexión */
             <div className="py-6 flex flex-col items-center gap-4">
               <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm font-medium text-gray-700">
+              <p className="text-sm font-medium text-gray-700 dark:text-slate-200">
                 {connectStep ? stepLabel[connectStep] : "Conectando..."}
               </p>
               <div className="flex gap-2">
@@ -203,7 +203,7 @@ export default function ShalomConfigPage() {
                           step === "saving") ||
                         connectStep === "done"
                           ? "bg-blue-500"
-                          : "bg-gray-200"
+                          : "bg-gray-200 dark:bg-slate-700"
                       }`}
                     />
                   )
@@ -212,18 +212,18 @@ export default function ShalomConfigPage() {
             </div>
           ) : (
             <form onSubmit={handleConnect} className="space-y-4">
-              <h2 className="text-sm font-semibold">
+              <h2 className="text-sm font-semibold dark:text-slate-100">
                 Credenciales Shalom Pro
               </h2>
 
               {error && (
-                <div className="bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-xs text-red-700">
+                <div className="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2 text-xs text-red-700 dark:text-red-400">
                   {error}
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">
+                <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-slate-300">
                   Usuario (email)
                 </label>
                 <input
@@ -232,12 +232,12 @@ export default function ShalomConfigPage() {
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="usuario@empresa.com"
                   required
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1 text-gray-600">
+                <label className="block text-xs font-medium mb-1 text-gray-600 dark:text-slate-300">
                   Contraseña
                 </label>
                 <input
@@ -246,7 +246,7 @@ export default function ShalomConfigPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Contraseña de Shalom Pro"
                   required
-                  className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 placeholder:text-gray-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -258,7 +258,7 @@ export default function ShalomConfigPage() {
                 Conectar con Shalom Pro
               </button>
 
-              <p className="text-xs text-gray-400 text-center">
+              <p className="text-xs text-gray-400 dark:text-slate-500 text-center">
                 Usá las credenciales con las que te logueas en{" "}
                 <span className="font-medium">cliente.shalom.pe</span>
               </p>

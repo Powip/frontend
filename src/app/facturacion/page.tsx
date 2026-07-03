@@ -41,6 +41,7 @@ interface Sale {
   grandTotal: number;
   status: string;
   created_at: string;
+  externalData?: any;
   customer: {
     fullName: string;
     documentNumber?: string;
@@ -235,6 +236,7 @@ export default function FacturacionPage() {
                 <TableRow>
                   <TableHead className="font-bold">Fecha</TableHead>
                   <TableHead className="font-bold">Venta / ID</TableHead>
+                  <TableHead className="font-bold">ID Externo</TableHead>
                   <TableHead className="font-bold">Cliente</TableHead>
                   <TableHead className="font-bold text-right">Total</TableHead>
                   <TableHead className="font-bold text-center">Estado SUNAT</TableHead>
@@ -259,6 +261,9 @@ export default function FacturacionPage() {
                         <TableCell>
                           <div className="font-medium">{sale.orderNumber}</div>
                           <div className="text-[10px] text-muted-foreground font-mono">{sale.id.substring(0, 8)}...</div>
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {sale.externalData?.id || "-"}
                         </TableCell>
                         <TableCell>
                           <div className="font-medium">{sale.customer.fullName}</div>

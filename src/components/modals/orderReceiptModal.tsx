@@ -31,15 +31,22 @@ export default function OrderReceiptModal({
   );
 
   useEffect(() => {
-    if (!open || !orderId) return;
+    if (!open) {
+      setReceipt(null);
+      return;
+    }
+    if (!orderId) {
+      setReceipt(null);
+      return;
+    }
 
     const fetchReceipt = async () => {
+      setReceipt(null);
+      setLoading(true);
       try {
-        setLoading(true);
         const res = await axios.get(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
         );
-
         setReceipt(res.data);
       } catch (err) {
         console.error("Error fetching receipt", err);

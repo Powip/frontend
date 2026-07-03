@@ -1,6 +1,6 @@
 // Permissions configuration for route-based access control
 
-export const SUPERADMIN_EMAILS = [
+export const SUPERADMIN_EMAILS: string[] = [
   "octatoledo7@gmail.com",
   "joel@aranni.com.pe",
   "maurimartine01@gmail.com",
@@ -56,6 +56,14 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   // Configuración: accesible para todos los autenticados.
   // Las sub-páginas (tiendas, etc.) manejan su propio guard por rol.
   "/configuracion": [],
+  // Administración financiera: admin/owner only (guardado en sidebar)
+  "/administracion/resumen": [],
+  "/administracion/gastos": [],
+  "/administracion/utilidad": [],
+  "/administracion/canales": [],
+  "/administracion/equilibrio": [],
+  "/administracion/margen-producto": [],
+  "/superadmin": [],
 };
 
 // Map sidebar items to required permissions

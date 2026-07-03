@@ -81,6 +81,30 @@ const PRESETS: Preset[] = [
       to: endOfYear(new Date()),
     }),
   },
+  {
+    label: "Q1 (Ene–Mar)",
+    getValue: () => ({ from: new Date(new Date().getFullYear(), 0, 1), to: new Date(new Date().getFullYear(), 2, 31) }),
+  },
+  {
+    label: "Q2 (Abr–Jun)",
+    getValue: () => ({ from: new Date(new Date().getFullYear(), 3, 1), to: new Date(new Date().getFullYear(), 5, 30) }),
+  },
+  {
+    label: "Q3 (Jul–Sep)",
+    getValue: () => ({ from: new Date(new Date().getFullYear(), 6, 1), to: new Date(new Date().getFullYear(), 8, 30) }),
+  },
+  {
+    label: "Q4 (Oct–Dic)",
+    getValue: () => ({ from: new Date(new Date().getFullYear(), 9, 1), to: new Date(new Date().getFullYear(), 11, 31) }),
+  },
+  {
+    label: "S1 (Ene–Jun)",
+    getValue: () => ({ from: new Date(new Date().getFullYear(), 0, 1), to: new Date(new Date().getFullYear(), 5, 30) }),
+  },
+  {
+    label: "S2 (Jul–Dic)",
+    getValue: () => ({ from: new Date(new Date().getFullYear(), 6, 1), to: new Date(new Date().getFullYear(), 11, 31) }),
+  },
 ];
 
 export const PeriodSelector: React.FC<PeriodSelectorProps> = ({

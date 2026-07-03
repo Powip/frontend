@@ -32,6 +32,18 @@ export const getOrders = async () => {
   return data;
 };
 
+// Obtener todas las órdenes de una compañía (usado por módulo Administración)
+export const getOrdersByCompany = async (
+  companyId: string,
+  fromDate?: string,
+  toDate?: string,
+) => {
+  const { data } = await axios.get(`${API.ventas}/order-header/company/${companyId}`, {
+    params: { fromDate, toDate },
+  });
+  return data;
+};
+
 // Obtener una orden por ID
 export const getOrderById = async (orderId: string) => {
   const { data } = await axios.get(`${API.ventas}/order-header/${orderId}`);

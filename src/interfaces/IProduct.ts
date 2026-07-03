@@ -62,12 +62,13 @@ export interface InventoryItemForSale {
   variantId: string;
   productName: string;
   sku: string;
+  companySku?: string | null;
   price: number;
   priceBase?: number;
   priceVta?: number;
   availableStock: number;
   physicalStock: number;
-  reservedStock: number;
+  reservedStock?: number;
   min_stock?: number;
   attributes?: Record<string, string>;
   imageUrl?: string | null;

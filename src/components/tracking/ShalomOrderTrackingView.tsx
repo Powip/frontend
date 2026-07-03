@@ -17,6 +17,7 @@ import {
   ClipboardList,
   Link2,
   FileSpreadsheet,
+  AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -42,6 +43,8 @@ import ShippingNotesModal from "@/components/modals/ShippingNotesModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import ShalomPremiumTrackingModal from "@/components/modals/ShalomPremiumTrackingModal";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
+import { trackShalomShipment } from "@/services/shalomService";
+import { isShalomCourier } from "@/utils/courierNormalizer";
 
 interface ShippingGuide {
   id: string;
@@ -64,6 +67,48 @@ const calculatePendingPayment = (order: OrderHeader): number => {
     .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
   return grandTotal - totalPaid;
 };
+
+const SHALOM_STEPS = [
+  { key: "registrado", label: "Registrado" },
+  { key: "origen",     label: "En Origen" },
+  { key: "transito",   label: "En Tránsito" },
+  { key: "destino",    label: "En Destino" },
+  { key: "reparto",    label: "En Reparto" },
+  { key: "entregado",  label: "Entregado" },
+] as const;
+
+const SHALOM_STEP_STYLES: Record<string, string> = {
+  "Registrado":  "bg-green-50 text-green-700 border-green-200",
+  "En Origen":   "bg-teal-50 text-teal-700 border-teal-200",
+  "En Tránsito": "bg-blue-50 text-blue-700 border-blue-200",
+  "En Destino":  "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "En Reparto":  "bg-violet-50 text-violet-700 border-violet-200",
+  "Entregado":   "bg-emerald-50 text-emerald-700 border-emerald-200",
+};
+
+const SHALOM_STEP_ICONS: Record<string, string> = {
+  "Registrado":  "✅",
+  "En Origen":   "📦",
+  "En Tránsito": "🚚",
+  "En Destino":  "📍",
+  "En Reparto":  "🛵",
+  "Entregado":   "🎉",
+};
+
+function getLatestShalomStep(rawResponse: Record<string, unknown>): string | null {
+  let payload: Record<string, unknown> = rawResponse;
+  for (let i = 0; i < 3; i++) {
+    if (payload?.statuses) break;
+    if (payload?.data) { payload = payload.data as Record<string, unknown>; continue; }
+    break;
+  }
+  const statuses = (payload?.statuses as { data?: Record<string, unknown> } | undefined)?.data;
+  if (!statuses) return null;
+  for (let i = SHALOM_STEPS.length - 1; i >= 0; i--) {
+    if (statuses[SHALOM_STEPS[i].key]) return SHALOM_STEPS[i].label;
+  }
+  return null;
+}
 
 export default function ShalomOrderTrackingView() {
   const { auth, selectedStoreId } = useAuth();
@@ -109,6 +154,9 @@ export default function ShalomOrderTrackingView() {
   const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
   const [selectedEnvio, setSelectedEnvio] = useState<EnvioItem | null>(null);
 
+  const [liveStatuses, setLiveStatuses] = useState<Record<string, string>>({});
+  const [loadingLiveStatuses, setLoadingLiveStatuses] = useState(false);
+
   const fetchShalomOrders = useCallback(async () => {
     if (!selectedStoreId) return;
     setLoading(true);
@@ -120,9 +168,9 @@ export default function ShalomOrderTrackingView() {
       const shalomOnly = ordersRes.data
         .filter(
           (o) =>
-            (o.courier === "Shalom" || o.shippingOffice === "Shalom") &&
+            (isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice)) &&
             o.shalomStatus !== null &&
-            o.shalomStatus !== undefined, // ⬅️ Solo con status
+            o.shalomStatus !== undefined,
         )
         .sort(
           (a, b) =>
@@ -155,9 +203,46 @@ export default function ShalomOrderTrackingView() {
     }
   }, [selectedStoreId]);
 
+  const fetchLiveStatuses = useCallback(async (orders: EnvioItem[]) => {
+    if (!auth?.accessToken || !auth?.company?.id) return;
+    const eligible = orders.filter(
+      ({ order }) => order.externalTrackingNumber && order.shippingCode,
+    );
+    if (!eligible.length) return;
+
+    setLoadingLiveStatuses(true);
+    const results = await Promise.allSettled(
+      eligible.map(async ({ order }) => {
+        const raw = await trackShalomShipment(
+          auth.accessToken,
+          auth.company!.id,
+          order.externalTrackingNumber!,
+          order.shippingCode!,
+        );
+        const label = getLatestShalomStep(raw);
+        return { orderId: order.id, label };
+      }),
+    );
+
+    const updates: Record<string, string> = {};
+    results.forEach((result) => {
+      if (result.status === "fulfilled" && result.value.label) {
+        updates[result.value.orderId] = result.value.label;
+      }
+    });
+    setLiveStatuses(updates);
+    setLoadingLiveStatuses(false);
+  }, [auth?.accessToken, auth?.company?.id]);
+
   useEffect(() => {
     fetchShalomOrders();
   }, [fetchShalomOrders]);
+
+  useEffect(() => {
+    if (shalomOrders.length > 0) {
+      fetchLiveStatuses(shalomOrders);
+    }
+  }, [shalomOrders, fetchLiveStatuses]);
 
   const filteredOrders = useMemo(() => {
     return shalomOrders.filter(({ order, guide }) => {
@@ -324,6 +409,8 @@ export default function ShalomOrderTrackingView() {
       EXITOSO: "Registrado",
       FALLIDO: "Fallido",
       EN_TRANSITO: "En tránsito",
+      EN_DESTINO: "En destino",
+      EN_REPARTO: "En reparto",
       ENTREGADO: "Entregado",
     };
 
@@ -406,6 +493,8 @@ export default function ShalomOrderTrackingView() {
             <option value="PENDIENTE">✅ Registrado</option>
             <option value="FALLIDO">❌ Fallido</option>
             <option value="EN_TRANSITO">🚚 En tránsito</option>
+            <option value="EN_DESTINO">📍 En destino</option>
+            <option value="EN_REPARTO">🛵 En reparto</option>
             <option value="ENTREGADO">📦 Entregado</option>
           </select>
         </div>
@@ -427,16 +516,31 @@ export default function ShalomOrderTrackingView() {
         <span className="text-xs text-muted-foreground">
           {filteredOrders.length} registro{filteredOrders.length !== 1 ? "s" : ""}
         </span>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleExportExcel}
-          disabled={filteredOrders.length === 0}
-          className="gap-2 text-green-700 border-green-200 hover:bg-green-50"
-        >
-          <FileSpreadsheet className="h-4 w-4" />
-          Exportar Excel
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              fetchShalomOrders();
+              fetchLiveStatuses(shalomOrders);
+            }}
+            disabled={loading || loadingLiveStatuses}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${loadingLiveStatuses ? "animate-spin" : ""}`} />
+            Actualizar estados
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={handleExportExcel}
+            disabled={filteredOrders.length === 0}
+            className="gap-2 text-green-700 border-green-200 hover:bg-green-50"
+          >
+            <FileSpreadsheet className="h-4 w-4" />
+            Exportar Excel
+          </Button>
+        </div>
       </div>
 
       {selectedSaleIds.size > 0 && (
@@ -462,6 +566,29 @@ export default function ShalomOrderTrackingView() {
           </div>
         </div>
       )}
+
+      {(() => {
+        const failedCount = shalomOrders.filter(
+          ({ order }) => order.shalomStatus === "FALLIDO",
+        ).length;
+        if (failedCount === 0 || guideStatusFilter === "FALLIDO") return null;
+        return (
+          <div role="alert" className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
+            <span className="flex items-center gap-2 text-sm font-medium text-red-800">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              {failedCount} despacho{failedCount !== 1 ? "s" : ""} fallido{failedCount !== 1 ? "s" : ""} requieren atención
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-300 text-red-700 hover:bg-red-100"
+              onClick={() => setGuideStatusFilter("FALLIDO")}
+            >
+              Ver fallidos
+            </Button>
+          </div>
+        );
+      })()}
 
       <div className="border rounded-xl overflow-hidden bg-background">
         <Table>
@@ -589,68 +716,102 @@ export default function ShalomOrderTrackingView() {
                     </TableCell>
                     <TableCell className="text-center">
                       {(() => {
-                        const status = order.shalomStatus;
+                        const liveLabel = liveStatuses[order.id];
 
+                        if (liveLabel) {
+                          const style = SHALOM_STEP_STYLES[liveLabel] ?? "bg-amber-50 text-amber-700 border-amber-200";
+                          const icon = SHALOM_STEP_ICONS[liveLabel] ?? "•";
+                          return (
+                            <Badge variant="outline" className={`text-[10px] ${style}`}>
+                              {icon} {liveLabel}
+                            </Badge>
+                          );
+                        }
+
+                        if (loadingLiveStatuses && order.externalTrackingNumber && order.shippingCode) {
+                          return (
+                            <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 text-[10px]">
+                              ⏳ Cargando...
+                            </Badge>
+                          );
+                        }
+
+                        const status = order.shalomStatus;
                         if (!status) {
                           return (
-                            <Badge
-                              variant="outline"
-                              className="bg-gray-50 text-gray-600 border-gray-300"
-                            >
+                            <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-300 text-[10px]">
                               Sin registrar
                             </Badge>
                           );
                         }
-
                         if (status === "PENDIENTE" || status === "EXITOSO") {
                           return (
-                            <Badge
-                              variant="outline"
-                              className="bg-green-50 text-green-700 border-green-200"
-                            >
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-[10px]">
                               ✅ Registrado
                             </Badge>
                           );
                         }
-
                         if (status === "FALLIDO") {
                           return (
-                            <Badge
-                              variant="outline"
-                              className="bg-red-50 text-red-700 border-red-200"
-                            >
-                              ❌ Fallido
-                            </Badge>
+                            <div className="flex flex-col items-center gap-0.5">
+                              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 text-[10px]">
+                                ❌ Fallido
+                              </Badge>
+                              {order.shalomError && (
+                                <span
+                                  className="text-[9px] text-red-500 max-w-[140px] truncate"
+                                  title={order.shalomError}
+                                >
+                                  {order.shalomError}
+                                </span>
+                              )}
+                            </div>
                           );
                         }
-
                         if (status === "EN_TRANSITO") {
                           return (
-                            <Badge
-                              variant="outline"
-                              className="bg-blue-50 text-blue-700 border-blue-200"
-                            >
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-[10px]">
                               🚚 En tránsito
                             </Badge>
                           );
                         }
-
+                        if (status === "EN_DESTINO") {
+                          return (
+                            <Badge variant="outline" className="bg-indigo-50 text-indigo-700 border-indigo-200 text-[10px]">
+                              📍 En destino
+                            </Badge>
+                          );
+                        }
+                        if (status === "EN_REPARTO") {
+                          return (
+                            <Badge variant="outline" className="bg-violet-50 text-violet-700 border-violet-200 text-[10px]">
+                              🛵 En reparto
+                            </Badge>
+                          );
+                        }
                         if (status === "ENTREGADO") {
                           return (
-                            <Badge
-                              variant="outline"
-                              className="bg-emerald-50 text-emerald-700 border-emerald-200"
-                            >
+                            <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
                               📦 Entregado
                             </Badge>
                           );
                         }
-
+                        if (status === "DEVUELTO") {
+                          return (
+                            <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-[10px]">
+                              🔄 Devuelto
+                            </Badge>
+                          );
+                        }
+                        if (status === "CANCELADO") {
+                          return (
+                            <Badge variant="outline" className="bg-gray-50 text-gray-500 border-gray-300 text-[10px]">
+                              ✖ Cancelado
+                            </Badge>
+                          );
+                        }
                         return (
-                          <Badge
-                            variant="outline"
-                            className="bg-amber-50 text-amber-700 border-amber-200"
-                          >
+                          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">
                             {status}
                           </Badge>
                         );

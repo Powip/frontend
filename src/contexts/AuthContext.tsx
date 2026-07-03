@@ -13,6 +13,7 @@ import { fetchUserCompany, fetchCompanyById } from "@/services/companyService";
 import { fetchUserSubscription } from "@/services/fetchUserSubscription";
 import axios from "axios";
 import { isSuperadmin } from "@/config/permissions.config";
+import { tokenStore } from "@/lib/tokenStore";
 
 // Configurar axios para enviar cookies automáticamente (httpOnly cookies)
 axios.defaults.withCredentials = true;
@@ -52,6 +53,8 @@ interface Company {
   logoUrl?: string; // URL del logo (para futuro)
   sales_channels?: string[];
   closing_channels?: string[];
+  iva?: number;
+  powipCommissionRate?: number;
 }
 
 interface AuthData {
@@ -170,6 +173,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
     initAuth();
   }, [silentRefresh]);
+
+  // ---- TOKEN STORE: Sincronizar token para uso en servicios HTTP ----
+  useEffect(() => {
+    tokenStore.set(auth?.accessToken ?? null);
+  }, [auth?.accessToken]);
 
   // ---- INVENTORIES ----
   const fetchInventories = useCallback(async () => {

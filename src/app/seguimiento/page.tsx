@@ -51,6 +51,7 @@ import ShippingNotesModal from "@/components/modals/ShippingNotesModal";
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SourceBadge } from "@/components/shared/SourceBadge";
+import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 
 import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
@@ -131,6 +132,7 @@ const COURIERS = [
   "Olva Courier",
   "Marvisur",
   "Flores",
+  "Aliclik",
 ];
 
 const GUIDE_STATUSES = [
@@ -1297,6 +1299,10 @@ export default function SeguimientoPage() {
                                     </SelectItem>
                                   </SelectContent>
                                 </Select>
+                                <AliclikStatusBadge
+                                  aliclikDispatchStatus={order.aliclikDispatchStatus}
+                                  aliclikSyncedAt={order.aliclikSyncedAt}
+                                />
                               </TableCell>
                               {/* Nro Tracking */}
                               <TableCell className="w-[120px] min-w-[120px]">
@@ -1949,9 +1955,15 @@ export default function SeguimientoPage() {
                                 <SourceBadge source={order.externalSource} />
                               </TableCell>
                               <TableCell className="w-[100px] min-w-[100px]">
-                                <Badge className="text-[10px]">
-                                  {order.status}
-                                </Badge>
+                                <div className="flex flex-col gap-1">
+                                  <Badge className="text-[10px]">
+                                    {order.status}
+                                  </Badge>
+                                  <AliclikStatusBadge
+                                    aliclikDispatchStatus={order.aliclikDispatchStatus}
+                                    aliclikSyncedAt={order.aliclikSyncedAt}
+                                  />
+                                </div>
                               </TableCell>
                               <TableCell className="w-[100px] min-w-[100px]">
                                 {order.salesRegion}

@@ -34,6 +34,19 @@ import { useAuth } from "@/contexts/AuthContext";
 import { API } from "@/lib/api";
 import { getUserProfile } from "@/services/userService";
 
+// Sentinel para representar el valor vacío "" que exige la API de Shalom.
+// Radix Select no admite value="" en SelectItem — usar este sentinel y mapear al enviar.
+const DECLARACION_JURADA_NINGUNA = "__ninguna__";
+
+// Lista exacta del enum del OpenAPI de Shalom. NO agregar valores fuera de este set.
+const DECLARACION_JURADA_OPTIONS = [
+  { value: DECLARACION_JURADA_NINGUNA, label: "Ninguna" },
+  { value: "Artículos de uso personal", label: "Artículos de uso personal" },
+  { value: "Documentos", label: "Documentos" },
+  { value: "Ropa", label: "Ropa" },
+  { value: "Electrodomésticos", label: "Electrodomésticos" },
+] as const;
+
 const PACKAGE_TYPES = [
   { label: "SOBRE (5x30x20 cm)", value: "SOBRE", h: 5, w: 30, l: 20 },
   {
@@ -69,6 +82,41 @@ interface Agency {
 interface District {
   id_distrito: string;
   nombre_distrito: string;
+}
+
+interface ShipmentEntry {
+  recipientDoc: string;
+  recipientPhone: string;
+  content: string;
+  destinationSearch: string;
+  destinationAgencyId: string;
+  destinationAgencies: Agency[];
+  loadingAgencies: boolean;
+  securityCode: string;
+  aereo: boolean;
+  packageDetails: {
+    quantity: number;
+    weight: number;
+    height: number;
+    width: number;
+    length: number;
+  };
+}
+
+interface ShalomRegisteredShipment {
+  trackingNumber?: string;
+  guideNumber?: string;
+  numero_guia?: string;
+  recipientName?: string;
+  shalomChangedToAereo?: boolean;
+  aereoVerificado?: boolean;
+}
+
+interface ShalomShipmentError {
+  error: string;
+  index?: number;
+  shipmentInfo?: { recipientDoc?: string; recipientName?: string };
+  orderNumber?: string | null;
 }
 
 interface AgencySelectorProps {
@@ -250,20 +298,25 @@ export default function SendToShalomModal({
   const [originSearch, setOriginSearch] = useState<string>("");
   const [originAgency, setOriginAgency] = useState<string>("");
   const [globalSecurityCode, setGlobalSecurityCode] = useState<string>("");
+  const [declaracionJurada, setDeclaracionJurada] = useState<string>(DECLARACION_JURADA_NINGUNA);
   const [loadingOrigins, setLoadingOrigins] = useState(false);
   const [quoting, setQuoting] = useState(false);
   const [sending, setSending] = useState(false);
   const [totalQuoted, setTotalQuoted] = useState<number | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
-  const [shipmentsData, setShipmentsData] = useState<Record<string, any>>({});
+  const [shipmentsData, setShipmentsData] = useState<Record<string, ShipmentEntry>>({});
 
   const [successSummary, setSuccessSummary] = useState<{
     total: number;
     successful: number;
     failed: number;
-    errors: any[];
+    errors: ShalomShipmentError[];
   } | null>(null);
+
+  const [registeredShipments, setRegisteredShipments] = useState<ShalomRegisteredShipment[]>([]);
+  const [aereoChangedShipments, setAereoChangedShipments] = useState<ShalomRegisteredShipment[]>([]);
+  const [aereoUnverifiedShipments, setAereoUnverifiedShipments] = useState<ShalomRegisteredShipment[]>([]);
 
   const fetchAgencies = useCallback(
     async (q: string, type: "origin" | string) => {
@@ -283,13 +336,15 @@ export default function SendToShalomModal({
 
         if (res.data.success) {
           // Map from results if they differ in structure
-          const agencies = (res.data.data || []).map((a: any) => ({
-            id_agencia: a.ter_id || a.id || a.id_agencia,
-            nombre_agencia: a.nombre || a.name || a.nombre_agencia,
-            api_name: a.lugar_over || a.nombre || a.name,
-            direccion: a.lugar || a.direccion || "",
-            ter_aereo: a.ter_aereo ?? 0,
-          }));
+          const agencies = (res.data.data || []).map(
+            (a: Record<string, unknown>): Agency => ({
+              id_agencia: String(a.ter_id ?? a.id ?? a.id_agencia ?? ""),
+              nombre_agencia: String(a.nombre ?? a.name ?? a.nombre_agencia ?? ""),
+              api_name: String(a.lugar_over ?? a.nombre ?? a.name ?? ""),
+              direccion: String(a.lugar ?? a.direccion ?? ""),
+              ter_aereo: typeof a.ter_aereo === "number" ? a.ter_aereo : 0,
+            }),
+          );
 
           if (type === "origin") {
             setOriginAgencies(agencies);
@@ -324,8 +379,12 @@ export default function SendToShalomModal({
 
     setIsSuccess(false);
     setSuccessSummary(null);
+    setRegisteredShipments([]);
+    setAereoChangedShipments([]);
+    setAereoUnverifiedShipments([]);
     setTotalQuoted(null);
     setGlobalSecurityCode("");
+    setDeclaracionJurada(DECLARACION_JURADA_NINGUNA);
 
     // Pre-fill origin: fetch perfil completo del usuario para obtener district/province
     const userId = auth?.user?.id;
@@ -339,7 +398,7 @@ export default function SendToShalomModal({
       });
     }
 
-    const initialData: Record<string, any> = {};
+    const initialData: Record<string, ShipmentEntry> = {};
     orders.forEach((order) => {
       const destSearch =
         order.customer?.district || order.customer?.city || order.city || "";
@@ -353,6 +412,7 @@ export default function SendToShalomModal({
         destinationAgencies: [],
         loadingAgencies: false,
         securityCode: "",
+        aereo: false,
         packageDetails: {
           quantity: 1,
           weight: 1,
@@ -380,20 +440,24 @@ export default function SendToShalomModal({
     });
   }, [globalSecurityCode, orders]);
 
-  const updateShipmentField = (orderId: string, field: string, value: any) => {
+  const updateShipmentField = (
+    orderId: string,
+    field: string,
+    value: string | boolean | number | Agency[],
+  ) => {
     setShipmentsData((prev) => {
-      const current = prev[orderId] || {};
-      const newShipment = { ...current, [field]: value };
+      const current = prev[orderId] ?? ({} as ShipmentEntry);
+      const newShipment: ShipmentEntry = { ...current, [field]: value } as ShipmentEntry;
 
       // If choosing a package type, sync dimensions
       if (field === "content") {
         const pkg = PACKAGE_TYPES.find((p) => p.value === value);
         if (pkg && pkg.h) {
           newShipment.packageDetails = {
-            ...(current.packageDetails || {}),
+            ...(current.packageDetails ?? {}),
             height: pkg.h,
-            width: pkg.w,
-            length: pkg.l,
+            width: pkg.w ?? 0,
+            length: pkg.l ?? 0,
           };
         }
       }
@@ -404,12 +468,12 @@ export default function SendToShalomModal({
       };
     });
 
-    if (field === "destinationSearch" && value.length >= 3) {
+    if (field === "destinationSearch" && typeof value === "string" && value.length >= 3) {
       fetchAgencies(value, orderId);
     }
   };
 
-  const updatePackageDetail = (orderId: string, field: string, value: any) => {
+  const updatePackageDetail = (orderId: string, field: string, value: number) => {
     setShipmentsData((prev) => ({
       ...prev,
       [orderId]: {
@@ -464,14 +528,14 @@ export default function SendToShalomModal({
 
       const orderDestinations: Record<string, string> = {};
       const orderDestinationNames: Record<string, string> = {};
-      const packageDetails: Record<string, any> = {};
+      const packageDetails: Record<string, ShipmentEntry["packageDetails"] & { content: string; recipientDoc: string; recipientPhone: string; securityCode: string; aereo: boolean }> = {};
 
       orders.forEach((order) => {
         const data = shipmentsData[order.id];
         orderDestinations[order.id] = data.destinationAgencyId;
 
         const destAgencyObj = data.destinationAgencies?.find(
-          (a: any) => a.api_name === data.destinationAgencyId,
+          (a: Agency) => a.api_name === data.destinationAgencyId,
         );
         orderDestinationNames[order.id] =
           destAgencyObj?.api_name || data.destinationAgencyId;
@@ -486,6 +550,7 @@ export default function SendToShalomModal({
           recipientPhone: data.recipientPhone,
           quantity: data.packageDetails.quantity,
           securityCode: data.securityCode,
+          aereo: data.aereo ?? false,
         };
       });
 
@@ -500,6 +565,7 @@ export default function SendToShalomModal({
         securityCode: orders[0] ? shipmentsData[orders[0].id]?.securityCode : "",
         quotedAmount: totalQuoted || undefined,
         quotedCurrency: "PEN",
+        declaracionJurada: declaracionJurada === DECLARACION_JURADA_NINGUNA ? "" : declaracionJurada,
       };
 
       const res = await axios.post(
@@ -509,10 +575,10 @@ export default function SendToShalomModal({
 
       if (res.data.success) {
         const summary = res.data.summary || {};
-        const rawErrors = res.data.errors || [];
+        const rawErrors: ShalomShipmentError[] = res.data.errors || [];
 
         // Enriquecer errores con el nro de orden cruzando por recipientDoc (dni) o por index
-        const enrichedErrors = rawErrors.map((e: any) => {
+        const enrichedErrors: ShalomShipmentError[] = rawErrors.map((e) => {
           const byDoc = orders.find(
             (o) => o.customer?.dni && o.customer.dni === e.shipmentInfo?.recipientDoc,
           );
@@ -527,6 +593,29 @@ export default function SendToShalomModal({
           failed: summary.failed || 0,
           errors: enrichedErrors,
         });
+
+        const rawResults: ShalomRegisteredShipment[] = res.data.data || [];
+        setRegisteredShipments(rawResults);
+
+        const changedToAereo = rawResults.filter(
+          (r) => r.shalomChangedToAereo === true,
+        );
+        setAereoChangedShipments(changedToAereo);
+        if (changedToAereo.length > 0) {
+          toast.warning(
+            "Algunos envíos fueron cambiados a aéreo por Shalom, no por Powip.",
+          );
+        }
+
+        const unverified = rawResults.filter(
+          (r) => r.aereoVerificado === false && r.shalomChangedToAereo !== true,
+        );
+        setAereoUnverifiedShipments(unverified);
+        if (unverified.length > 0) {
+          toast.warning(
+            "No se pudo verificar la modalidad de algunos envíos. Revisá en Shalom Pro.",
+          );
+        }
 
         if (enrichedErrors.length > 0) {
           const firstError = enrichedErrors[0];
@@ -607,7 +696,7 @@ export default function SendToShalomModal({
       : orders.filter((o) => {
           // Excluir las que fallaron si podemos identificarlas por nombre
           const failedNames = (successSummary?.errors || []).map(
-            (e: any) => e.shipmentInfo?.recipientName,
+            (e) => e.shipmentInfo?.recipientName,
           );
           return !failedNames.includes(o.customer?.fullName);
         });
@@ -778,7 +867,7 @@ export default function SendToShalomModal({
                             </p>
                             <div className="text-xs text-amber-700 dark:text-amber-500 space-y-1 text-left max-h-32 overflow-y-auto">
                               {successSummary.errors.map(
-                                (e: any, idx: number) => (
+                                (e, idx: number) => (
                                   <div
                                     key={idx}
                                     className="flex items-start gap-2"
@@ -801,6 +890,68 @@ export default function SendToShalomModal({
                             </div>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {aereoChangedShipments.length > 0 && (
+                      <div className="mt-4 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg text-left w-full max-w-md">
+                        <p className="text-amber-800 dark:text-amber-400 font-bold text-sm mb-2">
+                          Aviso: modalidad cambiada por Shalom
+                        </p>
+                        <div className="text-xs text-amber-700 dark:text-amber-500 space-y-1 max-h-32 overflow-y-auto">
+                          {aereoChangedShipments.map((s, idx: number) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <span className="font-mono text-amber-600 dark:text-amber-400">•</span>
+                              <span>
+                                <span className="font-semibold font-mono">
+                                  {s.trackingNumber || s.guideNumber || s.numero_guia || `Envío ${idx + 1}`}
+                                </span>{" "}
+                                — Este envío fue cambiado a aéreo por Shalom, no por Powip.
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {aereoUnverifiedShipments.length > 0 && (
+                      <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-lg text-left w-full max-w-md">
+                        <p className="text-slate-700 dark:text-slate-300 font-bold text-sm mb-2">
+                          Modalidad no confirmada
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+                          No se pudo confirmar si estos envíos quedaron terrestres o aéreos. Verificá en Shalom Pro.
+                        </p>
+                        <div className="text-xs text-slate-600 dark:text-slate-400 space-y-1 max-h-32 overflow-y-auto">
+                          {aereoUnverifiedShipments.map((s, idx: number) => (
+                            <div key={idx} className="flex items-start gap-2">
+                              <span className="font-mono text-slate-400 dark:text-slate-500">•</span>
+                              <span className="font-mono font-semibold">
+                                {s.trackingNumber || s.guideNumber || s.numero_guia || `Envío ${idx + 1}`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {registeredShipments.length > 0 && (
+                      <div className="mt-2 p-3 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg text-left w-full max-w-md">
+                        <p className="text-xs font-bold text-green-700 dark:text-green-400 mb-2">
+                          Guías registradas en Shalom:
+                        </p>
+                        <div className="space-y-1 max-h-32 overflow-y-auto">
+                          {registeredShipments.map((s, i: number) => (
+                            <div key={i} className="flex justify-between items-center text-xs py-0.5 border-b border-green-100 dark:border-green-900 last:border-0">
+                              <span className="text-green-800 dark:text-green-300 truncate pr-2">
+                                {s.recipientName || orders[i]?.customer?.fullName || `Pedido ${i + 1}`}
+                              </span>
+                              <span className="font-mono font-bold text-green-700 dark:text-green-400 shrink-0">
+                                {s.trackingNumber || s.guideNumber || s.numero_guia || "—"}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 
@@ -857,55 +1008,90 @@ export default function SendToShalomModal({
 
                     {/* Código de seguridad global */}
                     <div className="border-t dark:border-slate-700 pt-5">
-                      <div className="flex items-center justify-between mb-2">
-                        <Label className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                          Código de seguridad{" "}
-                          <span className="text-blue-500 text-xs font-medium">
-                            — aplica a todos los pedidos
-                          </span>
-                        </Label>
-                        {globalSecurityCode &&
-                          !isValidSecurityCode(globalSecurityCode) && (
-                            <span className="text-[10px] font-bold text-red-500">
-                              INVÁLIDO
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <div className="flex items-center justify-between mb-2">
+                            <Label className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                              Código de seguridad{" "}
+                              <span className="text-blue-500 text-xs font-medium">
+                                — aplica a todos los pedidos
+                              </span>
+                            </Label>
+                            {globalSecurityCode &&
+                              !isValidSecurityCode(globalSecurityCode) && (
+                                <span className="text-[10px] font-bold text-red-500">
+                                  INVÁLIDO
+                                </span>
+                              )}
+                            {!globalSecurityCode && (
+                              <span className="text-[10px] font-bold text-red-500">
+                                FALTANTE
+                              </span>
+                            )}
+                          </div>
+                          <div className="space-y-1">
+                            <Input
+                              value={globalSecurityCode}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, "").slice(0, 4);
+                                setGlobalSecurityCode(val);
+                                if (
+                                  val.length === 4 &&
+                                  !isValidSecurityCode(val)
+                                ) {
+                                  toast.error(
+                                    "Código inválido: no uses números consecutivos (ej: 1234, 4321) ni repetidos (ej: 1111)",
+                                  );
+                                }
+                              }}
+                              placeholder="Ej: 1357"
+                              maxLength={4}
+                              className={cn(
+                                "h-9 bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100",
+                                (!globalSecurityCode ||
+                                  (globalSecurityCode.length > 0 &&
+                                    globalSecurityCode.length < 4) ||
+                                  (globalSecurityCode.length === 4 &&
+                                    !isValidSecurityCode(globalSecurityCode))) &&
+                                  "border-red-500",
+                              )}
+                            />
+                            <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic">
+                              4 dígitos sin secuencias ni repetidos
                             </span>
-                          )}
-                        {!globalSecurityCode && (
-                          <span className="text-[10px] font-bold text-red-500">
-                            FALTANTE
-                          </span>
-                        )}
-                      </div>
-                      <div className="max-w-xs space-y-1">
-                        <Input
-                          value={globalSecurityCode}
-                          onChange={(e) => {
-                            const val = e.target.value.replace(/\D/g, "").slice(0, 4);
-                            setGlobalSecurityCode(val);
-                            if (
-                              val.length === 4 &&
-                              !isValidSecurityCode(val)
-                            ) {
-                              toast.error(
-                                "Código inválido: no uses números consecutivos (ej: 1234, 4321) ni repetidos (ej: 1111)",
-                              );
-                            }
-                          }}
-                          placeholder="Ej: 1357"
-                          maxLength={4}
-                          className={cn(
-                            "h-9 bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100",
-                            (!globalSecurityCode ||
-                              (globalSecurityCode.length > 0 &&
-                                globalSecurityCode.length < 4) ||
-                              (globalSecurityCode.length === 4 &&
-                                !isValidSecurityCode(globalSecurityCode))) &&
-                              "border-red-500",
-                          )}
-                        />
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500 font-medium italic">
-                          4 dígitos sin secuencias ni repetidos
-                        </span>
+                          </div>
+                        </div>
+
+                        {/* Declaración jurada global */}
+                        <div>
+                          <div className="mb-2">
+                            <Label className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                              Declaración jurada{" "}
+                              <span className="text-blue-500 text-xs font-medium">
+                                — aplica a todos los pedidos
+                              </span>
+                            </Label>
+                          </div>
+                          <Select
+                            value={declaracionJurada}
+                            onValueChange={setDeclaracionJurada}
+                          >
+                            <SelectTrigger className="h-9 bg-white dark:bg-slate-700 dark:border-slate-600 dark:text-slate-100">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="dark:bg-slate-800 dark:border-slate-700">
+                              {DECLARACION_JURADA_OPTIONS.map((opt) => (
+                                <SelectItem
+                                  key={opt.value}
+                                  value={opt.value}
+                                  className="dark:focus:bg-slate-700"
+                                >
+                                  {opt.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -939,6 +1125,13 @@ export default function SendToShalomModal({
                                     <p className="text-[11px] text-slate-400 dark:text-slate-500">
                                       {order.customer?.address || order.address || "—"}
                                     </p>
+                                    {(order.customer?.district || order.customer?.city || order.customer?.province) && (
+                                      <p className="text-[11px] text-slate-400 dark:text-slate-500">
+                                        {[order.customer?.district, order.customer?.city || order.customer?.province]
+                                          .filter(Boolean)
+                                          .join(" — ")}
+                                      </p>
+                                    )}
                                     <p className="text-[11px] text-slate-400 dark:text-slate-500">
                                       DNI:{" "}
                                       <span className="font-medium text-slate-600 dark:text-slate-300">
@@ -1000,6 +1193,32 @@ export default function SendToShalomModal({
                                   </div>
                                 </div>
 
+                                {/* Bloque de dirección de entrega */}
+                                {(order.customer?.address || order.customer?.district || order.customer?.city || order.customer?.province) && (
+                                  <div className="p-2.5 bg-blue-50/60 dark:bg-blue-950/20 rounded-lg border border-blue-100 dark:border-blue-900 space-y-1">
+                                    <p className="text-[9px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-wide">
+                                      Dirección de entrega
+                                    </p>
+                                    {order.customer?.address && (
+                                      <p className="text-[11px] text-slate-700 dark:text-slate-200 font-medium leading-tight">
+                                        {order.customer.address}
+                                      </p>
+                                    )}
+                                    <div className="flex flex-wrap gap-3">
+                                      {order.customer?.district && (
+                                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                          Dist: <span className="font-semibold text-slate-700 dark:text-slate-200">{order.customer.district}</span>
+                                        </span>
+                                      )}
+                                      {(order.customer?.city || order.customer?.province) && (
+                                        <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                                          Prov: <span className="font-semibold text-slate-700 dark:text-slate-200">{order.customer?.city || order.customer?.province}</span>
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Código de seguridad por orden */}
                                 <div className="space-y-1">
                                   <div className="flex items-center justify-between">
@@ -1040,7 +1259,7 @@ export default function SendToShalomModal({
                               {/* Selección Agencia */}
                               <div className="lg:col-span-5 space-y-6">
                                 <AgencySelector
-                                  label={`Agencia de Destino (${order.customer?.city || "Provincia"})`}
+                                  label={`Agencia de Destino (${order.customer?.district || order.customer?.city || "Provincia"})`}
                                   searchPlaceholder="Buscar distrito / provincia"
                                   agencies={data.destinationAgencies || []}
                                   searchValue={data.destinationSearch}
@@ -1119,8 +1338,45 @@ export default function SendToShalomModal({
                                 </div>
                               </div>
 
-                              {/* Medidas */}
+                              {/* Medidas + Modalidad */}
                               <div className="lg:col-span-3 bg-slate-50/50 dark:bg-slate-700/40 p-4 rounded-lg space-y-4">
+                                {/* Modalidad de envío */}
+                                <div className="space-y-1.5">
+                                  <Label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
+                                    Modalidad de envío
+                                  </Label>
+                                  <div className="flex rounded-md overflow-hidden border border-slate-200 dark:border-slate-600 h-9 text-xs font-bold">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateShipmentField(order.id, "aereo", false)
+                                      }
+                                      className={cn(
+                                        "flex-1 flex items-center justify-center gap-1 transition-colors",
+                                        !data.aereo
+                                          ? "bg-slate-700 dark:bg-slate-200 text-white dark:text-slate-900"
+                                          : "bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600",
+                                      )}
+                                    >
+                                      Terrestre
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        updateShipmentField(order.id, "aereo", true)
+                                      }
+                                      className={cn(
+                                        "flex-1 flex items-center justify-center gap-1 transition-colors border-l border-slate-200 dark:border-slate-600",
+                                        data.aereo
+                                          ? "bg-sky-600 dark:bg-sky-500 text-white"
+                                          : "bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-600",
+                                      )}
+                                    >
+                                      Aéreo
+                                    </button>
+                                  </div>
+                                </div>
+
                                 <div className="space-y-1.5">
                                   <Label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase">
                                     PESO (KG)

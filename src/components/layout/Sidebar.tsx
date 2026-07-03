@@ -31,6 +31,7 @@ import {
   ChevronUp,
   Phone,
   Activity,
+  FileSpreadsheet,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -55,6 +56,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import PowipLogoMini from "./logo-mini";
+import PowipLogo from "./logo";
 
 interface SidebarProps {
   className?: string;
@@ -64,82 +67,13 @@ interface NavigationItem {
   name: string;
   href?: string;
   icon: React.ElementType;
-  children?: { name: string; href: string; icon?: React.ElementType; group?: string }[];
+  children?: {
+    name: string;
+    href: string;
+    icon?: React.ElementType;
+    group?: string;
+  }[];
 }
-
-
-
-const navigation: NavigationItem[] = [
-  {
-    name: "Dashboard",
-    icon: LayoutDashboard,
-    children: [
-      { name: "Principal", href: "/dashboard", icon: LayoutDashboard },
-      { name: "Ventas", href: "/metricas/ventas", icon: ShoppingCart },
-      { name: "Inventario", href: "/metricas/inventario", icon: Package },
-      { name: "Operaciones", href: "/metricas/operaciones", icon: Truck },
-      { name: "Seguimiento", href: "/metricas/seguimientos", icon: MapPin },
-      { name: "Atención Cliente", href: "/metricas/atencion-cliente", icon: Headphones },
-      { name: "Call Center", href: "/metricas/call-center", icon: Phone },
-      { name: "Courier", href: "/metricas/couriers", icon: Truck },
-      { name: "Clientes", href: "/metricas/clientes", icon: Users },
-    ],
-  },
-  {
-    name: "Comercial",
-    icon: ShoppingCart,
-    children: [
-      { name: "Ventas", href: "/ventas", icon: ShoppingCart },
-      { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
-      { name: "Clientes", href: "/clientes", icon: Users },
-    ],
-  },
-  {
-    name: "Operaciones",
-    icon: Truck,
-    children: [
-      { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
-      { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
-      { name: "Couriers", href: "/couriers", icon: Truck },
-    ],
-  },
-  {
-    name: "Productos",
-    icon: Package,
-    children: [
-      { name: "Lista de productos", href: "/productos", icon: Tags },
-      { name: "Inventario", href: "/inventario", icon: Package },
-      { name: "Compras", href: "/compras", icon: PackagePlus },
-      { name: "Proveedores", href: "/proveedores", icon: Building2 },
-    ],
-  },
-  {
-    name: "Atención al cliente",
-    icon: Headphones,
-    href: "/atencion-cliente",
-  },
-  {
-    name: "Finanzas",
-    icon: DollarSign,
-    children: [
-      { name: "Resumen", href: "/finanzas", icon: BarChart },
-      { name: "Facturación", href: "/facturacion", icon: FileText },
-    ],
-  },
-  {
-    name: "Administración",
-    icon: Settings,
-    children: [
-      { name: "Usuarios", href: "/usuarios", icon: UserCog },
-      { name: "Configuración", href: "/configuracion", icon: Settings },
-    ],
-  },
-  {
-    name: "Super Admin",
-    icon: ShieldCheck,
-    href: "/superadmin",
-  },
-];
 
 export function Sidebar({ className }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -149,77 +83,129 @@ export function Sidebar({ className }: SidebarProps) {
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
 
-  const navigation: NavigationItem[] = useMemo(() => [
-    {
-      name: "Dashboard",
-      icon: LayoutDashboard,
-      children: [
-        { name: "Principal", href: "/dashboard", icon: LayoutDashboard },
-        { name: "Ventas", href: "/metricas/ventas", icon: ShoppingCart },
-        { name: "Inventario", href: "/metricas/inventario", icon: Package },
-        { name: "Operaciones", href: "/metricas/operaciones", icon: Truck },
-        { name: "Seguimiento", href: "/metricas/seguimientos", icon: MapPin },
-        { name: "Atención Cliente", href: "/metricas/atencion-cliente", icon: Headphones },
-        { name: "Call Center", href: "/metricas/call-center", icon: Phone },
-        { name: "Courier", href: "/metricas/couriers", icon: Truck },
-        { name: "Clientes", href: "/metricas/clientes", icon: Users },
-      ],
-    },
-    {
-      name: "Comercial",
-      icon: ShoppingCart,
-      children: [
-        { name: "Ventas", href: "/ventas", icon: ShoppingCart },
-        { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
-        { name: "Clientes", href: "/clientes", icon: Users },
-      ],
-    },
-    {
-      name: "Operaciones",
-      icon: Truck,
-      children: [
-        { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
-        { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
-        { name: "Seguimiento Courier", href: "/couriers", icon: Activity },
-      ],
-    },
-    {
-      name: "Productos",
-      icon: Package,
-      children: [
-        { name: "Lista de productos", href: "/productos", icon: Tags },
-        { name: "Inventario", href: "/inventario", icon: Package },
-        { name: "Compras", href: "/compras", icon: PackagePlus },
-        { name: "Proveedores", href: "/proveedores", icon: Building2 },
-      ],
-    },
-    {
-      name: "Atención al cliente",
-      icon: Headphones,
-      href: "/atencion-cliente",
-    },
-    {
-      name: "Finanzas",
-      icon: DollarSign,
-      children: [
-        { name: "Resumen", href: "/finanzas", icon: BarChart },
-        { name: "Facturación", href: "/facturacion", icon: FileText },
-      ],
-    },
-    {
-      name: "Administración",
-      icon: Settings,
-      children: [
-        { name: "Usuarios", href: "/usuarios", icon: UserCog },
-        { name: "Configuración", href: "/configuracion", icon: Settings },
-      ],
-    },
-    {
-      name: "Super Admin",
-      icon: ShieldCheck,
-      href: "/superadmin",
-    },
-  ], []);
+  const navigation: NavigationItem[] = useMemo(
+    () => [
+      {
+        name: "Dashboard",
+        icon: LayoutDashboard,
+        children: [
+          { name: "Principal", href: "/dashboard", icon: LayoutDashboard },
+          { name: "Ventas", href: "/metricas/ventas", icon: ShoppingCart },
+          { name: "Inventario", href: "/metricas/inventario", icon: Package },
+          { name: "Operaciones", href: "/metricas/operaciones", icon: Truck },
+          { name: "Seguimiento", href: "/metricas/seguimientos", icon: MapPin },
+          {
+            name: "Atención Cliente",
+            href: "/metricas/atencion-cliente",
+            icon: Headphones,
+          },
+          { name: "Call Center", href: "/metricas/call-center", icon: Phone },
+          { name: "Courier", href: "/metricas/couriers", icon: Truck },
+          { name: "Clientes", href: "/metricas/clientes", icon: Users },
+        ],
+      },
+      {
+        name: "Comercial",
+        icon: ShoppingCart,
+        children: [
+          { name: "Ventas", href: "/ventas", icon: ShoppingCart },
+          { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
+          { name: "Clientes", href: "/clientes", icon: Users },
+          {
+            name: "Carritos Abandonados",
+            href: "/carritos-abandonados",
+            icon: ShoppingCart,
+          },
+          {
+            name: "Conecta Google Sheets",
+            href: "/google-sheets",
+            icon: FileSpreadsheet,
+          },
+        ],
+      },
+      {
+        name: "Operaciones",
+        icon: Truck,
+        children: [
+          { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
+          { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
+          { name: "Seguimiento Courier", href: "/couriers", icon: Activity },
+        ],
+      },
+      {
+        name: "Productos",
+        icon: Package,
+        children: [
+          { name: "Lista de productos", href: "/productos", icon: Tags },
+          { name: "Inventario", href: "/inventario", icon: Package },
+          { name: "Compras", href: "/compras", icon: PackagePlus },
+          { name: "Proveedores", href: "/proveedores", icon: Building2 },
+        ],
+      },
+      {
+        name: "Atención al cliente",
+        icon: Headphones,
+        children: [
+          { name: "Gestión CC", href: "/atencion-cliente", icon: Headphones },
+          { name: "Agentes", href: "/atencion-cliente/agentes", icon: Users },
+        ],
+      },
+      {
+        name: "Finanzas",
+        icon: DollarSign,
+        children: [
+          { name: "Resumen", href: "/finanzas", icon: BarChart },
+          { name: "Facturación", href: "/facturacion", icon: FileText },
+        ],
+      },
+      {
+        name: "Configuración",
+        icon: Settings,
+        children: [
+          { name: "Usuarios", href: "/usuarios", icon: UserCog },
+          { name: "Configuración", href: "/configuracion", icon: Settings },
+        ],
+      },
+      {
+        name: "Administración",
+        icon: BarChart2,
+        children: [
+          { name: "Resumen", href: "/administracion/resumen", icon: BarChart },
+          {
+            name: "Gastos & Costos",
+            href: "/administracion/gastos",
+            icon: DollarSign,
+          },
+          {
+            name: "Utilidad & Margen",
+            href: "/administracion/utilidad",
+            icon: Activity,
+          },
+          {
+            name: "Canales & Marketplaces",
+            href: "/administracion/canales",
+            icon: Building2,
+          },
+          {
+            name: "Punto de Equilibrio",
+            href: "/administracion/equilibrio",
+            icon: FileSearch,
+          },
+          {
+            name: "Margen x Producto",
+            href: "/administracion/margen-producto",
+            icon: Tags,
+          },
+        ],
+      },
+      {
+        name: "Super Admin",
+        icon: ShieldCheck,
+        href: "/superadmin",
+      },
+    ],
+    [],
+  );
 
   // Auto-colapsar en móviles
   useEffect(() => {
@@ -238,11 +224,14 @@ export function Sidebar({ className }: SidebarProps) {
 
   // Mantener submenú abierto si el path actual es hijo
   useEffect(() => {
-    const activeSubmenu = navigation.find(item => 
-      item.children?.some(child => pathname === child.href || pathname.startsWith(child.href + "/"))
+    const activeSubmenu = navigation.find((item) =>
+      item.children?.some(
+        (child) =>
+          pathname === child.href || pathname.startsWith(child.href + "/"),
+      ),
     );
     if (activeSubmenu) {
-      setOpenSubmenus(prev => ({ ...prev, [activeSubmenu.name]: true }));
+      setOpenSubmenus((prev) => ({ ...prev, [activeSubmenu.name]: true }));
     }
   }, [pathname, navigation]);
 
@@ -267,7 +256,9 @@ export function Sidebar({ className }: SidebarProps) {
 
       // Si es Administración, verificar si es admin o superadmin
       if (item.name === "Administración") {
-        return isSuperadmin(auth?.user.email) || hasAdminAccess(auth?.user.role);
+        return (
+          isSuperadmin(auth?.user.email) || hasAdminAccess(auth?.user.role)
+        );
       }
 
       const requiredPermission = SIDEBAR_ITEMS_PERMISSIONS[item.name];
@@ -280,7 +271,10 @@ export function Sidebar({ className }: SidebarProps) {
           ...item,
           children: item.children.filter((child: { name: string }) => {
             // También filtramos sub-ítems que puedan ser de superadmin si existieran
-            if (child.name.toLowerCase().includes("superadmin") || child.name.toLowerCase().includes("super admin")) {
+            if (
+              child.name.toLowerCase().includes("superadmin") ||
+              child.name.toLowerCase().includes("super admin")
+            ) {
               return isSuperadmin(auth?.user.email);
             }
             const childPermission = SIDEBAR_ITEMS_PERMISSIONS[child.name];
@@ -308,13 +302,7 @@ export function Sidebar({ className }: SidebarProps) {
               href="/"
               className="flex h-14 w-14 items-center justify-center p-0"
             >
-              <Image
-                src="/logo_mini.jpeg"
-                alt="Powip Logo"
-                width={56}
-                height={56}
-                className="rounded-xl object-contain"
-              />
+              <PowipLogoMini className="size-6 text-primary" />
             </Link>
             <Button
               variant="ghost"
@@ -327,15 +315,8 @@ export function Sidebar({ className }: SidebarProps) {
           </div>
         ) : (
           <>
-            <Link href="/" className="flex items-center pl-4">
-              <Image
-                src="/logo_powip.svg"
-                alt="Powip Logo"
-                width={140}
-                height={40}
-                priority
-                style={{ height: "auto" }}
-              />
+            <Link href="/" className="flex items-center pl-3">
+              <PowipLogo className="w-[90px] h-auto text-primary" />
             </Link>
             <Button
               variant="ghost"
@@ -358,12 +339,19 @@ export function Sidebar({ className }: SidebarProps) {
             const Icon = item.icon;
             const hasChildren = item.children && item.children.length > 0;
             const isOpen = openSubmenus[item.name] || false;
-            const isActive = item.href ? pathname === item.href : item.children?.some((c: { href: string }) => pathname === c.href);
+            const isActive = item.href
+              ? pathname === item.href
+              : item.children?.some(
+                  (c: { href: string }) => pathname === c.href,
+                );
 
             return (
               <div
                 key={item.name}
-                className={cn("w-full mb-1", isCollapsed && "flex flex-col items-center")}
+                className={cn(
+                  "w-full mb-1",
+                  isCollapsed && "flex flex-col items-center",
+                )}
               >
                 {hasChildren && isCollapsed ? (
                   <DropdownMenu>
@@ -372,35 +360,57 @@ export function Sidebar({ className }: SidebarProps) {
                         variant="ghost"
                         className={cn(
                           "flex items-center justify-center h-10 w-10 p-0 rounded-lg transition-all duration-200",
-                          isActive 
-                            ? "bg-primary/10 text-primary shadow-sm" 
+                          isActive
+                            ? "bg-primary/10 text-primary shadow-sm"
                             : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                         )}
                       >
-                        <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-gray-400")} />
+                        <Icon
+                          className={cn(
+                            "h-4 w-4",
+                            isActive ? "text-primary" : "text-gray-400",
+                          )}
+                        />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right" sideOffset={10} className="w-48 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
-                      <DropdownMenuLabel className="text-gray-500 dark:text-gray-400 text-xs font-semibold uppercase px-2 py-1.5">{item.name}</DropdownMenuLabel>
+                    <DropdownMenuContent
+                      side="right"
+                      sideOffset={10}
+                      className="w-48 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800"
+                    >
+                      <DropdownMenuLabel className="text-gray-500 dark:text-gray-400 text-xs font-semibold uppercase px-2 py-1.5">
+                        {item.name}
+                      </DropdownMenuLabel>
                       <DropdownMenuSeparator className="bg-gray-100 dark:bg-gray-800" />
                       {item.children?.map((child) => (
                         <DropdownMenuItem key={child.name} asChild>
-                          <Link 
-                            href={child.href} 
+                          <Link
+                            href={child.href}
                             className={cn(
                               "flex items-center gap-2.5 px-2 py-2 cursor-pointer rounded-md transition-colors",
-                              pathname === child.href 
-                                ? "bg-primary/5 text-primary font-semibold shadow-sm" 
-                                : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                              pathname === child.href
+                                ? "bg-primary/5 text-primary font-semibold shadow-sm"
+                                : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800",
                             )}
                           >
                             {child.icon ? (
-                              <child.icon className={cn("h-4 w-4", pathname === child.href ? "text-primary" : "text-gray-400")} />
+                              <child.icon
+                                className={cn(
+                                  "h-4 w-4",
+                                  pathname === child.href
+                                    ? "text-primary"
+                                    : "text-gray-400",
+                                )}
+                              />
                             ) : (
-                              <div className={cn(
-                                "w-1.5 h-1.5 rounded-full",
-                                pathname === child.href ? "bg-primary" : "bg-gray-300 dark:bg-gray-600"
-                              )} />
+                              <div
+                                className={cn(
+                                  "w-1.5 h-1.5 rounded-full",
+                                  pathname === child.href
+                                    ? "bg-primary"
+                                    : "bg-gray-300 dark:bg-gray-600",
+                                )}
+                              />
                             )}
                             <span className="text-sm">{child.name}</span>
                           </Link>
@@ -415,13 +425,18 @@ export function Sidebar({ className }: SidebarProps) {
                       onClick={() => toggleSubmenu(item.name)}
                       className={cn(
                         "flex items-center justify-between h-10 w-full gap-2 px-3 rounded-lg transition-all duration-200",
-                        isActive 
-                          ? "bg-primary/5 text-primary font-semibold shadow-sm" 
+                        isActive
+                          ? "bg-primary/5 text-primary font-semibold shadow-sm"
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                       )}
                     >
                       <div className="flex items-center gap-2.5">
-                        <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-gray-400")} />
+                        <Icon
+                          className={cn(
+                            "h-4 w-4",
+                            isActive ? "text-primary" : "text-gray-400",
+                          )}
+                        />
                         <span className="text-[13.5px]">{item.name}</span>
                       </div>
                       {isOpen ? (
@@ -439,18 +454,29 @@ export function Sidebar({ className }: SidebarProps) {
                                 variant="ghost"
                                 className={cn(
                                   "flex items-center gap-2.5 h-9 w-full justify-start text-[13px] rounded-md transition-all",
-                                  pathname === child.href 
+                                  pathname === child.href
                                     ? "text-primary font-semibold bg-primary/5 shadow-sm"
                                     : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-transparent",
                                 )}
                               >
                                 {child.icon ? (
-                                  <child.icon className={cn("h-4 w-4", pathname === child.href ? "text-primary" : "text-gray-400")} />
+                                  <child.icon
+                                    className={cn(
+                                      "h-4 w-4",
+                                      pathname === child.href
+                                        ? "text-primary"
+                                        : "text-gray-400",
+                                    )}
+                                  />
                                 ) : (
-                                  <div className={cn(
-                                    "w-1.5 h-1.5 rounded-full transition-all",
-                                    pathname === child.href ? "bg-primary scale-125" : "bg-gray-300 dark:bg-gray-600 group-hover:bg-gray-400"
-                                  )} />
+                                  <div
+                                    className={cn(
+                                      "w-1.5 h-1.5 rounded-full transition-all",
+                                      pathname === child.href
+                                        ? "bg-primary scale-125"
+                                        : "bg-gray-300 dark:bg-gray-600 group-hover:bg-gray-400",
+                                    )}
+                                  />
                                 )}
                                 <span>{child.name}</span>
                               </Button>
@@ -472,14 +498,21 @@ export function Sidebar({ className }: SidebarProps) {
                         isCollapsed
                           ? "justify-center w-10 h-10 p-0"
                           : "justify-start w-full",
-                        isActive 
-                          ? "bg-primary/5 text-primary font-semibold shadow-sm" 
+                        isActive
+                          ? "bg-primary/5 text-primary font-semibold shadow-sm"
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                       )}
                     >
-                      <Icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-gray-400")} />
+                      <Icon
+                        className={cn(
+                          "h-4 w-4",
+                          isActive ? "text-primary" : "text-gray-400",
+                        )}
+                      />
                       {!isCollapsed && (
-                        <span className="text-[13.5px] font-medium">{item.name}</span>
+                        <span className="text-[13.5px] font-medium">
+                          {item.name}
+                        </span>
                       )}
                     </Button>
                   </Link>

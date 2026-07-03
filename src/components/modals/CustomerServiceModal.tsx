@@ -57,6 +57,12 @@ import GuideDetailsModal from "./GuideDetailsModal";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
 import { useAuth } from "@/contexts/AuthContext";
+import ScheduledDeliverySection from "./ScheduledDeliverySection";
+import { DatosIncompletosBlock } from "@/components/atencion-cliente/cc-v2/DatosIncompletosBlock";
+import { CcGestionPanel } from "@/components/atencion-cliente/cc-v2/CcGestionPanel";
+import { CcScriptPanel } from "@/components/atencion-cliente/cc-v2/CcScriptPanel";
+import { SubEstadoCc } from "@/interfaces/IOrder";
+import { isJunkDni } from "@/utils/junk-document.util";
 
 interface LogEntry {
   id: number;
@@ -117,6 +123,8 @@ interface Props {
   shippingGuide?: ShippingGuideData | null;
   /** Mostrar campos de tracking editables */
   showTracking?: boolean;
+  /** Modo Operaciones: libera el botón CONFIRMA ENTREGA y muestra Anular siempre */
+  isOperaciones?: boolean;
 }
 
 interface OrderReceipt {
@@ -130,6 +138,7 @@ interface OrderReceipt {
   callAttempts?: number;
   callbackAt?: string | null;
   customer: {
+    id?: string;
     fullName: string;
     phoneNumber?: string;
     dni?: string;
@@ -178,6 +187,7 @@ interface OrderReceipt {
   upsellOffered?: boolean;
   upsellAccepted?: boolean;
   upsellDetails?: string | null;
+  externalSource?: string | null;
 }
 
 export default function CustomerServiceModal({
@@ -188,6 +198,7 @@ export default function CustomerServiceModal({
   hideCallManagement = false,
   shippingGuide,
   showTracking = false,
+  isOperaciones = false,
 }: Props) {
   const router = useRouter();
   const { auth } = useAuth();
@@ -218,6 +229,17 @@ export default function CustomerServiceModal({
     undefined,
   );
   const [isScheduling, setIsScheduling] = useState(false);
+
+  // CC v2 — datos incompletos y gestión
+  const [datosCompletos, setDatosCompletos] = useState<boolean>(true);
+  const [dniCliente, setDniCliente] = useState<string | null>(null);
+  const [referenciaEntrega, setReferenciaEntrega] = useState<string | null>(null);
+  const [canalOrigen, setCanalOrigen] = useState<string | null>(null);
+  const [subEstadoCc, setSubEstadoCc] = useState<SubEstadoCc | null>(null);
+
+  // Aliclik
+  const [aliclikDispatchStatus, setAliclikDispatchStatus] = useState<string | null>(null);
+  const [aliclikSyncedAt, setAliclikSyncedAt] = useState<string | null>(null);
 
   const fetchLogs = useCallback(async () => {
     if (!orderId) return;
@@ -281,6 +303,14 @@ export default function CustomerServiceModal({
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
       );
       setNotes(orderRes.data.notes || "");
+      // CC v2: cargar campos de datos incompletos + sub-estado
+      setDatosCompletos(orderRes.data.datosCompletos ?? true);
+      setDniCliente(orderRes.data.dniCliente ?? null);
+      setReferenciaEntrega(orderRes.data.referenciaEntrega ?? null);
+      setCanalOrigen(orderRes.data.canalOrigen ?? null);
+      setSubEstadoCc(orderRes.data.subEstadoCc ?? null);
+      setAliclikDispatchStatus(orderRes.data.aliclikDispatchStatus ?? null);
+      setAliclikSyncedAt(orderRes.data.aliclikSyncedAt ?? null);
     } catch (err) {
       console.error("Error fetching receipt", err);
       toast.error("Error al cargar el pedido");
@@ -303,6 +333,9 @@ export default function CustomerServiceModal({
 
       if (callStatus === "CONFIRMED") {
         payload.status = "LLAMADO";
+        if (isOperaciones && isJunkDni(receipt?.customer?.dni)) {
+          toast.warning("DNI vacío o inválido, pero la entrega fue confirmada");
+        }
       }
 
       await axios.patch(
@@ -1050,6 +1083,8 @@ export default function CustomerServiceModal({
   };
 
   const isConfirmed = receipt?.status === "LLAMADO";
+  const isScheduledDelivery =
+    !!receipt?.externalSource && receipt?.callStatus === "SCHEDULED";
 
   if (!receipt && !loading) return null;
 
@@ -1819,8 +1854,47 @@ export default function CustomerServiceModal({
                     </div>
                   )}
 
-                  {/* Gestión de Llamada - only shown in customer service view */}
+                  {/* CC v2: bloque datos incompletos (visible cuando el pedido tiene sub_estado_cc activo) */}
+                  {!hideCallManagement && subEstadoCc && (
+                    <DatosIncompletosBlock
+                      orderId={orderId}
+                      dniCliente={dniCliente}
+                      customer={receipt?.customer ?? null}
+                      onDatosCompletos={() => {
+                        setDatosCompletos(true);
+                        onOrderUpdated?.();
+                        fetchReceipt();
+                      }}
+                    />
+                  )}
+
+                  {/* Gestión de Llamada / Entrega — según origen del pedido */}
                   {!hideCallManagement && (
+                    subEstadoCc ? (
+                      <CcGestionPanel
+                        orderId={orderId}
+                        subEstadoCc={subEstadoCc}
+                        callAttempts={receipt.callAttempts ?? 0}
+                        datosCompletos={datosCompletos}
+                        aliclikDispatchStatus={aliclikDispatchStatus}
+                        aliclikSyncedAt={aliclikSyncedAt}
+                        onUpdated={() => {
+                          fetchReceipt();
+                          fetchLogs();
+                          onOrderUpdated?.();
+                        }}
+                      />
+                    ) : isScheduledDelivery ? (
+                      <ScheduledDeliverySection
+                        orderId={orderId}
+                        callbackAt={receipt.callbackAt}
+                        callStatus={receipt.callStatus}
+                        onUpdated={() => {
+                          fetchReceipt();
+                          onOrderUpdated?.();
+                        }}
+                      />
+                    ) : (
                     <div className="border border-border rounded-lg p-4">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold">Gestión de llamada</h3>
@@ -1867,7 +1941,9 @@ export default function CustomerServiceModal({
                           </div>
                           <div className="flex gap-3">
                             <Button
-                              className="flex-1 bg-green-600 hover:bg-green-700"
+                              className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                              disabled={!isOperaciones && !datosCompletos}
+                              title={!isOperaciones && !datosCompletos ? "Completá los datos requeridos antes de confirmar" : undefined}
                               onClick={() =>
                                 handleUpdateCallStatus("CONFIRMED")
                               }
@@ -1895,7 +1971,9 @@ export default function CustomerServiceModal({
                           )}
                           <div className="flex gap-3">
                             <Button
-                              className="flex-1 bg-green-600 hover:bg-green-700"
+                              className="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                              disabled={!isOperaciones && !datosCompletos}
+                              title={!isOperaciones && !datosCompletos ? "Completá los datos requeridos antes de confirmar" : undefined}
                               onClick={() =>
                                 handleUpdateCallStatus("CONFIRMED")
                               }
@@ -1914,6 +1992,17 @@ export default function CustomerServiceModal({
                               NO CONTESTA ({(receipt.callAttempts || 0) + 1}/3)
                             </Button>
                           </div>
+                          {isOperaciones && (
+                            <div className="pt-2 border-t border-dashed border-muted-foreground/20">
+                              <Button
+                                variant="outline"
+                                className="w-full border-red-300 text-red-600 hover:bg-red-50"
+                                onClick={() => setCancellationModalOpen(true)}
+                              >
+                                Anular Pedido
+                              </Button>
+                            </div>
+                          )}
 
                           <div className="pt-2 border-t border-dashed border-muted-foreground/20">
                             <label className="text-xs font-medium text-muted-foreground mb-2 block">
@@ -2023,6 +2112,7 @@ export default function CustomerServiceModal({
                         </div>
                       )}
                     </div>
+                    )
                   )}
 
                   {/* Upsell Tracking */}
@@ -2048,6 +2138,50 @@ export default function CustomerServiceModal({
                         </p>
                       )}
                     </div>
+                  )}
+
+                  {/* Estado Aliclik */}
+                  {(aliclikDispatchStatus || aliclikSyncedAt) && (
+                    <div className="border border-purple-200 dark:border-purple-800 rounded-lg p-4 bg-purple-50/50 dark:bg-purple-950/30">
+                      <h3 className="font-semibold text-purple-700 dark:text-purple-400 text-sm mb-3">
+                        Aliclik — Estado de despacho
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <span className="text-muted-foreground block underline mb-1">
+                            Estado
+                          </span>
+                          <span className="font-semibold">
+                            {aliclikDispatchStatus || "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block underline mb-1">
+                            Última sincronización
+                          </span>
+                          <span className="font-semibold">
+                            {aliclikSyncedAt
+                              ? new Date(aliclikSyncedAt).toLocaleString("es-PE", {
+                                  day: "2-digit",
+                                  month: "short",
+                                  year: "numeric",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : "—"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Script sugerido CC */}
+                  {subEstadoCc && (
+                    <CcScriptPanel
+                      subEstadoCc={subEstadoCc}
+                      clienteName={receipt.customer.fullName}
+                      orderNumber={receipt.orderNumber}
+                    />
                   )}
 
                   {/* Comentarios Timeline */}

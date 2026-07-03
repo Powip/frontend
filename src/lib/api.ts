@@ -5,4 +5,5 @@ export const API = {
     clientes: process.env.NEXT_PUBLIC_API_CLIENTES!,
     integrations: process.env.NEXT_PUBLIC_API_INTEGRATIONS!,
     courier: process.env.NEXT_PUBLIC_API_COURIER!,
+    inventory: process.env.NEXT_PUBLIC_API_INVENTORY!,
 }
