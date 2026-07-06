@@ -10,7 +10,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Send, Clock, User, Settings, MessageCircle } from "lucide-react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { shouldDisplayNote } from "@/lib/logFilters";
@@ -65,12 +66,11 @@ export default function CommentsTimelineModal({
     
     setIsLoading(true);
     try {
-      const res = await axios.get<LogEntry[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas/${orderId}`
+      const res = await axiosAuth.get<LogEntry[]>(
+        `${GATEWAY.ventas}/log-ventas/${orderId}`
       );
       setLogs(res.data);
-    } catch (error) {
-      console.error("Error cargando historial", error);
+    } catch {
       toast.error("Error al cargar el historial");
     } finally {
       setIsLoading(false);
@@ -88,19 +88,18 @@ export default function CommentsTimelineModal({
 
     setIsSending(true);
     try {
-      await axios.post(`${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas`, {
+      await axiosAuth.post(`${GATEWAY.ventas}/log-ventas`, {
         orderId,
         comentarios: newComment.trim(),
         operacion: "COMMENT",
         userId: auth?.user?.id ?? null,
-        userName: auth?.user?.email ?? null, 
+        userName: auth?.user?.email ?? null,
         data: {},
         isSystemGenerated: false,
       });
       setNewComment("");
       fetchLogs();
-    } catch (error) {
-      console.error("Error enviando comentario", error);
+    } catch {
       toast.error("Error al enviar el comentario");
     } finally {
       setIsSending(false);

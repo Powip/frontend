@@ -9,11 +9,10 @@ import {
   updateAliclikStore,
   AliclikCredentialSafe,
 } from "@/services/aliclikService";
+import { GATEWAY } from "@/lib/gateway";
 import { fetchCompanyById } from "@/services/companyService";
 
-const API_INTEGRATIONS = (
-  process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3004"
-).replace(/\/$/, "");
+const API_INTEGRATIONS = GATEWAY.integrations;
 
 type SaveStep = "saving" | "testing" | "done";
 
@@ -71,7 +70,7 @@ export default function AliclikConfigPage() {
 
   useEffect(() => {
     if (!companyId || !token) return;
-    fetchCompanyById(companyId, token)
+    fetchCompanyById(companyId)
       .then((company) => setStores(company?.stores ?? []))
       .catch(() => setStores([]));
   }, [companyId, token]);
@@ -150,7 +149,6 @@ export default function AliclikConfigPage() {
     setStoreSaved(false);
     try {
       const updated = await updateAliclikStore(
-        token,
         companyId,
         selectedStoreId || null,
       );

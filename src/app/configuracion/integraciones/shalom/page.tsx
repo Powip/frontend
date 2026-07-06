@@ -33,23 +33,23 @@ export default function ShalomConfigPage() {
   const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
-      const cfg = await getShalomConfig(auth!.accessToken, companyId!);
+      const cfg = await getShalomConfig(companyId!);
       setConfig(cfg);
       if (cfg?.username) setUsername(cfg.username);
 
       if (cfg?.instanceId) {
-        const st = await getShalomStatus(auth!.accessToken, companyId!);
+        const st = await getShalomStatus(companyId!);
         setIsConnected(st.isLoggedIn);
       }
     } finally {
       setLoading(false);
     }
-  }, [auth, companyId]);
+  }, [companyId]);
 
   useEffect(() => {
-    if (!companyId || !auth?.accessToken) return;
+    if (!companyId) return;
     loadStatus();
-  }, [companyId, auth?.accessToken, loadStatus]);
+  }, [companyId, loadStatus]);
 
   /**
    * Flujo completo en un solo click:
@@ -67,7 +67,7 @@ export default function ShalomConfigPage() {
     try {
       // Paso 1: guardar credenciales
       setConnectStep("saving");
-      const savedConfig = await saveShalomConfig(auth!.accessToken, {
+      const savedConfig = await saveShalomConfig({
         companyId: companyId!,
         username,
         password,
@@ -76,11 +76,11 @@ export default function ShalomConfigPage() {
 
       // Paso 2: crear instancia (siempre recrea para estar seguro)
       setConnectStep("creating_instance");
-      await createShalomInstance(auth!.accessToken, companyId!);
+      await createShalomInstance(companyId!);
 
       // Paso 3: login
       setConnectStep("logging_in");
-      const result = await loginShalom(auth!.accessToken, companyId!);
+      const result = await loginShalom(companyId!);
 
       if (result.success) {
         setConnectStep("done");

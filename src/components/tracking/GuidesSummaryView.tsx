@@ -16,7 +16,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import { 
   getShalomLabelPdfUrl, 
@@ -56,25 +57,22 @@ export default function GuidesSummaryView() {
   const [guideForDetails, setGuideForDetails] = useState<string | null>(null);
 
   const fetchGuides = useCallback(async () => {
-    if (!selectedStoreId || !auth?.accessToken) return;
+    if (!selectedStoreId) return;
     setLoading(true);
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
-        { headers: { Authorization: `Bearer ${auth.accessToken}` } }
+      const res = await axiosAuth.get(
+        `${GATEWAY.courier}/shipping-guides/store/${selectedStoreId}`,
       );
-      // Sort DESC by created_at
-      const sorted = res.data.sort((a: any, b: any) => 
+      const sorted = res.data.sort((a: TrackingGuide, b: TrackingGuide) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
       setGuides(sorted);
-    } catch (error) {
-      console.error("Error fetching guides", error);
+    } catch {
       toast.error("No se pudieron cargar las guías");
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId, auth]);
+  }, [selectedStoreId]);
 
   useEffect(() => {
     fetchGuides();
@@ -88,12 +86,11 @@ export default function GuidesSummaryView() {
   }, [guides, search]);
 
   const handleTrackShalom = async (guide: TrackingGuide) => {
-    if (!auth?.accessToken) return;
     setTrackingModalOpen(true);
     setTrackLoading(true);
     setTrackResult(null);
     try {
-      const result = await trackShalomGuide(auth.accessToken, guide.id);
+      const result = await trackShalomGuide(guide.id);
       setTrackResult(result);
     } catch (error) {
       setTrackResult({ error: "Error al rastrear guía" });

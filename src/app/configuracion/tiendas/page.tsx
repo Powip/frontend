@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { Skeleton } from "@/components/ui/skeleton";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import {
   Edit2,
   Plus,
@@ -70,7 +71,7 @@ export default function TiendasPage() {
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [syncingGlobal, setSyncingGlobal] = useState<boolean>(false);
-  const { auth, logout, updateCompany: updateAuthCompany } = useAuth();
+  const { auth, updateCompany: updateAuthCompany, hasPermission } = useAuth();
   const [shopifyConnectedShops, setShopifyConnectedShops] = useState<any[]>([]);
   const router = useRouter();
 
@@ -94,27 +95,31 @@ export default function TiendasPage() {
 
   const companyId = auth?.company?.id;
 
-  // Redirigir si no es admin o superadmin
-  useEffect(() => {
-    const userRole = auth?.user?.role;
-    const userEmail = auth?.user?.email;
+  // Redirigir si no es admin o superadmin.
+  // Verificar también el permiso explícito para cubrir el caso donde el JWT aún no
+  // refleja el rol (evento RabbitMQ en tránsito tras la promoción de rol).
+  const canAccessTiendas =
+    hasAdminAccess(auth?.user?.role) ||
+    isSuperadmin(auth?.user?.email) ||
+    hasPermission("VIEW_FINANCES");
 
-    if (auth && auth.user && !hasAdminAccess(userRole) && !isSuperadmin(userEmail)) {
+  useEffect(() => {
+    if (auth && auth.user && !canAccessTiendas) {
       toast.error("No tienes permisos para acceder a esta configuración");
       router.push("/dashboard");
     }
-  }, [auth, router]);
+  }, [auth, canAccessTiendas, router]);
 
   const handleAddSalesChannel = async () => {
     const name = newSalesChannel.trim();
-    if (!name || !companyId || !auth?.accessToken) return;
+    if (!name || !companyId) return;
     if (salesChannels.includes(name)) {
       toast.error("Ese canal ya existe");
       return;
     }
     try {
       const updated = [...salesChannels, name];
-      await updateCompany(companyId, auth.accessToken, {
+      await updateCompany(companyId, {
         sales_channels: updated,
       });
       updateAuthCompany({ ...auth.company!, sales_channels: updated });
@@ -126,10 +131,10 @@ export default function TiendasPage() {
   };
 
   const handleRemoveSalesChannel = async (channel: string) => {
-    if (!companyId || !auth?.accessToken) return;
+    if (!companyId) return;
     try {
       const updated = salesChannels.filter((c) => c !== channel);
-      await updateCompany(companyId, auth.accessToken, {
+      await updateCompany(companyId, {
         sales_channels: updated,
       });
       updateAuthCompany({ ...auth.company!, sales_channels: updated });
@@ -145,12 +150,9 @@ export default function TiendasPage() {
 
     try {
       toast.info("Iniciando sincronización global...");
-      const integrationApiUrl =
-        process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
 
-      // Sincronizar todas las tiendas en paralelo
       const syncPromises = shopifyConnectedShops.map((shop) =>
-        axios.post(`${integrationApiUrl}/shopify/sync/${shop.shop_url}`, {
+        axiosAuth.post(`${GATEWAY.integrations}/shopify/sync/${shop.shop_url}`, {
           accessToken: "dynamic",
         }),
       );
@@ -174,8 +176,7 @@ export default function TiendasPage() {
           `Sincronización finalizada: ${totalOrders} órdenes y ${totalDrafts} borradores importados de ${shopifyConnectedShops.length} tiendas.`,
         );
       }
-    } catch (error) {
-      console.error("Error en sincronización global:", error);
+    } catch {
       toast.error("Error al sincronizar tiendas Shopify");
     } finally {
       setSyncingGlobal(false);
@@ -187,13 +188,13 @@ export default function TiendasPage() {
     try {
       if (!auth?.company?.id) return;
 
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${auth.company.id}`,
+      const response = await axiosAuth.get(
+        `${GATEWAY.company}/company/${auth.company.id}`,
       );
 
       setStores(response.data?.stores);
-    } catch (error) {
-      console.error("Error obteniendo tiendas:", error);
+    } catch {
+      // store fetch failure is silent
     } finally {
       setLoading(false);
     }
@@ -202,10 +203,8 @@ export default function TiendasPage() {
   const fetchShopifyStatus = useCallback(async () => {
     try {
       if (!auth?.company?.id) return;
-      const integrationApiUrl =
-        process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
-      const response = await axios.get(
-        `${integrationApiUrl}/shopify/status/${auth.company.id}`,
+      const response = await axiosAuth.get(
+        `${GATEWAY.integrations}/shopify/status/${auth.company.id}`,
       );
       setShopifyConnectedShops(response.data);
     } catch {
@@ -226,7 +225,7 @@ export default function TiendasPage() {
       if (!newStore.name) return;
       if (!auth?.company?.id) return;
 
-      await axios.post(`${process.env.NEXT_PUBLIC_API_COMPANY}/stores`, {
+      await axiosAuth.post(`${GATEWAY.company}/stores`, {
         ...newStore,
         company_id: auth.company.id,
       });
@@ -234,10 +233,9 @@ export default function TiendasPage() {
 
       await fetchStore();
 
-      // Reset formulario
       setNewStore({ name: "", description: "", url_web: "" });
-    } catch (error) {
-      console.error("Error creando tienda:", error);
+    } catch {
+      toast.error("Error al crear tienda");
     }
   };
 
@@ -249,8 +247,8 @@ export default function TiendasPage() {
     if (!editingStore) return;
 
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COMPANY}/stores/${editingStore.id}`,
+      await axiosAuth.patch(
+        `${GATEWAY.company}/stores/${editingStore.id}`,
         {
           name: editingStore.name,
           description: editingStore.description,
@@ -262,15 +260,15 @@ export default function TiendasPage() {
       await fetchStore();
 
       setEditingStore(null);
-    } catch (error) {
-      console.error("Error editando tienda:", error);
+    } catch {
+      toast.error("Error al actualizar tienda");
     }
   };
 
   const handleDeleteStore = async (id: string) => {
     try {
-      const response = await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_COMPANY}/stores/${id}`,
+      const response = await axiosAuth.delete(
+        `${GATEWAY.company}/stores/${id}`,
       );
 
       if (response.status === 200) {
@@ -278,15 +276,16 @@ export default function TiendasPage() {
       }
 
       await fetchStore();
-    } catch (error: any) {
-      if (error?.response.data.statusCode === 400) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { statusCode?: number } } };
+      if (axiosError?.response?.data?.statusCode === 400) {
         toast.error("No podemos borrar la ultima compañia");
       }
     }
   };
 
 
-  if (!auth || (!hasAdminAccess(auth.user?.role) && !isSuperadmin(auth.user?.email))) return null;
+  if (!auth || !canAccessTiendas) return null;
 
   if (loading) {
     return (
@@ -584,12 +583,9 @@ export default function TiendasPage() {
                               toast.info(
                                 `Iniciando sincronización de ${shopInfo.shop_url}...`,
                               );
-                              const integrationApiUrl =
-                                process.env.NEXT_PUBLIC_API_INTEGRATIONS ||
-                                "http://localhost:3007";
-                              axios
+                              axiosAuth
                                 .post(
-                                  `${integrationApiUrl}/shopify/sync/${shopInfo.shop_url}`,
+                                  `${GATEWAY.integrations}/shopify/sync/${shopInfo.shop_url}`,
                                   {
                                     accessToken: "dynamic",
                                   },

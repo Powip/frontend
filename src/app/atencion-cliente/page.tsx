@@ -17,7 +17,8 @@ import { Input } from "@/components/ui/input";
 import { Gift, FileDown, MessageCircle, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { confirmOrder } from "@/services/incompleteOrdersService";
 
 import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
@@ -184,8 +185,8 @@ export default function AtencionClientePage() {
       const params = new URLSearchParams({ storeId: selectedStoreId });
       if (promoFromDate) params.append("fromDate", promoFromDate);
       if (promoToDate) params.append("toDate", promoToDate);
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-items/promo-items?${params}`,
+      const res = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-items/promo-items?${params}`,
       );
       setPromoItems(res.data);
     } catch {

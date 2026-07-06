@@ -34,7 +34,8 @@ import { Label } from "@/components/ui/label";
 
 import { OrderHeader, OrderStatus, OrderItem } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import CustomerServiceModal, {
   ShippingGuideData,
 } from "@/components/modals/CustomerServiceModal";
@@ -385,14 +386,13 @@ export default function VentasPage() {
         payload.cancellationReason = cancellationReason;
       }
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${saleId}`,
         payload,
       );
       toast.success(`Estado actualizado a ${newStatus}`);
       refetchOrders();
-    } catch (error) {
-      console.error("Error actualizando estado", error);
+    } catch {
       toast.error("No se pudo actualizar el estado");
     }
   };
@@ -405,8 +405,8 @@ export default function VentasPage() {
 
     setIsCancelling(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${saleToCancel.id}`,
         {
           status: "ANULADO",
           cancellationReason: reason,
@@ -418,8 +418,7 @@ export default function VentasPage() {
       setCancellationModalOpen(false);
       setSaleToCancel(null);
       refetchOrders();
-    } catch (error) {
-      console.error("Error anulando venta", error);
+    } catch {
       toast.error("No se pudo anular la venta");
     } finally {
       setIsCancelling(false);
@@ -438,13 +437,12 @@ export default function VentasPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`,
+      await axiosAuth.delete(
+        `${GATEWAY.ventas}/order-header/${id}`,
       );
       toast.success("Venta eliminada");
       refetchOrders();
-    } catch (error) {
-      console.error("Error eliminando venta", error);
+    } catch {
       toast.error("No se pudo eliminar la venta");
     }
   };
@@ -531,8 +529,8 @@ Estado: ${sale.status}
       // Obtener recibos de todas las ventas seleccionadas
       const receipts = await Promise.all(
         selectedPendientes.map(async (sale) => {
-          const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+          const res = await axiosAuth.get<ReceiptData>(
+            `${GATEWAY.ventas}/order-header/${sale.id}/receipt`,
           );
           return res.data;
         }),
@@ -545,8 +543,7 @@ Estado: ${sale.status}
       setPendingPrintSales(selectedPendientes);
       setPrintConfirmOpen(true);
       setIsPrinting(false);
-    } catch (error) {
-      console.error("Error en impresión masiva", error);
+    } catch {
       toast.error("Error al preparar los recibos para imprimir");
       setIsPrinting(false);
     }
@@ -567,13 +564,12 @@ Estado: ${sale.status}
     for (const sale of pendingPrintSales) {
       const newStatus = "PREPARADO";
       try {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
+        await axiosAuth.patch(
+          `${GATEWAY.ventas}/order-header/${sale.id}`,
           { status: newStatus, ...getUserInfo() },
         );
         successCount++;
-      } catch (error) {
-        console.error(`Error actualizando ${sale.orderNumber}`, error);
+      } catch {
         errorCount++;
       }
     }
@@ -622,8 +618,8 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+          const res = await axiosAuth.get<ReceiptData>(
+            `${GATEWAY.ventas}/order-header/${sale.id}/receipt`,
           );
           return res.data;
         }),
@@ -634,8 +630,7 @@ Estado: ${sale.status}
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedIdsForActiveTab(new Set());
-    } catch (error) {
-      console.error("Error en impresión masiva", error);
+    } catch {
       toast.error("Error al preparar los recibos para imprimir");
     } finally {
       setIsPrinting(false);
@@ -654,14 +649,12 @@ Estado: ${sale.status}
     }
 
     setIsBulkLoading(true);
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
 
     try {
       const uInfo = getUserInfo();
       const result = await processBulkStatusChange(
         selectedIds,
         newStatus,
-        apiBaseUrl,
         (processed, total) => {
           // Opcional: Podríamos mostrar un toast de progreso aquí si quisiéramos algo muy visual
         },
@@ -702,13 +695,11 @@ Estado: ${sale.status}
 
     const callbackAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     setIsBulkLoading(true);
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
     try {
       const uInfo = getUserInfo();
       const result = await processBulkStatusChange(
         selectedIds,
         undefined,
-        apiBaseUrl,
         undefined,
         10,
         uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
@@ -728,7 +719,7 @@ Estado: ${sale.status}
 
   const handleIndividualReprogramar = async (saleId: string, callbackAt: Date) => {
     try {
-      await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`, {
+      await axiosAuth.patch(`${GATEWAY.ventas}/order-header/${saleId}`, {
         callStatus: "SCHEDULED",
         callbackAt: callbackAt.toISOString(),
         ...getUserInfo(),
@@ -824,8 +815,8 @@ Estado: ${sale.status}
 
     setSavingOrderId(orderId);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         {
           externalTrackingNumber: data.externalTrackingNumber,
           shippingCode: data.shippingCode,
@@ -849,8 +840,7 @@ Estado: ${sale.status}
             : s,
         ),
       );
-    } catch (error) {
-      console.error("Error saving tracking data:", error);
+    } catch {
       toast.error("Error al guardar información de tracking");
     } finally {
       setSavingOrderId(null);
@@ -864,8 +854,8 @@ Estado: ${sale.status}
     // Si es EN_ENVIO, cargar datos de la guía (no tenemos guideNumber en Sale interface de ventas)
     if (sale.status === "EN_ENVIO") {
       try {
-        const guideRes = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`,
+        const guideRes = await axiosAuth.get(
+          `${GATEWAY.courier}/shipping-guides/order/${sale.id}`,
         );
         const guide = guideRes.data;
 
@@ -901,8 +891,7 @@ Estado: ${sale.status}
         } else {
           setSelectedShippingGuide(null);
         }
-      } catch (error) {
-        console.error("Error fetching shipping guide:", error);
+      } catch {
         setSelectedShippingGuide(null);
       }
     } else {

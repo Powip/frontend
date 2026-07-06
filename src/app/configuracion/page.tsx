@@ -3,12 +3,18 @@ import Header from "@/components/header/Header";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
+import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
+import WhatsAppButton from "@/components/WhatsAppButton";
 import { Building2, Store, User, Blocks } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 
 export default function ConfiguracionPage() {
+  const { auth, hasPermission } = useAuth();
+  const isAdmin =
+    hasAdminAccess(auth?.user?.role) ||
+    isSuperadmin(auth?.user?.email) ||
+    hasPermission("VIEW_FINANCES");
+
   const configSections = [
     {
       title: "Datos Personales",
@@ -17,6 +23,7 @@ export default function ConfiguracionPage() {
       href: "/configuracion/editar-usuario",
       color: "text-blue-600",
       bgColor: "bg-blue-50",
+      adminOnly: false,
     },
     {
       title: "Empresa + Suscripción",
@@ -25,6 +32,7 @@ export default function ConfiguracionPage() {
       href: "/configuracion/empresa",
       color: "text-teal-600",
       bgColor: "bg-teal-50",
+      adminOnly: false,
     },
     {
       title: "Gestión de Tiendas",
@@ -33,6 +41,7 @@ export default function ConfiguracionPage() {
       href: "/configuracion/tiendas",
       color: "text-green-600",
       bgColor: "bg-green-50",
+      adminOnly: true,
     },
     {
       title: "Integraciones",
@@ -41,8 +50,9 @@ export default function ConfiguracionPage() {
       href: "/configuracion/integraciones",
       color: "text-indigo-600",
       bgColor: "bg-indigo-50",
+      adminOnly: false,
     },
-  ];
+  ].filter((s) => !s.adminOnly || isAdmin);
 
   return (
     <main className="flex-1 p-8">
@@ -72,6 +82,8 @@ export default function ConfiguracionPage() {
           );
         })}
       </div>
+
+      {isAdmin && <WhatsAppButton />}
     </main>
   );
 }

@@ -1,10 +1,8 @@
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
-const API_INTEGRATIONS = (
-  process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3004"
-).replace(/\/$/, "");
-
-const headers = (token: string) => ({ Authorization: `Bearer ${token}` });
+const API_INTEGRATIONS = GATEWAY.integrations;
 
 // ─── TIPOS ──────────────────────────────────────────────
 
@@ -138,13 +136,12 @@ export interface AliclikCancelOrderResult {
 // ─── SERVICIOS ──────────────────────────────────────────
 
 export const getAliclikCredentials = async (
-  token: string,
+  _token: string,
   companyId: string,
 ): Promise<AliclikCredentialSafe | null> => {
   try {
-    const res = await axios.get<AliclikCredentialSafe>(
+    const res = await axiosAuth.get<AliclikCredentialSafe>(
       `${API_INTEGRATIONS}/aliclik/credentials/${companyId}`,
-      { headers: headers(token) },
     );
     return res.data;
   } catch (err: unknown) {
@@ -156,74 +153,66 @@ export const getAliclikCredentials = async (
 };
 
 export const saveAliclikCredentials = async (
-  token: string,
+  _token: string,
   payload: SaveAliclikCredentialPayload,
 ): Promise<AliclikCredentialSafe> => {
-  const res = await axios.post<AliclikCredentialSafe>(
+  const res = await axiosAuth.post<AliclikCredentialSafe>(
     `${API_INTEGRATIONS}/aliclik/credentials`,
     payload,
-    { headers: headers(token) },
   );
   return res.data;
 };
 
 export const testAliclikConnection = async (
-  token: string,
+  _token: string,
   companyId: string,
 ): Promise<AliclikConnectionTestResult> => {
-  const res = await axios.get<AliclikConnectionTestResult>(
+  const res = await axiosAuth.get<AliclikConnectionTestResult>(
     `${API_INTEGRATIONS}/aliclik/connection-test/${companyId}`,
-    { headers: headers(token) },
   );
   return res.data;
 };
 
 export const quoteAliclikOrder = async (
-  token: string,
+  _token: string,
   companyId: string,
   orderId: string,
 ): Promise<AliclikOrderQuote> => {
-  const res = await axios.get(
+  const res = await axiosAuth.get(
     `${API_INTEGRATIONS}/aliclik/${companyId}/orders/${orderId}/quote`,
-    { headers: headers(token) },
   );
   return res.data;
 };
 
 export const createAliclikOrder = async (
-  token: string,
+  _token: string,
   payload: AliclikCreateOrderPayload,
 ): Promise<AliclikCreateOrderResult> => {
-  const res = await axios.post(
+  const res = await axiosAuth.post(
     `${API_INTEGRATIONS}/aliclik/orders`,
     payload,
-    { headers: headers(token) },
   );
   return res.data;
 };
 
 export const cancelAliclikOrder = async (
-  token: string,
   orderId: string,
   companyId: string,
 ): Promise<AliclikCancelOrderResult> => {
-  const res = await axios.post<AliclikCancelOrderResult>(
+  const res = await axiosAuth.post<AliclikCancelOrderResult>(
     `${API_INTEGRATIONS}/aliclik/orders/cancel`,
     { companyId, orderId },
-    { headers: headers(token) },
   );
   return res.data;
 };
 
 export const updateAliclikStore = async (
-  token: string,
   companyId: string,
   storeId: string | null,
 ): Promise<AliclikCredentialSafe> => {
-  const res = await axios.patch<AliclikCredentialSafe>(
+  const res = await axiosAuth.patch<AliclikCredentialSafe>(
     `${API_INTEGRATIONS}/aliclik/credentials/${companyId}/store`,
     { storeId },
-    { headers: headers(token) },
   );
   return res.data;
 };

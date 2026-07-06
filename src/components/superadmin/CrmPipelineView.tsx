@@ -15,10 +15,10 @@ import { CreateLeadModal } from './CreateLeadModal';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { useLeadActivations, useLeadPostventa, useCreateActivation } from '@/hooks/useLeads';
+import axiosAuth from '@/lib/axiosAuth';
 
 interface CrmPipelineViewProps {
   leads: any[];
-  token?: string;
   isLoading?: boolean;
   auth?: any;
   plans?: any[];
@@ -32,7 +32,6 @@ const MAIN_TABS = [
 
 export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
   leads,
-  token,
   isLoading,
   auth,
   plans = [],
@@ -43,9 +42,9 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
   const router = useRouter();
 
   // Fetch activations and postventa data
-  const { data: activations = [], refetch: refetchActivations } = useLeadActivations(token);
-  const { data: postventa = [], refetch: refetchPostventa } = useLeadPostventa(token);
-  const createActivation = useCreateActivation(token);
+  const { data: activations = [], refetch: refetchActivations } = useLeadActivations();
+  const { data: postventa = [], refetch: refetchPostventa } = useLeadPostventa();
+  const createActivation = useCreateActivation();
 
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -59,22 +58,11 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
     formData.append('file', file);
 
     try {
-      const response = await fetch('/api/superadmin/leads/import', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        body: formData,
-      });
-
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Error al importar archivo');
-
-      toast.success(result.message || 'Importación completada');
+      const res = await axiosAuth.post('/api/superadmin/leads/import', formData);
+      toast.success(res.data.message || 'Importación completada');
       setTimeout(() => window.location.reload(), 1500);
     } catch (error: any) {
-      console.error('[Import] Error:', error);
-      toast.error(error.message || 'Error al procesar el archivo Excel/CSV');
+      toast.error(error.response?.data?.error || error.message || 'Error al procesar el archivo Excel/CSV');
     } finally {
       setIsImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -84,34 +72,13 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      const response = await fetch('/api/superadmin/sheets/sync', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({}),
-      });
-
-      // Handle non-JSON 500 errors safely
-      let result;
-      const text = await response.text();
-      try {
-        result = JSON.parse(text);
-      } catch (e) {
-        throw new Error('El servidor devolvió un error inesperado (no-JSON). Contacta a soporte.');
-      }
-
-      if (!response.ok) throw new Error(result.error || 'Error en sincronización');
-
-      toast.success(`${result.result?.imported || 0} leads sincronizados desde Sheets`);
-
+      const res = await axiosAuth.post('/api/superadmin/sheets/sync', {});
+      toast.success(`${res.data.result?.imported || 0} leads sincronizados desde Sheets`);
       setTimeout(() => {
         window.location.reload();
       }, 1500);
     } catch (error: any) {
-      console.error('[Sync] Error:', error);
-      toast.error(error.message || 'Error al conectar con Google Sheets. Si estás en Producción, verifica las variables de entorno.');
+      toast.error(error.response?.data?.error || error.message || 'Error al conectar con Google Sheets. Si estás en Producción, verifica las variables de entorno.');
     } finally {
       setIsSyncing(false);
     }
@@ -227,7 +194,7 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
       </div>
 
       {/* KPI Cards */}
-      <CrmPipelineKpis leads={leads} token={token} />
+      <CrmPipelineKpis leads={leads} />
 
       {/* Main Tabs — 3 stages */}
       <div className="border-b border-gray-200 dark:border-gray-800">
@@ -276,7 +243,6 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
         {activeTab === 'comercial' && (
           <CrmComercialTable
             leads={leads}
-            token={token}
             onStageChange={() => {
               refetchActivations();
             }}
@@ -287,7 +253,6 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
         {activeTab === 'activacion' && (
           <ActivacionTable
             activations={activations}
-            token={token}
             auth={auth}
             plans={plans}
             onUpdateStatus={() => {
@@ -300,7 +265,6 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
         {activeTab === 'postventa' && (
           <PostventaTable
             postventa={postventa}
-            token={token}
             onUpdateStatus={() => {
               refetchPostventa();
             }}
@@ -315,7 +279,6 @@ export const CrmPipelineView: React.FC<CrmPipelineViewProps> = ({
           toast.success('Lead creado correctamente');
           setTimeout(() => window.location.reload(), 1000);
         }}
-        token={token}
       />
     </div>
   );

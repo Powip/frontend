@@ -32,11 +32,10 @@ import {
 
 interface CrmPipelineKpisProps {
   leads: any[];
-  token?: string;
 }
 
-export const CrmPipelineKpis: React.FC<CrmPipelineKpisProps> = ({ token }) => {
-  const { data: summary, isLoading } = usePipelineSummary(token);
+export const CrmPipelineKpis: React.FC<CrmPipelineKpisProps> = () => {
+  const { data: summary, isLoading } = usePipelineSummary();
 
   if (isLoading || !summary) {
     return (

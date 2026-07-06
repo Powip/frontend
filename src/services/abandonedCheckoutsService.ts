@@ -1,7 +1,5 @@
-import axios from "axios";
-
-const API_VENTAS =
-  process.env.NEXT_PUBLIC_API_VENTAS || "http://localhost:3002";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 export interface AbandonedCheckout {
   id: string;
@@ -46,7 +44,6 @@ export interface FindAllResult {
 }
 
 export const getAbandonedCheckouts = async (
-  accessToken: string,
   params: {
     page?: number;
     limit?: number;
@@ -55,12 +52,9 @@ export const getAbandonedCheckouts = async (
     storeId?: string;
   } = {},
 ): Promise<FindAllResult> => {
-  const response = await axios.get(
-    `${API_VENTAS}/abandoned-checkouts`,
+  const response = await axiosAuth.get(
+    `${GATEWAY.ventas}/abandoned-checkouts`,
     {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
       params: {
         page: params.page ?? 1,
         limit: params.limit ?? 20,
@@ -74,27 +68,20 @@ export const getAbandonedCheckouts = async (
 };
 
 export const getShopifyStatus = async (
-  accessToken: string,
   companyId: string,
 ): Promise<Array<{ isConnected: boolean; shop_url: string; needs_reauthorization: boolean }>> => {
-  const API_INTEGRATIONS = process.env.NEXT_PUBLIC_API_INTEGRATIONS || 'http://localhost:3007';
-  const response = await axios.get(
-    `${API_INTEGRATIONS}/shopify/status/${companyId}`,
-    { headers: { Authorization: `Bearer ${accessToken}` } },
+  const response = await axiosAuth.get(
+    `${GATEWAY.integrations}/shopify/status/${companyId}`,
   );
   return response.data;
 };
 
 export const getAbandonedCheckoutStats = async (
-  accessToken: string,
   companyId?: string,
 ): Promise<AbandonedCheckoutStats> => {
-  const response = await axios.get(
-    `${API_VENTAS}/abandoned-checkouts/stats`,
+  const response = await axiosAuth.get(
+    `${GATEWAY.ventas}/abandoned-checkouts/stats`,
     {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
       ...(companyId && { params: { companyId } }),
     },
   );

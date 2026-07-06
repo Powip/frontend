@@ -41,10 +41,10 @@ export default function GastosPage() {
   const [form, setForm] = useState<ICreateGastoDto>(emptyForm);
 
   const fetchGastos = useCallback(async () => {
-    if (!auth?.company?.id || !auth?.accessToken) return;
+    if (!auth?.company?.id) return;
     setLoading(true);
     try {
-      setGastos(await getGastos(auth.company.id, fromDate, toDate, auth.accessToken));
+      setGastos(await getGastos(auth.company.id, fromDate, toDate));
     } catch {
       toast.error("Error al cargar gastos");
     } finally {
@@ -55,13 +55,13 @@ export default function GastosPage() {
   useEffect(() => { fetchGastos(); }, [fetchGastos]);
 
   const handleSubmit = async () => {
-    if (!auth?.company?.id || !auth?.accessToken) return;
+    if (!auth?.company?.id) return;
     try {
       if (editId) {
-        await updateGasto(auth.company.id, editId, form, auth.accessToken);
+        await updateGasto(auth.company.id, editId, form);
         toast.success("Gasto actualizado");
       } else {
-        await createGasto(auth.company.id, form, auth.accessToken);
+        await createGasto(auth.company.id, form);
         toast.success("Gasto registrado");
       }
       setShowForm(false); setEditId(null); setForm(emptyForm); fetchGastos();
@@ -75,9 +75,9 @@ export default function GastosPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!auth?.company?.id || !auth?.accessToken) return;
+    if (!auth?.company?.id) return;
     try {
-      await deleteGasto(auth.company.id, id, auth.accessToken);
+      await deleteGasto(auth.company.id, id);
       toast.success("Gasto eliminado"); fetchGastos();
     } catch { toast.error("Error al eliminar gasto"); }
   };

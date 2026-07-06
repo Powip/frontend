@@ -18,7 +18,8 @@ import {
   Info,
   AlertTriangle,
 } from "lucide-react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { Input } from "@/components/ui/input";
 
 interface SelectedOrder {
@@ -92,11 +93,10 @@ export default function AddToExistingGuideModal({
         try {
           // Buscamos guías con estado CREADA o ASIGNADA por ahora
           // Podríamos hacer dos llamadas o filtrar en el frontend
-          const res = await axios.get<ShippingGuide[]>(
-            `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${storeId}`,
+          const res = await axiosAuth.get<ShippingGuide[]>(
+            `${GATEWAY.courier}/shipping-guides/store/${storeId}`,
           );
 
-          // Solo guías activas que no estén terminadas ni canceladas
           const activeGuides = res.data.filter(
             (g) =>
               g.status === "CREADA" ||
@@ -105,8 +105,7 @@ export default function AddToExistingGuideModal({
           );
 
           setGuides(activeGuides);
-        } catch (error) {
-          console.error("Error fetching guides:", error);
+        } catch {
         } finally {
           setLoadingGuides(false);
         }

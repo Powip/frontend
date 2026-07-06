@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import {
   BarChart,
@@ -182,19 +183,19 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
 
       const [locationRes, paymentRes, deliveryRes, billingRes, summaryRes] =
         await Promise.all([
-          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-location`, {
+          axiosAuth.get(`${GATEWAY.ventas}/stats/by-location`, {
             params: locationParams,
           }),
-          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-payment`, {
+          axiosAuth.get(`${GATEWAY.ventas}/stats/by-payment`, {
             params,
           }),
-          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-delivery`, {
+          axiosAuth.get(`${GATEWAY.ventas}/stats/by-delivery`, {
             params,
           }),
-          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
+          axiosAuth.get(`${GATEWAY.ventas}/stats/billing`, {
             params: { storeId: selectedStoreId },
           }),
-          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`, {
+          axiosAuth.get(`${GATEWAY.ventas}/stats/summary`, {
             params,
           }),
         ]);
@@ -207,8 +208,8 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
         deliveredAmount: summaryRes.data.deliveredAmount || 0,
         totalDelivered: summaryRes.data.totalDelivered || 0,
       });
-    } catch (error) {
-      console.error("Error al obtener datos geográficos:", error);
+    } catch {
+      // geographic stats fetch failure is silent
     } finally {
       setLoading(false);
     }
@@ -240,13 +241,13 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
         if (fromDate) params.fromDate = fromDate;
         if (toDate) params.toDate = toDate;
 
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-location/details`,
+        const res = await axiosAuth.get(
+          `${GATEWAY.ventas}/stats/by-location/details`,
           { params },
         );
         setDetailedOrders(res.data);
-      } catch (error) {
-        console.error("Error al obtener detalle por ubicación:", error);
+      } catch {
+        // location detail fetch failure is silent
       } finally {
         setLoadingDetails(false);
       }
@@ -267,8 +268,8 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
     setIsBillingModalOpen(true);
     try {
       // Use the correct singular endpoint that exists in the controller
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+      const res = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-header/store/${selectedStoreId}`,
       );
 
       // Get all orders and filter manually since the backend doesn't support these filters on this endpoint
@@ -304,8 +305,7 @@ export const Geography: React.FC<GeographyProps> = ({ fromDate, toDate }) => {
       }));
 
       setBillingOrders(mappedOrders);
-    } catch (error) {
-      console.error("Error fetching billing orders:", error);
+    } catch {
       toast.error("No se pudieron obtener las órdenes de facturación");
     } finally {
       setLoadingDetails(false);

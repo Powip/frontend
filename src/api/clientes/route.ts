@@ -1,4 +1,5 @@
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 interface CreateClientDto {
   companyId: string;
@@ -16,54 +17,28 @@ interface CreateClientDto {
 interface UpdateClientDto extends Partial<CreateClientDto> {
   id: string;
 }
+
 export async function createClient(data: CreateClientDto) {
-  try {
-    const res = await axios.post(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/clients`,
-      data
-    );
-    return res;
-  } catch (error) {
-    console.log("Hemos tenido un error al crear el usuario", error);
-  }
+  const res = await axiosAuth.post(`${GATEWAY.ventas}/clients`, data);
+  return res;
 }
 
 export async function updateClient(id: string, data: UpdateClientDto) {
-  try {
-    const res = await axios.patch(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/clients/${id}`,
-      data
-    );
-    return res;
-  } catch (error) {
-    console.log("Error al actualizar el cliente", error);
-  }
+  const res = await axiosAuth.patch(`${GATEWAY.ventas}/clients/${id}`, data);
+  return res;
 }
 
 export async function findByCompany(
   id: string,
   filters?: { brandId?: string; categoryId?: string }
 ) {
-  try {
-    const res = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/clients/company/${id}`,
-      {
-        params: filters,
-      }
-    );
-    return res;
-  } catch (error) {
-    console.log("Error al obtener clientes", error);
-  }
+  const res = await axiosAuth.get(`${GATEWAY.ventas}/clients/company/${id}`, {
+    params: filters,
+  });
+  return res;
 }
 
 export async function toggleClienteActivo(id: string) {
-  try {
-    const res = await axios.patch(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/clients/${id}/toggle`
-    );
-    return res;
-  } catch (error) {
-    console.log("Error al activar/desactivar cliente", error);
-  }
+  const res = await axiosAuth.patch(`${GATEWAY.ventas}/clients/${id}/toggle`);
+  return res;
 }

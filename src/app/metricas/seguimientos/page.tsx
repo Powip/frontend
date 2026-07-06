@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import {
   ResponsiveContainer,
   BarChart,
@@ -91,11 +92,11 @@ export default function MetricasSeguimientosPage() {
       setLoading(true);
       try {
         const [ordersRes, guidesRes] = await Promise.all([
-          axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
+          axiosAuth.get(
+            `${GATEWAY.ventas}/order-header/store/${selectedStoreId}`
           ),
-          axios.get<ShippingGuide[]>(
-            `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`
+          axiosAuth.get<ShippingGuide[]>(
+            `${GATEWAY.courier}/shipping-guides/store/${selectedStoreId}`
           ),
         ]);
         setOrders(ordersRes.data || []);

@@ -1,5 +1,6 @@
 "use client";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
@@ -44,12 +45,11 @@ export default function OrderReceiptModal({
       setReceipt(null);
       setLoading(true);
       try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
+        const res = await axiosAuth.get(
+          `${GATEWAY.ventas}/order-header/${orderId}/receipt`,
         );
         setReceipt(res.data);
-      } catch (err) {
-        console.error("Error fetching receipt", err);
+      } catch {
       } finally {
         setLoading(false);
       }
@@ -61,8 +61,7 @@ export default function OrderReceiptModal({
   const generateQR = async (text: string) => {
     try {
       return await QRCode.toDataURL(text, { width: 120 });
-    } catch (err) {
-      console.error("Error generating QR", err);
+    } catch {
       return "";
     }
   };
@@ -74,14 +73,15 @@ export default function OrderReceiptModal({
     if (receipt.status === "PENDIENTE" && orderId) {
       const newStatus = "PREPARADO";
       try {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+        await axiosAuth.patch(
+          `${GATEWAY.ventas}/order-header/${orderId}`,
           { status: newStatus },
         );
         toast.success(`Estado actualizado a ${newStatus}`);
         onStatusChange?.();
-      } catch (error: any) {
-        const backendMessage = error?.response?.data?.message;
+      } catch (error: unknown) {
+        const axiosError = error as { response?: { data?: { message?: string } } };
+        const backendMessage = axiosError?.response?.data?.message;
         if (backendMessage) {
           toast.error(backendMessage, { duration: 8000 });
         } else {
@@ -526,14 +526,13 @@ export default function OrderReceiptModal({
         paymentId={selectedPaymentId}
         onClose={() => setUploadOpen(false)}
         onSuccess={() => {
-          // Recargar el recibo para ver el comprobante actualizado
           if (orderId) {
-            axios
+            axiosAuth
               .get(
-                `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
+                `${GATEWAY.ventas}/order-header/${orderId}/receipt`,
               )
               .then((res) => setReceipt(res.data))
-              .catch((err) => console.error(err));
+              .catch(() => {});
           }
         }}
       />

@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import axios from "axios";
 
-const API_COMPANY = process.env.NEXT_PUBLIC_API_COMPANY;
-const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS;
-const API_SUBS = process.env.NEXT_PUBLIC_API_SUBS;
+const GW = (process.env.NEXT_PUBLIC_API_GATEWAY || "http://localhost:8083").replace(/\/$/, "");
+const API_COMPANY = `${GW}/company`;
+const API_VENTAS = `${GW}/ventas`;
+const API_SUBS = `${GW}/subscription`;
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("Authorization");
@@ -25,9 +26,8 @@ export async function GET(request: Request) {
     const endDate = to ? new Date(to) : now;
 
     // 1. Validate environment variables
-    if (!API_COMPANY || !API_VENTAS || !API_SUBS) {
-      console.error("Missing environment variables:", { API_COMPANY, API_VENTAS, API_SUBS });
-      // Don't throw, just log and proceed with empty values to avoid 500
+    if (!process.env.NEXT_PUBLIC_API_GATEWAY) {
+      console.error("Missing NEXT_PUBLIC_API_GATEWAY environment variable");
     }
 
     // 2. Fetch data from microservices in parallel with individual error handling and timeouts

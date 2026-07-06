@@ -9,7 +9,6 @@ import { LeadActivationFlow } from './LeadActivationFlow';
 
 interface LeadCardProps {
   lead: any;
-  token?: string;
 }
 
 // Source tag colors
@@ -99,7 +98,7 @@ function getStatusConfig(lead: any, hoursSinceCreation: number, daysInStage: num
   return null;
 }
 
-export const LeadCard: React.FC<LeadCardProps> = ({ lead, token }) => {
+export const LeadCard: React.FC<LeadCardProps> = ({ lead }) => {
   const [isActivationOpen, setIsActivationOpen] = useState(false);
 
   const createdAt = parseISO(lead.created_at);
@@ -216,7 +215,6 @@ export const LeadCard: React.FC<LeadCardProps> = ({ lead, token }) => {
         lead={lead}
         open={isActivationOpen}
         onClose={() => setIsActivationOpen(false)}
-        token={token}
       />
     </>
   );

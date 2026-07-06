@@ -1,11 +1,15 @@
 "use client";
 import axios from "axios";
-import { useRouter } from "next/navigation";
+import { redirect, useRouter } from "next/navigation";
+import { GATEWAY } from "@/lib/gateway";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Eye, EyeOff, ArrowRight } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 import { Input } from "../ui/input";
+import Link from "next/link";
+import { Button } from "../ui/button";
+import { Separator } from "../ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import ForgotPassword from "../modals/forgotPasswortModal";
 import { Label } from "../ui/label";
@@ -16,7 +20,7 @@ interface LoginData {
 }
 
 export default function LoginForm() {
-  const { auth, login, inventories } = useAuth();
+  const { login } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [loginData, setLoginData] = useState<LoginData>({
@@ -54,9 +58,9 @@ export default function LoginForm() {
 
     try {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_USERS}/auth/login`,
+        `${GATEWAY.auth}/api/v1/auth/login`,
         loginData,
-        { withCredentials: true }, // Para recibir httpOnly cookie
+        { withCredentials: true },
       );
 
       // login() retorna AuthData con company, subscription, etc.
@@ -67,27 +71,21 @@ export default function LoginForm() {
         return;
       }
 
-      // 1️⃣ Si tiene compañía (dueño o staff), va al dashboard
-      if (authResult.company) {
-        router.push("/");
+      if (authResult.company === null) {
+        router.push("/new-company");
         return;
       }
-
-      // 2️⃣ Si NO tiene compañía, verificar suscripción para permitir crear una
-      if (
-        !authResult.subscription ||
-        authResult.subscription.status !== "ACTIVE"
-      ) {
-        router.push("/subscriptions");
+      if (!authResult.subscription) {
+        router.push("/sin-plan");
         return;
       }
-
-      // 3️⃣ Tiene suscripción activa pero no compañía -> Crear compañía
-      router.push("/new-company");
-    } catch (error: any) {
-      console.error("Login Error:", error.response?.data || error.message);
+      router.push("/dashboard");
+    } catch (error: unknown) {
+      const axiosError = error as {
+        response?: { data?: { message?: string } };
+      };
       const errorMessage =
-        error.response?.data?.message ||
+        axiosError.response?.data?.message ||
         "El usuario y/o la contraseña son incorrectos";
       toast.error(errorMessage);
     } finally {
@@ -97,8 +95,8 @@ export default function LoginForm() {
 
   return (
     <div>
-      <form className="flex flex-col gap-5">
-        <div>
+      <form className="space-y-4">
+        <div className="space-y-2">
           <Label htmlFor="email">Correo electrónico</Label>
           <Input
             value={loginData.email}
@@ -107,25 +105,25 @@ export default function LoginForm() {
             }
             id="email"
             type="email"
-            placeholder="tu@negocio.com"
+            placeholder="tu@email.com"
             required
-            className={`mt-1.5 rounded-xl ${errors.email ? "border-red-400" : ""}`}
+            className={`${errors.email ? "border-red-500" : ""}`}
           />
           {errors.email && (
-            <p className="text-xs text-red-500 mt-1">{errors.email}</p>
+            <p className="text-xs text-red-500">{errors.email}</p>
           )}
         </div>
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
             <Label htmlFor="password">Contraseña</Label>
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="text-xs font-medium hover:opacity-80 transition-opacity"
-              style={{ color: "#4F3A96" }}
+            <p
+              onClick={() => {
+                setOpen(true);
+              }}
+              className="text-xs text-primary hover:underline cursor-pointer"
             >
               ¿Olvidaste tu contraseña?
-            </button>
+            </p>
           </div>
           <div className="relative">
             <Input
@@ -137,43 +135,33 @@ export default function LoginForm() {
               type={showPassword ? "text" : "password"}
               placeholder="••••••••"
               required
-              className={`rounded-xl pr-10 ${errors.password ? "border-red-400" : ""}`}
+              className={`pr-10 ${errors.password ? "border-red-500" : ""}`}
             />
             <button
               type="button"
-              className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground"
               onClick={() => setShowPassword(!showPassword)}
               tabIndex={-1}
             >
               {showPassword ? (
-                <EyeOff className="w-4 h-4" />
+                <EyeOff className="h-4 w-4" />
               ) : (
-                <Eye className="w-4 h-4" />
+                <Eye className="h-4 w-4" />
               )}
             </button>
           </div>
           {errors.password && (
-            <p className="text-xs text-red-500 mt-1">{errors.password}</p>
+            <p className="text-xs text-red-500">{errors.password}</p>
           )}
         </div>
-        <button
+        <Button
           type="submit"
           onClick={(e) => handleOnLogin(e)}
+          className="w-full"
           disabled={isLoading}
-          className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-70 mt-1"
-          style={{ background: "#4F3A96" }}
         >
-          {isLoading ? (
-            <>
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Iniciando sesión...
-            </>
-          ) : (
-            <>
-              Ingresar <ArrowRight className="w-4 h-4" />
-            </>
-          )}
-        </button>
+          {isLoading ? "Iniciando sesión..." : "Iniciar sesión"}
+        </Button>
       </form>
 
       <ForgotPassword open={open} onClose={() => setOpen(false)} />

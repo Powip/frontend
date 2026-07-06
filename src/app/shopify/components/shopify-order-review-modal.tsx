@@ -25,7 +25,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ChevronDown, ChevronUp, ExternalLink, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 
 interface ShopifyOrderReviewModalProps {
@@ -90,8 +91,8 @@ export function ShopifyOrderReviewModal({
     );
 
     try {
-      await axios.post(
-        `http://localhost:3007/shopify/confirm-sync/${shopUrl}`,
+      await axiosAuth.post(
+        `${GATEWAY.integrations}/shopify/confirm-sync/${shopUrl}`,
         {
           orders: selectedOrders,
           companyId: auth?.company?.id,

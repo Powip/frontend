@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Loader2,
@@ -240,15 +241,15 @@ const FunnelCOD: React.FC<{
     setLoading(true);
     try {
       const isAdmin = hasAdminAccess(auth?.user?.role);
-      const res = await axios.get<DashboardData>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
-        { 
-          params: { 
-            storeId: selectedStoreId, 
-            fromDate, 
+      const res = await axiosAuth.get<DashboardData>(
+        `${GATEWAY.ventas}/stats/summary`,
+        {
+          params: {
+            storeId: selectedStoreId,
+            fromDate,
             toDate,
             ...(!isAdmin && { sellerId: auth?.user?.id })
-          } 
+          }
         }
       );
       setFunnelData(res.data);
@@ -281,8 +282,8 @@ const FunnelCOD: React.FC<{
     if (!selectedStoreId) return;
     setDownloading(true);
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+      const res = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-header/store/${selectedStoreId}`,
         { params: { fromDate, toDate } }
       );
       
@@ -697,8 +698,8 @@ export const Stats: React.FC<StatsProps> = ({ fromDate, toDate }) => {
     setLoading(true);
     try {
       const isAdmin = hasAdminAccess(auth?.user?.role);
-      const summaryRes = await axios.get<DashboardData>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
+      const summaryRes = await axiosAuth.get<DashboardData>(
+        `${GATEWAY.ventas}/stats/summary`,
         {
           params: {
             storeId: selectedStoreId,

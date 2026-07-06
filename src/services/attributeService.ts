@@ -1,14 +1,11 @@
 import { API_URLS } from "@/config/apiConfig";
+import axiosAuth from "@/lib/axiosAuth";
 
 const API_URL = API_URLS.productos;
 
 export async function getAttributesBySubcategory(subcategoryId: string) {
-  const res = await fetch(
-    `${API_URL}/products/attributes-by-subcategory/${subcategoryId}`,
-    { cache: "no-store" }
+  const res = await axiosAuth.get(
+    `${API_URL}/products/attributes-by-subcategory/${subcategoryId}`
   );
-
-  if (!res.ok) throw new Error("Error al obtener atributos");
-
-  return res.json();
+  return res.data;
 }

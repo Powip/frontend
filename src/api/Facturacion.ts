@@ -1,14 +1,11 @@
-import { API } from "@/lib/api";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
-/**
- * Payload para generar un comprobante SUNAT de forma manual.
- */
 export interface IManualInvoicePayload {
   externalId: string;
-  documentType: "01" | "03"; // "01" Factura, "03" Boleta
+  documentType: "01" | "03";
   customerName: string;
-  customerDocType: "1" | "6" | "7"; // "1" DNI, "6" RUC, "7" Pasaporte
+  customerDocType: "1" | "6" | "7";
   customerDocNumber: string;
   customerAddress?: string;
   currency?: string;
@@ -25,23 +22,16 @@ export interface IManualInvoicePayload {
   }[];
 }
 
-/**
- * Genera un comprobante SUNAT llamando al microservicio de integraciones.
- */
 export const generateManualInvoice = async (payload: IManualInvoicePayload) => {
-  const { data } = await axios.post(`${API.integrations}/sunat/generate-manual`, payload);
+  const { data } = await axiosAuth.post(`${GATEWAY.integrations}/sunat/generate-manual`, payload);
   return data;
 };
 
-/**
- * Obtiene el log de facturación de una venta específica por su externalId.
- */
 export const getInvoiceLogByExternalId = async (externalId: string) => {
   try {
-    const { data } = await axios.get(`${API.integrations}/sunat/logs/external/${externalId}`);
+    const { data } = await axiosAuth.get(`${GATEWAY.integrations}/sunat/logs/external/${externalId}`);
     return data;
-  } catch (error) {
-    console.error("Error fetching invoice log:", error);
+  } catch {
     return { success: false, message: "Error al consultar el comprobante" };
   }
 };

@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { fetchCouriers, Courier } from "@/services/courierService";
 import {
   ResponsiveContainer,
@@ -86,11 +87,11 @@ export default function MetricasCouriersPage() {
       try {
         const [couriersData, guidesRes, ordersRes] = await Promise.all([
           fetchCouriers(auth.company!.id),
-          axios.get<ShippingGuide[]>(
-            `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`
+          axiosAuth.get<ShippingGuide[]>(
+            `${GATEWAY.courier}/shipping-guides/store/${selectedStoreId}`
           ),
-          axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
+          axiosAuth.get(
+            `${GATEWAY.ventas}/order-header/store/${selectedStoreId}`
           ),
         ]);
         setCouriers(couriersData);

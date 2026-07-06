@@ -28,7 +28,8 @@ import {
   Loader2,
   X,
 } from "lucide-react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 
 interface Payment {
@@ -105,15 +106,14 @@ export default function PaymentVerificationModal({
 
     setIsLoading(true);
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      const res = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
       );
       setOrderData({
         grandTotal: Number(res.data.grandTotal),
         payments: res.data.payments || [],
       });
-    } catch (error) {
-      console.error("Error cargando datos de la orden", error);
+    } catch {
       toast.error("Error al cargar datos de la orden");
     } finally {
       setIsLoading(false);
@@ -161,8 +161,8 @@ export default function PaymentVerificationModal({
         formData.append("file", file);
       }
 
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/orders/${orderId}/payments/with-proof`,
+      await axiosAuth.post(
+        `${GATEWAY.ventas}/payments/orders/${orderId}/payments/with-proof`,
         formData,
         {
           headers: {
@@ -177,8 +177,7 @@ export default function PaymentVerificationModal({
       setFile(null);
       fetchOrderData();
       onPaymentUpdated?.();
-    } catch (error) {
-      console.error("Error registrando pago", error);
+    } catch {
       toast.error("Error al registrar el pago");
     } finally {
       setIsSubmitting(false);
@@ -187,14 +186,13 @@ export default function PaymentVerificationModal({
 
   const handleApprovePayment = async (paymentId: string) => {
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/approve`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/payments/payments/${paymentId}/approve`,
       );
       toast.success("Pago aprobado");
       fetchOrderData();
       onPaymentUpdated?.();
-    } catch (error) {
-      console.error("Error aprobando pago", error);
+    } catch {
       toast.error("Error al aprobar el pago");
     }
   };
@@ -208,15 +206,14 @@ export default function PaymentVerificationModal({
       return;
     }
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/reject`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/payments/payments/${paymentId}/reject`,
         { notes: "Pago rechazado" },
       );
       toast.success("Pago rechazado");
       fetchOrderData();
       onPaymentUpdated?.();
-    } catch (error) {
-      console.error("Error rechazando pago", error);
+    } catch {
       toast.error("Error al rechazar el pago");
     }
   };
@@ -230,8 +227,8 @@ export default function PaymentVerificationModal({
       const formData = new FormData();
       formData.append("file", proofFile);
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/upload-proof`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/payments/payments/${paymentId}/upload-proof`,
         formData,
         {
           headers: {
@@ -243,8 +240,7 @@ export default function PaymentVerificationModal({
       toast.success("Comprobante subido correctamente");
       fetchOrderData();
       onPaymentUpdated?.();
-    } catch (error) {
-      console.error("Error subiendo comprobante", error);
+    } catch {
       toast.error("Error al subir el comprobante");
     } finally {
       setUploadingProofForId(null);

@@ -17,10 +17,9 @@ export default function EquilibrioPage() {
   const { fromDate, toDate } = useAdminPeriod();
 
   const companyId = auth?.company?.id ?? "";
-  const token = auth?.accessToken ?? "";
 
   const { data: orders = [], isLoading: loadingOrders } = useAdminOrders(companyId, fromDate, toDate);
-  const { data: gastos = [], isLoading: loadingGastos } = useAdminGastos(companyId, fromDate, toDate, token);
+  const { data: gastos = [], isLoading: loadingGastos } = useAdminGastos(companyId, fromDate, toDate);
 
   const loading = loadingOrders || loadingGastos;
 

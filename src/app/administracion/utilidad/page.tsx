@@ -24,11 +24,10 @@ export default function UtilidadPage() {
   } | null>(null);
 
   useEffect(() => {
-    if (!auth?.company?.id || !auth?.accessToken) return;
+    if (!auth?.company?.id) return;
     setLoading(true);
-    
-    
-    Promise.all([getOrdersByCompany(auth.company.id, fromDate, toDate), getGastos(auth.company.id, fromDate, toDate, auth.accessToken)])
+
+    Promise.all([getOrdersByCompany(auth.company.id, fromDate, toDate), getGastos(auth.company.id, fromDate, toDate)])
       .then(([orders, gastos]: [any[], IGastoOperativo[]]) => {
         const entregadas = orders.filter((o) => o.status === "ENTREGADO" && (o.createdAt || o.created_at || ""));
         const ventas = entregadas.reduce((s: number, o: any) => s + Number(o.grandTotal), 0);

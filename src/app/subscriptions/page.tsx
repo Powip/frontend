@@ -10,7 +10,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { Check, Building2 } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -109,15 +110,14 @@ export default function SubscriptionsPage() {
     const fetchPlans = async () => {
       try {
         setLoading(true);
-        const response = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_SUBS}/plans`,
+        const response = await axiosAuth.get(
+          `${GATEWAY.subscription}/plans`,
         );
         if (response.status === 200) {
           const data: Plan[] = response.data;
           setPlans(adaptPlans(data));
         }
-      } catch (error) {
-        console.error(error);
+      } catch {
         setError("No se pudieron cargar los planes.");
       } finally {
         setLoading(false);

@@ -1,18 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowLeft } from "lucide-react";
-import Link from "next/link";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
+import { GATEWAY } from "@/lib/gateway";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Label } from "@/components/ui/label";
-import { useRouter } from "next/navigation";
 
 /* ------------------------------------------
     INTERFACES
@@ -35,7 +32,6 @@ interface User {
 export default function DatosPersonalesPage() {
   const { auth, logout } = useAuth();
   const userId = auth?.user.id;
-  const BASE_URL = process.env.NEXT_PUBLIC_API_URL;
 
   const [user, setUser] = useState<User | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
@@ -56,8 +52,8 @@ export default function DatosPersonalesPage() {
 
     const fetchData = async () => {
       try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_USERS}/auth/user/${userId}`
+        const res = await axiosAuth.get(
+          `${GATEWAY.auth}/api/v1/auth/user/${userId}`
         );
         setUser(res.data);
 
@@ -70,7 +66,7 @@ export default function DatosPersonalesPage() {
     };
 
     fetchData();
-  }, [userId, BASE_URL]);
+  }, [userId]);
 
   /* ------------------------------------------
       HANDLE UPDATE USER
@@ -82,8 +78,8 @@ export default function DatosPersonalesPage() {
     setSavingChanges(true);
 
     try {
-      await axios.put(
-        `${process.env.NEXT_PUBLIC_API_USERS}/auth/user/${userId}`,
+      await axiosAuth.put(
+        `${GATEWAY.auth}/api/v1/auth/user/${userId}`,
         {
           name: user.name,
           surname: user.surname,
@@ -115,13 +111,12 @@ export default function DatosPersonalesPage() {
     setChangingPassword(true);
 
     try {
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_USERS}/auth/update-password`,
+      await axiosAuth.post(
+        `${GATEWAY.auth}/api/v1/auth/update-password`,
         {
-          userId,
+          email: user?.email,
           currentPassword,
           newPassword,
-          confirmPassword,
         }
       );
 

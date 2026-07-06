@@ -32,7 +32,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
 import CustomerServiceModal, {
@@ -161,8 +162,8 @@ export default function ShalomOrderTrackingView() {
     if (!selectedStoreId) return;
     setLoading(true);
     try {
-      const ordersRes = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+      const ordersRes = await axiosAuth.get<OrderHeader[]>(
+        `${GATEWAY.ventas}/order-header/store/${selectedStoreId}`,
       );
 
       const shalomOnly = ordersRes.data
@@ -182,12 +183,12 @@ export default function ShalomOrderTrackingView() {
           let guide: ShippingGuide | null = null;
           if (order.guideNumber) {
             try {
-              const guideRes = await axios.get<ShippingGuide>(
-                `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${order.id}`,
+              const guideRes = await axiosAuth.get<ShippingGuide>(
+                `${GATEWAY.courier}/shipping-guides/order/${order.id}`,
               );
               guide = guideRes.data;
-            } catch (e) {
-              console.error("Error fetching guide", e);
+            } catch {
+              // guide fetch failure per order is silent
             }
           }
           return { order, guide };
@@ -195,8 +196,7 @@ export default function ShalomOrderTrackingView() {
       );
 
       setShalomOrders(processed);
-    } catch (error) {
-      console.error("Error fetching shalom orders", error);
+    } catch {
       toast.error("Error al cargar pedidos de Shalom");
     } finally {
       setLoading(false);
@@ -204,7 +204,7 @@ export default function ShalomOrderTrackingView() {
   }, [selectedStoreId]);
 
   const fetchLiveStatuses = useCallback(async (orders: EnvioItem[]) => {
-    if (!auth?.accessToken || !auth?.company?.id) return;
+    if (!auth?.company?.id) return;
     const eligible = orders.filter(
       ({ order }) => order.externalTrackingNumber && order.shippingCode,
     );
@@ -214,7 +214,6 @@ export default function ShalomOrderTrackingView() {
     const results = await Promise.allSettled(
       eligible.map(async ({ order }) => {
         const raw = await trackShalomShipment(
-          auth.accessToken,
           auth.company!.id,
           order.externalTrackingNumber!,
           order.shippingCode!,
@@ -232,7 +231,7 @@ export default function ShalomOrderTrackingView() {
     });
     setLiveStatuses(updates);
     setLoadingLiveStatuses(false);
-  }, [auth?.accessToken, auth?.company?.id]);
+  }, [auth?.company?.id]);
 
   useEffect(() => {
     fetchShalomOrders();
@@ -323,19 +322,16 @@ export default function ShalomOrderTrackingView() {
   };
 
   const handleSaveKey = async (orderId: string) => {
-    if (!auth?.accessToken) return;
     setIsUpdatingKey(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         { shippingKey: tempKey },
-        { headers: { Authorization: `Bearer ${auth.accessToken}` } },
       );
       toast.success("Clave actualizada");
       fetchShalomOrders();
       setEditingKeyId(null);
-    } catch (error) {
-      console.error("Error updating key", error);
+    } catch {
       toast.error("No se pudo actualizar la clave");
     } finally {
       setIsUpdatingKey(false);

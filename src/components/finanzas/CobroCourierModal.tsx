@@ -1,4 +1,7 @@
+"use client";
+
 import React, { useId } from "react";
+import { toast } from "sonner";
 import {
   Dialog,
   DialogContent,
@@ -27,6 +30,13 @@ export function CobroCourierModal({
   const descriptionId = useId();
 
   const mensajePredeterminado = `Hola equipo ${courierName} 👋 Tienen un saldo pendiente de rendición con nosotros: 💰 Monto pendiente: ${montoPendiente}\n📋 Detalles en el sistema Powip\n\nPor favor rendan el cobro a la brevedad. Ya llevan ${diasSinRendir} días sin rendir este monto. Gracias — Corporación Aranni`;
+
+  const handleEnviarWA = () => {
+    const encoded = encodeURIComponent(mensajePredeterminado);
+    window.open(`https://wa.me/?text=${encoded}`, "_blank", "noopener,noreferrer");
+    toast.success(`Mensaje de WhatsApp abierto para ${courierName}`);
+    onClose();
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -101,6 +111,7 @@ export function CobroCourierModal({
             </Button>
 
             <Button
+              onClick={handleEnviarWA}
               className="bg-[#25D366] hover:bg-[#1ebd5b] text-white font-semibold flex items-center gap-2 shadow-sm"
               aria-label={`Enviar mensaje de WhatsApp a ${courierName} por ${montoPendiente}`}
             >

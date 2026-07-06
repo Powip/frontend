@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input";
 import { MessageSquare, Send, User } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import { ScrollArea } from "../ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
@@ -76,18 +77,18 @@ export default function ShippingNotesModal({
 
     setSending(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}`,
-        { 
+      await axiosAuth.patch(
+        `${GATEWAY.courier}/shipping-guides/${guideId}`,
+        {
           newNote: newNote.trim(),
           userName: currentUserEmail
         }
       );
-      
+
       toast.success("Comentario agregado");
       setNewNote("");
       onNoteAdded();
-    } catch (error: any) {
+    } catch {
       toast.error("Error al agregar comentario");
     } finally {
       setSending(false);

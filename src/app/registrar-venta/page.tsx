@@ -31,7 +31,8 @@ import { searchInventoryItems } from "@/services/inventoryItems.service";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 import { CartItem, OrderHeader } from "@/interfaces/IOrder";
 import { DeliveryType, OrderType, SalesChannel } from "@/enum/Order.enum";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import OrderReceiptModal from "@/components/modals/orderReceiptModal";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -185,9 +186,9 @@ function RegistrarVentaContent() {
   useEffect(() => {
     if (!companyId) return;
     setIsLoadingCouriers(true);
-    axios
+    axiosAuth
       .get<{ id: string; name: string; companyId: string }[]>(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/couriers/company/${companyId}`,
+        `${GATEWAY.courier}/couriers/company/${companyId}`,
       )
       .then((res) => setCouriers(res.data))
       .catch(() => setCouriers([]))
@@ -206,8 +207,8 @@ function RegistrarVentaContent() {
       return;
     }
     try {
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      const response = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
       );
 
       setOrderData(response.data);
@@ -366,8 +367,8 @@ function RegistrarVentaContent() {
         totalPages: res.meta.totalPages,
       });
       setProductsPage(page);
-    } catch (err) {
-      console.error("Error searching products", err);
+    } catch {
+      // product search failure is silent
     } finally {
       setProductsLoading(false);
     }
@@ -401,8 +402,8 @@ function RegistrarVentaContent() {
         setClientFound(null);
         setSearchState("not_found");
       }
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // client search failure is silent
     } finally {
       setLoadingClient(false);
     }
@@ -542,8 +543,7 @@ function RegistrarVentaContent() {
       setSearchState("found");
       setClientErrors({});
       toast.success("Cliente creado correctamente.");
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast.error("Error al crear el cliente. Verifica los datos.");
     }
   };
@@ -591,8 +591,7 @@ function RegistrarVentaContent() {
           setSearchState("found");
           setClientErrors({});
           activeClient = createdClient;
-        } catch (error) {
-          console.error(error);
+        } catch {
           toast.error("Error al crear el cliente. Verifica los datos.");
           return;
         }
@@ -618,8 +617,7 @@ function RegistrarVentaContent() {
           setClientFound(updated);
           setOriginalClient(updated);
           activeClient = updated;
-        } catch (error) {
-          console.error(error);
+        } catch {
           toast.error("Error al guardar los cambios del cliente.");
           return;
         }
@@ -702,8 +700,8 @@ function RegistrarVentaContent() {
 
       try {
         if (!orderData) {
-          const response = await axios.post(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header`,
+          const response = await axiosAuth.post(
+            `${GATEWAY.ventas}/order-header`,
             payload,
           );
 
@@ -716,8 +714,8 @@ function RegistrarVentaContent() {
               const formData = new FormData();
               formData.append("file", paymentProofFile);
 
-              await axios.patch(
-                `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${firstPaymentId}/upload-proof`,
+              await axiosAuth.patch(
+                `${GATEWAY.ventas}/payments/payments/${firstPaymentId}/upload-proof`,
                 formData,
                 {
                   headers: {
@@ -725,8 +723,7 @@ function RegistrarVentaContent() {
                   },
                 },
               );
-            } catch (proofError) {
-              console.error("Error subiendo comprobante", proofError);
+            } catch {
               toast.warning(
                 "Venta creada pero hubo un error al subir el comprobante",
               );
@@ -778,8 +775,8 @@ function RegistrarVentaContent() {
             sellerName: sellerDisplayName || null,
           };
 
-          await axios.put(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderData.id}`,
+          await axiosAuth.put(
+            `${GATEWAY.ventas}/order-header/${orderData.id}`,
             updatePayload,
           );
 
@@ -789,8 +786,7 @@ function RegistrarVentaContent() {
           setReceiptOrderId(updatedId);
           setReceiptOpen(true);
         }
-      } catch (error) {
-        console.error("❌ Error creating sale", error);
+      } catch {
         toast.error("Error al registrar la venta");
       } finally {
         setIsSubmitting(false);
@@ -904,8 +900,7 @@ function RegistrarVentaContent() {
       setClientFound(updated);
       setOriginalClient(updated);
       toast.success("Cliente actualizado");
-    } catch (error) {
-      console.error(error);
+    } catch {
       toast.error("Error al actualizar cliente");
     }
   };

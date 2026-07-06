@@ -36,22 +36,21 @@ export default function UsuariosPage() {
   const [currentPage, setCurrentPage] = useState(1);
 
   const fetchUsers = useCallback(async () => {
-    if (!auth?.company?.id || !auth?.accessToken) {
+    if (!auth?.company?.id) {
       setLoading(false);
       return;
     }
 
     setLoading(true);
     try {
-      const usersData = await getUsersByCompany(auth.company.id, auth.accessToken);
+      const usersData = await getUsersByCompany(auth.company.id);
       setUsers(usersData);
     } catch (error) {
-      console.error("Error al cargar usuarios:", error);
       toast.error("Error al cargar usuarios");
     } finally {
       setLoading(false);
     }
-  }, [auth?.company?.id, auth?.accessToken]);
+  }, [auth?.company?.id]);
 
   useEffect(() => {
     fetchUsers();

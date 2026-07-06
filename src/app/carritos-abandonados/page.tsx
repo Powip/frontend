@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { GATEWAY } from '@/lib/gateway';
 import {
   getAbandonedCheckouts,
   getAbandonedCheckoutStats,
@@ -44,14 +45,14 @@ export default function CarritosAbandonadosPage() {
     setError(null);
     try {
       const [checkoutsResult, statsResult] = await Promise.all([
-        getAbandonedCheckouts(auth.accessToken, {
+        getAbandonedCheckouts({
           page,
           limit,
           status: statusFilter || undefined,
           companyId,
           storeId: selectedStoreId || undefined,
         }),
-        getAbandonedCheckoutStats(auth.accessToken, companyId),
+        getAbandonedCheckoutStats(companyId),
       ]);
       setResult(checkoutsResult);
       setStats(statsResult);
@@ -63,7 +64,7 @@ export default function CarritosAbandonadosPage() {
 
     if (companyId) {
       try {
-        const stores = await getShopifyStatus(auth.accessToken, companyId);
+        const stores = await getShopifyStatus(companyId);
         const reauthStore = stores.find((s) => s.needs_reauthorization);
         if (reauthStore) {
           setNeedsReauth(true);
@@ -93,7 +94,7 @@ export default function CarritosAbandonadosPage() {
             <p className="text-sm mt-1">
               Los scopes del token no incluyen los permisos de fulfillment. Los datos pueden estar incompletos.{' '}
               <a
-                href={`${process.env.NEXT_PUBLIC_API_INTEGRATIONS || 'http://localhost:3007'}/shopify/reauth/${reauthShopUrl}`}
+                href={`${GATEWAY.integrations}/shopify/reauth/${reauthShopUrl}`}
                 className="underline font-medium"
               >
                 Reconectar tienda

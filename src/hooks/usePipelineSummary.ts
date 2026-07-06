@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 
 export interface PipelineSummary {
   leads_this_month: number;
@@ -29,14 +29,13 @@ export interface PipelineSummary {
   };
 }
 
-export const usePipelineSummary = (token?: string) => {
+export const usePipelineSummary = () => {
   return useQuery<PipelineSummary>({
     queryKey: ["pipeline-summary"],
     queryFn: async () => {
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-      const response = await axios.get("/api/superadmin/pipeline/summary", config);
+      const response = await axiosAuth.get("/api/superadmin/pipeline/summary");
       return response.data;
     },
-    enabled: !!token,
+    enabled: true,
   });
 };

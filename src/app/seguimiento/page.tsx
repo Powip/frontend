@@ -55,7 +55,8 @@ import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 
 import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import CustomerServiceModal, {
   ShippingGuideData,
@@ -266,11 +267,11 @@ export default function SeguimientoPage() {
     try {
       // 2 requests en paralelo: órdenes + todas las guías de la tienda
       const [ordersRes, guidesRes] = await Promise.all([
-        axios.get<OrderHeader[]>(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+        axiosAuth.get<OrderHeader[]>(
+          `${GATEWAY.ventas}/order-header/store/${selectedStoreId}`,
         ),
-        axios.get<ShippingGuide[]>(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
+        axiosAuth.get<ShippingGuide[]>(
+          `${GATEWAY.courier}/shipping-guides/store/${selectedStoreId}`,
         ),
       ]);
 
@@ -349,8 +350,7 @@ export default function SeguimientoPage() {
         );
         return updated || prev;
       });
-    } catch (error) {
-      console.error("Error fetching envios:", error);
+    } catch {
       toast.error("Error al cargar los envíos");
     } finally {
       setLoading(false);
@@ -361,12 +361,11 @@ export default function SeguimientoPage() {
     if (!selectedStoreId) return;
     setLoadingGuides(true);
     try {
-      const res = await axios.get<ShippingGuide[]>(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
+      const res = await axiosAuth.get<ShippingGuide[]>(
+        `${GATEWAY.courier}/shipping-guides/store/${selectedStoreId}`,
       );
       setGuides(res.data);
-    } catch (error) {
-      console.error("Error fetching guides:", error);
+    } catch {
       toast.error("Error al cargar las guías");
     } finally {
       setLoadingGuides(false);
@@ -622,8 +621,8 @@ export default function SeguimientoPage() {
 
     setSavingOrderId(orderId);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         {
           externalTrackingNumber: data.externalTrackingNumber || null,
           shippingCode: data.shippingCode || null,
@@ -807,8 +806,8 @@ export default function SeguimientoPage() {
     }
 
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.courier}/shipping-guides/${guideId}`,
         { status: newStatus },
       );
       toast.success(`Estado actualizado a ${newStatus}`);

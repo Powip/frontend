@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { useAdminOrders } from "@/hooks/useAdminQueries";
@@ -31,7 +33,8 @@ export default function MargenProductoPage() {
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const companyId = auth?.company?.id ?? "";
-  const { data: orders = [], isLoading } = useAdminOrders(companyId, fromDate, toDate);
+  const { data: ordersData, isLoading } = useAdminOrders(companyId, fromDate, toDate);
+  const orders = useMemo(() => ordersData ?? [], [ordersData]);
 
   const handleSort = (key: SortKey) => {
     if (sortBy === key) {
@@ -59,16 +62,19 @@ export default function MargenProductoPage() {
     }
 
     const variantIds = Object.keys(byProduct).filter((id) => id !== "unknown");
+
+    if (variantIds.length === 0) {
+      setProductos([]);
+      return;
+    }
+
     setEnriching(true);
 
     Promise.all(
       variantIds.map(async (variantId) => {
         try {
-          const res = await fetch(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${variantId}`);
-          if (res.ok) {
-            const data = await res.json();
-            return [variantId, Number(data.priceBase ?? 0)] as [string, number];
-          }
+          const res = await axiosAuth.get(`${GATEWAY.products}/product-variant/${variantId}`);
+          return [variantId, Number(res.data?.priceBase ?? 0)] as [string, number];
         } catch {}
         return [variantId, 0] as [string, number];
       })

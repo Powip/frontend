@@ -1,9 +1,12 @@
 "use client";
 import axios from "axios";
 import { useState, useMemo } from "react";
-import { Eye, EyeOff, ArrowRight } from "lucide-react";
+import { GATEWAY } from "@/lib/gateway";
+import { Eye, EyeOff } from "lucide-react";
 
 import { Input } from "../ui/input";
+import { Button } from "../ui/button";
+import { Separator } from "../ui/separator";
 import Link from "next/link";
 import { toast } from "sonner";
 import { Label } from "../ui/label";
@@ -137,6 +140,11 @@ export default function RegisterForm() {
     return Object.keys(newErrors).length === 0;
   };
 
+  const handleSocialLogin = (provider: string) => {
+    console.log(`[v0] Logging in with ${provider}`);
+    // Handle social login
+  };
+
   const handleOnRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validateForm()) {
@@ -146,7 +154,7 @@ export default function RegisterForm() {
     setIsLoading(true);
     try {
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_USERS}/auth/register`,
+        `${GATEWAY.auth}/api/v1/auth/register`,
         registerData,
       );
 
@@ -194,10 +202,10 @@ export default function RegisterForm() {
     <div className="w-full">
       <form
         onSubmit={handleOnRegister}
-        className="grid grid-cols-1 md:grid-cols-2 gap-5"
+        className="grid grid-cols-1 md:grid-cols-2 gap-4"
       >
         {/* Nombre */}
-        <div>
+        <div className="flex flex-col space-y-1">
           <Label htmlFor="register-name">Nombre</Label>
           <Input
             id="register-name"
@@ -208,15 +216,13 @@ export default function RegisterForm() {
               setRegisterData({ ...registerData, name: e.target.value })
             }
             disabled={isLoading}
-            className={`mt-1.5 rounded-xl ${errors.name ? "border-red-400" : ""}`}
+            className={errors.name ? "border-red-500" : ""}
           />
-          {errors.name && (
-            <p className="text-xs text-red-500 mt-1">{errors.name}</p>
-          )}
+          {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
         </div>
 
         {/* Apellido */}
-        <div>
+        <div className="flex flex-col space-y-1">
           <Label htmlFor="register-surname">Apellido</Label>
           <Input
             id="register-surname"
@@ -227,15 +233,15 @@ export default function RegisterForm() {
               setRegisterData({ ...registerData, surname: e.target.value })
             }
             disabled={isLoading}
-            className={`mt-1.5 rounded-xl ${errors.surname ? "border-red-400" : ""}`}
+            className={errors.surname ? "border-red-500" : ""}
           />
           {errors.surname && (
-            <p className="text-xs text-red-500 mt-1">{errors.surname}</p>
+            <p className="text-xs text-red-500">{errors.surname}</p>
           )}
         </div>
 
         {/* Documento */}
-        <div>
+        <div className="flex flex-col space-y-1">
           <Label htmlFor="register-document">Documento de Identidad</Label>
           <Input
             id="register-document"
@@ -249,17 +255,15 @@ export default function RegisterForm() {
               })
             }
             disabled={isLoading}
-            className={`mt-1.5 rounded-xl ${errors.identityDocument ? "border-red-400" : ""}`}
+            className={errors.identityDocument ? "border-red-500" : ""}
           />
           {errors.identityDocument && (
-            <p className="text-xs text-red-500 mt-1">
-              {errors.identityDocument}
-            </p>
+            <p className="text-xs text-red-500">{errors.identityDocument}</p>
           )}
         </div>
 
         {/* Teléfono */}
-        <div>
+        <div className="flex flex-col space-y-1">
           <Label htmlFor="register-phone">Número de Teléfono</Label>
           <Input
             id="register-phone"
@@ -270,15 +274,15 @@ export default function RegisterForm() {
               setRegisterData({ ...registerData, phoneNumber: e.target.value })
             }
             disabled={isLoading}
-            className={`mt-1.5 rounded-xl ${errors.phoneNumber ? "border-red-400" : ""}`}
+            className={errors.phoneNumber ? "border-red-500" : ""}
           />
           {errors.phoneNumber && (
-            <p className="text-xs text-red-500 mt-1">{errors.phoneNumber}</p>
+            <p className="text-xs text-red-500">{errors.phoneNumber}</p>
           )}
         </div>
 
         {/* Departamento */}
-        <div>
+        <div className="flex flex-col space-y-1">
           <Label>Departamento</Label>
           <Select
             value={registerData.department}
@@ -286,7 +290,7 @@ export default function RegisterForm() {
             disabled={isLoading}
           >
             <SelectTrigger
-              className={`mt-1.5 w-full rounded-xl ${errors.department ? "border-red-400" : ""}`}
+              className={errors.department ? "border-red-500" : ""}
             >
               <SelectValue placeholder="Selecciona departamento" />
             </SelectTrigger>
@@ -299,21 +303,19 @@ export default function RegisterForm() {
             </SelectContent>
           </Select>
           {errors.department && (
-            <p className="text-xs text-red-500 mt-1">{errors.department}</p>
+            <p className="text-xs text-red-500">{errors.department}</p>
           )}
         </div>
 
         {/* Provincia */}
-        <div>
+        <div className="flex flex-col space-y-1">
           <Label>Provincia</Label>
           <Select
             value={registerData.province}
             onValueChange={handleProvinceChange}
             disabled={isLoading || !registerData.department}
           >
-            <SelectTrigger
-              className={`mt-1.5 w-full rounded-xl ${errors.province ? "border-red-400" : ""}`}
-            >
+            <SelectTrigger className={errors.province ? "border-red-500" : ""}>
               <SelectValue placeholder="Selecciona provincia" />
             </SelectTrigger>
             <SelectContent>
@@ -325,12 +327,12 @@ export default function RegisterForm() {
             </SelectContent>
           </Select>
           {errors.province && (
-            <p className="text-xs text-red-500 mt-1">{errors.province}</p>
+            <p className="text-xs text-red-500">{errors.province}</p>
           )}
         </div>
 
         {/* Distrito */}
-        <div>
+        <div className="flex flex-col space-y-1">
           <Label>Distrito</Label>
           <Select
             value={registerData.district}
@@ -339,9 +341,7 @@ export default function RegisterForm() {
             }
             disabled={isLoading || !registerData.province}
           >
-            <SelectTrigger
-              className={`mt-1.5 w-full rounded-xl ${errors.district ? "border-red-400" : ""}`}
-            >
+            <SelectTrigger className={errors.district ? "border-red-500" : ""}>
               <SelectValue placeholder="Selecciona distrito" />
             </SelectTrigger>
             <SelectContent>
@@ -353,12 +353,12 @@ export default function RegisterForm() {
             </SelectContent>
           </Select>
           {errors.district && (
-            <p className="text-xs text-red-500 mt-1">{errors.district}</p>
+            <p className="text-xs text-red-500">{errors.district}</p>
           )}
         </div>
 
         {/* Dirección */}
-        <div>
+        <div className="flex flex-col space-y-1">
           <Label htmlFor="register-address">Dirección</Label>
           <Input
             id="register-address"
@@ -369,36 +369,36 @@ export default function RegisterForm() {
               setRegisterData({ ...registerData, address: e.target.value })
             }
             disabled={isLoading}
-            className={`mt-1.5 rounded-xl ${errors.address ? "border-red-400" : ""}`}
+            className={errors.address ? "border-red-500" : ""}
           />
           {errors.address && (
-            <p className="text-xs text-red-500 mt-1">{errors.address}</p>
+            <p className="text-xs text-red-500">{errors.address}</p>
           )}
         </div>
 
         {/* Email */}
-        <div className="md:col-span-2">
+        <div className="flex flex-col space-y-1 md:col-span-2">
           <Label htmlFor="register-email">Correo electrónico</Label>
           <Input
             id="register-email"
             type="email"
-            placeholder="tu@negocio.com"
+            placeholder="tu@email.com"
             value={registerData.email}
             onChange={(e) =>
               setRegisterData({ ...registerData, email: e.target.value })
             }
             disabled={isLoading}
-            className={`mt-1.5 rounded-xl ${errors.email ? "border-red-400" : ""}`}
+            className={errors.email ? "border-red-500" : ""}
           />
           {errors.email && (
-            <p className="text-xs text-red-500 mt-1">{errors.email}</p>
+            <p className="text-xs text-red-500">{errors.email}</p>
           )}
         </div>
 
         {/* Contraseña */}
-        <div>
+        <div className="flex flex-col space-y-1">
           <Label htmlFor="register-password">Contraseña</Label>
-          <div className="relative mt-1.5">
+          <div className="relative">
             <Input
               id="register-password"
               type={showPassword ? "text" : "password"}
@@ -408,33 +408,33 @@ export default function RegisterForm() {
                 setRegisterData({ ...registerData, password: e.target.value })
               }
               disabled={isLoading}
-              className={`rounded-xl pr-10 ${errors.password ? "border-red-400" : ""}`}
+              className={errors.password ? "border-red-500 pr-10" : "pr-10"}
             />
             <button
               type="button"
-              className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground"
               onClick={() => setShowPassword(!showPassword)}
               tabIndex={-1}
             >
               {showPassword ? (
-                <EyeOff className="w-4 h-4" />
+                <EyeOff className="h-4 w-4" />
               ) : (
-                <Eye className="w-4 h-4" />
+                <Eye className="h-4 w-4" />
               )}
             </button>
           </div>
-          <p className="text-[10px] text-gray-500 mt-1">
+          <p className="text-[10px] text-muted-foreground mt-1">
             Mínimo 6 caracteres, una letra minúscula y un número.
           </p>
           {errors.password && (
-            <p className="text-xs text-red-500 mt-1">{errors.password}</p>
+            <p className="text-xs text-red-500">{errors.password}</p>
           )}
         </div>
 
         {/* Confirmación */}
-        <div>
+        <div className="flex flex-col space-y-1">
           <Label htmlFor="register-confirm">Confirmar contraseña</Label>
-          <div className="relative mt-1.5">
+          <div className="relative">
             <Input
               id="register-confirm"
               type={showConfirmPassword ? "text" : "password"}
@@ -447,65 +447,43 @@ export default function RegisterForm() {
                 })
               }
               disabled={isLoading}
-              className={`rounded-xl pr-10 ${errors.confirmPassword ? "border-red-400" : ""}`}
+              className={
+                errors.confirmPassword ? "border-red-500 pr-10" : "pr-10"
+              }
             />
             <button
               type="button"
-              className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
+              className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-foreground hover:text-foreground"
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
               tabIndex={-1}
             >
               {showConfirmPassword ? (
-                <EyeOff className="w-4 h-4" />
+                <EyeOff className="h-4 w-4" />
               ) : (
-                <Eye className="w-4 h-4" />
+                <Eye className="h-4 w-4" />
               )}
             </button>
           </div>
           {errors.confirmPassword && (
-            <p className="text-xs text-red-500 mt-1">
-              {errors.confirmPassword}
-            </p>
+            <p className="text-xs text-red-500">{errors.confirmPassword}</p>
           )}
         </div>
 
         {/* Botón */}
         <div className="md:col-span-2">
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-70 mt-1"
-            style={{ background: "#4F3A96" }}
-          >
-            {isLoading ? (
-              <>
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Creando cuenta...
-              </>
-            ) : (
-              <>
-                Crear cuenta <ArrowRight className="w-4 h-4" />
-              </>
-            )}
-          </button>
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? "Creando cuenta..." : "Crear cuenta"}
+          </Button>
         </div>
       </form>
 
-      <p className="text-center text-xs text-gray-500 pt-4">
+      <p className="text-center text-xs text-muted-foreground md:col-span-2 pt-2">
         Al registrarte, aceptas nuestros{" "}
-        <Link
-          href="/terminos"
-          className="font-semibold hover:opacity-80 transition-opacity"
-          style={{ color: "#4F3A96" }}
-        >
+        <Link href="/terminos" className="text-primary hover:underline">
           Términos de Servicio
         </Link>{" "}
         y{" "}
-        <Link
-          href="/privacidad"
-          className="font-semibold hover:opacity-80 transition-opacity"
-          style={{ color: "#4F3A96" }}
-        >
+        <Link href="/privacidad" className="text-primary hover:underline">
           Política de Privacidad
         </Link>
       </p>

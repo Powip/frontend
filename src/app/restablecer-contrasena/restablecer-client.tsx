@@ -4,15 +4,26 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-
 import axios from "axios";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useSearchParams } from "next/navigation";
+import { GATEWAY } from "@/lib/gateway";
 
 export default function RestablecerClient() {
-  const searchParams = useSearchParams();
-  const token = searchParams.get("token");
+  const [tokens, setTokens] = useState<{
+    accessToken: string | null;
+    refreshToken: string | null;
+  }>({ accessToken: null, refreshToken: null });
+
+  useEffect(() => {
+    // Supabase puts tokens in the hash fragment, not query params
+    const hash = window.location.hash.substring(1); // remove leading '#'
+    const params = new URLSearchParams(hash);
+    setTokens({
+      accessToken: params.get("access_token"),
+      refreshToken: params.get("refresh_token"),
+    });
+  }, []);
 
   const [data, setData] = useState({
     password: "",
@@ -45,7 +56,7 @@ export default function RestablecerClient() {
   const handleOnSend = async () => {
     if (!validatePasswords()) return;
 
-    if (!token) {
+    if (!tokens.accessToken || !tokens.refreshToken) {
       toast.error("El enlace de recuperación no es válido o ha expirado.");
       return;
     }
@@ -53,9 +64,10 @@ export default function RestablecerClient() {
     setLoading(true);
     try {
       await axios.post(
-        `${process.env.NEXT_PUBLIC_API_USERS}/auth/reset-password`,
+        `${GATEWAY.auth}/api/v1/auth/reset-password`,
         {
-          token,
+          accessToken: tokens.accessToken,
+          refreshToken: tokens.refreshToken,
           newPassword: data.password,
         },
         {

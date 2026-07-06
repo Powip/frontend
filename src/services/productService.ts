@@ -1,9 +1,8 @@
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
-const API_PRODUCTS =
-  process.env.NEXT_PUBLIC_API_PRODUCTOS || "http://localhost:3005";
-const API_LOGISTICS =
-  process.env.NEXT_PUBLIC_API_INVENTORY || "http://localhost:3004";
+const API_PRODUCTS = GATEWAY.products;
+const API_LOGISTICS = GATEWAY.logistics;
 
 export interface ProductSummary {
   total: number;
@@ -21,75 +20,50 @@ export interface OutOfStockItem {
   physicalStock: number;
 }
 
-export const getProductSummary = async (
-  accessToken: string,
-): Promise<ProductSummary> => {
-  const response = await axios.get(`${API_PRODUCTS}/products/summary`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+export const getProductSummary = async (): Promise<ProductSummary> => {
+  const response = await axiosAuth.get(`${API_PRODUCTS}/products/summary`);
   return response.data;
 };
 
-export const getOutOfStockSummary = async (
-  accessToken: string,
-): Promise<OutOfStockSummary> => {
-  const response = await axios.get(
+export const getOutOfStockSummary = async (): Promise<OutOfStockSummary> => {
+  const response = await axiosAuth.get(
     `${API_LOGISTICS}/inventory-item/summary/out-of-stock`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
   );
   return response.data;
 };
 
-export const getOutOfStockDetails = async (
-  accessToken: string,
-): Promise<OutOfStockItem[]> => {
-  const response = await axios.get(
+export const getOutOfStockDetails = async (): Promise<OutOfStockItem[]> => {
+  const response = await axiosAuth.get(
     `${API_LOGISTICS}/inventory-item/summary/out-of-stock-details`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
   );
   return response.data;
 };
 
 export const getCompanyProductCount = async (
-  accessToken: string,
   companyId: string,
 ): Promise<number> => {
-  const response = await axios.get(
+  const response = await axiosAuth.get(
     `${API_PRODUCTS}/products/company/${companyId}`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
   );
   return response.data.length;
 };
+
 export const getProductById = async (id: string): Promise<any> => {
-  const response = await axios.get(`${API_PRODUCTS}/products/${id}`);
+  const response = await axiosAuth.get(`${API_PRODUCTS}/products/${id}`);
   return response.data;
 };
 
 export const updateProduct = async (id: string, payload: any): Promise<any> => {
-  const response = await axios.patch(`${API_PRODUCTS}/products/${id}`, payload);
+  const response = await axiosAuth.patch(`${API_PRODUCTS}/products/${id}`, payload);
   return response.data;
 };
 
 export const createProduct = async (payload: any): Promise<any> => {
-  const response = await axios.post(`${API_PRODUCTS}/products`, payload);
+  const response = await axiosAuth.post(`${API_PRODUCTS}/products`, payload);
   return response.data;
 };
 
 export const deleteProduct = async (id: string): Promise<any> => {
-  const response = await axios.delete(`${API_PRODUCTS}/products/${id}`);
+  const response = await axiosAuth.delete(`${API_PRODUCTS}/products/${id}`);
   return response.data;
 };

@@ -28,12 +28,11 @@ export function useAdminGastos(
   companyId: string,
   fromDate: string,
   toDate: string,
-  token: string,
 ) {
   return useQuery({
     queryKey: ["admin-gastos", companyId, fromDate, toDate],
-    queryFn: () => getGastos(companyId, fromDate, toDate, token),
-    enabled: !!companyId && !!token,
+    queryFn: () => getGastos(companyId, fromDate, toDate),
+    enabled: !!companyId,
     staleTime: STALE,
   });
 }
@@ -42,12 +41,11 @@ export function useAdminShrinkageSummary(
   companyId: string,
   fromDate: string,
   toDate: string,
-  token: string,
 ) {
   return useQuery({
     queryKey: ["admin-shrinkage-summary", companyId, fromDate, toDate],
-    queryFn: () => getShrinkageSummary(companyId, fromDate, toDate, token),
-    enabled: !!companyId && !!token,
+    queryFn: () => getShrinkageSummary(companyId, fromDate, toDate),
+    enabled: !!companyId,
     staleTime: STALE,
   });
 }
@@ -56,12 +54,11 @@ export function useAdminShrinkageList(
   companyId: string,
   fromDate: string,
   toDate: string,
-  token: string,
 ) {
   return useQuery({
     queryKey: ["admin-shrinkage-list", companyId, fromDate, toDate],
-    queryFn: () => getShrinkageList(companyId, fromDate, toDate, token),
-    enabled: !!companyId && !!token,
+    queryFn: () => getShrinkageList(companyId, fromDate, toDate),
+    enabled: !!companyId,
     staleTime: STALE,
   });
 }
@@ -70,12 +67,11 @@ export function useAdminCourierCost(
   storeIds: string[],
   fromDate: string,
   toDate: string,
-  token: string,
 ) {
   return useQuery({
     queryKey: ["admin-courier-cost", storeIds.join(","), fromDate, toDate],
-    queryFn: () => getCourierCost(storeIds, fromDate, toDate, token),
-    enabled: storeIds.length > 0 && !!token,
+    queryFn: () => getCourierCost(storeIds, fromDate, toDate),
+    enabled: storeIds.length > 0,
     staleTime: STALE,
   });
 }

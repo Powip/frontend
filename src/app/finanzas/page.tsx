@@ -26,7 +26,8 @@ import { Label } from "@/components/ui/label";
 
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -200,11 +201,11 @@ export default function FinanzasPage() {
   const fetchOrders = useCallback(async () => {
     try {
       const [ordersRes, guidesRes] = await Promise.all([
-        axios.get<OrderHeader[]>(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+        axiosAuth.get<OrderHeader[]>(
+          `${GATEWAY.ventas}/order-header/store/${selectedStoreId}`,
         ),
-        axios.get(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
+        axiosAuth.get(
+          `${GATEWAY.courier}/shipping-guides/store/${selectedStoreId}`,
         ),
       ]);
 
@@ -233,8 +234,8 @@ export default function FinanzasPage() {
       });
 
       setSales(enrichedSales);
-    } catch (error) {
-      console.error("Error fetching orders", error);
+    } catch {
+      toast.error("Error al cargar órdenes");
     }
   }, [selectedStoreId]);
 
@@ -274,14 +275,13 @@ export default function FinanzasPage() {
           payload.cancellationReason = cancellationReason;
         }
 
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
+        await axiosAuth.patch(
+          `${GATEWAY.ventas}/order-header/${saleId}`,
           payload,
         );
         toast.success(`Estado actualizado a ${newStatus}`);
         fetchOrders();
-      } catch (error) {
-        console.error("Error actualizando estado", error);
+      } catch {
         toast.error("No se pudo actualizar el estado");
       }
     },
@@ -294,8 +294,8 @@ export default function FinanzasPage() {
 
       setIsCancelling(true);
       try {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
+        await axiosAuth.patch(
+          `${GATEWAY.ventas}/order-header/${saleToCancel.id}`,
           {
             status: "ANULADO",
             cancellationReason: reason,
@@ -306,8 +306,7 @@ export default function FinanzasPage() {
         setCancellationModalOpen(false);
         setSaleToCancel(null);
         fetchOrders();
-      } catch (error) {
-        console.error("Error anulando venta", error);
+      } catch {
         toast.error("No se pudo anular la venta");
       } finally {
         setIsCancelling(false);
@@ -466,8 +465,8 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+          const res = await axiosAuth.get<ReceiptData>(
+            `${GATEWAY.ventas}/order-header/${sale.id}/receipt`,
           );
           return res.data;
         }),
@@ -478,8 +477,7 @@ Estado: ${sale.status}
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedSaleIds(new Set());
-    } catch (error) {
-      console.error("Error en impresión masiva", error);
+    } catch {
       toast.error("Error al preparar los recibos para imprimir");
     } finally {
       setIsPrinting(false);

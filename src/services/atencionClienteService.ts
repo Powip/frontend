@@ -1,7 +1,8 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { OrderHeader, SubEstadoCc, TipoGestionCC, KpisCC, CcKpisFinancierosResponse, CcKpisFunnelResponse, CcStorePerformanceItem, CcUpsellResponse, CcAgingResponse, CcIntentosResponse, CcUpsellRecordsResponse } from "@/interfaces/IOrder";
+import { GATEWAY } from "@/lib/gateway";
 
-const BASE = process.env.NEXT_PUBLIC_API_VENTAS;
+const BASE = GATEWAY.ventas;
 
 export interface PedidosCcFilters {
   tipoGestion?: TipoGestionCC;

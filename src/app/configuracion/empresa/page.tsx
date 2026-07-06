@@ -22,7 +22,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { ISubscription } from "@/interfaces/ISubscription";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { Check } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -46,7 +47,7 @@ export default function EmpresaPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [logoFile, setLogoFile] = useState<File | null>(null);
-  const [subscription, setSubscription] = useState<ISubscription | null>(null)
+  const [subscription, setSubscription] = useState<ISubscription | null>(null);
   const router = useRouter();
   const { auth } = useAuth();
 
@@ -57,20 +58,21 @@ export default function EmpresaPage() {
       setIsLoading(true);
       try {
         // --- Fetch Company ---
-        const companyRes = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${auth.company.id}`
+        const companyRes = await axiosAuth.get(
+          `${GATEWAY.company}/company/${auth.company.id}`,
         );
         setCompany(companyRes.data);
 
         // --- Fetch Subscription ---
-        const subRes = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_SUBS}/subscriptions/${auth.subscription?.id}`
+        const subRes = await axiosAuth.get(
+          `${GATEWAY.subscriptionFlow}/api/v1/subscriptions/me`,
         );
-
-        setSubscription(subRes.data);
-        console.log("Subscription:", subRes.data);
-      } catch (error) {
-        console.log("Error al cargar datos de empresa o suscripción:", error);
+        const subData = Array.isArray(subRes.data)
+          ? subRes.data[0]
+          : subRes.data;
+        setSubscription(subData ?? null);
+      } catch {
+        toast.error("Error al cargar datos de empresa o suscripción");
       } finally {
         setIsLoading(false);
       }
@@ -123,19 +125,18 @@ export default function EmpresaPage() {
 
       if (logoFile) formData.append("logo", logoFile);
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${company.id}`,
+      await axiosAuth.patch(
+        `${GATEWAY.company}/company/${company.id}`,
         formData,
         {
           headers: {
             "Content-Type": "multipart/form-data",
           },
-        }
+        },
       );
 
       toast.success("Empresa actualizada");
-    } catch (error) {
-      console.log("Error", error);
+    } catch {
       toast.error("Error al actualizar la empresa");
     } finally {
       setIsLoading(false);
@@ -317,7 +318,7 @@ export default function EmpresaPage() {
                           day: "numeric",
                           month: "long",
                           year: "numeric",
-                        }
+                        },
                       )
                     : "—"}
                 </p>

@@ -26,10 +26,10 @@ import { StatusBadge, ACTIVACION_STATES, getStatusLabel } from './StatusBadge';
 import { LeadActivationFlow } from './LeadActivationFlow';
 import { LeadActivitiesDrawer } from './LeadActivitiesDrawer';
 import { Checkbox } from '@/components/ui/checkbox';
+import axiosAuth from '@/lib/axiosAuth';
 
 interface ActivacionTableProps {
   activations: any[];
-  token?: string;
   auth?: any;
   plans?: any[];
   onUpdateStatus?: (id: string, status: string) => void;
@@ -37,7 +37,6 @@ interface ActivacionTableProps {
 
 export const ActivacionTable: React.FC<ActivacionTableProps> = ({
   activations,
-  token,
   auth,
   plans,
   onUpdateStatus,
@@ -86,17 +85,7 @@ export const ActivacionTable: React.FC<ActivacionTableProps> = ({
   const handleStatusUpdate = async (id: string, newStatus: string) => {
     setIsUpdating(id);
     try {
-      const response = await fetch(`/api/superadmin/leads/activations/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ activation_status: newStatus }),
-      });
-
-      if (!response.ok) throw new Error('Error updating');
-
+      await axiosAuth.patch(`/api/superadmin/leads/activations/${id}`, { activation_status: newStatus });
       toast.success(`Estado cambiado a: ${getStatusLabel(newStatus)}`);
       if (onUpdateStatus) onUpdateStatus(id, newStatus);
       router.refresh();
@@ -124,22 +113,10 @@ export const ActivacionTable: React.FC<ActivacionTableProps> = ({
     setIsUpdating(item.id);
     try {
       // 1. Reset pipeline stage in leads table
-      await fetch(`/api/superadmin/leads/${item.lead_id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ pipeline_stage: 'nuevo' }),
-      });
+      await axiosAuth.patch(`/api/superadmin/leads/${item.lead_id}`, { pipeline_stage: 'nuevo' });
 
       // 2. Delete the activation record
-      await fetch(`/api/superadmin/leads/activations/${item.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      await axiosAuth.delete(`/api/superadmin/leads/activations/${item.id}`);
 
       toast.success("Lead devuelto al CRM Comercial");
       router.refresh();
@@ -155,20 +132,10 @@ export const ActivacionTable: React.FC<ActivacionTableProps> = ({
     setIsUpdating(item.id);
     try {
       // 1. Delete lead
-      await fetch(`/api/superadmin/leads/${item.lead_id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      await axiosAuth.delete(`/api/superadmin/leads/${item.lead_id}`);
 
       // 2. Delete activation (server might handle this via cascade, but being safe)
-      await fetch(`/api/superadmin/leads/activations/${item.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      await axiosAuth.delete(`/api/superadmin/leads/activations/${item.id}`);
 
       toast.success("Lead eliminado permanentemente");
       router.refresh();
@@ -208,15 +175,8 @@ export const ActivacionTable: React.FC<ActivacionTableProps> = ({
 
     setIsMassUpdating(true);
     try {
-      await Promise.all(selectedActivations.map(id => 
-        fetch(`/api/superadmin/leads/activations/${id}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify(updates),
-        })
+      await Promise.all(selectedActivations.map(id =>
+        axiosAuth.patch(`/api/superadmin/leads/activations/${id}`, updates)
       ));
 
       toast.success(`Se actualizaron ${selectedActivations.length} activaciones masivamente`);
@@ -521,7 +481,6 @@ export const ActivacionTable: React.FC<ActivacionTableProps> = ({
         lead={selectedActivation}
         open={isActivationFlowOpen}
         onClose={() => setIsActivationFlowOpen(false)}
-        token={token}
         auth={auth}
         plans={plans}
       />
@@ -532,7 +491,6 @@ export const ActivacionTable: React.FC<ActivacionTableProps> = ({
           onClose={() => setIsActivitiesOpen(false)}
           leadId={selectedActivation.lead_id}
           leadName={selectedActivation.business_name || selectedActivation.lead?.business_name}
-          token={token}
         />
       )}
     </div>

@@ -8,28 +8,16 @@ import {
   useCallback,
   ReactNode,
 } from "react";
-import { decodeToken, isExpired } from "@/lib/jwt";
 import { fetchUserCompany, fetchCompanyById } from "@/services/companyService";
 import { fetchUserSubscription } from "@/services/fetchUserSubscription";
+import { decodeToken } from "@/lib/jwt";
 import axios from "axios";
+import axiosAuth, { requestRefresh } from "@/lib/axiosAuth";
 import { isSuperadmin } from "@/config/permissions.config";
 import { tokenStore } from "@/lib/tokenStore";
+import { GATEWAY } from "@/lib/gateway";
 
-// Configurar axios para enviar cookies automáticamente (httpOnly cookies)
-axios.defaults.withCredentials = true;
-
-const API_AUTH =
-  process.env.NEXT_PUBLIC_API_USERS?.replace("/api/v1", "") ||
-  "http://localhost:8080";
-
-interface Subscription {
-  id: string;
-  status: string;
-  plan: {
-    id: string;
-    name: string;
-  };
-}
+const API_AUTH = GATEWAY.auth;
 
 interface Store {
   id: string;
@@ -46,11 +34,10 @@ interface Company {
   id: string;
   name: string;
   stores?: Store[];
-  // Datos adicionales para comprobante de envío
-  cuit?: string; // RUC/CUIT
-  billingAddress?: string; // Dirección
-  phone?: string; // Teléfono
-  logoUrl?: string; // URL del logo (para futuro)
+  cuit?: string;
+  billingAddress?: string;
+  phone?: string;
+  logoUrl?: string;
   sales_channels?: string[];
   closing_channels?: string[];
   iva?: number;
@@ -66,21 +53,22 @@ interface AuthData {
     permissions: string[];
     name?: string;
     surname?: string;
+    companyId?: string;
   };
-  company: Company | null;
-  subscription: Subscription | null;
-  exp: number;
+  // Company = tiene empresa | null = confirmado que no tiene empresa (404) | undefined = no se pudo verificar (error de red/401/etc.)
+  company: Company | null | undefined;
+  // true = suscripto | false = sin suscripción confirmada (404/403) | null = no verificado (error de red)
+  subscription: boolean | null;
 }
 
 interface AuthContextType {
   auth: AuthData | null;
   loading: boolean;
-  login: (tokens: {
-    accessToken: string;
-    refreshToken?: string;
-  }) => Promise<AuthData | null>;
-  logout: () => void;
+  login: (tokens: { accessToken: string }) => Promise<AuthData | null>;
+  logout: () => Promise<void>;
   updateCompany: (company: Company) => void;
+  updateSubscription: (subscription: boolean) => void;
+  refreshAuth: () => Promise<boolean>;
   selectedStoreId: string | null;
   setSelectedStore: (storeId: string) => void;
   inventories: Inventory[];
@@ -90,7 +78,6 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Solo guardamos preferencias no sensibles
 const STORE_PREFERENCE_KEY = "selectedStoreId";
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
@@ -99,72 +86,68 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [selectedStoreId, setSelectedStore] = useState<string | null>(null);
   const [inventories, setInventories] = useState<Inventory[]>([]);
 
-  // ---- SILENT REFRESH: Intenta recuperar sesión usando httpOnly cookie ----
-  const silentRefresh = useCallback(async (): Promise<boolean> => {
+  // ---- RESTORE AUTH ----
+  const restoreAuthFromToken = useCallback(async (accessToken: string): Promise<AuthData | null> => {
+    const decoded = decodeToken(accessToken);
+    if (!decoded) return null;
+
+    tokenStore.set(accessToken);
+
+    const user = {
+      email: decoded.email,
+      id: decoded.id,
+      role: decoded.role,
+      permissions: decoded.permissions || [],
+      name: decoded.name,
+      surname: decoded.surname,
+      companyId: decoded.companyId,
+    };
+
+    let company: Company | null | undefined = null;
     try {
-      // Llamar al endpoint de refresh - el refreshToken viene en httpOnly cookie
-      const response = await axios.post(
-        `${API_AUTH}/api/v1/auth/refresh`,
-        {},
-        {
-          withCredentials: true, // Enviar cookies
-        },
-      );
-
-      if (response.data?.accessToken) {
-        // Decodificar y establecer auth
-        const decoded = decodeToken(response.data.accessToken);
-        if (!decoded) return false;
-
-        const user = {
-          email: decoded.email,
-          id: decoded.id,
-          role: decoded.role,
-          permissions: decoded.permissions || [],
-          name: decoded.name,
-          surname: decoded.surname,
-        };
-
-        let company = await fetchUserCompany(
-          decoded.id,
-          response.data.accessToken,
-        );
-        if (!company && decoded.companyId) {
-          company = await fetchCompanyById(
-            decoded.companyId,
-            response.data.accessToken,
-          );
-        }
-
-        const subscription = await fetchUserSubscription(
-          decoded.id,
-          response.data.accessToken,
-        );
-
-        const defaultStore = company?.stores?.[0]?.id || null;
-
-        setAuth({
-          accessToken: response.data.accessToken,
-          user,
-          company,
-          subscription,
-          exp: decoded.exp,
-        });
-
-        // Solo guardamos preferencia de tienda (no sensible)
-        const storedStore = localStorage.getItem(STORE_PREFERENCE_KEY);
-        setSelectedStore(storedStore || defaultStore);
-
-        return true;
+      if (decoded.id) {
+        company = await fetchUserCompany(decoded.id);
       }
-    } catch (error) {
-      // No hay sesión válida o refresh token expirado
-      console.log("No hay sesión activa");
+      if (!company && decoded.companyId) {
+        company = await fetchCompanyById(decoded.companyId);
+      }
+    } catch {
+      // Error de red — la empresa puede existir pero no se pudo verificar
+      company = undefined;
     }
-    return false;
+
+    let subscription: boolean | null = null;
+    try {
+      const result = await fetchUserSubscription();
+      // null (404/403) → false: sin suscripción confirmada
+      // true → suscripto
+      subscription = result ?? false;
+    } catch {
+      // Error de red → null: no verificado, no redirigir a /sin-plan
+    }
+
+    const defaultStore = company?.stores?.[0]?.id || null;
+    const authData: AuthData = { accessToken, user, company, subscription };
+    setAuth(authData);
+
+    const storedStore = localStorage.getItem(STORE_PREFERENCE_KEY);
+    setSelectedStore(storedStore || defaultStore);
+
+    return authData;
   }, []);
 
-  // ---- INICIALIZACIÓN: Intentar recuperar sesión al cargar ----
+  // ---- SILENT REFRESH ----
+  const silentRefresh = useCallback(async (): Promise<boolean> => {
+    // El access token ya no se persiste en localStorage — el refresh siempre
+    // va al backend, que lee la cookie httpOnly.
+    const newToken = await requestRefresh();
+    if (newToken) {
+      return (await restoreAuthFromToken(newToken)) !== null;
+    }
+    return false;
+  }, [restoreAuthFromToken]);
+
+  // ---- INICIALIZACIÓN ----
   useEffect(() => {
     const initAuth = async () => {
       setLoading(true);
@@ -179,17 +162,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     tokenStore.set(auth?.accessToken ?? null);
   }, [auth?.accessToken]);
 
+  // ---- INTERCEPTOR EVENTS ----
+  useEffect(() => {
+    const onRefreshed = (e: Event) => {
+      const newToken = (e as CustomEvent<string>).detail;
+      setAuth((prev) => (prev ? { ...prev, accessToken: newToken } : null));
+    };
+    const onLogout = () => {
+      setAuth(null);
+      setSelectedStore(null);
+      setInventories([]);
+      tokenStore.set(null);
+      localStorage.removeItem(STORE_PREFERENCE_KEY);
+    };
+    window.addEventListener("auth:refreshed", onRefreshed);
+    window.addEventListener("auth:logout", onLogout);
+    return () => {
+      window.removeEventListener("auth:refreshed", onRefreshed);
+      window.removeEventListener("auth:logout", onLogout);
+    };
+  }, []);
+
   // ---- INVENTORIES ----
   const fetchInventories = useCallback(async () => {
     if (!auth?.accessToken || !selectedStoreId) return;
-
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${selectedStoreId}`,
+      const res = await axiosAuth.get(
+        `${GATEWAY.logistics}/inventory/store/${selectedStoreId}`,
       );
       setInventories(res.data);
-    } catch (err) {
-      console.error("Error loading inventories", err);
+    } catch {
+      // silently fail — inventarios no bloquean el funcionamiento
     }
   }, [auth?.accessToken, selectedStoreId]);
 
@@ -206,46 +209,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     accessToken,
   }: {
     accessToken: string;
-    refreshToken?: string;
   }): Promise<AuthData | null> => {
-    const decoded = decodeToken(accessToken);
-    if (!decoded) return null;
-
-    const user = {
-      email: decoded.email,
-      id: decoded.id,
-      role: decoded.role,
-      permissions: decoded.permissions || [],
-      name: decoded.name,
-      surname: decoded.surname,
-    };
-
-    let company = await fetchUserCompany(decoded.id, accessToken);
-    if (!company && decoded.companyId) {
-      company = await fetchCompanyById(decoded.companyId, accessToken);
+    const authData = await restoreAuthFromToken(accessToken);
+    if (!authData) {
+      tokenStore.set(null);
+      return null;
     }
 
-    const subscription = await fetchUserSubscription(decoded.id, accessToken);
-
-    const defaultStore = company?.stores?.[0]?.id || null;
-
-    const newAuth: AuthData = {
-      accessToken,
-      user,
-      company,
-      subscription,
-      exp: decoded.exp,
-    };
-
-    setAuth(newAuth);
-    setSelectedStore(defaultStore);
-
-    // Solo guardamos preferencia de tienda (no sensible)
-    if (defaultStore) {
-      localStorage.setItem(STORE_PREFERENCE_KEY, defaultStore);
+    if (authData.company?.stores?.[0]?.id) {
+      localStorage.setItem(STORE_PREFERENCE_KEY, authData.company.stores[0].id);
     }
 
-    return newAuth;
+    return authData;
   };
 
   const updateCompany = (company: Company) => {
@@ -255,24 +230,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  const updateSubscription = (subscription: boolean) => {
+    setAuth((prev) => {
+      if (!prev) return prev;
+      return { ...prev, subscription };
+    });
+  };
+
   // ---- LOGOUT ----
   const logout = async () => {
     try {
-      // Llamar al backend para borrar la cookie httpOnly
       await axios.post(
         `${API_AUTH}/api/v1/auth/logout`,
         {},
-        {
-          withCredentials: true,
-        },
+        { withCredentials: true },
       );
-    } catch (error) {
-      console.error("Error en logout:", error);
+    } catch {
+      // Ignorar errores de red en logout — el estado local se limpia de todas formas
     }
 
     setAuth(null);
     setSelectedStore(null);
     setInventories([]);
+    tokenStore.set(null);
     localStorage.removeItem(STORE_PREFERENCE_KEY);
   };
 
@@ -294,6 +274,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         inventories,
         refreshInventories,
         updateCompany,
+        updateSubscription,
+        refreshAuth: silentRefresh,
         hasPermission,
       }}
     >

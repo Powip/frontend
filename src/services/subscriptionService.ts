@@ -1,7 +1,8 @@
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
-const API_SUBS =
-  process.env.NEXT_PUBLIC_API_SUBS || "http://localhost:8081/api/v1";
+const API_SUBS = GATEWAY.subscriptionFlow;
 
 export interface SubscriptionDetail {
   id: string;
@@ -21,31 +22,20 @@ export interface SubscriptionDetail {
 }
 
 export const getExpiringSubscriptionsAlert = async (
-  accessToken: string,
   days: number = 7,
 ): Promise<SubscriptionDetail[]> => {
-  const response = await axios.get(`${API_SUBS}/subscriptions/expiring-soon`, {
-    params: { days },
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
+  const response = await axiosAuth.get(
+    `${API_SUBS}/api/v1/subscriptions/expiring-soon`,
+    {
+      params: { days },
     },
-  });
+  );
   return response.data;
 };
 
-export const getSubscriptionByUserId = async (
-  accessToken: string,
-  userId: string,
-): Promise<SubscriptionDetail[]> => {
+export const getSubscriptionUser = async (): Promise<SubscriptionDetail[]> => {
   try {
-    const response = await axios.get(
-      `${API_SUBS}/subscriptions/user/${userId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      },
-    );
+    const response = await axiosAuth.get(`${API_SUBS}/api/v1/subscriptions/me`);
     return response.data;
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 404) {
@@ -54,6 +44,7 @@ export const getSubscriptionByUserId = async (
     throw error;
   }
 };
+
 export interface Plan {
   id: string;
   name: string;
@@ -62,51 +53,37 @@ export interface Plan {
   durationInDays: number;
 }
 
-export const getAllPlans = async (accessToken: string): Promise<Plan[]> => {
-  const response = await axios.get(`${API_SUBS}/plans`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+export const getAllPlans = async (): Promise<Plan[]> => {
+  const response = await axiosAuth.get(`${API_SUBS}/api/v1/plans`);
   return response.data;
 };
 
 export const updateSubscription = async (
-  accessToken: string,
   subscriptionId: string,
   data: { planId?: string; status?: string; autoRenewal?: boolean },
 ): Promise<SubscriptionDetail> => {
-  const response = await axios.put(
-    `${API_SUBS}/subscriptions/${subscriptionId}`,
+  const response = await axiosAuth.put(
+    `${API_SUBS}/api/v1/subscriptions/${subscriptionId}`,
     data,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
   );
   return response.data;
 };
 
 export const cancelSubscription = async (
-  accessToken: string,
   subscriptionId: string,
 ): Promise<void> => {
-  await axios.delete(`${API_SUBS}/subscriptions/${subscriptionId}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+  await axiosAuth.delete(`${API_SUBS}/api/v1/subscriptions/${subscriptionId}`);
 };
 
-export const createSubscription = async (
-  accessToken: string,
-  data: { userId: string; planId: string; payerEmail: string; status?: string },
-): Promise<SubscriptionDetail> => {
-  const response = await axios.post(`${API_SUBS}/subscriptions`, data, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+export const createSubscription = async (data: {
+  userId: string;
+  planId: string;
+  payerEmail: string;
+  status?: string;
+}): Promise<SubscriptionDetail> => {
+  const response = await axiosAuth.post(
+    `${API_SUBS}/api/v1/subscriptions`,
+    data,
+  );
   return response.data;
 };

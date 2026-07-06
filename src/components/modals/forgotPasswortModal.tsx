@@ -4,6 +4,7 @@ import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import axios from "axios";
 import { toast } from "sonner";
+import { GATEWAY } from "@/lib/gateway";
 
 interface Props {
   open: boolean;
@@ -22,7 +23,7 @@ export default function ForgotPassword({ open, onClose }: Props) {
     try {
       setLoading(true);
       const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_USERS}/auth/forgot-password`,
+        `${GATEWAY.auth}/api/v1/auth/forgot-password`,
         { email },
       );
       if (response.status === 200) {

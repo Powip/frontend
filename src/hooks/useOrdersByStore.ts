@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import axiosAuth from '@/lib/axiosAuth';
+import { GATEWAY } from '@/lib/gateway';
 import { OrderHeader } from '@/interfaces/IOrder';
 
 export function useOrdersByStore(storeId: string | null | undefined) {
   return useQuery({
     queryKey: ['orders', 'store', storeId],
     queryFn: async () => {
-      const res = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${storeId}`,
+      const res = await axiosAuth.get<OrderHeader[]>(
+        `${GATEWAY.ventas}/order-header/store/${storeId}`,
       );
       return res.data;
     },

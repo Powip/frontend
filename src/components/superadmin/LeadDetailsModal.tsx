@@ -33,7 +33,6 @@ interface LeadDetailsModalProps {
   onClose: () => void;
   lead: any;
   onUpdate?: () => void;
-  token?: string;
 }
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -49,7 +48,6 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   onClose,
   lead,
   onUpdate,
-  token,
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -104,7 +102,7 @@ export const LeadDetailsModal: React.FC<LeadDetailsModalProps> = ({
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await leadService.updateLead(lead.id, formData, token);
+      await leadService.updateLead(lead.id, formData);
       toast.success('Información actualizada correctamente');
       setIsEditing(false);
       if (onUpdate) onUpdate();

@@ -1,14 +1,10 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-  useCallback,
-} from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { isSuperadmin } from "@/config/permissions.config";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import {
   ShieldCheck,
   Building2,
@@ -59,8 +55,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
-}
-from "@/components/ui/dialog";
+} from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -89,7 +84,6 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateRange } from "react-day-picker";
 import { subDays, startOfDay, endOfDay } from "date-fns";
 
-
 import {
   getProductSummary,
   getOutOfStockSummary,
@@ -106,7 +100,7 @@ import {
 } from "@/services/salesService";
 import {
   getExpiringSubscriptionsAlert,
-  getSubscriptionByUserId,
+  getSubscriptionUser,
   createSubscription,
   updateSubscription,
   cancelSubscription,
@@ -172,31 +166,42 @@ export default function SuperadminPage() {
   // Company detail modal states
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [isCompanyModalOpen, setIsCompanyModalOpen] = useState(false);
-  
+
   // Date range state (default to last 30 days)
   const [date, setDate] = useState<DateRange | undefined>({
     from: startOfDay(subDays(new Date(), 30)),
     to: endOfDay(new Date()),
   });
 
-  const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({});
+  const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>(
+    {},
+  );
 
   const [isCreateCompanyOpen, setIsCreateCompanyOpen] = useState(false);
   const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
 
-
-  const { data: leads = [], isLoading: isLoadingLeads } = useLeads(auth?.accessToken);
-  const { data: saasMetrics, isLoading: isLoadingMetrics } = useSaasMetrics(auth?.accessToken, dateRange.from, dateRange.to);
-  const { data: churnData, refetch: refetchAlerts } = useChurnAlerts(auth?.accessToken);
+  const { data: leads = [], isLoading: isLoadingLeads } = useLeads();
+  const { data: saasMetrics, isLoading: isLoadingMetrics } = useSaasMetrics(
+    dateRange.from,
+    dateRange.to,
+  );
+  const { data: churnData, refetch: refetchAlerts } = useChurnAlerts();
   const churnAlerts = churnData?.alerts || [];
-  const { data: funnelData, isLoading: isLoadingFunnel } = useConversionFunnel(auth?.accessToken, dateRange.from, dateRange.to);
+  const { data: funnelData, isLoading: isLoadingFunnel } = useConversionFunnel(
+    dateRange.from,
+    dateRange.to,
+  );
 
   useEffect(() => {
-    if (auth?.accessToken) {
-      getAllPlans(auth.accessToken).then(setPlans).catch(console.error);
-      getRoles(auth.accessToken).then(setRoles).catch(console.error);
+    if (auth) {
+      getAllPlans()
+        .then(setPlans)
+        .catch(() => {});
+      getRoles()
+        .then(setRoles)
+        .catch(() => {});
     }
   }, [auth]);
   useEffect(() => {
@@ -211,9 +216,8 @@ export default function SuperadminPage() {
   }, [date]);
 
   const refreshData = useCallback(async () => {
-    if (!auth?.accessToken) return;
+    if (!auth) return;
     try {
-      const token = auth.accessToken;
       const [
         users,
         allCompanies,
@@ -224,19 +228,17 @@ export default function SuperadminPage() {
         expiringAlert,
         globalBillingData,
       ] = await Promise.all([
-        getAllUsers(token),
-        getAllCompanies(token),
-        getProductSummary(token),
-        getOutOfStockSummary(token).catch(() => ({ count: 0 })),
-        getGlobalSalesSummary(token, dateRange.from, dateRange.to).catch(
-          () => ({
-            totalSales: 0,
-            orderCount: 0,
-          }),
-        ),
-        getOutOfStockDetails(token).catch(() => []),
-        getExpiringSubscriptionsAlert(token).catch(() => []),
-        getGlobalBilling(token).catch(() => []),
+        getAllUsers(),
+        getAllCompanies(),
+        getProductSummary(),
+        getOutOfStockSummary().catch(() => ({ count: 0 })),
+        getGlobalSalesSummary(dateRange.from, dateRange.to).catch(() => ({
+          totalSales: 0,
+          orderCount: 0,
+        })),
+        getOutOfStockDetails().catch(() => []),
+        getExpiringSubscriptionsAlert().catch(() => []),
+        getGlobalBilling().catch(() => []),
       ]);
 
       setMetrics({
@@ -282,9 +284,9 @@ export default function SuperadminPage() {
         allCompanies.map(async (company) => {
           try {
             const [subs, totalSummary, dailySummary] = await Promise.all([
-              getSubscriptionByUserId(token, company.userId),
-              getCompanySalesSummary(token, company.id),
-              getCompanySalesSummary(token, company.id, today, today),
+              getSubscriptionUser(),
+              getCompanySalesSummary(company.id),
+              getCompanySalesSummary(company.id, today, today),
             ]);
 
             const activeSub =
@@ -318,16 +320,16 @@ export default function SuperadminPage() {
 
       setCompanies(enrichedCompanies);
     } catch (error) {
-      console.error("Error refreshing superadmin data:", error);
+      // silently ignore
     }
-  }, [auth?.accessToken, dateRange.from, dateRange.to]);
+  }, [auth, dateRange.from, dateRange.to]);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
-    if (!loading && mounted && auth?.accessToken) {
+    if (!loading && mounted && auth) {
       if (!isSuperadmin(auth?.user.email)) {
         router.push("/");
         return;
@@ -378,8 +380,6 @@ export default function SuperadminPage() {
           Nuevo Usuario
         </Button>
       </div>
-
-
 
       {/* Tabbed Content */}
       <Tabs defaultValue="overview" className="space-y-6">
@@ -434,34 +434,40 @@ export default function SuperadminPage() {
         </TabsContent>
 
         <TabsContent value="churn-risk" className="space-y-6">
-          <ChurnRiskView 
+          <ChurnRiskView
             alerts={churnAlerts.map((a: any) => {
-              const company = companies.find(c => c.id === a.business_id);
-              const user = company ? allUsers.find(u => u.id === company.userId) : null;
-              return { 
-                ...a, 
-                company: company ? { 
-                  ...company,
-                  name: company.name, 
-                  plan: company.plan, 
-                  price: company.price,
-                  phone: company.phone,
-                  lastSignInAt: user?.lastSignInAt || null
-                } : a.company 
+              const company = companies.find((c) => c.id === a.business_id);
+              const user = company
+                ? allUsers.find((u) => u.id === company.userId)
+                : null;
+              return {
+                ...a,
+                company: company
+                  ? {
+                      ...company,
+                      name: company.name,
+                      plan: company.plan,
+                      price: company.price,
+                      phone: company.phone,
+                      lastSignInAt: user?.lastSignInAt || null,
+                    }
+                  : a.company,
               };
             })}
             metrics={saasMetrics || { churnRate: 0, mrr: 0 }}
             companies={companies}
             onViewStats={(companyId) => {
-              const company = companies.find(c => c.id === companyId);
+              const company = companies.find((c) => c.id === companyId);
               if (company) handleCompanyClick(company);
             }}
             onResolve={async (id) => {
               const note = window.prompt("Ingrese una nota de resolución:");
               if (note === null) return;
               try {
-                const config = auth?.accessToken ? { headers: { Authorization: `Bearer ${auth.accessToken}` } } : {};
-                await axios.patch(`/api/superadmin/churn-alerts/${id}/resolve`, { note }, config);
+                await axiosAuth.patch(
+                  `/api/superadmin/churn-alerts/${id}/resolve`,
+                  { note },
+                );
                 toast.success("Alerta marcada como atendida");
                 refetchAlerts();
               } catch (error) {
@@ -506,7 +512,6 @@ export default function SuperadminPage() {
         <TabsContent value="leads" className="space-y-4">
           <CrmPipelineView
             leads={leads}
-            token={auth?.accessToken}
             isLoading={isLoadingLeads}
             auth={auth}
             plans={plans}
@@ -649,10 +654,9 @@ function CompanyDetailModal({
   const [period, setPeriod] = useState("all");
 
   const fetchDetails = useCallback(async () => {
-    if (!company || !auth?.accessToken) return;
+    if (!company) return;
     setDetails((prev: any) => ({ ...prev, loading: true }));
     try {
-      const token = auth.accessToken;
       // Calculate dates
       const now = new Date();
       const today = now.toISOString().split("T")[0];
@@ -676,10 +680,9 @@ function CompanyDetailModal({
       }
 
       const [users, productCount, sales, billing] = await Promise.all([
-        getUsersByCompany(company.id, token).catch(() => []),
-        getCompanyProductCount(token, company.id).catch(() => 0),
+        getUsersByCompany(company.id).catch(() => []),
+        getCompanyProductCount(company.id).catch(() => 0),
         getCompanySalesSummary(
-          token,
           company.id,
           from,
           from ? today : undefined,
@@ -687,7 +690,7 @@ function CompanyDetailModal({
           totalSales: 0,
           orderCount: 0,
         })),
-        getCompanyBilling(token, company.id).catch(() => []),
+        getCompanyBilling(company.id).catch(() => []),
       ]);
 
       // Calculate trend
@@ -697,7 +700,7 @@ function CompanyDetailModal({
         const prev = billing[billing.length - 2].ordersCount || 0;
         if (prev > 0) {
           const diff = ((current - prev) / prev) * 100;
-          trend = `${diff > 0 ? '+' : ''}${diff.toFixed(1)}%`;
+          trend = `${diff > 0 ? "+" : ""}${diff.toFixed(1)}%`;
         }
       }
 
@@ -714,10 +717,9 @@ function CompanyDetailModal({
         loading: false,
       });
     } catch (err) {
-      console.error(err);
       setDetails((prev: any) => ({ ...prev, loading: false }));
     }
-  }, [company, auth?.accessToken, period]);
+  }, [company, period]);
 
   useEffect(() => {
     if (isOpen) fetchDetails();
@@ -772,11 +774,18 @@ function CompanyDetailModal({
                     Último Acceso (Admin)
                   </div>
                   <div className="text-2xl font-bold text-primary">
-                    {company?.userId ? (
-                      allUsers.find((u: any) => u.id === company.userId)?.lastSignInAt 
-                        ? formatDistanceToNow(parseISO(allUsers.find((u: any) => u.id === company.userId).lastSignInAt), { addSuffix: true, locale: es })
+                    {company?.userId
+                      ? allUsers.find((u: any) => u.id === company.userId)
+                          ?.lastSignInAt
+                        ? formatDistanceToNow(
+                            parseISO(
+                              allUsers.find((u: any) => u.id === company.userId)
+                                .lastSignInAt,
+                            ),
+                            { addSuffix: true, locale: es },
+                          )
                         : "Nunca"
-                    ) : "N/A"}
+                      : "N/A"}
                   </div>
                 </CardContent>
               </Card>
@@ -787,7 +796,14 @@ function CompanyDetailModal({
                       Ventas (30 días)
                     </div>
                     {details.trend && (
-                      <Badge className={cn("text-[10px]", !details.trend.startsWith('-') ? "bg-green-500/20 text-green-600 border-green-500/30" : "bg-red-500/20 text-red-600 border-red-500/30")}>
+                      <Badge
+                        className={cn(
+                          "text-[10px]",
+                          !details.trend.startsWith("-")
+                            ? "bg-green-500/20 text-green-600 border-green-500/30"
+                            : "bg-red-500/20 text-red-600 border-red-500/30",
+                        )}
+                      >
                         {details.trend}
                       </Badge>
                     )}
@@ -853,25 +869,18 @@ function CompanyDetailModal({
                 <div className="flex items-center gap-2">
                   <Select
                     onValueChange={async (planId) => {
-                      if (!company || !auth?.accessToken) return;
+                      if (!company) return;
                       try {
                         // Buscar la sub activa
-                        const subs = await getSubscriptionByUserId(
-                          auth.accessToken,
-                          company.userId,
-                        );
+                        const subs = await getSubscriptionUser();
                         const activeSub =
                           subs.find((s) => s.status === "ACTIVE") || subs[0];
 
                         if (activeSub) {
-                          await updateSubscription(
-                            auth.accessToken,
-                            activeSub.id,
-                            { planId },
-                          );
+                          await updateSubscription(activeSub.id, { planId });
                           toast.success("Suscripción actualizada");
                         } else {
-                          await createSubscription(auth.accessToken, {
+                          await createSubscription({
                             userId: company.userId,
                             planId,
                             payerEmail: "superadmin@powip.com", // Temporary placeholder
@@ -991,7 +1000,13 @@ function StatusBadge({ status }: { status: string }) {
   }
 }
 
-function CreateCompanyModal({ isOpen, onOpenChange, auth, allUsers, onSaveSuccess }: any) {
+function CreateCompanyModal({
+  isOpen,
+  onOpenChange,
+  auth,
+  allUsers,
+  onSaveSuccess,
+}: any) {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
@@ -1017,7 +1032,7 @@ function CreateCompanyModal({ isOpen, onOpenChange, auth, allUsers, onSaveSucces
 
     setLoading(true);
     try {
-      await createCompanyService(auth.accessToken, {
+      await createCompanyService({
         ...formData,
         userId: owner.id,
         billingEmail: formData.billingEmail || formData.ownerEmail,

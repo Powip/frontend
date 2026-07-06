@@ -40,7 +40,8 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import CustomerServiceModal, {
   ShippingGuideData,
 } from "@/components/modals/CustomerServiceModal";
@@ -448,8 +449,8 @@ export default function OperacionesPage() {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const res = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+      const res = await axiosAuth.get<OrderHeader[]>(
+        `${GATEWAY.ventas}/order-header/store/${selectedStoreId}`,
       );
 
       res.data.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -467,8 +468,8 @@ export default function OperacionesPage() {
           mappedSales.map(async (sale) => {
             if (sale.guideNumber && !sale.courier) {
               try {
-                const guideRes = await axios.get(
-                  `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`,
+                const guideRes = await axiosAuth.get(
+                  `${GATEWAY.courier}/shipping-guides/order/${sale.id}`,
                 );
                 if (guideRes.data?.courierName) {
                   return { ...sale, courier: guideRes.data.courierName };
@@ -484,8 +485,8 @@ export default function OperacionesPage() {
       } else {
         setSales(mappedSales);
       }
-    } catch (error) {
-      console.error("Error fetching orders", error);
+    } catch {
+      toast.error("Error al cargar órdenes");
     }
   }, [selectedStoreId]);
 
@@ -553,18 +554,18 @@ export default function OperacionesPage() {
         payload.cancellationReason = cancellationReason;
       }
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${saleId}`,
         payload,
       );
       toast.success(`Estado actualizado a ${newStatus}`);
       fetchOrders();
-    } catch (error: any) {
-      const backendMessage = error?.response?.data?.message;
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const backendMessage = axiosErr?.response?.data?.message;
       if (backendMessage) {
         toast.error(backendMessage, { duration: 8000 });
       } else {
-        console.error("Error actualizando estado", error);
         toast.error("No se pudo actualizar el estado");
       }
     }
@@ -598,14 +599,12 @@ export default function OperacionesPage() {
     }
 
     setIsBulkLoading(true);
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
 
     try {
       const uInfo = getUserInfo();
       const result = await processBulkStatusChange(
         selectedIds,
         newStatus,
-        apiBaseUrl,
         undefined,
         15,
         uInfo.userId
@@ -645,13 +644,11 @@ export default function OperacionesPage() {
 
     const callbackAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     setIsBulkLoading(true);
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
     try {
       const uInfo = getUserInfo();
       const result = await processBulkStatusChange(
         selectedIds,
         undefined,
-        apiBaseUrl,
         undefined,
         15,
         uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
@@ -674,13 +671,11 @@ export default function OperacionesPage() {
     if (selectedIds.length === 0) return;
 
     setIsBulkLoading(true);
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
     try {
       const uInfo = getUserInfo();
       const result = await processBulkStatusChange(
         selectedIds,
         undefined,
-        apiBaseUrl,
         undefined,
         15,
         uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
@@ -702,13 +697,11 @@ export default function OperacionesPage() {
     if (selectedIds.length === 0) return;
 
     setIsBulkLoading(true);
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
     try {
       const uInfo = getUserInfo();
       const result = await processBulkStatusChange(
         selectedIds,
         "LLAMADO" as OrderStatus,
-        apiBaseUrl,
         undefined,
         15,
         uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
@@ -741,7 +734,7 @@ export default function OperacionesPage() {
         ...(callStatus === "CONFIRMED" && { status: "LLAMADO" as OrderStatus }),
         ...getUserInfo(),
       };
-      await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`, payload);
+      await axiosAuth.patch(`${GATEWAY.ventas}/order-header/${saleId}`, payload);
       toast.success("Estado actualizado");
       fetchOrders();
     } catch {
@@ -751,7 +744,7 @@ export default function OperacionesPage() {
 
   const handleIndividualReprogramar = async (saleId: string, callbackAt: Date) => {
     try {
-      await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`, {
+      await axiosAuth.patch(`${GATEWAY.ventas}/order-header/${saleId}`, {
         callStatus: "SCHEDULED",
         callbackAt: callbackAt.toISOString(),
         ...getUserInfo(),
@@ -771,8 +764,8 @@ export default function OperacionesPage() {
 
     setIsCancelling(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${saleToCancel.id}`,
         {
           status: "ANULADO",
           cancellationReason: reason,
@@ -784,12 +777,12 @@ export default function OperacionesPage() {
       setCancellationModalOpen(false);
       setSaleToCancel(null);
       fetchOrders();
-    } catch (error: any) {
-      const backendMessage = error?.response?.data?.message;
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const backendMessage = axiosErr?.response?.data?.message;
       if (backendMessage) {
         toast.error(backendMessage);
       } else {
-        console.error("Error anulando venta", error);
         toast.error("No se pudo anular la venta");
       }
     } finally {
@@ -820,8 +813,8 @@ export default function OperacionesPage() {
     try {
       for (const sale of eligibleSales) {
         try {
-          await axios.patch(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
+          await axiosAuth.patch(
+            `${GATEWAY.ventas}/order-header/${sale.id}`,
             {
               status: "EN_ENVIO",
               courier: courier,
@@ -830,8 +823,7 @@ export default function OperacionesPage() {
             },
           );
           successCount++;
-        } catch (error) {
-          console.error(`Error asignando courier a ${sale.orderNumber}`, error);
+        } catch {
           errorCount++;
         }
       }
@@ -846,12 +838,12 @@ export default function OperacionesPage() {
       setCourierModalOpen(false);
       setSelectedIdsForActiveTab(new Set());
       fetchOrders();
-    } catch (error: any) {
-      const backendMessage = error?.response?.data?.message;
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const backendMessage = axiosErr?.response?.data?.message;
       if (backendMessage) {
         toast.error(backendMessage);
       } else {
-        console.error("Error en asignación de courier", error);
         toast.error("Error al asignar courier");
       }
     } finally {
@@ -888,8 +880,8 @@ export default function OperacionesPage() {
 
       // Crear una guía por cada grupo de zona
       for (const guideData of guidesData) {
-        const guideResponse = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides`,
+        const guideResponse = await axiosAuth.post(
+          `${GATEWAY.courier}/shipping-guides`,
           guideData,
         );
 
@@ -900,8 +892,8 @@ export default function OperacionesPage() {
         // Guardar el guideNumber y cambiar el estado a EN_ENVIO
         for (const orderId of guideData.orderIds) {
           const carrierCost = guideData.orderCarrierCosts?.[orderId] || 0;
-          await axios.patch(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+          await axiosAuth.patch(
+            `${GATEWAY.ventas}/order-header/${orderId}`,
             {
               guideNumber: guideNumber,
               status: "EN_ENVIO",
@@ -951,19 +943,19 @@ export default function OperacionesPage() {
     if (!selectedSaleForNotes) return;
     setSavingNotes(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${selectedSaleForNotes.id}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${selectedSaleForNotes.id}`,
         { notes: notesText },
       );
       toast.success("Observaciones guardadas");
       setNotesOpen(false);
       fetchOrders();
-    } catch (error: any) {
-      const backendMessage = error?.response?.data?.message;
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      const backendMessage = axiosErr?.response?.data?.message;
       if (backendMessage) {
         toast.error(backendMessage);
       } else {
-        console.error("Error guardando observaciones", error);
         toast.error("No se pudo guardar");
       }
     } finally {
@@ -984,15 +976,15 @@ export default function OperacionesPage() {
     setIsAddingToGuide(true);
     try {
       // 1. Agregar órdenes en ms-courier
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}/orders`,
+      await axiosAuth.post(
+        `${GATEWAY.courier}/shipping-guides/${guideId}/orders`,
         { orderIds: selectedOrders.map((s) => s.id) },
       );
 
       // 2. Actualizar cada orden en ms-ventas con el número de guía y nuevo estado
       for (const sale of selectedOrders) {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
+        await axiosAuth.patch(
+          `${GATEWAY.ventas}/order-header/${sale.id}`,
           {
             guideNumber: guideNumber,
             status: "EN_ENVIO",
@@ -1007,11 +999,9 @@ export default function OperacionesPage() {
       setAddToGuideModalOpen(false);
       setSelectedIdsForActiveTab(new Set());
       fetchOrders();
-    } catch (error: any) {
-      console.error("Error adding to guide:", error);
-      const message =
-        error?.response?.data?.message || "Error al agregar a la guía";
-      toast.error(message);
+    } catch (error: unknown) {
+      const axiosErr = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosErr?.response?.data?.message || "Error al agregar a la guía");
     } finally {
       setIsAddingToGuide(false);
     }
@@ -1094,8 +1084,8 @@ export default function OperacionesPage() {
     // Si es EN_ENVIO y tiene guía, cargar datos de la guía
     if (sale.status === "EN_ENVIO" && sale.guideNumber) {
       try {
-        const guideRes = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`,
+        const guideRes = await axiosAuth.get(
+          `${GATEWAY.courier}/shipping-guides/order/${sale.id}`,
         );
         const guide = guideRes.data;
 
@@ -1127,8 +1117,7 @@ export default function OperacionesPage() {
           created_at: guide.created_at,
           daysSinceCreated,
         });
-      } catch (error) {
-        console.error("Error fetching shipping guide:", error);
+      } catch {
         setSelectedShippingGuide(null);
       }
     } else {
@@ -1214,8 +1203,8 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+          const res = await axiosAuth.get<ReceiptData>(
+            `${GATEWAY.ventas}/order-header/${sale.id}/receipt`,
           );
           return res.data;
         }),
@@ -1226,8 +1215,7 @@ Estado: ${sale.status}
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedIdsForActiveTab(new Set());
-    } catch (error) {
-      console.error("Error en impresión masiva", error);
+    } catch {
       toast.error("Error al preparar los recibos para imprimir");
     } finally {
       setIsPrinting(false);

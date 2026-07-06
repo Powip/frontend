@@ -1,7 +1,7 @@
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
-const API_VENTAS =
-  process.env.NEXT_PUBLIC_API_VENTAS || "http://localhost:3002";
+const API_VENTAS = GATEWAY.ventas;
 
 export interface GlobalSalesSummary {
   totalSales: number;
@@ -27,7 +27,6 @@ export interface RejectedPaymentAlert {
 }
 
 export const getGlobalSalesSummary = async (
-  accessToken: string,
   fromDate?: string,
   toDate?: string,
 ): Promise<GlobalSalesSummary> => {
@@ -35,31 +34,19 @@ export const getGlobalSalesSummary = async (
   if (fromDate) params.fromDate = fromDate;
   if (toDate) params.toDate = toDate;
 
-  const response = await axios.get(
+  const response = await axiosAuth.get(
     `${API_VENTAS}/order-header/summary/global`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      params,
-    },
+    { params },
   );
   return response.data;
 };
 
-export const getRejectedPaymentsAlert = async (
-  accessToken: string,
-): Promise<RejectedPaymentAlert> => {
-  const response = await axios.get(`${API_VENTAS}/payments/alerts/rejected`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+export const getRejectedPaymentsAlert = async (): Promise<RejectedPaymentAlert> => {
+  const response = await axiosAuth.get(`${API_VENTAS}/payments/alerts/rejected`);
   return response.data;
 };
 
 export const getCompanySalesSummary = async (
-  accessToken: string,
   companyId: string,
   fromDate?: string,
   toDate?: string,
@@ -68,14 +55,9 @@ export const getCompanySalesSummary = async (
   if (fromDate) params.fromDate = fromDate;
   if (toDate) params.toDate = toDate;
 
-  const response = await axios.get(
+  const response = await axiosAuth.get(
     `${API_VENTAS}/order-header/summary/company/${companyId}`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      params,
-    },
+    { params },
   );
   return response.data;
 };
@@ -89,17 +71,13 @@ export interface BillingStats {
 }
 
 export const getCompanyBilling = async (
-  accessToken: string,
   companyId: string,
   year?: number,
 ): Promise<BillingStats[]> => {
   const params: any = {};
   if (year) params.year = year;
 
-  const response = await axios.get(`${API_VENTAS}/stats/billing`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+  const response = await axiosAuth.get(`${API_VENTAS}/stats/billing`, {
     params: {
       storeId: companyId,
       ...params,
@@ -109,23 +87,18 @@ export const getCompanyBilling = async (
 };
 
 export const getGlobalBilling = async (
-  accessToken: string,
   year?: number,
 ): Promise<BillingStats[]> => {
   const params: any = {};
   if (year) params.year = year;
 
-  const response = await axios.get(`${API_VENTAS}/stats/billing/global`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
+  const response = await axiosAuth.get(`${API_VENTAS}/stats/billing/global`, {
     params,
   });
   return response.data;
 };
 
 export const getCompanyDailyIncome = async (
-  accessToken: string,
   companyId: string,
   fromDate?: string,
   toDate?: string,
@@ -134,15 +107,9 @@ export const getCompanyDailyIncome = async (
   if (fromDate) params.fromDate = fromDate;
   if (toDate) params.toDate = toDate;
 
-  const response = await axios.get(
+  const response = await axiosAuth.get(
     `${API_VENTAS}/stats/daily-income`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-      params,
-    },
+    { params },
   );
   return response.data;
 };
-

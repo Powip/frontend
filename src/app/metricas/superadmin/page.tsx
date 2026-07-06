@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
 import {
   ResponsiveContainer,
   BarChart,
@@ -18,10 +17,12 @@ import {
   Area,
 } from "recharts";
 import { AlertTriangle, TrendingDown, ArrowDownRight, Wifi, Loader2 } from "lucide-react";
+import { isSuperadmin } from "@/config/permissions.config";
+import { useRouter } from "next/navigation";
 import { getAllCompanies, Company } from "@/services/companyService";
 import { getAllUsers } from "@/services/userService";
 import { getGlobalSalesSummary, getCompanySalesSummary } from "@/services/salesService";
-import { getSubscriptionByUserId, getAllPlans, Plan } from "@/services/subscriptionService";
+import { getSubscriptionUser, getAllPlans, Plan } from "@/services/subscriptionService";
 
 /* ─────────────────── Constants ─────────────────── */
 
@@ -38,6 +39,7 @@ const PLAN_ORDER = ["Basic", "Standard", "Full", "Enterprise"];
 
 export default function MetricasSuperAdminPage() {
   const { auth } = useAuth();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>({
     companies: [],
@@ -50,28 +52,32 @@ export default function MetricasSuperAdminPage() {
   });
 
   useEffect(() => {
+    if (auth && !isSuperadmin(auth.user?.email)) {
+      router.replace("/dashboard");
+    }
+  }, [auth, router]);
+
+  useEffect(() => {
     const fetchData = async () => {
-      if (!auth?.accessToken) return;
+      if (!auth || !isSuperadmin(auth.user?.email)) return;
       setLoading(true);
       try {
-        const token = auth.accessToken;
-        
-        // 1. Fetch data básica en paralelo
+          // 1. Fetch data básica en paralelo
         const [companies, users, sales, plans, expiringSubs] = await Promise.all([
-          getAllCompanies(token),
-          getAllUsers(token),
-          getGlobalSalesSummary(token),
-          getAllPlans(token),
-          // getExpiringSubscriptionsAlert(token, 7).catch(() => []) // Próximamente si el endpoint existe
-          Promise.resolve([]) 
+          getAllCompanies(),
+          getAllUsers(),
+          getGlobalSalesSummary(),
+          getAllPlans(),
+          // getExpiringSubscriptionsAlert(7).catch(() => []) // Próximamente si el endpoint existe
+          Promise.resolve([])
         ]);
 
         // 2. Fetch suscripciones y ventas individuales para el Top 5
         const subsAndSales = await Promise.all(
           companies.map(async (c: Company) => {
             const [subs, companySales] = await Promise.all([
-              getSubscriptionByUserId(token, c.userId).catch(() => []),
-              getCompanySalesSummary(token, c.id).catch(() => ({ totalSales: 0, orderCount: 0 }))
+              getSubscriptionUser().catch(() => []),
+              getCompanySalesSummary(c.id).catch(() => ({ totalSales: 0, orderCount: 0 }))
             ]);
             const activeSub = subs.find((s: any) => s.status === 'ACTIVE') || subs[0] || null;
             return {
@@ -289,6 +295,8 @@ export default function MetricasSuperAdminPage() {
 
     return alerts;
   }, [data.allCompaniesStats, data.companies]);
+
+  if (!auth || !isSuperadmin(auth.user?.email)) return null;
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">

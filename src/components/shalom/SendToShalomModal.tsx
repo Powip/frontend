@@ -29,9 +29,9 @@ import {
 } from "@/components/ui/select";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { useAuth } from "@/contexts/AuthContext";
-import { API } from "@/lib/api";
+import { GATEWAY } from "@/lib/gateway";
 import { getUserProfile } from "@/services/userService";
 
 // Sentinel para representar el valor vacío "" que exige la API de Shalom.
@@ -330,8 +330,8 @@ export default function SendToShalomModal({
           }));
         }
 
-        const res = await axios.get(
-          `${API.integrations}/shalom/agencies/search/${encodeURIComponent(q)}`,
+        const res = await axiosAuth.get(
+          `${GATEWAY.integrations}/shalom/agencies/search/${encodeURIComponent(q)}`,
         );
 
         if (res.data.success) {
@@ -388,9 +388,8 @@ export default function SendToShalomModal({
 
     // Pre-fill origin: fetch perfil completo del usuario para obtener district/province
     const userId = auth?.user?.id;
-    const accessToken = auth?.accessToken;
-    if (userId && accessToken) {
-      getUserProfile(userId, accessToken).then((profile) => {
+    if (userId) {
+      getUserProfile(userId).then((profile) => {
         const storeDistrict =
           profile?.district || profile?.province || profile?.city || "";
         setOriginSearch(storeDistrict);
@@ -506,7 +505,7 @@ export default function SendToShalomModal({
         }),
       };
 
-      const res = await axios.post(`${API.integrations}/shalom/quote`, payload);
+      const res = await axiosAuth.post(`${GATEWAY.integrations}/shalom/quote`, payload);
       if (res.data.success) {
         setTotalQuoted(res.data.data.total_amount);
         toast.success(`Total: S/ ${res.data.data.total_amount}`);
@@ -568,8 +567,8 @@ export default function SendToShalomModal({
         declaracionJurada: declaracionJurada === DECLARACION_JURADA_NINGUNA ? "" : declaracionJurada,
       };
 
-      const res = await axios.post(
-        `${API.courier}/shipping-guides/${guideId}/send-to-shalom`,
+      const res = await axiosAuth.post(
+        `${GATEWAY.courier}/shipping-guides/${guideId}/send-to-shalom`,
         payload,
       );
 

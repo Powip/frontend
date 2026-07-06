@@ -1,4 +1,5 @@
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { OrderStatus } from "@/interfaces/IOrder";
 
 interface BulkUpdateResult {
@@ -15,7 +16,6 @@ interface BulkUpdateResult {
 export async function processBulkStatusChange(
   orderIds: string[],
   newStatus: OrderStatus | undefined,
-  apiBaseUrl: string,
   onProgress?: (processed: number, total: number) => void,
   _batchSize: number = 10, // mantenido por compatibilidad, no se usa con bulk
   userInfo?: { userId: string; sellerName: string },
@@ -25,7 +25,7 @@ export async function processBulkStatusChange(
   if (orderIds.length === 0) return { success: [], failed: [] };
 
   try {
-    const response = await axios.patch(`${apiBaseUrl}/order-header/bulk-status`, {
+    const response = await axiosAuth.patch(`${GATEWAY.ventas}/order-header/bulk-status`, {
       ids: orderIds,
       ...(newStatus !== undefined && { status: newStatus }),
       ...(callStatus !== undefined && { callStatus }),
@@ -50,7 +50,7 @@ export async function processBulkStatusChange(
   } catch (err: any) {
     // Si el endpoint bulk no existe aún en el backend desplegado, fallback individual
     if (err?.response?.status === 404) {
-      return processBulkIndividual(orderIds, newStatus, apiBaseUrl, onProgress, userInfo, callStatus, callbackAt);
+      return processBulkIndividual(orderIds, newStatus, onProgress, userInfo, callStatus, callbackAt);
     }
     throw err;
   }
@@ -59,7 +59,6 @@ export async function processBulkStatusChange(
 async function processBulkIndividual(
   orderIds: string[],
   newStatus: OrderStatus | undefined,
-  apiBaseUrl: string,
   onProgress?: (processed: number, total: number) => void,
   userInfo?: { userId: string; sellerName: string },
   callStatus?: string,
@@ -69,7 +68,7 @@ async function processBulkIndividual(
 
   const results = await Promise.allSettled(
     orderIds.map((id) =>
-      axios.patch(`${apiBaseUrl}/order-header/${id}`, {
+      axiosAuth.patch(`${GATEWAY.ventas}/order-header/${id}`, {
         ...(newStatus !== undefined && { status: newStatus }),
         ...(callStatus !== undefined && { callStatus }),
         ...(callbackAt !== undefined && { callbackAt }),

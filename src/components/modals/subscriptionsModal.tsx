@@ -11,7 +11,8 @@ import {
 import { Check, Loader2, ExternalLink } from "lucide-react";
 import { Button } from "../ui/button";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 
 interface Props {
@@ -44,12 +45,10 @@ export default function SubscriptionModal({
         autoRenewal: true,
       };
 
-      const response = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_SUBS}/subscriptions`,
+      const response = await axiosAuth.post(
+        `${GATEWAY.subscription}/subscriptions`,
         body,
       );
-
-      console.log("Respuesta del backend:", response.data);
 
       if (response.status === 201 && response.data.initPoint) {
         toast.info("Redirigiendo a Mercado Pago...");
@@ -58,10 +57,10 @@ export default function SubscriptionModal({
         toast.success("¡Suscripción creada! Revisa tu correo.");
         onClose();
       }
-    } catch (error: any) {
-      console.log("Error al iniciar pago", error);
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } };
       toast.error(
-        error.response?.data?.error || "Error al conectar con Mercado Pago",
+        axiosError.response?.data?.error || "Error al conectar con Mercado Pago",
       );
     } finally {
       setIsLoading(false);

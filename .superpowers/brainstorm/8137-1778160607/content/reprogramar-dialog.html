@@ -1,0 +1,117 @@
+<h2>¿Cómo se pide la fecha al reprogramar?</h2>
+<p class="subtitle">El "momento de la verdad" — el usuario acaba de hacer clic en <strong>Reprogramar</strong>. Evaluá las dos opciones.</p>
+
+<div class="split" style="gap: 32px; align-items: flex-start;">
+
+  <!-- OPCIÓN A: Popover anclado al dropdown -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)" style="cursor:pointer; border-radius:12px; overflow:hidden;">
+    <div class="card-image" style="background:#0f172a; padding: 24px 20px; min-height: 380px; position:relative;">
+      <!-- Simulación de tabla -->
+      <div style="background:#1e293b; border-radius:8px; padding:12px; margin-bottom:8px;">
+        <div style="display:flex; gap:8px; margin-bottom:8px;">
+          <div style="width:16px;height:16px;border:2px solid #6366f1;border-radius:3px;background:#6366f1;flex-shrink:0;margin-top:1px;"></div>
+          <div style="flex:1;">
+            <div style="color:#e2e8f0; font-size:12px; font-weight:600;">#1042 · Marcos López</div>
+            <div style="color:#94a3b8; font-size:11px;">PREPARADO · Lima Norte</div>
+          </div>
+          <!-- Dropdown abierto con Popover anclado -->
+          <div style="position:relative;">
+            <div style="background:#6366f1;color:white;font-size:11px;padding:4px 8px;border-radius:4px;white-space:nowrap;">Cambiar estado ▾</div>
+            <!-- Popover -->
+            <div style="position:absolute; right:0; top:28px; background:#1e293b; border:1px solid #334155; border-radius:8px; width:220px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index:10; padding:12px;">
+              <div style="color:#94a3b8; font-size:10px; font-weight:700; text-transform:uppercase; margin-bottom:8px; letter-spacing:0.05em;">PROGRAMAR CALLBACK</div>
+              <div style="color:#e2e8f0; font-size:12px; margin-bottom:6px;">Fecha y hora</div>
+              <div style="background:#0f172a; border:1px solid #475569; border-radius:6px; padding:8px 10px; color:#e2e8f0; font-size:12px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
+                <span>08/05/2026  14:00</span>
+                <span style="color:#6366f1;">📅</span>
+              </div>
+              <div style="background:#334155; border-radius:4px; padding:5px 8px; color:#94a3b8; font-size:11px; margin-bottom:10px;">💡 Por defecto: hoy + 24 hs</div>
+              <div style="display:flex; gap:6px;">
+                <button style="flex:1; background:#6366f1; color:white; border:none; border-radius:6px; padding:7px; font-size:12px; cursor:pointer; font-weight:600;">Confirmar</button>
+                <button style="flex:1; background:#1e293b; color:#94a3b8; border:1px solid #334155; border-radius:6px; padding:7px; font-size:12px; cursor:pointer;">Cancelar</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Filas fantasma debajo -->
+      <div style="background:#1e293b; border-radius:8px; padding:10px; margin-bottom:6px; opacity:0.4;">
+        <div style="background:#334155; height:12px; border-radius:3px; width:70%;"></div>
+      </div>
+      <div style="background:#1e293b; border-radius:8px; padding:10px; opacity:0.2;">
+        <div style="background:#334155; height:12px; border-radius:3px; width:55%;"></div>
+      </div>
+    </div>
+    <div class="card-body" style="background:#1e293b;">
+      <h3 style="color:#e2e8f0;">A — Popover anclado</h3>
+      <p style="color:#94a3b8; font-size:13px; line-height:1.5;">Aparece pegado al botón de cambio de estado. Liviano, sin interrumpir el flujo. Ideal para cambios <strong style="color:#e2e8f0;">individuales</strong>.</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <span style="background:#15803d22; color:#4ade80; font-size:11px; padding:3px 8px; border-radius:20px; border:1px solid #15803d55;">✓ No interrumpe</span>
+        <span style="background:#15803d22; color:#4ade80; font-size:11px; padding:3px 8px; border-radius:20px; border:1px solid #15803d55;">✓ Rápido</span>
+        <span style="background:#7f1d1d22; color:#f87171; font-size:11px; padding:3px 8px; border-radius:20px; border:1px solid #7f1d1d55;">✗ Difícil en bulk</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPCIÓN B: Modal centrado -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)" style="cursor:pointer; border-radius:12px; overflow:hidden;">
+    <div class="card-image" style="background:#0f172a; padding: 24px 20px; min-height: 380px; position:relative;">
+      <!-- Fondo con overlay -->
+      <div style="position:absolute; inset:0; background:rgba(0,0,0,0.6); border-radius:0; z-index:5;"></div>
+      <!-- Tabla fantasma -->
+      <div style="background:#1e293b; border-radius:8px; padding:10px; margin-bottom:6px;">
+        <div style="background:#334155; height:12px; border-radius:3px; width:75%;"></div>
+      </div>
+      <div style="background:#1e293b; border-radius:8px; padding:10px; margin-bottom:6px; opacity:0.6;">
+        <div style="background:#334155; height:12px; border-radius:3px; width:60%;"></div>
+      </div>
+      <!-- Modal centrado -->
+      <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:10; padding:16px;">
+        <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:20px; width:100%; box-shadow: 0 20px 60px rgba(0,0,0,0.7);">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
+            <div>
+              <div style="color:#e2e8f0; font-size:14px; font-weight:700;">Programar Callback</div>
+              <div style="color:#94a3b8; font-size:11px; margin-top:2px;">3 pedidos seleccionados</div>
+            </div>
+            <span style="color:#475569; cursor:pointer; font-size:16px;">✕</span>
+          </div>
+          <div style="background:#0f172a; border-radius:8px; padding:10px; margin-bottom:12px;">
+            <div style="color:#94a3b8; font-size:11px; margin-bottom:4px;">Fecha y hora del callback</div>
+            <div style="background:#1e293b; border:1px solid #475569; border-radius:6px; padding:8px 10px; color:#e2e8f0; font-size:13px; display:flex; justify-content:space-between;">
+              <span>08/05/2026 · 14:00</span>
+              <span style="color:#6366f1;">📅</span>
+            </div>
+            <div style="color:#64748b; font-size:10px; margin-top:4px;">Se aplicará a <strong style="color:#94a3b8;">todos los pedidos seleccionados</strong></div>
+          </div>
+          <div style="background:#312e81; border:1px solid #4338ca; border-radius:6px; padding:8px 10px; margin-bottom:12px;">
+            <div style="color:#a5b4fc; font-size:11px; font-weight:600;">💡 Fecha por defecto: hoy + 24 hs</div>
+            <div style="color:#818cf8; font-size:10px; margin-top:2px;">Podés cambiarlo en el modal de detalle luego</div>
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button style="flex:1; background:#6366f1; color:white; border:none; border-radius:8px; padding:10px; font-size:13px; cursor:pointer; font-weight:600;">Confirmar reprogramación</button>
+            <button style="background:#1e293b; color:#94a3b8; border:1px solid #334155; border-radius:8px; padding:10px 14px; font-size:13px; cursor:pointer;">Cancelar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body" style="background:#1e293b;">
+      <h3 style="color:#e2e8f0;">B — Modal centrado</h3>
+      <p style="color:#94a3b8; font-size:13px; line-height:1.5;">Aparece en el centro con overlay oscuro. Más formal, deja claro el alcance. Ideal para cambios <strong style="color:#e2e8f0;">masivos</strong>.</p>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;">
+        <span style="background:#15803d22; color:#4ade80; font-size:11px; padding:3px 8px; border-radius:20px; border:1px solid #15803d55;">✓ Claro en bulk</span>
+        <span style="background:#15803d22; color:#4ade80; font-size:11px; padding:3px 8px; border-radius:20px; border:1px solid #15803d55;">✓ Contexto visible</span>
+        <span style="background:#7f1d1d22; color:#f87171; font-size:11px; padding:3px 8px; border-radius:20px; border:1px solid #7f1d1d55;">✗ Más intrusivo</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div style="background:#1e293b; border-radius:10px; padding:16px; margin-top:24px; border:1px solid #334155;">
+  <div style="color:#94a3b8; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px;">💡 Propuesta híbrida (recomendada)</div>
+  <div style="color:#cbd5e1; font-size:13px; line-height:1.6;">
+    <strong style="color:#e2e8f0;">Individual</strong> → Popover anclado (liviano, no interrumpe el flujo de trabajo).<br>
+    <strong style="color:#e2e8f0;">Masivo (2+ pedidos)</strong> → Modal centrado con contador de pedidos afectados y fecha única para todos.<br>
+    En ambos casos: fecha por defecto <code style="background:#0f172a;padding:1px 5px;border-radius:3px;color:#a5b4fc;">hoy + 24hs</code>, editable. Podés ajustar por pedido luego en el modal de detalle.
+  </div>
+</div>

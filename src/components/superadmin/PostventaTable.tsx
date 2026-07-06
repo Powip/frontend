@@ -26,6 +26,7 @@ import { LeadActivitiesDrawer } from './LeadActivitiesDrawer';
 import { Checkbox } from '@/components/ui/checkbox';
 import { createClient } from "@/utils/supabase/client";
 import { useDeletePostventaLead } from "@/hooks/useLeads";
+import axiosAuth from "@/lib/axiosAuth";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,13 +42,11 @@ import { PostventaDetailModal } from './PostventaDetailModal';
 
 interface PostventaTableProps {
   postventa: any[];
-  token?: string;
   onUpdateStatus?: (id: string, status: string) => void;
 }
 
 export const PostventaTable: React.FC<PostventaTableProps> = ({
   postventa,
-  token,
   onUpdateStatus,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -70,7 +69,7 @@ export const PostventaTable: React.FC<PostventaTableProps> = ({
 
   const itemsPerPage = 10;
   const router = useRouter();
-  const deleteMutation = useDeletePostventaLead(token);
+  const deleteMutation = useDeletePostventaLead();
 
   const handleOpenDetail = (item: any) => {
     setSelectedItem(item);
@@ -93,17 +92,7 @@ export const PostventaTable: React.FC<PostventaTableProps> = ({
   const handleStatusUpdate = async (id: string, newStatus: string) => {
     setIsUpdating(id);
     try {
-      const response = await fetch(`/api/superadmin/leads/postventa/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ client_status: newStatus }),
-      });
-
-      if (!response.ok) throw new Error('Error updating');
-
+      await axiosAuth.patch(`/api/superadmin/leads/postventa/${id}`, { client_status: newStatus });
       toast.success(`Estado cambiado a: ${getStatusLabel(newStatus)}`);
       if (onUpdateStatus) onUpdateStatus(id, newStatus);
       router.refresh();
@@ -131,17 +120,7 @@ export const PostventaTable: React.FC<PostventaTableProps> = ({
   const handleSetDate = async (id: string, field: string) => {
     setIsUpdating(id);
     try {
-      const response = await fetch(`/api/superadmin/leads/postventa/${id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ [field]: new Date().toISOString() }),
-      });
-
-      if (!response.ok) throw new Error('Error updating');
-
+      await axiosAuth.patch(`/api/superadmin/leads/postventa/${id}`, { [field]: new Date().toISOString() });
       toast.success('Fecha registrada');
       router.refresh();
     } catch {
@@ -180,15 +159,8 @@ export const PostventaTable: React.FC<PostventaTableProps> = ({
 
     setIsMassUpdating(true);
     try {
-      await Promise.all(selectedPostventa.map(id => 
-        fetch(`/api/superadmin/leads/postventa/${id}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify(updates),
-        })
+      await Promise.all(selectedPostventa.map(id =>
+        axiosAuth.patch(`/api/superadmin/leads/postventa/${id}`, updates)
       ));
 
       toast.success(`Se actualizaron ${selectedPostventa.length} registros masivamente`);
@@ -547,7 +519,6 @@ export const PostventaTable: React.FC<PostventaTableProps> = ({
           onClose={() => setIsActivitiesOpen(false)}
           leadId={selectedItem.lead_id}
           leadName={selectedItem.business_name || selectedItem.lead?.business_name}
-          token={token}
         />
       )}
 
@@ -556,7 +527,6 @@ export const PostventaTable: React.FC<PostventaTableProps> = ({
           isOpen={isDetailOpen}
           onClose={() => setIsDetailOpen(false)}
           leadId={selectedItem.lead_id}
-          token={token}
         />
       )}
 

@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
-import { useEffect, ReactNode } from "react";
+import { useEffect, useMemo, ReactNode } from "react";
 import { getRoutePermissions, hasAnyPermission, isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 
 interface AuthGuardProps {
@@ -15,6 +15,13 @@ const PUBLIC_ROUTES = [
   "/restablecer-contrasena",
   "/subscriptions",
   "/rastreo",
+  "/onboarding",
+];
+
+// Rutas accesibles con auth pero SIN suscripción activa
+const SUBSCRIPTION_EXEMPT_ROUTES = [
+  "/sin-plan",
+  "/new-company",
 ];
 
 /**
@@ -26,28 +33,45 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
 
-  // Verificar si es una ruta pública
-  const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route));
+  const isPublicRoute = useMemo(
+    () => PUBLIC_ROUTES.some(route => pathname?.startsWith(route)),
+    [pathname],
+  );
+  const isSubscriptionExempt = useMemo(
+    () => SUBSCRIPTION_EXEMPT_ROUTES.some(route => pathname?.startsWith(route)),
+    [pathname],
+  );
 
-  // Obtener permisos requeridos para la ruta actual
   const requiredPermissions = pathname ? getRoutePermissions(pathname) : [];
 
-  // Verificar acceso:
-  // 1. Superadmin siempre tiene acceso
-  // 2. Si requiere __ADMIN_ROLE__, verificar el rol del usuario (ADMIN/OWNER)
-  // 3. Si requiere permisos específicos, verificar permissions[] del JWT
-  // 4. Si no hay requisitos (array vacío), cualquier autenticado puede acceder
   const hasAccess = isSuperadmin(auth?.user?.email) ||
-    (requiredPermissions.includes("__ADMIN_ROLE__")
-      ? hasAdminAccess(auth?.user?.role)
-      : hasAnyPermission(auth?.user?.permissions, requiredPermissions));
+    (requiredPermissions.includes("__SUPERADMIN__")
+      ? false // isSuperadmin ya cubre el caso true arriba; si llegó acá, no es superadmin
+      : requiredPermissions.includes("__ADMIN_ROLE__")
+        ? hasAdminAccess(auth?.user?.role)
+        : hasAnyPermission(auth?.user?.permissions, requiredPermissions));
+
+  // TEMPORAL: restricción de suscripción deshabilitada
+  const hasSubscription = true;
 
   useEffect(() => {
-    // Si no está cargando, no hay auth, y NO es ruta pública -> login
-    if (!loading && !auth && !isPublicRoute) {
-      router.push("/login");
+    if (loading) return;
+
+    // Usuario completamente autenticado que accede al flujo de registro directamente
+    if (auth && auth.subscription && pathname?.startsWith("/onboarding")) {
+      router.push("/dashboard");
+      return;
     }
-  }, [auth, loading, router, isPublicRoute]);
+
+    if (!auth && !isPublicRoute) {
+      router.push("/login");
+      return;
+    }
+
+    if (auth && !isPublicRoute && !isSubscriptionExempt && !hasSubscription) {
+      router.push("/sin-plan");
+    }
+  }, [auth, loading, router, pathname, isPublicRoute, isSubscriptionExempt, hasSubscription]);
 
   // Rutas públicas: renderizar directamente
   if (isPublicRoute) {

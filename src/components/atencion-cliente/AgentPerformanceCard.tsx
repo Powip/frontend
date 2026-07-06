@@ -13,7 +13,6 @@ interface Props {
   agente: AgentePerformanceKpis;
   currentUserId: string;
   isSupervisor: boolean;
-  accessToken: string;
   storeId: string;
 }
 
@@ -33,7 +32,6 @@ export function AgentPerformanceCard({
   agente,
   currentUserId,
   isSupervisor,
-  accessToken,
   storeId,
 }: Props) {
   const [loading, setLoading] = useState(false);
@@ -47,9 +45,9 @@ export function AgentPerformanceCard({
     setLoading(true);
     try {
       if (isOwnCard) {
-        await toggleMiCcStatus(accessToken, { ccActivo: checked });
+        await toggleMiCcStatus({ ccActivo: checked });
       } else {
-        await toggleAgenteCcStatus(accessToken, agente.id, { ccActivo: checked });
+        await toggleAgenteCcStatus(agente.id, { ccActivo: checked });
       }
       await queryClient.invalidateQueries({ queryKey: ["cc-agentes-kpis", storeId] });
       toast.success(`Agente ${checked ? "activado" : "desactivado"}`);

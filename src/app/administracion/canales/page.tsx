@@ -36,19 +36,19 @@ export default function CanalesPage() {
   const [editForm, setEditForm] = useState<Partial<IMarketplaceConfig>>({});
 
   const fetchConfigs = useCallback(async () => {
-    if (!auth?.company?.id || !auth?.accessToken) return;
-    const data = await getMarketplaceConfigs(auth.company.id, auth.accessToken);
+    if (!auth?.company?.id) return;
+    const data = await getMarketplaceConfigs(auth.company.id);
     setConfigs(data);
     return data;
   }, [auth]);
 
   useEffect(() => {
-    if (!auth?.accessToken || !auth?.company?.id) return;
+    if (!auth?.company?.id) return;
     setLoading(true);
 
     Promise.all([
       getOrdersByCompany(auth.company.id, fromDate, toDate),
-      getMarketplaceConfigs(auth.company.id, auth.accessToken),
+      getMarketplaceConfigs(auth.company.id),
     ]).then(([orders, cfgs]) => {
       setConfigs(cfgs as IMarketplaceConfig[]);
       const feeMap: Record<string, number> = {};
@@ -75,9 +75,9 @@ export default function CanalesPage() {
   }, [auth, fromDate, toDate]);
 
   const handleCreate = async () => {
-    if (!auth?.company?.id || !auth?.accessToken || !form.channel.trim()) return;
+    if (!auth?.company?.id || !form.channel.trim()) return;
     try {
-      await createMarketplaceConfig(auth.company.id, { ...form, commissionPct: Number(form.commissionPct), fixedCharge: Number(form.fixedCharge), shippingFee: Number(form.shippingFee) }, auth.accessToken);
+      await createMarketplaceConfig(auth.company.id, { ...form, commissionPct: Number(form.commissionPct), fixedCharge: Number(form.fixedCharge), shippingFee: Number(form.shippingFee) });
       toast.success("Canal configurado");
       setShowNew(false);
       setForm(emptyConfig);
@@ -86,9 +86,9 @@ export default function CanalesPage() {
   };
 
   const handleUpdate = async (id: string) => {
-    if (!auth?.company?.id || !auth?.accessToken) return;
+    if (!auth?.company?.id) return;
     try {
-      await updateMarketplaceConfig(auth.company.id, id, { commissionPct: Number(editForm.commissionPct), fixedCharge: Number(editForm.fixedCharge), shippingFee: Number(editForm.shippingFee) }, auth.accessToken);
+      await updateMarketplaceConfig(auth.company.id, id, { commissionPct: Number(editForm.commissionPct), fixedCharge: Number(editForm.fixedCharge), shippingFee: Number(editForm.shippingFee) });
       toast.success("Actualizado");
       setEditingId(null);
       fetchConfigs();
@@ -96,9 +96,9 @@ export default function CanalesPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!auth?.company?.id || !auth?.accessToken) return;
+    if (!auth?.company?.id) return;
     try {
-      await deleteMarketplaceConfig(auth.company.id, id, auth.accessToken);
+      await deleteMarketplaceConfig(auth.company.id, id);
       toast.success("Eliminado");
       fetchConfigs();
     } catch { toast.error("Error al eliminar"); }

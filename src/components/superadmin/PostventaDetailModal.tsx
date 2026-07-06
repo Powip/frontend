@@ -45,20 +45,18 @@ interface PostventaDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
   leadId: string;
-  token?: string;
 }
 
 export const PostventaDetailModal: React.FC<PostventaDetailModalProps> = ({
   isOpen,
   onClose,
   leadId,
-  token,
 }) => {
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  const deleteMutation = useDeletePostventaLead(token);
+  const deleteMutation = useDeletePostventaLead();
 
   useEffect(() => {
     const fetchData = async () => {

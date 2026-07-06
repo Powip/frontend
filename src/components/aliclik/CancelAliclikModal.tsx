@@ -64,7 +64,6 @@ export default function CancelAliclikModal({
 }: CancelAliclikModalProps) {
   const { auth } = useAuth();
   const companyId = propCompanyId ?? auth?.company?.id;
-  const token = auth?.accessToken ?? "";
 
   const [phase, setPhase] = useState<ModalPhase>("confirm");
   const [results, setResults] = useState<AliclikCancelWarehouseResult[]>([]);
@@ -86,7 +85,7 @@ export default function CancelAliclikModal({
     setPhase("loading");
 
     try {
-      const data = await cancelAliclikOrder(token, orderId, companyId);
+      const data = await cancelAliclikOrder(orderId, companyId);
       setResults(data.results);
       setPhase("result");
 

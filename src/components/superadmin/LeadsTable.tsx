@@ -52,7 +52,6 @@ import {
 
 interface LeadsTableProps {
   leads: any[];
-  token?: string;
 }
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -63,7 +62,7 @@ const SOURCE_COLORS: Record<string, string> = {
   google_form: 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400',
 };
 
-export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
+export const LeadsTable: React.FC<LeadsTableProps> = ({ leads }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [stageFilter, setStageFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState('all');
@@ -75,10 +74,6 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const itemsPerPage = 10;
   const router = useRouter();
-
-  // We are not using the hook's mutation here because LeadActivationFlow handles it,
-  // but if we were using it in this file, we would pass the token.
-  // Actually, LeadActivationFlow will need the token too.
 
   const filteredLeads = leads.filter(lead => {
     const matchesSearch = 
@@ -114,7 +109,7 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
 
     setIsDeleting(id);
     try {
-      await leadService.deleteLead(id, token);
+      await leadService.deleteLead(id);
       toast.success('Lead eliminado correctamente');
       router.refresh();
     } catch (error) {
@@ -377,26 +372,23 @@ export const LeadsTable: React.FC<LeadsTableProps> = ({ leads, token }) => {
         </div>
       )}
 
-      <LeadActivationFlow 
+      <LeadActivationFlow
         lead={selectedLead}
         open={isActivationOpen}
         onClose={() => setIsActivationOpen(false)}
-        token={token}
       />
 
-      <LeadDetailsModal 
+      <LeadDetailsModal
         isOpen={isDetailsOpen}
         onClose={() => setIsDetailsOpen(false)}
         lead={selectedLead}
-        token={token}
       />
 
-      <LeadActivitiesDrawer 
+      <LeadActivitiesDrawer
         isOpen={isActivitiesOpen}
         onClose={() => setIsActivitiesOpen(false)}
         leadId={selectedLead?.id}
         leadName={selectedLead?.contact_name}
-        token={token}
       />
     </div>
   );

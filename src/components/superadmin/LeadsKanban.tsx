@@ -75,10 +75,9 @@ const STAGES = [
 
 interface LeadsKanbanProps {
   initialLeads: any[];
-  token?: string;
 }
 
-export const LeadsKanban: React.FC<LeadsKanbanProps> = ({ initialLeads, token }) => {
+export const LeadsKanban: React.FC<LeadsKanbanProps> = ({ initialLeads }) => {
   const [leads, setLeads] = useState(initialLeads);
   const [visibleCounts, setVisibleCounts] = useState<Record<string, number>>(
     STAGES.reduce((acc, stage) => ({ ...acc, [stage.id]: 10 }), {})
@@ -115,7 +114,7 @@ export const LeadsKanban: React.FC<LeadsKanbanProps> = ({ initialLeads, token })
     setLeads(updatedLeads);
 
     try {
-      await leadService.updateLeadStage(leadId, newStage, oldStage, token);
+      await leadService.updateLeadStage(leadId, newStage, oldStage);
       toast.success('Etapa actualizada correctamente');
     } catch (error) {
       console.error('Error updating stage:', error);
@@ -199,7 +198,7 @@ export const LeadsKanban: React.FC<LeadsKanbanProps> = ({ initialLeads, token })
                                     snapshot.isDragging && "scale-[1.03] rotate-1 z-50 shadow-2xl opacity-90"
                                   )}
                                 >
-                                  <LeadCard lead={lead} token={token} />
+                                  <LeadCard lead={lead} />
                                 </div>
                               )}
                             </Draggable>

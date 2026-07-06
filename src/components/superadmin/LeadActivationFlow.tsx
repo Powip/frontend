@@ -23,18 +23,18 @@ import { createPlatformUser, deleteUser } from "@/services/userService";
 import { createCompany, deleteCompany } from "@/services/companyService";
 import { createSubscription, cancelSubscription } from "@/services/subscriptionService";
 import { createClient } from "@/utils/supabase/client";
+import axiosAuth from "@/lib/axiosAuth";
 
 interface LeadActivationFlowProps {
   lead: any;
   open: boolean;
   onClose: () => void;
-  token?: string;
   auth?: any;
   plans?: any[];
 }
 
-export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({ 
-  lead, open, onClose, token, auth, plans = [] 
+export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
+  lead, open, onClose, auth, plans = []
 }) => {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -124,47 +124,31 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
   };
 
   const updateLeadStatus = async (businessId?: string, password?: string) => {
-    if (!token) return;
     const activationId = lead.id;
     const leadId = lead.lead?.id || lead.lead_id || lead.id;
 
     // 1+2+4: PATCH activation → server route handles postventa insert and activity log
     // Uses service_role key (admin client), avoids RLS and the upsert onConflict 400s
-    const activationRes = await fetch(`/api/superadmin/leads/activations/${activationId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        activation_status: 'alta_completa',
-        activation_date: new Date().toISOString(),
-        temp_password: password || 'No disponible',
-        business_id: businessId,
-      }),
+    await axiosAuth.patch(`/api/superadmin/leads/activations/${activationId}`, {
+      activation_status: 'alta_completa',
+      activation_date: new Date().toISOString(),
+      temp_password: password || 'No disponible',
+      business_id: businessId,
     });
-
-    if (!activationRes.ok) {
-      const err = await activationRes.json().catch(() => ({}));
-      throw new Error(`Error al actualizar activación: ${err?.error || activationRes.statusText}`);
-    }
 
     // 3. Actualizar lead principal a estado 'cerrado'
-    const leadRes = await fetch(`/api/superadmin/leads/${leadId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ pipeline_stage: 'cerrado', business_id: businessId }),
-    });
-
-    if (!leadRes.ok) {
-      const err = await leadRes.json().catch(() => ({}));
+    try {
+      await axiosAuth.patch(`/api/superadmin/leads/${leadId}`, {
+        pipeline_stage: 'cerrado',
+        business_id: businessId,
+      });
+    } catch (leadErr: any) {
       // Non-fatal: log warning but don't abort — activation already saved
-      console.warn('[updateLeadStatus] No se pudo cerrar el lead:', err?.error || leadRes.statusText);
+      console.warn('[updateLeadStatus] No se pudo cerrar el lead:', leadErr?.response?.data?.error || leadErr.message);
     }
   };
 
   const executeActivation = async () => {
-    if (!auth?.accessToken) {
-      toast.error("Error de autenticación");
-      return;
-    }
 
     // --- VALIDACIÓN PREVIA AL ENVÍO ---
     const validationErrors: string[] = [];
@@ -210,7 +194,7 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
         roleName: 'ADMINISTRADOR',
       };
       
-      const createdUser = await createPlatformUser(userPayload, auth.accessToken);
+      const createdUser = await createPlatformUser(userPayload);
       createdUserId = createdUser?.userId || createdUser?.id || createdUser?.user?.id;
       
       if (!createdUserId) throw new Error(`No se pudo obtener el ID del usuario creado. Respuesta: ${JSON.stringify(createdUser)}`);
@@ -224,7 +208,7 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
           status: 'ACTIVE',
         };
         try {
-          const sub = await createSubscription(auth.accessToken, subPayload);
+          const sub = await createSubscription(subPayload);
           createdSubscriptionId = sub?.id;
         } catch (subErr: any) {
           const subErrData = subErr?.response?.data;
@@ -246,7 +230,7 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
         billingEmail: formData.email,
       };
       try {
-        const company = await createCompany(auth.accessToken, companyPayload);
+        const company = await createCompany(companyPayload);
         createdBusinessId = company?.id;
       } catch (compErr: any) {
         const compErrData = compErr?.response?.data;
@@ -277,9 +261,9 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
 
       // ROLLBACK platform entities (user/subscription/company creation failed)
       try {
-        if (createdBusinessId) await deleteCompany(auth.accessToken, createdBusinessId);
-        if (createdSubscriptionId) await cancelSubscription(auth.accessToken, createdSubscriptionId);
-        if (createdUserId) await deleteUser(createdUserId, auth.accessToken);
+        if (createdBusinessId) await deleteCompany(createdBusinessId);
+        if (createdSubscriptionId) await cancelSubscription(createdSubscriptionId);
+        if (createdUserId) await deleteUser(createdUserId);
       } catch (rollbackError) {
         console.error("[LeadActivation] Error during rollback:", rollbackError);
       }

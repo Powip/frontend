@@ -1,9 +1,11 @@
+import { GATEWAY } from "./gateway";
+
 export const API = {
-    productos: process.env.NEXT_PUBLIC_API_PRODUCTOS!,
-    companies: process.env.NEXT_PUBLIC_API_COMPANY!,
-    ventas: process.env.NEXT_PUBLIC_API_VENTAS!,
-    clientes: process.env.NEXT_PUBLIC_API_CLIENTES!,
-    integrations: process.env.NEXT_PUBLIC_API_INTEGRATIONS!,
-    courier: process.env.NEXT_PUBLIC_API_COURIER!,
-    inventory: process.env.NEXT_PUBLIC_API_INVENTORY!,
-}
+  productos: GATEWAY.products,
+  companies: GATEWAY.company,
+  ventas: GATEWAY.ventas,
+  clientes: GATEWAY.clients,
+  integrations: GATEWAY.integrations,
+  courier: GATEWAY.courier,
+  inventory: GATEWAY.logistics,
+};

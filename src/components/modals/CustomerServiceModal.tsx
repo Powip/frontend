@@ -1,5 +1,6 @@
 "use client";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { useCallback, useEffect, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -245,12 +246,12 @@ export default function CustomerServiceModal({
     if (!orderId) return;
     setLogsLoading(true);
     try {
-      const res = await axios.get<LogEntry[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas/${orderId}`,
+      const res = await axiosAuth.get<LogEntry[]>(
+        `${GATEWAY.ventas}/log-ventas/${orderId}`,
       );
       setLogs(res.data);
-    } catch (error) {
-      console.error("Error cargando historial", error);
+    } catch {
+      // silently ignore — log fetch failure does not block UI
     } finally {
       setLogsLoading(false);
     }
@@ -260,7 +261,7 @@ export default function CustomerServiceModal({
     if (!newComment.trim() || !orderId) return;
     setIsSendingComment(true);
     try {
-      await axios.post(`${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas`, {
+      await axiosAuth.post(`${GATEWAY.ventas}/log-ventas`, {
         orderId,
         comentarios: newComment.trim(),
         operacion: "COMMENT",
@@ -271,8 +272,7 @@ export default function CustomerServiceModal({
       });
       setNewComment("");
       fetchLogs();
-    } catch (error) {
-      console.error("Error enviando comentario", error);
+    } catch {
       toast.error("Error al enviar el comentario");
     } finally {
       setIsSendingComment(false);
@@ -294,13 +294,13 @@ export default function CustomerServiceModal({
     if (!orderId) return;
     try {
       setLoading(true);
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
+      const res = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-header/${orderId}/receipt`,
       );
       setReceipt(res.data);
 
-      const orderRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      const orderRes = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
       );
       setNotes(orderRes.data.notes || "");
       // CC v2: cargar campos de datos incompletos + sub-estado
@@ -338,8 +338,8 @@ export default function CustomerServiceModal({
         }
       }
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         payload,
       );
 
@@ -350,8 +350,7 @@ export default function CustomerServiceModal({
       );
       fetchReceipt();
       onOrderUpdated?.();
-    } catch (error) {
-      console.error("Error updating call status", error);
+    } catch {
       toast.error("Error al actualizar el estado");
     }
   };
@@ -365,8 +364,8 @@ export default function CustomerServiceModal({
       // Ajustar a formato ISO para el backend
       const callbackAt = scheduledDate.toISOString();
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         {
           callStatus: "SCHEDULED",
           callbackAt,
@@ -376,7 +375,7 @@ export default function CustomerServiceModal({
       );
 
       // Registrar log de programación
-      await axios.post(`${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas`, {
+      await axiosAuth.post(`${GATEWAY.ventas}/log-ventas`, {
         orderId,
         comentarios: `Llamada programada para el ${format(scheduledDate, "PPPPp", { locale: es })}`,
         operacion: "SCHEDULE_CALLBACK",
@@ -393,8 +392,7 @@ export default function CustomerServiceModal({
       fetchReceipt();
       fetchLogs();
       onOrderUpdated?.();
-    } catch (error) {
-      console.error("Error scheduling callback", error);
+    } catch {
       toast.error("Error al programar la llamada");
     } finally {
       setIsScheduling(false);
@@ -404,13 +402,12 @@ export default function CustomerServiceModal({
   const handleSaveNotes = async () => {
     try {
       setSavingNotes(true);
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         { notes },
       );
       toast.success("Notas guardadas correctamente");
-    } catch (error) {
-      console.error("Error saving notes", error);
+    } catch {
       toast.error("Error al guardar las notas");
     } finally {
       setSavingNotes(false);
@@ -447,8 +444,8 @@ export default function CustomerServiceModal({
 
     try {
       setSavingTracking(true);
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         {
           externalTrackingNumber: receipt.externalTrackingNumber,
           shippingCode: receipt.shippingCode,
@@ -457,7 +454,6 @@ export default function CustomerServiceModal({
         },
       );
       toast.success("Tracking actualizado");
-      // Update original tracking to match new saved state
       setOriginalTracking({
         externalTrackingNumber: receipt.externalTrackingNumber || "",
         shippingCode: receipt.shippingCode || "",
@@ -465,8 +461,7 @@ export default function CustomerServiceModal({
         shippingOffice: receipt.shippingOffice || "",
       });
       onOrderUpdated?.();
-    } catch (error) {
-      console.error("Error saving tracking:", error);
+    } catch {
       toast.error("Error al actualizar tracking");
     } finally {
       setSavingTracking(false);
@@ -492,22 +487,21 @@ export default function CustomerServiceModal({
     );
   };
 
-  const copyField = async (value: string | undefined, fieldName: string) => {
+  const copyField = async (value: string | undefined, _fieldName: string) => {
     if (!value || value === "-") {
       return;
     }
     try {
       await navigator.clipboard.writeText(value);
-    } catch (error) {
-      console.error("Error copiando", error);
+    } catch {
+      // clipboard access silently fails in some contexts
     }
   };
 
   const generateQR = async (text: string) => {
     try {
       return await QRCode.toDataURL(text, { width: 120 });
-    } catch (err) {
-      console.error("Error generating QR", err);
+    } catch {
       return "";
     }
   };
@@ -843,16 +837,15 @@ export default function CustomerServiceModal({
   const handleConfirmPrintStatus = async () => {
     try {
       setIsUpdatingStatus(true);
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         { status: "PREPARADO" },
       );
       toast.success("Pedido actualizado a PREPARADO");
       fetchReceipt();
       onOrderUpdated?.();
       setPrintConfirmOpen(false);
-    } catch (error) {
-      console.error("Error updating status to PREPARADO", error);
+    } catch {
       toast.error("No se pudo actualizar el estado del pedido");
     } finally {
       setIsUpdatingStatus(false);
@@ -1062,8 +1055,8 @@ export default function CustomerServiceModal({
   ) => {
     setIsCancelling(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         {
           status: "ANULADO",
           cancellationReason: reason,
@@ -1074,8 +1067,7 @@ export default function CustomerServiceModal({
       setCancellationModalOpen(false);
       onClose();
       onOrderUpdated?.();
-    } catch (error) {
-      console.error("Error cancelling order", error);
+    } catch {
       toast.error("No se pudo anular la venta");
     } finally {
       setIsCancelling(false);

@@ -4,7 +4,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import { Upload, X, FileImage, FileText, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 interface Props {
     open: boolean;
@@ -58,8 +59,8 @@ export default function PaymentProofUploadModal({ open, paymentId, onClose, onSu
             const formData = new FormData();
             formData.append('file', file);
 
-            await axios.patch(
-                `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/upload-proof`,
+            await axiosAuth.patch(
+                `${GATEWAY.ventas}/payments/payments/${paymentId}/upload-proof`,
                 formData,
                 {
                     headers: {
@@ -71,8 +72,7 @@ export default function PaymentProofUploadModal({ open, paymentId, onClose, onSu
             toast.success("Comprobante subido correctamente");
             onSuccess?.();
             handleClose();
-        } catch (error) {
-            console.error("Error subiendo comprobante", error);
+        } catch {
             toast.error("No se pudo subir el comprobante");
         } finally {
             setUploading(false);

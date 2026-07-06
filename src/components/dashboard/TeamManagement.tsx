@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import {
   BarChart,
   Bar,
@@ -127,13 +128,13 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
         if (isAdmin) {
           // Fetch seller stats and delivery effectiveness in parallel
           const [sellerRes, deliveryRes] = await Promise.all([
-            axios.get(
-              `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/summary/company/${companyId}/sellers`,
+            axiosAuth.get(
+              `${GATEWAY.ventas}/order-header/summary/company/${companyId}/sellers`,
               { params },
             ),
-            axios
+            axiosAuth
               .get(
-                `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/delivery-by-seller`,
+                `${GATEWAY.ventas}/stats/delivery-by-seller`,
                 { params: { ...params, storeId: selectedStoreId } },
               )
               .catch(() => ({ data: [] })),
@@ -168,8 +169,8 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
           setSellers(enrichedSellers);
         } else {
           // Fetch personalized stats using backend sellerId filter
-          const res = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
+          const res = await axiosAuth.get(
+            `${GATEWAY.ventas}/stats/summary`,
             {
               params: {
                 ...params,
@@ -180,8 +181,8 @@ export const TeamManagement: React.FC<TeamManagementProps> = ({ fromDate, toDate
           );
           setSellerSummary(res.data);
         }
-      } catch (error) {
-        console.error("Error fetching stats:", error);
+      } catch {
+        // stats fetch failure is silent
       } finally {
         setLoading(false);
       }

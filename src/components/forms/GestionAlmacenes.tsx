@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2, Home, Loader2, AlertTriangle } from "lucide-react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import AlmacenModal from "../modals/AlmacenModal";
@@ -40,15 +41,14 @@ const GestionAlmacenes = () => {
     try {
       const results = await Promise.all(
         stores.map((store) =>
-          axios
-            .get(`${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${store.id}`)
+          axiosAuth
+            .get(`${GATEWAY.logistics}/inventory/store/${store.id}`)
             .then((r) => r.data as Inventory[])
             .catch(() => [] as Inventory[])
         )
       );
       setAlmacenes(results.flat());
-    } catch (error) {
-      console.error("Error fetching almacenes:", error);
+    } catch {
       toast.error("Error al cargar los almacenes");
     } finally {
       setLoading(false);
@@ -61,16 +61,16 @@ const GestionAlmacenes = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/${id}`,
+      await axiosAuth.delete(
+        `${GATEWAY.logistics}/inventory/${id}`,
       );
       toast.success("Almacén eliminado correctamente");
       fetchAlmacenes();
-      refreshInventories(); // Sincronizar estado global
-    } catch (error: any) {
-      console.error(error);
+      refreshInventories();
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
       toast.error(
-        error.response?.data?.message || "Error al eliminar el almacén",
+        axiosError?.response?.data?.message || "Error al eliminar el almacén",
       );
     }
   };

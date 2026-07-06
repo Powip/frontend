@@ -6,6 +6,7 @@ import Header from "@/components/header/Header";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { AdminPeriodProvider, useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { hasAdminAccess } from "@/config/permissions.config";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -24,14 +25,19 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   const { setPeriod } = useAdminPeriod();
   const { auth, loading, hasPermission } = useAuth();
 
+  // Permitir acceso si tiene el permiso explícito O si su rol es admin/owner.
+  // El permiso puede no estar en el JWT todavía si el evento de sincronización
+  // RabbitMQ aún no fue procesado después de la promoción de rol.
+  const canAccess = hasPermission("VIEW_FINANCES") || hasAdminAccess(auth?.user?.role);
+
   useEffect(() => {
     if (loading) return;
-    if (!auth || !hasPermission("VIEW_FINANCES")) {
+    if (!auth || !canAccess) {
       router.replace("/dashboard");
     }
-  }, [auth, loading, hasPermission, router]);
+  }, [auth, loading, canAccess, router]);
 
-  if (loading || !auth || !hasPermission("VIEW_FINANCES")) return null;
+  if (loading || !auth || !canAccess) return null;
 
   return (
     <div className="h-full flex flex-col bg-background">

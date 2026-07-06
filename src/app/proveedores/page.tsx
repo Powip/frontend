@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, Fragment, useCallback } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import {
   Plus,
@@ -92,12 +93,11 @@ export default function ProveedoresPage() {
     if (!companyId) return;
     setIsLoading(true);
     try {
-      const res = await axios.get<Supplier[]>(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/company/${companyId}`
+      const res = await axiosAuth.get<Supplier[]>(
+        `${GATEWAY.logistics}/suppliers/company/${companyId}`
       );
       setSuppliers(res.data);
-    } catch (error) {
-      console.error("Error fetching suppliers", error);
+    } catch {
       toast.error("Error al cargar proveedores");
     } finally {
       setIsLoading(false);
@@ -145,22 +145,21 @@ export default function ProveedoresPage() {
     setIsSavingSupplier(true);
     try {
       if (editingSupplier) {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/${editingSupplier.id}`,
+        await axiosAuth.patch(
+          `${GATEWAY.logistics}/suppliers/${editingSupplier.id}`,
           supplierForm
         );
         toast.success("Proveedor actualizado");
       } else {
-        await axios.post(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
+        await axiosAuth.post(
+          `${GATEWAY.logistics}/suppliers`,
           { ...supplierForm, companyId }
         );
         toast.success("Proveedor creado");
       }
       setSupplierModalOpen(false);
       fetchSuppliers();
-    } catch (error) {
-      console.error("Error saving supplier", error);
+    } catch {
       toast.error("Error al guardar proveedor");
     } finally {
       setIsSavingSupplier(false);
@@ -171,13 +170,12 @@ export default function ProveedoresPage() {
     if (!confirm(`¿Eliminar proveedor "${supplier.name}"?`)) return;
 
     try {
-      await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/${supplier.id}`
+      await axiosAuth.delete(
+        `${GATEWAY.logistics}/suppliers/${supplier.id}`
       );
       toast.success("Proveedor eliminado");
       fetchSuppliers();
-    } catch (error) {
-      console.error("Error deleting supplier", error);
+    } catch {
       toast.error("Error al eliminar proveedor");
     }
   };
@@ -211,22 +209,21 @@ export default function ProveedoresPage() {
     setIsSavingBrand(true);
     try {
       if (editingBrand) {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands/${editingBrand.id}`,
+        await axiosAuth.patch(
+          `${GATEWAY.products}/brands/${editingBrand.id}`,
           brandForm
         );
         toast.success("Marca actualizada");
       } else {
-        await axios.post(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`,
+        await axiosAuth.post(
+          `${GATEWAY.products}/brands`,
           brandForm
         );
         toast.success("Marca creada");
       }
       setBrandModalOpen(false);
       fetchSuppliers();
-    } catch (error) {
-      console.error("Error saving brand", error);
+    } catch {
       toast.error("Error al guardar marca");
     } finally {
       setIsSavingBrand(false);
@@ -237,13 +234,12 @@ export default function ProveedoresPage() {
     if (!confirm(`¿Eliminar marca "${brand.name}"?`)) return;
 
     try {
-      await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands/${brand.id}`
+      await axiosAuth.delete(
+        `${GATEWAY.products}/brands/${brand.id}`
       );
       toast.success("Marca eliminada");
       fetchSuppliers();
-    } catch (error) {
-      console.error("Error deleting brand", error);
+    } catch {
       toast.error("Error al eliminar marca");
     }
   };

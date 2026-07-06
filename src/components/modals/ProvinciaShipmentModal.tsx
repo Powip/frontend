@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -132,8 +133,8 @@ export default function ProvinciaShipmentModal({
 
     setSaving(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`,
+      await axiosAuth.patch(
+        `${GATEWAY.courier}/shipping-guides/${guide.id}`,
         {
           externalGuideReference,
           shippingKey,
@@ -144,8 +145,9 @@ export default function ProvinciaShipmentModal({
       toast.success("Datos de envío actualizados");
       setIsEditing(false);
       onUpdate();
-    } catch (error: any) {
-      const message = error?.response?.data?.message || "Error al guardar";
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      const message = axiosError?.response?.data?.message || "Error al guardar";
       toast.error(message);
     } finally {
       setSaving(false);
@@ -160,8 +162,8 @@ export default function ProvinciaShipmentModal({
       const formData = new FormData();
       formData.append("file", file);
 
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/upload-proof`,
+      await axiosAuth.patch(
+        `${GATEWAY.courier}/shipping-guides/${guide.id}/upload-proof`,
         formData,
         {
           headers: {
@@ -172,9 +174,10 @@ export default function ProvinciaShipmentModal({
 
       toast.success("Comprobante subido correctamente");
       onUpdate();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
       const message =
-        error?.response?.data?.message || "Error al subir comprobante";
+        axiosError?.response?.data?.message || "Error al subir comprobante";
       toast.error(message);
     } finally {
       setUploadingProof(false);

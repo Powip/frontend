@@ -105,7 +105,6 @@ export default function ResumenAdminPage() {
   const [savingRate, setSavingRate] = useState(false);
 
   const companyId = auth?.company?.id ?? "";
-  const token = auth?.accessToken ?? "";
   const storeIds = useMemo(() => (auth?.company?.stores ?? []).map((s) => s.id), [auth?.company?.stores]);
   const ivaRate = (auth?.company?.iva ?? 18) / 100;
   const powipRate = auth?.company?.powipCommissionRate ?? 0.005;
@@ -113,15 +112,15 @@ export default function ResumenAdminPage() {
 
   // Período actual
   const { data: orders = [], isLoading: l1 } = useAdminOrders(companyId, fromDate, toDate);
-  const { data: gastos = [], isLoading: l2 } = useAdminGastos(companyId, fromDate, toDate, token);
-  const { data: merma, isLoading: l3 } = useAdminShrinkageSummary(companyId, fromDate, toDate, token);
-  const { data: courierCost = 0, isLoading: l4 } = useAdminCourierCost(storeIds, fromDate, toDate, token);
+  const { data: gastos = [], isLoading: l2 } = useAdminGastos(companyId, fromDate, toDate);
+  const { data: merma, isLoading: l3 } = useAdminShrinkageSummary(companyId, fromDate, toDate);
+  const { data: courierCost = 0, isLoading: l4 } = useAdminCourierCost(storeIds, fromDate, toDate);
 
   // Período anterior
   const { data: ordersPrev = [], isLoading: l5 } = useAdminOrders(companyId, prevFrom, prevTo);
-  const { data: gastosPrev = [], isLoading: l6 } = useAdminGastos(companyId, prevFrom, prevTo, token);
-  const { data: mermaPrev, isLoading: l7 } = useAdminShrinkageSummary(companyId, prevFrom, prevTo, token);
-  const { data: courierCostPrev = 0, isLoading: l8 } = useAdminCourierCost(storeIds, prevFrom, prevTo, token);
+  const { data: gastosPrev = [], isLoading: l6 } = useAdminGastos(companyId, prevFrom, prevTo);
+  const { data: mermaPrev, isLoading: l7 } = useAdminShrinkageSummary(companyId, prevFrom, prevTo);
+  const { data: courierCostPrev = 0, isLoading: l8 } = useAdminCourierCost(storeIds, prevFrom, prevTo);
 
   const loading = l1 || l2 || l3 || l4 || l5 || l6 || l7 || l8;
 
@@ -136,12 +135,12 @@ export default function ResumenAdminPage() {
   }, [ordersPrev, gastosPrev, mermaPrev, courierCostPrev, ivaRate, powipRate]);
 
   const handleSaveRate = async () => {
-    if (!companyId || !token) return;
+    if (!companyId) return;
     const pct = parseFloat(rateInput);
     if (isNaN(pct) || pct < 0 || pct > 100) return;
     setSavingRate(true);
     try {
-      await updateCompanyApi(companyId, token, { powipCommissionRate: pct / 100 });
+      await updateCompanyApi(companyId, { powipCommissionRate: pct / 100 });
       if (auth?.company?.id) updateCompany({ ...auth.company, id: auth.company.id, powipCommissionRate: pct / 100 });
       setEditingRate(false);
     } catch {

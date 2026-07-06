@@ -66,9 +66,8 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
   // Load roles from API
   useEffect(() => {
     const loadRoles = async () => {
-      if (!auth?.accessToken) return;
       try {
-        const rolesData = await getRoles(auth.accessToken);
+        const rolesData = await getRoles();
         // Filtrar solo roles permitidos para usuarios de compañía (no ADMINISTRADOR ni USUARIO)
         const allowedRoles = rolesData.filter((r) =>
           ["AGENTES", "VENTAS", "OPERACIONES", "COURIER", "CALLER"].includes(
@@ -83,7 +82,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
       }
     };
     loadRoles();
-  }, [auth?.accessToken]);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -156,7 +155,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           ...(formData.password && { password: formData.password }),
         };
 
-        await updateUser(user.id, updateRequest, auth.accessToken!);
+        await updateUser(user.id, updateRequest);
         toast.success("Usuario actualizado exitosamente");
       } else {
         // Crear nuevo usuario
@@ -174,7 +173,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           roleName: formData.roleName,
         };
 
-        await createCompanyUser(auth.company.id, request, auth.accessToken);
+        await createCompanyUser(auth.company.id, request);
         toast.success("Usuario creado exitosamente");
       }
       onUserSaved();

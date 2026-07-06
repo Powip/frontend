@@ -2,7 +2,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import {
   ResponsiveContainer,
   BarChart,
@@ -58,8 +59,8 @@ export default function MetricasClientesPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
+        const res = await axiosAuth.get(
+          `${GATEWAY.ventas}/order-header/store/${selectedStoreId}`
         );
         setOrders(res.data || []);
       } catch (error) {

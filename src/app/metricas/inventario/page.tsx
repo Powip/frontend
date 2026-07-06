@@ -2,7 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { useQuery } from "@tanstack/react-query";
 import {
   ResponsiveContainer,
@@ -85,8 +86,8 @@ export default function MetricasInventarioPage() {
         const invItems: InventoryItem[] = [];
 
         while (hasMore) {
-          const res = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
+          const res = await axiosAuth.get(
+            `${GATEWAY.logistics}/inventory-item/search`,
             {
               params: {
                 inventoryId,

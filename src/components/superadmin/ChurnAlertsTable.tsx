@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { AlertTriangle, CheckCircle2, MessageSquare, Loader2 } from "lucide-react";
 import { formatDistanceToNow, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
-import axios from 'axios';
+import axiosAuth from "@/lib/axiosAuth";
 import { toast } from 'sonner';
 
 interface ChurnAlert {
@@ -28,7 +28,6 @@ interface ChurnAlert {
 interface ChurnAlertsTableProps {
   alerts: ChurnAlert[];
   onResolve: () => void;
-  token?: string;
 }
 
 const ALERT_LABELS: Record<string, string> = {
@@ -55,7 +54,7 @@ const SEVERITY_LABELS: Record<string, string> = {
   low: "MEDIO",
 };
 
-export const ChurnAlertsTable: React.FC<ChurnAlertsTableProps> = ({ alerts, onResolve, token }) => {
+export const ChurnAlertsTable: React.FC<ChurnAlertsTableProps> = ({ alerts, onResolve }) => {
   const [resolvingId, setResolvingId] = useState<string | null>(null);
 
   const handleResolve = async (id: string) => {
@@ -64,8 +63,7 @@ export const ChurnAlertsTable: React.FC<ChurnAlertsTableProps> = ({ alerts, onRe
 
     setResolvingId(id);
     try {
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-      await axios.patch(`/api/superadmin/churn-alerts/${id}/resolve`, { note }, config);
+      await axiosAuth.patch(`/api/superadmin/churn-alerts/${id}/resolve`, { note });
       toast.success("Alerta marcada como atendida");
       onResolve();
     } catch (error) {

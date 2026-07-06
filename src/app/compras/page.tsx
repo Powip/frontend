@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -99,16 +100,15 @@ export default function ComprasPage() {
         if (!companyId) return;
         setIsLoading(true);
         try {
-            const res = await axios.get(
-                `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase/company/${companyId}`,
+            const res = await axiosAuth.get(
+                `${GATEWAY.logistics}/purchase/company/${companyId}`,
                 {
                     params: { page: currentPage, limit: ITEMS_PER_PAGE },
                 }
             );
             setPurchases(res.data.data);
             setTotalItems(res.data.meta.total);
-        } catch (error) {
-            console.error("Error fetching purchases", error);
+        } catch {
             toast.error("Error al cargar compras");
         } finally {
             setIsLoading(false);
@@ -141,14 +141,13 @@ export default function ComprasPage() {
 
         setIsDeleting(true);
         try {
-            await axios.delete(
-                `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase/${purchaseToDelete.id}`
+            await axiosAuth.delete(
+                `${GATEWAY.logistics}/purchase/${purchaseToDelete.id}`
             );
 
             toast.success("Compra eliminada y stock revertido");
             fetchPurchases();
-        } catch (error) {
-            console.error("Error deleting purchase", error);
+        } catch {
             toast.error("Error al eliminar la compra");
         } finally {
             setIsDeleting(false);

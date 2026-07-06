@@ -21,19 +21,18 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import { Plus, Loader2 } from 'lucide-react';
+import axiosAuth from '@/lib/axiosAuth';
 
 interface CreateLeadModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  token?: string;
 }
 
 export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  token,
 }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -63,19 +62,7 @@ export const CreateLeadModal: React.FC<CreateLeadModalProps> = ({
         orders_per_day: formData.orders_per_day ? parseInt(formData.orders_per_day) : undefined,
       };
 
-      const response = await fetch('/api/superadmin/leads', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Error al crear lead');
-      }
+      await axiosAuth.post('/api/superadmin/leads', payload);
 
       toast.success('Lead creado con éxito');
       onSuccess();

@@ -1,35 +1,21 @@
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
-export const fetchUserSubscription = async (userId: string, token: string) => {
+export const fetchUserSubscription = async (): Promise<boolean | null> => {
+  const url = `${GATEWAY.subscriptionFlow}/api/v1/subscriptions/me`;
+
   try {
-    const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_SUBS}/subscriptions/user/${userId}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+    const { data } = await axiosAuth.get(url);
+
+    return data.status === "ACTIVE";
+  } catch (error) {
+    if (axios.isAxiosError(error)) {
+      if (error.response?.status === 404 || error.response?.status === 403) {
+        return null;
       }
-    );
-
-    const subscriptions = response.data;
-
-    // Si no tiene ninguna suscripción
-    if (!Array.isArray(subscriptions) || subscriptions.length === 0) {
-      return null;
     }
 
-    const sub = subscriptions[0]; // tomamos la activa o la más reciente
-
-    return {
-      id: sub.id,
-      status: sub.status,
-      plan: {
-        id: sub.plan.id,
-        name: sub.plan.name,
-      },
-    };
-  } catch (error) {
-    // Es normal que falle si el usuario no tiene suscripción personal (ej: personal operativos)
-    return null;
+    throw error;
   }
 };

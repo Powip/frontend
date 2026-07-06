@@ -1,24 +1,20 @@
 import { Subcategory } from "@/interfaces/ICategory";
-import { API_URLS } from "@/config/apiConfig";
+import { GATEWAY } from "@/lib/gateway";
+import axiosAuth from "@/lib/axiosAuth";
 
-const API_URL = API_URLS.productos; // viene de tu .env.local → NEXT_PUBLIC_API_PRODUCTOS
+const BASE = GATEWAY.products;
 
-// Obtener subcategorías por categoría
 export const getSubcategoriesByCategory = async (
   categoryId: string
 ): Promise<Subcategory[]> => {
   try {
-    const response = await fetch(`${API_URL}/categories/${categoryId}`);
-    if (!response.ok) throw new Error(`Error al obtener subcategorías`);
-    const data = await response.json();
-    return data.subcategories || [];
-  } catch (error) {
-    console.error("Error en getSubcategoriesByCategory:", error);
+    const response = await axiosAuth.get(`${BASE}/categories/${categoryId}`);
+    return response.data.subcategories || [];
+  } catch {
     return [];
   }
 };
 
-// Crear subcategoría
 export const createSubcategory = async (subcategory: {
   name: string;
   description: string;
@@ -26,56 +22,18 @@ export const createSubcategory = async (subcategory: {
   status: boolean;
   categoryId: string;
 }): Promise<Subcategory> => {
-  try {
-    const response = await fetch(`${API_URL}/subcategories`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(subcategory),
-    });
-
-    if (!response.ok)
-      throw new Error(`Error al crear subcategoría: ${response.status}`);
-
-    return await response.json();
-  } catch (error) {
-    console.error("Error en createSubcategory:", error);
-    throw error;
-  }
+  const response = await axiosAuth.post(`${BASE}/subcategories`, subcategory);
+  return response.data;
 };
 
-// Actualizar subcategoría
 export const updateSubcategory = async (
   id: string,
   subcategory: Partial<Subcategory>
 ): Promise<Subcategory> => {
-  try {
-    const response = await fetch(`${API_URL}/subcategories/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(subcategory),
-    });
-
-    if (!response.ok)
-      throw new Error(`Error al actualizar subcategoría con id ${id}`);
-
-    return await response.json();
-  } catch (error) {
-    console.error("Error en updateSubcategory:", error);
-    throw error;
-  }
+  const response = await axiosAuth.patch(`${BASE}/subcategories/${id}`, subcategory);
+  return response.data;
 };
 
-//  Eliminar (desactivar) subcategoría
 export const inactivateSubcategory = async (id: string): Promise<void> => {
-  try {
-    const response = await fetch(`${API_URL}/subcategories/${id}`, {
-      method: "DELETE",
-    });
-
-    if (!response.ok)
-      throw new Error(`Error al eliminar subcategoría con id ${id}`);
-  } catch (error) {
-    console.error("Error en deleteSubcategory:", error);
-    throw error;
-  }
+  await axiosAuth.delete(`${BASE}/subcategories/${id}`);
 };

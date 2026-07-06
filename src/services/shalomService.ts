@@ -1,13 +1,8 @@
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
-const API_INTEGRATIONS = (
-  process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3004"
-).replace(/\/$/, "");
-const API_COURIER = (
-  process.env.NEXT_PUBLIC_API_COURIER || "http://localhost:3003"
-).replace(/\/$/, "");
-
-const headers = (token: string) => ({ Authorization: `Bearer ${token}` });
+const API_INTEGRATIONS = GATEWAY.integrations;
+const API_COURIER = GATEWAY.courier;
 
 // ─── TIPOS ──────────────────────────────────────────────
 
@@ -42,12 +37,8 @@ export interface ShalomAgency {
 // ─── CONEXIÓN GLOBAL ─────────────────────────────────────
 
 /** Verifica que el servidor Shalom responde (sin empresa, admin key global) */
-export const testShalomConnection = async (
-  token: string,
-): Promise<{ ok: boolean; agenciesCount: number }> => {
-  const res = await axios.get(`${API_INTEGRATIONS}/shalom/connection-test`, {
-    headers: headers(token),
-  });
+export const testShalomConnection = async (): Promise<{ ok: boolean; agenciesCount: number }> => {
+  const res = await axiosAuth.get(`${API_INTEGRATIONS}/shalom/connection-test`);
   return res.data;
 };
 
@@ -55,24 +46,19 @@ export const testShalomConnection = async (
 
 /** Solo guarda usuario + contraseña Shalom Pro */
 export const saveShalomConfig = async (
-  token: string,
   data: { companyId: string; username: string; password: string },
 ): Promise<ShalomConfig> => {
-  const res = await axios.post(`${API_INTEGRATIONS}/shalom/config`, data, {
-    headers: headers(token),
-  });
+  const res = await axiosAuth.post(`${API_INTEGRATIONS}/shalom/config`, data);
   return res.data;
 };
 
 /** Retorna la config de la empresa (sin contraseña) */
 export const getShalomConfig = async (
-  token: string,
   companyId: string,
 ): Promise<ShalomConfig | null> => {
   try {
-    const res = await axios.get(
+    const res = await axiosAuth.get(
       `${API_INTEGRATIONS}/shalom/config/${companyId}`,
-      { headers: headers(token) },
     );
     return res.data;
   } catch {
@@ -83,40 +69,34 @@ export const getShalomConfig = async (
 // ─── INSTANCIA Y SESIÓN ──────────────────────────────────
 
 export const createShalomInstance = async (
-  token: string,
   companyId: string,
 ): Promise<{ instanceId: string }> => {
-  const res = await axios.post(
+  const res = await axiosAuth.post(
     `${API_INTEGRATIONS}/shalom/instance/${companyId}`,
     {},
-    { headers: headers(token) },
   );
   return res.data;
 };
 
 export const loginShalom = async (
-  token: string,
   companyId: string,
 ): Promise<{ success: boolean; message: string }> => {
-  const res = await axios.post(
+  const res = await axiosAuth.post(
     `${API_INTEGRATIONS}/shalom/login`,
     { companyId },
-    { headers: headers(token) },
   );
   return res.data;
 };
 
 export const getShalomStatus = async (
-  token: string,
   companyId: string,
 ): Promise<{
   isLoggedIn: boolean;
   username: string | null;
   hasInstance: boolean;
 }> => {
-  const res = await axios.get(
+  const res = await axiosAuth.get(
     `${API_INTEGRATIONS}/shalom/status/${companyId}`,
-    { headers: headers(token) },
   );
   return res.data;
 };
@@ -124,7 +104,6 @@ export const getShalomStatus = async (
 // ─── AGENCIAS (global, sin companyId) ────────────────────
 
 export const listShalomAgencies = async (
-  token: string,
   q?: string,
 ): Promise<ShalomAgency[]> => {
   const url = q
@@ -132,10 +111,8 @@ export const listShalomAgencies = async (
     : `${API_INTEGRATIONS}/shalom/agencies`;
 
   try {
-    const res = await axios.get(url, { headers: headers(token) });
+    const res = await axiosAuth.get(url);
     const data = res.data;
-
-    console.log("SHALOM API RAW RESPONSE:", data);
 
     let rawAgencies: any[] = [];
     if (Array.isArray(data)) rawAgencies = data;
@@ -152,7 +129,6 @@ export const listShalomAgencies = async (
       zone: ag.zona ?? ag.zone,
     }));
   } catch (error) {
-    console.error("SHALOM API ERROR:", error);
     return [];
   }
 };
@@ -160,31 +136,27 @@ export const listShalomAgencies = async (
 // ─── TRACKING ────────────────────────────────────────────
 
 export const trackShalomShipment = async (
-  token: string,
   companyId: string, // ⬅️ SÍ es necesario
   externalTrackingNumber: string, // ⬅️ 8 dígitos de Shalom
   shippingCode: string, // ⬅️ 4 caracteres de Shalom
 ): Promise<Record<string, unknown>> => {
-  const res = await axios.post(
+  const res = await axiosAuth.post(
     `${API_INTEGRATIONS}/shalom/track`,
     {
       companyId, // ✅ Enviar companyId
       orderNumber: externalTrackingNumber,
       orderCode: shippingCode,
     },
-    { headers: headers(token) },
   );
   return res.data;
 };
 
 /** Rastrear usando el proxy de ms-courier que conoce la guía */
 export const trackShalomGuide = async (
-  token: string,
   guideId: string,
 ): Promise<Record<string, unknown>> => {
-  const res = await axios.get(
+  const res = await axiosAuth.get(
     `${API_COURIER}/shipping-guides/${guideId}/shalom/track`,
-    { headers: headers(token) },
   );
   return res.data;
 };
@@ -198,17 +170,13 @@ export const getShalomTicketPdfUrl = (
   `${API_INTEGRATIONS}/shalom/ticket-pdf/${orderNumber}/${orderCode}`;
 
 export const generateShalomTicketPdf = async (
-  token: string,
   externalTrackingNumber: string, // ⬅️ 8 dígitos de Shalom
   shippingCode: string, // ⬅️ 4 caracteres de Shalom
 ): Promise<Blob> => {
   // ✅ CAMBIO: GET con parámetros de ruta en lugar de POST con body
-  const res = await axios.get(
+  const res = await axiosAuth.get(
     `${API_INTEGRATIONS}/shalom/ticket-pdf/${externalTrackingNumber}/${shippingCode}`,
-    {
-      headers: headers(token),
-      responseType: "blob",
-    },
+    { responseType: "blob" },
   );
   return res.data;
 };
@@ -220,7 +188,6 @@ export const getShalomLabelPdfUrl = (
 
 /** Cotizar un envío individual */
 export const quoteShalom = async (
-  token: string,
   data: {
     origin: string;
     destination: string;
@@ -237,32 +204,28 @@ export const quoteShalom = async (
   status: string;
   message?: string;
 }> => {
-  const res = await axios.post(
+  const res = await axiosAuth.post(
     `${API_COURIER}/shipping-guides/shalom/quote`,
     data,
-    { headers: headers(token) },
   );
   return res.data;
 };
 
 /** Actualizar la cotización de una guía en la DB */
 export const updateGuideQuote = async (
-  token: string,
   guideId: string,
   quotedAmount: number,
   quotedCurrency: string = "PEN",
 ): Promise<void> => {
-  await axios.patch(
+  await axiosAuth.patch(
     `${API_COURIER}/shipping-guides/${guideId}/quote`,
     { quotedAmount, quotedCurrency },
-    { headers: headers(token) },
   );
 };
 
 // ─── ENVÍO DESDE GUÍA ────────────────────────────────────
 
 export const sendGuideToShalom = async (
-  token: string,
   guideId: string,
   data: {
     companyId: string;
@@ -293,10 +256,9 @@ export const sendGuideToShalom = async (
     { orderNumber: string; orderCode: string }
   > | null;
 }> => {
-  const res = await axios.post(
+  const res = await axiosAuth.post(
     `${API_COURIER}/shipping-guides/${guideId}/send-to-shalom`,
     data,
-    { headers: headers(token) },
   );
   return res.data;
 };

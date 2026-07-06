@@ -40,7 +40,8 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import SendToShalomModal from "@/components/shalom/SendToShalomModal";
@@ -292,14 +293,14 @@ export default function GuideDetailsModal({
     try {
       let url = "";
       if (guideId) {
-        url = `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}`;
+        url = `${GATEWAY.courier}/shipping-guides/${guideId}`;
       } else if (orderId) {
-        url = `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderId}`;
+        url = `${GATEWAY.courier}/shipping-guides/order/${orderId}`;
       } else {
         return;
       }
 
-      const res = await axios.get<ShippingGuide | null>(url);
+      const res = await axiosAuth.get<ShippingGuide | null>(url);
       setGuide(res.data);
 
       if (res.data?.courierName) {
@@ -311,8 +312,8 @@ export default function GuideDetailsModal({
       // Fetch order details for all orders in the guide using /receipt endpoint
       if (res.data?.orderIds?.length) {
         const ordersPromises = res.data.orderIds.map((id) =>
-          axios.get<OrderDetail>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}/receipt`,
+          axiosAuth.get<OrderDetail>(
+            `${GATEWAY.ventas}/order-header/${id}/receipt`,
           ),
         );
         const ordersResponses = await Promise.all(ordersPromises);
@@ -335,8 +336,7 @@ export default function GuideDetailsModal({
         });
         setOrderTrackingFields(trackingByOrder);
       }
-    } catch (error) {
-      console.error("Error fetching guide:", error);
+    } catch {
       toast.error("No se pudo cargar la información de la guía");
     } finally {
       setLoading(false);
@@ -356,8 +356,8 @@ export default function GuideDetailsModal({
 
     setSavingOrderId(orderId);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         {
           externalTrackingNumber: trackingData.externalTrackingNumber || null,
           shippingKey: trackingData.shippingKey || null,
@@ -368,9 +368,10 @@ export default function GuideDetailsModal({
       );
       toast.success("Datos de tracking guardados");
       onGuideUpdated?.();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
       toast.error(
-        error?.response?.data?.message || "Error al guardar tracking",
+        axiosError?.response?.data?.message || "Error al guardar tracking",
       );
     } finally {
       setSavingOrderId(null);
@@ -403,8 +404,8 @@ export default function GuideDetailsModal({
     try {
       // Solo asignar courier a la guía, NO cambiar estado de órdenes
       // El estado de las órdenes cambiará cuando se APRUEBE la guía
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/assign-courier`,
+      await axiosAuth.patch(
+        `${GATEWAY.courier}/shipping-guides/${guide.id}/assign-courier`,
         {
           courierId: null,
           courierName: selectedCourier,
@@ -414,9 +415,10 @@ export default function GuideDetailsModal({
       toast.success(`Courier ${selectedCourier} asignado a la guía`);
       fetchGuide();
       onGuideUpdated?.();
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
       const message =
-        error?.response?.data?.message || "Error asignando courier";
+        axiosError?.response?.data?.message || "Error asignando courier";
       toast.error(message);
     } finally {
       setAssigning(false);
@@ -436,18 +438,18 @@ export default function GuideDetailsModal({
     setAssigning(true);
     try {
       // 1. Aprobar la guía
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`,
+      await axiosAuth.patch(
+        `${GATEWAY.courier}/shipping-guides/${guide.id}`,
         {
           status: "APROBADA",
-          courierName: normalizeCourier(guide.courierName), // ✅ Normalizar antes de guardar
+          courierName: normalizeCourier(guide.courierName),
         },
       );
 
       // 2. Cambiar estado de todas las órdenes a EN_ENVIO
       for (const orderId of guide.orderIds) {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+        await axiosAuth.patch(
+          `${GATEWAY.ventas}/order-header/${orderId}`,
           {
             status: "EN_ENVIO",
             courier: guide.courierName,
@@ -460,8 +462,9 @@ export default function GuideDetailsModal({
       );
       fetchGuide();
       onGuideUpdated?.();
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || "Error al aprobar guía");
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosError?.response?.data?.message || "Error al aprobar guía");
     } finally {
       setAssigning(false);
     }
@@ -493,8 +496,8 @@ export default function GuideDetailsModal({
       const formData = new FormData();
       formData.append("file", file);
 
-      const uploadRes = await axios.post<{ url: string }>(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/upload-proof`,
+      const uploadRes = await axiosAuth.post<{ url: string }>(
+        `${GATEWAY.courier}/shipping-guides/upload-proof`,
         formData,
         { headers: { "Content-Type": "multipart/form-data" } },
       );
@@ -502,18 +505,19 @@ export default function GuideDetailsModal({
       const proofUrl = uploadRes.data.url;
 
       // 2. Actualizar pedido en ms-ventas
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         {
           shippingProofUrl: proofUrl,
         },
       );
 
       toast.success("Prueba de entrega subida correctamente");
-      fetchGuide(); // Recargar datos para mostrar la imagen/link
+      fetchGuide();
       onGuideUpdated?.();
-    } catch (error: any) {
-      toast.error(error?.response?.data?.message || "Error al subir la prueba");
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosError?.response?.data?.message || "Error al subir la prueba");
     } finally {
       setUploadingOrderId(null);
       e.target.value = "";
@@ -526,9 +530,19 @@ export default function GuideDetailsModal({
 
     if (confirm("¿Estás seguro de desvincular este pedido de la guía?")) {
       try {
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}/orders/remove`,
+        // 1. Quitar el pedido de la guía en ms-courier
+        await axiosAuth.patch(
+          `${GATEWAY.courier}/shipping-guides/${guide.id}/orders/remove`,
           { orderIds: [orderId] },
+        );
+
+        // 2. Restaurar el pedido en ms-ventas
+        await axiosAuth.patch(
+          `${GATEWAY.ventas}/order-header/${orderId}`,
+          {
+            shipping_guide_id: null,
+            courier: null,
+          },
         );
 
         toast.success("Pedido desvinculado correctamente");

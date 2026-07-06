@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import {
   BarChart,
@@ -177,13 +178,13 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
       if (to) params.toDate = to;
 
       const [channelRes, brandRes, categoryRes] = await Promise.all([
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-channel`, {
+        axiosAuth.get(`${GATEWAY.ventas}/stats/by-channel`, {
           params,
         }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-brand`, {
+        axiosAuth.get(`${GATEWAY.ventas}/stats/by-brand`, {
           params,
         }),
-        axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-category`, {
+        axiosAuth.get(`${GATEWAY.ventas}/stats/by-category`, {
           params,
         }),
       ]);
@@ -191,8 +192,8 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
       setChannelData(channelRes.data);
       setBrandData(brandRes.data);
       setCategoryData(categoryRes.data);
-    } catch (error) {
-      console.error("Error al obtener datos de análisis:", error);
+    } catch {
+      // analysis stats fetch failure is silent
     } finally {
       setLoading(false);
     }
@@ -255,8 +256,8 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
   const handleExportFacturacion = async () => {
     try {
       // Use the correct singular endpoint that exists in the controller
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+      const response = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-header/store/${selectedStoreId}`,
       );
 
       // Get all orders and filter manually since the backend doesn't support these filters on this endpoint
@@ -356,8 +357,8 @@ export const Analysis: React.FC<AnalysisProps> = ({ fromDate, toDate }) => {
       XLSX.utils.book_append_sheet(wb, detailWs, "Detalle");
 
       XLSX.writeFile(wb, `facturacion_${fromDate}_${toDate}.xlsx`);
-    } catch (error) {
-      console.error("Error exporting:", error);
+    } catch {
+      // export error
     }
   };
 

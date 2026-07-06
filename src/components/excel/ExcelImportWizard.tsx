@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import ExcelJS from "exceljs";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -114,13 +115,12 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
     if (allSubcategories[categoryId]) return allSubcategories[categoryId];
 
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${categoryId}`,
+      const res = await axiosAuth.get(
+        `${GATEWAY.products}/subcategories/category/${categoryId}`,
       );
       setAllSubcategories((prev) => ({ ...prev, [categoryId]: res.data }));
       return res.data;
-    } catch (err) {
-      console.error("Error cargando subcategorías:", err);
+    } catch {
       return [];
     }
   };
@@ -139,10 +139,10 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
 
   /* ─── Load categories ─── */
   useEffect(() => {
-    axios
-      .get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/categories`)
+    axiosAuth
+      .get(`${GATEWAY.products}/categories`)
       .then((res) => setCategories(res.data))
-      .catch((err) => console.error("Error cargando categorías:", err));
+      .catch(() => {});
   }, []);
 
   /* ─── Load subcategories when category changes ─── */
@@ -152,20 +152,19 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       setSelectedSubcategoryId("");
       return;
     }
-    axios
+    axiosAuth
       .get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${selectedCategoryId}`,
+        `${GATEWAY.products}/subcategories/category/${selectedCategoryId}`,
       )
       .then((res) => {
         setSubcategories(res.data);
-        // Don't reset subcategory when loading from file metadata
         if (skipSubcategoryResetRef.current) {
           skipSubcategoryResetRef.current = false;
         } else {
           setSelectedSubcategoryId("");
         }
       })
-      .catch((err) => console.error("Error cargando subcategorías:", err));
+      .catch(() => {});
   }, [selectedCategoryId]);
 
   /* ─── Auto-select single inventory ─── */
@@ -391,9 +390,9 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         toast.success(`Se encontraron ${rows.length} filas`);
         setStep(3); // Auto-advance to preview
       }
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Error al leer el archivo");
+    } catch (err: unknown) {
+      const parseError = err as { message?: string };
+      toast.error(parseError.message || "Error al leer el archivo");
     } finally {
       setIsParsing(false);
     }
@@ -434,19 +433,16 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       })),
     };
 
-    console.log("📦 Payload bulk-import:", JSON.stringify(payload, null, 2));
-    const apiUrl = `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/bulk-import`;
-    console.log("🌐 API URL:", apiUrl);
-
     setIsSaving(true);
     try {
-      const res = await axios.post(apiUrl, payload);
-
-      console.log("✅ Respuesta bulk-import:", res.data);
+      const res = await axiosAuth.post(
+        `${GATEWAY.products}/products/bulk-import`,
+        payload,
+      );
 
       if (res.data.created === 0 && res.data.errors > 0) {
         toast.error(
-          `No se crearon productos. ${res.data.errors} errores — revisá la consola`,
+          `No se crearon productos. ${res.data.errors} errores.`,
         );
       } else if (res.data.created > 0) {
         toast.success(
@@ -455,18 +451,12 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         );
         onBack();
       } else {
-        toast.warning(
-          "La respuesta no indica productos creados. Verificá la consola.",
-        );
+        toast.warning("La respuesta no indica productos creados.");
       }
-    } catch (err: any) {
-      const errorDetail = err.response?.data
-        ? JSON.stringify(err.response.data)
-        : err.message;
-      console.error("❌ Error bulk-import:", errorDetail);
-      console.error("❌ Status:", err.response?.status);
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { status?: number; data?: { message?: string } }; message?: string };
       toast.error(
-        `Error (${err.response?.status || "red"}): ${err.response?.data?.message || err.message}`,
+        `Error (${axiosError.response?.status || "?"}): ${axiosError.response?.data?.message || axiosError.message || "Error desconocido"}`,
       );
     } finally {
       setIsSaving(false);

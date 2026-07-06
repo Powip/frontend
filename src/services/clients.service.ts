@@ -1,49 +1,42 @@
 import { Client } from "@/interfaces/ICliente";
+import { GATEWAY } from "@/lib/gateway";
+import axiosAuth from "@/lib/axiosAuth";
+import axios from "axios";
 
-const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS!;
+const API_VENTAS = GATEWAY.ventas;
 
 export async function fetchClientByPhone(
   companyId: string,
   phone: string
 ): Promise<Client | null> {
-  const res = await fetch(
-    `${API_VENTAS}/clients/company/${companyId}/phone/${phone}`,
-    {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      cache: "no-store",
+  try {
+    const res = await axiosAuth.get(
+      `${API_VENTAS}/clients/company/${companyId}/phone/${phone}`
+    );
+    const data = res.data;
+    return {
+      id: data.id,
+      companyId: data.companyId,
+      fullName: data.fullName,
+      phoneNumber: data.phoneNumber,
+      documentType: data.documentType,
+      documentNumber: data.documentNumber,
+      clientType: data.clientType,
+      province: data.province,
+      city: data.city,
+      district: data.district,
+      address: data.address,
+      reference: data.reference,
+      latitude: data.latitude,
+      longitude: data.longitude,
+      isActive: data.isActive,
+    };
+  } catch (error) {
+    if (axios.isAxiosError(error) && error.response?.status === 404) {
+      return null;
     }
-  );
-
-  if (res.status === 404) {
-    return null;
-  }
-
-  if (!res.ok) {
     throw new Error("Error fetching client");
   }
-
-  const data = await res.json();
-
-  return {
-    id: data.id,
-    companyId: data.companyId,
-    fullName: data.fullName,
-    phoneNumber: data.phoneNumber,
-    documentType: data.documentType,
-    documentNumber: data.documentNumber,
-    clientType: data.clientType,
-    province: data.province,
-    city: data.city,
-    district: data.district,
-    address: data.address,
-    reference: data.reference,
-    latitude: data.latitude,
-    longitude: data.longitude,
-    isActive: data.isActive,
-  };
 }
 
 export async function createClient(payload: {
@@ -61,19 +54,8 @@ export async function createClient(payload: {
   latitude?: number;
   longitude?: number;
 }): Promise<Client> {
-  const res = await fetch(`${API_VENTAS}/clients`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    throw new Error("Error creating client");
-  }
-
-  return res.json() as Promise<Client>;
+  const res = await axiosAuth.post(`${API_VENTAS}/clients`, payload);
+  return res.data;
 }
 
 export async function updateClient(
@@ -94,17 +76,6 @@ export async function updateClient(
     longitude?: number;
   }>
 ): Promise<Client> {
-  const res = await fetch(`${API_VENTAS}/clients/${id}`, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!res.ok) {
-    throw new Error("Error updating client");
-  }
-
-  return res.json() as Promise<Client>;
+  const res = await axiosAuth.patch(`${API_VENTAS}/clients/${id}`, payload);
+  return res.data;
 }

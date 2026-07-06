@@ -47,16 +47,15 @@ export default function MermaPage() {
   const [saving, setSaving] = useState(false);
 
   const companyId = auth?.company?.id ?? "";
-  const token = auth?.accessToken ?? "";
   const invalidate = useInvalidateAdminQueries();
 
-  const { data: items = [], isLoading: loadingList } = useAdminShrinkageList(companyId, fromDate, toDate, token);
-  const { data: summary, isLoading: loadingSummary } = useAdminShrinkageSummary(companyId, fromDate, toDate, token);
+  const { data: items = [], isLoading: loadingList } = useAdminShrinkageList(companyId, fromDate, toDate);
+  const { data: summary, isLoading: loadingSummary } = useAdminShrinkageSummary(companyId, fromDate, toDate);
 
   const loading = loadingList || loadingSummary;
 
   const handleCreate = async () => {
-    if (!companyId || !token) return;
+    if (!companyId) return;
     if (form.quantity <= 0 || form.unitCost < 0) {
       toast.error("Cantidad debe ser > 0 y costo ≥ 0");
       return;
@@ -72,7 +71,6 @@ export default function MermaPage() {
           recoveredAmount: Number(form.recoveredAmount),
           notes: form.notes || undefined,
         },
-        token,
       );
       toast.success("Merma registrada");
       setShowNew(false);

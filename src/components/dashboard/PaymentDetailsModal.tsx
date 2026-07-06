@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import {
   Dialog,
   DialogContent,
@@ -49,8 +50,8 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
     if (!storeId || !open) return;
     setLoading(true);
     try {
-      const response = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/payment-details`,
+      const response = await axiosAuth.get(
+        `${GATEWAY.ventas}/stats/payment-details`,
         {
           params: {
             storeId,
@@ -61,8 +62,8 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
         },
       );
       setPayments(response.data || []);
-    } catch (error) {
-      console.error("Error fetching payment details:", error);
+    } catch {
+      // payment details fetch failure is silent
     } finally {
       setLoading(false);
     }

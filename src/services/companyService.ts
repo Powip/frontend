@@ -1,4 +1,6 @@
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 interface Store {
   id: string;
@@ -22,152 +24,92 @@ export interface Company {
   powipCommissionRate?: number;
 }
 
+const mapCompany = (c: any): Company => ({
+  id: c.id,
+  name: c.name,
+  userId: c.user_id,
+  stores: c.stores || [],
+  cuit: c.cuit,
+  billingAddress: c.billing_address,
+  phone: c.phone,
+  logoUrl: c.logo_url,
+  sales_channels: c.sales_channels,
+  closing_channels: c.closing_channels,
+  billingEmail: c.billing_email,
+  iva: c.iva != null ? Number(c.iva) : undefined,
+  powipCommissionRate: c.powipCommissionRate != null ? Number(c.powipCommissionRate) : undefined,
+});
+
 export const fetchUserCompany = async (
   userId: string,
-  token: string,
 ): Promise<Company | null> => {
   try {
-    const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_COMPANY}/company/user/${userId}`,
-    );
-
-    // Si no trae company
-    if (!response.data) return null;
-
-    // Mapear todos los campos de la company
-    return {
-      id: response.data.id,
-      name: response.data.name,
-      userId: response.data.user_id,
-      stores: response.data.stores || [],
-      cuit: response.data.cuit,
-      billingAddress: response.data.billing_address,
-      phone: response.data.phone,
-      logoUrl: response.data.logo_url,
-      sales_channels: response.data.sales_channels,
-      closing_channels: response.data.closing_channels,
-      billingEmail: response.data.billing_email,
-      iva: response.data.iva != null ? Number(response.data.iva) : undefined,
-      powipCommissionRate: response.data.powipCommissionRate != null ? Number(response.data.powipCommissionRate) : undefined,
-    };
-  } catch (error) {
-    return null;
+    const response = await axiosAuth.get(`${GATEWAY.company}/company/user/${userId}`);
+    return response.data ? mapCompany(response.data) : null;
+  } catch (err) {
+    // 404 confirmado por el backend: el usuario no tiene empresa
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      return null;
+    }
+    // Cualquier otro error (401, red, 5xx, etc.) no confirma nada — se propaga
+    throw err;
   }
 };
 
 export const fetchCompanyById = async (
   companyId: string,
-  token: string,
 ): Promise<Company | null> => {
   try {
-    const response = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${companyId}/with-stores`,
-    );
-
-    if (!response.data) return null;
-
-    return {
-      id: response.data.id,
-      name: response.data.name,
-      userId: response.data.user_id,
-      stores: response.data.stores || [],
-      cuit: response.data.cuit,
-      billingAddress: response.data.billing_address,
-      phone: response.data.phone,
-      logoUrl: response.data.logo_url,
-      sales_channels: response.data.sales_channels,
-      closing_channels: response.data.closing_channels,
-      billingEmail: response.data.billing_email,
-      iva: response.data.iva != null ? Number(response.data.iva) : undefined,
-      powipCommissionRate: response.data.powipCommissionRate != null ? Number(response.data.powipCommissionRate) : undefined,
-    };
-  } catch (error) {
-    console.error("Error al obtener company by id:", error);
-    return null;
+    const response = await axiosAuth.get(`${GATEWAY.company}/company/${companyId}/with-stores`);
+    return response.data ? mapCompany(response.data) : null;
+  } catch (err) {
+    // 404 confirmado por el backend: la empresa no existe
+    if (axios.isAxiosError(err) && err.response?.status === 404) {
+      return null;
+    }
+    // Cualquier otro error (401, red, 5xx, etc.) no confirma nada — se propaga
+    throw err;
   }
 };
 
-export const getAllCompanies = async (token: string): Promise<Company[]> => {
-  const response = await axios.get(
-    `${process.env.NEXT_PUBLIC_API_COMPANY}/company?includeStores=true`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
-  );
+export const getAllCompanies = async (): Promise<Company[]> => {
+  const response = await axiosAuth.get(`${GATEWAY.company}/company?includeStores=true`);
   return response.data.map((c: any) => ({
-    id: c.id,
-    name: c.name,
-    userId: c.user_id,
-    stores: c.stores || [],
-    cuit: c.cuit,
-    billingAddress: c.billing_address,
-    phone: c.phone,
-    logoUrl: c.logo_url,
-    sales_channels: c.sales_channels,
-    closing_channels: c.closing_channels,
-    billingEmail: c.billing_email,
+    ...mapCompany(c),
     createdAt: c.created_at,
   }));
 };
-export const createCompany = async (token: string, data: Partial<Company>) => {
-  const response = await axios.post(
-    `${process.env.NEXT_PUBLIC_API_COMPANY}/company`,
-    {
-      name: data.name,
-      user_id: data.userId,
-      cuit: data.cuit,
-      billing_address: data.billingAddress,
-      phone: data.phone,
-      billing_email: data.billingEmail,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
-  );
+
+export const createCompany = async (data: Partial<Company>) => {
+  const response = await axiosAuth.post(`${GATEWAY.company}/company`, {
+    name: data.name,
+    user_id: data.userId,
+    cuit: data.cuit,
+    billing_address: data.billingAddress,
+    phone: data.phone,
+    billing_email: data.billingEmail,
+  });
   return response.data;
 };
 
 export const updateCompany = async (
   companyId: string,
-  token: string,
   data: Partial<Company>,
 ) => {
-  const response = await axios.patch(
-    `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${companyId}`,
-    {
-      name: data.name,
-      cuit: data.cuit,
-      billing_address: data.billingAddress,
-      phone: data.phone,
-      logo_url: data.logoUrl,
-      sales_channels: data.sales_channels,
-      closing_channels: data.closing_channels,
-      powip_commission_rate: data.powipCommissionRate,
-    },
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
-  );
+  const response = await axiosAuth.patch(`${GATEWAY.company}/company/${companyId}`, {
+    name: data.name,
+    cuit: data.cuit,
+    billing_address: data.billingAddress,
+    phone: data.phone,
+    logo_url: data.logoUrl,
+    sales_channels: data.sales_channels,
+    closing_channels: data.closing_channels,
+    powip_commission_rate: data.powipCommissionRate,
+  });
   return response.data;
 };
 
-export const deleteCompany = async (
-  token: string,
-  companyId: string,
-) => {
-  const response = await axios.delete(
-    `${process.env.NEXT_PUBLIC_API_COMPANY}/company/${companyId}`,
-    {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
-  );
+export const deleteCompany = async (companyId: string) => {
+  const response = await axiosAuth.delete(`${GATEWAY.company}/company/${companyId}`);
   return response.data;
 };

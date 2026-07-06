@@ -29,7 +29,6 @@ interface LeadActivitiesDrawerProps {
   onClose: () => void;
   leadId: string;
   leadName: string;
-  token?: string;
 }
 
 export const LeadActivitiesDrawer: React.FC<LeadActivitiesDrawerProps> = ({
@@ -37,7 +36,6 @@ export const LeadActivitiesDrawer: React.FC<LeadActivitiesDrawerProps> = ({
   onClose,
   leadId,
   leadName,
-  token,
 }) => {
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -47,14 +45,14 @@ export const LeadActivitiesDrawer: React.FC<LeadActivitiesDrawerProps> = ({
   const fetchActivities = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await leadService.getLeadDetails(leadId, token);
+      const data = await leadService.getLeadDetails(leadId);
       setActivities(data.activities || []);
     } catch (error) {
       toast.error('Error al cargar historial');
     } finally {
       setLoading(false);
     }
-  }, [leadId, token]);
+  }, [leadId]);
 
   useEffect(() => {
     if (isOpen && leadId) {
@@ -67,7 +65,7 @@ export const LeadActivitiesDrawer: React.FC<LeadActivitiesDrawerProps> = ({
 
     setSubmitting(true);
     try {
-      await leadService.addActivity(leadId, 'note', newNote, token);
+      await leadService.addActivity(leadId, 'note', newNote);
       toast.success('Nota guardada');
       setNewNote('');
       fetchActivities();

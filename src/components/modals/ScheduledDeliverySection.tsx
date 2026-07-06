@@ -2,7 +2,8 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -47,8 +48,8 @@ export default function ScheduledDeliverySection({
     if (isConfirming) return;
     setIsConfirming(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         { callStatus: "CONFIRMED", status: "LLAMADO" },
       );
       toast.success("Entrega confirmada");
@@ -64,8 +65,8 @@ export default function ScheduledDeliverySection({
     if (!scheduledDate || isRescheduling) return;
     setIsRescheduling(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.patch(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         {
           callStatus: "SCHEDULED",
           callbackAt: scheduledDate.toISOString(),

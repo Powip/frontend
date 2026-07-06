@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -189,8 +190,8 @@ export default function RegistrarCompraPage() {
     setIsLoadingPurchase(true);
     setIsEditMode(true);
     try {
-      const res = await axios.get<PurchaseData>(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase/${purchaseId}`,
+      const res = await axiosAuth.get<PurchaseData>(
+        `${GATEWAY.logistics}/purchase/${purchaseId}`,
       );
 
       const purchase = res.data;
@@ -215,8 +216,8 @@ export default function RegistrarCompraPage() {
         let currentStock = 0;
         let brandName = "";
         try {
-          const stockRes = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
+          const stockRes = await axiosAuth.get(
+            `${GATEWAY.logistics}/inventory-item/search`,
             {
               params: {
                 inventoryId: purchase.inventoryId,
@@ -233,8 +234,8 @@ export default function RegistrarCompraPage() {
             currentStock = variant.physicalStock ?? variant.availableStock;
             brandName = variant.brandName || "";
           }
-        } catch (err) {
-          console.error(`Error fetching stock for ${item.sku}`, err);
+        } catch {
+          // stock fetch failure per item is silent
         }
 
         return {
@@ -257,8 +258,7 @@ export default function RegistrarCompraPage() {
       setCart(cartItems);
       setCurrentStep(2); // Go to step 2 in edit mode
       toast.success(`Compra ${purchase.purchaseNumber} cargada para edición`);
-    } catch (error) {
-      console.error("Error loading purchase", error);
+    } catch {
       toast.error("Error al cargar la compra");
       router.push("/compras");
     } finally {
@@ -284,12 +284,11 @@ export default function RegistrarCompraPage() {
     if (!companyId) return;
     setSuppliersLoading(true);
     try {
-      const res = await axios.get<Supplier[]>(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/company/${companyId}`,
+      const res = await axiosAuth.get<Supplier[]>(
+        `${GATEWAY.logistics}/suppliers/company/${companyId}`,
       );
       setSuppliers(res.data.filter((s) => s.isActive));
-    } catch (error) {
-      console.error("Error fetching suppliers", error);
+    } catch {
       toast.error("Error al cargar proveedores");
     } finally {
       setSuppliersLoading(false);
@@ -311,8 +310,8 @@ export default function RegistrarCompraPage() {
 
     setIsCreatingSupplier(true);
     try {
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
+      const res = await axiosAuth.post(
+        `${GATEWAY.logistics}/suppliers`,
         { name: newSupplierName.trim(), companyId },
       );
 
@@ -327,8 +326,7 @@ export default function RegistrarCompraPage() {
       // Close modal and reset
       setSupplierModalOpen(false);
       setNewSupplierName("");
-    } catch (error) {
-      console.error("Error creating supplier", error);
+    } catch {
       toast.error("Error al crear proveedor");
     } finally {
       setIsCreatingSupplier(false);
@@ -340,8 +338,8 @@ export default function RegistrarCompraPage() {
 
     setProductsLoading(true);
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
+      const res = await axiosAuth.get(
+        `${GATEWAY.logistics}/inventory-item/search`,
         {
           params: {
             inventoryId: selectedInventoryId,
@@ -358,8 +356,7 @@ export default function RegistrarCompraPage() {
         totalPages: res.data.meta.totalPages,
       });
       setProductsPage(page);
-    } catch (error) {
-      console.error("Error searching products", error);
+    } catch {
       toast.error("Error al buscar productos");
     } finally {
       setProductsLoading(false);
@@ -477,14 +474,14 @@ export default function RegistrarCompraPage() {
       };
 
       if (isEditMode && editPurchaseData) {
-        await axios.put(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase/${editPurchaseData.id}`,
+        await axiosAuth.put(
+          `${GATEWAY.logistics}/purchase/${editPurchaseData.id}`,
           payload,
         );
         toast.success("Compra actualizada correctamente");
       } else {
-        await axios.post(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase`,
+        await axiosAuth.post(
+          `${GATEWAY.logistics}/purchase`,
           payload,
         );
         toast.success("Compra registrada correctamente");
@@ -493,8 +490,7 @@ export default function RegistrarCompraPage() {
       }
 
       router.push("/compras");
-    } catch (error) {
-      console.error("Error saving purchase", error);
+    } catch {
       toast.error(
         isEditMode
           ? "Error al actualizar la compra"

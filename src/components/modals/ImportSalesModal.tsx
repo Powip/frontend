@@ -8,7 +8,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Loader2, Download, UploadCloud, File, AlertTriangle, CheckCircle } from "lucide-react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import { Label } from "@/components/ui/label";
 
@@ -39,11 +40,11 @@ export default function ImportSalesModal({
   const handleDownloadTemplate = async () => {
     try {
       setIsDownloading(true);
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/import/template`,
+      const res = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-header/import/template`,
         { responseType: "blob" }
       );
-      
+
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement("a");
       link.href = url;
@@ -52,8 +53,7 @@ export default function ImportSalesModal({
       link.click();
       link.remove();
       toast.success("Plantilla descargada");
-    } catch (error) {
-      console.error("Error al descargar plantilla", error);
+    } catch {
       toast.error("Hubo un error al descargar la plantilla");
     } finally {
       setIsDownloading(false);
@@ -89,8 +89,8 @@ export default function ImportSalesModal({
       if (userId) formData.append("userId", userId);
       if (sellerName) formData.append("sellerName", sellerName);
 
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/import/upload`,
+      const res = await axiosAuth.post(
+        `${GATEWAY.ventas}/order-header/import/upload`,
         formData,
         {
           headers: {
@@ -101,19 +101,19 @@ export default function ImportSalesModal({
 
       const result = res.data;
       setReport(result);
-      
+
       if (result.successful.length > 0) {
         toast.success(`${result.successful.length} órdenes importadas con éxito`);
-        onSuccess(); // Trigger refresh on parent
+        onSuccess();
       }
 
       if (result.failed.length > 0) {
         toast.warning(`${result.failed.length} órdenes tuvieron errores durante la importación`);
       }
 
-    } catch (error: any) {
-      console.error("Error al subir archivo", error);
-      toast.error(error?.response?.data?.message || "Ocurrió un error general al procesar el archivo");
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { message?: string } } };
+      toast.error(axiosError?.response?.data?.message || "Ocurrió un error general al procesar el archivo");
     } finally {
       setIsUploading(false);
     }

@@ -25,8 +25,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { toast } from "sonner";
-import axios from "axios";
-import { API } from "@/lib/api";
 import { getInvoiceLogByExternalId } from "@/api/Facturacion";
 import InvoiceModal from "@/components/modals/InvoiceModal";
 import { format } from "date-fns";
@@ -34,6 +32,8 @@ import { es } from "date-fns/locale";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRouter } from "next/navigation";
 import { isSuperadmin } from "@/config/permissions.config";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 interface Sale {
   id: string;
@@ -90,7 +90,7 @@ export default function FacturacionPage() {
     if (!selectedStoreId) return;
     try {
       setLoading(true);
-      const { data } = await axios.get(`${API.ventas}/order-header/store/${selectedStoreId}`);
+      const { data } = await axiosAuth.get(`${GATEWAY.ventas}/order-header/store/${selectedStoreId}`);
       // Filtrar solo entregadas
       const deliveredSales = data.filter((s: any) => s.status === "ENTREGADO");
       setSales(deliveredSales);
@@ -292,12 +292,12 @@ export default function FacturacionPage() {
                             {log?.status === 'ACCEPTED' && (
                               <div className="flex gap-1">
                                 <Button variant="ghost" size="icon" asChild title="Descargar XML">
-                                  <a href={`${API.integrations}/sunat/xml/${sale.id}`} target="_blank" rel="noopener noreferrer">
+                                  <a href={`${GATEWAY.integrations}/sunat/xml/${sale.id}`} target="_blank" rel="noopener noreferrer">
                                     <Download className="h-4 w-4 text-blue-500" />
                                   </a>
                                 </Button>
                                 <Button variant="ghost" size="icon" asChild title="Descargar PDF">
-                                  <a href={`${API.integrations}/sunat/pdf/${sale.id}`} target="_blank" rel="noopener noreferrer">
+                                  <a href={`${GATEWAY.integrations}/sunat/pdf/${sale.id}`} target="_blank" rel="noopener noreferrer">
                                     <FileText className="h-4 w-4 text-red-500" />
                                   </a>
                                 </Button>

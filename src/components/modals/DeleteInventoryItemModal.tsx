@@ -12,7 +12,8 @@ import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Loader2, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 interface Props {
   open: boolean;
@@ -46,14 +47,13 @@ export default function DeleteInventoryItemModal({
 
     setIsSubmitting(true);
     try {
-      await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/${inventoryItemId}`,
+      await axiosAuth.delete(
+        `${GATEWAY.logistics}/inventory-item/${inventoryItemId}`,
       );
       toast.success("Producto eliminado del almacén");
       onSuccess?.();
       handleClose();
-    } catch (error) {
-      console.error("Error eliminando producto", error);
+    } catch {
       toast.error("No se pudo eliminar el producto");
     } finally {
       setIsSubmitting(false);

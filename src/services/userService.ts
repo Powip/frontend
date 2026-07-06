@@ -1,9 +1,7 @@
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
-// Usar la URL base del ms-auth (sin /api/v1 ya que el endpoint lo incluye)
-const API_AUTH =
-  process.env.NEXT_PUBLIC_API_USERS?.replace("/api/v1", "") ||
-  "http://localhost:8080";
+const API_AUTH = GATEWAY.auth;
 
 export interface CreateCompanyUserRequest {
   identityDocument: string;
@@ -29,14 +27,12 @@ export interface Role {
 export const createCompanyUser = async (
   companyId: string,
   request: CreateCompanyUserRequest,
-  accessToken: string,
 ) => {
-  const response = await axios.post(
+  const response = await axiosAuth.post(
     `${API_AUTH}/api/v1/auth/company/${companyId}/user`,
     request,
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     },
@@ -45,38 +41,24 @@ export const createCompanyUser = async (
 };
 
 // Obtener todos los roles disponibles
-export const getRoles = async (accessToken: string): Promise<Role[]> => {
-  const response = await axios.get(`${API_AUTH}/api/v1/roles`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+export const getRoles = async (): Promise<Role[]> => {
+  const response = await axiosAuth.get(`${API_AUTH}/api/v1/roles`);
   return response.data;
 };
 
 // Obtener usuarios por compañía
 export const getUsersByCompany = async (
   companyId: string,
-  accessToken: string,
 ): Promise<any[]> => {
-  const response = await axios.get(
+  const response = await axiosAuth.get(
     `${API_AUTH}/api/v1/auth/company/${companyId}/users`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
   );
   return response.data;
 };
 
 // Obtener todos los usuarios de la plataforma
-export const getAllUsers = async (accessToken: string): Promise<any[]> => {
-  const response = await axios.get(`${API_AUTH}/api/v1/auth/users`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+export const getAllUsers = async (): Promise<any[]> => {
+  const response = await axiosAuth.get(`${API_AUTH}/api/v1/auth/users`);
   return response.data;
 };
 
@@ -96,14 +78,12 @@ export interface UpdateUserRequest {
 export const updateUser = async (
   userId: string,
   request: UpdateUserRequest,
-  accessToken: string,
 ) => {
-  const response = await axios.put(
+  const response = await axiosAuth.put(
     `${API_AUTH}/api/v1/auth/user/${userId}`,
     request,
     {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     },
@@ -113,7 +93,6 @@ export const updateUser = async (
 
 export const createPlatformUser = async (
   request: CreateCompanyUserRequest,
-  accessToken: string,
 ) => {
   // Mapear CreateCompanyUserRequest a lo que RegisterRequest (backend) espera
   // El backend espera: identityDocument, name, surname, email, password, address, city, province, district, phoneNumber
@@ -124,11 +103,11 @@ export const createPlatformUser = async (
     email: request.email,
     password: request.password,
     address: request.address || 'Pendiente',
-    city: request.department || 'LIMA',
+    department: request.department || 'LIMA',
     province: request.province || 'LIMA',
     district: request.district || 'LIMA',
     phoneNumber: request.phoneNumber,
-    role: { name: request.roleName }
+    roleName: request.roleName,
   };
 
   // Validaciones previas al envío
@@ -144,7 +123,6 @@ export const createPlatformUser = async (
 
   if (missingFields.length > 0) {
     const msg = `Campos requeridos faltantes: ${missingFields.join(', ')}`;
-    console.error('[createPlatformUser] Validación fallida:', msg);
     throw new Error(msg);
   }
 
@@ -152,19 +130,17 @@ export const createPlatformUser = async (
   const passwordRegex = /^(?=.*[a-z])(?=.*\d).{6,}$/;
   if (!passwordRegex.test(registerPayload.password)) {
     const msg = `La contraseña '${registerPayload.password.slice(0, 4)}...' no cumple el formato requerido (mín. 6 chars, una minúscula, un número)`;
-    console.error('[createPlatformUser] Password inválida:', msg);
     throw new Error(msg);
   }
 
   try {
-    const response = await axios.post(`${API_AUTH}/api/v1/auth/admin/register`, registerPayload, {
+    const response = await axiosAuth.post(`${API_AUTH}/api/v1/auth/admin/register`, registerPayload, {
       headers: {
-        Authorization: `Bearer ${accessToken}`,
         "Content-Type": "application/json",
       },
     });
     const data = response.data;
-    
+
     // Normalizar userId (el backend devuelve el objeto User)
     if (!data.userId && data.id) {
        data.userId = data.id;
@@ -200,14 +176,10 @@ export interface UserProfile {
 
 export const getUserProfile = async (
   userId: string,
-  accessToken: string,
 ): Promise<UserProfile | null> => {
   try {
-    const response = await axios.get(
+    const response = await axiosAuth.get(
       `${API_AUTH}/api/v1/auth/user/${userId}`,
-      {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      },
     );
     return response.data;
   } catch {
@@ -218,12 +190,7 @@ export const getUserProfile = async (
 // Eliminar usuario de la plataforma (Rollback)
 export const deleteUser = async (
   userId: string,
-  accessToken: string,
 ) => {
-  const response = await axios.delete(`${API_AUTH}/api/v1/auth/user/${userId}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-  });
+  const response = await axiosAuth.delete(`${API_AUTH}/api/v1/auth/user/${userId}`);
   return response.data;
 };

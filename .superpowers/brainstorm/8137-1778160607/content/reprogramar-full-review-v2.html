@@ -1,0 +1,197 @@
+<h2>Diseño v2 — Decisiones confirmadas</h2>
+<p class="subtitle">Resumen de elecciones + dropdown corregido para la tab Reprogramados.</p>
+
+<!-- Decisiones tomadas -->
+<div style="display:flex; gap:12px; margin-bottom:32px; flex-wrap:wrap;">
+  <div style="background:#15803d22; border:1px solid #15803d55; border-radius:8px; padding:10px 14px; flex:1; min-width:200px;">
+    <div style="color:#4ade80; font-size:10px; font-weight:700; text-transform:uppercase; margin-bottom:4px;">✓ Diálogo de fecha</div>
+    <div style="color:#e2e8f0; font-size:12px;">Híbrido — Popover (individual) · Modal (2+ pedidos)</div>
+  </div>
+  <div style="background:#15803d22; border:1px solid #15803d55; border-radius:8px; padding:10px 14px; flex:1; min-width:200px;">
+    <div style="color:#4ade80; font-size:10px; font-weight:700; text-transform:uppercase; margin-bottom:4px;">✓ Bulk fecha</div>
+    <div style="color:#e2e8f0; font-size:12px;">Default automático: hoy + 24hs · editable en modal de detalle</div>
+  </div>
+  <div style="background:#15803d22; border:1px solid #15803d55; border-radius:8px; padding:10px 14px; flex:1; min-width:200px;">
+    <div style="color:#4ade80; font-size:10px; font-weight:700; text-transform:uppercase; margin-bottom:4px;">✓ Tab Reprogramados</div>
+    <div style="color:#e2e8f0; font-size:12px;">Estados existentes + añadir No Contesta y Contactado</div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════ -->
+<!-- SECCIÓN PRINCIPAL: Dropdowns comparados por contexto   -->
+<!-- ═══════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="label">Lógica condicional del dropdown — según tab activa</div>
+  <h3 style="margin-top:4px; margin-bottom:20px;">El dropdown cambia su contenido según dónde estés parado</h3>
+
+  <div class="split" style="gap:24px; align-items:flex-start;">
+
+    <!-- DROPDOWN: Otras tabs (Preparados, No Confirmados, /ventas) -->
+    <div style="flex:1;">
+      <div style="color:#94a3b8; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:10px; letter-spacing:0.05em;">Tab: Preparados / No Confirmados / /ventas</div>
+      <div style="background:#1e293b; border:1px solid #334155; border-radius:10px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.4);">
+        <div style="padding:8px 12px; background:#0f172a; border-bottom:1px solid #334155;">
+          <div style="color:#64748b; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">CAMBIAR ESTADO</div>
+        </div>
+        <div style="padding:4px;">
+          <!-- LLAMADO -->
+          <div style="padding:8px 12px; border-radius:6px; color:#e2e8f0; font-size:12px; display:flex; align-items:center; gap:10px;">
+            <span style="width:8px;height:8px;background:#3b82f6;border-radius:50%;flex-shrink:0;"></span>
+            <div>
+              <div style="font-weight:600;">Llamado</div>
+              <div style="color:#64748b; font-size:10px;">status → LLAMADO</div>
+            </div>
+          </div>
+          <!-- ANULADO -->
+          <div style="padding:8px 12px; border-radius:6px; color:#e2e8f0; font-size:12px; display:flex; align-items:center; gap:10px;">
+            <span style="width:8px;height:8px;background:#ef4444;border-radius:50%;flex-shrink:0;"></span>
+            <div>
+              <div style="font-weight:600;">Anulado</div>
+              <div style="color:#64748b; font-size:10px;">status → ANULADO</div>
+            </div>
+          </div>
+          <!-- SEPARADOR -->
+          <div style="border-top:1px solid #334155; margin:4px 0;"></div>
+          <!-- REPROGRAMAR (NUEVO) -->
+          <div style="padding:8px 12px; border-radius:6px; color:#a78bfa; font-size:12px; display:flex; align-items:center; gap:10px; background:#312e8122;">
+            <span style="width:8px;height:8px;background:#6366f1;border-radius:50%;flex-shrink:0;"></span>
+            <div>
+              <div style="font-weight:700;">Reprogramar <span style="background:#6366f1; color:white; font-size:9px; padding:1px 6px; border-radius:10px; margin-left:4px;">NUEVO</span></div>
+              <div style="color:#6366f1; font-size:10px;">status → PREPARADO · callStatus → SCHEDULED</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:8px; color:#64748b; font-size:11px;">Estado existente del flujo: LLAMADO y ANULADO. Se agrega Reprogramar al final con separador visual.</div>
+    </div>
+
+    <!-- Flecha separadora -->
+    <div style="display:flex; align-items:center; padding-top:60px; color:#475569; font-size:20px; flex-shrink:0;">⇄</div>
+
+    <!-- DROPDOWN: Tab Reprogramados -->
+    <div style="flex:1;">
+      <div style="color:#6366f1; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:10px; letter-spacing:0.05em;">Tab: Reprogramados (activa)</div>
+      <div style="background:#1e293b; border:2px solid #6366f155; border-radius:10px; overflow:hidden; box-shadow:0 4px 16px rgba(99,102,241,0.15);">
+        <div style="padding:8px 12px; background:#0f172a; border-bottom:1px solid #334155;">
+          <div style="color:#64748b; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">CAMBIAR ESTADO</div>
+        </div>
+        <div style="padding:4px;">
+          <!-- LLAMADO (existente) -->
+          <div style="padding:8px 12px; border-radius:6px; color:#e2e8f0; font-size:12px; display:flex; align-items:center; gap:10px;">
+            <span style="width:8px;height:8px;background:#3b82f6;border-radius:50%;flex-shrink:0;"></span>
+            <div>
+              <div style="font-weight:600;">Llamado</div>
+              <div style="color:#64748b; font-size:10px;">status → LLAMADO</div>
+            </div>
+          </div>
+          <!-- ANULADO (existente) -->
+          <div style="padding:8px 12px; border-radius:6px; color:#e2e8f0; font-size:12px; display:flex; align-items:center; gap:10px;">
+            <span style="width:8px;height:8px;background:#ef4444;border-radius:50%;flex-shrink:0;"></span>
+            <div>
+              <div style="font-weight:600;">Anulado</div>
+              <div style="color:#64748b; font-size:10px;">status → ANULADO</div>
+            </div>
+          </div>
+          <!-- SEPARADOR -->
+          <div style="border-top:1px solid #334155; margin:4px 0;"></div>
+          <!-- NO CONTESTA (NUEVO) -->
+          <div style="padding:8px 12px; border-radius:6px; color:#fbbf24; font-size:12px; display:flex; align-items:center; gap:10px; background:#92400e22;">
+            <span style="font-size:14px; flex-shrink:0;">📵</span>
+            <div>
+              <div style="font-weight:700;">No Contesta <span style="background:#d97706; color:white; font-size:9px; padding:1px 6px; border-radius:10px; margin-left:4px;">NUEVO</span></div>
+              <div style="color:#d97706; font-size:10px;">callStatus → NO_ANSWER · status sin cambio</div>
+            </div>
+          </div>
+          <!-- CONTACTADO (NUEVO) -->
+          <div style="padding:8px 12px; border-radius:6px; color:#4ade80; font-size:12px; display:flex; align-items:center; gap:10px; background:#14532d22;">
+            <span style="font-size:14px; flex-shrink:0;">✅</span>
+            <div>
+              <div style="font-weight:700;">Contactado <span style="background:#16a34a; color:white; font-size:9px; padding:1px 6px; border-radius:10px; margin-left:4px;">NUEVO</span></div>
+              <div style="color:#16a34a; font-size:10px;">callStatus → CONFIRMED · status → LLAMADO</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:8px; color:#64748b; font-size:11px;">Estados existentes preservados. Las dos nuevas opciones van después del separador, con ícono y color diferenciado.</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════ -->
+<!-- SECCIÓN: Flujo completo end-to-end     -->
+<!-- ═══════════════════════════════════════ -->
+<div class="section" style="margin-top:40px;">
+  <div class="label">Flujo end-to-end — cómo se mueve un pedido</div>
+  <h3 style="margin-top:4px; margin-bottom:16px;">De Preparados → Reprogramados → resolución</h3>
+
+  <div style="display:flex; align-items:center; gap:0; flex-wrap:wrap; justify-content:center;">
+    <!-- Nodo: Preparados -->
+    <div style="background:#1e293b; border:1px solid #334155; border-radius:10px; padding:12px 16px; text-align:center; min-width:110px;">
+      <div style="color:#94a3b8; font-size:10px; text-transform:uppercase; margin-bottom:4px;">Tab</div>
+      <div style="color:#e2e8f0; font-size:13px; font-weight:700;">Preparados</div>
+      <div style="color:#64748b; font-size:10px; margin-top:4px;">PREPARADO<br>callStatus: null</div>
+    </div>
+    <!-- Flecha con acción -->
+    <div style="display:flex; flex-direction:column; align-items:center; padding:0 8px;">
+      <div style="color:#6366f1; font-size:10px; font-weight:700; margin-bottom:2px;">→ Reprogramar</div>
+      <div style="color:#475569; font-size:18px; line-height:1;">──────►</div>
+      <div style="color:#64748b; font-size:9px; margin-top:2px;">callbackAt = +24hs</div>
+    </div>
+    <!-- Nodo: Reprogramados -->
+    <div style="background:#312e81; border:2px solid #6366f1; border-radius:10px; padding:12px 16px; text-align:center; min-width:110px;">
+      <div style="color:#a5b4fc; font-size:10px; text-transform:uppercase; margin-bottom:4px;">Tab</div>
+      <div style="color:#e2e8f0; font-size:13px; font-weight:700;">Reprogramados</div>
+      <div style="color:#818cf8; font-size:10px; margin-top:4px;">PREPARADO<br>callStatus: SCHEDULED</div>
+    </div>
+    <!-- Dos flechas de salida -->
+    <div style="display:flex; flex-direction:column; gap:8px; padding:0 8px;">
+      <div style="display:flex; align-items:center; gap:4px;">
+        <div style="color:#fbbf24; font-size:18px;">──►</div>
+        <div style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:8px 12px; text-align:center; min-width:90px;">
+          <div style="color:#fbbf24; font-size:10px; font-weight:700;">No Contesta</div>
+          <div style="color:#64748b; font-size:9px; margin-top:2px;">NO_ANSWER</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <div style="color:#4ade80; font-size:18px;">──►</div>
+        <div style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:8px 12px; text-align:center; min-width:90px;">
+          <div style="color:#4ade80; font-size:10px; font-weight:700;">Contactado</div>
+          <div style="color:#64748b; font-size:9px; margin-top:2px;">CONFIRMED</div>
+        </div>
+      </div>
+      <div style="display:flex; align-items:center; gap:4px;">
+        <div style="color:#ef4444; font-size:18px;">──►</div>
+        <div style="background:#1e293b; border:1px solid #334155; border-radius:8px; padding:8px 12px; text-align:center; min-width:90px;">
+          <div style="color:#ef4444; font-size:10px; font-weight:700;">Anulado</div>
+          <div style="color:#64748b; font-size:9px; margin-top:2px;">ANULADO</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Pregunta pendiente de backend -->
+<div style="background:#292524; border:1px solid #78350f; border-radius:10px; padding:16px; margin-top:32px;">
+  <div style="color:#fbbf24; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:8px;">⚠️ Pregunta pendiente — Backend</div>
+  <div style="color:#d6d3d1; font-size:13px; line-height:1.6; margin-bottom:10px;">
+    El endpoint <code style="background:#1c1917;padding:1px 6px;border-radius:3px;color:#a5b4fc;">PATCH /order-header/bulk-status</code> recibe actualmente solo <code style="background:#1c1917;padding:1px 6px;border-radius:3px;color:#a5b4fc;">{ ids, status }</code>.<br>
+    Para "Reprogramar" bulk se necesita agregar <code style="background:#1c1917;padding:1px 6px;border-radius:3px;color:#a5b4fc;">callStatus</code> y <code style="background:#1c1917;padding:1px 6px;border-radius:3px;color:#a5b4fc;">callbackAt</code> al payload.
+  </div>
+  <div class="options" style="margin:0;">
+    <div class="option" data-choice="backend-extend" onclick="toggleSelect(this)" style="padding:10px 14px;">
+      <div class="letter" style="width:28px;height:28px;font-size:12px;">E</div>
+      <div class="content">
+        <h3 style="font-size:13px;">Extender el endpoint existente</h3>
+        <p style="font-size:11px;">Agregar campos opcionales al bulk endpoint. Menos superficie de API. Cambio backward-compatible.</p>
+      </div>
+    </div>
+    <div class="option" data-choice="backend-separate" onclick="toggleSelect(this)" style="padding:10px 14px;">
+      <div class="letter" style="width:28px;height:28px;font-size:12px;">S</div>
+      <div class="content">
+        <h3 style="font-size:13px;">Endpoint separado para callStatus</h3>
+        <p style="font-size:11px;">Ej: <code>PATCH /order-header/bulk-call-status</code>. Más explícito, no mezcla concerns. Requiere dos llamadas desde el frontend.</p>
+      </div>
+    </div>
+  </div>
+</div>

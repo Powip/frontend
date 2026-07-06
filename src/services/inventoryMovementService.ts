@@ -1,4 +1,5 @@
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 export interface InventoryMovement {
   id: string;
@@ -31,8 +32,8 @@ interface MovementsResponse {
 
 export async function getMovementsByCompany(
   companyId: string,
-  params: { 
-    page?: number; 
+  params: {
+    page?: number;
     limit?: number;
     type?: string;
     userEmail?: string;
@@ -41,8 +42,8 @@ export async function getMovementsByCompany(
     search?: string;
   } = {}
 ): Promise<MovementsResponse> {
-  const res = await axios.get<MovementsResponse>(
-    `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-movement/company/${companyId}`,
+  const res = await axiosAuth.get<MovementsResponse>(
+    `${GATEWAY.logistics}/inventory-movement/company/${companyId}`,
     { params }
   );
   return res.data;

@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axiosAuth from "@/lib/axiosAuth";
 
 export interface Lead {
   id: string;
@@ -62,108 +62,93 @@ export interface LeadPostventa {
   activation?: LeadActivation;
 }
 
-const getAuthConfig = (token?: string) =>
-  token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-
 export const leadService = {
   // ─── Leads (CRM Comercial) ───
-  getAllLeads: async (token?: string): Promise<Lead[]> => {
-    const response = await axios.get('/api/superadmin/leads', getAuthConfig(token));
+  getAllLeads: async (): Promise<Lead[]> => {
+    const response = await axiosAuth.get('/api/superadmin/leads');
     return response.data.data;
   },
 
-  updateLeadStage: async (id: string, newStage: string, oldStage: string, token?: string) => {
-    const response = await axios.patch(
+  updateLeadStage: async (id: string, newStage: string, oldStage: string) => {
+    const response = await axiosAuth.patch(
       `/api/superadmin/leads/${id}/stage`,
       { new_stage: newStage, old_stage: oldStage },
-      getAuthConfig(token)
     );
     return response.data;
   },
 
-  activateLead: async (id: string, token?: string) => {
-    const response = await axios.post(
+  activateLead: async (id: string) => {
+    const response = await axiosAuth.post(
       `/api/superadmin/leads/${id}/activate`,
       {},
-      getAuthConfig(token)
     );
     return response.data;
   },
 
-  deleteLead: async (id: string, token?: string) => {
-    const response = await axios.delete(
+  deleteLead: async (id: string) => {
+    const response = await axiosAuth.delete(
       `/api/superadmin/leads/${id}`,
-      getAuthConfig(token)
     );
     return response.data;
   },
 
-  updateLead: async (id: string, data: any, token?: string) => {
-    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-    const response = await axios.patch(`/api/superadmin/leads/${id}`, data, config);
+  updateLead: async (id: string, data: any) => {
+    const response = await axiosAuth.patch(`/api/superadmin/leads/${id}`, data);
     return response.data;
   },
 
-  updateBulkLeads: async (ids: string[], data: any, token?: string) => {
-    const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-    const response = await axios.patch(`/api/superadmin/leads/bulk`, { ids, data }, config);
+  updateBulkLeads: async (ids: string[], data: any) => {
+    const response = await axiosAuth.patch(`/api/superadmin/leads/bulk`, { ids, data });
     return response.data;
   },
 
-  addActivity: async (id: string, activityType: string, description: string, token?: string) => {
-    const response = await axios.post(
+  addActivity: async (id: string, activityType: string, description: string) => {
+    const response = await axiosAuth.post(
       `/api/superadmin/leads/${id}/activity`,
       { activity_type: activityType, description },
-      getAuthConfig(token)
     );
     return response.data;
   },
 
-  getLeadDetails: async (id: string, token?: string) => {
-    const response = await axios.get(
+  getLeadDetails: async (id: string) => {
+    const response = await axiosAuth.get(
       `/api/superadmin/leads/${id}`,
-      getAuthConfig(token)
     );
     return response.data;
   },
-
-  // (Removed duplicate updateLead method)
 
   // ─── Activaciones (Activación / Alta) ───
-  getActivations: async (token?: string): Promise<LeadActivation[]> => {
-    const response = await axios.get('/api/superadmin/leads/activations', getAuthConfig(token));
+  getActivations: async (): Promise<LeadActivation[]> => {
+    const response = await axiosAuth.get('/api/superadmin/leads/activations');
     return response.data.data;
   },
 
-  createActivation: async (data: Partial<LeadActivation>, token?: string) => {
-    const response = await axios.post(
+  createActivation: async (data: Partial<LeadActivation>) => {
+    const response = await axiosAuth.post(
       '/api/superadmin/leads/activations',
       data,
-      getAuthConfig(token)
     );
     return response.data;
   },
 
-  updateActivation: async (id: string, data: Partial<LeadActivation>, token?: string) => {
-    const response = await axios.patch(
+  updateActivation: async (id: string, data: Partial<LeadActivation>) => {
+    const response = await axiosAuth.patch(
       `/api/superadmin/leads/activations/${id}`,
       data,
-      getAuthConfig(token)
     );
     return response.data;
   },
 
   // ─── Postventa (Postventa / Acompañamiento) ───
-  getPostventa: async (token?: string): Promise<LeadPostventa[]> => {
-    const response = await axios.get('/api/superadmin/leads/postventa', getAuthConfig(token));
+  getPostventa: async (): Promise<LeadPostventa[]> => {
+    const response = await axiosAuth.get('/api/superadmin/leads/postventa');
     return response.data.data;
   },
 
-  updatePostventa: async (id: string, data: Partial<LeadPostventa>, token?: string) => {
-    const response = await axios.patch(
+  updatePostventa: async (id: string, data: Partial<LeadPostventa>) => {
+    const response = await axiosAuth.patch(
       `/api/superadmin/leads/postventa/${id}`,
       data,
-      getAuthConfig(token)
     );
     return response.data;
   },

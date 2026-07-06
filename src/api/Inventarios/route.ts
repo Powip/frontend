@@ -1,4 +1,5 @@
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 interface CreateInventoryDto {
   name: string;
@@ -6,14 +7,6 @@ interface CreateInventoryDto {
 }
 
 export async function createInventory(data: CreateInventoryDto) {
-  try {
-    const res = await axios.post(
-      `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory`,
-      data
-    );
-
-    return res;
-  } catch (error) {
-    console.log("Hemos tenido un error al crear el inventario", error);
-  }
+  const res = await axiosAuth.post(`${GATEWAY.logistics}/inventory`, data);
+  return res;
 }

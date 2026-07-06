@@ -62,13 +62,12 @@ export default function ShalomPremiumTrackingModal({
   const [loadingPdf, setLoadingPdf] = useState(false);
 
   const loadPdf = useCallback(async () => {
-    if (!auth?.accessToken || !order?.externalTrackingNumber || !order?.shippingCode) return;
+    if (!order?.externalTrackingNumber || !order?.shippingCode) return;
 
     setLoadingPdf(true);
     setDynamicPdfUrl(null);
     try {
       const blob = await generateShalomTicketPdf(
-        auth.accessToken,
         order.externalTrackingNumber,
         order.shippingCode,
       );
@@ -79,15 +78,14 @@ export default function ShalomPremiumTrackingModal({
     } finally {
       setLoadingPdf(false);
     }
-  }, [auth?.accessToken, order?.externalTrackingNumber, order?.shippingCode]);
+  }, [order?.externalTrackingNumber, order?.shippingCode]);
 
   const loadTracking = useCallback(async () => {
-    if (!auth?.accessToken || !auth?.company?.id || !order?.externalTrackingNumber || !order?.shippingCode) return;
+    if (!auth?.company?.id || !order?.externalTrackingNumber || !order?.shippingCode) return;
 
     setLoading(true);
     try {
       const raw = await trackShalomShipment(
-        auth.accessToken,
         auth.company.id,
         order.externalTrackingNumber,
         order.shippingCode,
@@ -104,18 +102,18 @@ export default function ShalomPremiumTrackingModal({
     } finally {
       setLoading(false);
     }
-  }, [auth?.accessToken, auth?.company?.id, order?.externalTrackingNumber, order?.shippingCode]);
+  }, [auth?.company?.id, order?.externalTrackingNumber, order?.shippingCode]);
 
   useEffect(() => {
     if (!open) return;
-    if (order?.externalTrackingNumber && order?.shippingCode && auth?.accessToken) {
+    if (order?.externalTrackingNumber && order?.shippingCode) {
       loadPdf();
       if (auth?.company?.id) loadTracking();
     }
     return () => {
       setDynamicPdfUrl((prev) => { if (prev) URL.revokeObjectURL(prev.split("#")[0]); return null; });
     };
-  }, [open, order?.externalTrackingNumber, order?.shippingCode, auth?.accessToken, auth?.company?.id, loadPdf, loadTracking]);
+  }, [open, order?.externalTrackingNumber, order?.shippingCode, auth?.company?.id, loadPdf, loadTracking]);
 
   if (!order) return null;
 

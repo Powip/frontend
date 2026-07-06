@@ -170,7 +170,6 @@ export default function AgentesPage() {
                 agente={agente}
                 currentUserId={currentUserId}
                 isSupervisor={isSupervisor}
-                accessToken={auth.accessToken}
                 storeId={selectedStoreId!}
               />
             ))}

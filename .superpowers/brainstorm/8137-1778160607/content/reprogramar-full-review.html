@@ -1,0 +1,240 @@
+<h2>Diseño: Feature "Reprogramar" — Revisión Completa</h2>
+<p class="subtitle">Los tres momentos clave. Seleccioná las opciones que preferís para cada uno.</p>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECCIÓN 1: EL MOMENTO DE LA VERDAD         -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section">
+  <div class="label">01 — Cuando el usuario hace clic en "Reprogramar"</div>
+  <h3 style="margin-top:4px; margin-bottom:16px;">¿Qué diálogo aparece para pedir la fecha?</h3>
+
+  <div class="split" style="gap:24px; align-items:flex-start;">
+
+    <!-- A: Popover -->
+    <div class="card" data-choice="dialog-a" onclick="toggleSelect(this)" style="cursor:pointer; border-radius:12px; overflow:hidden; flex:1;">
+      <div class="card-image" style="background:#0f172a; padding:20px; min-height:260px; position:relative;">
+        <div style="background:#1e293b; border-radius:8px; padding:12px; margin-bottom:8px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="color:#e2e8f0; font-size:12px; font-weight:600;">#1042 · Marcos López</div>
+              <div style="color:#94a3b8; font-size:11px;">PREPARADO</div>
+            </div>
+            <div style="position:relative;">
+              <div style="background:#6366f1;color:white;font-size:11px;padding:4px 10px;border-radius:4px;">↓ Estado</div>
+              <div style="position:absolute; right:0; top:26px; background:#1e293b; border:1px solid #334155; border-radius:8px; width:210px; box-shadow:0 8px 24px rgba(0,0,0,0.6); padding:12px; z-index:10;">
+                <div style="color:#94a3b8; font-size:10px; font-weight:700; text-transform:uppercase; margin-bottom:8px;">PROGRAMAR CALLBACK</div>
+                <div style="background:#0f172a; border:1px solid #475569; border-radius:6px; padding:7px 10px; color:#e2e8f0; font-size:12px; margin-bottom:8px; display:flex; justify-content:space-between;">
+                  <span>08/05/2026 · 14:00</span><span style="color:#6366f1;">📅</span>
+                </div>
+                <div style="color:#64748b; font-size:10px; margin-bottom:8px;">Por defecto: hoy + 24 hs</div>
+                <div style="display:flex; gap:6px;">
+                  <button style="flex:1; background:#6366f1; color:white; border:none; border-radius:5px; padding:6px; font-size:11px; font-weight:600;">OK</button>
+                  <button style="flex:1; background:transparent; color:#64748b; border:1px solid #334155; border-radius:5px; padding:6px; font-size:11px;">✕</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div style="background:#1e293b; border-radius:8px; padding:10px; opacity:0.3; margin-bottom:6px;"><div style="background:#334155; height:10px; border-radius:3px; width:70%;"></div></div>
+        <div style="background:#1e293b; border-radius:8px; padding:10px; opacity:0.15;"><div style="background:#334155; height:10px; border-radius:3px; width:55%;"></div></div>
+      </div>
+      <div class="card-body" style="background:#1e293b;">
+        <h3 style="color:#e2e8f0; font-size:14px;">A — Popover anclado al botón</h3>
+        <p style="color:#94a3b8; font-size:12px; margin-top:4px;">Para cambios <strong style="color:#e2e8f0;">individuales</strong>. Rápido, no interrumpe el contexto de la tabla.</p>
+      </div>
+    </div>
+
+    <!-- B: Modal -->
+    <div class="card" data-choice="dialog-b" onclick="toggleSelect(this)" style="cursor:pointer; border-radius:12px; overflow:hidden; flex:1;">
+      <div class="card-image" style="background:#0f172a; padding:20px; min-height:260px; position:relative;">
+        <div style="position:absolute; inset:0; background:rgba(0,0,0,0.55); z-index:4;"></div>
+        <div style="background:#1e293b; border-radius:8px; padding:10px; margin-bottom:6px; position:relative; z-index:1;"><div style="background:#334155; height:10px; border-radius:3px; width:75%;"></div></div>
+        <div style="background:#1e293b; border-radius:8px; padding:10px; margin-bottom:6px; position:relative; z-index:1; opacity:0.5;"><div style="background:#334155; height:10px; border-radius:3px; width:60%;"></div></div>
+        <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:10; padding:16px;">
+          <div style="background:#1e293b; border:1px solid #334155; border-radius:12px; padding:18px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.8);">
+            <div style="display:flex; justify-content:space-between; margin-bottom:12px;">
+              <div>
+                <div style="color:#e2e8f0; font-size:13px; font-weight:700;">Programar Callback</div>
+                <div style="color:#64748b; font-size:11px;">3 pedidos · misma fecha</div>
+              </div>
+              <span style="color:#475569;">✕</span>
+            </div>
+            <div style="background:#0f172a; border:1px solid #475569; border-radius:6px; padding:8px 10px; color:#e2e8f0; font-size:12px; margin-bottom:8px; display:flex; justify-content:space-between;">
+              <span>08/05/2026 · 14:00</span><span style="color:#6366f1;">📅</span>
+            </div>
+            <div style="background:#312e81; border:1px solid #4338ca; border-radius:6px; padding:7px 10px; margin-bottom:10px;">
+              <div style="color:#a5b4fc; font-size:11px;">💡 Hoy + 24 hs por defecto</div>
+            </div>
+            <button style="width:100%; background:#6366f1; color:white; border:none; border-radius:8px; padding:9px; font-size:13px; font-weight:600;">Confirmar</button>
+          </div>
+        </div>
+      </div>
+      <div class="card-body" style="background:#1e293b;">
+        <h3 style="color:#e2e8f0; font-size:14px;">B — Modal centrado</h3>
+        <p style="color:#94a3b8; font-size:12px; margin-top:4px;">Para cambios <strong style="color:#e2e8f0;">masivos (2+)</strong>. Comunica claramente el alcance de la acción.</p>
+      </div>
+    </div>
+
+    <!-- C: Híbrido -->
+    <div class="card" data-choice="dialog-c" onclick="toggleSelect(this)" style="cursor:pointer; border-radius:12px; overflow:hidden; flex:1; border:2px solid #6366f155;">
+      <div class="card-image" style="background:#0f172a; padding:20px; min-height:260px; position:relative; display:flex; flex-direction:column; justify-content:center; align-items:center;">
+        <div style="text-align:center;">
+          <div style="font-size:36px; margin-bottom:12px;">🔀</div>
+          <div style="color:#e2e8f0; font-size:13px; font-weight:700; margin-bottom:8px;">Híbrido automático</div>
+          <div style="color:#94a3b8; font-size:12px; line-height:1.6; max-width:180px; margin:0 auto;">
+            <span style="color:#6366f1;">1 pedido</span> → Popover<br>
+            <span style="color:#6366f1;">2+ pedidos</span> → Modal
+          </div>
+        </div>
+        <div style="background:#312e81; border:1px solid #4338ca; border-radius:8px; padding:10px; margin-top:16px; text-align:center;">
+          <div style="color:#a5b4fc; font-size:11px; font-weight:600;">⭐ RECOMENDADO</div>
+          <div style="color:#818cf8; font-size:10px; margin-top:3px;">Mejor UX para cada caso</div>
+        </div>
+      </div>
+      <div class="card-body" style="background:#1e293b;">
+        <h3 style="color:#e2e8f0; font-size:14px;">C — Híbrido (recomendado)</h3>
+        <p style="color:#94a3b8; font-size:12px; margin-top:4px;">El sistema elige automáticamente según si la acción es individual o masiva.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECCIÓN 2: TRANSICIÓN INVERSA              -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section" style="margin-top:40px;">
+  <div class="label">02 — Tab "Reprogramados" en /operaciones</div>
+  <h3 style="margin-top:4px; margin-bottom:16px;">Las opciones disponibles son distintas: solo "No Contesta" y "Contactado"</h3>
+
+  <div class="mockup">
+    <div class="mockup-header">Vista /operaciones · Tab: Reprogramados (mockup)</div>
+    <div class="mockup-body" style="background:#0f172a; padding:16px;">
+
+      <!-- Tabs de operaciones -->
+      <div style="display:flex; gap:4px; margin-bottom:16px; flex-wrap:wrap;">
+        <div style="background:#1e293b; color:#64748b; font-size:11px; padding:6px 12px; border-radius:6px;">Preparados <span style="background:#334155;color:#94a3b8;padding:1px 6px;border-radius:10px;margin-left:4px;font-size:10px;">24</span></div>
+        <div style="background:#1e293b; color:#64748b; font-size:11px; padding:6px 12px; border-radius:6px;">No Confirmados <span style="background:#334155;color:#94a3b8;padding:1px 6px;border-radius:10px;margin-left:4px;font-size:10px;">8</span></div>
+        <div style="background:#6366f1; color:white; font-size:11px; padding:6px 12px; border-radius:6px; font-weight:700;">Reprogramados <span style="background:rgba(255,255,255,0.25);color:white;padding:1px 6px;border-radius:10px;margin-left:4px;font-size:10px;">5</span></div>
+        <div style="background:#1e293b; color:#64748b; font-size:11px; padding:6px 12px; border-radius:6px;">Confirmados</div>
+        <div style="background:#1e293b; color:#64748b; font-size:11px; padding:6px 12px; border-radius:6px;">Contactados</div>
+      </div>
+
+      <!-- Toolbar con bulk action -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; background:#1e293b; padding:10px 14px; border-radius:8px;">
+        <div style="color:#94a3b8; font-size:12px;"><span style="color:#e2e8f0; font-weight:600;">2 pedidos</span> seleccionados</div>
+        <div style="position:relative; display:inline-block;">
+          <!-- Dropdown abierto mostrando opciones especiales de Reprogramados -->
+          <div style="background:#334155; color:#e2e8f0; font-size:12px; padding:7px 14px; border-radius:6px; cursor:pointer; border:1px solid #475569;">Cambiar estado (2) ▾</div>
+          <div style="position:absolute; right:0; top:34px; background:#1e293b; border:1px solid #334155; border-radius:8px; min-width:200px; box-shadow:0 8px 24px rgba(0,0,0,0.6); z-index:10; overflow:hidden;">
+            <div style="padding:8px 12px; background:#0f172a; border-bottom:1px solid #334155;">
+              <div style="color:#64748b; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em;">Transiciones desde Reprogramados</div>
+            </div>
+            <div style="padding:4px;">
+              <div style="padding:8px 12px; border-radius:6px; color:#fbbf24; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:8px; background:#1e293b;" onmouseover="this.style.background='#292524'" onmouseout="this.style.background='#1e293b'">
+                <span style="font-size:14px;">📵</span>
+                <div>
+                  <div style="font-weight:600;">No Contesta</div>
+                  <div style="color:#64748b; font-size:10px; margin-top:1px;">callStatus → NO_ANSWER</div>
+                </div>
+              </div>
+              <div style="padding:8px 12px; border-radius:6px; color:#4ade80; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:8px; background:#1e293b;" onmouseover="this.style.background='#14532d22'" onmouseout="this.style.background='#1e293b'">
+                <span style="font-size:14px;">✅</span>
+                <div>
+                  <div style="font-weight:600;">Contactado</div>
+                  <div style="color:#64748b; font-size:10px; margin-top:1px;">callStatus → CONFIRMED · status → LLAMADO</div>
+                </div>
+              </div>
+            </div>
+            <div style="border-top:1px solid #334155; padding:4px;">
+              <div style="padding:7px 12px; color:#f87171; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:8px; border-radius:6px;">
+                <span>🚫</span> Anular
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Filas de la tabla -->
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <div style="background:#1e293b; border-radius:8px; padding:11px 14px; display:flex; align-items:center; gap:12px; border:1px solid #6366f155;">
+          <div style="width:16px;height:16px;background:#6366f1;border-radius:3px;flex-shrink:0;"></div>
+          <div style="flex:1;">
+            <div style="color:#e2e8f0; font-size:12px; font-weight:600;">#1089 · Ana Torres</div>
+            <div style="color:#94a3b8; font-size:11px;">Reprog. para: 08/05 14:00 · Lima Centro</div>
+          </div>
+          <div style="background:#312e81; color:#a5b4fc; font-size:10px; padding:2px 8px; border-radius:10px;">SCHEDULED</div>
+        </div>
+        <div style="background:#1e293b; border-radius:8px; padding:11px 14px; display:flex; align-items:center; gap:12px; border:1px solid #6366f155;">
+          <div style="width:16px;height:16px;background:#6366f1;border-radius:3px;flex-shrink:0;"></div>
+          <div style="flex:1;">
+            <div style="color:#e2e8f0; font-size:12px; font-weight:600;">#1091 · Pedro Ramos</div>
+            <div style="color:#94a3b8; font-size:11px;">Reprog. para: 09/05 10:00 · SJL</div>
+          </div>
+          <div style="background:#312e81; color:#a5b4fc; font-size:10px; padding:2px 8px; border-radius:10px;">SCHEDULED</div>
+        </div>
+        <div style="background:#1e293b; border-radius:8px; padding:11px 14px; display:flex; align-items:center; gap:12px; opacity:0.4;">
+          <div style="width:16px;height:16px;border:2px solid #334155;border-radius:3px;flex-shrink:0;"></div>
+          <div style="flex:1;"><div style="background:#334155; height:11px; border-radius:3px; width:65%;"></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="subtitle" style="margin-top:10px; font-size:12px;">Nota: en <strong>otras tabs</strong> (Preparados, No Confirmados) el dropdown muestra "Reprogramar" en su lugar. La lógica es condicional según la tab activa.</p>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!-- SECCIÓN 3: COMPORTAMIENTO MASIVO           -->
+<!-- ═══════════════════════════════════════════ -->
+<div class="section" style="margin-top:40px;">
+  <div class="label">03 — ¿Qué pasa al reprogramar 10 pedidos a la vez?</div>
+  <h3 style="margin-top:4px; margin-bottom:16px;">Seleccioná la estrategia de fecha para bulk</h3>
+
+  <div class="options">
+    <div class="option" data-choice="bulk-same" onclick="toggleSelect(this)">
+      <div class="letter">X</div>
+      <div class="content">
+        <h3>Una fecha para todos</h3>
+        <p>El modal pide una sola fecha/hora. Los N pedidos seleccionados quedan con el mismo <code>callbackAt</code>. Se informa cuántos pedidos se afectan.</p>
+        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+          <span style="background:#15803d22;color:#4ade80;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid #15803d55;">✓ Simple</span>
+          <span style="background:#15803d22;color:#4ade80;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid #15803d55;">✓ Rápido</span>
+          <span style="background:#7f1d1d22;color:#f87171;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid #7f1d1d55;">✗ Inflexible</span>
+        </div>
+      </div>
+    </div>
+    <div class="option" data-choice="bulk-individual" onclick="toggleSelect(this)">
+      <div class="letter">Y</div>
+      <div class="content">
+        <h3>Fecha individual por pedido</h3>
+        <p>El modal muestra una lista de pedidos y cada uno tiene su propio date picker. Muy granular pero complejo para muchos pedidos.</p>
+        <div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;">
+          <span style="background:#15803d22;color:#4ade80;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid #15803d55;">✓ Flexible</span>
+          <span style="background:#7f1d1d22;color:#f87171;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid #7f1d1d55;">✗ UX pesada</span>
+          <span style="background:#7f1d1d22;color:#f87171;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid #7f1d1d55;">✗ Escala mal</span>
+        </div>
+      </div>
+    </div>
+    <div class="option" data-choice="bulk-default" onclick="toggleSelect(this)" style="border-color:#6366f155;">
+      <div class="letter" style="background:#6366f1;">Z</div>
+      <div class="content">
+        <h3>Fecha default automática ⭐</h3>
+        <p>No pide fecha. Asigna automáticamente <code>hoy + 24hs</code> a todos. El operador puede ajustar cada pedido individualmente abriendo el modal de detalle.</p>
+        <div style="margin-top:8px; background:#312e81; border:1px solid #4338ca; border-radius:6px; padding:6px 10px; font-size:11px; color:#a5b4fc;">💡 Recomendado — cero fricción en el flujo masivo</div>
+        <div style="margin-top:6px; display:flex; gap:6px; flex-wrap:wrap;">
+          <span style="background:#15803d22;color:#4ade80;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid #15803d55;">✓ Cero fricción</span>
+          <span style="background:#15803d22;color:#4ade80;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid #15803d55;">✓ Escala bien</span>
+          <span style="background:#15803d22;color:#4ade80;font-size:11px;padding:2px 8px;border-radius:20px;border:1px solid #15803d55;">✓ Editable luego</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Nota de backend -->
+<div style="background:#1e293b; border-radius:10px; padding:16px; margin-top:32px; border:1px solid #334155;">
+  <div style="color:#94a3b8; font-size:11px; font-weight:700; text-transform:uppercase; margin-bottom:8px;">⚙️ Nota técnica — Backend</div>
+  <div style="color:#cbd5e1; font-size:12px; line-height:1.6;">
+    El endpoint <code style="background:#0f172a;padding:1px 5px;border-radius:3px;color:#a5b4fc;">PATCH /order-header/bulk-status</code> actualmente solo recibe <code style="background:#0f172a;padding:1px 5px;border-radius:3px;color:#a5b4fc;">{ ids, status }</code>.<br>
+    Para soportar "Reprogramar" necesita aceptar también <code style="background:#0f172a;padding:1px 5px;border-radius:3px;color:#a5b4fc;">callStatus</code> y <code style="background:#0f172a;padding:1px 5px;border-radius:3px;color:#a5b4fc;">callbackAt</code>. <strong style="color:#fbbf24;">¿Podemos extender ese endpoint o preferís un endpoint separado?</strong>
+  </div>
+</div>

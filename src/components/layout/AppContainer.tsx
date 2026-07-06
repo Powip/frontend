@@ -3,6 +3,7 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { usePathname } from "next/navigation";
 import AuthGuard from "@/components/auth/AuthGuard";
+import UpdateAnnouncementPopup from "@/components/modals/UpdateAnnouncementPopup";
 
 export default function AppContainer({
   children,
@@ -17,6 +18,7 @@ export default function AppContainer({
     "/new-company",
     "/subscriptions",
     "/rastreo",
+    "/onboarding",
   ];
 
   const hideSidebar = noSidebarRoutes.some((r) => pathname.startsWith(r));
@@ -27,6 +29,7 @@ export default function AppContainer({
         {!hideSidebar && <Sidebar />}
         <main className="flex-1 bg-gray-light overflow-auto">{children}</main>
       </div>
+      {!hideSidebar && <UpdateAnnouncementPopup />}
     </AuthGuard>
   );
 }

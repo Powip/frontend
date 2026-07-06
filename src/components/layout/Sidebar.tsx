@@ -32,6 +32,7 @@ import {
   Phone,
   Activity,
   FileSpreadsheet,
+  User,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -56,8 +57,8 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import PowipLogoMini from "./logo-mini";
 import PowipLogo from "./logo";
+import PowipLogoMini from "./logo-mini";
 
 interface SidebarProps {
   className?: string;
@@ -163,6 +164,7 @@ export function Sidebar({ className }: SidebarProps) {
         icon: Settings,
         children: [
           { name: "Usuarios", href: "/usuarios", icon: UserCog },
+
           { name: "Configuración", href: "/configuracion", icon: Settings },
         ],
       },
@@ -331,7 +333,7 @@ export function Sidebar({ className }: SidebarProps) {
       </div>
 
       {/* Menu items */}
-      <div className="flex-1 overflow-y-auto scrollbar-none">
+      <div className="flex-1 overflow-y-auto scrollbar-none pt-6">
         <nav
           className={cn("flex flex-col gap-1", isCollapsed && "items-center")}
         >

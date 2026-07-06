@@ -30,7 +30,6 @@ import { Checkbox } from '@/components/ui/checkbox';
 
 interface CrmComercialTableProps {
   leads: any[];
-  token?: string;
   onStageChange?: (leadId: string, newStage: string, oldStage: string) => void;
   onMoveToPago?: (lead: any) => void;
 }
@@ -45,7 +44,6 @@ const SOURCE_COLORS: Record<string, string> = {
 
 export const CrmComercialTable: React.FC<CrmComercialTableProps> = ({
   leads,
-  token,
   onStageChange,
   onMoveToPago,
 }) => {
@@ -63,7 +61,7 @@ export const CrmComercialTable: React.FC<CrmComercialTableProps> = ({
   const [massStage, setMassStage] = useState<string>('');
   const [massAssignedTo, setMassAssignedTo] = useState<string>('');
   
-  const bulkUpdateMutation = useUpdateBulkLeads(token);
+  const bulkUpdateMutation = useUpdateBulkLeads();
   const itemsPerPage = 10;
   const router = useRouter();
 
@@ -111,7 +109,7 @@ export const CrmComercialTable: React.FC<CrmComercialTableProps> = ({
 
     setIsDeleting(id);
     try {
-      await leadService.deleteLead(id, token);
+      await leadService.deleteLead(id);
       toast.success('Lead eliminado correctamente');
       router.refresh();
       setSelectedLeads(prev => prev.filter(selectedId => selectedId !== id));
@@ -124,7 +122,7 @@ export const CrmComercialTable: React.FC<CrmComercialTableProps> = ({
 
   const handleStageChange = async (leadId: string, newStage: string, oldStage: string) => {
     try {
-      await leadService.updateLeadStage(leadId, newStage, oldStage, token);
+      await leadService.updateLeadStage(leadId, newStage, oldStage);
       toast.success('Estado actualizado');
 
       if (newStage === 'pago_recibido' && onMoveToPago) {
@@ -526,7 +524,6 @@ export const CrmComercialTable: React.FC<CrmComercialTableProps> = ({
         isOpen={isDetailsOpen}
         onClose={() => setIsDetailsOpen(false)}
         lead={selectedLead}
-        token={token}
       />
 
       <LeadActivitiesDrawer
@@ -534,7 +531,6 @@ export const CrmComercialTable: React.FC<CrmComercialTableProps> = ({
         onClose={() => setIsActivitiesOpen(false)}
         leadId={selectedLead?.id}
         leadName={selectedLead?.contact_name}
-        token={token}
       />
     </div>
   );

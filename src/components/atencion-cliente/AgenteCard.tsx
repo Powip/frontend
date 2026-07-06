@@ -13,11 +13,10 @@ interface Props {
   agente: AgenteConKpis;
   currentUserId: string;
   isSupervisor: boolean;
-  accessToken: string;
   storeId: string;
 }
 
-export function AgenteCard({ agente, currentUserId, isSupervisor, accessToken, storeId }: Props) {
+export function AgenteCard({ agente, currentUserId, isSupervisor, storeId }: Props) {
   const [loading, setLoading] = useState(false);
   const queryClient = useQueryClient();
 
@@ -29,9 +28,9 @@ export function AgenteCard({ agente, currentUserId, isSupervisor, accessToken, s
     setLoading(true);
     try {
       if (isOwnCard) {
-        await toggleMiCcStatus(accessToken, { ccActivo: checked });
+        await toggleMiCcStatus({ ccActivo: checked });
       } else {
-        await toggleAgenteCcStatus(accessToken, agente.id, { ccActivo: checked });
+        await toggleAgenteCcStatus(agente.id, { ccActivo: checked });
       }
       await queryClient.invalidateQueries({ queryKey: ["cc-agentes", storeId] });
       toast.success(`Agente ${checked ? "activado" : "desactivado"}`);

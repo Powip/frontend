@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import {
   LineChart,
   Line,
@@ -146,11 +147,11 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
 
       const [billingRes, invRes, receivablesRes, courierRes, dailyIncomeRes] =
         await Promise.all([
-          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
+          axiosAuth.get(`${GATEWAY.ventas}/stats/billing`, {
             params: billingParams,
           }),
-          axios.get(
-            `${process.env.NEXT_PUBLIC_API_INVENTORY}/stats/inventory-value`,
+          axiosAuth.get(
+            `${GATEWAY.logistics}/stats/inventory-value`,
             {
               params: {
                 storeId: selectedStoreId,
@@ -158,8 +159,8 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
             },
           ),
           // Fetch receivables (pending payments)
-          axios
-            .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/receivables`, {
+          axiosAuth
+            .get(`${GATEWAY.ventas}/stats/receivables`, {
               params,
             })
             .catch(() => ({
@@ -172,14 +173,14 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
               },
             })),
           // Fetch courier stats
-          axios
-            .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-courier`, {
+          axiosAuth
+            .get(`${GATEWAY.ventas}/stats/by-courier`, {
               params,
             })
             .catch(() => ({ data: [] })),
           // Fetch daily income
-          axios
-            .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/daily-income`, {
+          axiosAuth
+            .get(`${GATEWAY.ventas}/stats/daily-income`, {
               params,
             })
             .catch(() => ({ data: [] })),
@@ -207,8 +208,8 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
 
       // Process daily income
       setDailyIncome(dailyIncomeRes.data || []);
-    } catch (error) {
-      console.error("Error fetching finance stats:", error);
+    } catch {
+      // finance stats fetch failure is silent
     } finally {
       setLoading(false);
     }

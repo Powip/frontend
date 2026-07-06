@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useMemo } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import {
   Search,
@@ -72,8 +73,7 @@ export default function AddProductsModal({
           limit: 100, // Fetch a larger batch for local filtering
         });
         setAllProducts(res.data);
-      } catch (err) {
-        console.error("Error fetching products", err);
+      } catch {
         toast.error("Error al cargar productos");
       } finally {
         setLoading(false);
@@ -180,9 +180,8 @@ export default function AddProductsModal({
 
     setSubmitting(true);
     try {
-      // Primero obtener el pedido actual para tener los items existentes
-      const orderRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      const orderRes = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
       );
       const currentOrder = orderRes.data;
 
@@ -221,9 +220,8 @@ export default function AddProductsModal({
       // Combinar todos los items
       const allItems = [...existingItems, ...newItems];
 
-      // Actualizar el pedido
-      await axios.put(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.put(
+        `${GATEWAY.ventas}/order-header/${orderId}`,
         {
           items: allItems,
           userId: auth?.user?.id || undefined,
@@ -238,8 +236,7 @@ export default function AddProductsModal({
       setQuery("");
       onProductsAdded?.();
       onClose();
-    } catch (err) {
-      console.error("Error adding products", err);
+    } catch {
       toast.error("Error al agregar productos");
     } finally {
       setSubmitting(false);

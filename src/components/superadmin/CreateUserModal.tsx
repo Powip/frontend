@@ -65,7 +65,6 @@ export function CreateUserModal({
   });
 
   const handleSave = async () => {
-    if (!auth?.accessToken) return;
     setLoading(true);
     try {
       let result;
@@ -73,9 +72,9 @@ export function CreateUserModal({
       if (payload.companyId === "none") delete (payload as any).companyId;
 
       if (formData.companyId && formData.companyId !== "none") {
-        result = await createCompanyUser(formData.companyId, payload as any, auth.accessToken);
+        result = await createCompanyUser(formData.companyId, payload as any);
       } else {
-        result = await createPlatformUser(payload as any, auth.accessToken);
+        result = await createPlatformUser(payload as any);
       }
 
       const isAppAdmin = formData.roleName === "ADMINISTRADOR";
@@ -107,10 +106,10 @@ export function CreateUserModal({
   };
 
   const handleSubscriptionSave = async () => {
-    if (!auth?.accessToken || !createdUserId || !selectedPlanId || !createdUserEmail) return;
+    if (!createdUserId || !selectedPlanId || !createdUserEmail) return;
     setLoading(true);
     try {
-      const response = await createSubscription(auth.accessToken, {
+      const response = await createSubscription({
         userId: createdUserId,
         planId: selectedPlanId,
         payerEmail: createdUserEmail,

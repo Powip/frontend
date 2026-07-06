@@ -40,7 +40,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import { 
   getShalomLabelPdfUrl, 
@@ -96,14 +97,11 @@ export default function CourierTrackingView() {
   const [guideForDetails, setGuideForDetails] = useState<string | null>(null);
 
   const fetchGuides = useCallback(async () => {
-    if (!selectedStoreId || !auth?.accessToken) return;
+    if (!selectedStoreId) return;
     setLoading(true);
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
-        {
-          headers: { Authorization: `Bearer ${auth.accessToken}` }
-        }
+      const res = await axiosAuth.get(
+        `${GATEWAY.courier}/shipping-guides/store/${selectedStoreId}`,
       );
       setGuides(res.data);
     } catch {
@@ -111,25 +109,20 @@ export default function CourierTrackingView() {
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId, auth]);
+  }, [selectedStoreId]);
 
   useEffect(() => {
     fetchGuides();
   }, [fetchGuides]);
 
   const handleTrackShalom = async (guide: TrackingGuide) => {
-    if (!auth?.accessToken || !auth?.company?.id) return;
-    
     setSelectedGuide(guide);
     setTrackingModalOpen(true);
     setTrackLoading(true);
     setTrackResult(null);
 
     try {
-      const result = await trackShalomGuide(
-        auth.accessToken,
-        guide.id
-      );
+      const result = await trackShalomGuide(guide.id);
       setTrackResult(result);
     } catch (error) {
       setTrackResult({ error: "No se pudo obtener el rastreo de Shalom" });
@@ -139,28 +132,17 @@ export default function CourierTrackingView() {
   };
 
   const handleQuoteDirectly = async (guide: TrackingGuide) => {
-    if (!auth?.accessToken || !selectedStoreId) return;
+    if (!selectedStoreId) return;
 
-    // Para cotizar necesitamos los detalles de la guía (agencia origen, destino, paquetes)
-    // Pero el usuario dice que "la cotización debería de poderse calcular" si ya existe.
-    // Vamos a obtener los detalles de la guía para tener los bultos reales.
     setLoading(true);
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`,
-        { headers: { Authorization: `Bearer ${auth.accessToken}` } }
+      const res = await axiosAuth.get(
+        `${GATEWAY.courier}/shipping-guides/${guide.id}`,
       );
       const fullGuide = res.data;
 
-      // Necesitamos al menos una orden para sacar los datos de bultos
-      // O los datos guardados en la guía si los hubiera.
-      // Como no tenemos un endpoint de "re-quote", vamos a simularlo obteniendo datos del primer pedido
-      // o usando valores por defecto razonables si no están.
-      
-      // Fetch details of orders in guide to get package info
-      const orderRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${fullGuide.orderIds[0]}/receipt`,
-        { headers: { Authorization: `Bearer ${auth.accessToken}` } }
+      const orderRes = await axiosAuth.get(
+        `${GATEWAY.ventas}/order-header/${fullGuide.orderIds[0]}/receipt`,
       );
       const order = orderRes.data;
 
@@ -188,12 +170,12 @@ export default function CourierTrackingView() {
         quantity: Number(firstShipment?.quantity) || 1
       };
 
-      const quoteRes = await quoteShalom(auth.accessToken, quoteData);
-      
+      const quoteRes = await quoteShalom(quoteData);
+
       if (quoteRes.precio) {
-        await updateGuideQuote(auth.accessToken, guide.id, quoteRes.precio, quoteRes.moneda);
+        await updateGuideQuote(guide.id, quoteRes.precio, quoteRes.moneda);
         toast.success(`Cotización actualizada: ${quoteRes.moneda} ${quoteRes.precio}`);
-        fetchGuides(); // Recargar tabla
+        fetchGuides();
       }
     } catch {
       toast.error("No se pudo calcular la cotización automáticamente");

@@ -2,7 +2,7 @@ import { createAdminClient as createClient } from '@/utils/supabase/admin';
 import { NextResponse } from "next/server";
 import axios from "axios";
 
-const API_COMPANY = process.env.NEXT_PUBLIC_API_COMPANY;
+const API_COMPANY = (process.env.NEXT_PUBLIC_API_GATEWAY || "http://localhost:8083").replace(/\/$/, "") + "/company";
 
 export async function GET(request: Request) {
   try {

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import axios from 'axios';
+import axiosAuth from '@/lib/axiosAuth';
+import { GATEWAY } from '@/lib/gateway';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -40,8 +41,8 @@ export function ShopifySyncConfigModal({
   const handleConfirm = async () => {
     setLoading(true);
     try {
-      await axios.post(
-        `${process.env.NEXT_PUBLIC_API_INTEGRATIONS}/shopify/confirm-sync/${shopUrl}`,
+      await axiosAuth.post(
+        `${GATEWAY.integrations}/shopify/confirm-sync/${shopUrl}`,
         {
           companyId,
           storeId,
@@ -54,7 +55,6 @@ export function ShopifySyncConfigModal({
           },
           products: { strategy: productStrategy },
         },
-        { headers: { Authorization: `Bearer ${auth?.accessToken}` } },
       );
       setSuccess(true);
       toast.success('Sincronizacion iniciada correctamente');

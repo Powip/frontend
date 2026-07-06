@@ -1,31 +1,29 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 
-export const useSaasMetrics = (token?: string, from?: string, to?: string) => {
+export const useSaasMetrics = (from?: string, to?: string) => {
   return useQuery({
     queryKey: ["saas-metrics", from, to],
     queryFn: async () => {
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
       const params = new URLSearchParams();
       if (from) params.append("from", from);
       if (to) params.append("to", to);
-      
+
       const url = `/api/superadmin/saas-metrics${params.toString() ? '?' + params.toString() : ''}`;
-      const response = await axios.get(url, config);
+      const response = await axiosAuth.get(url);
       return response.data;
     },
-    enabled: !!token,
+    enabled: true,
   });
 };
 
-export const useChurnAlerts = (token?: string) => {
+export const useChurnAlerts = () => {
   return useQuery({
     queryKey: ["churn-alerts"],
     queryFn: async () => {
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-      const response = await axios.get("/api/superadmin/churn-alerts", config);
+      const response = await axiosAuth.get("/api/superadmin/churn-alerts");
       return response.data;
     },
-    enabled: !!token,
+    enabled: true,
   });
 };
