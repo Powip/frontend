@@ -232,14 +232,29 @@ export default function NewCompanyPage() {
 
       // Esperamos a que ms-auth procese el evento de cambio de rol (USUARIO -> ADMINISTRADOR)
       // antes de refrescar el JWT, ya que ese cambio se persiste de forma asíncrona.
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+
+      // Recién creamos la empresa, así que ya sabemos que el usuario tiene compañía.
+      // Lo único que puede faltar es la suscripción, así que usamos el auth ya
+      // refrescado (no el `auth` capturado en el closure, que sigue siendo el
+      // valor previo a la creación de la empresa) para decidir el redirect.
+      //
+      // refreshAuth() encadena varias llamadas de red (refresh token, fetch de
+      // company, fetch de subscription) sin timeout propio. Si alguna se cuelga
+      // (p. ej. ms-auth esperando el mismo tipo de evento RabbitMQ que ya nos
+      // hace timeout en el POST de creación de empresa), no queremos quedarnos
+      // trabados sin redirigir nunca — de ahí el timeout defensivo acá.
+      let refreshedAuth = auth;
       try {
-        await refreshAuth();
+        const timeout = new Promise<null>((resolve) =>
+          setTimeout(() => resolve(null), 10000),
+        );
+        refreshedAuth = (await Promise.race([refreshAuth(), timeout])) ?? auth;
       } catch {
         // best-effort: si falla el refresh, el rol se actualizará en el próximo refresh de página
       }
 
-      router.push(auth.subscription ? "/dashboard" : "/sin-plan");
+      router.push(refreshedAuth?.subscription ? "/dashboard" : "/sin-plan");
     } catch (err: unknown) {
       const axiosErr = err as { response?: { data?: { message?: string } } };
       const msg = axiosErr?.response?.data?.message || "Hubo un error al crear la empresa";

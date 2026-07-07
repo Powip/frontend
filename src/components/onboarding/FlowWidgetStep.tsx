@@ -30,105 +30,147 @@ interface FlowWidgetStepProps {
 
 type WidgetStatus = 'loading' | 'ready' | 'error';
 
-export default function FlowWidgetStep({ token, onSuccess, onError }: FlowWidgetStepProps) {
+export default function FlowWidgetStep({
+  token,
+  onSuccess,
+  onError,
+}: FlowWidgetStepProps) {
   const [status, setStatus] = useState<WidgetStatus>('loading');
   const [localError, setLocalError] = useState('');
   const [retryCount, setRetryCount] = useState(0);
-  const mountedRef = useRef(false);
+
+  const widgetMountedRef = useRef(false);
 
   const baseUrl =
-    process.env.NEXT_PUBLIC_FLOW_ENV === 'production'
+    process.env.NEXT_PUBLIC_RUNTIME_ENV === 'production'
       ? 'https://www.flow.cl'
       : 'https://sandbox.flow.cl';
+
   const scriptSrc = `${baseUrl}/app/elements/flow-1.1.0.min.js?20241202`;
 
   useEffect(() => {
-    mountedRef.current = false;
+    let cancelled = false;
+
+    widgetMountedRef.current = false;
     setStatus('loading');
     setLocalError('');
 
-    let pollInterval: ReturnType<typeof setInterval> | null = null;
+    const showError = (message: string) => {
+      if (cancelled) return;
 
-    const showLocalErr = (msg: string) => {
-      setLocalError(msg);
+      widgetMountedRef.current = false;
+      setLocalError(message);
       setStatus('error');
-      toast.error(msg);
+      toast.error(message);
     };
 
-    const tryMount = () => {
-      if (mountedRef.current || !window.Flow) {
-        showLocalErr('El widget de pago no está disponible. Intenta nuevamente.');
+    const mountWidget = () => {
+      if (cancelled) return;
+
+      if (!window.Flow) {
+        showError(
+          'El widget de pago no está disponible. Intenta nuevamente.',
+        );
         return;
       }
-      mountedRef.current = true;
+
+      // Already mounted for this render cycle.
+      if (widgetMountedRef.current) {
+        return;
+      }
+
+      widgetMountedRef.current = true;
 
       try {
         const flow = window.Flow();
+
         const subscribe = flow.elements().create('subscribe', {
-          style: { backgroundColor: '#f8f9fa' },
+          style: {
+            backgroundColor: '#f8f9fa',
+          },
         });
+
         subscribe.mount('#flow-subscribe-container', token);
-        setStatus('ready');
+
+        if (!cancelled) {
+          setStatus('ready');
+        }
 
         Promise.resolve(flow.handleCardSubscribed(subscribe))
-          .then(() => onSuccess())
+          .then(async () => {
+            if (!cancelled) {
+              await onSuccess();
+            }
+          })
           .catch(() => {
-            mountedRef.current = false;
-            showLocalErr(
+            showError(
               'Hubo un error al procesar tu tarjeta. Verifica los datos e intenta nuevamente.',
             );
           });
       } catch {
-        mountedRef.current = false;
-        showLocalErr('No se pudo iniciar el widget de pago. Intenta nuevamente.');
+        showError(
+          'No se pudo iniciar el widget de pago. Intenta nuevamente.',
+        );
       }
     };
 
-    // Espera hasta 3 s a que window.Flow esté disponible antes de montar
-    const waitForFlow = () => {
+    const loadScript = () => {
       if (window.Flow) {
-        tryMount();
+        mountWidget();
         return;
       }
-      let attempts = 0;
-      pollInterval = setInterval(() => {
-        attempts++;
-        if (window.Flow) {
-          clearInterval(pollInterval!);
-          pollInterval = null;
-          tryMount();
-        } else if (attempts >= 30) {
-          clearInterval(pollInterval!);
-          pollInterval = null;
-          showLocalErr(
-            'El widget tardó demasiado en cargar. Verifica tu conexión e intenta nuevamente.',
-          );
+
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        `script[src="${scriptSrc}"]`,
+      );
+
+      if (existingScript) {
+        if (existingScript.getAttribute('data-loaded') === 'true') {
+          mountWidget();
+          return;
         }
-      }, 100);
-    };
 
-    const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${scriptSrc}"]`,
-    );
+        const handleLoad = () => {
+          existingScript.setAttribute('data-loaded', 'true');
+          mountWidget();
+        };
 
-    if (existing) {
-      waitForFlow();
-    } else {
+        const handleError = () => {
+          onError(
+            'No se pudo cargar el widget de pago. Verifica tu conexión a internet.',
+          );
+        };
+
+        existingScript.addEventListener('load', handleLoad, { once: true });
+        existingScript.addEventListener('error', handleError, { once: true });
+
+        return;
+      }
+
       const script = document.createElement('script');
       script.src = scriptSrc;
       script.async = true;
-      script.onload = waitForFlow;
-      script.onerror = () =>
+
+      script.onload = () => {
+        script.setAttribute('data-loaded', 'true');
+        mountWidget();
+      };
+
+      script.onerror = () => {
         onError(
           'No se pudo cargar el widget de pago. Verifica tu conexión a internet.',
         );
+      };
+
       document.head.appendChild(script);
-    }
+    };
+
+    loadScript();
 
     return () => {
-      if (pollInterval) clearInterval(pollInterval);
+      cancelled = true;
     };
-  }, [retryCount, token, onSuccess, onError, scriptSrc]);
+  }, [token, retryCount, onSuccess, onError, scriptSrc]);
 
   if (status === 'error') {
     return (
@@ -137,14 +179,22 @@ export default function FlowWidgetStep({ token, onSuccess, onError }: FlowWidget
           className="w-12 h-12 rounded-full flex items-center justify-center"
           style={{ background: '#fef2f2' }}
         >
-          <AlertCircle className="w-6 h-6" style={{ color: '#ef4444' }} />
+          <AlertCircle
+            className="w-6 h-6"
+            style={{ color: '#ef4444' }}
+          />
         </div>
+
         <div>
-          <p className="text-sm font-medium text-gray-800">{localError}</p>
+          <p className="text-sm font-medium text-gray-800">
+            {localError}
+          </p>
+
           <p className="text-xs text-gray-400 mt-1">
             Si el problema continúa, contacta a soporte.
           </p>
         </div>
+
         <button
           type="button"
           onClick={() => setRetryCount((c) => c + 1)}
@@ -162,14 +212,23 @@ export default function FlowWidgetStep({ token, onSuccess, onError }: FlowWidget
     <div className="space-y-4">
       {status === 'loading' && (
         <div className="flex flex-col items-center gap-3 py-10">
-          <Loader2 className="h-8 w-8 animate-spin" style={{ color: '#4F3A96' }} />
-          <p className="text-sm text-gray-400">Cargando widget de pago...</p>
+          <Loader2
+            className="h-8 w-8 animate-spin"
+            style={{ color: '#4F3A96' }}
+          />
+          <p className="text-sm text-gray-400">
+            Cargando widget de pago...
+          </p>
         </div>
       )}
+
       <div
         id="flow-subscribe-container"
-        style={{ minHeight: status === 'ready' ? 250 : 0 }}
+        style={{
+          minHeight: status === 'ready' ? 250 : 0,
+        }}
       />
+
       {status === 'ready' && (
         <p className="text-xs text-gray-400 text-center">
           Pago procesado de forma segura con Flow

@@ -68,7 +68,7 @@ interface AuthContextType {
   logout: () => Promise<void>;
   updateCompany: (company: Company) => void;
   updateSubscription: (subscription: boolean) => void;
-  refreshAuth: () => Promise<boolean>;
+  refreshAuth: () => Promise<AuthData | null>;
   selectedStoreId: string | null;
   setSelectedStore: (storeId: string) => void;
   inventories: Inventory[];
@@ -137,14 +137,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ---- SILENT REFRESH ----
-  const silentRefresh = useCallback(async (): Promise<boolean> => {
+  // Devuelve el AuthData ya actualizado (o null si falla) en lugar de un boolean,
+  // ya que setAuth() es asíncrono: el caller no puede confiar en el `auth` del
+  // closure justo después de awaitear el refresh, necesita el valor devuelto.
+  const silentRefresh = useCallback(async (): Promise<AuthData | null> => {
     // El access token ya no se persiste en localStorage — el refresh siempre
     // va al backend, que lee la cookie httpOnly.
     const newToken = await requestRefresh();
     if (newToken) {
-      return (await restoreAuthFromToken(newToken)) !== null;
+      return restoreAuthFromToken(newToken);
     }
-    return false;
+    return null;
   }, [restoreAuthFromToken]);
 
   // ---- INICIALIZACIÓN ----
@@ -184,8 +187,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   // ---- INVENTORIES ----
+  // OJO: dependemos de `auth?.user?.id` (estable durante la sesión), NO de
+  // `auth?.accessToken`. axiosAuth ya lee el token vigente desde tokenStore
+  // en cada request via su interceptor, así que este callback no necesita el
+  // accessToken para funcionar. Si dependiera de él, cada refresh de token
+  // dispararía este efecto de nuevo; si el endpoint de inventario devuelve 401
+  // por cualquier motivo (p. ej. permisos/rol aún no propagados tras crear
+  // una empresa), el interceptor 401 refresca el token → cambia accessToken →
+  // el efecto se re-dispara → nuevo 401 → nuevo refresh → loop infinito, que
+  // termina agotando la rotación del refresh token en el backend (esto es lo
+  // que causaba el InvalidRefreshTokenError después de ~40 refreshes).
   const fetchInventories = useCallback(async () => {
-    if (!auth?.accessToken || !selectedStoreId) return;
+    if (!auth?.user?.id || !selectedStoreId) return;
     try {
       const res = await axiosAuth.get(
         `${GATEWAY.logistics}/inventory/store/${selectedStoreId}`,
@@ -194,7 +207,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch {
       // silently fail — inventarios no bloquean el funcionamiento
     }
-  }, [auth?.accessToken, selectedStoreId]);
+  }, [auth?.user?.id, selectedStoreId]);
 
   const refreshInventories = useCallback(async () => {
     await fetchInventories();

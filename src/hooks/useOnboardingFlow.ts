@@ -41,7 +41,7 @@ interface RegisterData {
  * del registro. Este delay evita que el login automático post-registro
  * ocurra antes de que ese app_metadata esté disponibl.
  */
-export const APP_METADATA_PROPAGATION_DELAY_MS = 5500;
+export const APP_METADATA_PROPAGATION_DELAY_MS = 5000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -176,9 +176,6 @@ export function useOnboardingFlow(
           },
         );
         userId = registerRes.data.userId;
-
-        // Wait for ms-auth events to populate app_metadata
-        await sleep(APP_METADATA_PROPAGATION_DELAY_MS);
       } catch (err: unknown) {
         let message = "No pudimos crear tu cuenta. Intenta nuevamente.";
         if (axios.isAxiosError(err)) {
@@ -201,6 +198,8 @@ export function useOnboardingFlow(
       }
 
       try {
+        // Wait for ms-auth events to populate app_metadata
+        await sleep(APP_METADATA_PROPAGATION_DELAY_MS);
         const loginRes = await axios.post<{
           accessToken: string;
           expiresIn: number;
@@ -345,7 +344,7 @@ export function useOnboardingFlow(
       if (subscriptionId) {
         try {
           const { data: invoices } = await axiosAuth.get<Invoice[]>(
-            `${GATEWAY.subscriptionFlow}/invoices?subscriptionId=${encodeURIComponent(subscriptionId)}`,
+            `${GATEWAY.subscriptionFlow}/api/v1/subscriptions/${encodeURIComponent(subscriptionId)}/invoices`,
           );
           dispatch({ type: "SET_INVOICES", invoices });
         } catch {
