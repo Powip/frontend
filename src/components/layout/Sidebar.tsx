@@ -111,6 +111,7 @@ export function Sidebar({ className }: SidebarProps) {
         children: [
           { name: "Ventas", href: "/ventas", icon: ShoppingCart },
           { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
+          { name: "Packs & Promos", href: "/packs-promos", icon: PackagePlus },
           { name: "Clientes", href: "/clientes", icon: Users },
           {
             name: "Carritos Abandonados",

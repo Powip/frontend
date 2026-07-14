@@ -29,6 +29,7 @@ export async function fetchClientByPhone(
       reference: data.reference,
       latitude: data.latitude,
       longitude: data.longitude,
+      googleMapsUrl: data.googleMapsUrl,
       isActive: data.isActive,
     };
   } catch (error) {
@@ -53,6 +54,7 @@ export async function createClient(payload: {
   reference?: string;
   latitude?: number;
   longitude?: number;
+  googleMapsUrl?: string;
 }): Promise<Client> {
   const res = await axiosAuth.post(`${API_VENTAS}/clients`, payload);
   return res.data;
@@ -74,6 +76,7 @@ export async function updateClient(
     reference?: string;
     latitude?: number;
     longitude?: number;
+    googleMapsUrl?: string;
   }>
 ): Promise<Client> {
   const res = await axiosAuth.patch(`${API_VENTAS}/clients/${id}`, payload);
