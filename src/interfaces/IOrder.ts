@@ -36,6 +36,10 @@ export interface CartItem {
   quantity: number;
   price: number;
   discount: number; // Descuento por item
+  pvp?: number; // Precio original antes de descuentos/packs (para mostrar ahorro)
+  packId?: string | null; // Pack aplicado a esta línea (Packs & Promos, solo UI)
+  isGift?: boolean; // Línea generada por un pack de regalo
+  giftValue?: number; // Valor de referencia del regalo (no se cobra)
 }
 
 /* -----------------------------------------
