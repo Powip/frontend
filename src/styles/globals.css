@@ -166,6 +166,21 @@ input[type="number"] {
   appearance: textfield;
 }
 
+/* Facturación SUNAT — acento violeta scoped solo a este módulo */
+.facturacion-theme {
+  --primary: #6d4fe0;
+  --primary-foreground: #ffffff;
+  --ring: #6d4fe0;
+  --sidebar-primary: #6d4fe0;
+}
+
+.dark .facturacion-theme {
+  --primary: #9b85ff;
+  --primary-foreground: #ffffff;
+  --ring: #9b85ff;
+  --sidebar-primary: #9b85ff;
+}
+
 /* Print styles */
 @media print {
   body * {
