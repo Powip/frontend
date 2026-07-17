@@ -41,7 +41,7 @@ function ProductosContent() {
     );
   }
 
-  /* ─── Mode selector ─── */
+  /* ─── Mode selecto ─── */
   return (
     <div className="flex flex-col items-center justify-center min-h-screen px-6">
       <HeaderConfig
