@@ -46,8 +46,13 @@ import {
   updateClient,
 } from "@/services/clients.service";
 import { useAuth } from "@/contexts/AuthContext";
+import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 import { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
+import {
+  bumpProductFrequency,
+  getProductFrequencies,
+} from "@/utils/productFrequency";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 import { CartItem, OrderHeader } from "@/interfaces/IOrder";
 import { DeliveryType, OrderType, SalesChannel } from "@/enum/Order.enum";
@@ -213,6 +218,9 @@ function RegistrarVentaContent() {
   } | null>(null);
   const [selectedInventory, setSelectedInventory] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [productFrequencies, setProductFrequencies] = useState<
+    Record<string, number>
+  >({});
 
   /* ---------------- Detalles ---------------- */
 
@@ -462,6 +470,10 @@ function RegistrarVentaContent() {
     setProductsMeta(null);
   }, [selectedStoreId, inventories]);
 
+  useEffect(() => {
+    setProductFrequencies(getProductFrequencies(companyId));
+  }, [companyId]);
+
   /* ---------------- Actions ---------------- */
 
   const searchProducts = useCallback(
@@ -476,7 +488,7 @@ function RegistrarVentaContent() {
           companyId,
           q: productQuery || undefined,
           page,
-          limit: 50,
+          limit: 12,
         });
 
         if (page === 1) {
@@ -510,7 +522,8 @@ function RegistrarVentaContent() {
   };
 
   /* ---------------- Packs & Promos (solo UI) ---------------- */
-  const isAdmin = auth?.user?.role === "ADMIN";
+  const isAdmin =
+    isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
   const { packs } = usePacks();
 
   const getVariantsForProduct = useCallback(
@@ -690,23 +703,32 @@ function RegistrarVentaContent() {
     }
   }, [clientForm.department]);
 
-  // Auto-cargar productos cuando cambia el inventario
+  // Auto-cargar productos cuando cambia el inventario (instantáneo, sin debounce).
+  // OJO: no incluir `searchProducts` en las deps — su identidad cambia en cada
+  // tecleo (depende de productQuery), y eso disparaba este efecto en cada
+  // keystroke, saltándose el debounce de abajo y generando una carrera de
+  // requests que pisaban resultados más nuevos con respuestas más viejas.
   useEffect(() => {
     if (selectedInventory) {
       searchProducts(1);
     }
-  }, [selectedInventory, searchProducts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedInventory]);
 
-  // Búsqueda debounced cuando cambia el query del producto
+  // Búsqueda debounced cuando cambia el query del producto.
+  // `productsLoading` se activa de inmediato (no recién cuando dispara el
+  // fetch a los 500ms) para que la grilla se atenúe apenas se escribe y no
+  // parezca que los resultados viejos siguen siendo válidos para el texto
+  // nuevo justo antes de que la búsqueda real los reemplace.
   useEffect(() => {
+    if (!selectedInventory) return;
+    setProductsLoading(true);
     const timer = setTimeout(() => {
-      // Solo buscar si hay un inventario seleccionado
-      if (selectedInventory) {
-        searchProducts(1);
-      }
+      searchProducts(1);
     }, 500);
     return () => clearTimeout(timer);
-  }, [productQuery, selectedInventory, searchProducts]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productQuery]);
 
   const validateClientForm = () => {
     const errors: Partial<Record<keyof typeof emptyClientForm, string>> = {};
@@ -875,6 +897,35 @@ function RegistrarVentaContent() {
         auth?.user?.surname || ""
       }`.trim();
 
+      // El precio de cierre (item.price) ya refleja cualquier descuento manual,
+      // % o pack aplicado — acá solo reconstruimos el monto de descuento en
+      // formato FIXED para que discountType/discountAmount no queden en
+      // "NONE"/0 cuando la línea sí tiene descuento (item.discount es un
+      // campo legado que el editor de precios/packs nunca actualiza).
+      // packId/isGift/giftValue van igual: si el backend de order-header
+      // todavía no los conoce los va a ignorar, pero quedan listos para
+      // cuando los soporte (ver lista de gaps pedida al backend).
+      const buildOrderItem = (item: CartItem) => {
+        const pvp = item.pvp ?? item.price;
+        const discountAmount = Math.max(
+          0,
+          Math.round((pvp - item.price) * 100) / 100,
+        );
+        return {
+          productVariantId: item.variantId,
+          sku: item.sku,
+          productName: item.productName,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          discountType: discountAmount > 0 ? "FIXED" : "NONE",
+          discountAmount,
+          attributes: item.attributes,
+          packId: item.packId ?? null,
+          isGift: item.isGift ?? false,
+          ...(item.isGift ? { giftValue: item.giftValue ?? 0 } : {}),
+        };
+      };
+
       const payload = {
         // --- Comprobante ---
         receiptType: "BOLETA",
@@ -904,16 +955,7 @@ function RegistrarVentaContent() {
         customerId: activeClient.id,
 
         // --- Ítems ---
-        items: cart.map((item) => ({
-          productVariantId: item.variantId,
-          sku: item.sku,
-          productName: item.productName,
-          quantity: item.quantity,
-          unitPrice: item.price,
-          discountType: item.discount > 0 ? "FIXED" : "NONE",
-          discountAmount: item.discount || 0,
-          attributes: item.attributes,
-        })),
+        items: cart.map(buildOrderItem),
 
         // --- Pagos (siempre incluir) ---
         payments:
@@ -997,14 +1039,7 @@ function RegistrarVentaContent() {
             notes: orderDetails.notes ?? null,
             customerId: activeClient.id,
             items: cart.map((item) => ({
-              productVariantId: item.variantId,
-              sku: item.sku,
-              productName: item.productName,
-              quantity: item.quantity,
-              unitPrice: item.price,
-              discountType: item.discount > 0 ? "FIXED" : "NONE",
-              discountAmount: item.discount || 0,
-              attributes: item.attributes,
+              ...buildOrderItem(item),
               // Campos de promo del día (solo para items nuevos cuando isPromo=true)
               isPromoItem: isPromo ? true : undefined,
               addedByUserId: isPromo ? auth?.user?.id : undefined,
@@ -1040,6 +1075,7 @@ function RegistrarVentaContent() {
   };
 
   const addToCart = (product: InventoryItemForSale) => {
+    setProductFrequencies(bumpProductFrequency(companyId, product.productName));
     setCart((prev) => {
       // Permitir ventas bajo pedido (stock negativo)
       // El badge "Sin stock - Venta bajo pedido" ya se muestra en el listado
@@ -1125,10 +1161,11 @@ function RegistrarVentaContent() {
   };
 
   const handleSetPrice = (cartItemId: string, price: number) => {
+    const net = Math.round(price * 100) / 100;
     setCart((prev) =>
       prev.map((p) =>
         p.id === cartItemId
-          ? { ...p, price: Math.round(price * 100) / 100 }
+          ? { ...p, price: net, discMode: "man", discValue: net }
           : p,
       ),
     );
@@ -1144,7 +1181,12 @@ function RegistrarVentaContent() {
         if (p.id !== cartItemId) return p;
         const pvp = p.pvp ?? p.price;
         const net = mode === "pct" ? pvp * (1 - value / 100) : pvp - value;
-        return { ...p, price: Math.max(0, Math.round(net * 100) / 100) };
+        return {
+          ...p,
+          price: Math.max(0, Math.round(net * 100) / 100),
+          discMode: mode,
+          discValue: value,
+        };
       }),
     );
   };
@@ -1152,7 +1194,9 @@ function RegistrarVentaContent() {
   const handleClearDiscount = (cartItemId: string) => {
     setCart((prev) =>
       prev.map((p) =>
-        p.id === cartItemId ? { ...p, price: p.pvp ?? p.price } : p,
+        p.id === cartItemId
+          ? { ...p, price: p.pvp ?? p.price, discMode: null, discValue: null }
+          : p,
       ),
     );
   };
@@ -1161,9 +1205,12 @@ function RegistrarVentaContent() {
 
   const handleBulkPrice = (price: number) => {
     const ids = new Set(editableCartLines().map((l) => l.id));
+    const net = Math.round(price * 100) / 100;
     setCart((prev) =>
       prev.map((p) =>
-        ids.has(p.id) ? { ...p, price: Math.round(price * 100) / 100 } : p,
+        ids.has(p.id)
+          ? { ...p, price: net, discMode: "man", discValue: net }
+          : p,
       ),
     );
     toast.success(
@@ -1182,6 +1229,8 @@ function RegistrarVentaContent() {
                 0,
                 Math.round((p.pvp ?? p.price) * (1 - pct / 100) * 100) / 100,
               ),
+              discMode: "pct",
+              discValue: pct,
             }
           : p,
       ),
@@ -1192,7 +1241,11 @@ function RegistrarVentaContent() {
   const handleRestorePvp = () => {
     const ids = new Set(editableCartLines().map((l) => l.id));
     setCart((prev) =>
-      prev.map((p) => (ids.has(p.id) ? { ...p, price: p.pvp ?? p.price } : p)),
+      prev.map((p) =>
+        ids.has(p.id)
+          ? { ...p, price: p.pvp ?? p.price, discMode: null, discValue: null }
+          : p,
+      ),
     );
     toast.success("Precios restaurados a PVP");
   };
@@ -1231,18 +1284,19 @@ function RegistrarVentaContent() {
   };
 
   /* ---------------- Totales ---------------- */
-  // Subtotal bruto (precio * cantidad)
-  const subtotalBruto = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
-  // Total de descuentos por item (manejar strings durante edición)
-  const totalItemDiscounts = cart.reduce((acc, p) => {
-    const discount =
-      typeof p.discount === "number"
-        ? p.discount
-        : parseFloat(p.discount as any) || 0;
-    return acc + discount;
-  }, 0);
-  // Subtotal neto (después de descuentos por item)
-  const subtotal = subtotalBruto - totalItemDiscounts;
+  // Subtotal bruto (PVP * cantidad) — antes se calculaba como price*qty
+  // (que ya es el precio de cierre, no el bruto) y el descuento salía de
+  // item.discount, un campo que el editor de precios/packs nunca actualiza.
+  // Eso hacía que "Total descuentos" nunca se mostrara aunque la línea sí
+  // tuviera descuento o pack aplicado.
+  const subtotalBruto = cart.reduce(
+    (acc, p) => acc + (p.pvp ?? p.price) * p.quantity,
+    0,
+  );
+  // Subtotal neto (precio de cierre real, después de descuentos/packs)
+  const subtotal = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
+  // Total de descuentos por item, derivado (bruto - neto)
+  const totalItemDiscounts = Math.max(0, subtotalBruto - subtotal);
   // Si INCLUIDO, los precios ya incluyen impuestos
   const taxes = taxMode === "INCLUIDO" ? 0 : subtotal * 0.18;
 
@@ -1754,13 +1808,15 @@ function RegistrarVentaContent() {
                         )}
                         {mapsLinkStatus === "unrecognized" && (
                           <p className="text-xs text-amber-600 dark:text-amber-400">
-                            No pudimos leer coordenadas en este link. Abre el link, copia la
-                            URL completa (con “@lat,lng”) o completa Latitud/Longitud a mano.
+                            No pudimos leer coordenadas en este link. Abre el
+                            link, copia la URL completa (con “@lat,lng”) o
+                            completa Latitud/Longitud a mano.
                           </p>
                         )}
                         {!mapsLinkStatus && (
                           <p className="text-xs text-muted-foreground">
-                            Pega el link para completar Latitud y Longitud automáticamente.
+                            Pega el link para completar Latitud y Longitud
+                            automáticamente.
                           </p>
                         )}
                       </div>
@@ -1934,10 +1990,12 @@ function RegistrarVentaContent() {
                       products={products}
                       query={productQuery}
                       loading={productsLoading}
+                      isAdmin={isAdmin}
                       onAddVariant={addToCart}
                       qtyInCartByVariant={qtyInCartByVariant}
                       modelQtyInCart={packsEngine.modelQtyInCart}
                       activePacksForProduct={packsEngine.activePacksForProduct}
+                      frequencies={productFrequencies}
                       onLoadMore={handleLoadMore}
                       hasMore={
                         productsMeta
@@ -1948,6 +2006,21 @@ function RegistrarVentaContent() {
                   </div>
                 </CardContent>
               </Card>
+            </div>
+            <div className="space-y-6 min-w-0">
+              {/* Sugerencias para cerrar */}
+              <SuggestionsPanel
+                packs={packs}
+                channel={orderDetails.salesChannel}
+                appliedPacks={packsEngine.appliedPacks}
+                modelQtyInCart={packsEngine.modelQtyInCart}
+                subtotalPayable={packsEngine.subtotalPayable}
+                totalUnits={packsEngine.totalUnits}
+                isAdmin={isAdmin}
+                onApplyPack={handleApplyPack}
+                onAutoFillVolume={handleAutoFillVolume}
+                onAutoAddBundleItem={handleAutoAddBundleItem}
+              />
 
               {/* Carrito */}
               <Card>
@@ -1991,21 +2064,6 @@ function RegistrarVentaContent() {
                   />
                 </CardContent>
               </Card>
-            </div>
-            <div className="space-y-6 min-w-0">
-              {/* Sugerencias para cerrar */}
-              <SuggestionsPanel
-                packs={packs}
-                channel={orderDetails.salesChannel}
-                appliedPacks={packsEngine.appliedPacks}
-                modelQtyInCart={packsEngine.modelQtyInCart}
-                subtotalPayable={packsEngine.subtotalPayable}
-                totalUnits={packsEngine.totalUnits}
-                isAdmin={isAdmin}
-                onApplyPack={handleApplyPack}
-                onAutoFillVolume={handleAutoFillVolume}
-                onAutoAddBundleItem={handleAutoAddBundleItem}
-              />
 
               {/* Detalles */}
               <Card>

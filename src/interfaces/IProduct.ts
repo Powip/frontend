@@ -72,4 +72,10 @@ export interface InventoryItemForSale {
   min_stock?: number;
   attributes?: Record<string, string>;
   imageUrl?: string | null;
+  // Pendientes de que ms-logistics los agregue a /inventory-item/search
+  // (ver doc "Registrar Venta & Promos v2.1", sección 2/3). Opcionales para
+  // que no rompa nada mientras el backend no los devuelva.
+  brand?: string | null;
+  category?: string | null;
+  subcategory?: string | null;
 }

@@ -11,6 +11,10 @@ export interface ProductGroup {
   minPrice: number;
   maxPrice: number;
   imageUrl?: string | null;
+  /** Pendientes de que el backend los devuelva — ver InventoryItemForSale */
+  brand?: string | null;
+  category?: string | null;
+  subcategory?: string | null;
 }
 
 /** Agrupa variantes planas (una fila por variantId) en "modelos" por nombre de producto */
@@ -50,6 +54,9 @@ export function groupProductsByModel(
       minPrice: Math.min(...prices),
       maxPrice: Math.max(...prices),
       imageUrl: groupItems.find((i) => i.imageUrl)?.imageUrl ?? null,
+      brand: groupItems.find((i) => i.brand)?.brand ?? null,
+      category: groupItems.find((i) => i.category)?.category ?? null,
+      subcategory: groupItems.find((i) => i.subcategory)?.subcategory ?? null,
     };
   });
 }

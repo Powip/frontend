@@ -296,6 +296,22 @@ function LineRow({
                 </button>
               </Badge>
             )}
+            {!isPack && line.discMode && (
+              <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/15 dark:text-amber-300 gap-1">
+                {line.discMode === "pct"
+                  ? `${line.discValue}% desc.`
+                  : line.discMode === "amt"
+                    ? `-${fmt(line.discValue ?? 0)}`
+                    : "Precio manual"}
+                <button
+                  type="button"
+                  className="underline ml-1"
+                  onClick={() => onClearDiscount(line.id)}
+                >
+                  quitar
+                </button>
+              </Badge>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-0.5 flex-wrap text-[11px] text-muted-foreground">
             {line.attributes &&
@@ -379,8 +395,14 @@ function DiscountEditor({
   onClear: () => void;
   onClose: () => void;
 }) {
-  const [mode, setMode] = useState<"pct" | "amt" | "man">("pct");
-  const [value, setValue] = useState("");
+  const [mode, setMode] = useState<"pct" | "amt" | "man">(line.discMode ?? "pct");
+  const [value, setValue] = useState(() => {
+    if (line.discMode === "pct" || line.discMode === "amt") {
+      return line.discValue != null ? String(line.discValue) : "";
+    }
+    if (line.discMode === "man") return String(line.price);
+    return "";
+  });
   const pvp = line.pvp ?? line.price;
 
   return (
@@ -408,7 +430,7 @@ function DiscountEditor({
               className="h-8 w-24"
               type="number"
               placeholder={String(pvp)}
-              defaultValue={line.price}
+              value={value}
               onChange={(e) => setValue(e.target.value)}
             />
             <Button

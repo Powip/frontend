@@ -40,6 +40,10 @@ export interface CartItem {
   packId?: string | null; // Pack aplicado a esta línea (Packs & Promos, solo UI)
   isGift?: boolean; // Línea generada por un pack de regalo
   giftValue?: number; // Valor de referencia del regalo (no se cobra)
+  /** Metadata del descuento manual aplicado a la línea (para mostrar el badge y
+   *  prefillear el editor) — el precio de cobro real siempre es `price`. */
+  discMode?: "pct" | "amt" | "man" | null;
+  discValue?: number | null;
 }
 
 /* -----------------------------------------

@@ -18,12 +18,22 @@ import {
 import { Combobox } from "@/components/ui/combobox";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { useAuth } from "@/contexts/AuthContext";
+import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 import { PacksProvider, usePacks } from "@/contexts/PacksContext";
-import { Pack, PackType, BundlePack, GiftOption, GiftPack, VolumePack } from "@/interfaces/IPack";
+import {
+  Pack,
+  PackType,
+  BundlePack,
+  GiftOption,
+  GiftPack,
+  PROMO_CHANNELS,
+  VolumePack,
+} from "@/interfaces/IPack";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
-import { groupProductsByModel, initials, ProductGroup } from "@/utils/productGrouping";
-import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
+import { getProducts } from "@/api/Productos";
+import { IGetProducts } from "@/api/Interfaces";
+import { initials } from "@/utils/productGrouping";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -35,13 +45,15 @@ const PACK_TYPE_LABEL: Record<PackType, string> = {
   GIFT: "Regalo",
 };
 
+const isDev = process.env.NODE_ENV === "development";
+
 function PacksPromosContent() {
   const { auth, selectedStoreId, inventories } = useAuth();
-  const isAdmin = auth?.user?.role === "ADMIN";
+  const realIsAdmin =
+    isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
+  const [devRole, setDevRole] = useState<"admin" | "vendedor" | null>(null);
+  const isAdmin = isDev && devRole ? devRole === "admin" : realIsAdmin;
   const companyId = auth?.company?.id;
-  const salesChannels = auth?.company?.sales_channels?.length
-    ? auth.company.sales_channels
-    : DEFAULT_SALES_CHANNELS;
 
   const [selectedInventory, setSelectedInventory] = useState("");
   useEffect(() => {
@@ -70,17 +82,41 @@ function PacksPromosContent() {
             title="Packs & Promos"
             description="Configura descuentos por volumen y combos que se detectan solos al registrar la venta."
           />
-          {isAdmin && (
-            <Button
-              className="rounded-xl"
-              onClick={() => {
-                setEditingId(null);
-                setModalOpen(true);
-              }}
-            >
-              <Plus className="h-4 w-4 mr-1" /> Nuevo pack
-            </Button>
-          )}
+          <div className="flex items-center gap-3">
+            {isDev && (
+              <div className="flex items-center gap-1.5 rounded-full border border-dashed border-orange-300 bg-orange-50 px-2 py-1 dark:border-orange-800 dark:bg-orange-500/10">
+                <span className="text-[10px] font-bold uppercase tracking-wide text-orange-600 dark:text-orange-400 pl-1">
+                  Dev
+                </span>
+                {(["admin", "vendedor"] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setDevRole((prev) => (prev === r ? null : r))}
+                    className={cn(
+                      "rounded-full px-2.5 py-1 text-[11px] font-semibold capitalize transition-colors",
+                      isAdmin === (r === "admin")
+                        ? "bg-orange-600 text-white"
+                        : "text-orange-700 hover:bg-orange-100 dark:text-orange-300 dark:hover:bg-orange-500/20",
+                    )}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            )}
+            {isAdmin && (
+              <Button
+                className="rounded-xl"
+                onClick={() => {
+                  setEditingId(null);
+                  setModalOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-1" /> Nuevo pack
+              </Button>
+            )}
+          </div>
         </div>
 
         {!isAdmin && (
@@ -135,10 +171,10 @@ function PacksPromosContent() {
                   setModalOpen(true);
                 }}
                 onToggle={() => togglePack(p.id)}
-                onDelete={() => {
+                onDelete={async () => {
                   if (window.confirm(`¿Eliminar "${p.name}"? Esta acción no se puede deshacer.`)) {
-                    deletePack(p.id);
-                    toast.success("Pack eliminado");
+                    const ok = await deletePack(p.id);
+                    if (ok) toast.success("Pack eliminado");
                   }
                 }}
               />
@@ -153,18 +189,16 @@ function PacksPromosContent() {
           open={modalOpen}
           onOpenChange={setModalOpen}
           editingPack={editingPack}
-          salesChannels={salesChannels}
           inventoryId={selectedInventory}
           companyId={companyId}
-          onSave={(pack) => {
-            if (editingPack) {
-              updatePack(editingPack.id, pack);
-              toast.success("Pack actualizado");
-            } else {
-              addPack(pack);
-              toast.success("Pack creado");
+          onSave={async (pack) => {
+            const ok = editingPack
+              ? await updatePack(editingPack.id, pack)
+              : await addPack(pack);
+            if (ok) {
+              toast.success(editingPack ? "Pack actualizado" : "Pack creado");
+              setModalOpen(false);
             }
-            setModalOpen(false);
           }}
         />
       )}
@@ -269,34 +303,40 @@ function PackCard({
    Modal crear / editar pack
 ----------------------------------------- */
 
-function useProductGroups(inventoryId?: string, companyId?: string) {
+/** Busca en el catálogo real de productos (ms-products) — de ahí sale el productId
+ *  que la Promos API necesita para packs de Volumen/Bundle. */
+function useProductCatalog(companyId?: string) {
   const [query, setQuery] = useState("");
-  const [groups, setGroups] = useState<ProductGroup[]>([]);
+  const [products, setProducts] = useState<IGetProducts[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!inventoryId) {
-      setGroups([]);
+    if (!companyId) {
+      setProducts([]);
       return;
     }
     setLoading(true);
     const timer = setTimeout(() => {
-      searchInventoryItems({ inventoryId, companyId, q: query || undefined, page: 1, limit: 60 })
-        .then((res) => setGroups(groupProductsByModel(res.data)))
-        .catch(() => setGroups([]))
+      // No se manda companyId: el backend lo infiere del JWT (mismo patrón
+      // que useCatalogoProductos.tsx, que es el caller que sabemos que funciona).
+      getProducts({ status: true, name: query || undefined })
+        .then(setProducts)
+        .catch((err) => {
+          console.error("[packs-promos] getProducts falló:", err);
+          setProducts([]);
+        })
         .finally(() => setLoading(false));
     }, 350);
     return () => clearTimeout(timer);
-  }, [inventoryId, companyId, query]);
+  }, [companyId, query]);
 
-  return { query, setQuery, groups, loading };
+  return { query, setQuery, products, loading };
 }
 
 function PackFormModal({
   open,
   onOpenChange,
   editingPack,
-  salesChannels,
   inventoryId,
   companyId,
   onSave,
@@ -304,19 +344,19 @@ function PackFormModal({
   open: boolean;
   onOpenChange: (v: boolean) => void;
   editingPack: Pack | null;
-  salesChannels: string[];
   inventoryId: string;
   companyId?: string;
-  onSave: (pack: Pack) => void;
+  onSave: (pack: Pack) => void | Promise<void>;
 }) {
   const [type, setType] = useState<PackType>(editingPack?.type ?? "VOLUME");
   const [name, setName] = useState(editingPack?.name ?? "");
   const [channels, setChannels] = useState<string[]>(editingPack?.channels ?? []);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // VOLUME
-  const [volProductKey, setVolProductKey] = useState(
-    editingPack?.type === "VOLUME" ? editingPack.product.productKey : "",
+  const [volProductId, setVolProductId] = useState(
+    editingPack?.type === "VOLUME" ? editingPack.product.productId ?? "" : "",
   );
   const [volVariantFree, setVolVariantFree] = useState(
     editingPack?.type === "VOLUME" ? editingPack.variantFree : true,
@@ -332,11 +372,11 @@ function PackFormModal({
   );
 
   // BUNDLE
-  const [bunKey1, setBunKey1] = useState(
-    editingPack?.type === "BUNDLE" ? editingPack.items[0]?.productKey ?? "" : "",
+  const [bunProductId1, setBunProductId1] = useState(
+    editingPack?.type === "BUNDLE" ? editingPack.items[0]?.productId ?? "" : "",
   );
-  const [bunKey2, setBunKey2] = useState(
-    editingPack?.type === "BUNDLE" ? editingPack.items[1]?.productKey ?? "" : "",
+  const [bunProductId2, setBunProductId2] = useState(
+    editingPack?.type === "BUNDLE" ? editingPack.items[1]?.productId ?? "" : "",
   );
   const [bunPrice, setBunPrice] = useState(
     editingPack?.type === "BUNDLE" ? String(editingPack.packPrice) : "",
@@ -356,24 +396,23 @@ function PackFormModal({
     editingPack?.type === "GIFT" ? editingPack.gifts : [],
   );
 
-  const productSearch = useProductGroups(inventoryId, companyId);
+  const productSearch = useProductCatalog(companyId);
 
   const productOptions = useMemo(
     () =>
-      productSearch.groups.map((g) => ({
-        value: g.key,
-        label: `${g.productName} — ${fmt(g.minPrice)}`,
-        group: g,
+      productSearch.products.map((p) => ({
+        value: p.id,
+        label: `${p.name} — ${fmt(p.priceVta)}`,
       })),
-    [productSearch.groups],
+    [productSearch.products],
   );
 
-  const findGroup = (key: string) => productSearch.groups.find((g) => g.key === key);
+  const findProduct = (id: string) => productSearch.products.find((p) => p.id === id);
 
   const toggleChannel = (c: string) =>
     setChannels((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
       setError("Ingresa un nombre.");
       return;
@@ -382,12 +421,11 @@ function PackFormModal({
       setError("Selecciona al menos un canal.");
       return;
     }
-
     if (type === "VOLUME") {
-      const group = findGroup(volProductKey);
+      const product = findProduct(volProductId);
       const min = Number(volMin);
       const price = Number(volPrice);
-      if (!group) {
+      if (!product) {
         setError("Selecciona un producto.");
         return;
       }
@@ -395,39 +433,47 @@ function PackFormModal({
         setError("La cantidad mínima debe ser ≥ 2.");
         return;
       }
-      if (!price || price >= group.minPrice * min) {
+      if (!price || price >= product.priceVta * min) {
         setError("El precio del pack debe ser menor a la suma de PVP.");
         return;
       }
       const pack: VolumePack = {
-        id: editingPack?.id ?? crypto.randomUUID(),
+        id: editingPack?.id ?? "",
         type: "VOLUME",
         name: name.trim(),
         active: editingPack?.active ?? true,
         channels,
-        product: { productKey: group.key, productName: group.productName, price: group.minPrice },
+        product: {
+          productId: product.id,
+          productKey: product.name,
+          productName: product.name,
+          price: product.priceVta,
+        },
         variantFree: volVariantFree,
         minQty: min,
         maxQty: volMax ? Number(volMax) : null,
         packPrice: price,
+        synced: true,
       };
-      onSave(pack);
+      setSaving(true);
+      await onSave(pack);
+      setSaving(false);
       return;
     }
 
     if (type === "BUNDLE") {
-      if (!bunKey1 || !bunKey2 || bunKey1 === bunKey2) {
+      if (!bunProductId1 || !bunProductId2 || bunProductId1 === bunProductId2) {
         setError("Un bundle requiere 2 productos distintos.");
         return;
       }
-      const g1 = findGroup(bunKey1);
-      const g2 = findGroup(bunKey2);
+      const p1 = findProduct(bunProductId1);
+      const p2 = findProduct(bunProductId2);
       const price = Number(bunPrice);
-      if (!g1 || !g2) {
+      if (!p1 || !p2) {
         setError("Selecciona ambos productos.");
         return;
       }
-      if (!price || price >= g1.minPrice + g2.minPrice) {
+      if (!price || price >= p1.priceVta + p2.priceVta) {
         setError("El precio del bundle debe ser menor a la suma de PVP.");
         return;
       }
@@ -438,12 +484,14 @@ function PackFormModal({
         active: editingPack?.active ?? true,
         channels,
         items: [
-          { productKey: g1.key, productName: g1.productName, price: g1.minPrice },
-          { productKey: g2.key, productName: g2.productName, price: g2.minPrice },
+          { productId: p1.id, productKey: p1.name, productName: p1.name, price: p1.priceVta },
+          { productId: p2.id, productKey: p2.name, productName: p2.name, price: p2.priceVta },
         ],
         packPrice: price,
       };
-      onSave(pack);
+      setSaving(true);
+      await onSave(pack);
+      setSaving(false);
       return;
     }
 
@@ -469,7 +517,9 @@ function PackFormModal({
         minQty: null,
         gifts: giftOptions,
       };
-      onSave(pack);
+      setSaving(true);
+      await onSave(pack);
+      setSaving(false);
     } else {
       const qty = Number(giftMinQty);
       if (qty < 2) {
@@ -487,7 +537,9 @@ function PackFormModal({
         minQty: qty,
         gifts: giftOptions,
       };
-      onSave(pack);
+      setSaving(true);
+      await onSave(pack);
+      setSaving(false);
     }
   };
 
@@ -539,8 +591,8 @@ function PackFormModal({
                 <Label>Producto</Label>
                 <Combobox
                   options={productOptions}
-                  value={volProductKey}
-                  onValueChange={setVolProductKey}
+                  value={volProductId}
+                  onValueChange={setVolProductId}
                   onSearchChange={productSearch.setQuery}
                   isLoading={productSearch.loading}
                   placeholder="Buscar producto..."
@@ -574,8 +626,8 @@ function PackFormModal({
                 <Label>Productos del bundle (mínimo 2)</Label>
                 <Combobox
                   options={productOptions}
-                  value={bunKey1}
-                  onValueChange={setBunKey1}
+                  value={bunProductId1}
+                  onValueChange={setBunProductId1}
                   onSearchChange={productSearch.setQuery}
                   isLoading={productSearch.loading}
                   placeholder="Producto 1..."
@@ -583,8 +635,8 @@ function PackFormModal({
                 />
                 <Combobox
                   options={productOptions}
-                  value={bunKey2}
-                  onValueChange={setBunKey2}
+                  value={bunProductId2}
+                  onValueChange={setBunProductId2}
                   onSearchChange={productSearch.setQuery}
                   isLoading={productSearch.loading}
                   placeholder="Producto 2..."
@@ -648,7 +700,7 @@ function PackFormModal({
           <div className="space-y-1.5">
             <Label>Canales de venta — elige en cuáles sí aplica</Label>
             <div className="flex flex-wrap gap-x-5 gap-y-2">
-              {salesChannels.map((c) => (
+              {PROMO_CHANNELS.map((c) => (
                 <label key={c} className="flex items-center gap-2 text-sm">
                   <Checkbox checked={channels.includes(c)} onCheckedChange={() => toggleChannel(c)} />
                   {c.replace(/_/g, " ")}
@@ -661,10 +713,12 @@ function PackFormModal({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancelar
           </Button>
-          <Button onClick={handleSave}>Guardar pack</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Guardando..." : "Guardar pack"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
