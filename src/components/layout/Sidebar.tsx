@@ -111,11 +111,12 @@ export function Sidebar({ className }: SidebarProps) {
           { name: "Ventas", href: "/ventas", icon: ShoppingCart },
           { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
           { name: "Clientes", href: "/clientes", icon: Users },
-          {
-            name: "Carritos Abandonados",
-            href: "/carritos-abandonados",
-            icon: ShoppingCart,
-          },
+          // 🔴 KILL SWITCH (hotfix checkouts abandonados) — revertir: descomentar
+          // {
+          //   name: "Carritos Abandonados",
+          //   href: "/carritos-abandonados",
+          //   icon: ShoppingCart,
+          // },
           {
             name: "Conecta Google Sheets",
             href: "/google-sheets",

@@ -28,14 +28,15 @@ const TABS: TabL1Config[] = [
     activeClass: "border-b-2 border-teal-600 text-teal-700 dark:text-teal-400 dark:border-teal-400 font-bold",
     countClass: "bg-teal-100 text-teal-700 dark:bg-teal-900 dark:text-teal-300",
   },
-  {
-    key: "carrito",
-    icon: "🛒",
-    label: "Carritos Abandonados",
-    color: "var(--purple-600, #7c3aed)",
-    activeClass: "border-b-2 border-purple-600 text-purple-700 dark:text-purple-400 dark:border-purple-400 font-bold",
-    countClass: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
-  },
+  // 🔴 KILL SWITCH (hotfix checkouts abandonados) — revertir: descomentar
+  // {
+  //   key: "carrito",
+  //   icon: "🛒",
+  //   label: "Carritos Abandonados",
+  //   color: "var(--purple-600, #7c3aed)",
+  //   activeClass: "border-b-2 border-purple-600 text-purple-700 dark:text-purple-400 dark:border-purple-400 font-bold",
+  //   countClass: "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300",
+  // },
 ];
 
 interface Props {
