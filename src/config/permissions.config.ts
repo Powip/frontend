@@ -35,6 +35,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/ventas": [],
   "/registrar-venta": [],
   "/operaciones": [],
+  "/centro-envios": [],
   "/seguimiento": [],
   "/finanzas": [],
   "/clientes": [],
