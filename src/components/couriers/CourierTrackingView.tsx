@@ -12,7 +12,6 @@ import {
   MapPin,
   AlertCircle,
   Calculator,
-  Pencil,
   ArrowRight,
   User,
   CheckCircle2,
@@ -75,7 +74,6 @@ interface TrackingGuide {
   externalGuideReference?: string;
   externalCarrierId?: string;
   shalomTrackingData?: any;
-  olvaTrackingData?: any;
 }
 
 export default function CourierTrackingView() {
@@ -211,53 +209,23 @@ export default function CourierTrackingView() {
     window.open(url, "_blank");
   };
 
-  const filteredGuides = guides.filter(g => 
-    (g.guideNumber?.toLowerCase().includes(search.toLowerCase()) || false) ||
-    (g.courierName?.toLowerCase().includes(search.toLowerCase()) || false) ||
-    g.orders?.some(o => o.orderNumber?.toLowerCase().includes(search.toLowerCase()) || false)
-  ).filter(g => {
-    const courier = (g.courierName || "").toUpperCase();
-    
-    // El usuario requiere que SOLAMENTE aparezcan las que realmente fueron cargadas a la API.
-    // Verificamos estrictamente el objeto de tracking devuelto por la API respectiva.
-    // Para Shalom, debe existir shalomTrackingData.
-    // Para Olva, debe existir olvaTrackingData.
-    const isShalomLoaded = courier.includes("SHALOM") && !!g.shalomTrackingData;
-    const isOlvaLoaded = courier.includes("OLVA") && !!g.olvaTrackingData;
-
-    if (activeCarrierTab === "shalom") {
-      return isShalomLoaded;
-    }
-    if (activeCarrierTab === "olva") {
-      return isOlvaLoaded;
-    }
-    
-    // Pestaña "todos": Unión estricta de guías con datos de tracking vivos
-    return isShalomLoaded || isOlvaLoaded;
-  });
+  // Usado por la pestaña "Todos": todas las guías reales de la tienda que
+  // matchean la búsqueda, sin filtrar por courier (Shalom y Aliclik tienen
+  // su propia vista dedicada con datos en vivo de su respectiva API).
+  const filteredGuides = guides.filter(
+    (g) =>
+      (g.guideNumber?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      (g.courierName?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
+      (g.orders?.some((o) =>
+        o.orderNumber?.toLowerCase().includes(search.toLowerCase()),
+      ) ?? false),
+  );
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4 bg-muted/30 p-4 rounded-xl border border-border">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por guía, orden o courier..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 bg-background"
-          />
-        </div>
-        <Button onClick={fetchGuides} variant="outline" size="sm" className="gap-2">
-          <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-          Actualizar
-        </Button>
-      </div>
-
       <Tabs value={activeCarrierTab} onValueChange={setActiveCarrierTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-4 mb-6">
+        <TabsList className="grid w-full max-w-md grid-cols-3 mb-6">
           <TabsTrigger value="shalom">Shalom</TabsTrigger>
-          <TabsTrigger value="olva">Olva</TabsTrigger>
           <TabsTrigger value="todos">Todos</TabsTrigger>
           <TabsTrigger value="aliclik">Aliclik</TabsTrigger>
         </TabsList>
@@ -270,112 +238,6 @@ export default function CourierTrackingView() {
             </CardHeader>
             <CardContent>
               <ShalomOrderTrackingView />
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="olva">
-          <Card className="border-border shadow-sm">
-            <CardHeader className="pb-3 px-4">
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle className="text-lg">Guías Registradas Olva</CardTitle>
-                  <CardDescription>Visualiza y gestiona las guías enviadas a través de Olva Courier.</CardDescription>
-                </div>
-                <div className="text-muted-foreground text-xs font-medium bg-muted/50 px-2 py-1 rounded">
-                  {filteredGuides.length} guías
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="border-t border-border overflow-hidden">
-                <Table>
-                  <TableHeader className="bg-muted/30">
-                    <TableRow>
-                      <TableHead className="font-semibold px-4 h-10 text-xs">N° Guía</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Fecha</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Courier</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Nro Canal</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Código</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Costo</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-right text-xs">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {loading ? (
-                      Array.from({ length: 3 }).map((_, i) => (
-                        <TableRow key={i}>
-                          <TableCell colSpan={7} className="h-16 animate-pulse bg-muted/10 px-4" />
-                        </TableRow>
-                      ))
-                    ) : filteredGuides.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={7} className="h-32 text-center text-muted-foreground text-sm">
-                          No se encontraron guías para este filtro.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      filteredGuides.map((guide) => {
-                        const shalomData = guide.shalomTrackingData;
-                        const firstOrderId = Object.keys(shalomData || {})[0];
-                        const t = firstOrderId ? shalomData[firstOrderId] : null;
-
-                        return (
-                          <TableRow 
-                            key={guide.id} 
-                            className="hover:bg-muted/40 transition-colors cursor-pointer group"
-                            onClick={() => handleRowClick(guide.id)}
-                          >
-                            <TableCell className="font-medium px-4 py-3">
-                              <Button 
-                                variant="link" 
-                                className="p-0 h-auto text-primary text-xs font-semibold hover:no-underline group-hover:underline"
-                              >
-                                {guide.guideNumber}
-                              </Button>
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-[10px] text-center whitespace-nowrap text-muted-foreground font-medium">
-                              {new Date(guide.created_at).toLocaleDateString()}
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-center">
-                              <Badge 
-                                variant={guide.courierName?.toUpperCase().includes("SHALOM") ? "default" : "secondary"} 
-                                className={`text-[10px] px-1.5 py-0 h-5 font-bold ${guide.courierName?.toUpperCase().includes("OLVA") ? "bg-yellow-500 hover:bg-yellow-600 text-black border-none" : ""}`}
-                              >
-                                {guide.courierName || "Sin nombre"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-center text-[10px] font-mono whitespace-nowrap">
-                              {t?.orderNumber || "—"}
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-center text-[10px] font-mono whitespace-nowrap">
-                              {t?.orderCode || "—"}
-                            </TableCell>
-                            <TableCell className={`px-4 py-3 text-[10px] text-center whitespace-nowrap ${guide.quotedAmount ? "font-bold" : "italic text-muted-foreground"}`}>
-                              {guide.quotedAmount 
-                                ? `${guide.quotedCurrency || "S/"} ${Number(guide.quotedAmount).toFixed(2)}` 
-                                : "No calculado"}
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex justify-end gap-1.5">
-                                <Button 
-                                  size="sm" 
-                                  variant="outline" 
-                                  className="h-7 w-7 p-0 flex items-center justify-center border-blue-200 text-blue-600 hover:bg-blue-50"
-                                  onClick={() => handleRowClick(guide.id)}
-                                  title="Editar Guía"
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -395,7 +257,7 @@ export default function CourierTrackingView() {
         <TabsContent value="todos">
           <Card className="border-border shadow-sm">
             <CardHeader className="pb-3 px-4">
-              <div className="flex justify-between items-center">
+              <div className="flex flex-wrap justify-between items-center gap-2">
                 <div>
                   <CardTitle className="text-lg">Todas las Guías</CardTitle>
                   <CardDescription>Resumen general de guías de todos los couriers.</CardDescription>
@@ -403,6 +265,21 @@ export default function CourierTrackingView() {
                 <div className="text-muted-foreground text-xs font-medium bg-muted/50 px-2 py-1 rounded">
                   {filteredGuides.length} guías
                 </div>
+              </div>
+              <div className="flex items-center gap-3 pt-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Buscar por guía, orden o courier..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9 bg-background"
+                  />
+                </div>
+                <Button onClick={fetchGuides} variant="outline" size="sm" className="gap-2 shrink-0">
+                  <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                  Actualizar
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">

@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "../ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Avatar,
   AvatarFallback,
@@ -72,7 +73,38 @@ interface NavigationItem {
     href: string;
     icon?: React.ElementType;
     group?: string;
+    badge?: string;
+    badgeUntil?: string;
   }[];
+}
+
+// Muestra el badge solo hasta la fecha límite; pasado ese día desaparece solo,
+// sin tener que volver a tocar este archivo.
+function isBadgeActive(badgeUntil?: string): boolean {
+  if (!badgeUntil) return false;
+  return new Date() < new Date(badgeUntil);
+}
+
+const navBadgeClass =
+  "ml-auto shrink-0 h-4 px-1.5 text-[9px] font-bold uppercase leading-none border-transparent bg-violet-600 text-white hover:bg-violet-600 dark:bg-violet-500 dark:hover:bg-violet-500";
+
+// En la página del propio ítem se muestra el texto completo ("Nuevo"); en el
+// resto de la navegación un puntito basta y no compite por espacio con el
+// nombre del ítem.
+function NavItemBadge({
+  child,
+  isCurrentPage,
+}: {
+  child: { badge?: string; badgeUntil?: string };
+  isCurrentPage: boolean;
+}) {
+  if (!isBadgeActive(child.badgeUntil)) return null;
+  if (isCurrentPage) {
+    return <Badge className={navBadgeClass}>{child.badge}</Badge>;
+  }
+  return (
+    <span className="ml-auto h-1.5 w-1.5 rounded-full bg-violet-600 shrink-0" />
+  );
 }
 
 export function Sidebar({ className }: SidebarProps) {
@@ -129,6 +161,13 @@ export function Sidebar({ className }: SidebarProps) {
         icon: Truck,
         children: [
           { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
+          {
+            name: "Centro de Envíos",
+            href: "/centro-envios",
+            icon: PackagePlus,
+            badge: "Nuevo",
+            badgeUntil: "2026-07-23",
+          },
           { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
           { name: "Seguimiento Courier", href: "/couriers", icon: Activity },
         ],
@@ -345,6 +384,9 @@ export function Sidebar({ className }: SidebarProps) {
               : item.children?.some(
                   (c: { href: string }) => pathname === c.href,
                 );
+            const hasNewBadgeChild = item.children?.some((c) =>
+              isBadgeActive(c.badgeUntil),
+            );
 
             return (
               <div
@@ -366,12 +408,17 @@ export function Sidebar({ className }: SidebarProps) {
                             : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                         )}
                       >
-                        <Icon
-                          className={cn(
-                            "h-4 w-4",
-                            isActive ? "text-primary" : "text-gray-400",
+                        <span className="relative">
+                          <Icon
+                            className={cn(
+                              "h-4 w-4",
+                              isActive ? "text-primary" : "text-gray-400",
+                            )}
+                          />
+                          {hasNewBadgeChild && (
+                            <span className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-violet-600 ring-2 ring-white dark:ring-gray-900" />
                           )}
-                        />
+                        </span>
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
@@ -397,7 +444,7 @@ export function Sidebar({ className }: SidebarProps) {
                             {child.icon ? (
                               <child.icon
                                 className={cn(
-                                  "h-4 w-4",
+                                  "h-4 w-4 shrink-0",
                                   pathname === child.href
                                     ? "text-primary"
                                     : "text-gray-400",
@@ -406,14 +453,20 @@ export function Sidebar({ className }: SidebarProps) {
                             ) : (
                               <div
                                 className={cn(
-                                  "w-1.5 h-1.5 rounded-full",
+                                  "w-1.5 h-1.5 rounded-full shrink-0",
                                   pathname === child.href
                                     ? "bg-primary"
                                     : "bg-gray-300 dark:bg-gray-600",
                                 )}
                               />
                             )}
-                            <span className="text-sm">{child.name}</span>
+                            <span className="text-sm truncate min-w-0">
+                              {child.name}
+                            </span>
+                            <NavItemBadge
+                              child={child}
+                              isCurrentPage={pathname === child.href}
+                            />
                           </Link>
                         </DropdownMenuItem>
                       ))}
@@ -431,14 +484,21 @@ export function Sidebar({ className }: SidebarProps) {
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
                       )}
                     >
-                      <div className="flex items-center gap-2.5">
-                        <Icon
-                          className={cn(
-                            "h-4 w-4",
-                            isActive ? "text-primary" : "text-gray-400",
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <span className="relative shrink-0">
+                          <Icon
+                            className={cn(
+                              "h-4 w-4",
+                              isActive ? "text-primary" : "text-gray-400",
+                            )}
+                          />
+                          {hasNewBadgeChild && !isOpen && (
+                            <span className="absolute -top-1 -right-1 h-1.5 w-1.5 rounded-full bg-violet-600 ring-2 ring-white dark:ring-gray-900" />
                           )}
-                        />
-                        <span className="text-[13.5px]">{item.name}</span>
+                        </span>
+                        <span className="text-[13.5px] truncate">
+                          {item.name}
+                        </span>
                       </div>
                       {isOpen ? (
                         <ChevronUp className="h-3 w-3 opacity-50" />
@@ -463,7 +523,7 @@ export function Sidebar({ className }: SidebarProps) {
                                 {child.icon ? (
                                   <child.icon
                                     className={cn(
-                                      "h-4 w-4",
+                                      "h-4 w-4 shrink-0",
                                       pathname === child.href
                                         ? "text-primary"
                                         : "text-gray-400",
@@ -472,14 +532,20 @@ export function Sidebar({ className }: SidebarProps) {
                                 ) : (
                                   <div
                                     className={cn(
-                                      "w-1.5 h-1.5 rounded-full transition-all",
+                                      "w-1.5 h-1.5 rounded-full shrink-0 transition-all",
                                       pathname === child.href
                                         ? "bg-primary scale-125"
                                         : "bg-gray-300 dark:bg-gray-600 group-hover:bg-gray-400",
                                     )}
                                   />
                                 )}
-                                <span>{child.name}</span>
+                                <span className="truncate min-w-0">
+                                  {child.name}
+                                </span>
+                                <NavItemBadge
+                                  child={child}
+                                  isCurrentPage={pathname === child.href}
+                                />
                               </Button>
                             </Link>
                           </div>

@@ -479,7 +479,7 @@ export default function ShalomOrderTrackingView() {
           <Label className="text-xs font-semibold">Período</Label>
           <PeriodSelector
             onPeriodChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
-            className="w-full [&>div>button]:w-full [&>div>button]:h-9"
+            className="w-full"
           />
         </div>
         <div className="space-y-1">
@@ -512,11 +512,11 @@ export default function ShalomOrderTrackingView() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-xs text-muted-foreground">
           {filteredOrders.length} registro{filteredOrders.length !== 1 ? "s" : ""}
         </span>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             size="sm"
             variant="outline"

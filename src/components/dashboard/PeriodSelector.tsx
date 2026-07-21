@@ -173,7 +173,7 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
             id="date"
             variant={"outline"}
             className={cn(
-              "w-[300px] justify-start text-left font-normal bg-card hover:bg-accent border-muted-foreground/20",
+              "w-full sm:w-[300px] justify-start text-left font-normal bg-card hover:bg-accent border-muted-foreground/20",
               !date && "text-muted-foreground",
             )}
           >

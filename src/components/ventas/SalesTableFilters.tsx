@@ -45,33 +45,40 @@ interface SalesTableFiltersProps {
   availableCouriers?: string[];
 }
 
-const PAYMENT_METHODS = [
+// Debe reflejar exactamente las opciones reales de PaymentVerificationModal
+// (donde se registran los pagos) — si difieren, el filtro nunca matchea nada.
+export const PAYMENT_METHODS = [
   { value: "", label: "Todos" },
-  { value: "EFECTIVO", label: "Efectivo" },
+  { value: "YAPE", label: "Yape" },
+  { value: "PLIN", label: "Plin" },
   { value: "TRANSFERENCIA", label: "Transferencia" },
-  { value: "TARJETA_DEBITO", label: "Tarjeta Débito" },
+  { value: "EFECTIVO", label: "Efectivo" },
+  { value: "CONTRA_ENTREGA", label: "Contra Entrega" },
+  { value: "BCP", label: "BCP" },
+  { value: "BANCO_NACION", label: "Banco de la Nación" },
   { value: "MERCADO_PAGO", label: "Mercado Pago" },
+  { value: "POS", label: "POS" },
 ];
 
-const PENDING_BALANCE_OPTIONS = [
+export const PENDING_BALANCE_OPTIONS = [
   { value: "", label: "Todos" },
   { value: "yes", label: "Con saldo" },
   { value: "no", label: "Sin saldo" },
 ];
 
-const REGION_OPTIONS = [
+export const REGION_OPTIONS = [
   { value: "", label: "Todas" },
   { value: "LIMA", label: "Lima" },
   { value: "PROVINCIA", label: "Provincia" },
 ];
 
-const DELIVERY_TYPE_OPTIONS = [
+export const DELIVERY_TYPE_OPTIONS = [
   { value: "", label: "Todos" },
   { value: "RETIRO_TIENDA", label: "Retiro en tienda" },
   { value: "DOMICILIO", label: "Domicilio" },
 ];
 
-const ZONE_OPTIONS = [
+export const ZONE_OPTIONS = [
   { value: "", label: "Todas las zonas" },
   { value: "LIMA_NORTE", label: "🟦 Lima Norte" },
   { value: "CALLAO", label: "🟨 Callao" },
@@ -82,13 +89,13 @@ const ZONE_OPTIONS = [
   { value: "PROVINCIAS", label: "🧭 Provincias" },
 ];
 
-const GUIDE_OPTIONS = [
+export const GUIDE_OPTIONS = [
   { value: "", label: "Todas" },
   { value: "yes", label: "Con guía" },
   { value: "no", label: "Sin guía" },
 ];
 
-const SOURCE_OPTIONS = [
+export const SOURCE_OPTIONS = [
   { value: "", label: "Todos" },
   { value: "manual", label: "Powip" },
   { value: "shopify", label: "Shopify" },
