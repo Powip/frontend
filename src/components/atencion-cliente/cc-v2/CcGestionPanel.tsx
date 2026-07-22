@@ -7,6 +7,7 @@ import { SubEstadoCc } from "@/interfaces/IOrder";
 import { updateSubEstadoCC, confirmarEntregaLima, confirmarDespacho } from "@/services/atencionClienteService";
 import { toast } from "sonner";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
+import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 
 interface Props {
   orderId: string;
@@ -16,6 +17,8 @@ interface Props {
   onUpdated: () => void;
   aliclikDispatchStatus?: string | null;
   aliclikSyncedAt?: string | null;
+  evaStatus?: string | null;
+  evaSyncedAt?: string | null;
 }
 
 const CHECKLIST_ITEMS = [
@@ -36,7 +39,7 @@ function TerminalBadge({ colorCls, label, sub }: { colorCls: string; label: stri
   );
 }
 
-export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosCompletos, onUpdated, aliclikDispatchStatus, aliclikSyncedAt }: Props) {
+export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosCompletos, onUpdated, aliclikDispatchStatus, aliclikSyncedAt, evaStatus, evaSyncedAt }: Props) {
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [checks, setChecks] = useState(() => CHECKLIST_ITEMS.map(() => false));
@@ -146,6 +149,7 @@ export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosComple
             aliclikDispatchStatus={aliclikDispatchStatus}
             aliclikSyncedAt={aliclikSyncedAt}
           />
+          <EvaStatusBadge evaStatus={evaStatus} evaSyncedAt={evaSyncedAt} />
           <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
             isMaxIntentos ? "bg-red-100 text-red-700" :
             callAttempts >= 2 ? "bg-amber-100 text-amber-700" :

@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/table";
 import { OrderHeader, SubEstadoCc, TipoGestionCC } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
+import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
+import SendToEvaButton from "@/components/eva/SendToEvaButton";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -96,6 +98,7 @@ interface Props {
   onGestionarPago: (order: OrderHeader) => void;
   onReassignSeller?: (order: OrderHeader) => void;
   onRecuperar?: (order: OrderHeader) => void;
+  onEvaSent?: (order: OrderHeader) => void;
   page?: number;
   totalPages?: number;
   total?: number;
@@ -113,6 +116,7 @@ export function CcPedidosTable({
   onGestionarPago,
   onReassignSeller,
   onRecuperar,
+  onEvaSent,
   page = 1,
   totalPages = 1,
   total,
@@ -146,6 +150,7 @@ export function CcPedidosTable({
             <TableHead>Canal</TableHead>
             <TableHead>Sub-estado</TableHead>
             <TableHead>Aliclik</TableHead>
+            <TableHead>EVA</TableHead>
             {showAdelanto && <TableHead>Adelanto</TableHead>}
             {showAdelanto && <TableHead>Por cobrar</TableHead>}
             <TableHead>Total</TableHead>
@@ -258,6 +263,29 @@ export function CcPedidosTable({
                   />
                 </TableCell>
 
+                {/* EVA badge + envío */}
+                <TableCell>
+                  <div className="flex flex-col gap-1 items-start">
+                    <EvaStatusBadge
+                      evaStatus={order.evaStatus}
+                      evaSyncedAt={order.evaSyncedAt}
+                    />
+                    <SendToEvaButton
+                      orderId={order.id}
+                      recipientName={clientName}
+                      recipientPhone={order.customer?.phoneNumber ?? ""}
+                      district={order.customer?.district ?? ""}
+                      address={order.customer?.address ?? ""}
+                      amount={grandTotal}
+                      onSuccess={() => onEvaSent?.(order)}
+                      variant="outline"
+                      size="sm"
+                      className="h-6 px-2 text-[10px]"
+                      label="Enviar"
+                    />
+                  </div>
+                </TableCell>
+
                 {showAdelanto && (
                   <TableCell className="text-green-600 text-sm font-medium">
                     S/{totalPaid.toFixed(2)}
@@ -357,7 +385,7 @@ export function CcPedidosTable({
           })}
           {data.length === 0 && (
             <TableRow>
-              <TableCell colSpan={18} className="text-center text-gray-400 dark:text-slate-500 py-8 text-sm">
+              <TableCell colSpan={19} className="text-center text-gray-400 dark:text-slate-500 py-8 text-sm">
                 No hay pedidos en esta categoría
               </TableCell>
             </TableRow>

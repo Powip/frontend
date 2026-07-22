@@ -1,7 +1,7 @@
 'use client';
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowRight, Package, ShoppingBag, Truck } from "lucide-react";
+import { ArrowRight, Package, ShoppingBag, Truck, Send } from "lucide-react";
 import Link from "next/link";
 
 export default function IntegracionesHubPage() {
@@ -22,6 +22,15 @@ export default function IntegracionesHubPage() {
       href: "/configuracion/integraciones/aliclik",
       color: "text-purple-600 dark:text-purple-400",
       bgColor: "bg-purple-50 dark:bg-purple-950/40",
+      status: "Disponible",
+    },
+    {
+      title: "EVA Courier",
+      description: "Conectá tu cuenta de EVA Courier (Fly Express) para despachar pedidos y recibir actualizaciones de estado automáticas por webhook.",
+      icon: Send,
+      href: "/configuracion/integraciones/eva",
+      color: "text-blue-600 dark:text-blue-400",
+      bgColor: "bg-blue-50 dark:bg-blue-950/40",
       status: "Disponible",
     },
     {

@@ -81,6 +81,8 @@ import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
 import { reassignSeller } from "@/services/atencionClienteService";
 import { fetchCouriers } from "@/services/courierService";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
+import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
+import SendToEvaButton from "@/components/eva/SendToEvaButton";
 
 /* -----------------------------------------
    Types
@@ -139,6 +141,8 @@ export interface Sale {
   externalId?: string | null;
   aliclikDispatchStatus?: string | null;
   aliclikSyncedAt?: string | null;
+  evaStatus?: string | null;
+  evaSyncedAt?: string | null;
 }
 
 /* -----------------------------------------
@@ -189,6 +193,8 @@ function mapOrderToSale(order: OrderHeader): Sale {
     externalId: order.externalId ?? null,
     aliclikDispatchStatus: order.aliclikDispatchStatus ?? null,
     aliclikSyncedAt: order.aliclikSyncedAt ?? null,
+    evaStatus: order.evaStatus ?? null,
+    evaSyncedAt: order.evaSyncedAt ?? null,
   };
 }
 
@@ -1279,6 +1285,7 @@ Estado: ${sale.status}
             <TableHead>Vendedor</TableHead>
             <TableHead>Estado</TableHead>
             <TableHead>Aliclik</TableHead>
+            <TableHead>EVA</TableHead>
             {showGuideColumn && <TableHead>Guía</TableHead>}
             {showGuideColumn && <TableHead>Courier</TableHead>}
             <TableHead>Region</TableHead>
@@ -1386,6 +1393,27 @@ Estado: ${sale.status}
                   aliclikDispatchStatus={sale.aliclikDispatchStatus}
                   aliclikSyncedAt={sale.aliclikSyncedAt}
                 />
+              </TableCell>
+              <TableCell>
+                <div className="flex flex-col gap-1 items-start">
+                  <EvaStatusBadge
+                    evaStatus={sale.evaStatus}
+                    evaSyncedAt={sale.evaSyncedAt}
+                  />
+                  <SendToEvaButton
+                    orderId={sale.id}
+                    recipientName={sale.clientName}
+                    recipientPhone={sale.phoneNumber}
+                    district={sale.district}
+                    address={sale.address}
+                    amount={sale.total}
+                    onSuccess={fetchOrders}
+                    variant="outline"
+                    size="sm"
+                    className="h-6 px-2 text-[10px]"
+                    label="Enviar"
+                  />
+                </div>
               </TableCell>
               {showGuideColumn && (
                 <TableCell>
@@ -1536,7 +1564,7 @@ Estado: ${sale.status}
           {data.length === 0 && (
             <TableRow>
               <TableCell
-                colSpan={16}
+                colSpan={17}
                 className="text-center text-muted-foreground py-6"
               >
                 No hay ventas en este estado
