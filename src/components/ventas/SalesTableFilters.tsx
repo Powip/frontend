@@ -141,7 +141,7 @@ export function SalesTableFilters({
           <Filter className="h-4 w-4 mr-2" />
           Filtros
           {activeFiltersCount > 0 && (
-            <span className="ml-2 bg-primary text-primary-foreground rounded-full px-2 py-0.5 text-xs">
+            <span className="ml-2 bg-violet-600 text-white rounded-full px-2 py-0.5 text-xs">
               {activeFiltersCount}
             </span>
           )}

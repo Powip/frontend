@@ -52,7 +52,7 @@ export function HeaderConfig({ title, description, children }: Props) {
         </div>
 
         {/* --- DERECHA (Children si existieran) --- */}
-        <div className="flex justify-center md:justify-end gap-2 w-full">
+        <div className="flex flex-wrap justify-center md:justify-end gap-2 w-full">
           {children}
         </div>
       </div>
