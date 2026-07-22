@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { Fragment, useEffect, useMemo, useState, useCallback } from "react";
 import {
   Plus,
   Pencil,
@@ -16,10 +16,16 @@ import {
   Loader2,
   UploadCloud,
   MapPin,
+  Clock,
+  Ban,
+  CheckCircle2,
+  ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { SourceBadge } from "@/components/shared/SourceBadge";
 import {
   Table,
@@ -57,6 +63,8 @@ import {
   getAvailableStatuses,
   ORDER_STATUS_FLOW,
 } from "@/utils/domain/orders-status-flow";
+import { SaleSecondaryDetails } from "@/components/ventas/SaleSecondaryDetails";
+import { StatusSelect } from "@/components/ventas/StatusSelect";
 import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
@@ -76,7 +84,10 @@ import type { BulkExtraAction } from "@/components/ventas/BulkStatusSelect";
 import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
 import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
 import { useOrdersByStore } from "@/hooks/useOrdersByStore";
-import { enviarPedidoALima, reassignSeller } from "@/services/atencionClienteService";
+import {
+  enviarPedidoALima,
+  reassignSeller,
+} from "@/services/atencionClienteService";
 import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
 import { UserPen } from "lucide-react";
 
@@ -252,6 +263,20 @@ export default function VentasPage() {
   const [sendingLimaId, setSendingLimaId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("pendientes");
 
+  // Filas con detalle secundario expandido (ID externo, ubicación, tracking)
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const toggleRowExpand = (id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   // Estados de selección independientes por pestaña
   const [selectedPendientesIds, setSelectedPendientesIds] = useState<
     Set<string>
@@ -271,16 +296,21 @@ export default function VentasPage() {
   }, [activeTab, selectedPendientesIds, selectedAnuladosIds, selectedTodasIds]);
 
   // Helper para setear el set actual según la pestaña
-  const setSelectedIdsForActiveTab = useCallback((newSet: Set<string>) => {
-    if (activeTab === "pendientes") setSelectedPendientesIds(newSet);
-    else if (activeTab === "anuladas") setSelectedAnuladosIds(newSet);
-    else setSelectedTodasIds(newSet);
-  }, [activeTab]);
+  const setSelectedIdsForActiveTab = useCallback(
+    (newSet: Set<string>) => {
+      if (activeTab === "pendientes") setSelectedPendientesIds(newSet);
+      else if (activeTab === "anuladas") setSelectedAnuladosIds(newSet);
+      else setSelectedTodasIds(newSet);
+    },
+    [activeTab],
+  );
 
   const selectedSaleIds = getSelectedIdsForActiveTab();
   const [pageConfirmados, setPageConfirmados] = useState(1);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
-  const [rescheduleDialogSaleId, setRescheduleDialogSaleId] = useState<string | null>(null);
+  const [rescheduleDialogSaleId, setRescheduleDialogSaleId] = useState<
+    string | null
+  >(null);
 
   const [reassignSellerModalOpen, setReassignSellerModalOpen] = useState(false);
   const [saleToReassign, setSaleToReassign] = useState<Sale | null>(null);
@@ -291,7 +321,8 @@ export default function VentasPage() {
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
 
-  const { data: ordersData, refetch: refetchOrders } = useOrdersByStore(selectedStoreId);
+  const { data: ordersData, refetch: refetchOrders } =
+    useOrdersByStore(selectedStoreId);
 
   // Calcular estados disponibles comunes para la selección de la pestaña activa
   const bulkAvailableStatuses = useMemo(() => {
@@ -327,7 +358,8 @@ export default function VentasPage() {
     if (!ordersData) return;
 
     const sorted = [...ordersData].sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
     const mappedSales = sorted.map(mapOrderToSale);
     setSales(mappedSales);
@@ -711,12 +743,18 @@ Estado: ${sale.status}
         apiBaseUrl,
         undefined,
         10,
-        uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
+        uInfo.userId
+          ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" }
+          : undefined,
         "SCHEDULED",
         callbackAt,
       );
-      if (result.success.length > 0) toast.success(`${result.success.length} pedido(s) reprogramados`);
-      if (result.failed.length > 0) toast.error(`${result.failed.length} pedido(s) no pudieron reprogramarse`);
+      if (result.success.length > 0)
+        toast.success(`${result.success.length} pedido(s) reprogramados`);
+      if (result.failed.length > 0)
+        toast.error(
+          `${result.failed.length} pedido(s) no pudieron reprogramarse`,
+        );
       setSelectedIdsForActiveTab(new Set());
       refetchOrders();
     } catch {
@@ -726,13 +764,19 @@ Estado: ${sale.status}
     }
   };
 
-  const handleIndividualReprogramar = async (saleId: string, callbackAt: Date) => {
+  const handleIndividualReprogramar = async (
+    saleId: string,
+    callbackAt: Date,
+  ) => {
     try {
-      await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`, {
-        callStatus: "SCHEDULED",
-        callbackAt: callbackAt.toISOString(),
-        ...getUserInfo(),
-      });
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
+        {
+          callStatus: "SCHEDULED",
+          callbackAt: callbackAt.toISOString(),
+          ...getUserInfo(),
+        },
+      );
       toast.success("Pedido reprogramado");
       refetchOrders();
     } catch {
@@ -741,7 +785,11 @@ Estado: ${sale.status}
   };
 
   const bulkExtraActions: BulkExtraAction[] = [
-    { value: BULK_ACTION_REPROGRAMAR, label: "Reprogramar", colorClassName: "text-violet-600" },
+    {
+      value: BULK_ACTION_REPROGRAMAR,
+      label: "Reprogramar",
+      colorClassName: "text-violet-600",
+    },
   ];
 
   const handleBulkExtraAction = (actionValue: string) => {
@@ -757,7 +805,9 @@ Estado: ${sale.status}
     }
 
     setSelectedIdsForActiveTab(new Set());
-    toast.info(`Abriendo ${selectedSales.length} pestañas de WhatsApp... ¡Asegúrese de permitir Pop-ups!`);
+    toast.info(
+      `Abriendo ${selectedSales.length} pestañas de WhatsApp... ¡Asegúrese de permitir Pop-ups!`,
+    );
 
     selectedSales.forEach((sale, index) => {
       setTimeout(() => {
@@ -934,7 +984,9 @@ Estado: ${sale.status}
         sellerId,
         sellerName,
         auth?.user?.id,
-        auth?.user ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim() : undefined,
+        auth?.user
+          ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim()
+          : undefined,
       );
       toast.success("Vendedor reasignado correctamente");
       setReassignSellerModalOpen(false);
@@ -948,24 +1000,26 @@ Estado: ${sale.status}
   };
 
   // Tabla para Pendientes (sin delete)
+  const PENDIENTES_COLSPAN = 13;
+
   const renderPendientesTable = (
     data: Sale[],
     showTracking: boolean = false,
   ) => (
-    <div className="overflow-x-auto border rounded-md">
-      <Table className={showTracking ? "min-w-[2200px]" : "min-w-[1600px]"}>
+    <div className="overflow-x-auto rounded-xl border border-border/70">
+      <Table className="min-w-[1200px]">
         <TableHeader>
-          <TableRow>
+          <TableRow className="bg-muted hover:bg-muted [&>th]:text-[11px] [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-wide [&>th]:text-muted-foreground">
             {/* Columnas fijas izquierda */}
-            <TableHead className="w-[45px] min-w-[45px] lg:sticky lg:left-0 lg:z-20 bg-background">
-              <input
-                type="checkbox"
+            <TableHead className="w-9 min-w-9 2xl:sticky 2xl:left-0 2xl:z-20 bg-muted" />
+            <TableHead className="w-[45px] min-w-[45px] 2xl:sticky 2xl:left-9 2xl:z-20 bg-muted">
+              <Checkbox
                 checked={
                   data.length > 0 &&
                   data.every((s) => selectedSaleIds.has(s.id))
                 }
-                onChange={(e) => {
-                  if (e.target.checked) {
+                onCheckedChange={(checked) => {
+                  if (checked) {
                     const next = new Set(selectedSaleIds);
                     data.forEach((s) => next.add(s.id));
                     setSelectedIdsForActiveTab(next);
@@ -977,354 +1031,260 @@ Estado: ${sale.status}
                 }}
               />
             </TableHead>
-            <TableHead className="lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
+            <TableHead className="2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-20 bg-muted">
               N° Orden
             </TableHead>
-            <TableHead className="lg:sticky lg:left-[145px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
-              ID Externo
-            </TableHead>
-            <TableHead className="lg:sticky lg:left-[245px] w-[150px] min-w-[150px] lg:z-20 bg-background border-r">
+            <TableHead className="2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-20 bg-muted border-r">
               Cliente
             </TableHead>
-            <TableHead className="w-[100px] min-w-[100px] text-xs">
-              Items
-            </TableHead>
-            <TableHead>Teléfono</TableHead>
-            <TableHead>Distrito</TableHead>
-            <TableHead className="border-r">Zona</TableHead>
+            <TableHead className="w-[100px] min-w-[100px]">Items</TableHead>
             {/* Columnas scrolleables */}
-            <TableHead>Ciudad</TableHead>
-            <TableHead>Provincia</TableHead>
             <TableHead>Fecha</TableHead>
-            <TableHead>Pago</TableHead>
-            <TableHead>Envío</TableHead>
-            <TableHead>Total</TableHead>
-            <TableHead>Adelanto</TableHead>
-            <TableHead>Por Cobrar</TableHead>
+            <TableHead>Pago / Envío</TableHead>
+            <TableHead className="text-right">Montos</TableHead>
             <TableHead>Vendedor</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead>Region</TableHead>
             <TableHead>Origen</TableHead>
-            {showTracking && (
-              <>
-                <TableHead>Nro Tracking</TableHead>
-                <TableHead>Código</TableHead>
-                <TableHead>Clave</TableHead>
-                <TableHead>Oficina</TableHead>
-              </>
-            )}
-            {/* Columnas fijas derecha */}
-            <TableHead className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-20 bg-background border-l">
+            {/* Columnas fijas derecha (Estado siempre visible para poder cambiarlo) */}
+            <TableHead className="2xl:sticky 2xl:right-[240px] w-[68px] min-w-[68px] 2xl:w-[150px] 2xl:min-w-[150px] 2xl:z-20 bg-muted border-l">
+              Estado
+            </TableHead>
+            <TableHead className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-20 bg-muted">
               Resumen
             </TableHead>
-            <TableHead className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-20 bg-background text-right">
+            <TableHead className="2xl:sticky 2xl:right-0 w-[140px] min-w-[140px] 2xl:z-20 bg-muted text-right">
               Acciones
             </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((sale) => (
-            <TableRow key={sale.id}>
-              {/* Columnas fijas izquierda */}
-              <TableCell className="lg:sticky lg:left-0 w-[45px] min-w-[45px] lg:z-10 bg-background">
-                <input
-                  type="checkbox"
-                  checked={selectedSaleIds.has(sale.id)}
-                  onChange={() => toggleSale(sale.id)}
-                />
-              </TableCell>
-              <TableCell className="font-medium lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-10 bg-background text-xs">
-                <div className="flex items-center gap-1">
-                  {sale.hasStockIssue && (
-                    <span title="Stock insuficiente - No se puede preparar">
-                      <AlertTriangle className="h-4 w-4 text-amber-500" />
-                    </span>
-                  )}
-                  {sale.orderNumber}
-                </div>
-              </TableCell>
-              <TableCell className="lg:sticky lg:left-[145px] w-[100px] min-w-[100px] lg:z-10 bg-background text-xs truncate max-w-[100px]">
-                {sale.externalId || "-"}
-              </TableCell>
-              <TableCell className="lg:sticky lg:left-[245px] w-[150px] min-w-[150px] lg:z-10 bg-background text-xs truncate max-w-[150px] border-r">
-                {sale.clientName}
-              </TableCell>
-              <TableCell>
-                <div className="flex -space-x-2 overflow-hidden">
-                  {sale.items?.slice(0, 3).map((item, idx) => (
-                    <div
-                      key={item.id || idx}
-                      className="inline-block h-8 w-8 rounded-full ring-2 ring-background bg-muted overflow-hidden"
-                      title={item.productName}
+          {data.map((sale) => {
+            const isExpanded = expandedRows.has(sale.id);
+            return (
+              <Fragment key={sale.id}>
+                <TableRow className="[&>td]:align-top [&>td]:py-3">
+                  {/* Columnas fijas izquierda */}
+                  <TableCell className="2xl:sticky 2xl:left-0 w-9 min-w-9 2xl:z-10 bg-background">
+                    <button
+                      type="button"
+                      onClick={() => toggleRowExpand(sale.id)}
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      title={
+                        isExpanded ? "Ocultar detalles" : "Ver más detalles"
+                      }
                     >
-                      {item.imageUrl ? (
-                        <Image
-                          src={item.imageUrl}
-                          alt={item.productName}
-                          width={32}
-                          height={32}
-                          className="h-full w-full object-cover"
-                        />
+                      {isExpanded ? (
+                        <ChevronDown className="h-4 w-4" />
                       ) : (
-                        <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground">
-                          {item.productName.charAt(0)}
+                        <ChevronRight className="h-4 w-4" />
+                      )}
+                    </button>
+                  </TableCell>
+                  <TableCell className="2xl:sticky 2xl:left-9 w-[45px] min-w-[45px] 2xl:z-10 bg-background">
+                    <Checkbox
+                      checked={selectedSaleIds.has(sale.id)}
+                      onCheckedChange={() => toggleSale(sale.id)}
+                    />
+                  </TableCell>
+                  <TableCell className="font-medium 2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-10 bg-background text-xs">
+                    <div className="flex items-center gap-1">
+                      {sale.hasStockIssue && (
+                        <span title="Stock insuficiente - No se puede preparar">
+                          <AlertTriangle className="h-4 w-4 text-amber-500" />
+                        </span>
+                      )}
+                      {sale.orderNumber}
+                    </div>
+                  </TableCell>
+                  <TableCell className="2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-10 bg-background text-xs truncate max-w-[170px] border-r">
+                    <div className="font-medium truncate">
+                      {sale.clientName}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {sale.phoneNumber}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex -space-x-2 overflow-hidden">
+                      {sale.items?.slice(0, 3).map((item, idx) => (
+                        <div
+                          key={item.id || idx}
+                          className="inline-block h-8 w-8 rounded-full ring-2 ring-background bg-muted overflow-hidden"
+                          title={item.productName}
+                        >
+                          {item.imageUrl ? (
+                            <Image
+                              src={item.imageUrl}
+                              alt={item.productName}
+                              width={32}
+                              height={32}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground">
+                              {item.productName.charAt(0)}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {sale.items?.length > 3 && (
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted ring-2 ring-background text-[10px] font-medium">
+                          +{sale.items.length - 3}
                         </div>
                       )}
                     </div>
-                  ))}
-                  {sale.items?.length > 3 && (
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted ring-2 ring-background text-[10px] font-medium">
-                      +{sale.items.length - 3}
+                  </TableCell>
+                  {/* Columnas scrolleables */}
+                  <TableCell className="text-xs">{sale.date}</TableCell>
+                  <TableCell className="text-xs">
+                    <div>{sale.paymentMethod}</div>
+                    <div className="text-muted-foreground">
+                      {sale.deliveryType}
                     </div>
-                  )}
-                </div>
-              </TableCell>
-              {/* Columnas scrolleables */}
-              <TableCell className="text-xs">{sale.phoneNumber}</TableCell>
-              <TableCell className="text-xs truncate max-w-[120px]">
-                {sale.district || "-"}
-              </TableCell>
-              <TableCell className="text-xs truncate max-w-[120px]">
-                {sale.zone || "-"}
-              </TableCell>
-              <TableCell>{sale.city || "-"}</TableCell>
-              <TableCell>{sale.province || "-"}</TableCell>
-              <TableCell>{sale.date}</TableCell>
-              <TableCell>{sale.paymentMethod}</TableCell>
-              <TableCell>{sale.deliveryType}</TableCell>
-              <TableCell>${sale.total.toFixed(2)}</TableCell>
-              <TableCell className="text-green-600">
-                ${sale.advancePayment.toFixed(2)}
-              </TableCell>
-              <TableCell className="text-red-600">
-                ${sale.pendingPayment.toFixed(2)}
-              </TableCell>
-              <TableCell className="text-xs">
-                <span className="inline-flex items-center gap-1">
-                  <span>{sale.sellerName || "—"}</span>
-                  <button
-                    title="Reasignar vendedor"
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => {
-                      setSaleToReassign(sale);
-                      setReassignSellerModalOpen(true);
-                    }}
-                  >
-                    <UserPen className="h-3 w-3" />
-                  </button>
-                </span>
-              </TableCell>
-              <TableCell>
-                <select
-                  value={sale.status}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === "__REPROGRAMAR__") {
-                      setRescheduleDialogSaleId(sale.id);
-                    } else {
-                      handleChangeStatus(sale.id, val as OrderStatus);
-                    }
-                  }}
-                  className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
-                >
-                  {getAvailableStatuses(sale.status, sale.salesRegion).map(
-                    (status) => (
-                      <option key={status} value={status}>
-                        {status}
-                      </option>
-                    ),
-                  )}
-                  <option disabled>──────────</option>
-                  <option value="__REPROGRAMAR__">Reprogramar</option>
-                </select>
-              </TableCell>
-              <TableCell>{sale.salesRegion}</TableCell>
-              <TableCell>
-                <SourceBadge source={sale.externalSource} />
-              </TableCell>
-              {showTracking && (
-                <>
-                  {/* Nro Tracking */}
+                  </TableCell>
+                  <TableCell className="text-xs text-right tabular-nums">
+                    <div className="font-semibold">
+                      ${sale.total.toFixed(2)}
+                    </div>
+                    <div className="text-green-600">
+                      Adel: ${sale.advancePayment.toFixed(2)}
+                    </div>
+                    <div className="text-red-600">
+                      Debe: ${sale.pendingPayment.toFixed(2)}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <span className="inline-flex items-center gap-1">
+                      <span>{sale.sellerName || "—"}</span>
+                      <button
+                        title="Reasignar vendedor"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => {
+                          setSaleToReassign(sale);
+                          setReassignSellerModalOpen(true);
+                        }}
+                      >
+                        <UserPen className="h-3 w-3" />
+                      </button>
+                    </span>
+                  </TableCell>
                   <TableCell>
-                    <div className="relative flex items-center">
-                      <input
-                        type="text"
-                        className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                          savingOrderId === sale.id
-                            ? "opacity-50 border-orange-400 pr-5"
-                            : "focus:border-orange-500"
-                        }`}
-                        placeholder="Nro..."
-                        value={
-                          trackingEdits[sale.id]?.externalTrackingNumber || ""
+                    <SourceBadge source={sale.externalSource} />
+                  </TableCell>
+                  {/* Columnas fijas derecha (Estado siempre visible para poder cambiarlo) */}
+                  <TableCell className="2xl:sticky 2xl:right-[240px] w-[68px] min-w-[68px] 2xl:w-[150px] 2xl:min-w-[150px] 2xl:z-10 bg-background border-l">
+                    <StatusSelect
+                      status={sale.status}
+                      options={getAvailableStatuses(
+                        sale.status,
+                        sale.salesRegion,
+                      )}
+                      extraAction={{
+                        value: "__REPROGRAMAR__",
+                        label: "Reprogramar",
+                      }}
+                      onStatusChange={(status) =>
+                        handleChangeStatus(sale.id, status)
+                      }
+                      onExtraAction={() => setRescheduleDialogSaleId(sale.id)}
+                    />
+                  </TableCell>
+                  <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleOpenReceipt(sale)}
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      Ver
+                    </Button>
+                  </TableCell>
+                  <TableCell className="2xl:sticky 2xl:right-0 w-[140px] min-w-[140px] 2xl:z-10 bg-background text-right">
+                    <div className="flex gap-1 justify-end">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="relative bg-amber-50 hover:bg-amber-100 text-amber-600"
+                        onClick={() => {
+                          setSelectedSaleForPayment(sale);
+                          setPaymentModalOpen(true);
+                        }}
+                        title={
+                          sale.hasPendingApprovalPayments
+                            ? "Pagos pendientes de aprobación"
+                            : "Gestión de Pagos"
                         }
-                        onChange={(e) =>
-                          updateTrackingField(
-                            sale.id,
-                            "externalTrackingNumber",
-                            e.target.value,
+                      >
+                        <DollarSign className="h-4 w-4" />
+                        {sale.hasPendingApprovalPayments && (
+                          <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                          </span>
+                        )}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                        title="WhatsApp"
+                        onClick={() =>
+                          handleWhatsApp(
+                            sale.phoneNumber,
+                            sale.orderNumber,
+                            sale.clientName,
                           )
                         }
-                        onBlur={() => handleSaveTracking(sale.id)}
-                        disabled={savingOrderId === sale.id}
-                      />
-                      {savingOrderId === sale.id && (
-                        <Loader2 className="absolute right-1.5 h-3 w-3 animate-spin text-orange-500" />
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() =>
+                          router.push(`/registrar-venta?orderId=${sale.id}`)
+                        }
+                        title="Editar"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      {sale.status === "PENDIENTE" && (
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="bg-purple-50 hover:bg-purple-100 text-purple-600 border-purple-200"
+                          title="Enviar a CC Lima"
+                          disabled={sendingLimaId === sale.id}
+                          onClick={() => handleEnviarLima(sale.id)}
+                        >
+                          {sendingLimaId === sale.id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <MapPin className="h-4 w-4" />
+                          )}
+                        </Button>
                       )}
                     </div>
                   </TableCell>
-                  {/* Código */}
-                  <TableCell>
-                    <input
-                      type="text"
-                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                        savingOrderId === sale.id
-                          ? "opacity-50 border-orange-400"
-                          : "focus:border-orange-500"
-                      }`}
-                      placeholder="Código"
-                      value={trackingEdits[sale.id]?.shippingCode || ""}
-                      onChange={(e) =>
-                        updateTrackingField(
-                          sale.id,
-                          "shippingCode",
-                          e.target.value,
-                        )
-                      }
-                      onBlur={() => handleSaveTracking(sale.id)}
-                      disabled={savingOrderId === sale.id}
-                    />
-                  </TableCell>
-                  {/* Clave */}
-                  <TableCell>
-                    <input
-                      type="text"
-                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                        savingOrderId === sale.id
-                          ? "opacity-50 border-orange-400"
-                          : "focus:border-orange-500"
-                      }`}
-                      placeholder="Clave"
-                      value={trackingEdits[sale.id]?.shippingKey || ""}
-                      onChange={(e) =>
-                        updateTrackingField(
-                          sale.id,
-                          "shippingKey",
-                          e.target.value,
-                        )
-                      }
-                      onBlur={() => handleSaveTracking(sale.id)}
-                      disabled={savingOrderId === sale.id}
-                    />
-                  </TableCell>
-                  {/* Oficina */}
-                  <TableCell>
-                    <input
-                      type="text"
-                      className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                        savingOrderId === sale.id
-                          ? "opacity-50 border-orange-400"
-                          : "focus:border-orange-500"
-                      }`}
-                      placeholder="Oficina..."
-                      value={trackingEdits[sale.id]?.shippingOffice || ""}
-                      onChange={(e) =>
-                        updateTrackingField(
-                          sale.id,
-                          "shippingOffice",
-                          e.target.value,
-                        )
-                      }
-                      onBlur={() => handleSaveTracking(sale.id)}
-                      disabled={savingOrderId === sale.id}
-                    />
-                  </TableCell>
-                </>
-              )}
-              {/* Columnas fijas derecha */}
-              <TableCell className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleOpenReceipt(sale)}
-                >
-                  <FileText className="h-4 w-4 mr-1" />
-                  Ver
-                </Button>
-              </TableCell>
-              <TableCell className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-10 bg-background text-right">
-                <div className="flex gap-1 justify-end">
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="relative bg-amber-50 hover:bg-amber-100 text-amber-600"
-                    onClick={() => {
-                      setSelectedSaleForPayment(sale);
-                      setPaymentModalOpen(true);
-                    }}
-                    title={
-                      sale.hasPendingApprovalPayments
-                        ? "Pagos pendientes de aprobación"
-                        : "Gestión de Pagos"
-                    }
-                  >
-                    <DollarSign className="h-4 w-4" />
-                    {sale.hasPendingApprovalPayments && (
-                      <span className="absolute -top-1 -right-1 flex h-3 w-3">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
-                      </span>
-                    )}
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="bg-green-500 hover:bg-green-600 text-white border-green-600"
-                    title="WhatsApp"
-                    onClick={() =>
-                      handleWhatsApp(
-                        sale.phoneNumber,
-                        sale.orderNumber,
-                        sale.clientName,
-                      )
-                    }
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() =>
-                      router.push(`/registrar-venta?orderId=${sale.id}`)
-                    }
-                    title="Editar"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  {sale.status === "PENDIENTE" && (
-                    <Button
-                      size="icon"
-                      variant="outline"
-                      className="bg-purple-50 hover:bg-purple-100 text-purple-600 border-purple-200"
-                      title="Enviar a CC Lima"
-                      disabled={sendingLimaId === sale.id}
-                      onClick={() => handleEnviarLima(sale.id)}
-                    >
-                      {sendingLimaId === sale.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <MapPin className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+                </TableRow>
+                {isExpanded && (
+                  <SaleSecondaryDetails
+                    key={`${sale.id}-details`}
+                    sale={sale}
+                    colSpan={PENDIENTES_COLSPAN}
+                    showTracking={showTracking}
+                    trackingEdits={trackingEdits}
+                    savingOrderId={savingOrderId}
+                    updateTrackingField={updateTrackingField}
+                    handleSaveTracking={handleSaveTracking}
+                  />
+                )}
+              </Fragment>
+            );
+          })}
           {data.length === 0 && (
             <TableRow>
               <TableCell
-                colSpan={22}
+                colSpan={PENDIENTES_COLSPAN}
                 className="text-center text-muted-foreground py-6"
               >
                 No hay ventas en este estado
@@ -1337,21 +1297,23 @@ Estado: ${sale.status}
   );
 
   // Tabla para Anulados (con delete)
+  const ANULADOS_COLSPAN = 12;
+
   const renderAnuladosTable = (data: Sale[], showTracking: boolean = false) => (
-    <div className="overflow-x-auto border rounded-md">
-      <Table className={showTracking ? "min-w-[2200px]" : "min-w-[1600px]"}>
+    <div className="overflow-x-auto rounded-xl border border-border/70">
+      <Table className="min-w-[1050px]">
         <TableHeader>
-          <TableRow>
+          <TableRow className="bg-muted hover:bg-muted [&>th]:text-[11px] [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-wide [&>th]:text-muted-foreground">
             {/* Columnas fijas izquierda */}
-            <TableHead className="w-[45px] min-w-[45px] lg:sticky lg:left-0 lg:z-20 bg-background">
-              <input
-                type="checkbox"
+            <TableHead className="w-9 min-w-9 2xl:sticky 2xl:left-0 2xl:z-20 bg-muted" />
+            <TableHead className="w-[45px] min-w-[45px] 2xl:sticky 2xl:left-9 2xl:z-20 bg-muted">
+              <Checkbox
                 checked={
                   data.length > 0 &&
                   data.every((s) => selectedSaleIds.has(s.id))
                 }
-                onChange={(e) => {
-                  if (e.target.checked) {
+                onCheckedChange={(checked) => {
+                  if (checked) {
                     const next = new Set(selectedSaleIds);
                     data.forEach((s) => next.add(s.id));
                     setSelectedIdsForActiveTab(next);
@@ -1363,274 +1325,187 @@ Estado: ${sale.status}
                 }}
               />
             </TableHead>
-            <TableHead className="lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
+            <TableHead className="2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-20 bg-muted">
               N° Orden
             </TableHead>
-            <TableHead className="lg:sticky lg:left-[145px] w-[100px] min-w-[100px] lg:z-20 bg-background text-xs">
-              ID Externo
-            </TableHead>
-            <TableHead className="lg:sticky lg:left-[245px] w-[150px] min-w-[150px] lg:z-20 bg-background border-r">
+            <TableHead className="2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-20 bg-muted border-r">
               Cliente
             </TableHead>
-            <TableHead>Teléfono</TableHead>
-            <TableHead>Distrito</TableHead>
-            <TableHead className="border-r">Zona</TableHead>
             {/* Columnas scrolleables */}
-            <TableHead>Ciudad</TableHead>
-            <TableHead>Provincia</TableHead>
             <TableHead>Fecha</TableHead>
-            <TableHead>Pago</TableHead>
-            <TableHead>Envío</TableHead>
-            <TableHead>Total</TableHead>
-            <TableHead>Adelanto</TableHead>
-            <TableHead>Por Cobrar</TableHead>
+            <TableHead>Pago / Envío</TableHead>
+            <TableHead className="text-right">Montos</TableHead>
             <TableHead>Vendedor</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead>Region</TableHead>
             <TableHead>Origen</TableHead>
-            {showTracking && (
-              <>
-                <TableHead>Nro Tracking</TableHead>
-                <TableHead>Código</TableHead>
-                <TableHead>Clave</TableHead>
-                <TableHead>Oficina</TableHead>
-              </>
-            )}
-            {/* Columnas fijas derecha */}
-            <TableHead className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-20 bg-background border-l">
+            {/* Columnas fijas derecha (Estado siempre visible para poder cambiarlo) */}
+            <TableHead className="2xl:sticky 2xl:right-[240px] w-[68px] min-w-[68px] 2xl:w-[150px] 2xl:min-w-[150px] 2xl:z-20 bg-muted border-l">
+              Estado
+            </TableHead>
+            <TableHead className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-20 bg-muted">
               Resumen
             </TableHead>
-            <TableHead className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-20 bg-background text-right">
+            <TableHead className="2xl:sticky 2xl:right-0 w-[140px] min-w-[140px] 2xl:z-20 bg-muted text-right">
               Acciones
             </TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((sale) => (
-            <TableRow key={sale.id}>
-              {/* Columnas fijas izquierda */}
-              <TableCell className="lg:sticky lg:left-0 w-[45px] min-w-[45px] lg:z-10 bg-background">
-                <input
-                  type="checkbox"
-                  checked={selectedSaleIds.has(sale.id)}
-                  onChange={() => toggleSale(sale.id)}
-                />
-              </TableCell>
-              <TableCell className="font-medium lg:sticky lg:left-[45px] w-[100px] min-w-[100px] lg:z-10 bg-background text-xs">
-                {sale.orderNumber}
-              </TableCell>
-              <TableCell className="lg:sticky lg:left-[145px] w-[100px] min-w-[100px] lg:z-10 bg-background text-xs truncate max-w-[100px]">
-                {sale.externalId || "-"}
-              </TableCell>
-              <TableCell className="lg:sticky lg:left-[245px] w-[150px] min-w-[150px] lg:z-10 bg-background text-xs truncate max-w-[150px] border-r">
-                {sale.clientName}
-              </TableCell>
-              {/* Columnas scrolleables */}
-              <TableCell className="text-xs">{sale.phoneNumber}</TableCell>
-              <TableCell className="text-xs truncate max-w-[120px]">
-                {sale.district || "-"}
-              </TableCell>
-              <TableCell className="text-xs truncate max-w-[120px]">
-                {sale.zone || "-"}
-              </TableCell>
-              <TableCell>{sale.city || "-"}</TableCell>
-              <TableCell>{sale.province || "-"}</TableCell>
-              <TableCell>{sale.date}</TableCell>
-              <TableCell>{sale.paymentMethod}</TableCell>
-              <TableCell>{sale.deliveryType}</TableCell>
-              <TableCell>${sale.total.toFixed(2)}</TableCell>
-              <TableCell className="text-green-600">
-                ${sale.advancePayment.toFixed(2)}
-              </TableCell>
-              <TableCell className="text-red-600">
-                ${sale.pendingPayment.toFixed(2)}
-              </TableCell>
-              <TableCell className="text-xs">
-                <span className="inline-flex items-center gap-1">
-                  <span>{sale.sellerName || "—"}</span>
-                  <button
-                    title="Reasignar vendedor"
-                    className="text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => {
-                      setSaleToReassign(sale);
-                      setReassignSellerModalOpen(true);
-                    }}
-                  >
-                    <UserPen className="h-3 w-3" />
-                  </button>
-                </span>
-              </TableCell>
-              <TableCell>
-                <select
-                  value={sale.status}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    if (val === "__RECUPERAR__") {
-                      handleChangeStatus(sale.id, "PENDIENTE");
-                    }
-                  }}
-                  className="border rounded-md px-2 py-1 text-sm bg-background text-foreground"
-                >
-                  <option value={sale.status}>{sale.status}</option>
-                  <option disabled>──────────</option>
-                  <option value="__RECUPERAR__">Recuperar venta</option>
-                </select>
-              </TableCell>
-              <TableCell>{sale.salesRegion}</TableCell>
-              <TableCell>
-                <SourceBadge source={sale.externalSource} />
-              </TableCell>
-              {showTracking && (
-                <>
-                  {/* Nro Tracking */}
-                  <TableCell>
-                    <div className="relative flex items-center">
-                      <input
-                        type="text"
-                        className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                          savingOrderId === sale.id
-                            ? "opacity-50 border-orange-400 pr-5"
-                            : "focus:border-orange-500"
-                        }`}
-                        placeholder="Nro..."
-                        value={
-                          trackingEdits[sale.id]?.externalTrackingNumber || ""
-                        }
-                        onChange={(e) =>
-                          updateTrackingField(
-                            sale.id,
-                            "externalTrackingNumber",
-                            e.target.value,
-                          )
-                        }
-                        onBlur={() => handleSaveTracking(sale.id)}
-                        disabled={savingOrderId === sale.id}
-                      />
-                      {savingOrderId === sale.id && (
-                        <Loader2 className="absolute right-1.5 h-3 w-3 animate-spin text-orange-500" />
+          {data.map((sale) => {
+            const isExpanded = expandedRows.has(sale.id);
+            return (
+              <Fragment key={sale.id}>
+                <TableRow className="[&>td]:align-top [&>td]:py-3">
+                  {/* Columnas fijas izquierda */}
+                  <TableCell className="2xl:sticky 2xl:left-0 w-9 min-w-9 2xl:z-10 bg-background">
+                    <button
+                      type="button"
+                      onClick={() => toggleRowExpand(sale.id)}
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                      title={
+                        isExpanded ? "Ocultar detalles" : "Ver más detalles"
+                      }
+                    >
+                      {isExpanded ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
                       )}
+                    </button>
+                  </TableCell>
+                  <TableCell className="2xl:sticky 2xl:left-9 w-[45px] min-w-[45px] 2xl:z-10 bg-background">
+                    <Checkbox
+                      checked={selectedSaleIds.has(sale.id)}
+                      onCheckedChange={() => toggleSale(sale.id)}
+                    />
+                  </TableCell>
+                  <TableCell className="font-medium 2xl:sticky 2xl:left-[81px] w-[100px] min-w-[100px] 2xl:z-10 bg-background text-xs">
+                    {sale.orderNumber}
+                  </TableCell>
+                  <TableCell className="2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-10 bg-background text-xs truncate max-w-[170px] border-r">
+                    <div className="font-medium truncate">
+                      {sale.clientName}
+                    </div>
+                    <div className="text-muted-foreground">
+                      {sale.phoneNumber}
                     </div>
                   </TableCell>
-                  {/* Código */}
+                  {/* Columnas scrolleables */}
+                  <TableCell className="text-xs">{sale.date}</TableCell>
+                  <TableCell className="text-xs">
+                    <div>{sale.paymentMethod}</div>
+                    <div className="text-muted-foreground">
+                      {sale.deliveryType}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs text-right tabular-nums">
+                    <div className="font-semibold">
+                      ${sale.total.toFixed(2)}
+                    </div>
+                    <div className="text-green-600">
+                      Adel: ${sale.advancePayment.toFixed(2)}
+                    </div>
+                    <div className="text-red-600">
+                      Debe: ${sale.pendingPayment.toFixed(2)}
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-xs">
+                    <span className="inline-flex items-center gap-1">
+                      <span>{sale.sellerName || "—"}</span>
+                      <button
+                        title="Reasignar vendedor"
+                        className="text-muted-foreground hover:text-foreground transition-colors"
+                        onClick={() => {
+                          setSaleToReassign(sale);
+                          setReassignSellerModalOpen(true);
+                        }}
+                      >
+                        <UserPen className="h-3 w-3" />
+                      </button>
+                    </span>
+                  </TableCell>
                   <TableCell>
-                    <input
-                      type="text"
-                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                        savingOrderId === sale.id
-                          ? "opacity-50 border-orange-400"
-                          : "focus:border-orange-500"
-                      }`}
-                      placeholder="Código"
-                      value={trackingEdits[sale.id]?.shippingCode || ""}
-                      onChange={(e) =>
-                        updateTrackingField(
-                          sale.id,
-                          "shippingCode",
-                          e.target.value,
-                        )
+                    <SourceBadge source={sale.externalSource} />
+                  </TableCell>
+                  {/* Columnas fijas derecha (Estado siempre visible para poder cambiarlo) */}
+                  <TableCell className="2xl:sticky 2xl:right-[240px] w-[68px] min-w-[68px] 2xl:w-[150px] 2xl:min-w-[150px] 2xl:z-10 bg-background border-l">
+                    <StatusSelect
+                      status={sale.status}
+                      options={[sale.status]}
+                      extraAction={{
+                        value: "__RECUPERAR__",
+                        label: "Recuperar venta",
+                      }}
+                      onStatusChange={() => {}}
+                      onExtraAction={() =>
+                        handleChangeStatus(sale.id, "PENDIENTE")
                       }
-                      onBlur={() => handleSaveTracking(sale.id)}
-                      disabled={savingOrderId === sale.id}
                     />
                   </TableCell>
-                  {/* Clave */}
-                  <TableCell>
-                    <input
-                      type="text"
-                      className={`w-16 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                        savingOrderId === sale.id
-                          ? "opacity-50 border-orange-400"
-                          : "focus:border-orange-500"
-                      }`}
-                      placeholder="Clave"
-                      value={trackingEdits[sale.id]?.shippingKey || ""}
-                      onChange={(e) =>
-                        updateTrackingField(
-                          sale.id,
-                          "shippingKey",
-                          e.target.value,
-                        )
-                      }
-                      onBlur={() => handleSaveTracking(sale.id)}
-                      disabled={savingOrderId === sale.id}
-                    />
+                  <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleOpenReceipt(sale)}
+                    >
+                      <FileText className="h-4 w-4 mr-1" />
+                      Ver
+                    </Button>
                   </TableCell>
-                  {/* Oficina */}
-                  <TableCell>
-                    <input
-                      type="text"
-                      className={`w-28 h-7 px-1.5 text-xs border rounded bg-background transition-all ${
-                        savingOrderId === sale.id
-                          ? "opacity-50 border-orange-400"
-                          : "focus:border-orange-500"
-                      }`}
-                      placeholder="Oficina..."
-                      value={trackingEdits[sale.id]?.shippingOffice || ""}
-                      onChange={(e) =>
-                        updateTrackingField(
-                          sale.id,
-                          "shippingOffice",
-                          e.target.value,
-                        )
-                      }
-                      onBlur={() => handleSaveTracking(sale.id)}
-                      disabled={savingOrderId === sale.id}
-                    />
+                  <TableCell className="2xl:sticky 2xl:right-0 w-[140px] min-w-[140px] 2xl:z-10 bg-background text-right">
+                    <div className="flex gap-1 justify-end">
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                        title="WhatsApp"
+                        onClick={() =>
+                          handleWhatsApp(
+                            sale.phoneNumber,
+                            sale.orderNumber,
+                            sale.clientName,
+                          )
+                        }
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="outline"
+                        onClick={() =>
+                          router.push(`/registrar-venta?orderId=${sale.id}`)
+                        }
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="destructive"
+                        onClick={() => handleDelete(sale.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
-                </>
-              )}
-              {/* Columnas fijas derecha */}
-              <TableCell className="lg:sticky lg:right-[140px] w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => handleOpenReceipt(sale)}
-                >
-                  <FileText className="h-4 w-4 mr-1" />
-                  Ver
-                </Button>
-              </TableCell>
-              <TableCell className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-10 bg-background text-right">
-                <div className="flex gap-1 justify-end">
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="bg-green-500 hover:bg-green-600 text-white border-green-600"
-                    title="WhatsApp"
-                    onClick={() =>
-                      handleWhatsApp(
-                        sale.phoneNumber,
-                        sale.orderNumber,
-                        sale.clientName,
-                      )
-                    }
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() =>
-                      router.push(`/registrar-venta?orderId=${sale.id}`)
-                    }
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="destructive"
-                    onClick={() => handleDelete(sale.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
+                </TableRow>
+                {isExpanded && (
+                  <SaleSecondaryDetails
+                    key={`${sale.id}-details`}
+                    sale={sale}
+                    colSpan={ANULADOS_COLSPAN}
+                    showTracking={showTracking}
+                    trackingEdits={trackingEdits}
+                    savingOrderId={savingOrderId}
+                    updateTrackingField={updateTrackingField}
+                    handleSaveTracking={handleSaveTracking}
+                  />
+                )}
+              </Fragment>
+            );
+          })}
           {data.length === 0 && (
             <TableRow>
               <TableCell
-                colSpan={22}
+                colSpan={ANULADOS_COLSPAN}
                 className="text-center text-muted-foreground py-6"
               >
                 No hay ventas en este estado
@@ -1665,6 +1540,17 @@ Estado: ${sale.status}
     [sales, filtersAll],
   );
 
+  const kpis = useMemo(() => {
+    const porCobrar = pendientes.reduce((acc, s) => acc + s.pendingPayment, 0);
+    const adelantado = pendientes.reduce((acc, s) => acc + s.advancePayment, 0);
+    return {
+      pendientes: pendientes.length,
+      anuladas: anulados.length,
+      porCobrar,
+      adelantado,
+    };
+  }, [pendientes, anulados]);
+
   const selectedPendientesCount = pendientes.filter((s) =>
     selectedSaleIds.has(s.id),
   ).length;
@@ -1672,29 +1558,96 @@ Estado: ${sale.status}
   if (!auth) return null;
 
   return (
-    <div className="flex h-screen w-full">
+    <div className="flex h-screen w-full bg-slate-100 dark:bg-background">
       <main className="flex-1 p-6 space-y-6 overflow-auto">
-        <div className="flex flex-col items-center mb-6">
-          <HeaderConfig
-            title="Ventas"
-            description="Gestión de ventas pendientes y anuladas"
-          />
-        </div>
-
-        <div className="flex flex-col lg:flex-row justify-end gap-2 mb-4">
-          <Button 
-            className="w-full lg:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+        <HeaderConfig
+          title="Ventas"
+          description="Gestión de ventas pendientes y anuladas — todo en un solo panel."
+        >
+          <Button
+            variant="outline"
+            className="w-full lg:w-auto"
             onClick={() => setImportModalOpen(true)}
           >
             <UploadCloud className="h-4 w-4 mr-2" />
             Importar Excel
           </Button>
           <Link href="/registrar-venta" className="w-full lg:w-auto">
-            <Button className="w-full lg:w-auto bg-teal-600 hover:bg-teal-700">
+            <Button
+              size="lg"
+              className="w-full lg:w-auto bg-gradient-to-r from-violet-600 to-purple-700 text-white font-semibold shadow-lg shadow-purple-500/40 hover:shadow-purple-500/60 hover:from-violet-500 hover:to-purple-600 transition-shadow"
+            >
               <Plus className="h-4 w-4 mr-2" />
               Nueva venta
             </Button>
           </Link>
+        </HeaderConfig>
+
+        {/* KPIs */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
+          <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Pendientes</p>
+                  <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                    {kpis.pendientes}
+                  </h3>
+                </div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <Clock className="h-5 w-5" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Anuladas</p>
+                  <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                    {kpis.anuladas}
+                  </h3>
+                </div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400">
+                  <Ban className="h-5 w-5" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Por cobrar</p>
+                  <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                    ${kpis.porCobrar.toFixed(2)}
+                  </h3>
+                </div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                  <DollarSign className="h-5 w-5" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
+            <CardContent className="p-5">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Adelantado</p>
+                  <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                    ${kpis.adelantado.toFixed(2)}
+                  </h3>
+                </div>
+                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">
+                  <CheckCircle2 className="h-5 w-5" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Tabs para Ventas */}
@@ -1705,13 +1658,22 @@ Estado: ${sale.status}
         >
           <TabsList className="mb-4">
             <TabsTrigger value="pendientes">
-              Ventas Pendientes ({pendientes.length})
+              Ventas Pendientes
+              <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
+                {pendientes.length}
+              </span>
             </TabsTrigger>
             <TabsTrigger value="anuladas">
-              Ventas Anuladas ({anulados.length})
+              Ventas Anuladas
+              <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
+                {anulados.length}
+              </span>
             </TabsTrigger>
             <TabsTrigger value="todas">
-              Todas las Ventas ({todasLasVentas.length})
+              Todas las Ventas
+              <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
+                {todasLasVentas.length}
+              </span>
             </TabsTrigger>
           </TabsList>
 
@@ -2082,12 +2044,17 @@ Estado: ${sale.status}
             <AlertDialogDescription asChild>
               <div className="space-y-4 text-sm">
                 <p className="text-muted-foreground">
-                  Se han actualizado los estados a <strong>PREPARADO</strong>, pero se ha detectado que los siguientes pedidos tienen productos con <strong>stock insuficiente o nulo</strong>:
+                  Se han actualizado los estados a <strong>PREPARADO</strong>,
+                  pero se ha detectado que los siguientes pedidos tienen
+                  productos con <strong>stock insuficiente o nulo</strong>:
                 </p>
                 <div className="max-h-60 overflow-y-auto rounded-md border bg-muted/30 p-3">
                   <ul className="space-y-3">
                     {ordersWithStockIssue.map((sale) => (
-                      <li key={sale.id} className="border-b border-border/50 pb-2 last:border-0 last:pb-0">
+                      <li
+                        key={sale.id}
+                        className="border-b border-border/50 pb-2 last:border-0 last:pb-0"
+                      >
                         <div className="font-bold text-foreground mb-1">
                           Pedido: {sale.orderNumber}
                         </div>
@@ -2097,7 +2064,10 @@ Estado: ${sale.status}
                           </span>
                           <div className="mt-1 flex flex-wrap gap-1">
                             {sale.items.map((item, idx) => (
-                              <span key={idx} className="bg-background px-2 py-0.5 rounded border border-border text-[10px]">
+                              <span
+                                key={idx}
+                                className="bg-background px-2 py-0.5 rounded border border-border text-[10px]"
+                              >
                                 {item.productName} (x{item.quantity})
                               </span>
                             ))}
@@ -2108,7 +2078,8 @@ Estado: ${sale.status}
                   </ul>
                 </div>
                 <p className="text-amber-700 bg-amber-50 p-2 rounded border border-amber-100 italic">
-                  Por favor, revise el inventario físico antes de proceder con el despacho de estos pedidos.
+                  Por favor, revise el inventario físico antes de proceder con
+                  el despacho de estos pedidos.
                 </p>
               </div>
             </AlertDialogDescription>
@@ -2130,7 +2101,11 @@ Estado: ${sale.status}
         }}
         storeId={selectedStoreId || ""}
         userId={auth.user?.id}
-        sellerName={auth.user ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim() : undefined}
+        sellerName={
+          auth.user
+            ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim()
+            : undefined
+        }
       />
 
       <RescheduleDialog
