@@ -36,6 +36,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
+import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { Label } from "@/components/ui/label";
 
 import { OrderHeader, OrderStatus, OrderItem } from "@/interfaces/IOrder";
@@ -217,6 +218,11 @@ export default function VentasPage() {
   const [filtersAnulado, setFiltersAnulado] =
     useState<SalesFilters>(emptySalesFilters);
   const [filtersAll, setFiltersAll] = useState<SalesFilters>(emptySalesFilters);
+
+  // Rango de fechas para las estadísticas (KPIs), independiente de los
+  // filtros de cada tabla
+  const [kpiDateFrom, setKpiDateFrom] = useState("");
+  const [kpiDateTo, setKpiDateTo] = useState("");
 
   // Paginación para Todas las Ventas
   const [pageAll, setPageAll] = useState(1);
@@ -1541,15 +1547,36 @@ Estado: ${sale.status}
   );
 
   const kpis = useMemo(() => {
-    const porCobrar = pendientes.reduce((acc, s) => acc + s.pendingPayment, 0);
-    const adelantado = pendientes.reduce((acc, s) => acc + s.advancePayment, 0);
+    const salesInRange =
+      kpiDateFrom || kpiDateTo
+        ? applyFilters(sales, {
+            ...emptySalesFilters,
+            dateFrom: kpiDateFrom,
+            dateTo: kpiDateTo,
+          })
+        : sales;
+
+    const pendientesInRange = salesInRange.filter(
+      (s) => s.status === ORDER_STATUS.PENDIENTE,
+    );
+    const anuladosInRange = salesInRange.filter(
+      (s) => s.status === ORDER_STATUS.ANULADO,
+    );
+    const porCobrar = pendientesInRange.reduce(
+      (acc, s) => acc + s.pendingPayment,
+      0,
+    );
+    const adelantado = pendientesInRange.reduce(
+      (acc, s) => acc + s.advancePayment,
+      0,
+    );
     return {
-      pendientes: pendientes.length,
-      anuladas: anulados.length,
+      pendientes: pendientesInRange.length,
+      anuladas: anuladosInRange.length,
       porCobrar,
       adelantado,
     };
-  }, [pendientes, anulados]);
+  }, [sales, kpiDateFrom, kpiDateTo]);
 
   const selectedPendientesCount = pendientes.filter((s) =>
     selectedSaleIds.has(s.id),
@@ -1584,6 +1611,17 @@ Estado: ${sale.status}
         </HeaderConfig>
 
         {/* KPIs */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <h2 className="text-sm font-bold text-muted-foreground">
+            Estadísticas
+          </h2>
+          <PeriodSelector
+            onPeriodChange={(from, to) => {
+              setKpiDateFrom(from);
+              setKpiDateTo(to);
+            }}
+          />
+        </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
           <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
             <CardContent className="p-5">

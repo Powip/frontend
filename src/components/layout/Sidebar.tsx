@@ -140,7 +140,13 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Comercial",
         icon: ShoppingCart,
         children: [
-          { name: "Ventas", href: "/ventas", icon: ShoppingCart },
+          {
+            name: "Ventas",
+            href: "/ventas",
+            icon: ShoppingCart,
+            badge: "Actualizado",
+            badgeUntil: "2026-07-24",
+          },
           { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
           { name: "Clientes", href: "/clientes", icon: Users },
           // 🔴 KILL SWITCH (hotfix checkouts abandonados) — revertir: descomentar
