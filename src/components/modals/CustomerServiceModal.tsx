@@ -241,6 +241,10 @@ export default function CustomerServiceModal({
   const [aliclikDispatchStatus, setAliclikDispatchStatus] = useState<string | null>(null);
   const [aliclikSyncedAt, setAliclikSyncedAt] = useState<string | null>(null);
 
+  // EVA
+  const [evaStatus, setEvaStatus] = useState<string | null>(null);
+  const [evaSyncedAt, setEvaSyncedAt] = useState<string | null>(null);
+
   const fetchLogs = useCallback(async () => {
     if (!orderId) return;
     setLogsLoading(true);
@@ -311,6 +315,8 @@ export default function CustomerServiceModal({
       setSubEstadoCc(orderRes.data.subEstadoCc ?? null);
       setAliclikDispatchStatus(orderRes.data.aliclikDispatchStatus ?? null);
       setAliclikSyncedAt(orderRes.data.aliclikSyncedAt ?? null);
+      setEvaStatus(orderRes.data.evaStatus ?? null);
+      setEvaSyncedAt(orderRes.data.evaSyncedAt ?? null);
     } catch (err) {
       console.error("Error fetching receipt", err);
       toast.error("Error al cargar el pedido");
@@ -1878,6 +1884,8 @@ export default function CustomerServiceModal({
                         datosCompletos={datosCompletos}
                         aliclikDispatchStatus={aliclikDispatchStatus}
                         aliclikSyncedAt={aliclikSyncedAt}
+                        evaStatus={evaStatus}
+                        evaSyncedAt={evaSyncedAt}
                         onUpdated={() => {
                           fetchReceipt();
                           fetchLogs();

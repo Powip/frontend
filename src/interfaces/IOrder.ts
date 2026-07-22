@@ -187,6 +187,13 @@ export interface OrderHeader {
   aliclikSyncedAt?: string | null;
 
   // ========================================
+  // ✅ CAMPOS DE EVA COURIER
+  // ========================================
+  evaTrackingId?: string | null;
+  evaStatus?: string | null;
+  evaSyncedAt?: string | null;
+
+  // ========================================
   // ✅ NUEVOS CAMPOS DE SHALOM
   // ========================================
   shalomStatus?: ShalomStatus | null;

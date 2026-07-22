@@ -52,6 +52,7 @@ import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { SourceBadge } from "@/components/shared/SourceBadge";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
+import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 
 import { OrderHeader } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
@@ -1303,6 +1304,10 @@ export default function SeguimientoPage() {
                                   aliclikDispatchStatus={order.aliclikDispatchStatus}
                                   aliclikSyncedAt={order.aliclikSyncedAt}
                                 />
+                                <EvaStatusBadge
+                                  evaStatus={order.evaStatus}
+                                  evaSyncedAt={order.evaSyncedAt}
+                                />
                               </TableCell>
                               {/* Nro Tracking */}
                               <TableCell className="w-[120px] min-w-[120px]">
@@ -1962,6 +1967,10 @@ export default function SeguimientoPage() {
                                   <AliclikStatusBadge
                                     aliclikDispatchStatus={order.aliclikDispatchStatus}
                                     aliclikSyncedAt={order.aliclikSyncedAt}
+                                  />
+                                  <EvaStatusBadge
+                                    evaStatus={order.evaStatus}
+                                    evaSyncedAt={order.evaSyncedAt}
                                   />
                                 </div>
                               </TableCell>

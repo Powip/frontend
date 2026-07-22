@@ -4,6 +4,45 @@ import { CcPedidosTable } from '../CcPedidosTable';
 import { OrderHeader } from '@/interfaces/IOrder';
 
 /* ---------------------------------------------------------------
+   Mocks de infraestructura — la columna "EVA" renderiza
+   SendToEvaButton → SendToEvaModal, que llama a useAuth()
+   incondicionalmente (aunque el modal esté cerrado) y usa
+   evaService para cargar credenciales si llega a abrirse.
+   Estos tests no ejercitan el flujo EVA, solo necesitan que
+   el árbol renderice sin explotar.
+--------------------------------------------------------------- */
+jest.mock('@/contexts/AuthContext', () => ({
+  useAuth: jest.fn(),
+}));
+
+jest.mock('@/services/evaService', () => ({
+  getEvaCredentials: jest.fn(),
+  createEvaOrder: jest.fn(),
+}));
+
+import { useAuth } from '@/contexts/AuthContext';
+import { getEvaCredentials } from '@/services/evaService';
+
+const MOCK_AUTH = {
+  auth: {
+    user: { id: 'user-1', email: 'test@powip.com', role: 'ADMIN', permissions: [] },
+    company: { id: 'company-1', name: 'Powip Test', stores: [] },
+    accessToken: 'fake-token',
+    subscription: null,
+    exp: 9999999999,
+  },
+  loading: false,
+  login: jest.fn(),
+  logout: jest.fn(),
+  updateCompany: jest.fn(),
+  selectedStoreId: null,
+  setSelectedStore: jest.fn(),
+  inventories: [],
+  refreshInventories: jest.fn(),
+  hasPermission: jest.fn().mockReturnValue(true),
+};
+
+/* ---------------------------------------------------------------
    Mock mínimo de OrderHeader
    Solo los campos obligatorios + los relevantes para los tests.
 --------------------------------------------------------------- */
@@ -76,6 +115,12 @@ function renderTable(
 }
 
 describe('CcPedidosTable — botón "Recuperar venta"', () => {
+  beforeEach(() => {
+    jest.mocked(useAuth).mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
+    // getEvaCredentials nunca resuelve por defecto — el modal EVA no se abre en estos tests.
+    jest.mocked(getEvaCredentials).mockReturnValue(new Promise(() => {}));
+  });
+
   afterEach(() => {
     jest.clearAllMocks();
   });
