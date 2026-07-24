@@ -21,6 +21,7 @@ import {
   CheckCircle2,
   ChevronRight,
   ChevronDown,
+  Package,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,14 +39,26 @@ import {
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { Label } from "@/components/ui/label";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { OrderHeader, OrderStatus, OrderItem } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
-import CustomerServiceModal, {
-  ShippingGuideData,
-} from "@/components/modals/CustomerServiceModal";
 import ImportSalesModal from "@/components/modals/ImportSalesModal";
+import ShipmentDetailModal from "@/app/centro-envios/components/ShipmentDetailModal";
+import ReassignDeliveryModal from "@/app/centro-envios/components/ReassignDeliveryModal";
+import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
+import CreateGuideModal, {
+  CreateGuideData,
+} from "@/components/modals/CreateGuideModal";
+import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -149,6 +162,10 @@ export interface Sale {
   aliclikSyncedAt?: string | null;
 }
 
+function formatSoles(amount: number): string {
+  return `S/ ${amount.toFixed(2)}`;
+}
+
 /* -----------------------------------------
    Mapper
 ----------------------------------------- */
@@ -206,10 +223,18 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
 export default function VentasPage() {
   const [sales, setSales] = useState<Sale[]>([]);
-  const [receiptOpen, setReceiptOpen] = useState(false);
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [selectedShippingGuide, setSelectedShippingGuide] =
-    useState<ShippingGuideData | null>(null);
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+  const [createGuideOrder, setCreateGuideOrder] = useState<OrderHeader | null>(
+    null,
+  );
+  const [isCreatingGuide, setIsCreatingGuide] = useState(false);
+  const [guideDetailsOrderId, setGuideDetailsOrderId] = useState<
+    string | null
+  >(null);
+  const [reassignOrder, setReassignOrder] = useState<OrderHeader | null>(
+    null,
+  );
+  const [isReassignLoading, setIsReassignLoading] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
 
   // Filtros avanzados
@@ -399,6 +424,137 @@ export default function VentasPage() {
       undefined,
   });
 
+  const patchOrder = async (
+    orderId: string,
+    payload: Record<string, unknown>,
+  ) => {
+    await axios.patch(
+      `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      { ...payload, ...getUserInfo() },
+    );
+  };
+
+  // Pedido completo (OrderHeader) para el modal de detalle, igual al de Centro de Envíos
+  const viewOrder = useMemo(
+    () => (ordersData ?? []).find((o) => o.id === viewOrderId) ?? null,
+    [ordersData, viewOrderId],
+  );
+
+  const reassignCandidates = useMemo(() => {
+    if (!reassignOrder || !ordersData) return [];
+    return ordersData.filter(
+      (o) =>
+        o.id !== reassignOrder.id &&
+        o.status === "PREPARADO" &&
+        !o.guideNumber &&
+        o.customer.district === reassignOrder.customer.district &&
+        o.items.some((i) =>
+          reassignOrder.items.some(
+            (oi) => oi.productVariantId === i.productVariantId,
+          ),
+        ),
+    );
+  }, [ordersData, reassignOrder]);
+
+  const handleCreateGuide = async (guidesData: CreateGuideData[]) => {
+    setIsCreatingGuide(true);
+    try {
+      for (const guideData of guidesData) {
+        const guideResponse = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides`,
+          guideData,
+        );
+        const guideNumber = guideResponse.data.guideNumber;
+        for (const orderId of guideData.orderIds) {
+          await patchOrder(orderId, {
+            guideNumber,
+            status: "ASIGNADO_A_GUIA",
+            courier: guideData.courierName,
+            courierId: guideData.courierId || null,
+          });
+        }
+      }
+      toast.success("Guía creada · pedido listo para despacho");
+      setCreateGuideOrder(null);
+      refetchOrders();
+    } catch (error: any) {
+      toast.error(error?.response?.data?.message || "Error creando guía");
+    } finally {
+      setIsCreatingGuide(false);
+    }
+  };
+
+  const handleCancelOrderFromModal = async (
+    orderId: string,
+    reason: CancellationReason,
+    notes?: string,
+  ) => {
+    try {
+      await patchOrder(orderId, {
+        status: "ANULADO",
+        cancellationReason: reason,
+        ...(notes ? { notes } : {}),
+      });
+      toast.success("Pedido anulado");
+      refetchOrders();
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "No se pudo anular el pedido",
+      );
+    }
+  };
+
+  const handleReassignDelivery = async (
+    failedOrder: OrderHeader,
+    candidate: OrderHeader,
+  ) => {
+    setIsReassignLoading(true);
+    try {
+      await patchOrder(failedOrder.id, {
+        status: "ANULADO",
+        cancellationReason: "DELIVERY_ISSUE",
+        notes: `[REASIGNADO] Entrega reasignada a ${candidate.orderNumber}`,
+      });
+      await patchOrder(candidate.id, {
+        guideNumber: failedOrder.guideNumber,
+        courier: failedOrder.courier,
+        courierId: failedOrder.courierId,
+        status: "EN_ENVIO",
+        notes: `[REASIGNADO] Recibe entrega de ${failedOrder.orderNumber}`,
+      });
+      const logPayload = (orderId: string, comentarios: string) =>
+        axios.post(`${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas`, {
+          orderId,
+          comentarios,
+          operacion: "COMMENT",
+          userId: auth?.user?.id ?? null,
+          userName: auth?.user?.email ?? null,
+          data: {},
+          isSystemGenerated: true,
+        });
+      await Promise.all([
+        logPayload(
+          failedOrder.id,
+          `Reasignado a ${candidate.orderNumber} (${candidate.customer.fullName})`,
+        ),
+        logPayload(
+          candidate.id,
+          `Recibe entrega reasignada de ${failedOrder.orderNumber} (${failedOrder.customer.fullName}) · misma guía ${failedOrder.guideNumber ?? "—"}`,
+        ),
+      ]);
+      toast.success(
+        `Reasignado · ${candidate.orderNumber} continúa la entrega`,
+      );
+      refetchOrders();
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "No se pudo reasignar el pedido",
+      );
+    } finally {
+      setIsReassignLoading(false);
+    }
+  };
+
   const handleChangeStatus = async (
     saleId: string,
     newStatus: OrderStatus,
@@ -504,9 +660,9 @@ Teléfono: ${sale.phoneNumber}
 Distrito: ${sale.district}
 Dirección: ${sale.address}
 Fecha: ${sale.date}
-Total Venta: $${sale.total.toFixed(2)}
-Adelanto: $${sale.advancePayment.toFixed(2)}
-Por Cobrar: $${sale.pendingPayment.toFixed(2)}
+Total Venta: ${formatSoles(sale.total)}
+Adelanto: ${formatSoles(sale.advancePayment)}
+Por Cobrar: ${formatSoles(sale.pendingPayment)}
 Estado: ${sale.status}
 `.trim(),
       )
@@ -913,61 +1069,6 @@ Estado: ${sale.status}
     }
   };
 
-  // Abrir modal de recibo, cargando datos de guía si es EN_ENVIO
-  const handleOpenReceipt = async (sale: Sale) => {
-    setSelectedOrderId(sale.id);
-
-    // Si es EN_ENVIO, cargar datos de la guía (no tenemos guideNumber en Sale interface de ventas)
-    if (sale.status === "EN_ENVIO") {
-      try {
-        const guideRes = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${sale.id}`,
-        );
-        const guide = guideRes.data;
-
-        if (guide) {
-          // Calcular días desde creación
-          let daysSinceCreated = 0;
-          if (guide?.created_at) {
-            const createdDate = new Date(guide.created_at);
-            const today = new Date();
-            const diffTime = Math.abs(today.getTime() - createdDate.getTime());
-            daysSinceCreated = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          }
-
-          setSelectedShippingGuide({
-            id: guide.id,
-            guideNumber: guide.guideNumber,
-            courierName: guide.courierName,
-            status: guide.status,
-            chargeType: guide.chargeType,
-            amountToCollect: guide.amountToCollect,
-            scheduledDate: guide.scheduledDate?.toString() || null,
-            deliveryZone: guide.deliveryZone,
-            deliveryType: guide.deliveryType,
-            deliveryAddress: guide.deliveryAddress,
-            notes: guide.notes,
-            trackingUrl: guide.trackingUrl,
-            shippingKey: guide.shippingKey,
-            shippingOffice: guide.shippingOffice,
-            shippingProofUrl: guide.shippingProofUrl,
-            created_at: guide.created_at,
-            daysSinceCreated,
-          });
-        } else {
-          setSelectedShippingGuide(null);
-        }
-      } catch (error) {
-        console.error("Error fetching shipping guide:", error);
-        setSelectedShippingGuide(null);
-      }
-    } else {
-      setSelectedShippingGuide(null);
-    }
-
-    setReceiptOpen(true);
-  };
-
   const handleEnviarLima = async (saleId: string) => {
     setSendingLimaId(saleId);
     try {
@@ -1043,7 +1144,9 @@ Estado: ${sale.status}
             <TableHead className="2xl:sticky 2xl:left-[181px] w-[170px] min-w-[170px] 2xl:z-20 bg-muted border-r">
               Cliente
             </TableHead>
-            <TableHead className="w-[100px] min-w-[100px]">Items</TableHead>
+            <TableHead className="w-[130px] min-w-[130px]">
+              Ciudad / Provincia
+            </TableHead>
             {/* Columnas scrolleables */}
             <TableHead>Fecha</TableHead>
             <TableHead>Pago / Envío</TableHead>
@@ -1109,35 +1212,60 @@ Estado: ${sale.status}
                       {sale.phoneNumber}
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <div className="flex -space-x-2 overflow-hidden">
-                      {sale.items?.slice(0, 3).map((item, idx) => (
-                        <div
-                          key={item.id || idx}
-                          className="inline-block h-8 w-8 rounded-full ring-2 ring-background bg-muted overflow-hidden"
-                          title={item.productName}
-                        >
-                          {item.imageUrl ? (
-                            <Image
-                              src={item.imageUrl}
-                              alt={item.productName}
-                              width={32}
-                              height={32}
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground">
-                              {item.productName.charAt(0)}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      {sale.items?.length > 3 && (
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted ring-2 ring-background text-[10px] font-medium">
-                          +{sale.items.length - 3}
-                        </div>
-                      )}
+                  <TableCell className="w-[130px] min-w-[130px] text-xs">
+                    <div className="font-medium truncate">
+                      {sale.city || "-"}
                     </div>
+                    <div className="text-muted-foreground truncate">
+                      {sale.province || "-"}
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="mt-1 inline-flex items-center gap-1 rounded-md border border-border/70 px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                        >
+                          <Package className="h-3 w-3" />
+                          {sale.items?.length || 0} items
+                        </button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start" className="w-64">
+                        <DropdownMenuLabel>Productos</DropdownMenuLabel>
+                        <DropdownMenuSeparator />
+                        {sale.items && sale.items.length > 0 ? (
+                          sale.items.map((item, idx) => (
+                            <DropdownMenuItem
+                              key={item.id || idx}
+                              className="cursor-default gap-2"
+                              onSelect={(e) => e.preventDefault()}
+                            >
+                              <div className="h-7 w-7 flex-shrink-0 rounded bg-muted overflow-hidden">
+                                {item.imageUrl ? (
+                                  <Image
+                                    src={item.imageUrl}
+                                    alt={item.productName}
+                                    width={28}
+                                    height={28}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-full w-full flex items-center justify-center text-[10px] text-muted-foreground">
+                                    {item.productName.charAt(0)}
+                                  </div>
+                                )}
+                              </div>
+                              <span className="truncate text-xs">
+                                {item.productName} x{item.quantity}
+                              </span>
+                            </DropdownMenuItem>
+                          ))
+                        ) : (
+                          <DropdownMenuItem disabled>
+                            Sin items
+                          </DropdownMenuItem>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </TableCell>
                   {/* Columnas scrolleables */}
                   <TableCell className="text-xs">{sale.date}</TableCell>
@@ -1149,13 +1277,13 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
                     <div className="font-semibold">
-                      ${sale.total.toFixed(2)}
+                      {formatSoles(sale.total)}
                     </div>
                     <div className="text-green-600">
-                      Adel: ${sale.advancePayment.toFixed(2)}
+                      Adel: {formatSoles(sale.advancePayment)}
                     </div>
                     <div className="text-red-600">
-                      Debe: ${sale.pendingPayment.toFixed(2)}
+                      Debe: {formatSoles(sale.pendingPayment)}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">
@@ -1198,7 +1326,7 @@ Estado: ${sale.status}
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleOpenReceipt(sale)}
+                      onClick={() => setViewOrderId(sale.id)}
                     >
                       <FileText className="h-4 w-4 mr-1" />
                       Ver
@@ -1405,13 +1533,13 @@ Estado: ${sale.status}
                   </TableCell>
                   <TableCell className="text-xs text-right tabular-nums">
                     <div className="font-semibold">
-                      ${sale.total.toFixed(2)}
+                      {formatSoles(sale.total)}
                     </div>
                     <div className="text-green-600">
-                      Adel: ${sale.advancePayment.toFixed(2)}
+                      Adel: {formatSoles(sale.advancePayment)}
                     </div>
                     <div className="text-red-600">
-                      Debe: ${sale.pendingPayment.toFixed(2)}
+                      Debe: {formatSoles(sale.pendingPayment)}
                     </div>
                   </TableCell>
                   <TableCell className="text-xs">
@@ -1451,7 +1579,7 @@ Estado: ${sale.status}
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleOpenReceipt(sale)}
+                      onClick={() => setViewOrderId(sale.id)}
                     >
                       <FileText className="h-4 w-4 mr-1" />
                       Ver
@@ -1612,9 +1740,14 @@ Estado: ${sale.status}
 
         {/* KPIs */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <h2 className="text-sm font-bold text-muted-foreground">
-            Estadísticas
-          </h2>
+          <div>
+            <h2 className="text-sm font-bold text-muted-foreground">
+              Estadísticas
+            </h2>
+            <p className="text-xs text-muted-foreground/80">
+              Corresponden a los pedidos pendientes por procesar.
+            </p>
+          </div>
           <PeriodSelector
             onPeriodChange={(from, to) => {
               setKpiDateFrom(from);
@@ -1661,7 +1794,7 @@ Estado: ${sale.status}
                 <div>
                   <p className="text-sm text-muted-foreground">Por cobrar</p>
                   <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                    ${kpis.porCobrar.toFixed(2)}
+                    {formatSoles(kpis.porCobrar)}
                   </h3>
                 </div>
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
@@ -1677,7 +1810,7 @@ Estado: ${sale.status}
                 <div>
                   <p className="text-sm text-muted-foreground">Adelantado</p>
                   <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                    ${kpis.adelantado.toFixed(2)}
+                    {formatSoles(kpis.adelantado)}
                   </h3>
                 </div>
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">
@@ -1987,17 +2120,64 @@ Estado: ${sale.status}
         </Tabs>
       </main>
 
-      <CustomerServiceModal
-        open={receiptOpen}
-        orderId={selectedOrderId || ""}
-        onClose={() => {
-          setReceiptOpen(false);
-          setSelectedShippingGuide(null);
-        }}
+      <ShipmentDetailModal
+        open={!!viewOrderId}
+        order={viewOrder}
+        onClose={() => setViewOrderId(null)}
         onOrderUpdated={refetchOrders}
-        hideCallManagement={true}
-        shippingGuide={selectedShippingGuide}
-        showTracking={activeTab === "todas"}
+        onOpenGuideDetails={(orderId) => setGuideDetailsOrderId(orderId)}
+        onOpenReassign={(order) => setReassignOrder(order)}
+        onOpenPayment={(id) => {
+          const sale = sales.find((s) => s.id === id);
+          if (sale) {
+            setSelectedSaleForPayment(sale);
+            setPaymentModalOpen(true);
+          }
+        }}
+        onOpenCreateGuide={(order) => setCreateGuideOrder(order)}
+      />
+
+      {createGuideOrder && (
+        <CreateGuideModal
+          open={!!createGuideOrder}
+          onClose={() => setCreateGuideOrder(null)}
+          storeId={selectedStoreId || ""}
+          isLoading={isCreatingGuide}
+          selectedOrders={[
+            {
+              id: createGuideOrder.id,
+              orderNumber: createGuideOrder.orderNumber,
+              clientName: createGuideOrder.customer.fullName,
+              address: createGuideOrder.customer.address,
+              district: createGuideOrder.customer.district,
+              total: Number(createGuideOrder.grandTotal),
+              pendingPayment: getPendingPayment(createGuideOrder),
+              zone: createGuideOrder.customer.zone,
+            },
+          ]}
+          onConfirm={handleCreateGuide}
+        />
+      )}
+
+      {guideDetailsOrderId && (
+        <GuideDetailsModal
+          open={!!guideDetailsOrderId}
+          onClose={() => setGuideDetailsOrderId(null)}
+          orderId={guideDetailsOrderId}
+          isCourierView={false}
+          onGuideUpdated={refetchOrders}
+        />
+      )}
+
+      <ReassignDeliveryModal
+        open={!!reassignOrder}
+        onClose={() => setReassignOrder(null)}
+        order={reassignOrder}
+        candidates={reassignCandidates}
+        isLoading={isReassignLoading}
+        onReprogram={handleIndividualReprogramar}
+        onCancelOrder={handleCancelOrderFromModal}
+        onReassign={handleReassignDelivery}
       />
 
       <CancellationModal
