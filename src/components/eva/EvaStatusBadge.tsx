@@ -8,16 +8,18 @@ interface EvaStatusBadgeProps {
   evaSyncedAt?: string | null;
 }
 
-type EvaStatusGroup = "positivo" | "negativo" | "progreso" | "sinAvance";
+export type EvaStatusGroup = "positivo" | "negativo" | "progreso" | "sinAvance";
 
 /**
  * 13 estados crudos de EVA (ver KNOWN_EVA_STATUSES en ms-ventas/eva-status-map.ts).
  * Agrupación visual: terminal-positivo (verde), terminal-negativo (rojo),
  * en-progreso (azul), sin-avance/reintentable (ámbar).
+ *
+ * Exportadas para reutilizar en otras vistas (selector de filtro, contadores
+ * de resumen) sin duplicar la lista de estados — única fuente de verdad.
  */
-const STATUS_GROUP: Record<string, EvaStatusGroup> = {
+export const STATUS_GROUP: Record<string, EvaStatusGroup> = {
   ENTREGADO: "positivo",
-  "NO ENTREGADO": "negativo",
   CANCELADO: "negativo",
   DEVUELTO: "negativo",
   REGISTRADO: "progreso",
@@ -25,13 +27,14 @@ const STATUS_GROUP: Record<string, EvaStatusGroup> = {
   "ASIGNADO MOTORIZADO": "progreso",
   "EN RUTA": "progreso",
   "PUNTO VISITADO": "progreso",
+  "NO ENTREGADO": "sinAvance",
   AUSENTE: "sinAvance",
   REPROGRAMAR: "sinAvance",
   INCIDENCIA: "sinAvance",
   "RECOJO EN RUTA": "sinAvance",
 };
 
-const STATUS_LABEL: Record<string, string> = {
+export const STATUS_LABEL: Record<string, string> = {
   ENTREGADO: "Entregado",
   "NO ENTREGADO": "No entregado",
   CANCELADO: "Cancelado",
@@ -47,7 +50,7 @@ const STATUS_LABEL: Record<string, string> = {
   "RECOJO EN RUTA": "Recojo en ruta",
 };
 
-const GROUP_CLS: Record<EvaStatusGroup, string> = {
+export const GROUP_CLS: Record<EvaStatusGroup, string> = {
   positivo: "bg-green-100 text-green-700 border-green-200",
   negativo: "bg-red-100 text-red-700 border-red-200",
   progreso: "bg-blue-100 text-blue-700 border-blue-200",

@@ -51,6 +51,7 @@ import {
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
+import EvaOrderTrackingView from "@/components/tracking/EvaOrderTrackingView";
 
 interface TrackingGuide {
   id: string;
@@ -224,10 +225,11 @@ export default function CourierTrackingView() {
   return (
     <div className="space-y-6">
       <Tabs value={activeCarrierTab} onValueChange={setActiveCarrierTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-3 mb-6">
+        <TabsList className="grid w-full max-w-md grid-cols-4 mb-6">
           <TabsTrigger value="shalom">Shalom</TabsTrigger>
           <TabsTrigger value="todos">Todos</TabsTrigger>
           <TabsTrigger value="aliclik">Aliclik</TabsTrigger>
+          <TabsTrigger value="eva">EVA Courier</TabsTrigger>
         </TabsList>
 
         <TabsContent value="shalom">
@@ -250,6 +252,18 @@ export default function CourierTrackingView() {
             </CardHeader>
             <CardContent>
               <AliclikOrderTrackingView />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="eva">
+          <Card className="border-border shadow-sm">
+            <CardHeader className="pb-3 px-4">
+              <CardTitle className="text-lg">Seguimiento EVA Courier</CardTitle>
+              <CardDescription>Gestiona los pedidos enviados a EVA Courier con información de estado en tiempo real.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <EvaOrderTrackingView />
             </CardContent>
           </Card>
         </TabsContent>

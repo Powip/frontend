@@ -6,8 +6,9 @@
  * 2. Retorna null cuando evaStatus es null o undefined explícito.
  * 3. Muestra la etiqueta mapeada correctamente para los 13 estados crudos de EVA.
  * 4. Los 4 grupos de color se aplican correctamente:
- *    ENTREGADO → verde (positivo), NO ENTREGADO/CANCELADO/DEVUELTO → rojo (negativo),
- *    EN RUTA (y el resto de progreso) → azul, AUSENTE (y el resto de sinAvance) → ámbar.
+ *    ENTREGADO → verde (positivo), CANCELADO/DEVUELTO → rojo (negativo),
+ *    EN RUTA (y el resto de progreso) → azul,
+ *    AUSENTE/NO ENTREGADO (y el resto de sinAvance) → ámbar.
  * 5. Un status desconocido (no está en el mapa) muestra el string crudo y cae
  *    en el grupo "progreso" (azul) por defecto.
  * 6. El title del span incluye "Sync:" y la fecha formateada cuando hay evaSyncedAt.
@@ -92,11 +93,11 @@ describe('EvaStatusBadge', () => {
       expect(badge.className).toContain('text-green-700');
     });
 
-    it('NO ENTREGADO usa clases rojas (grupo negativo)', () => {
+    it('NO ENTREGADO usa clases ámbar (grupo sinAvance)', () => {
       render(<EvaStatusBadge evaStatus="NO ENTREGADO" />);
       const badge = screen.getByTitle('Enviado a EVA');
-      expect(badge.className).toContain('bg-red-100');
-      expect(badge.className).toContain('text-red-700');
+      expect(badge.className).toContain('bg-amber-100');
+      expect(badge.className).toContain('text-amber-700');
     });
 
     it('CANCELADO usa clases rojas (grupo negativo)', () => {
