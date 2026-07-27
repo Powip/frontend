@@ -71,6 +71,91 @@ interface ParsedRow {
   error?: string;
 }
 
+interface SubcategoryWithCategory {
+  id: string;
+  name: string;
+  category?: {
+    id: string;
+    name: string;
+  };
+}
+
+/* ───────── parseo por header (tolerante a orden/espacios/mayúsculas) ───────── */
+type ParsedRowFieldKey =
+  | "categoryName"
+  | "subcategoryName"
+  | "name"
+  | "description"
+  | "companySku"
+  | "rawAttrs"
+  | "priceBase"
+  | "priceVta"
+  | "quantity"
+  | "min_stock";
+
+/** Header exacto (tal cual lo genera handleDownloadTemplate) → campo interno. */
+const HEADER_COLUMN_KEYS: Record<string, ParsedRowFieldKey> = {
+  "categoría": "categoryName",
+  "subcategoría": "subcategoryName",
+  "nombre": "name",
+  "descripción": "description",
+  "sku empresa": "companySku",
+  "atributos (color:rojo,talle:m)": "rawAttrs",
+  "precio compra": "priceBase",
+  "precio venta": "priceVta",
+  "cantidad": "quantity",
+  "stock mínimo": "min_stock",
+};
+
+const REQUIRED_HEADERS: { header: string; key: ParsedRowFieldKey }[] = [
+  { header: "Nombre *", key: "name" },
+  { header: "Categoría *", key: "categoryName" },
+  { header: "Subcategoría *", key: "subcategoryName" },
+  { header: "Precio Compra *", key: "priceBase" },
+  { header: "Precio Venta *", key: "priceVta" },
+  { header: "Cantidad *", key: "quantity" },
+];
+
+const normalizeHeaderText = (value: unknown): string =>
+  (value?.toString() || "")
+    .replace(/\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+const buildColumnIndexMap = (
+  headerRow: ExcelJS.Row,
+): Partial<Record<ParsedRowFieldKey, number>> => {
+  const map: Partial<Record<ParsedRowFieldKey, number>> = {};
+  headerRow.eachCell({ includeEmpty: false }, (cell, colNumber) => {
+    const fieldKey = HEADER_COLUMN_KEYS[normalizeHeaderText(cell.value)];
+    if (fieldKey) {
+      map[fieldKey] = colNumber;
+    }
+  });
+  return map;
+};
+
+const getCellText = (
+  row: ExcelJS.Row,
+  columnIndexMap: Partial<Record<ParsedRowFieldKey, number>>,
+  key: ParsedRowFieldKey,
+): string => {
+  const colIndex = columnIndexMap[key];
+  if (!colIndex) return "";
+  return row.getCell(colIndex).value?.toString()?.trim() || "";
+};
+
+const getCellNumber = (
+  row: ExcelJS.Row,
+  columnIndexMap: Partial<Record<ParsedRowFieldKey, number>>,
+  key: ParsedRowFieldKey,
+): number => {
+  const colIndex = columnIndexMap[key];
+  if (!colIndex) return 0;
+  return Number(row.getCell(colIndex).value) || 0;
+};
+
 interface ExcelImportWizardProps {
   onBack: () => void;
 }
@@ -207,6 +292,8 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       },
       { header: "Precio Compra *", key: "priceBase", width: 16 },
       { header: "Precio Venta *", key: "priceVta", width: 16 },
+      { header: "Cantidad *", key: "quantity", width: 14 },
+      { header: "Stock Mínimo", key: "min_stock", width: 14 },
     ];
 
     /* Header styling */
@@ -230,6 +317,8 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         attributes: "Color:Azul,Talle:L",
         priceBase: 5000,
         priceVta: 12500,
+        quantity: 20,
+        min_stock: 5,
       });
       sheet.addRow({
         categoryName: "Calzado",
@@ -240,6 +329,8 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         attributes: "Talle:42",
         priceBase: 3500,
         priceVta: 8900,
+        quantity: 15,
+        min_stock: 3,
       });
     } else {
       /* Fila de ejemplo personalizada */
@@ -254,6 +345,8 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         attributes: "Color:Blanco",
         priceBase: 100,
         priceVta: 250,
+        quantity: 10,
+        min_stock: 2,
       });
 
       /* Info banner row */
@@ -261,6 +354,38 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
       sheet.addRow([
         `📋 Categoría: ${selectedCategory?.name}  |  Subcategoría: ${selectedSubcategory?.name}`,
       ]);
+    }
+
+    /* ── Hoja de referencia: Categorías Válidas ── */
+    try {
+      const res = await axios.get<SubcategoryWithCategory[]>(
+        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories`,
+      );
+
+      const validSheet = workbook.addWorksheet("Categorías Válidas");
+      validSheet.columns = [
+        { header: "Categoría", key: "category", width: 28 },
+        { header: "Subcategoría", key: "subcategory", width: 28 },
+      ];
+
+      const validHeaderRow = validSheet.getRow(1);
+      validHeaderRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      validHeaderRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF1E3A5F" },
+      };
+      validHeaderRow.alignment = { horizontal: "center" };
+
+      res.data.forEach((sub) => {
+        validSheet.addRow({
+          category: sub.category?.name || "",
+          subcategory: sub.name,
+        });
+      });
+    } catch {
+      // Si falla el fetch de subcategorías, la plantilla se descarga igual,
+      // sin la hoja de referencia — no debe bloquear al usuario.
     }
 
     const buf = await workbook.xlsx.writeBuffer();
@@ -297,22 +422,49 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         workbook.getWorksheet("Productos") || workbook.worksheets[0];
       if (!sheet) throw new Error("No se encontró la hoja 'Productos'");
 
-      const rawRows: any[] = [];
+      const columnIndexMap = buildColumnIndexMap(sheet.getRow(1));
+      const missingHeaders = REQUIRED_HEADERS.filter(
+        (h) => !columnIndexMap[h.key],
+      );
+      if (missingHeaders.length > 0) {
+        throw new Error(
+          `Faltan columnas obligatorias en el archivo: ${missingHeaders
+            .map((h) => h.header)
+            .join(", ")}`,
+        );
+      }
+
+      const rawRows: {
+        categoryName: string;
+        subcategoryName: string;
+        name: string;
+        description: string;
+        companySku: string;
+        rawAttrs: string;
+        priceBase: number;
+        priceVta: number;
+        quantity: number;
+        min_stock: number;
+      }[] = [];
       const uniqueCategoryNames = new Set<string>();
 
       sheet.eachRow((row, rowNum) => {
         if (rowNum === 1) return; // skip header
 
-        const categoryName = row.getCell(1).value?.toString()?.trim() || "";
-        const subcategoryName = row.getCell(2).value?.toString()?.trim() || "";
-        const name = row.getCell(3).value?.toString()?.trim() || "";
-        const description = row.getCell(4).value?.toString()?.trim() || "";
-        const companySku = row.getCell(5).value?.toString()?.trim() || "";
-        const rawAttrs = row.getCell(6).value?.toString()?.trim() || "";
-        const priceBase = Number(row.getCell(7).value) || 0;
-        const priceVta = Number(row.getCell(8).value) || 0;
-        const quantity = 0; // Forzado a 0 según requerimiento
-        const min_stock = 0; // Forzado a 0 según requerimiento
+        const categoryName = getCellText(row, columnIndexMap, "categoryName");
+        const subcategoryName = getCellText(
+          row,
+          columnIndexMap,
+          "subcategoryName",
+        );
+        const name = getCellText(row, columnIndexMap, "name");
+        const description = getCellText(row, columnIndexMap, "description");
+        const companySku = getCellText(row, columnIndexMap, "companySku");
+        const rawAttrs = getCellText(row, columnIndexMap, "rawAttrs");
+        const priceBase = getCellNumber(row, columnIndexMap, "priceBase");
+        const priceVta = getCellNumber(row, columnIndexMap, "priceVta");
+        const quantity = getCellNumber(row, columnIndexMap, "quantity");
+        const min_stock = getCellNumber(row, columnIndexMap, "min_stock");
 
         if (!name && !categoryName) return;
 
@@ -375,6 +527,8 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         if (!raw.name) error = "Nombre vacío";
         if (raw.priceBase < 0) error = "Precio Compra inválido";
         if (raw.priceVta < 0) error = "Precio Venta inválido";
+        if (raw.quantity < 0) error = "Cantidad inválida";
+        if (raw.min_stock < 0) error = "Stock mínimo inválido";
 
         return {
           ...raw,
@@ -391,9 +545,10 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         toast.success(`Se encontraron ${rows.length} filas`);
         setStep(3); // Auto-advance to preview
       }
-    } catch (err: any) {
-      console.error(err);
-      toast.error(err.message || "Error al leer el archivo");
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : "Error al leer el archivo";
+      toast.error(message);
     } finally {
       setIsParsing(false);
     }
@@ -428,25 +583,21 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         attributes: r.attributes,
         priceBase: r.priceBase,
         priceVta: r.priceVta,
-        quantity: 0, // Siempre 0 en importación Excel
-        min_stock: 0, // Siempre 0 en importación Excel
+        quantity: r.quantity,
+        min_stock: r.min_stock,
         subcategoryId: r.subcategoryId, // Enviamos el ID resuelto
       })),
     };
 
-    console.log("📦 Payload bulk-import:", JSON.stringify(payload, null, 2));
     const apiUrl = `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/bulk-import`;
-    console.log("🌐 API URL:", apiUrl);
 
     setIsSaving(true);
     try {
       const res = await axios.post(apiUrl, payload);
 
-      console.log("✅ Respuesta bulk-import:", res.data);
-
       if (res.data.created === 0 && res.data.errors > 0) {
         toast.error(
-          `No se crearon productos. ${res.data.errors} errores — revisá la consola`,
+          `No se crearon productos. ${res.data.errors} errores — revisá el detalle`,
         );
       } else if (res.data.created > 0) {
         toast.success(
@@ -456,18 +607,14 @@ export default function ExcelImportWizard({ onBack }: ExcelImportWizardProps) {
         onBack();
       } else {
         toast.warning(
-          "La respuesta no indica productos creados. Verificá la consola.",
+          "La respuesta no indica productos creados. Verificá el resultado de la importación.",
         );
       }
-    } catch (err: any) {
-      const errorDetail = err.response?.data
-        ? JSON.stringify(err.response.data)
-        : err.message;
-      console.error("❌ Error bulk-import:", errorDetail);
-      console.error("❌ Status:", err.response?.status);
-      toast.error(
-        `Error (${err.response?.status || "red"}): ${err.response?.data?.message || err.message}`,
-      );
+    } catch (err) {
+      const message = axios.isAxiosError(err)
+        ? `Error (${err.response?.status || "red"}): ${err.response?.data?.message || err.message}`
+        : "Error al importar productos";
+      toast.error(message);
     } finally {
       setIsSaving(false);
     }
