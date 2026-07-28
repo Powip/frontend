@@ -374,6 +374,21 @@ export default function SendToShalomModal({
     [],
   );
 
+  // Deps intencionalmente limitadas a [open]: el padre (GuideDetailsModal)
+  // pasa `orders` como `ordersDetails.filter(...)`, que es un array NUEVO en
+  // cada render del padre aunque el contenido no cambie. Si `orders` estuviera
+  // en este array de deps, un envío exitoso (handleSend -> onSuccess() ->
+  // fetchGuide() del padre, que actualiza ordersDetails) re-dispara este
+  // efecto, que hace setIsSuccess(false) y pisa el setIsSuccess(true) recién
+  // hecho — el modal "parpadea" y vuelve a la pantalla de configuración aunque
+  // el envío a Shalom ya se haya completado correctamente en el backend.
+  // `auth` es un estado de AuthContext que solo cambia por login/logout/
+  // refresh de token — no hay un escenario legítimo donde deba resetearse todo
+  // el formulario (agencias, código de seguridad, declaración jurada ya
+  // cargados) mientras el modal ya está abierto. `fetchAgencies` es estable
+  // (useCallback con deps []). auth/orders/fetchAgencies se siguen leyendo del
+  // closure con su valor vigente; solo NO deben disparar una re-ejecución del
+  // reset por sí solos.
   useEffect(() => {
     if (!open || orders.length === 0) return;
 
@@ -424,11 +439,11 @@ export default function SendToShalomModal({
       if (destSearch) fetchAgencies(destSearch, order.id);
     });
     setShipmentsData(initialData);
-  }, [open, orders, auth, fetchAgencies]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Propagar código global a todos los pedidos cuando cambia
   useEffect(() => {
-    if (orders.length === 0) return;
+    if (!open || orders.length === 0) return;
     setShipmentsData((prev) => {
       const next = { ...prev };
       orders.forEach((order) => {

@@ -190,6 +190,17 @@ export default function SendToAliclikGuideModal({
 
   // ─── EFECTO: cotizar al abrir ────────────────────────
 
+  // Deps intencionalmente limitadas a [open]: el padre (GuideDetailsModal)
+  // pasa `orders` como `ordersDetails.filter(...)`, que es un array NUEVO en
+  // cada render del padre aunque el contenido no cambie. Si `orders` estuviera
+  // en este array de deps, un envío exitoso (handleSendAll -> onSuccess() ->
+  // fetchGuide() del padre, que actualiza ordersDetails) re-dispara este
+  // efecto, que hace setIsSuccess(false) y pisa el setIsSuccess(true) recién
+  // hecho — el modal "parpadea" y vuelve a la pantalla de configuración
+  // aunque el envío a Aliclik ya se haya completado correctamente en el
+  // backend. companyId/token/orders se siguen leyendo del closure con su
+  // valor vigente (orderStates se arma con quoteAliclikOrder por cada
+  // order); solo NO deben disparar una re-ejecución del reset por sí solos.
   useEffect(() => {
     if (!open || orders.length === 0 || !companyId || !token) return;
 
@@ -239,7 +250,7 @@ export default function SendToAliclikGuideModal({
           }));
         });
     });
-  }, [open, orders, companyId, token]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── HANDLERS ────────────────────────────────────────
 
