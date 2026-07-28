@@ -77,6 +77,16 @@ export interface EvaCreateOrderResult {
   externalOrderId: string;
 }
 
+/** Resultado por fila de un envío bulk — mismo orden en que se mandaron los payloads. */
+export interface EvaSendOrdersBulkItemResult {
+  orderId: string;
+  shipmentId: string | null;
+  outcome: "created" | "failed_client" | "failed_pending" | "excluded";
+  trackingId?: string;
+  externalOrderId?: string;
+  reason?: string;
+}
+
 // ─── SERVICIOS ──────────────────────────────────────────
 
 export const getEvaCredentials = async (
@@ -136,6 +146,23 @@ export const createEvaOrder = async (
     { headers: headers(token) },
   );
   return res.data;
+};
+
+/**
+ * Envía hasta 200 pedidos en una sola llamada al bulk real de EVA. Devuelve
+ * `results` en el MISMO ORDEN en que se mandaron los `orders` — el llamador
+ * debe mapear de vuelta por posición, no por índice implícito de otra fuente.
+ */
+export const createEvaOrdersBulk = async (
+  token: string,
+  orders: CreateEvaOrderPayload[],
+): Promise<EvaSendOrdersBulkItemResult[]> => {
+  const res = await axios.post<{ results: EvaSendOrdersBulkItemResult[] }>(
+    `${API_INTEGRATIONS}/eva/orders/bulk`,
+    { orders },
+    { headers: headers(token) },
+  );
+  return res.data.results;
 };
 
 // ─── DISTRITOS (Anexo A del manual EVA — hallazgo #14) ───
