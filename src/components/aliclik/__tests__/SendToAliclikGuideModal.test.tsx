@@ -14,6 +14,9 @@
  * 4. Si createAliclikOrder falla para un pedido el resumen lo marca como
  *    error; los demás pedidos se reportan como éxito. onSuccess se llama
  *    igual porque el proceso completo terminó.
+ * 5. Regresión: un envío exitoso no debe revertirse por un re-render del
+ *    padre (GuideDetailsModal) que pasa una nueva referencia de `orders`
+ *    con el mismo contenido.
  */
 
 import React from 'react';
@@ -222,7 +225,9 @@ jest.mock('@/lib/utils', () => ({
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { quoteAliclikOrder, createAliclikOrder } from '@/services/aliclikService';
-import SendToAliclikGuideModal from '../SendToAliclikGuideModal';
+import SendToAliclikGuideModal, {
+  type AliclikGuideOrderItem,
+} from '../SendToAliclikGuideModal';
 
 // ── Casts ────────────────────────────────────────────────────────────────────
 
@@ -333,6 +338,52 @@ async function waitForQuotesLoaded() {
   await waitFor(() => {
     expect(screen.queryByText(/cotizando en aliclik/i)).not.toBeInTheDocument();
   });
+}
+
+/**
+ * Wrapper de test que reproduce el patrón real de `GuideDetailsModal`: los
+ * `orders` que recibe `SendToAliclikGuideModal` viven en un `useState` propio
+ * de este wrapper y se derivan con `.filter()` en el cuerpo del render —
+ * igual que `ordersDetails.filter(...)` en el componente real. Por eso
+ * CUALQUIER re-render de este wrapper produce una referencia NUEVA de
+ * `orders`, aunque el contenido no cambie.
+ *
+ * El botón "Simular fetchGuide" NO es parte de la UI real: es el gancho de
+ * este harness para forzar, en un paso explícito y separado del envío, el
+ * mismo tipo de re-render que dispara `fetchGuide()` en el padre real tras
+ * `onSuccess()` (que en producción vuelve a pedir la guía al backend y
+ * actualiza `ordersDetails` con una respuesta nueva, misma data, otra
+ * referencia).
+ */
+function GuideModalTestWrapper({
+  initialOrders,
+  onSuccessSpy,
+}: {
+  initialOrders: AliclikGuideOrderItem[];
+  onSuccessSpy: () => void;
+}) {
+  const [ordersState, setOrdersState] = React.useState(initialOrders);
+
+  return (
+    <>
+      <SendToAliclikGuideModal
+        open
+        guideId="guide-abc"
+        companyId="company-1"
+        orders={ordersState.filter(() => true)}
+        onClose={jest.fn()}
+        onSuccess={onSuccessSpy}
+      />
+      <button
+        type="button"
+        onClick={() =>
+          setOrdersState((prev) => prev.map((order) => ({ ...order })))
+        }
+      >
+        Simular fetchGuide
+      </button>
+    </>
+  );
 }
 
 // ── Setup ────────────────────────────────────────────────────────────────────
@@ -938,6 +989,59 @@ describe('SendToAliclikGuideModal', () => {
         const btn = screen.getByRole('button', { name: /enviar/i });
         expect(btn).toBeDisabled();
       });
+    });
+  });
+
+  // ── 8. Regresión: éxito no debe revertirse por re-render del padre ───────
+  //
+  // Reproduce el bug real de producción: GuideDetailsModal pasa `orders`
+  // como `ordersDetails.filter(...)`, un array NUEVO en cada render del
+  // padre. Un envío exitoso llama a `onSuccess()`, que en el padre dispara
+  // `fetchGuide()` (actualiza `ordersDetails`), lo que crea una nueva
+  // referencia de `orders` — con el bug viejo (orders en las deps del
+  // useEffect de inicialización), eso re-disparaba el efecto, que hacía
+  // `setIsSuccess(false)` y pisaba el `setIsSuccess(true)` recién hecho: el
+  // modal mostraba la pantalla de éxito por un instante y volvía a la de
+  // cotización/configuración, como si el envío hubiera fallado, aunque en
+  // el backend sí se había creado correctamente el pedido en Aliclik.
+
+  describe('regresión: la pantalla de éxito no debe revertirse por un re-render del padre', () => {
+    it('mantiene la pantalla de éxito visible aunque el wrapper (imitando a GuideDetailsModal) re-renderice pasando una nueva referencia de `orders` con el mismo contenido', async () => {
+      const onSuccessSpy = jest.fn();
+      render(
+        <GuideModalTestWrapper
+          initialOrders={[ORDER_1, ORDER_2]}
+          onSuccessSpy={onSuccessSpy}
+        />,
+      );
+      await waitForQuotesLoaded();
+
+      const user = userEvent.setup();
+      const sendBtn = screen.getByRole('button', { name: /enviar/i });
+      await waitFor(() => expect(sendBtn).not.toBeDisabled());
+      await user.click(sendBtn);
+
+      // Aparece la pantalla de éxito.
+      expect(await screen.findByText('¡Pedidos creados!')).toBeInTheDocument();
+      expect(onSuccessSpy).toHaveBeenCalledTimes(1);
+
+      // Paso explícito y POSTERIOR a que la pantalla de éxito ya está
+      // confirmada en pantalla: simula lo que hace GuideDetailsModal real
+      // (fetchGuide() tras onSuccess()) forzando un re-render del wrapper
+      // que pasa una referencia NUEVA de `orders`, mismo contenido.
+      await user.click(screen.getByRole('button', { name: /simular fetchguide/i }));
+
+      // Con el bug viejo, este re-render disparaba de nuevo el efecto de
+      // inicialización y el modal volvía a la pantalla de cotización/
+      // configuración aunque el envío a Aliclik ya se hubiera completado.
+      // Con el fix (deps limitadas a [open]), la pantalla de éxito debe
+      // seguir intacta.
+      expect(screen.getByText('¡Pedidos creados!')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /enviar \d+ a aliclik/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/pedidos a enviar/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/cotizando en aliclik/i)).not.toBeInTheDocument();
     });
   });
 });

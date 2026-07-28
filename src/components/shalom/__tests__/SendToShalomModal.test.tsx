@@ -14,6 +14,11 @@
  *    el payload lleva `declaracionJurada: "Documentos"`.
  * 5. Si la respuesta trae `shalomChangedToAereo: true`, se muestra el aviso de
  *    discrepancia en pantalla y se llama toast.warning con el texto correspondiente.
+ * 6. Regresión: un re-render del padre (GuideDetailsModal) que pase una nueva
+ *    referencia de `orders` (mismo contenido) DESPUÉS de un envío exitoso no
+ *    debe hacer desaparecer la pantalla de éxito. Reproduce fielmente el bug
+ *    real ya corregido (deps del useEffect de inicialización limitadas a
+ *    `[open]`).
  *
  * Work-arounds jsdom aplicados:
  * - @/components/ui/select → mock de <select> nativo para evitar problemas de
@@ -231,28 +236,27 @@ const MOCK_AGENCY = {
 };
 
 /**
- * Completa todos los campos obligatorios para que allDestinationsSet=true
- * y el botón "Confirmar y enviar a Shalom" quede habilitado.
+ * Completa todos los campos obligatorios (origen, código de seguridad
+ * global, destino) para que allDestinationsSet=true y el botón "Confirmar y
+ * enviar a Shalom" quede habilitado. Asume que el modal YA fue renderizado
+ * (por `renderModal()` o por un wrapper equivalente, p.ej.
+ * `GuideModalTestWrapper`) y que `axios.get` ya está mockeado para devolver
+ * MOCK_AGENCY.
  *
  * Flujo:
- * 1. axios.get devuelve MOCK_AGENCY para cualquier búsqueda.
- * 2. El useEffect dispara fetchAgencies para origen (distrito del perfil)
+ * 1. El useEffect dispara fetchAgencies para origen (distrito del perfil)
  *    y para destino (distrito del cliente de la orden).
- * 3. Esperamos a que las opciones 'LIMA' aparezcan en los <select>.
- * 4. Seleccionamos origen y destino.
- * 5. El código de seguridad global '1357' es válido y se propaga a cada orden.
- * 6. recipientDoc='12345678' (8 dígitos) y recipientPhone='987654321' (9 dígitos)
+ * 2. Esperamos a que las opciones 'LIMA' aparezcan en los <select>.
+ * 3. Seleccionamos origen y destino.
+ * 4. El código de seguridad global '1357' es válido y se propaga a cada orden.
+ * 5. recipientDoc='12345678' (8 dígitos) y recipientPhone='987654321' (9 dígitos)
  *    ya están prellenados por los fixtures del MOCK_ORDER.
- * 7. Esperamos a que el botón se habilite.
+ * 6. Esperamos a que el botón se habilite.
+ *
+ * NOTA: solo soporta un único pedido con destino (un solo <select> de
+ * destino) — suficiente para el único MOCK_ORDER que usa este archivo.
  */
-async function setupValidForm() {
-  (axios.get as jest.Mock).mockResolvedValue({
-    data: { success: true, data: [MOCK_AGENCY] },
-  });
-
-  const user = userEvent.setup();
-  renderModal();
-
+async function fillValidForm(user: ReturnType<typeof userEvent.setup>) {
   // Esperar a que las opciones 'LIMA' aparezcan en al menos un <select> (origen)
   await waitFor(() => {
     const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
@@ -304,7 +308,74 @@ async function setupValidForm() {
     expect(sendBtn).not.toBeDisabled();
   });
 
+  return { originSelect, destSelect };
+}
+
+/**
+ * Renderiza el modal (vía `renderModal()`, con las BASE_PROPS de este
+ * archivo) y completa el formulario con `fillValidForm`. Ver ese helper para
+ * el detalle del flujo.
+ */
+async function setupValidForm() {
+  (axios.get as jest.Mock).mockResolvedValue({
+    data: { success: true, data: [MOCK_AGENCY] },
+  });
+
+  const user = userEvent.setup();
+  renderModal();
+
+  const { originSelect, destSelect } = await fillValidForm(user);
+
   return { user, originSelect, destSelect };
+}
+
+/** Tipo de pedido usado por el wrapper de regresión — mismo shape que MOCK_ORDER. */
+type ShalomOrderFixture = typeof MOCK_ORDER;
+
+/**
+ * Wrapper de test que reproduce el patrón real de `GuideDetailsModal`: los
+ * `orders` que recibe `SendToShalomModal` viven en un `useState` propio de
+ * este wrapper y se derivan con `.filter()` en el cuerpo del render — igual
+ * que `ordersDetails.filter(...)` en el componente real. Por eso CUALQUIER
+ * re-render de este wrapper produce una referencia NUEVA de `orders`, aunque
+ * el contenido no cambie.
+ *
+ * El botón "Simular fetchGuide" NO es parte de la UI real: es el gancho de
+ * este harness para forzar, en un paso explícito y separado del envío, el
+ * mismo tipo de re-render que dispara `fetchGuide()` en el padre real tras
+ * `onSuccess()` (que en producción vuelve a pedir la guía al backend y
+ * actualiza `ordersDetails` con una respuesta nueva, misma data, otra
+ * referencia).
+ */
+function GuideModalTestWrapper({
+  initialOrders,
+  onSuccessSpy,
+}: {
+  initialOrders: ShalomOrderFixture[];
+  onSuccessSpy: () => void;
+}) {
+  const [ordersState, setOrdersState] = React.useState(initialOrders);
+
+  return (
+    <>
+      <SendToShalomModal
+        open
+        onClose={jest.fn()}
+        orders={ordersState.filter(() => true)}
+        onSuccess={onSuccessSpy}
+        guideId="guide-1"
+        companyId="company-1"
+      />
+      <button
+        type="button"
+        onClick={() =>
+          setOrdersState((prev) => prev.map((order) => ({ ...order })))
+        }
+      >
+        Simular fetchGuide
+      </button>
+    </>
+  );
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -785,6 +856,73 @@ describe('SendToShalomModal', () => {
           expect.stringContaining('Código inválido'),
         );
       });
+    });
+  });
+
+  // ── 7. Regresión: éxito no debe revertirse por re-render del padre ──────
+  //
+  // Reproduce el bug real de producción: GuideDetailsModal pasa `orders`
+  // como `ordersDetails.filter(...)`, un array NUEVO en cada render del
+  // padre. Un envío exitoso llama a `onSuccess()`, que en el padre dispara
+  // `fetchGuide()` (actualiza `ordersDetails`), lo que crea una nueva
+  // referencia de `orders` — con el bug viejo (`orders` en las deps del
+  // useEffect de inicialización), eso re-disparaba el efecto, que hacía
+  // `setIsSuccess(false)` y pisaba el `setIsSuccess(true)` recién hecho: el
+  // modal mostraba la pantalla de éxito por un instante y volvía a la de
+  // configuración (agencias/código de seguridad reseteados), como si el
+  // envío hubiera fallado, aunque en el backend sí se había registrado
+  // correctamente en Shalom.
+
+  describe('regresión: la pantalla de éxito no debe revertirse por un re-render del padre', () => {
+    it('mantiene la pantalla de éxito visible aunque el wrapper (imitando a GuideDetailsModal) re-renderice pasando una nueva referencia de `orders` con el mismo contenido', async () => {
+      (axios.get as jest.Mock).mockResolvedValue({
+        data: { success: true, data: [MOCK_AGENCY] },
+      });
+      mockAxiosPost.mockResolvedValue({
+        data: {
+          success: true,
+          summary: { total: 1, successful: 1, failed: 0 },
+          data: [],
+          errors: [],
+        },
+      });
+
+      const onSuccessSpy = jest.fn();
+      const user = userEvent.setup();
+      render(
+        <GuideModalTestWrapper
+          initialOrders={[MOCK_ORDER]}
+          onSuccessSpy={onSuccessSpy}
+        />,
+      );
+
+      await fillValidForm(user);
+
+      const sendBtn = screen.getByRole('button', { name: /confirmar y enviar a shalom/i });
+      await user.click(sendBtn);
+
+      // Aparece la pantalla de éxito.
+      expect(await screen.findByText('¡Registro Exitoso!')).toBeInTheDocument();
+      expect(onSuccessSpy).toHaveBeenCalledTimes(1);
+
+      // Paso explícito y POSTERIOR a que la pantalla de éxito ya está
+      // confirmada en pantalla: simula lo que hace GuideDetailsModal real
+      // (fetchGuide() tras onSuccess()) forzando un re-render del wrapper
+      // que pasa una referencia NUEVA de `orders`, mismo contenido.
+      await user.click(screen.getByRole('button', { name: /simular fetchguide/i }));
+
+      // Con el bug viejo, este re-render disparaba de nuevo el efecto de
+      // inicialización y el modal volvía a la pantalla de configuración
+      // (agencia de origen/destino y código de seguridad reseteados) aunque
+      // el envío a Shalom ya se hubiera completado. Con el fix (deps
+      // limitadas a [open]), la pantalla de éxito debe seguir intacta.
+      expect(screen.getByText('¡Registro Exitoso!')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /confirmar y enviar a shalom/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText('Agencia de origen (tu tienda)'),
+      ).not.toBeInTheDocument();
     });
   });
 });
