@@ -5,6 +5,7 @@ const COURIER_NORMALIZE_MAP: Record<string, string> = {
   marvisur: "Marvisur",
   flores: "Flores",
   aliclik: "Aliclik",
+  eva: "EVA",
 };
 
 export const normalizeCourier = (courier?: string | null): string | null => {
@@ -20,4 +21,8 @@ export const isShalomCourier = (courier?: string | null): boolean => {
 
 export function isAliclikCourier(courierName?: string | null): boolean {
   return normalizeCourier(courierName) === "Aliclik";
+}
+
+export function isEvaCourier(courierName?: string | null): boolean {
+  return normalizeCourier(courierName) === "EVA";
 }

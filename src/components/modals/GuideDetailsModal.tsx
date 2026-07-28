@@ -45,6 +45,7 @@ import { toast } from "sonner";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import SendToShalomModal from "@/components/shalom/SendToShalomModal";
 import SendToAliclikGuideModal from "@/components/aliclik/SendToAliclikGuideModal";
+import SendToEvaGuideModal from "@/components/eva/SendToEvaGuideModal";
 import { FileSpreadsheet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -56,6 +57,7 @@ import {
   normalizeCourier,
   isShalomCourier,
   isAliclikCourier,
+  isEvaCourier,
 } from "@/utils/courierNormalizer";
 
 export interface ShippingGuide {
@@ -160,6 +162,9 @@ interface OrderDetail {
   aliclikDispatchStatus?: string | null;
   aliclik_dispatch_status?: string | null; // ⬅️ NUEVA
 
+  evaStatus?: string | null;
+  evaSyncedAt?: string | null;
+
   trackingInfo?: {
     orderNumber: string;
     orderCode: string;
@@ -225,6 +230,7 @@ const COURIERS = [
   "Motorizado Propio",
   "Shalom",
   "Aliclik",
+  "EVA",
   "Olva Courier",
   "Marvisur",
   "Flores",
@@ -246,6 +252,8 @@ export default function GuideDetailsModal({
   const [shalomModalOpen, setShalomModalOpen] = useState(false);
   // Aliclik modal
   const [aliclikModalOpen, setAliclikModalOpen] = useState(false);
+  // EVA modal
+  const [evaModalOpen, setEvaModalOpen] = useState(false);
 
   const [guide, setGuide] = useState<ShippingGuide | null>(null);
   const [loading, setLoading] = useState(false);
@@ -2069,6 +2077,39 @@ export default function GuideDetailsModal({
                     </div>
                   );
                 })()}
+              {guide &&
+                guide.status === "APROBADA" &&
+                isEvaCourier(guide.courierName) &&
+                (() => {
+                  const needsEva = ordersDetails.filter((o) => !o.evaStatus);
+
+                  if (needsEva.length === 0) return null;
+
+                  return (
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => {
+                          if (selectedOrderIds.size === 0) {
+                            setSelectedOrderIds(
+                              new Set(needsEva.map((o) => o.id)),
+                            );
+                          }
+                          setEvaModalOpen(true);
+                        }}
+                        className={
+                          selectedOrderIds.size > 0
+                            ? "bg-blue-600 hover:bg-blue-700 text-white"
+                            : "bg-orange-500 hover:bg-orange-600 text-white"
+                        }
+                      >
+                        <Truck className="h-4 w-4 mr-2" />
+                        {selectedOrderIds.size > 0
+                          ? `Enviar a EVA (${selectedOrderIds.size})`
+                          : `Registrar en EVA (${needsEva.length})`}
+                      </Button>
+                    </div>
+                  );
+                })()}
               {guide && (
                 <>
                   <Button variant="outline" onClick={handleExportExcel}>
@@ -2134,6 +2175,23 @@ export default function GuideDetailsModal({
             : ordersDetails
         }
         onClose={() => setAliclikModalOpen(false)}
+        onSuccess={() => {
+          fetchGuide();
+          onGuideUpdated?.();
+        }}
+      />
+
+      {/* Modal de Envío a EVA */}
+      <SendToEvaGuideModal
+        open={evaModalOpen}
+        guideId={guideId || guide?.id || ""}
+        companyId={companyId || ""}
+        orders={
+          selectedOrderIds.size > 0
+            ? ordersDetails.filter((o) => selectedOrderIds.has(o.id))
+            : ordersDetails
+        }
+        onClose={() => setEvaModalOpen(false)}
         onSuccess={() => {
           fetchGuide();
           onGuideUpdated?.();
