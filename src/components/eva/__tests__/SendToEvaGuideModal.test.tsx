@@ -507,6 +507,52 @@ function makeBulkResult(
   return { orderId, shipmentId: null, outcome, ...extra };
 }
 
+/**
+ * Wrapper de test que reproduce el patrón real de `GuideDetailsModal`: los
+ * `orders` que recibe `SendToEvaGuideModal` viven en un `useState` propio de
+ * este wrapper y se derivan con `.filter()` en el cuerpo del render — igual
+ * que `ordersDetails.filter(...)` en el componente real. Por eso CUALQUIER
+ * re-render de este wrapper produce una referencia NUEVA de `orders`, aunque
+ * el contenido no cambie.
+ *
+ * El botón "Simular fetchGuide" NO es parte de la UI real: es el gancho de
+ * este harness para forzar, en un paso explícito y separado del envío, el
+ * mismo tipo de re-render que dispara `fetchGuide()` en el padre real tras
+ * `onSuccess()` (que en producción vuelve a pedir la guía al backend y
+ * actualiza `ordersDetails` con una respuesta nueva, misma data, otra
+ * referencia).
+ */
+function GuideModalTestWrapper({
+  initialOrders,
+  onSuccessSpy,
+}: {
+  initialOrders: EvaGuideOrderItem[];
+  onSuccessSpy: () => void;
+}) {
+  const [ordersState, setOrdersState] = React.useState(initialOrders);
+
+  return (
+    <>
+      <SendToEvaGuideModal
+        open
+        guideId="guide-abc"
+        companyId="company-1"
+        orders={ordersState.filter(() => true)}
+        onClose={jest.fn()}
+        onSuccess={onSuccessSpy}
+      />
+      <button
+        type="button"
+        onClick={() =>
+          setOrdersState((prev) => prev.map((order) => ({ ...order })))
+        }
+      >
+        Simular fetchGuide
+      </button>
+    </>
+  );
+}
+
 // ── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -912,6 +958,61 @@ describe('SendToEvaGuideModal', () => {
       const card = getCardByOrderId('order-5');
       expect(within(card).getByText('S/ 90.00')).toBeInTheDocument();
       expect(within(card).queryByText(/pendiente/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // ── 10. Regresión: éxito no debe revertirse por re-render del padre ──────
+  //
+  // Reproduce el bug real de producción: GuideDetailsModal pasa `orders`
+  // como `ordersDetails.filter(...)`, un array NUEVO en cada render del
+  // padre. Un envío exitoso llama a `onSuccess()`, que en el padre dispara
+  // `fetchGuide()` (actualiza `ordersDetails`), lo que crea una nueva
+  // referencia de `orders` — con el bug viejo (orders en las deps del
+  // useEffect de inicialización), eso re-disparaba el efecto, que hacía
+  // `setIsSuccess(false)` y pisaba el `setIsSuccess(true)` recién hecho: el
+  // modal mostraba la pantalla de éxito por un instante y volvía a la de
+  // configuración, como si el envío hubiera fallado, aunque en el backend sí
+  // se había creado correctamente.
+
+  describe('regresión: la pantalla de éxito no debe revertirse por un re-render del padre', () => {
+    it('mantiene la pantalla de éxito visible aunque el wrapper (imitando a GuideDetailsModal) re-renderice pasando una nueva referencia de `orders` con el mismo contenido', async () => {
+      mockCreateOrdersBulk.mockResolvedValue([
+        makeBulkResult('order-1', 'created', { trackingId: 'TRK-1' }),
+        makeBulkResult('order-2', 'created', { trackingId: 'TRK-2' }),
+      ]);
+
+      const onSuccessSpy = jest.fn();
+      render(
+        <GuideModalTestWrapper
+          initialOrders={[ORDER_1, ORDER_2]}
+          onSuccessSpy={onSuccessSpy}
+        />,
+      );
+      await waitForTableReady();
+
+      const sendBtn = screen.getByRole('button', { name: /enviar guía a eva/i });
+      const user = userEvent.setup();
+      await user.click(sendBtn);
+
+      // Aparece la pantalla de éxito.
+      expect(await screen.findByText(/¡pedidos enviados!/i)).toBeInTheDocument();
+      expect(onSuccessSpy).toHaveBeenCalledTimes(1);
+
+      // Paso explícito y POSTERIOR a que la pantalla de éxito ya está
+      // confirmada en pantalla: simula lo que hace GuideDetailsModal real
+      // (fetchGuide() tras onSuccess()) forzando un re-render del wrapper
+      // que pasa una referencia NUEVA de `orders`, mismo contenido.
+      await user.click(screen.getByRole('button', { name: /simular fetchguide/i }));
+
+      // Con el bug viejo, este re-render disparaba de nuevo el efecto de
+      // inicialización y el modal volvía a la pantalla de configuración/carga
+      // aunque el envío a EVA ya se hubiera completado. Con el fix (deps
+      // limitadas a [open]), la pantalla de éxito debe seguir intacta.
+      expect(screen.getByText(/¡pedidos enviados!/i)).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /enviar guía a eva/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByTestId(/eva-order-card-/)).not.toBeInTheDocument();
     });
   });
 });
