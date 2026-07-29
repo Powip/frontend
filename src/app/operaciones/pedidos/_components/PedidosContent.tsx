@@ -1,0 +1,805 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import axios from "axios";
+import { useRouter, useSearchParams } from "next/navigation";
+import { toast } from "sonner";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Package, Truck, AlertTriangle, Archive, ScanLine } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { GlobalScanner } from "../../_shared/GlobalScanner";
+import { useAuth } from "@/contexts/AuthContext";
+import { useOperationsRole } from "@/contexts/OperationsRoleContext";
+import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
+import { useUserAuditInfo } from "@/hooks/useUserAuditInfo";
+import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
+import {
+  PEDIDOS_TABS,
+  PedidosTabKey,
+  countByTab,
+  getPedidosTab,
+} from "@/utils/domain/operations-pedidos-tabs";
+import { fetchCouriers } from "@/services/courierService";
+import { reassignSeller } from "@/services/atencionClienteService";
+import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
+import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
+import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
+
+import CustomerServiceModal, { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
+import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
+import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
+import CreateGuideModal, { CreateGuideData } from "@/components/modals/CreateGuideModal";
+import AddToExistingGuideModal from "@/components/modals/AddToExistingGuideModal";
+import CancellationModal, { CancellationReason } from "@/components/modals/CancellationModal";
+import CourierAssignmentModal from "@/components/modals/CourierAssignmentModal";
+import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
+import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
+import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
+
+import { NotesDialog } from "./NotesDialog";
+import { PorDespacharTab } from "./PorDespacharTab";
+import { EnCaminoTab } from "./EnCaminoTab";
+import { AtencionTab } from "./AtencionTab";
+import { HistorialTab } from "./HistorialTab";
+import { PedidosActions, Sale, mapOrderToSale, openWhatsApp } from "./types";
+
+const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS;
+const API_COURIER = process.env.NEXT_PUBLIC_API_COURIER;
+
+const TAB_KEYS: PedidosTabKey[] = PEDIDOS_TABS.map((t) => t.key);
+
+const TAB_ICON: Record<PedidosTabKey, React.ElementType> = {
+  despachar: Package,
+  camino: Truck,
+  atencion: AlertTriangle,
+  historial: Archive,
+};
+
+type RescheduleTarget = { saleIds: string[] } | null;
+
+export function PedidosContent() {
+  const { auth, selectedStoreId } = useAuth();
+  const { can } = useOperationsRole();
+  const getUserInfo = useUserAuditInfo();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
+  const initialTab = useMemo<PedidosTabKey>(() => {
+    const t = searchParams.get("tab") as PedidosTabKey | null;
+    return t && TAB_KEYS.includes(t) ? t : "despachar";
+  }, [searchParams]);
+  const initialQf = searchParams.get("qf") ?? undefined;
+  const initialQ = searchParams.get("q") ?? undefined;
+
+  const [activeTab, setActiveTab] = useState<PedidosTabKey>(initialTab);
+  const [orders, setOrders] = useState<OrderHeader[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [apiCouriers, setApiCouriers] = useState<string[]>([]);
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+
+  // ---- Modales ----
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+  const [viewShippingGuide, setViewShippingGuide] = useState<ShippingGuideData | null>(null);
+  const [paymentSale, setPaymentSale] = useState<Sale | null>(null);
+  const [guideSale, setGuideSale] = useState<Sale | null>(null);
+  const [createGuideOrders, setCreateGuideOrders] = useState<Sale[] | null>(null);
+  const [isCreatingGuide, setIsCreatingGuide] = useState(false);
+  const [addToGuideOrders, setAddToGuideOrders] = useState<Sale[] | null>(null);
+  const [isAddingToGuide, setIsAddingToGuide] = useState(false);
+  const [cancelSale, setCancelSale] = useState<Sale | null>(null);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [courierAssignSales, setCourierAssignSales] = useState<Sale[] | null>(null);
+  const [isAssigningCourier, setIsAssigningCourier] = useState(false);
+  const [reassignSale, setReassignSale] = useState<Sale | null>(null);
+  const [isReassigning, setIsReassigning] = useState(false);
+  const [commentsSale, setCommentsSale] = useState<Sale | null>(null);
+  const [notesSale, setNotesSale] = useState<Sale | null>(null);
+  const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget>(null);
+
+  const fetchOrders = useCallback(async () => {
+    if (!selectedStoreId) return;
+    try {
+      const res = await axios.get<OrderHeader[]>(
+        `${API_VENTAS}/order-header/store/${selectedStoreId}`,
+      );
+      res.data.sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+      setOrders(res.data ?? []);
+    } catch (error) {
+      console.error("Error cargando pedidos", error);
+      toast.error("No se pudieron cargar los pedidos");
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedStoreId]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchOrders();
+  }, [fetchOrders]);
+
+  useEffect(() => {
+    if (!auth?.company?.id) return;
+    fetchCouriers(auth.company.id)
+      .then((data) => setApiCouriers(data.map((c) => c.name)))
+      .catch(() => toast.error("No se pudieron cargar los couriers"));
+  }, [auth?.company?.id]);
+
+  const tabCounts = useMemo(() => countByTab(orders), [orders]);
+
+  const salesByTab = useMemo(() => {
+    const grouped: Record<PedidosTabKey, OrderHeader[]> = {
+      despachar: [],
+      camino: [],
+      atencion: [],
+      historial: [],
+    };
+    for (const order of orders) grouped[getPedidosTab(order)].push(order);
+    const out = {} as Record<PedidosTabKey, Sale[]>;
+    for (const key of TAB_KEYS) out[key] = grouped[key].map(mapOrderToSale);
+    return out;
+  }, [orders]);
+
+  const salesById = useMemo(() => {
+    const map = new Map<string, Sale>();
+    for (const key of TAB_KEYS) for (const s of salesByTab[key]) map.set(s.id, s);
+    return map;
+  }, [salesByTab]);
+
+  /* ------------------------------ Handlers ------------------------------ */
+
+  const handleView = useCallback(async (sale: Sale) => {
+    setViewOrderId(sale.id);
+    setViewShippingGuide(null);
+    if (sale.status === "EN_ENVIO" && sale.guideNumber) {
+      try {
+        const res = await axios.get(`${API_COURIER}/shipping-guides/order/${sale.id}`);
+        const guide = res.data;
+        let daysSinceCreated = 0;
+        if (guide?.created_at) {
+          daysSinceCreated = Math.ceil(
+            Math.abs(Date.now() - new Date(guide.created_at).getTime()) / (1000 * 60 * 60 * 24),
+          );
+        }
+        setViewShippingGuide({
+          id: guide.id,
+          guideNumber: guide.guideNumber,
+          courierName: guide.courierName,
+          status: guide.status,
+          chargeType: guide.chargeType,
+          amountToCollect: guide.amountToCollect,
+          scheduledDate: guide.scheduledDate?.toString() || null,
+          deliveryZone: guide.deliveryZone,
+          deliveryType: guide.deliveryType,
+          deliveryAddress: guide.deliveryAddress,
+          notes: guide.notes,
+          trackingUrl: guide.trackingUrl,
+          shippingKey: guide.shippingKey,
+          shippingOffice: guide.shippingOffice,
+          shippingProofUrl: guide.shippingProofUrl,
+          created_at: guide.created_at,
+          daysSinceCreated,
+        });
+      } catch {
+        setViewShippingGuide(null);
+      }
+    }
+  }, []);
+
+  const handleChangeStatus = useCallback(
+    async (saleId: string, newStatus: OrderStatus) => {
+      const sale = salesById.get(saleId);
+      if (newStatus === "ANULADO") {
+        if (sale) setCancelSale(sale);
+        return;
+      }
+      if (newStatus === "EN_ENVIO") {
+        const isPickup = sale?.deliveryType.toUpperCase().includes("RETIRO");
+        if (sale && !sale.courier && !isPickup) {
+          toast.error("Debe asignar un courier antes de cambiar a EN_ENVIO");
+          return;
+        }
+      }
+      try {
+        await axios.patch(`${API_VENTAS}/order-header/${saleId}`, {
+          status: newStatus,
+          ...getUserInfo(),
+        });
+        toast.success(`Estado actualizado a ${newStatus}`);
+        fetchOrders();
+      } catch (error: any) {
+        toast.error(error?.response?.data?.message || "No se pudo actualizar el estado");
+      }
+    },
+    [salesById, getUserInfo, fetchOrders],
+  );
+
+  const handleBulkStatusChange = useCallback(
+    async (ids: string[], newStatus: OrderStatus) => {
+      if (ids.length === 0) return;
+      if (newStatus === "ANULADO") {
+        toast.error("Para anular pedidos, use la opción individual con motivo de cancelación.");
+        return;
+      }
+      if (newStatus === "EN_ENVIO") {
+        const missing = ids.filter((id) => {
+          const s = salesById.get(id);
+          return s && !s.courier && !s.deliveryType.toUpperCase().includes("RETIRO");
+        });
+        if (missing.length > 0) {
+          toast.error(`${missing.length} pedido(s) sin courier asignado. No se puede pasar a EN_ENVIO.`);
+          return;
+        }
+      }
+      setIsBulkLoading(true);
+      try {
+        const uInfo = getUserInfo();
+        const result = await processBulkStatusChange(
+          ids,
+          newStatus,
+          API_VENTAS || "",
+          undefined,
+          15,
+          uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
+        );
+        if (result.success.length > 0) toast.success(`${result.success.length} pedido(s) actualizados a ${newStatus}`);
+        if (result.failed.length > 0) toast.error(`${result.failed.length} pedido(s) no pudieron actualizarse`);
+        fetchOrders();
+      } catch {
+        toast.error("Error crítico durante la actualización masiva");
+      } finally {
+        setIsBulkLoading(false);
+      }
+    },
+    [salesById, getUserInfo, fetchOrders],
+  );
+
+  // Reprogramación de ENTREGA (no de llamada — eso vive solo dentro del
+  // modal de pedido, tab "Llamada & Promo" de CustomerServiceModal). No
+  // existe un campo estructurado propio, se reutiliza `callbackAt` sin
+  // tocar `callStatus`/`status` — ver nota en operations-pedidos-tabs.ts.
+  const handleRescheduleConfirm = useCallback(
+    async (callbackAt: Date) => {
+      if (!rescheduleTarget) return;
+      const { saleIds } = rescheduleTarget;
+      setRescheduleTarget(null);
+      try {
+        await Promise.all(
+          saleIds.map((id) =>
+            axios.patch(`${API_VENTAS}/order-header/${id}`, {
+              callbackAt: callbackAt.toISOString(),
+              ...getUserInfo(),
+            }),
+          ),
+        );
+        toast.success("Entrega reprogramada");
+        fetchOrders();
+      } catch {
+        toast.error("Error al reprogramar");
+      }
+    },
+    [rescheduleTarget, getUserInfo, fetchOrders],
+  );
+
+  const handleConfirmCancellation = useCallback(
+    async (reason: CancellationReason, notes?: string) => {
+      if (!cancelSale) return;
+      setIsCancelling(true);
+      try {
+        await axios.patch(`${API_VENTAS}/order-header/${cancelSale.id}`, {
+          status: "ANULADO",
+          cancellationReason: reason,
+          notes,
+          ...getUserInfo(),
+        });
+        toast.success(`Venta ${cancelSale.orderNumber} anulada`);
+        setCancelSale(null);
+        fetchOrders();
+      } catch (error: any) {
+        toast.error(error?.response?.data?.message || "No se pudo anular la venta");
+      } finally {
+        setIsCancelling(false);
+      }
+    },
+    [cancelSale, getUserInfo, fetchOrders],
+  );
+
+  const handleAssignCourierConfirm = useCallback(
+    async (courier: string, courierId?: string) => {
+      const eligible = courierAssignSales ?? [];
+      if (eligible.length === 0) return;
+      setIsAssigningCourier(true);
+      let success = 0;
+      let failed = 0;
+      for (const sale of eligible) {
+        try {
+          await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+            status: "EN_ENVIO",
+            courier,
+            courierId: courierId || null,
+            ...getUserInfo(),
+          });
+          success++;
+        } catch {
+          failed++;
+        }
+      }
+      if (success > 0) toast.success(`${success} pedido(s) asignados y despachados`);
+      if (failed > 0) toast.error(`${failed} pedido(s) no pudieron actualizarse`);
+      setIsAssigningCourier(false);
+      setCourierAssignSales(null);
+      fetchOrders();
+    },
+    [courierAssignSales, getUserInfo, fetchOrders],
+  );
+
+  const handleCreateGuideConfirm = useCallback(
+    async (guidesData: CreateGuideData[]) => {
+      setIsCreatingGuide(true);
+      try {
+        const createdGuides: string[] = [];
+        let totalOrders = 0;
+        for (const guideData of guidesData) {
+          const res = await axios.post(`${API_COURIER}/shipping-guides`, guideData);
+          const guideNumber = res.data.guideNumber;
+          createdGuides.push(guideNumber);
+          totalOrders += guideData.orderIds.length;
+          for (const orderId of guideData.orderIds) {
+            const carrierCost = guideData.orderCarrierCosts?.[orderId] || 0;
+            await axios.patch(`${API_VENTAS}/order-header/${orderId}`, {
+              guideNumber,
+              status: "EN_ENVIO",
+              courier: guideData.courierName,
+              courierId: guideData.courierId || null,
+              carrierShippingCost: carrierCost,
+              ...getUserInfo(),
+            });
+          }
+        }
+        toast.success(
+          createdGuides.length === 1
+            ? `Guía ${createdGuides[0]} creada con ${totalOrders} pedido(s)`
+            : `${createdGuides.length} guías creadas con ${totalOrders} pedido(s)`,
+        );
+        setCreateGuideOrders(null);
+        fetchOrders();
+      } catch (error: any) {
+        toast.error(error?.response?.data?.message || "Error creando guía");
+      } finally {
+        setIsCreatingGuide(false);
+      }
+    },
+    [getUserInfo, fetchOrders],
+  );
+
+  const handleAddToGuideConfirm = useCallback(
+    async (guideId: string, guideNumber: string) => {
+      const selected = addToGuideOrders ?? [];
+      if (selected.length === 0) return;
+      setIsAddingToGuide(true);
+      try {
+        await axios.post(`${API_COURIER}/shipping-guides/${guideId}/orders`, {
+          orderIds: selected.map((s) => s.id),
+        });
+        for (const sale of selected) {
+          await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+            guideNumber,
+            status: "EN_ENVIO",
+            ...getUserInfo(),
+          });
+        }
+        toast.success(`${selected.length} pedido(s) agregados a la guía ${guideNumber}`);
+        setAddToGuideOrders(null);
+        fetchOrders();
+      } catch (error: any) {
+        toast.error(error?.response?.data?.message || "Error al agregar a la guía");
+      } finally {
+        setIsAddingToGuide(false);
+      }
+    },
+    [addToGuideOrders, getUserInfo, fetchOrders],
+  );
+
+  const handleReassignSellerConfirm = useCallback(
+    async (sellerId: string, sellerName: string) => {
+      if (!reassignSale) return;
+      setIsReassigning(true);
+      try {
+        const uInfo = getUserInfo();
+        await reassignSeller(reassignSale.id, sellerId, sellerName, uInfo.userId, uInfo.sellerName);
+        toast.success("Vendedor reasignado correctamente");
+        setReassignSale(null);
+        fetchOrders();
+      } catch {
+        toast.error("No se pudo reasignar el vendedor");
+      } finally {
+        setIsReassigning(false);
+      }
+    },
+    [reassignSale, getUserInfo, fetchOrders],
+  );
+
+  const handleSaveNotes = useCallback(
+    async (notes: string) => {
+      if (!notesSale) return;
+      try {
+        await axios.patch(`${API_VENTAS}/order-header/${notesSale.id}`, { notes });
+        toast.success("Observaciones guardadas");
+        fetchOrders();
+      } catch {
+        toast.error("No se pudo guardar");
+        throw new Error("save-notes-failed");
+      }
+    },
+    [notesSale, fetchOrders],
+  );
+
+  const handleCopySelected = useCallback(async (selected: Sale[]) => {
+    if (selected.length === 0) {
+      toast.warning("No hay pedidos seleccionados");
+      return;
+    }
+    const text = selected
+      .map((sale) =>
+        `Venta ${sale.orderNumber}\nCliente: ${sale.clientName}\nTeléfono: ${sale.phoneNumber}\nDistrito: ${sale.district}\nDirección: ${sale.address}\nFecha: ${sale.date}\nTotal: S/ ${sale.total.toFixed(2)}\nAdelanto: S/ ${sale.advancePayment.toFixed(2)}\nPor Cobrar: S/ ${sale.pendingPayment.toFixed(2)}\nEstado: ${sale.status}`.trim(),
+      )
+      .join("\n\n--------------------\n\n");
+    await navigator.clipboard.writeText(text);
+    toast.success(`${selected.length} pedido(s) copiados`);
+  }, []);
+
+  const handleExportExcel = useCallback((selected: Sale[], tabName: string) => {
+    if (selected.length === 0) {
+      toast.warning("No hay datos para exportar");
+      return;
+    }
+    const exportData: SaleExportData[] = selected.map((s) => ({
+      orderNumber: s.orderNumber,
+      clientName: s.clientName,
+      phoneNumber: s.phoneNumber,
+      documentType: s.documentType,
+      documentNumber: s.documentNumber,
+      date: s.date,
+      total: s.total,
+      advancePayment: s.advancePayment,
+      pendingPayment: s.pendingPayment,
+      status: s.status,
+      salesRegion: s.salesRegion,
+      province: s.province,
+      city: s.city,
+      district: s.district,
+      zone: s.zone,
+      address: s.address,
+      paymentMethod: s.paymentMethod,
+      deliveryType: s.deliveryType,
+      courier: s.courier,
+      sellerName: s.sellerName,
+      guideNumber: s.guideNumber,
+    }));
+    exportSalesToExcel(exportData, `operaciones_pedidos_${tabName}`);
+    toast.success(`Exportados ${selected.length} registros`);
+  }, []);
+
+  const handleBulkPrint = useCallback(async (selected: Sale[]) => {
+    if (selected.length === 0) {
+      toast.warning("No hay pedidos seleccionados para imprimir");
+      return;
+    }
+    setIsBulkLoading(true);
+    try {
+      const receipts: ReceiptData[] = [];
+      for (const sale of selected) {
+        const res = await axios.get(`${API_VENTAS}/order-header/${sale.id}/receipt`);
+        receipts.push(res.data);
+      }
+      await printReceipts(receipts);
+    } catch {
+      toast.error("No se pudieron generar las etiquetas");
+    } finally {
+      setIsBulkLoading(false);
+    }
+  }, []);
+
+  const handleBulkWhatsApp = useCallback((selected: Sale[]) => {
+    if (selected.length === 0) {
+      toast.warning("No hay pedidos seleccionados para enviar WhatsApp");
+      return;
+    }
+    if (selected.length > 5) {
+      toast.info(`Se abrirán ${selected.length} ventanas de WhatsApp. Permití los pop-ups.`);
+    }
+    selected.forEach((sale, index) => {
+      setTimeout(() => openWhatsApp(sale.phoneNumber, sale.orderNumber, sale.clientName), index * 600);
+    });
+  }, []);
+
+  const handleEdit = useCallback(
+    (sale: Sale) => {
+      router.push(`/registrar-venta?orderId=${sale.id}`);
+    },
+    [router],
+  );
+
+  const handleSyncCourier = useCallback(() => {
+    toast.promise(fetchOrders(), {
+      loading: "Sincronizando con courier...",
+      success: "Pedidos actualizados",
+      error: "No se pudo sincronizar",
+    });
+  }, [fetchOrders]);
+
+  // No hay endpoint de inventario/devoluciones real (ver informe de brechas
+  // de backend) — "reingresar a stock" y "marcar merma" se registran como
+  // anulación con motivo distinguible, honestamente sin tocar stock.
+  const handleReturnToStock = useCallback(
+    async (sale: Sale) => {
+      try {
+        await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+          status: "ANULADO",
+          cancellationReason: "DELIVERY_ISSUE",
+          notes: "Devolución del courier — mercadería reingresada a stock",
+          ...getUserInfo(),
+        });
+        toast.success(`Pedido ${sale.orderNumber} reingresado a stock`);
+        fetchOrders();
+      } catch (error: any) {
+        toast.error(error?.response?.data?.message || "No se pudo registrar el reingreso");
+      }
+    },
+    [getUserInfo, fetchOrders],
+  );
+
+  const handleMarkAsLoss = useCallback(
+    async (sale: Sale) => {
+      try {
+        await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+          status: "ANULADO",
+          cancellationReason: "OTHER",
+          notes: "Devolución del courier — mercadería registrada como merma",
+          ...getUserInfo(),
+        });
+        toast.success(`Pedido ${sale.orderNumber} registrado como merma`);
+        fetchOrders();
+      } catch (error: any) {
+        toast.error(error?.response?.data?.message || "No se pudo registrar la merma");
+      }
+    },
+    [getUserInfo, fetchOrders],
+  );
+
+  const actions: PedidosActions = {
+    can,
+    apiCouriers,
+    isBulkLoading,
+    onView: handleView,
+    onOpenPayment: setPaymentSale,
+    onOpenGuide: setGuideSale,
+    onOpenComments: setCommentsSale,
+    onOpenNotes: setNotesSale,
+    onReassignSeller: setReassignSale,
+    onCancel: setCancelSale,
+    onChangeStatus: handleChangeStatus,
+    onDeliveryReschedule: (sale) => setRescheduleTarget({ saleIds: [sale.id] }),
+    onBulkDeliveryReschedule: (ids) => setRescheduleTarget({ saleIds: ids }),
+    onOpenCreateGuide: setCreateGuideOrders,
+    onOpenAddToGuide: setAddToGuideOrders,
+    onAssignCourierBulk: setCourierAssignSales,
+    onBulkStatusChange: handleBulkStatusChange,
+    onBulkWhatsApp: handleBulkWhatsApp,
+    onBulkPrint: handleBulkPrint,
+    onCopySelected: handleCopySelected,
+    onExportExcel: handleExportExcel,
+    onWhatsApp: (sale) => openWhatsApp(sale.phoneNumber, sale.orderNumber, sale.clientName),
+    onEdit: handleEdit,
+    onSyncCourier: handleSyncCourier,
+    onReturnToStock: handleReturnToStock,
+    onMarkAsLoss: handleMarkAsLoss,
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        <Skeleton className="h-9 w-full max-w-md rounded-lg" />
+        <Skeleton className="h-96 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-extrabold tracking-tight">Pedidos</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Despacho, seguimiento y atención de pedidos — el flujo completo, en un solo lugar.
+          </p>
+        </div>
+        <Button
+          size="sm"
+          className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
+          onClick={() => setScannerOpen(true)}
+        >
+          <ScanLine className="h-4 w-4" />
+          Escanear
+        </Button>
+      </div>
+
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PedidosTabKey)}>
+        <TabsList className="h-auto w-full gap-1 bg-muted/60 p-1">
+          {PEDIDOS_TABS.map((tab) => {
+            const Icon = TAB_ICON[tab.key];
+            return (
+            <TabsTrigger
+              key={tab.key}
+              value={tab.key}
+              className={`flex-1 gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium sm:text-sm ${tab.alerta && tabCounts[tab.key] > 0 ? "data-[state=active]:text-red-600" : ""}`}
+            >
+              <Icon className="h-4 w-4" />
+              {tab.label}
+              <span
+                className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                  tab.alerta && tabCounts[tab.key] > 0
+                    ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+                    : "bg-background text-muted-foreground"
+                }`}
+              >
+                {tabCounts[tab.key]}
+              </span>
+            </TabsTrigger>
+            );
+          })}
+        </TabsList>
+
+        <TabsContent value="despachar">
+          <PorDespacharTab
+            sales={salesByTab.despachar}
+            actions={actions}
+            initialSearch={initialTab === "despachar" ? initialQ : undefined}
+            initialQf={initialTab === "despachar" ? initialQf : undefined}
+          />
+        </TabsContent>
+        <TabsContent value="camino">
+          <EnCaminoTab
+            sales={salesByTab.camino}
+            actions={actions}
+            initialSearch={initialTab === "camino" ? initialQ : undefined}
+            initialQf={initialTab === "camino" ? initialQf : undefined}
+          />
+        </TabsContent>
+        <TabsContent value="atencion">
+          <AtencionTab
+            sales={salesByTab.atencion}
+            actions={actions}
+            initialSearch={initialTab === "atencion" ? initialQ : undefined}
+            initialQf={initialTab === "atencion" ? initialQf : undefined}
+          />
+        </TabsContent>
+        <TabsContent value="historial">
+          <HistorialTab sales={salesByTab.historial} actions={actions} initialSearch={initialTab === "historial" ? initialQ : undefined} />
+        </TabsContent>
+      </Tabs>
+
+      {/* ------------------------------ Modales ------------------------------ */}
+
+      {viewOrderId && (
+        <CustomerServiceModal
+          open={!!viewOrderId}
+          orderId={viewOrderId}
+          onClose={() => {
+            setViewOrderId(null);
+            setViewShippingGuide(null);
+          }}
+          onOrderUpdated={fetchOrders}
+          isOperaciones
+          showTracking
+          shippingGuide={viewShippingGuide}
+        />
+      )}
+
+      {paymentSale && (
+        <PaymentVerificationModal
+          open={!!paymentSale}
+          onClose={() => setPaymentSale(null)}
+          orderId={paymentSale.id}
+          orderNumber={paymentSale.orderNumber}
+          onPaymentUpdated={fetchOrders}
+          canApprove={can(OPS_PERMISSIONS.APPROVE_PAYMENTS)}
+        />
+      )}
+
+      {guideSale && (
+        <GuideDetailsModal
+          open={!!guideSale}
+          onClose={() => setGuideSale(null)}
+          orderId={guideSale.id}
+          defaultCourier={guideSale.courier}
+          onGuideUpdated={fetchOrders}
+        />
+      )}
+
+      {createGuideOrders && (
+        <CreateGuideModal
+          open={!!createGuideOrders}
+          onClose={() => setCreateGuideOrders(null)}
+          selectedOrders={createGuideOrders}
+          storeId={selectedStoreId || ""}
+          onConfirm={handleCreateGuideConfirm}
+          isLoading={isCreatingGuide}
+        />
+      )}
+
+      {addToGuideOrders && (
+        <AddToExistingGuideModal
+          open={!!addToGuideOrders}
+          onClose={() => setAddToGuideOrders(null)}
+          selectedOrders={addToGuideOrders}
+          storeId={selectedStoreId || ""}
+          onConfirm={handleAddToGuideConfirm}
+          isLoading={isAddingToGuide}
+        />
+      )}
+
+      {cancelSale && (
+        <CancellationModal
+          open={!!cancelSale}
+          onClose={() => setCancelSale(null)}
+          orderNumber={cancelSale.orderNumber}
+          onConfirm={handleConfirmCancellation}
+          isLoading={isCancelling}
+        />
+      )}
+
+      {courierAssignSales && (
+        <CourierAssignmentModal
+          open={!!courierAssignSales}
+          onClose={() => setCourierAssignSales(null)}
+          selectedCount={courierAssignSales.length}
+          onConfirm={handleAssignCourierConfirm}
+          isLoading={isAssigningCourier}
+        />
+      )}
+
+      {reassignSale && (
+        <ReassignSellerModal
+          open={!!reassignSale}
+          onClose={() => setReassignSale(null)}
+          orderNumber={reassignSale.orderNumber}
+          currentSellerName={reassignSale.sellerName}
+          companyId={auth?.company?.id || ""}
+          onConfirm={handleReassignSellerConfirm}
+          isLoading={isReassigning}
+        />
+      )}
+
+      {commentsSale && (
+        <CommentsTimelineModal
+          open={!!commentsSale}
+          onClose={() => setCommentsSale(null)}
+          orderId={commentsSale.id}
+          orderNumber={commentsSale.orderNumber}
+        />
+      )}
+
+      {notesSale && (
+        <NotesDialog
+          open={!!notesSale}
+          onClose={() => setNotesSale(null)}
+          orderNumber={notesSale.orderNumber}
+          initialNotes={notesSale.notes}
+          onSave={handleSaveNotes}
+        />
+      )}
+
+      <RescheduleDialog
+        open={!!rescheduleTarget}
+        onOpenChange={(v) => !v && setRescheduleTarget(null)}
+        onConfirm={handleRescheduleConfirm}
+      />
+
+      <GlobalScanner open={scannerOpen} onOpenChange={setScannerOpen} />
+    </div>
+  );
+}
