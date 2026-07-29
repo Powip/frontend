@@ -32,6 +32,7 @@ import {
   Phone,
   Activity,
   FileSpreadsheet,
+  Wallet,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -166,16 +167,34 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Operaciones",
         icon: Truck,
         children: [
-          { name: "Gestión Operaciones", href: "/operaciones", icon: Truck },
           {
-            name: "Centro de Envíos",
-            href: "/centro-envios",
+            name: "Tablero",
+            href: "/operaciones",
+            icon: LayoutDashboard,
+            badge: "Nuevo",
+            badgeUntil: "2026-08-25",
+          },
+          {
+            name: "Pedidos",
+            href: "/operaciones/pedidos",
+            icon: Package,
+            badge: "Nuevo",
+            badgeUntil: "2026-08-25",
+          },
+          {
+            name: "Guías & Courier",
+            href: "/operaciones/guias",
             icon: PackagePlus,
             badge: "Nuevo",
-            badgeUntil: "2026-07-23",
+            badgeUntil: "2026-08-25",
           },
-          { name: "Seguimiento", href: "/seguimiento", icon: MapPin },
-          { name: "Seguimiento Courier", href: "/couriers", icon: Activity },
+          {
+            name: "Liquidaciones",
+            href: "/operaciones/liquidaciones",
+            icon: Wallet,
+            badge: "Nuevo",
+            badgeUntil: "2026-08-25",
+          },
         ],
       },
       {

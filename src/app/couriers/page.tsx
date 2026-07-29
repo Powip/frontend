@@ -1,19 +1,8 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { HeaderConfig } from "@/components/header/HeaderConfig";
-import CourierTrackingView from "@/components/couriers/CourierTrackingView";
-
-export default function CouriersPage() {
-  return (
-    <div className="w-full px-6 pb-6">
-      <HeaderConfig
-        title="Seguimiento de Couriers"
-        description="Rastreo en tiempo real y documentos de envío (Shalom / Olva)"
-      />
-      
-      <div className="mt-6">
-        <CourierTrackingView />
-      </div>
-    </div>
-  );
+// "Seguimiento Courier" se fusionó dentro del módulo Operaciones nuevo,
+// pestaña "Rastreo Courier" de Guías & Courier. Ver auditoría del
+// 2026-07-27 y las decisiones del 2026-07-28.
+export default function CouriersRedirect() {
+  redirect("/operaciones/guias?tab=rastreo");
 }
