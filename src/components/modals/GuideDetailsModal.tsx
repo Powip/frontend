@@ -46,6 +46,7 @@ import PaymentVerificationModal from "./PaymentVerificationModal";
 import SendToShalomModal from "@/components/shalom/SendToShalomModal";
 import SendToAliclikGuideModal from "@/components/aliclik/SendToAliclikGuideModal";
 import SendToEvaGuideModal from "@/components/eva/SendToEvaGuideModal";
+import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 import { FileSpreadsheet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -164,6 +165,7 @@ interface OrderDetail {
 
   evaStatus?: string | null;
   evaSyncedAt?: string | null;
+  evaTrackingId?: string | null;
 
   trackingInfo?: {
     orderNumber: string;
@@ -1567,6 +1569,22 @@ export default function GuideDetailsModal({
 
                                   return null;
                                 })()}
+                              </div>
+
+                              {/* Estado EVA */}
+                              <div className="flex items-center gap-2">
+                                <EvaStatusBadge
+                                  evaStatus={order.evaStatus}
+                                  evaSyncedAt={order.evaSyncedAt}
+                                />
+                                {order.evaTrackingId && (
+                                  <span
+                                    className="text-[10px] font-mono text-slate-500 dark:text-slate-400"
+                                    title={`Tracking EVA: ${order.evaTrackingId}`}
+                                  >
+                                    {order.evaTrackingId}
+                                  </span>
+                                )}
                               </div>
 
                               {/* Botón Eliminar Pedido */}
