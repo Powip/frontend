@@ -32,6 +32,11 @@
  *    (nombre, SKU, cantidad, precio unitario) y el monto total del pedido
  *    con el badge "Pendiente S/ X" cuando `payments` deja saldo sin cobrar
  *    (ausente si el pedido está pagado completo).
+ * 10. Auto-cierre tras envío bulk exitoso: 1500ms después de mostrar la
+ *     pantalla de éxito, el modal llama a onClose() solo, sin depender del
+ *     click manual en "Entendido, cerrar". Si el usuario cierra manualmente
+ *     antes de que pase ese tiempo, el timer pendiente se cancela y onClose
+ *     no se vuelve a llamar una segunda vez.
  *
  * Work-arounds jsdom aplicados (mismo estilo que SendToEvaModal.test.tsx):
  * - @/components/ui/dialog   → mock que renderiza children directamente
@@ -59,10 +64,25 @@
  * desambiguan por tagName ('SELECT' vs 'DIV') cuando hace falta acceder a
  * los selects globales, y por scoping con `within(card)` para el combobox
  * de cada pedido (no hay selects nativos dentro de las Cards).
+ *
+ * Fake timers (solo en el describe "auto-cierre..."): el timer de 1500ms
+ * de handleSendAll se arma con setTimeout real, así que para poder
+ * controlarlo hace falta `jest.useFakeTimers()` activado ANTES del click
+ * que dispara el envío (si se activara después, el setTimeout ya habría
+ * quedado registrado en el reloj real y `advanceTimersByTime` no lo
+ * afectaría). `userEvent.setup({ delay: null })` evita que userEvent
+ * dependa de sus propios timers reales internos mientras los timers están
+ * mockeados. `findBy`/`waitFor` siguen funcionando con fake timers activos
+ * (testing-library detecta el mock y los soporta) para esperar la
+ * resolución de las promesas de `evaService` (no dependen de ningún
+ * timer); el avance explícito de 1500ms se hace aparte, con
+ * `act(() => jest.advanceTimersByTime(1500))`, solo para el comportamiento
+ * que sí depende del paso del tiempo. `jest.useRealTimers()` se restaura en
+ * el `afterEach` de ese describe para no afectar el resto del archivo.
  */
 
 import React from 'react';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
@@ -1013,6 +1033,126 @@ describe('SendToEvaGuideModal', () => {
         screen.queryByRole('button', { name: /enviar guía a eva/i }),
       ).not.toBeInTheDocument();
       expect(screen.queryByTestId(/eva-order-card-/)).not.toBeInTheDocument();
+    });
+  });
+
+  // ── 11. Auto-cierre tras envío bulk exitoso ───────────────────────────────
+  //
+  // Cubre el timer de auto-cierre agregado en `handleSendAll`: tras un envío
+  // bulk exitoso (justo después de `onSuccess()`), se arma un
+  // `setTimeout(() => onClose(), 1500)` guardado en un ref. Un segundo
+  // efecto, atado a `[open]`, cancela (`clearTimeout`) ese timer pendiente
+  // cuando `open` cambia (p. ej. el padre lo cierra tras recibir `onClose`
+  // del click manual en "Entendido, cerrar") o el componente se desmonta —
+  // así se evita un `onClose()` duplicado.
+  describe('auto-cierre tras envío bulk exitoso', () => {
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
+    it('llama a onClose exactamente una vez 1500ms después de mostrar la pantalla de éxito', async () => {
+      jest.useFakeTimers();
+      const user = userEvent.setup({ delay: null });
+      const onClose = jest.fn();
+
+      mockCreateOrdersBulk.mockResolvedValue([
+        makeBulkResult('order-1', 'created', { trackingId: 'TRK-1' }),
+        makeBulkResult('order-2', 'created', { trackingId: 'TRK-2' }),
+      ]);
+
+      renderModal({ onClose });
+      await waitForTableReady();
+
+      const sendBtn = screen.getByRole('button', { name: /enviar guía a eva/i });
+      await user.click(sendBtn);
+
+      expect(await screen.findByText(/¡pedidos enviados!/i)).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+
+      act(() => {
+        jest.advanceTimersByTime(1500);
+      });
+
+      expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('no cierra antes de tiempo: la pantalla de éxito sigue visible y onClose no se llamó tras solo 1000ms', async () => {
+      jest.useFakeTimers();
+      const user = userEvent.setup({ delay: null });
+      const onClose = jest.fn();
+
+      mockCreateOrdersBulk.mockResolvedValue([
+        makeBulkResult('order-1', 'created', { trackingId: 'TRK-1' }),
+        makeBulkResult('order-2', 'created', { trackingId: 'TRK-2' }),
+      ]);
+
+      renderModal({ onClose });
+      await waitForTableReady();
+
+      const sendBtn = screen.getByRole('button', { name: /enviar guía a eva/i });
+      await user.click(sendBtn);
+
+      expect(await screen.findByText(/¡pedidos enviados!/i)).toBeInTheDocument();
+
+      act(() => {
+        jest.advanceTimersByTime(1000);
+      });
+
+      expect(screen.getByText(/¡pedidos enviados!/i)).toBeInTheDocument();
+      expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('si el usuario cierra manualmente antes de los 1500ms, el timer pendiente se cancela y onClose no se vuelve a llamar', async () => {
+      jest.useFakeTimers();
+      const user = userEvent.setup({ delay: null });
+      const onCloseSpy = jest.fn();
+
+      mockCreateOrdersBulk.mockResolvedValue([
+        makeBulkResult('order-1', 'created', { trackingId: 'TRK-1' }),
+        makeBulkResult('order-2', 'created', { trackingId: 'TRK-2' }),
+      ]);
+
+      // Wrapper que reproduce el comportamiento real del padre
+      // (GuideDetailsModal): `open` es un state propio que se pone en
+      // `false` recién cuando el padre recibe el `onClose()` del click
+      // manual — solo así se dispara la limpieza del efecto atado a
+      // `[open]` que cancela el timer pendiente. Con `open` estático (como
+      // en `BASE_PROPS`) el timer nunca se cancelaría por un click manual.
+      function ControlledOpenWrapper() {
+        const [open, setOpen] = React.useState(true);
+        return (
+          <SendToEvaGuideModal
+            open={open}
+            guideId="guide-abc"
+            companyId="company-1"
+            orders={[ORDER_1, ORDER_2]}
+            onClose={() => {
+              onCloseSpy();
+              setOpen(false);
+            }}
+            onSuccess={jest.fn()}
+          />
+        );
+      }
+
+      render(<ControlledOpenWrapper />);
+      await waitForTableReady();
+
+      const sendBtn = screen.getByRole('button', { name: /enviar guía a eva/i });
+      await user.click(sendBtn);
+
+      const manualCloseBtn = await screen.findByRole('button', {
+        name: /entendido, cerrar/i,
+      });
+      await user.click(manualCloseBtn);
+
+      expect(onCloseSpy).toHaveBeenCalledTimes(1);
+
+      act(() => {
+        jest.advanceTimersByTime(1500);
+      });
+
+      expect(onCloseSpy).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Dialog,
   DialogContent,
@@ -283,6 +283,11 @@ export default function SendToEvaGuideModal({
   const [isSuccess, setIsSuccess] = useState(false);
   const [results, setResults] = useState<EvaGuideResultRow[]>([]);
 
+  // Timer de auto-cierre tras un envío exitoso (ver handleSendAll). Se cancela
+  // si el usuario cierra manualmente con "Entendido, cerrar" (o el modal se
+  // remonta) antes de que dispare, para no llamar a onClose() dos veces.
+  const autoCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // ─── EFECTO: resolver credencial + distritos + armar filas ──
 
   // Deps intencionalmente limitadas a [open]: el padre (GuideDetailsModal)
@@ -340,6 +345,19 @@ export default function SendToEvaGuideModal({
       })
       .finally(() => setLoadingSetup(false));
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── EFECTO: cancelar el timer de auto-cierre pendiente ─────
+  // Corre en cada cambio de `open` (incluido cierre manual) y en el
+  // desmonte, limpiando cualquier timer de handleSendAll que no haya
+  // disparado todavía — evita un onClose() duplicado o fuera de lugar.
+  useEffect(() => {
+    return () => {
+      if (autoCloseTimerRef.current) {
+        clearTimeout(autoCloseTimerRef.current);
+        autoCloseTimerRef.current = null;
+      }
+    };
+  }, [open]);
 
   // ─── HANDLERS ────────────────────────────────────────
 
@@ -444,6 +462,15 @@ export default function SendToEvaGuideModal({
       }
 
       onSuccess();
+
+      // Auto-cierre: tras mostrar la pantalla de éxito, volvemos solos a
+      // GuideDetailsModal (que para entonces ya refleja el estado EVA
+      // actualizado vía onSuccess -> fetchGuide del padre). El botón manual
+      // "Entendido, cerrar" sigue disponible para quien no quiera esperar.
+      autoCloseTimerRef.current = setTimeout(() => {
+        onClose();
+        autoCloseTimerRef.current = null;
+      }, 1500);
     } catch (err: unknown) {
       const msg =
         (err as { response?: { data?: { message?: string } } })?.response
@@ -580,7 +607,16 @@ export default function SendToEvaGuideModal({
                   </div>
 
                   <Button
-                    onClick={onClose}
+                    onClick={() => {
+                      // Cierre manual explícito: cancelamos el timer de
+                      // auto-cierre acá mismo, sin depender exclusivamente
+                      // del cleanup del efecto atado a `open` (ver arriba).
+                      if (autoCloseTimerRef.current) {
+                        clearTimeout(autoCloseTimerRef.current);
+                        autoCloseTimerRef.current = null;
+                      }
+                      onClose();
+                    }}
                     className="bg-slate-900 hover:bg-black dark:bg-slate-100 dark:hover:bg-white dark:text-slate-900 text-white px-12 h-12 font-bold rounded-2xl shadow-xl shadow-slate-200 transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-95"
                   >
                     Entendido, cerrar
