@@ -35,6 +35,7 @@ import CancellationModal, { CancellationReason } from "@/components/modals/Cance
 import CourierAssignmentModal from "@/components/modals/CourierAssignmentModal";
 import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
+import OrderReceiptModal from "@/components/modals/orderReceiptModal";
 import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
 
 import { NotesDialog } from "./NotesDialog";
@@ -96,6 +97,7 @@ export function PedidosContent() {
   const [isReassigning, setIsReassigning] = useState(false);
   const [commentsSale, setCommentsSale] = useState<Sale | null>(null);
   const [notesSale, setNotesSale] = useState<Sale | null>(null);
+  const [receiptSale, setReceiptSale] = useState<Sale | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget>(null);
 
   const fetchOrders = useCallback(async () => {
@@ -212,10 +214,13 @@ export function PedidosContent() {
       try {
         // Atajos como Pendiente → En envío no son un salto válido de un solo
         // paso para el backend — se encadenan los estados intermedios acá.
+        // Pasar por LLAMADO siempre marca callStatus CONFIRMED (igual que el
+        // módulo viejo: "Contactado" tocaba status Y callStatus a la vez).
         const steps = sale ? getStatusChainSteps(sale.status, newStatus) : [newStatus];
         for (const step of steps) {
           await axios.patch(`${API_VENTAS}/order-header/${saleId}`, {
             status: step,
+            ...(step === "LLAMADO" && { callStatus: "CONFIRMED" }),
             ...getUserInfo(),
           });
         }
@@ -226,6 +231,50 @@ export function PedidosContent() {
       }
     },
     [salesById, getUserInfo, fetchOrders],
+  );
+
+  // "No Contesta" — no toca `status`, solo anota el intento de llamada
+  // fallido en `callStatus` (mismo criterio que el módulo viejo).
+  const handleMarkNoAnswer = useCallback(
+    async (saleId: string) => {
+      try {
+        await axios.patch(`${API_VENTAS}/order-header/${saleId}`, {
+          callStatus: "NO_ANSWER",
+          ...getUserInfo(),
+        });
+        toast.success("Marcado como No Contesta");
+        fetchOrders();
+      } catch (error: any) {
+        toast.error(error?.response?.data?.message || "No se pudo actualizar el pedido");
+      }
+    },
+    [getUserInfo, fetchOrders],
+  );
+
+  const handleBulkMarkNoAnswer = useCallback(
+    async (ids: string[]) => {
+      if (ids.length === 0) return;
+      const uInfo = getUserInfo();
+      let success = 0;
+      let failed = 0;
+      await Promise.all(
+        ids.map(async (id) => {
+          try {
+            await axios.patch(`${API_VENTAS}/order-header/${id}`, {
+              callStatus: "NO_ANSWER",
+              ...uInfo,
+            });
+            success++;
+          } catch {
+            failed++;
+          }
+        }),
+      );
+      if (success > 0) toast.success(`${success} pedido(s) marcados como No Contesta`);
+      if (failed > 0) toast.error(`${failed} pedido(s) no pudieron actualizarse`);
+      fetchOrders();
+    },
+    [getUserInfo, fetchOrders],
   );
 
   const handleBulkStatusChange = useCallback(
@@ -261,7 +310,11 @@ export function PedidosContent() {
             const steps = sale ? getStatusChainSteps(sale.status, newStatus) : [newStatus];
             try {
               for (const step of steps) {
-                await axios.patch(`${API_VENTAS}/order-header/${id}`, { status: step, ...uInfo });
+                await axios.patch(`${API_VENTAS}/order-header/${id}`, {
+                  status: step,
+                  ...(step === "LLAMADO" && { callStatus: "CONFIRMED" }),
+                  ...uInfo,
+                });
               }
               success++;
             } catch {
@@ -626,6 +679,8 @@ export function PedidosContent() {
     onReassignSeller: setReassignSale,
     onCancel: setCancelSale,
     onChangeStatus: handleChangeStatus,
+    onMarkNoAnswer: handleMarkNoAnswer,
+    onBulkMarkNoAnswer: handleBulkMarkNoAnswer,
     onDeliveryReschedule: (sale) => setRescheduleTarget({ saleIds: [sale.id] }),
     onBulkDeliveryReschedule: (ids) => setRescheduleTarget({ saleIds: ids }),
     onOpenCreateGuide: setCreateGuideOrders,
@@ -641,6 +696,8 @@ export function PedidosContent() {
     onSyncCourier: handleSyncCourier,
     onReturnToStock: handleReturnToStock,
     onMarkAsLoss: handleMarkAsLoss,
+    onOpenReceipt: setReceiptSale,
+    companyId: auth?.company?.id,
   };
 
   if (loading) {
@@ -841,6 +898,12 @@ export function PedidosContent() {
         open={!!rescheduleTarget}
         onOpenChange={(v) => !v && setRescheduleTarget(null)}
         onConfirm={handleRescheduleConfirm}
+      />
+
+      <OrderReceiptModal
+        open={!!receiptSale}
+        orderId={receiptSale?.id ?? null}
+        onClose={() => setReceiptSale(null)}
       />
 
       <GlobalScanner open={scannerOpen} onOpenChange={setScannerOpen} />

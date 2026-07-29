@@ -92,3 +92,21 @@ export function getStatusPillClasses(status: OrderStatus): string {
     "bg-muted text-muted-foreground border-border"
   );
 }
+
+/** Punto de color por estado en saturación sólida — para usar a tamaño de punto (selects, leyendas). */
+const STATUS_DOT_CLASSES: Record<OrderStatus, string> = {
+  INCOMPLETE: "bg-slate-400",
+  PREVENTA: "bg-slate-400",
+  PENDIENTE: "bg-amber-500",
+  PREPARADO: "bg-blue-500",
+  LLAMADO: "bg-violet-500",
+  ASIGNADO_A_GUIA: "bg-indigo-500",
+  EN_ENVIO: "bg-cyan-500",
+  ENTREGADO: "bg-green-500",
+  ANULADO: "bg-red-500",
+  PAGADO: "bg-teal-500",
+};
+
+export function getStatusDotClass(status: OrderStatus): string {
+  return STATUS_DOT_CLASSES[status] ?? "bg-muted-foreground";
+}

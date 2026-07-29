@@ -20,7 +20,6 @@ import {
   MessageSquare,
   StickyNote,
   UserPen,
-  DollarSign,
   PackagePlus,
   PlusCircle,
   Printer,
@@ -35,7 +34,9 @@ import {
   SlidersHorizontal,
   ListChecks,
   AlertTriangle,
+  Receipt,
 } from "lucide-react";
+import { SourceBadge } from "@/components/shared/SourceBadge";
 import {
   SalesTableFilters,
   SalesFilters,
@@ -56,7 +57,7 @@ import {
   saleDayKey,
   saleSource,
 } from "./types";
-import { StatusPill, StockIssueIcon } from "./shared";
+import { IntegrationBadges, PaymentButton, RowStatusSelect, StatusPill, StockIssueIcon, ZoneBadge } from "./shared";
 
 /**
  * Pestaña "Por Despachar" — cockpit diario. Junta 3 fuentes en una sola
@@ -83,9 +84,10 @@ interface ColumnPrefs {
   guia: boolean;
   courier: boolean;
   vendedor: boolean;
+  integraciones: boolean;
 }
 
-const DEFAULT_COLUMNS: ColumnPrefs = { guia: true, courier: true, vendedor: true };
+const DEFAULT_COLUMNS: ColumnPrefs = { guia: true, courier: true, vendedor: true, integraciones: true };
 
 // ORDER_STATUS_FLOW (orders-status-flow.ts) solo permite saltar a
 // ASIGNADO_A_GUIA desde LLAMADO — un PREPARADO puede armar guía igual,
@@ -245,7 +247,12 @@ export function PorDespacharTab({
     saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `picking_${dayKey}.xlsx`);
   };
 
-  const visibleColCount = 8 + (columns.guia ? 1 : 0) + (columns.courier ? 1 : 0) + (columns.vendedor ? 1 : 0);
+  const visibleColCount =
+    10 +
+    (columns.guia ? 1 : 0) +
+    (columns.courier ? 1 : 0) +
+    (columns.vendedor ? 1 : 0) +
+    (columns.integraciones ? 1 : 0);
 
   return (
     <div className="space-y-3">
@@ -406,6 +413,8 @@ export function PorDespacharTab({
               availableStatuses={bulkStatuses}
               onStatusChange={(status) => actions.onBulkStatusChange(Array.from(selectedIds), status)}
               isLoading={actions.isBulkLoading}
+              extraActions={[{ value: "NO_ANSWER", label: "No Contesta", colorClassName: "text-amber-600" }]}
+              onExtraAction={() => actions.onBulkMarkNoAnswer(Array.from(selectedIds))}
             />
           )}
           <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onCopySelected(selectedSales)}>
@@ -456,6 +465,9 @@ export function PorDespacharTab({
                   <label className="flex items-center gap-2">
                     <Checkbox checked={columns.vendedor} onCheckedChange={(v) => setColumn("vendedor", !!v)} /> Vendedor
                   </label>
+                  <label className="flex items-center gap-2">
+                    <Checkbox checked={columns.integraciones} onCheckedChange={(v) => setColumn("integraciones", !!v)} /> Integraciones
+                  </label>
                 </div>
               </PopoverContent>
             </Popover>
@@ -487,13 +499,16 @@ export function PorDespacharTab({
                 <TableHead>N° Orden</TableHead>
                 <TableHead>Cliente</TableHead>
                 <TableHead>Distrito</TableHead>
+                <TableHead>Zona</TableHead>
                 <TableHead>Productos</TableHead>
                 <TableHead>Fuente</TableHead>
+                <TableHead>Origen</TableHead>
                 <TableHead>Total / Saldo</TableHead>
                 <TableHead>Estado</TableHead>
                 {columns.guia && <TableHead>Guía</TableHead>}
                 {columns.courier && <TableHead>Courier</TableHead>}
                 {columns.vendedor && <TableHead>Vendedor</TableHead>}
+                {columns.integraciones && <TableHead>Integraciones</TableHead>}
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -521,6 +536,9 @@ export function PorDespacharTab({
                     <div className="text-xs text-muted-foreground">{sale.phoneNumber}</div>
                   </TableCell>
                   <TableCell className="text-sm">{sale.district || "—"}</TableCell>
+                  <TableCell>
+                    <ZoneBadge zone={sale.zone} />
+                  </TableCell>
                   <TableCell className="max-w-[220px] whitespace-normal text-xs text-muted-foreground">
                     {formatProductsShort(sale.items)}
                   </TableCell>
@@ -529,6 +547,9 @@ export function PorDespacharTab({
                       {SOURCE_LABEL[saleSource(sale)]}
                     </span>
                   </TableCell>
+                  <TableCell>
+                    <SourceBadge source={sale.externalSource} />
+                  </TableCell>
                   <TableCell className="text-sm tabular-nums">
                     {money(sale.total)}
                     {sale.pendingPayment > 0 && (
@@ -536,7 +557,15 @@ export function PorDespacharTab({
                     )}
                   </TableCell>
                   <TableCell>
-                    <StatusPill status={sale.status} />
+                    {canChangeStatus ? (
+                      <RowStatusSelect
+                        status={sale.status}
+                        onChangeStatus={(s) => actions.onChangeStatus(sale.id, s)}
+                        onMarkNoAnswer={() => actions.onMarkNoAnswer(sale.id)}
+                      />
+                    ) : (
+                      <StatusPill status={sale.status} />
+                    )}
                   </TableCell>
                   {columns.guia && (
                     <TableCell className="text-sm">
@@ -562,13 +591,19 @@ export function PorDespacharTab({
                       </div>
                     </TableCell>
                   )}
+                  {columns.integraciones && (
+                    <TableCell>
+                      <IntegrationBadges sale={sale} companyId={actions.companyId} onSuccess={actions.onSyncCourier} />
+                    </TableCell>
+                  )}
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver pedido" onClick={() => actions.onView(sale)}>
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Registrar cobro" onClick={() => actions.onOpenPayment(sale)}>
-                        <DollarSign className="h-3.5 w-3.5" />
+                      <PaymentButton hasPendingApproval={sale.hasPendingApprovalPayments} onClick={() => actions.onOpenPayment(sale)} />
+                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Comprobante" onClick={() => actions.onOpenReceipt(sale)}>
+                        <Receipt className="h-3.5 w-3.5" />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
                         <MessageCircle className="h-3.5 w-3.5" />

@@ -1,14 +1,35 @@
 "use client";
 
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, DollarSign } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { OrderStatus } from "@/interfaces/IOrder";
-import { getStatusLabel, getStatusPillClasses } from "@/utils/domain/orders-status-flow";
+import {
+  getAvailableStatuses,
+  getStatusDotClass,
+  getStatusLabel,
+  getStatusPillClasses,
+} from "@/utils/domain/orders-status-flow";
+import { DELIVERY_ZONES } from "@/constants/operationsDomain";
+import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
+import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
+import SendToEvaButton from "@/components/eva/SendToEvaButton";
+import type { Sale } from "./types";
+
+const ZONE_MAP = new Map(DELIVERY_ZONES.map((z) => [z.value, z]));
 
 /** Icono de alerta de stock insuficiente — regla de negocio a preservar (auditoría). */
 export function StockIssueIcon({ show }: { show?: boolean }) {
@@ -32,6 +53,90 @@ export function StatusPill({ status }: { status: OrderStatus }) {
     >
       {getStatusLabel(status)}
     </span>
+  );
+}
+
+const NO_ANSWER_VALUE = "__NO_CONTESTA__";
+
+/**
+ * Cambio de estado por fila — recupera el <select> combinado que tenía el
+ * módulo viejo de Operaciones (estado real + "No Contesta" como acción
+ * aparte que no toca `status`, solo `callStatus`), con el look de píldora
+ * de color en vez del enum crudo. Si no hay permiso para cambiar estado,
+ * el caller debe mostrar <StatusPill> en su lugar.
+ */
+export function RowStatusSelect({
+  status,
+  onChangeStatus,
+  onMarkNoAnswer,
+}: {
+  status: OrderStatus;
+  onChangeStatus: (next: OrderStatus) => void;
+  /** Si se omite, no se ofrece "No Contesta" (p.ej. ya está EN_ENVIO o más adelante). */
+  onMarkNoAnswer?: () => void;
+}) {
+  const nextStatuses = getAvailableStatuses(status).filter((s) => s !== status);
+  if (nextStatuses.length === 0 && !onMarkNoAnswer) {
+    return <StatusPill status={status} />;
+  }
+
+  return (
+    <Select
+      value={status}
+      onValueChange={(v) => (v === NO_ANSWER_VALUE ? onMarkNoAnswer?.() : onChangeStatus(v as OrderStatus))}
+    >
+      <SelectTrigger
+        size="sm"
+        className={`h-auto w-auto gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-bold ${getStatusPillClasses(status)}`}
+      >
+        <SelectValue>{getStatusLabel(status)}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {nextStatuses.map((s) => (
+          <SelectItem key={s} value={s}>
+            <span className="flex items-center gap-2">
+              <span className={`h-2 w-2 shrink-0 rounded-full ${getStatusDotClass(s)}`} />
+              {getStatusLabel(s)}
+            </span>
+          </SelectItem>
+        ))}
+        {onMarkNoAnswer && (
+          <>
+            {nextStatuses.length > 0 && <SelectSeparator />}
+            <SelectItem value={NO_ANSWER_VALUE} className="text-amber-600 dark:text-amber-400">
+              No Contesta
+            </SelectItem>
+          </>
+        )}
+      </SelectContent>
+    </Select>
+  );
+}
+
+/** Botón "Registrar cobro" con puntito rojo pulsante cuando hay pagos pendientes de aprobar — mismo criterio que el módulo viejo. */
+export function PaymentButton({
+  hasPendingApproval,
+  onClick,
+}: {
+  hasPendingApproval?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      className="relative h-7 w-7"
+      title={hasPendingApproval ? "Pagos pendientes de aprobación" : "Registrar cobro"}
+      onClick={onClick}
+    >
+      <DollarSign className="h-3.5 w-3.5" />
+      {hasPendingApproval && (
+        <span className="absolute -top-0.5 -right-0.5 flex h-2.5 w-2.5">
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+          <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
+        </span>
+      )}
+    </Button>
   );
 }
 
@@ -85,6 +190,67 @@ export function DiasBadge({ days }: { days: number }) {
     <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold tabular-nums ${DIAS_TIER(days)}`}>
       {days}d
     </span>
+  );
+}
+
+/** Badge de zona con emoji, mismo criterio de color que Guías & Courier. */
+export function ZoneBadge({ zone }: { zone?: string | null }) {
+  if (!zone) return <span className="text-xs text-muted-foreground">—</span>;
+  const z = ZONE_MAP.get(zone);
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap">
+      {z ? `${z.emoji} ${z.label}` : zone}
+    </span>
+  );
+}
+
+/**
+ * Integraciones de fulfillment por fila — el módulo viejo tenía esto en
+ * cada pedido (badge de estado + botón de reenvío). Si todavía no se envió
+ * a ninguna, ofrece el botón "Enviar a EVA"; si ya hay estado de Aliclik o
+ * EVA, muestra los badges de seguimiento en su lugar.
+ */
+export function IntegrationBadges({
+  sale,
+  companyId,
+  onSuccess,
+}: {
+  sale: Pick<
+    Sale,
+    "id" | "clientName" | "phoneNumber" | "district" | "address" | "total" | "aliclikDispatchStatus" | "aliclikSyncedAt" | "evaStatus" | "evaSyncedAt"
+  >;
+  companyId?: string;
+  onSuccess: () => void;
+}) {
+  const hasAliclik = !!sale.aliclikDispatchStatus;
+  const hasEva = !!sale.evaStatus;
+
+  if (!hasAliclik && !hasEva) {
+    return (
+      <SendToEvaButton
+        orderId={sale.id}
+        companyId={companyId}
+        recipientName={sale.clientName}
+        recipientPhone={sale.phoneNumber}
+        district={sale.district}
+        address={sale.address}
+        amount={sale.total}
+        onSuccess={onSuccess}
+        variant="outline"
+        size="sm"
+        className="h-6 px-2 text-[10px]"
+        label="Enviar a EVA"
+      />
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      {hasAliclik && (
+        <AliclikStatusBadge aliclikDispatchStatus={sale.aliclikDispatchStatus} aliclikSyncedAt={sale.aliclikSyncedAt} />
+      )}
+      {hasEva && <EvaStatusBadge evaStatus={sale.evaStatus} evaSyncedAt={sale.evaSyncedAt} />}
+    </div>
   );
 }
 

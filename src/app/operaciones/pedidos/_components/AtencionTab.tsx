@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-import { Eye, Clock3, Ban, MessageCircle, PackageCheck, TrendingDown } from "lucide-react";
+import { Eye, Clock3, Ban, MessageCircle, PackageCheck, Receipt, TrendingDown } from "lucide-react";
 import {
   SalesTableFilters,
   SalesFilters,
@@ -319,6 +319,9 @@ export function AtencionTab({
                       )}
                       <Button size="icon" variant="ghost" className="h-7 w-7" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
                         <MessageCircle className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Comprobante" onClick={() => actions.onOpenReceipt(sale)}>
+                        <Receipt className="h-3.5 w-3.5" />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver pedido" onClick={() => actions.onView(sale)}>
                         <Eye className="h-3.5 w-3.5" />

@@ -43,7 +43,9 @@ export interface Sale {
   externalSource?: string | null;
   externalId?: string | null;
   aliclikDispatchStatus?: string | null;
+  aliclikSyncedAt?: string | null;
   evaStatus?: string | null;
+  evaSyncedAt?: string | null;
   shalomStatus?: string | null;
   shalomError?: string | null;
   syncErrors?: Record<string, string> | null;
@@ -112,7 +114,9 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     externalSource: order.externalSource ?? null,
     externalId: order.externalId ?? null,
     aliclikDispatchStatus: order.aliclikDispatchStatus ?? null,
+    aliclikSyncedAt: order.aliclikSyncedAt ?? null,
     evaStatus: order.evaStatus ?? null,
+    evaSyncedAt: order.evaSyncedAt ?? null,
     shalomStatus: order.shalomStatus ?? null,
     shalomError: order.shalomError ?? null,
     syncErrors: order.syncErrors ?? null,
@@ -218,6 +222,8 @@ export interface PedidosActions {
   onReassignSeller: (sale: Sale) => void;
   onCancel: (sale: Sale) => void;
   onChangeStatus: (saleId: string, status: OrderStatus) => void;
+  onMarkNoAnswer: (saleId: string) => void;
+  onBulkMarkNoAnswer: (ids: string[]) => void;
   onDeliveryReschedule: (sale: Sale) => void;
   onBulkDeliveryReschedule: (ids: string[]) => void;
   onOpenCreateGuide: (selected: Sale[]) => void;
@@ -233,6 +239,8 @@ export interface PedidosActions {
   onSyncCourier: () => void;
   onReturnToStock: (sale: Sale) => void;
   onMarkAsLoss: (sale: Sale) => void;
+  onOpenReceipt: (sale: Sale) => void;
+  companyId?: string;
 }
 
 /**

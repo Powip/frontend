@@ -18,7 +18,6 @@ import {
   emptySalesFilters,
   applyFilters,
 } from "@/components/ventas/SalesTableFilters";
-import OrderReceiptModal from "@/components/modals/orderReceiptModal";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
 import { ITEMS_PER_PAGE, PedidosActions, Sale, money, formatProductsShort } from "./types";
 import { StatusPill } from "./shared";
@@ -41,7 +40,6 @@ export function HistorialTab({
   });
   const [statusFilter, setStatusFilter] = useState<StatusChip>("");
   const [page, setPage] = useState(1);
-  const [comprobanteOrderId, setComprobanteOrderId] = useState<string | null>(null);
 
   const byStatus = useMemo(() => {
     if (statusFilter === "SALDO") return sales.filter((s) => s.pendingPayment > 0);
@@ -159,7 +157,7 @@ export function HistorialTab({
                       variant="ghost"
                       className="h-7 w-7"
                       title="Comprobante"
-                      onClick={() => setComprobanteOrderId(sale.id)}
+                      onClick={() => actions.onOpenReceipt(sale)}
                     >
                       <Receipt className="h-3.5 w-3.5" />
                     </Button>
@@ -181,12 +179,6 @@ export function HistorialTab({
         itemsPerPage={ITEMS_PER_PAGE}
         onPageChange={setPage}
         itemName="pedidos"
-      />
-
-      <OrderReceiptModal
-        open={comprobanteOrderId !== null}
-        orderId={comprobanteOrderId}
-        onClose={() => setComprobanteOrderId(null)}
       />
     </div>
   );

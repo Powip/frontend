@@ -8,22 +8,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { OrderStatus } from "@/interfaces/IOrder";
-import { getStatusLabel } from "@/utils/domain/orders-status-flow";
+import { getStatusDotClass, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { Layers } from "lucide-react";
-
-/** Punto de color por estado — mismo mapa de tonos que STATUS_PILL_CLASSES, en saturación sólida para que se vea a tamaño de punto. */
-const STATUS_DOT_CLASS: Record<OrderStatus, string> = {
-  INCOMPLETE: "bg-slate-400",
-  PREVENTA: "bg-slate-400",
-  PENDIENTE: "bg-amber-500",
-  PREPARADO: "bg-blue-500",
-  LLAMADO: "bg-violet-500",
-  ASIGNADO_A_GUIA: "bg-indigo-500",
-  EN_ENVIO: "bg-cyan-500",
-  ENTREGADO: "bg-green-500",
-  ANULADO: "bg-red-500",
-  PAGADO: "bg-teal-500",
-};
 
 export interface BulkExtraAction {
   value: string;
@@ -94,7 +80,7 @@ export function BulkStatusSelect({
                 <span
                   className={cn(
                     "h-2 w-2 shrink-0 rounded-full",
-                    STATUS_DOT_CLASS[status],
+                    getStatusDotClass(status),
                   )}
                 />
                 {getStatusLabel(status)}

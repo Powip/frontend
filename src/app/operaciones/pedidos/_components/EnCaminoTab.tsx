@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-import { CheckCircle2, Eye, MessageCircle, RefreshCw, Search as SearchIcon } from "lucide-react";
+import { CheckCircle2, Eye, MessageCircle, Receipt, RefreshCw, Search as SearchIcon } from "lucide-react";
 import {
   SalesTableFilters,
   SalesFilters,
@@ -339,6 +339,9 @@ export function EnCaminoTab({
                           </Button>
                           <Button size="icon" variant="ghost" className="h-7 w-7" title="Rastrear" onClick={() => actions.onView(sale)}>
                             <SearchIcon className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Comprobante" onClick={() => actions.onOpenReceipt(sale)}>
+                            <Receipt className="h-3.5 w-3.5" />
                           </Button>
                           <Button size="icon" variant="ghost" className="h-7 w-7" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
                             <MessageCircle className="h-3.5 w-3.5" />
