@@ -22,7 +22,7 @@ import {
 } from "@/utils/domain/operations-pedidos-tabs";
 import { fetchCouriers } from "@/services/courierService";
 import { reassignSeller } from "@/services/atencionClienteService";
-import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
+import { getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 
@@ -128,7 +128,13 @@ export function PedidosContent() {
       .catch(() => toast.error("No se pudieron cargar los couriers"));
   }, [auth?.company?.id]);
 
-  const tabCounts = useMemo(() => countByTab(orders), [orders]);
+  // Pedidos (a diferencia del Tablero) solo trabaja pedidos que ya entraron
+  // al pipeline de despacho — un PENDIENTE todavía no fue preparado por
+  // almacén, así que no debe listarse ni contar acá (sigue siendo un pedido
+  // de Ventas, no de Operaciones, hasta que se prepare).
+  const visibleOrders = useMemo(() => orders.filter((o) => o.status !== "PENDIENTE"), [orders]);
+
+  const tabCounts = useMemo(() => countByTab(visibleOrders), [visibleOrders]);
 
   const salesByTab = useMemo(() => {
     const grouped: Record<PedidosTabKey, OrderHeader[]> = {
@@ -137,11 +143,11 @@ export function PedidosContent() {
       atencion: [],
       historial: [],
     };
-    for (const order of orders) grouped[getPedidosTab(order)].push(order);
+    for (const order of visibleOrders) grouped[getPedidosTab(order)].push(order);
     const out = {} as Record<PedidosTabKey, Sale[]>;
     for (const key of TAB_KEYS) out[key] = grouped[key].map(mapOrderToSale);
     return out;
-  }, [orders]);
+  }, [visibleOrders]);
 
   const salesById = useMemo(() => {
     const map = new Map<string, Sale>();
@@ -204,11 +210,16 @@ export function PedidosContent() {
         }
       }
       try {
-        await axios.patch(`${API_VENTAS}/order-header/${saleId}`, {
-          status: newStatus,
-          ...getUserInfo(),
-        });
-        toast.success(`Estado actualizado a ${newStatus}`);
+        // Atajos como Pendiente → En envío no son un salto válido de un solo
+        // paso para el backend — se encadenan los estados intermedios acá.
+        const steps = sale ? getStatusChainSteps(sale.status, newStatus) : [newStatus];
+        for (const step of steps) {
+          await axios.patch(`${API_VENTAS}/order-header/${saleId}`, {
+            status: step,
+            ...getUserInfo(),
+          });
+        }
+        toast.success(`Estado actualizado a ${getStatusLabel(newStatus)}`);
         fetchOrders();
       } catch (error: any) {
         toast.error(error?.response?.data?.message || "No se pudo actualizar el estado");
@@ -235,24 +246,34 @@ export function PedidosContent() {
         }
       }
       setIsBulkLoading(true);
-      try {
-        const uInfo = getUserInfo();
-        const result = await processBulkStatusChange(
-          ids,
-          newStatus,
-          API_VENTAS || "",
-          undefined,
-          15,
-          uInfo.userId ? { userId: uInfo.userId, sellerName: uInfo.sellerName || "" } : undefined,
+      const uInfo = getUserInfo();
+      let success = 0;
+      let failed = 0;
+      // Cada pedido puede partir de un estado distinto, así que el
+      // encadenado (ver handleChangeStatus) se calcula por pedido — en
+      // tandas de 10 para no saturar la API con selecciones grandes.
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const batch = ids.slice(i, i + BATCH_SIZE);
+        await Promise.all(
+          batch.map(async (id) => {
+            const sale = salesById.get(id);
+            const steps = sale ? getStatusChainSteps(sale.status, newStatus) : [newStatus];
+            try {
+              for (const step of steps) {
+                await axios.patch(`${API_VENTAS}/order-header/${id}`, { status: step, ...uInfo });
+              }
+              success++;
+            } catch {
+              failed++;
+            }
+          }),
         );
-        if (result.success.length > 0) toast.success(`${result.success.length} pedido(s) actualizados a ${newStatus}`);
-        if (result.failed.length > 0) toast.error(`${result.failed.length} pedido(s) no pudieron actualizarse`);
-        fetchOrders();
-      } catch {
-        toast.error("Error crítico durante la actualización masiva");
-      } finally {
-        setIsBulkLoading(false);
       }
+      if (success > 0) toast.success(`${success} pedido(s) actualizados a ${getStatusLabel(newStatus)}`);
+      if (failed > 0) toast.error(`${failed} pedido(s) no pudieron actualizarse`);
+      setIsBulkLoading(false);
+      fetchOrders();
     },
     [salesById, getUserInfo, fetchOrders],
   );
@@ -349,9 +370,21 @@ export function PedidosContent() {
           totalOrders += guideData.orderIds.length;
           for (const orderId of guideData.orderIds) {
             const carrierCost = guideData.orderCarrierCosts?.[orderId] || 0;
+            // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO —
+            // si el pedido todavía está PREPARADO, se encadena el paso
+            // intermedio acá mismo, transparente para quien despacha.
+            if (salesById.get(orderId)?.status === "PREPARADO") {
+              await axios.patch(`${API_VENTAS}/order-header/${orderId}`, {
+                status: "LLAMADO",
+                ...getUserInfo(),
+              });
+            }
+            // La guía queda CREADA hasta que se apruebe explícitamente con el
+            // botón "Aprobar Guía" (GuideDetailsModal) — recién ahí el pedido
+            // pasa a EN_ENVIO. Mismo criterio que Guías & Courier.
             await axios.patch(`${API_VENTAS}/order-header/${orderId}`, {
               guideNumber,
-              status: "EN_ENVIO",
+              status: "ASIGNADO_A_GUIA",
               courier: guideData.courierName,
               courierId: guideData.courierId || null,
               carrierShippingCost: carrierCost,
@@ -364,15 +397,19 @@ export function PedidosContent() {
             ? `Guía ${createdGuides[0]} creada con ${totalOrders} pedido(s)`
             : `${createdGuides.length} guías creadas con ${totalOrders} pedido(s)`,
         );
+        // Abre el detalle de la guía recién creada para que "Aprobar Guía"
+        // quede a la vista de una — no hay que ir a buscarlo.
+        const firstOrder = createGuideOrders?.[0] ?? null;
         setCreateGuideOrders(null);
         fetchOrders();
+        if (firstOrder) setGuideSale(firstOrder);
       } catch (error: any) {
         toast.error(error?.response?.data?.message || "Error creando guía");
       } finally {
         setIsCreatingGuide(false);
       }
     },
-    [getUserInfo, fetchOrders],
+    [getUserInfo, fetchOrders, createGuideOrders, salesById],
   );
 
   const handleAddToGuideConfirm = useCallback(
@@ -385,15 +422,22 @@ export function PedidosContent() {
           orderIds: selected.map((s) => s.id),
         });
         for (const sale of selected) {
+          if (sale.status === "PREPARADO") {
+            await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+              status: "LLAMADO",
+              ...getUserInfo(),
+            });
+          }
           await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
             guideNumber,
-            status: "EN_ENVIO",
+            status: "ASIGNADO_A_GUIA",
             ...getUserInfo(),
           });
         }
         toast.success(`${selected.length} pedido(s) agregados a la guía ${guideNumber}`);
         setAddToGuideOrders(null);
         fetchOrders();
+        setGuideSale(selected[0]);
       } catch (error: any) {
         toast.error(error?.response?.data?.message || "Error al agregar a la guía");
       } finally {
@@ -444,7 +488,7 @@ export function PedidosContent() {
     }
     const text = selected
       .map((sale) =>
-        `Venta ${sale.orderNumber}\nCliente: ${sale.clientName}\nTeléfono: ${sale.phoneNumber}\nDistrito: ${sale.district}\nDirección: ${sale.address}\nFecha: ${sale.date}\nTotal: S/ ${sale.total.toFixed(2)}\nAdelanto: S/ ${sale.advancePayment.toFixed(2)}\nPor Cobrar: S/ ${sale.pendingPayment.toFixed(2)}\nEstado: ${sale.status}`.trim(),
+        `Venta ${sale.orderNumber}\nCliente: ${sale.clientName}\nTeléfono: ${sale.phoneNumber}\nDistrito: ${sale.district}\nDirección: ${sale.address}\nFecha: ${sale.date}\nTotal: S/ ${sale.total.toFixed(2)}\nAdelanto: S/ ${sale.advancePayment.toFixed(2)}\nPor Cobrar: S/ ${sale.pendingPayment.toFixed(2)}\nEstado: ${getStatusLabel(sale.status)}`.trim(),
       )
       .join("\n\n--------------------\n\n");
     await navigator.clipboard.writeText(text);

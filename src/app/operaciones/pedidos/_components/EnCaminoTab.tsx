@@ -12,19 +12,21 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-import { Eye, MessageCircle, RefreshCw, Search as SearchIcon } from "lucide-react";
+import { CheckCircle2, Eye, MessageCircle, RefreshCw, Search as SearchIcon } from "lucide-react";
 import {
   SalesTableFilters,
   SalesFilters,
   emptySalesFilters,
   applyFilters,
 } from "@/components/ventas/SalesTableFilters";
+import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
 import { GUIDE_AGE_THRESHOLDS, DELIVERY_ZONES } from "@/constants/operationsDomain";
 import {
   ITEMS_PER_PAGE,
   PedidosActions,
   Sale,
+  computeBulkAvailableStatuses,
   daysSince,
   money,
 } from "./types";
@@ -117,7 +119,9 @@ export function EnCaminoTab({
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paged = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
+  const canChangeStatus = actions.can(OPS_PERMISSIONS.CHANGE_STATUS_MANUAL);
   const selectedSales = filtered.filter((s) => selectedIds.has(s.id));
+  const bulkStatuses = useMemo(() => computeBulkAvailableStatuses(selectedSales), [selectedSales]);
 
   const toggle = (id: string) => {
     setSelectedIds((prev) => {
@@ -235,6 +239,14 @@ export function EnCaminoTab({
           {selectedSales.length > 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2">
               <span className="text-xs font-semibold text-muted-foreground">{selectedSales.length} seleccionados</span>
+              {canChangeStatus && (
+                <BulkStatusSelect
+                  selectedCount={selectedSales.length}
+                  availableStatuses={bulkStatuses}
+                  onStatusChange={(status) => actions.onBulkStatusChange(Array.from(selectedIds), status)}
+                  isLoading={actions.isBulkLoading}
+                />
+              )}
               <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onBulkWhatsApp(selectedSales)}>
                 <MessageCircle className="h-3.5 w-3.5" />
                 WhatsApp masivo
@@ -312,6 +324,16 @@ export function EnCaminoTab({
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-1">
+                          {canChangeStatus && (
+                            <Button
+                              size="sm"
+                              className="h-7 gap-1 bg-green-600 text-xs font-semibold text-white hover:bg-green-700"
+                              onClick={() => actions.onChangeStatus(sale.id, "ENTREGADO")}
+                            >
+                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              Entregado
+                            </Button>
+                          )}
                           <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver pedido" onClick={() => actions.onView(sale)}>
                             <Eye className="h-3.5 w-3.5" />
                           </Button>
@@ -412,6 +434,16 @@ export function EnCaminoTab({
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center justify-end gap-1">
+                        {canChangeStatus && (
+                          <Button
+                            size="sm"
+                            className="h-7 gap-1 bg-green-600 text-xs font-semibold text-white hover:bg-green-700"
+                            onClick={() => actions.onBulkStatusChange(group.map((s) => s.id), "ENTREGADO")}
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" />
+                            Marcar entregada
+                          </Button>
+                        )}
                         <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver guía" onClick={() => actions.onOpenGuide(group[0])}>
                           <Eye className="h-3.5 w-3.5" />
                         </Button>

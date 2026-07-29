@@ -1,11 +1,16 @@
 import { OrderStatus } from "@/interfaces/IOrder";
 
-// Flujo unificado para LIMA y PROVINCIA (mismo flujo para ambas regiones)
+// Flujo unificado para LIMA y PROVINCIA (mismo flujo para ambas regiones).
+// PENDIENTE y PREPARADO ofrecen "En envío"/"Contactado" como atajo directo
+// en el <select> manual — el backend solo valida saltos de un paso, así que
+// PedidosContent.tsx encadena los estados intermedios en varios PATCH
+// (ver STATUS_PROGRESSION/getStatusChainSteps más abajo) para que ese atajo
+// funcione sin exponerle la mecánica al usuario.
 export const ORDER_STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   INCOMPLETE: ["PREVENTA", "PENDIENTE", "ANULADO"],
   PREVENTA: ["PENDIENTE", "ANULADO"],
-  PENDIENTE: ["PREPARADO", "ANULADO"],
-  PREPARADO: ["LLAMADO", "ANULADO"],
+  PENDIENTE: ["PREPARADO", "LLAMADO", "EN_ENVIO", "ANULADO"],
+  PREPARADO: ["LLAMADO", "EN_ENVIO", "ANULADO"],
   LLAMADO: ["ASIGNADO_A_GUIA", "EN_ENVIO", "ENTREGADO", "ANULADO"],
   ASIGNADO_A_GUIA: ["EN_ENVIO", "ANULADO"],
   EN_ENVIO: ["ENTREGADO", "ANULADO"],
@@ -13,6 +18,42 @@ export const ORDER_STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   ANULADO: [],
   PAGADO: ["ANULADO"],
 };
+
+/** Etiquetas legibles para mostrar en selects/badges — nunca el enum crudo. */
+export const ORDER_STATUS_LABEL: Record<OrderStatus, string> = {
+  INCOMPLETE: "Incompleto",
+  PREVENTA: "Preventa",
+  PENDIENTE: "Pendiente",
+  PREPARADO: "Preparado",
+  LLAMADO: "Contactado",
+  ASIGNADO_A_GUIA: "Asignado a guía",
+  EN_ENVIO: "En envío",
+  ENTREGADO: "Entregado",
+  ANULADO: "Anulado",
+  PAGADO: "Pagado",
+};
+
+export function getStatusLabel(status: OrderStatus): string {
+  return ORDER_STATUS_LABEL[status] ?? status;
+}
+
+// Progresión lineal usada solo para calcular los saltos intermedios de los
+// atajos "En envío"/"Contactado" desde PENDIENTE o PREPARADO — no reemplaza
+// ORDER_STATUS_FLOW, es auxiliar de getStatusChainSteps.
+const STATUS_PROGRESSION: OrderStatus[] = ["PENDIENTE", "PREPARADO", "LLAMADO", "EN_ENVIO", "ENTREGADO"];
+
+/**
+ * Pasos reales (uno por PATCH) para llegar de `current` a `target` sin
+ * violar ORDER_STATUS_FLOW del backend. Si el salto no es un avance sobre
+ * la progresión lineal (p.ej. ANULADO o ASIGNADO_A_GUIA), devuelve un único
+ * paso directo — esos ya son válidos de un solo salto.
+ */
+export function getStatusChainSteps(current: OrderStatus, target: OrderStatus): OrderStatus[] {
+  const from = STATUS_PROGRESSION.indexOf(current);
+  const to = STATUS_PROGRESSION.indexOf(target);
+  if (from === -1 || to === -1 || to <= from) return [target];
+  return STATUS_PROGRESSION.slice(from + 1, to + 1);
+}
 
 /**
  * Obtiene los estados disponibles para una venta según su estado actual.

@@ -89,6 +89,11 @@ export const ROLE_BUCKET_PERMISSIONS_FOR_PREVIEW: Record<OperationsViewRole, Ops
     OPS_PERMISSIONS.DISPATCH,
     OPS_PERMISSIONS.MANAGE_GUIDES,
     OPS_PERMISSIONS.CANCEL_ORDER,
+    // Quien despacha y gestiona guías es quien cierra el ciclo marcando
+    // "Entregado" — sin este permiso el botón de cambiar estado no se
+    // renderizaba para el rol que más lo necesita (ver revisión de flujo
+    // asignar guía → en camino → entregado).
+    OPS_PERMISSIONS.CHANGE_STATUS_MANUAL,
   ],
   CALLCENTER: [
     OPS_PERMISSIONS.VIEW,

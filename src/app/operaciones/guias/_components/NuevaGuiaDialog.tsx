@@ -19,7 +19,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOperationsRole, OPS_PERMISSIONS } from "@/contexts/OperationsRoleContext";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { DELIVERY_ZONES } from "@/constants/operationsDomain";
-import { getPedidosTab } from "@/utils/domain/operations-pedidos-tabs";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import CreateGuideModal, { CreateGuideData } from "@/components/modals/CreateGuideModal";
 import AddToExistingGuideModal from "@/components/modals/AddToExistingGuideModal";
@@ -87,11 +86,18 @@ export default function NuevaGuiaDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, selectedStoreId]);
 
-  // Elegibles para armar guía: confirmados/listos para despachar, con
-  // entrega a domicilio y que TODAVÍA no tengan una guía asignada.
+  // Elegibles para armar guía: preparados o ya confirmados por llamada (o
+  // con guía previa sin courier), con entrega a domicilio y sin guía
+  // asignada todavía. PENDIENTE queda afuera (ORDER_STATUS_FLOW no permite
+  // saltar de ahí a ASIGNADO_A_GUIA); si está PREPARADO, handleCreateGuide/
+  // handleAddToExisting encadenan el paso a LLAMADO automáticamente (mismo
+  // criterio que GUIDE_ELIGIBLE_STATUSES en PorDespacharTab.tsx).
   const eligible = useMemo(() => {
     return orders.filter(
-      (o) => o.deliveryType === "DOMICILIO" && !o.guideNumber && getPedidosTab(o) === "despachar",
+      (o) =>
+        o.deliveryType === "DOMICILIO" &&
+        !o.guideNumber &&
+        (o.status === "PREPARADO" || o.status === "LLAMADO" || o.status === "ASIGNADO_A_GUIA"),
     );
   }, [orders]);
 
@@ -152,6 +158,17 @@ export default function NuevaGuiaDialog({
         const guideNumber = res.data.guideNumber;
         lastGuideId = res.data.id;
         for (const orderId of guideData.orderIds) {
+          // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO —
+          // si el pedido todavía está PREPARADO, se encadena el paso
+          // intermedio acá, transparente para quien arma la guía.
+          if (orders.find((o) => o.id === orderId)?.status === "PREPARADO") {
+            await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
+              status: "LLAMADO",
+            });
+          }
+          // La guía queda CREADA hasta que se apruebe explícitamente con el
+          // botón "Aprobar Guía" (GuideDetailsModal, que se abre automático
+          // después de este paso) — recién ahí el pedido pasa a EN_ENVIO.
           await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
             guideNumber,
             status: "ASIGNADO_A_GUIA",
@@ -189,6 +206,11 @@ export default function NuevaGuiaDialog({
         { orderIds },
       );
       for (const orderId of orderIds) {
+        if (orders.find((o) => o.id === orderId)?.status === "PREPARADO") {
+          await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
+            status: "LLAMADO",
+          });
+        }
         await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
           guideNumber,
           status: "ASIGNADO_A_GUIA",

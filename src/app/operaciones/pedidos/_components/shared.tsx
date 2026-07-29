@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { OrderStatus } from "@/interfaces/IOrder";
-import { getStatusPillClasses } from "@/utils/domain/orders-status-flow";
+import { getStatusLabel, getStatusPillClasses } from "@/utils/domain/orders-status-flow";
 
 /** Icono de alerta de stock insuficiente — regla de negocio a preservar (auditoría). */
 export function StockIssueIcon({ show }: { show?: boolean }) {
@@ -30,7 +30,7 @@ export function StatusPill({ status }: { status: OrderStatus }) {
     <span
       className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold ${getStatusPillClasses(status)}`}
     >
-      {status}
+      {getStatusLabel(status)}
     </span>
   );
 }

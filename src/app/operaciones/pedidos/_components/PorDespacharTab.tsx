@@ -34,6 +34,7 @@ import {
   ChevronRight,
   SlidersHorizontal,
   ListChecks,
+  AlertTriangle,
 } from "lucide-react";
 import {
   SalesTableFilters,
@@ -43,6 +44,7 @@ import {
 } from "@/components/ventas/SalesTableFilters";
 import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
+import { OrderStatus } from "@/interfaces/IOrder";
 import {
   ITEMS_PER_PAGE,
   PedidosActions,
@@ -84,6 +86,13 @@ interface ColumnPrefs {
 }
 
 const DEFAULT_COLUMNS: ColumnPrefs = { guia: true, courier: true, vendedor: true };
+
+// ORDER_STATUS_FLOW (orders-status-flow.ts) solo permite saltar a
+// ASIGNADO_A_GUIA desde LLAMADO — un PREPARADO puede armar guía igual,
+// pero el paso intermedio a LLAMADO se hace transparente: los handlers de
+// creación de guía (PedidosContent.tsx) lo encadenan automáticamente antes
+// de asignar la guía. PENDIENTE queda afuera (ni siquiera se lista acá).
+const GUIDE_ELIGIBLE_STATUSES: OrderStatus[] = ["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA"];
 
 function loadColumnPrefs(): ColumnPrefs {
   if (typeof window === "undefined") return DEFAULT_COLUMNS;
@@ -201,9 +210,15 @@ export function PorDespacharTab({
   const canChangeStatus = actions.can(OPS_PERMISSIONS.CHANGE_STATUS_MANUAL);
 
   const eligibleForGuide = selectedSales.filter(
-    (s) => !s.guideNumber && s.deliveryType.toUpperCase() === "DOMICILIO",
+    (s) =>
+      !s.guideNumber &&
+      s.deliveryType.toUpperCase() === "DOMICILIO" &&
+      GUIDE_ELIGIBLE_STATUSES.includes(s.status),
   );
   const eligibleForCourier = selectedSales.filter((s) => s.status === "ASIGNADO_A_GUIA" && !s.courier);
+  const noLlamadosEnSeleccion = selectedSales.filter(
+    (s) => !GUIDE_ELIGIBLE_STATUSES.includes(s.status) && s.status !== "ANULADO",
+  ).length;
 
   const handlePickingExport = () => {
     const bySku = new Map<string, { sku: string; producto: string; cantidad: number; pedidos: Set<string> }>();
@@ -317,6 +332,16 @@ export function PorDespacharTab({
         showCourierFilter
         availableCouriers={actions.apiCouriers}
       />
+
+      {noLlamadosEnSeleccion > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <b>{noLlamadosEnSeleccion} pedido(s) seleccionados no se pueden incluir en una guía</b> por su estado
+            actual. Avanzalos primero con el selector &quot;Cambiar estado&quot; de cada fila o en lote.
+          </div>
+        </div>
+      )}
 
       {selectedSales.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2">
@@ -443,7 +468,7 @@ export function PorDespacharTab({
                 size="sm"
                 className="gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
                 disabled={eligibleForGuide.length === 0}
-                onClick={() => actions.onOpenCreateGuide(eligibleForGuide.length > 0 ? eligibleForGuide : filtered)}
+                onClick={() => actions.onOpenCreateGuide(eligibleForGuide)}
               >
                 <PackagePlus className="h-3.5 w-3.5" />
                 Generar Guía
