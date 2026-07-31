@@ -160,10 +160,29 @@ export interface Sale {
   externalId?: string | null;
   aliclikDispatchStatus?: string | null;
   aliclikSyncedAt?: string | null;
+  callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | "SCHEDULED" | null;
+  callbackAt?: string | null;
 }
 
 function formatSoles(amount: number): string {
   return `S/ ${amount.toFixed(2)}`;
+}
+
+function formatCallbackAt(dateStr: string): string {
+  return new Date(dateStr).toLocaleDateString("es-PE", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+/** Chip "🔁 fecha" debajo del select de estado — el único lugar donde se ve que un pedido quedó reprogramado. */
+function ReprogramadoChip({ sale }: { sale: Pick<Sale, "callStatus" | "callbackAt"> }) {
+  if (sale.callStatus !== "SCHEDULED" || !sale.callbackAt) return null;
+  return (
+    <span className="mt-1 flex items-center gap-1 text-[9px] font-semibold text-violet-600 dark:text-violet-400">
+      🔁 {formatCallbackAt(sale.callbackAt)}
+    </span>
+  );
 }
 
 /* -----------------------------------------
@@ -214,6 +233,8 @@ function mapOrderToSale(order: OrderHeader): Sale {
     externalId: order.externalId ?? null,
     aliclikDispatchStatus: order.aliclikDispatchStatus ?? null,
     aliclikSyncedAt: order.aliclikSyncedAt ?? null,
+    callStatus: order.callStatus ?? null,
+    callbackAt: order.callbackAt ?? null,
   };
 }
 
@@ -1321,6 +1342,7 @@ Estado: ${sale.status}
                       }
                       onExtraAction={() => setRescheduleDialogSaleId(sale.id)}
                     />
+                    <ReprogramadoChip sale={sale} />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
                     <Button

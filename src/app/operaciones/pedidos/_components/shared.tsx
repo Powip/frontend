@@ -57,33 +57,42 @@ export function StatusPill({ status }: { status: OrderStatus }) {
 }
 
 const NO_ANSWER_VALUE = "__NO_CONTESTA__";
+const REPROGRAMAR_VALUE = "__REPROGRAMAR__";
 
 /**
  * Cambio de estado por fila — recupera el <select> combinado que tenía el
- * módulo viejo de Operaciones (estado real + "No Contesta" como acción
- * aparte que no toca `status`, solo `callStatus`), con el look de píldora
- * de color en vez del enum crudo. Si no hay permiso para cambiar estado,
- * el caller debe mostrar <StatusPill> en su lugar.
+ * módulo viejo de Operaciones (estado real + "No Contesta"/"Reprogramar"
+ * como acciones aparte que no cambian `status` directamente), con el look
+ * de píldora de color en vez del enum crudo. Mismo patrón que StatusSelect
+ * en Ventas (reprogramar abre el mismo RescheduleDialog compartido). Si no
+ * hay permiso para cambiar estado, el caller debe mostrar <StatusPill>.
  */
 export function RowStatusSelect({
   status,
   onChangeStatus,
   onMarkNoAnswer,
+  onReschedule,
 }: {
   status: OrderStatus;
   onChangeStatus: (next: OrderStatus) => void;
   /** Si se omite, no se ofrece "No Contesta" (p.ej. ya está EN_ENVIO o más adelante). */
   onMarkNoAnswer?: () => void;
+  /** Si se omite, no se ofrece "Reprogramar". */
+  onReschedule?: () => void;
 }) {
   const nextStatuses = getAvailableStatuses(status).filter((s) => s !== status);
-  if (nextStatuses.length === 0 && !onMarkNoAnswer) {
+  if (nextStatuses.length === 0 && !onMarkNoAnswer && !onReschedule) {
     return <StatusPill status={status} />;
   }
 
   return (
     <Select
       value={status}
-      onValueChange={(v) => (v === NO_ANSWER_VALUE ? onMarkNoAnswer?.() : onChangeStatus(v as OrderStatus))}
+      onValueChange={(v) => {
+        if (v === NO_ANSWER_VALUE) onMarkNoAnswer?.();
+        else if (v === REPROGRAMAR_VALUE) onReschedule?.();
+        else onChangeStatus(v as OrderStatus);
+      }}
     >
       <SelectTrigger
         size="sm"
@@ -100,13 +109,16 @@ export function RowStatusSelect({
             </span>
           </SelectItem>
         ))}
+        {(onMarkNoAnswer || onReschedule) && (nextStatuses.length > 0) && <SelectSeparator />}
+        {onReschedule && (
+          <SelectItem value={REPROGRAMAR_VALUE} className="text-violet-600 dark:text-violet-400">
+            Reprogramar
+          </SelectItem>
+        )}
         {onMarkNoAnswer && (
-          <>
-            {nextStatuses.length > 0 && <SelectSeparator />}
-            <SelectItem value={NO_ANSWER_VALUE} className="text-amber-600 dark:text-amber-400">
-              No Contesta
-            </SelectItem>
-          </>
+          <SelectItem value={NO_ANSWER_VALUE} className="text-amber-600 dark:text-amber-400">
+            No Contesta
+          </SelectItem>
         )}
       </SelectContent>
     </Select>
@@ -256,10 +268,8 @@ export function IntegrationBadges({
 
 export function formatDateTime(dateStr?: string | null): string {
   if (!dateStr) return "—";
-  return new Date(dateStr).toLocaleString("es-PE", {
+  return new Date(dateStr).toLocaleDateString("es-PE", {
     day: "2-digit",
     month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
   });
 }

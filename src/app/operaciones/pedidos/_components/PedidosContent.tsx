@@ -345,6 +345,7 @@ export function PedidosContent() {
           saleIds.map((id) =>
             axios.patch(`${API_VENTAS}/order-header/${id}`, {
               callbackAt: callbackAt.toISOString(),
+              callStatus: "SCHEDULED",
               ...getUserInfo(),
             }),
           ),

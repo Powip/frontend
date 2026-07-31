@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
+import { es } from "date-fns/locale";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -14,7 +15,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Eye,
   MessageSquare,
@@ -35,6 +41,8 @@ import {
   ListChecks,
   AlertTriangle,
   Receipt,
+  CalendarDays,
+  CalendarCheck2,
 } from "lucide-react";
 import { SourceBadge } from "@/components/shared/SourceBadge";
 import {
@@ -57,7 +65,15 @@ import {
   saleDayKey,
   saleSource,
 } from "./types";
-import { IntegrationBadges, PaymentButton, RowStatusSelect, StatusPill, StockIssueIcon, ZoneBadge } from "./shared";
+import {
+  IntegrationBadges,
+  PaymentButton,
+  RowStatusSelect,
+  StatusPill,
+  StockIssueIcon,
+  ZoneBadge,
+  formatDateTime,
+} from "./shared";
 
 /**
  * Pestaña "Por Despachar" — cockpit diario. Junta 3 fuentes en una sola
@@ -66,16 +82,22 @@ import { IntegrationBadges, PaymentButton, RowStatusSelect, StatusPill, StockIss
  * del mockup — no solo "todo lo confirmado sin importar cuándo sale".
  */
 
-const SOURCE_LABEL: Record<SaleSource, string> = {
+// "reprogramado" queda afuera a propósito: ya tiene su propio filtro
+// dedicado ("🔁 Reprogramados", todos los días) más abajo — no hace falta
+// duplicarlo acá como chip de "Fuente" acotado al día.
+const SOURCE_LABEL: Partial<Record<SaleSource, string>> = {
   listos: "📦 Preparado listo",
-  reprogramado: "🔁 Reprogramado hoy",
   vendido: "🛍️ Entrega hoy",
 };
+const REPROGRAMADO_LABEL = "🔁 Reprogramado";
 
 const SOURCE_BADGE_CLASS: Record<SaleSource, string> = {
-  listos: "bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30",
-  reprogramado: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
-  vendido: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30",
+  listos:
+    "bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30",
+  reprogramado:
+    "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/15 dark:text-amber-300 dark:border-amber-500/30",
+  vendido:
+    "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/15 dark:text-blue-300 dark:border-blue-500/30",
 };
 
 const COLUMNS_STORAGE_KEY = "powip-operaciones-pedidos-columnas";
@@ -87,14 +109,23 @@ interface ColumnPrefs {
   integraciones: boolean;
 }
 
-const DEFAULT_COLUMNS: ColumnPrefs = { guia: true, courier: true, vendedor: true, integraciones: true };
+const DEFAULT_COLUMNS: ColumnPrefs = {
+  guia: true,
+  courier: true,
+  vendedor: true,
+  integraciones: true,
+};
 
 // ORDER_STATUS_FLOW (orders-status-flow.ts) solo permite saltar a
 // ASIGNADO_A_GUIA desde LLAMADO — un PREPARADO puede armar guía igual,
 // pero el paso intermedio a LLAMADO se hace transparente: los handlers de
 // creación de guía (PedidosContent.tsx) lo encadenan automáticamente antes
 // de asignar la guía. PENDIENTE queda afuera (ni siquiera se lista acá).
-const GUIDE_ELIGIBLE_STATUSES: OrderStatus[] = ["PREPARADO", "LLAMADO", "ASIGNADO_A_GUIA"];
+const GUIDE_ELIGIBLE_STATUSES: OrderStatus[] = [
+  "PREPARADO",
+  "LLAMADO",
+  "ASIGNADO_A_GUIA",
+];
 
 function loadColumnPrefs(): ColumnPrefs {
   if (typeof window === "undefined") return DEFAULT_COLUMNS;
@@ -116,12 +147,19 @@ function shiftKey(key: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function dateToKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 function labelForDay(key: string): string {
   const d = new Date(key + "T00:00:00");
   const today = todayKey();
   const tomorrow = shiftKey(today, 1);
   const weekday = d.toLocaleDateString("es-PE", { weekday: "long" });
-  const short = d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+  const short = d.toLocaleDateString("es-PE", {
+    day: "2-digit",
+    month: "short",
+  });
   if (key === today) return `Hoy · ${weekday} ${short}`;
   if (key === tomorrow) return `Mañana · ${weekday} ${short}`;
   return `${weekday} ${short}`;
@@ -142,11 +180,14 @@ export function PorDespacharTab({
     ...emptySalesFilters,
     search: initialSearch ?? "",
   });
-  const [qf, setQf] = useState(initialQf === "listos-escanear" ? "listos-escanear" : "");
+  const [qf, setQf] = useState(
+    initialQf === "listos-escanear" ? "listos-escanear" : "",
+  );
   const [sourceFilter, setSourceFilter] = useState<SaleSource | "">("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [dayKey, setDayKey] = useState(todayKey());
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [columns, setColumns] = useState<ColumnPrefs>(DEFAULT_COLUMNS);
 
   useEffect(() => setColumns(loadColumnPrefs()), []);
@@ -159,34 +200,75 @@ export function PorDespacharTab({
     });
   };
 
-  // Pronóstico de los próximos 6 días (para la barra de fecha).
-  const forecast = useMemo(() => {
+  // Cuántos pedidos salen cada día — base del pronóstico Y del calendario mensual.
+  const dayCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const s of sales) counts.set(saleDayKey(s), (counts.get(saleDayKey(s)) ?? 0) + 1);
-    return Array.from({ length: 6 }, (_, i) => {
-      const key = shiftKey(todayKey(), i);
-      return { key, count: counts.get(key) ?? 0 };
-    });
+    for (const s of sales)
+      counts.set(saleDayKey(s), (counts.get(saleDayKey(s)) ?? 0) + 1);
+    return counts;
   }, [sales]);
 
-  const salesOfDay = useMemo(() => sales.filter((s) => saleDayKey(s) === dayKey), [sales, dayKey]);
+  // Pronóstico de los próximos 6 días (para la barra de fecha).
+  const forecast = useMemo(
+    () =>
+      Array.from({ length: 6 }, (_, i) => {
+        const key = shiftKey(todayKey(), i);
+        return { key, count: dayCounts.get(key) ?? 0 };
+      }),
+    [dayCounts],
+  );
+
+  // Días con pedidos, para resaltarlos en el calendario del mes completo.
+  const daysWithOrders = useMemo(
+    () => Array.from(dayCounts.keys()).map((k) => new Date(k + "T00:00:00")),
+    [dayCounts],
+  );
+
+  const salesOfDay = useMemo(
+    () => sales.filter((s) => saleDayKey(s) === dayKey),
+    [sales, dayKey],
+  );
 
   const sourceCounts = useMemo(() => {
-    const counts: Record<SaleSource, number> = { listos: 0, reprogramado: 0, vendido: 0 };
+    const counts: Record<SaleSource, number> = {
+      listos: 0,
+      reprogramado: 0,
+      vendido: 0,
+    };
     for (const s of salesOfDay) counts[saleSource(s)]++;
     return counts;
   }, [salesOfDay]);
 
+  // "Reprogramados" mira TODOS los días (no solo el que está seleccionado
+  // en la barra) — es la única forma de ver de un vistazo todo lo que
+  // quedó agendado, sin tener que ir pinchando pronóstico día por día.
+  const allReprogramados = useMemo(
+    () =>
+      sales
+        .filter((s) => saleSource(s) === "reprogramado")
+        .sort(
+          (a, b) =>
+            new Date(a.callbackAt ?? 0).getTime() -
+            new Date(b.callbackAt ?? 0).getTime(),
+        ),
+    [sales],
+  );
+  const showingReprogramados = qf === "reprogramados";
+
   const byQf = useMemo(() => {
+    if (showingReprogramados) return allReprogramados;
     let list = salesOfDay;
     if (qf === "listos-escanear") list = list.filter((s) => !!s.guideNumber);
     if (sourceFilter) list = list.filter((s) => saleSource(s) === sourceFilter);
     return list;
-  }, [salesOfDay, qf, sourceFilter]);
+  }, [salesOfDay, qf, sourceFilter, showingReprogramados, allReprogramados]);
 
   const filtered = useMemo(() => applyFilters(byQf, filters), [byQf, filters]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
-  const paged = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  const paged = filtered.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  );
 
   const toggle = (id: string) => {
     setSelectedIds((prev) => {
@@ -206,7 +288,10 @@ export function PorDespacharTab({
   };
 
   const selectedSales = filtered.filter((s) => selectedIds.has(s.id));
-  const bulkStatuses = useMemo(() => computeBulkAvailableStatuses(selectedSales), [selectedSales]);
+  const bulkStatuses = useMemo(
+    () => computeBulkAvailableStatuses(selectedSales),
+    [selectedSales],
+  );
   const canDispatch = actions.can(OPS_PERMISSIONS.DISPATCH);
   const canExport = actions.can(OPS_PERMISSIONS.EXPORT);
   const canChangeStatus = actions.can(OPS_PERMISSIONS.CHANGE_STATUS_MANUAL);
@@ -217,17 +302,29 @@ export function PorDespacharTab({
       s.deliveryType.toUpperCase() === "DOMICILIO" &&
       GUIDE_ELIGIBLE_STATUSES.includes(s.status),
   );
-  const eligibleForCourier = selectedSales.filter((s) => s.status === "ASIGNADO_A_GUIA" && !s.courier);
+  const eligibleForCourier = selectedSales.filter(
+    (s) => s.status === "ASIGNADO_A_GUIA" && !s.courier,
+  );
   const noLlamadosEnSeleccion = selectedSales.filter(
-    (s) => !GUIDE_ELIGIBLE_STATUSES.includes(s.status) && s.status !== "ANULADO",
+    (s) =>
+      !GUIDE_ELIGIBLE_STATUSES.includes(s.status) && s.status !== "ANULADO",
   ).length;
 
   const handlePickingExport = () => {
-    const bySku = new Map<string, { sku: string; producto: string; cantidad: number; pedidos: Set<string> }>();
+    const bySku = new Map<
+      string,
+      { sku: string; producto: string; cantidad: number; pedidos: Set<string> }
+    >();
     for (const s of filtered) {
       for (const it of s.items) {
         const key = it.sku || it.productName;
-        if (!bySku.has(key)) bySku.set(key, { sku: it.sku, producto: it.productName, cantidad: 0, pedidos: new Set() });
+        if (!bySku.has(key))
+          bySku.set(key, {
+            sku: it.sku,
+            producto: it.productName,
+            cantidad: 0,
+            pedidos: new Set(),
+          });
         const row = bySku.get(key)!;
         row.cantidad += it.quantity;
         row.pedidos.add(s.orderNumber);
@@ -244,7 +341,12 @@ export function PorDespacharTab({
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Picking");
     const buffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    saveAs(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), `picking_${dayKey}.xlsx`);
+    saveAs(
+      new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+      `picking_${dayKey}.xlsx`,
+    );
   };
 
   const visibleColCount =
@@ -252,35 +354,94 @@ export function PorDespacharTab({
     (columns.guia ? 1 : 0) +
     (columns.courier ? 1 : 0) +
     (columns.vendedor ? 1 : 0) +
-    (columns.integraciones ? 1 : 0);
+    (columns.integraciones ? 1 : 0) +
+    (showingReprogramados ? 1 : 0);
 
   return (
     <div className="space-y-3">
       {/* Barra de día + pronóstico */}
       <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-card p-2.5 shadow-sm">
         <div className="flex items-center gap-2">
-          <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setDayKey((k) => shiftKey(k, -1))}>
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-8 w-8"
+            onClick={() => setDayKey((k) => shiftKey(k, -1))}
+          >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Despacho de</div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+              Despacho de
+            </div>
             <b className="text-sm capitalize">{labelForDay(dayKey)}</b>
           </div>
-          <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setDayKey((k) => shiftKey(k, 1))}>
+          <Button
+            size="icon"
+            variant="outline"
+            className="h-8 w-8"
+            onClick={() => setDayKey((k) => shiftKey(k, 1))}
+          >
             <ChevronRight className="h-4 w-4" />
           </Button>
+          {dayKey !== todayKey() && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1.5 text-xs"
+              onClick={() => setDayKey(todayKey())}
+            >
+              <CalendarCheck2 className="h-3.5 w-3.5" />
+              Hoy
+            </Button>
+          )}
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                size="icon"
+                variant="outline"
+                className="h-8 w-8"
+                title="Ver el mes completo"
+              >
+                <CalendarDays className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={new Date(dayKey + "T00:00:00")}
+                onSelect={(date) => {
+                  if (!date) return;
+                  setDayKey(dateToKey(date));
+                  setCalendarOpen(false);
+                }}
+                modifiers={{ hasOrders: daysWithOrders }}
+                modifiersClassNames={{
+                  hasOrders:
+                    "font-bold underline decoration-2 decoration-teal-500 underline-offset-4",
+                }}
+                locale={es}
+              />
+            </PopoverContent>
+          </Popover>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Pronóstico:</span>
+          <span className="mr-1 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+            Pronóstico:
+          </span>
           {forecast.map((f) => (
             <button
               key={f.key}
               onClick={() => setDayKey(f.key)}
               className={`flex flex-col items-center rounded-lg border px-2.5 py-1 text-[10px] font-bold ${
-                f.key === dayKey ? "border-teal-400 bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300" : "text-muted-foreground"
+                f.key === dayKey
+                  ? "border-teal-400 bg-teal-50 text-teal-700 dark:bg-teal-500/15 dark:text-teal-300"
+                  : "text-muted-foreground"
               }`}
             >
-              {new Date(f.key + "T00:00:00").toLocaleDateString("es-PE", { weekday: "short" })}
+              {new Date(f.key + "T00:00:00").toLocaleDateString("es-PE", {
+                weekday: "short",
+              })}
               <span className="text-sm">{f.count}</span>
             </button>
           ))}
@@ -288,14 +449,26 @@ export function PorDespacharTab({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-muted-foreground">Sale {dayKey === todayKey() ? "hoy" : "ese día"} ({salesOfDay.length}):</span>
+        {showingReprogramados ? (
+          <span className="text-xs font-semibold text-muted-foreground">
+            Reprogramados, todos los días ({allReprogramados.length}):
+          </span>
+        ) : (
+          <span className="text-xs font-semibold text-muted-foreground">
+            Sale {dayKey === todayKey() ? "hoy" : "ese día"} (
+            {salesOfDay.length}):
+          </span>
+        )}
         <button
           onClick={() => {
+            setQf("");
             setSourceFilter("");
             setPage(1);
           }}
           className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-            sourceFilter === "" ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
+            !showingReprogramados && sourceFilter === ""
+              ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+              : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
           }`}
         >
           Todo el día ({salesOfDay.length})
@@ -304,11 +477,14 @@ export function PorDespacharTab({
           <button
             key={s}
             onClick={() => {
+              setQf("");
               setSourceFilter(s);
               setPage(1);
             }}
             className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-              sourceFilter === s ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
+              !showingReprogramados && sourceFilter === s
+                ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+                : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
             }`}
           >
             {SOURCE_LABEL[s]} ({sourceCounts[s]})
@@ -321,10 +497,26 @@ export function PorDespacharTab({
             setPage(1);
           }}
           className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-            qf === "listos-escanear" ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
+            qf === "listos-escanear"
+              ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+              : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
           }`}
         >
-          🔫 Listos para escanear ({salesOfDay.filter((s) => !!s.guideNumber).length})
+          🔫 Listos para escanear (
+          {salesOfDay.filter((s) => !!s.guideNumber).length})
+        </button>
+        <button
+          onClick={() => {
+            setQf(showingReprogramados ? "" : "reprogramados");
+            setPage(1);
+          }}
+          className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+            showingReprogramados
+              ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
+              : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
+          }`}
+        >
+          🔁 Reprogramados ({allReprogramados.length})
         </button>
       </div>
 
@@ -344,8 +536,12 @@ export function PorDespacharTab({
         <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            <b>{noLlamadosEnSeleccion} pedido(s) seleccionados no se pueden incluir en una guía</b> por su estado
-            actual. Avanzalos primero con el selector &quot;Cambiar estado&quot; de cada fila o en lote.
+            <b>
+              {noLlamadosEnSeleccion} pedido(s) seleccionados no se pueden
+              incluir en una guía
+            </b>{" "}
+            por su estado actual. Avanzalos primero con el selector
+            &quot;Cambiar estado&quot; de cada fila o en lote.
           </div>
         </div>
       )}
@@ -393,7 +589,11 @@ export function PorDespacharTab({
                 disabled={actions.isBulkLoading}
                 onClick={() => actions.onBulkPrint(selectedSales)}
               >
-                {actions.isBulkLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                {actions.isBulkLoading ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Printer className="h-3.5 w-3.5" />
+                )}
                 Imprimir etiquetas
               </Button>
             </>
@@ -411,18 +611,40 @@ export function PorDespacharTab({
             <BulkStatusSelect
               selectedCount={selectedSales.length}
               availableStatuses={bulkStatuses}
-              onStatusChange={(status) => actions.onBulkStatusChange(Array.from(selectedIds), status)}
+              onStatusChange={(status) =>
+                actions.onBulkStatusChange(Array.from(selectedIds), status)
+              }
               isLoading={actions.isBulkLoading}
-              extraActions={[{ value: "NO_ANSWER", label: "No Contesta", colorClassName: "text-amber-600" }]}
-              onExtraAction={() => actions.onBulkMarkNoAnswer(Array.from(selectedIds))}
+              extraActions={[
+                {
+                  value: "NO_ANSWER",
+                  label: "No Contesta",
+                  colorClassName: "text-amber-600",
+                },
+              ]}
+              onExtraAction={() =>
+                actions.onBulkMarkNoAnswer(Array.from(selectedIds))
+              }
             />
           )}
-          <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onCopySelected(selectedSales)}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            onClick={() => actions.onCopySelected(selectedSales)}
+          >
             <Copy className="h-3.5 w-3.5" />
             Copiar
           </Button>
           {canExport && (
-            <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onExportExcel(selectedSales, "por_despachar")}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 gap-1 text-xs"
+              onClick={() =>
+                actions.onExportExcel(selectedSales, "por_despachar")
+              }
+            >
               <FileSpreadsheet className="h-3.5 w-3.5" />
               Exportar Excel
             </Button>
@@ -441,8 +663,8 @@ export function PorDespacharTab({
               </span>
             </h3>
             <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-              Todo lo que tiene entrega comprometida para este día, sin importar de qué fuente venga. Empaca,
-              agrupa en guía y entrega al courier.
+              Todo lo que tiene entrega comprometida para este día, sin importar
+              de qué fuente venga. Empaca, agrupa en guía y entrega al courier.
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -457,21 +679,42 @@ export function PorDespacharTab({
                 <p className="mb-2 text-xs font-semibold">Mostrar columnas</p>
                 <div className="space-y-2 text-sm">
                   <label className="flex items-center gap-2">
-                    <Checkbox checked={columns.guia} onCheckedChange={(v) => setColumn("guia", !!v)} /> Guía
+                    <Checkbox
+                      checked={columns.guia}
+                      onCheckedChange={(v) => setColumn("guia", !!v)}
+                    />{" "}
+                    Guía
                   </label>
                   <label className="flex items-center gap-2">
-                    <Checkbox checked={columns.courier} onCheckedChange={(v) => setColumn("courier", !!v)} /> Courier
+                    <Checkbox
+                      checked={columns.courier}
+                      onCheckedChange={(v) => setColumn("courier", !!v)}
+                    />{" "}
+                    Courier
                   </label>
                   <label className="flex items-center gap-2">
-                    <Checkbox checked={columns.vendedor} onCheckedChange={(v) => setColumn("vendedor", !!v)} /> Vendedor
+                    <Checkbox
+                      checked={columns.vendedor}
+                      onCheckedChange={(v) => setColumn("vendedor", !!v)}
+                    />{" "}
+                    Vendedor
                   </label>
                   <label className="flex items-center gap-2">
-                    <Checkbox checked={columns.integraciones} onCheckedChange={(v) => setColumn("integraciones", !!v)} /> Integraciones
+                    <Checkbox
+                      checked={columns.integraciones}
+                      onCheckedChange={(v) => setColumn("integraciones", !!v)}
+                    />{" "}
+                    Integraciones
                   </label>
                 </div>
               </PopoverContent>
             </Popover>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={handlePickingExport}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              onClick={handlePickingExport}
+            >
               <ListChecks className="h-3.5 w-3.5" />
               Lista de picking
             </Button>
@@ -494,7 +737,13 @@ export function PorDespacharTab({
             <TableHeader className="bg-muted/60">
               <TableRow>
                 <TableHead className="w-8">
-                  <Checkbox checked={paged.length > 0 && paged.every((s) => selectedIds.has(s.id))} onCheckedChange={toggleAllPage} />
+                  <Checkbox
+                    checked={
+                      paged.length > 0 &&
+                      paged.every((s) => selectedIds.has(s.id))
+                    }
+                    onCheckedChange={toggleAllPage}
+                  />
                 </TableHead>
                 <TableHead>N° Orden</TableHead>
                 <TableHead>Cliente</TableHead>
@@ -502,6 +751,9 @@ export function PorDespacharTab({
                 <TableHead>Zona</TableHead>
                 <TableHead>Productos</TableHead>
                 <TableHead>Fuente</TableHead>
+                {showingReprogramados && (
+                  <TableHead>Fecha programada</TableHead>
+                )}
                 <TableHead>Origen</TableHead>
                 <TableHead>Total / Saldo</TableHead>
                 <TableHead>Estado</TableHead>
@@ -515,7 +767,10 @@ export function PorDespacharTab({
             <TableBody>
               {paged.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={visibleColCount} className="py-8 text-center text-sm text-muted-foreground">
+                  <TableCell
+                    colSpan={visibleColCount}
+                    className="py-8 text-center text-sm text-muted-foreground"
+                  >
                     Sin pedidos por despachar ese día
                   </TableCell>
                 </TableRow>
@@ -523,7 +778,10 @@ export function PorDespacharTab({
               {paged.map((sale) => (
                 <TableRow key={sale.id}>
                   <TableCell>
-                    <Checkbox checked={selectedIds.has(sale.id)} onCheckedChange={() => toggle(sale.id)} />
+                    <Checkbox
+                      checked={selectedIds.has(sale.id)}
+                      onCheckedChange={() => toggle(sale.id)}
+                    />
                   </TableCell>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-1.5">
@@ -533,9 +791,13 @@ export function PorDespacharTab({
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{sale.clientName}</div>
-                    <div className="text-xs text-muted-foreground">{sale.phoneNumber}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {sale.phoneNumber}
+                    </div>
                   </TableCell>
-                  <TableCell className="text-sm">{sale.district || "—"}</TableCell>
+                  <TableCell className="text-sm">
+                    {sale.district || "—"}
+                  </TableCell>
                   <TableCell>
                     <ZoneBadge zone={sale.zone} />
                   </TableCell>
@@ -543,25 +805,37 @@ export function PorDespacharTab({
                     {formatProductsShort(sale.items)}
                   </TableCell>
                   <TableCell>
-                    <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${SOURCE_BADGE_CLASS[saleSource(sale)]}`}>
-                      {SOURCE_LABEL[saleSource(sale)]}
+                    <span
+                      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${SOURCE_BADGE_CLASS[saleSource(sale)]}`}
+                    >
+                      {SOURCE_LABEL[saleSource(sale)] ?? REPROGRAMADO_LABEL}
                     </span>
                   </TableCell>
+                  {showingReprogramados && (
+                    <TableCell className="text-sm font-semibold text-violet-700 dark:text-violet-400">
+                      {formatDateTime(sale.callbackAt)}
+                    </TableCell>
+                  )}
                   <TableCell>
                     <SourceBadge source={sale.externalSource} />
                   </TableCell>
                   <TableCell className="text-sm tabular-nums">
                     {money(sale.total)}
                     {sale.pendingPayment > 0 && (
-                      <div className="text-xs font-semibold text-red-600">Saldo {money(sale.pendingPayment)}</div>
+                      <div className="text-xs font-semibold text-red-600">
+                        Saldo {money(sale.pendingPayment)}
+                      </div>
                     )}
                   </TableCell>
                   <TableCell>
                     {canChangeStatus ? (
                       <RowStatusSelect
                         status={sale.status}
-                        onChangeStatus={(s) => actions.onChangeStatus(sale.id, s)}
+                        onChangeStatus={(s) =>
+                          actions.onChangeStatus(sale.id, s)
+                        }
                         onMarkNoAnswer={() => actions.onMarkNoAnswer(sale.id)}
+                        onReschedule={() => actions.onDeliveryReschedule(sale)}
                       />
                     ) : (
                       <StatusPill status={sale.status} />
@@ -570,7 +844,10 @@ export function PorDespacharTab({
                   {columns.guia && (
                     <TableCell className="text-sm">
                       {sale.guideNumber ? (
-                        <button className="font-semibold text-violet-600 underline hover:text-violet-700" onClick={() => actions.onOpenGuide(sale)}>
+                        <button
+                          className="font-semibold text-violet-600 underline hover:text-violet-700"
+                          onClick={() => actions.onOpenGuide(sale)}
+                        >
                           {sale.guideNumber}
                         </button>
                       ) : (
@@ -578,13 +855,21 @@ export function PorDespacharTab({
                       )}
                     </TableCell>
                   )}
-                  {columns.courier && <TableCell className="text-sm">{sale.courier || "—"}</TableCell>}
+                  {columns.courier && (
+                    <TableCell className="text-sm">
+                      {sale.courier || "—"}
+                    </TableCell>
+                  )}
                   {columns.vendedor && (
                     <TableCell className="text-sm">
                       <div className="flex items-center gap-1">
                         {sale.sellerName || "—"}
                         {actions.can(OPS_PERMISSIONS.REASSIGN_SELLER) && (
-                          <button title="Reasignar vendedor" onClick={() => actions.onReassignSeller(sale)} className="text-muted-foreground hover:text-foreground">
+                          <button
+                            title="Reasignar vendedor"
+                            onClick={() => actions.onReassignSeller(sale)}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
                             <UserPen className="h-3.5 w-3.5" />
                           </button>
                         )}
@@ -593,28 +878,71 @@ export function PorDespacharTab({
                   )}
                   {columns.integraciones && (
                     <TableCell>
-                      <IntegrationBadges sale={sale} companyId={actions.companyId} onSuccess={actions.onSyncCourier} />
+                      <IntegrationBadges
+                        sale={sale}
+                        companyId={actions.companyId}
+                        onSuccess={actions.onSyncCourier}
+                      />
                     </TableCell>
                   )}
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
-                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver pedido" onClick={() => actions.onView(sale)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Ver pedido"
+                        onClick={() => actions.onView(sale)}
+                      >
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
-                      <PaymentButton hasPendingApproval={sale.hasPendingApprovalPayments} onClick={() => actions.onOpenPayment(sale)} />
-                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Comprobante" onClick={() => actions.onOpenReceipt(sale)}>
+                      <PaymentButton
+                        hasPendingApproval={sale.hasPendingApprovalPayments}
+                        onClick={() => actions.onOpenPayment(sale)}
+                      />
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Comprobante"
+                        onClick={() => actions.onOpenReceipt(sale)}
+                      >
                         <Receipt className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="WhatsApp"
+                        onClick={() => actions.onWhatsApp(sale)}
+                      >
                         <MessageCircle className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Comentarios" onClick={() => actions.onOpenComments(sale)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Comentarios"
+                        onClick={() => actions.onOpenComments(sale)}
+                      >
                         <MessageSquare className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Observaciones" onClick={() => actions.onOpenNotes(sale)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Observaciones"
+                        onClick={() => actions.onOpenNotes(sale)}
+                      >
                         <StickyNote className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Editar pedido" onClick={() => actions.onEdit(sale)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Editar pedido"
+                        onClick={() => actions.onEdit(sale)}
+                      >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                     </div>
@@ -640,12 +968,19 @@ export function PorDespacharTab({
           <span>
             Mostrando {filtered.length} de {salesOfDay.length} pedidos del día ·{" "}
             <b className="text-foreground">
-              {sourceCounts.listos} listos + {sourceCounts.reprogramado} reprogramados + {sourceCounts.vendido} con entrega ese día
+              {sourceCounts.listos} listos + {sourceCounts.reprogramado}{" "}
+              reprogramados + {sourceCounts.vendido} con entrega ese día
             </b>{" "}
-            · {money(filtered.reduce((sum, s) => sum + s.pendingPayment, 0))} por cobrar
+            · {money(filtered.reduce((sum, s) => sum + s.pendingPayment, 0))}{" "}
+            por cobrar
           </span>
           <span>
-            Se armarán {new Set(filtered.map((s) => s.courier || s.zone || "sin asignar")).size} guía(s) por courier/zona
+            Se armarán{" "}
+            {
+              new Set(filtered.map((s) => s.courier || s.zone || "sin asignar"))
+                .size
+            }{" "}
+            guía(s) por courier/zona
           </span>
         </div>
       </div>

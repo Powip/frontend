@@ -257,7 +257,10 @@ export function computeBulkAvailableStatuses(selected: Sale[]): OrderStatus[] {
     const next: OrderStatus[] = (ORDER_STATUS_FLOW[sale.status] ?? []).filter(
       (s) => s !== "ANULADO",
     );
-    intersection = intersection === null ? next : intersection.filter((s) => next.includes(s));
+    intersection =
+      intersection === null
+        ? next
+        : intersection.filter((s) => next.includes(s));
   }
   return intersection ?? [];
 }
