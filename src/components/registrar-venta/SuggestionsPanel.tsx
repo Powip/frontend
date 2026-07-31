@@ -11,6 +11,8 @@ interface SuggestionsPanelProps {
   packs: Pack[];
   channel?: string;
   appliedPacks: Record<string, unknown>;
+  /** Packs que ya cumplen su condición y están listos para aplicarse (usePacksEngine.pendingHints) */
+  pendingHints: Pack[];
   modelQtyInCart: (productKey: string) => number;
   subtotalPayable: number;
   totalUnits: number;
@@ -24,6 +26,7 @@ export default function SuggestionsPanel({
   packs,
   channel,
   appliedPacks,
+  pendingHints,
   modelQtyInCart,
   subtotalPayable,
   totalUnits,
@@ -33,11 +36,82 @@ export default function SuggestionsPanel({
   onAutoAddBundleItem,
 }: SuggestionsPanelProps) {
   const active = packs.filter((p) => p.active && (!channel || p.channels.includes(channel)));
+  const readyIds = new Set(pendingHints.map((p) => p.id));
 
   const items: { icon: React.ReactNode; title: React.ReactNode; desc: React.ReactNode; action?: React.ReactNode }[] = [];
 
+  // Packs ya calificados, listos para aplicar (volumen/bundle/regalo).
+  pendingHints.forEach((p) => {
+    if (p.type === "VOLUME") {
+      items.push({
+        icon: <PackageCheck className="h-4 w-4" />,
+        title: (
+          <>
+            Aplica el <b>{p.name}</b> para cerrar
+          </>
+        ),
+        desc: (
+          <>
+            Ya califica. Baja a {fmt(p.packPrice)} total
+            {isAdmin ? ` (${fmt(packNetUnit(p))} c/u neto)` : ""}.
+          </>
+        ),
+        action: (
+          <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onApplyPack(p)}>
+            {p.variantFree ? "Elegir tallas y aplicar" : "Aplicar"}
+          </Button>
+        ),
+      });
+    }
+
+    if (p.type === "BUNDLE") {
+      const save = p.items.reduce((a, i) => a + i.price, 0) - p.packPrice;
+      items.push({
+        icon: <Sparkles className="h-4 w-4" />,
+        title: (
+          <>
+            Aplica el <b>{p.name}</b>
+          </>
+        ),
+        desc: (
+          <>
+            Tienes ambos productos. Cierra en {fmt(p.packPrice)} y ahorra {fmt(Math.max(0, save))}.
+          </>
+        ),
+        action: (
+          <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onApplyPack(p)}>
+            Aplicar bundle
+          </Button>
+        ),
+      });
+    }
+
+    if (p.type === "GIFT") {
+      const cond = p.triggerBy === "qty" ? `${p.minQty} prendas` : `compra de ${fmt(p.minAmount || 0)}`;
+      items.push({
+        icon: <Gift className="h-4 w-4" />,
+        title: (
+          <>
+            Regalo desbloqueado: <b>{p.name}</b>
+          </>
+        ),
+        desc: (
+          <>
+            El cliente elige 1 de {p.gifts.length} regalos ({cond}).
+          </>
+        ),
+        action: (
+          <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white" onClick={() => onApplyPack(p)}>
+            Elegir regalo
+          </Button>
+        ),
+      });
+    }
+  });
+
+  // Nudges de packs que todavía no califican (falta agregar productos/monto).
   active.forEach((p) => {
-    if (appliedPacks[p.id]) return;
+    if (appliedPacks[p.id] || readyIds.has(p.id)) return;
 
     if (p.type === "VOLUME") {
       const q = modelQtyInCart(p.product.productKey);
@@ -59,26 +133,6 @@ export default function SuggestionsPanel({
           action: (
             <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onAutoFillVolume(p)}>
               Sumar {falta} u.
-            </Button>
-          ),
-        });
-      } else if (q >= p.minQty) {
-        items.push({
-          icon: <PackageCheck className="h-4 w-4" />,
-          title: (
-            <>
-              Aplica el <b>{p.name}</b> para cerrar
-            </>
-          ),
-          desc: (
-            <>
-              Ya califica. Baja a {fmt(p.packPrice)} total
-              {isAdmin ? ` (${fmt(packNetUnit(p))} c/u neto)` : ""}.
-            </>
-          ),
-          action: (
-            <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onApplyPack(p)}>
-              Aplicar
             </Button>
           ),
         });
@@ -150,25 +204,6 @@ export default function SuggestionsPanel({
                 </Button>
               ))}
             </div>
-          ),
-        });
-      } else if (missing.length === 0) {
-        items.push({
-          icon: <Sparkles className="h-4 w-4" />,
-          title: (
-            <>
-              Aplica el <b>{p.name}</b>
-            </>
-          ),
-          desc: (
-            <>
-              Tienes ambos productos. Cierra en {fmt(p.packPrice)} y ahorra {fmt(Math.max(0, save))}.
-            </>
-          ),
-          action: (
-            <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={() => onApplyPack(p)}>
-              Aplicar bundle
-            </Button>
           ),
         });
       }

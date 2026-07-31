@@ -32,6 +32,7 @@ export interface CartItem {
   variantId: string;
   productName: string;
   sku: string;
+  imageUrl?: string | null;
   attributes?: Record<string, string>;
   quantity: number;
   price: number;

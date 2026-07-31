@@ -8,9 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Minus, Plus, Trash2, Gift, PackageCheck, Sparkles, ShoppingBag } from "lucide-react";
 import { CartItem } from "@/interfaces/IOrder";
 import { AppliedPack, BundlePack, GiftOption, GiftPack, Pack, VolumePack } from "@/interfaces/IPack";
-import { packNetUnit } from "@/hooks/usePacksEngine";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 import { initials } from "@/utils/productGrouping";
+import Thumb from "./Thumb";
 
 const fmt = (n: number) => `S/ ${n.toFixed(2)}`;
 
@@ -25,7 +25,6 @@ interface CartLinesProps {
   cart: CartItem[];
   packs: Pack[];
   appliedPacks: Record<string, AppliedPack>;
-  pendingHints: Pack[];
   isAdmin: boolean;
   onQtyChange: (id: string, delta: number) => void;
   onRemove: (id: string) => void;
@@ -35,7 +34,6 @@ interface CartLinesProps {
   onBulkPrice: (price: number) => void;
   onBulkDiscount: (pct: number) => void;
   onRestorePvp: () => void;
-  onApplyPack: (pack: Pack) => void;
   onUndoPack: (packId: string) => void;
   pvsOpen: PvsState | null;
   pvsLoading: boolean;
@@ -53,7 +51,6 @@ export default function CartLines({
   cart,
   packs,
   appliedPacks,
-  pendingHints,
   isAdmin,
   onQtyChange,
   onRemove,
@@ -63,7 +60,6 @@ export default function CartLines({
   onBulkPrice,
   onBulkDiscount,
   onRestorePvp,
-  onApplyPack,
   onUndoPack,
   pvsOpen,
   pvsLoading,
@@ -128,59 +124,63 @@ export default function CartLines({
   return (
     <div className="space-y-3">
       {editableLines.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border bg-muted/40 p-2.5 text-xs">
-          <span className="font-semibold">Precio general:</span>
-          <div className="flex items-center gap-1">
-            <span className="text-muted-foreground">S/</span>
-            <Input
-              className="h-8 w-24"
-              type="number"
-              placeholder="0.00"
-              value={bulkPrice}
-              onChange={(e) => setBulkPrice(e.target.value)}
-            />
+        <div className="space-y-2 rounded-xl border bg-muted/40 p-2.5 text-xs">
+          <span className="font-semibold">Precio general</span>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 flex-1">
+              <span className="text-muted-foreground shrink-0">S/</span>
+              <Input
+                className="h-8 w-full min-w-0"
+                type="number"
+                placeholder="0.00"
+                value={bulkPrice}
+                onChange={(e) => setBulkPrice(e.target.value)}
+              />
+            </div>
+            <Button
+              size="sm"
+              className="h-8 shrink-0"
+              onClick={() => {
+                const v = parseFloat(bulkPrice);
+                if (!isNaN(v) && v >= 0) onBulkPrice(v);
+              }}
+            >
+              Aplicar a todos
+            </Button>
           </div>
-          <Button
-            size="sm"
-            className="h-8"
-            onClick={() => {
-              const v = parseFloat(bulkPrice);
-              if (!isNaN(v) && v >= 0) onBulkPrice(v);
-            }}
-          >
-            Aplicar a todos
-          </Button>
-          <div className="h-5 w-px bg-border" />
-          <Input
-            className="h-8 w-20"
-            type="number"
-            placeholder="% desc"
-            value={bulkDisc}
-            onChange={(e) => setBulkDisc(e.target.value)}
-          />
-          <Button
-            size="sm"
-            className="h-8"
-            onClick={() => {
-              const v = parseFloat(bulkDisc);
-              if (!isNaN(v) && v >= 0 && v <= 100) onBulkDiscount(v);
-            }}
-          >
-            Aplicar %
-          </Button>
-          <div className="h-5 w-px bg-border" />
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8"
-            onClick={() => {
-              setBulkPrice("");
-              setBulkDisc("");
-              onRestorePvp();
-            }}
-          >
-            Restaurar PVP
-          </Button>
+
+          <div className="flex items-center gap-2">
+            <Input
+              className="h-8 w-20 shrink-0"
+              type="number"
+              placeholder="% desc"
+              value={bulkDisc}
+              onChange={(e) => setBulkDisc(e.target.value)}
+            />
+            <Button
+              size="sm"
+              className="h-8 flex-1"
+              onClick={() => {
+                const v = parseFloat(bulkDisc);
+                if (!isNaN(v) && v >= 0 && v <= 100) onBulkDiscount(v);
+              }}
+            >
+              Aplicar %
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 flex-1"
+              onClick={() => {
+                setBulkPrice("");
+                setBulkDisc("");
+                onRestorePvp();
+              }}
+            >
+              Restaurar PVP
+            </Button>
+          </div>
         </div>
       )}
 
@@ -230,12 +230,6 @@ export default function CartLines({
           onCancel={onGiftCancel}
         />
       )}
-
-      {pendingHints
-        .filter((p) => !(pvsOpen && pvsOpen.packId === p.id) && giftOpen !== p.id)
-        .map((p) => (
-          <HintRow key={p.id} pack={p} isAdmin={isAdmin} onApply={() => onApplyPack(p)} />
-        ))}
     </div>
   );
 }
@@ -275,10 +269,8 @@ function LineRow({
           : "bg-card",
       )}
     >
-      <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-lg bg-violet-600 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
-          {initials(line.productName) || "?"}
-        </div>
+      <div className="flex items-start gap-3">
+        <Thumb imageUrl={line.imageUrl} name={line.productName} size={36} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-medium text-sm truncate">{line.productName}</span>
@@ -324,6 +316,16 @@ function LineRow({
           </div>
         </div>
 
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-destructive shrink-0"
+          onClick={() => onRemove(line.id)}
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between gap-3 mt-2.5 pl-12">
         <div className="flex items-center border rounded-md overflow-hidden shrink-0">
           <button
             type="button"
@@ -342,11 +344,11 @@ function LineRow({
           </button>
         </div>
 
-        <div className="text-right min-w-[92px] shrink-0">
+        <div className="text-right shrink-0">
           {discounted && (
             <div className="text-[11px] text-muted-foreground line-through">{fmt(pvp)}</div>
           )}
-          <div className={cn("font-bold text-sm flex items-center justify-end gap-1", discounted && "text-emerald-600")}>
+          <div className={cn("font-bold text-sm flex items-center justify-end gap-1.5", discounted && "text-emerald-600")}>
             {fmt(line.price)}
             {!isPack && (
               <button
@@ -359,14 +361,6 @@ function LineRow({
             )}
           </div>
         </div>
-
-        <button
-          type="button"
-          className="text-muted-foreground hover:text-destructive shrink-0"
-          onClick={() => onRemove(line.id)}
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
       </div>
 
       {!isPack && editorOpen && (
@@ -406,58 +400,61 @@ function DiscountEditor({
   const pvp = line.pvp ?? line.price;
 
   return (
-    <div className="mt-2 border border-dashed rounded-md p-2.5 bg-background">
-      <div className="flex gap-1.5 mb-2">
+    <div className="mt-2 border border-dashed rounded-md p-2.5 bg-background space-y-2">
+      <div className="grid grid-cols-3 gap-1.5">
         {(["pct", "amt", "man"] as const).map((m) => (
           <button
             key={m}
             type="button"
             onClick={() => setMode(m)}
             className={cn(
-              "text-[11px] px-2.5 py-1 rounded-md border",
+              "text-[11px] px-1.5 py-1 rounded-md border truncate",
               mode === m ? "bg-violet-600 text-white border-violet-600" : "bg-background",
             )}
           >
-            {m === "pct" ? "% descuento" : m === "amt" ? "S/ descuento" : "Precio manual"}
+            {m === "pct" ? "%" : m === "amt" ? "S/" : "Manual"}
           </button>
         ))}
       </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        {mode === "man" ? (
-          <>
-            <span className="text-xs text-muted-foreground">Nuevo precio c/u:</span>
+
+      {mode === "man" ? (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs text-muted-foreground">Nuevo precio c/u:</span>
+          <Input
+            className="h-8 w-24"
+            type="number"
+            placeholder={String(pvp)}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+          <Button
+            size="sm"
+            className="h-8"
+            onClick={() => {
+              const v = parseFloat(value);
+              if (!isNaN(v) && v >= 0) onSetPrice(v);
+            }}
+          >
+            Aplicar
+          </Button>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center gap-2">
             <Input
-              className="h-8 w-24"
-              type="number"
-              placeholder={String(pvp)}
-              value={value}
-              onChange={(e) => setValue(e.target.value)}
-            />
-            <Button
-              size="sm"
-              className="h-8"
-              onClick={() => {
-                const v = parseFloat(value);
-                if (!isNaN(v) && v >= 0) onSetPrice(v);
-              }}
-            >
-              Aplicar
-            </Button>
-          </>
-        ) : (
-          <>
-            <Input
-              className="h-8 w-20"
+              className="h-8 w-20 shrink-0"
               type="number"
               placeholder={mode === "pct" ? "10" : "20"}
               value={value}
               onChange={(e) => setValue(e.target.value)}
             />
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground truncate">
               {mode === "pct" ? "%" : "S/"} sobre {fmt(pvp)}
             </span>
-            {mode === "pct" &&
-              [10, 15, 20].map((p) => (
+          </div>
+          {mode === "pct" && (
+            <div className="flex items-center gap-1.5">
+              {[10, 15, 20].map((p) => (
                 <button
                   key={p}
                   type="button"
@@ -467,9 +464,12 @@ function DiscountEditor({
                   {p}%
                 </button>
               ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
             <Button
               size="sm"
-              className="h-8"
+              className="h-8 flex-1"
               onClick={() => {
                 const v = parseFloat(value);
                 if (!isNaN(v) && v >= 0) onApply(mode, v);
@@ -477,18 +477,23 @@ function DiscountEditor({
             >
               Aplicar
             </Button>
-            <Button size="sm" variant="outline" className="h-8" onClick={onClose}>
+            <Button size="sm" variant="outline" className="h-8 flex-1" onClick={onClose}>
               Cerrar
             </Button>
-          </>
-        )}
-      </div>
-      <div className="flex items-center justify-between mt-2">
+          </div>
+        </>
+      )}
+
+      <div className="flex items-center justify-between gap-2">
         <p className="text-[11px] text-muted-foreground">
           El descuento ajusta el precio de cierre.
         </p>
         {line.price < pvp - 0.001 && (
-          <button type="button" className="text-[11px] underline text-muted-foreground" onClick={onClear}>
+          <button
+            type="button"
+            className="text-[11px] underline text-muted-foreground shrink-0"
+            onClick={onClear}
+          >
             quitar descuento
           </button>
         )}
@@ -522,9 +527,7 @@ function BundleBlock({
       <div className="space-y-2">
         {lines.map((line) => (
           <div key={line.id} className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-violet-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0">
-              {initials(line.productName)}
-            </div>
+            <Thumb imageUrl={line.imageUrl} name={line.productName} size={28} />
             <span className="text-sm flex-1 truncate">{line.productName}</span>
             <div className="flex items-center border rounded-md overflow-hidden shrink-0 bg-background">
               <button type="button" className="w-6 h-6 flex items-center justify-center" onClick={() => onQtyChange(line.id, -1)}>
@@ -588,52 +591,6 @@ function GiftLineRow({
         </div>
         <span className="font-semibold text-sm text-amber-600 dark:text-amber-400">Gratis</span>
       </div>
-    </div>
-  );
-}
-
-function HintRow({ pack, isAdmin, onApply }: { pack: Pack; isAdmin: boolean; onApply: () => void }) {
-  if (pack.type === "GIFT") {
-    const cond = pack.triggerBy === "qty" ? `${pack.minQty} prendas` : `compra de ${fmt(pack.minAmount || 0)}`;
-    return (
-      <div className="flex items-center gap-3 flex-wrap rounded-xl border border-amber-200 bg-amber-50/70 p-3 dark:border-amber-800 dark:bg-amber-500/10">
-        <div className="flex-1 min-w-[180px] text-sm">
-          <Gift className="inline h-3.5 w-3.5 mr-1 text-amber-600 dark:text-amber-400" />
-          <b>{pack.name}</b> desbloqueado · el cliente elige 1 de {pack.gifts.length} regalos ({cond})
-        </div>
-        <Button size="sm" className="bg-amber-500 hover:bg-amber-600 text-white" onClick={onApply}>
-          Elegir regalo
-        </Button>
-      </div>
-    );
-  }
-  if (pack.type === "BUNDLE") {
-    const save = pack.items.reduce((a, i) => a + i.price, 0) - pack.packPrice;
-    return (
-      <div className="flex items-center gap-3 flex-wrap rounded-xl border border-violet-200 bg-violet-50/70 p-3 dark:border-violet-800 dark:bg-violet-500/10">
-        <div className="flex-1 min-w-[180px] text-sm">
-          <Sparkles className="inline h-3.5 w-3.5 mr-1 text-violet-600 dark:text-violet-400" />
-          <b>{pack.name}</b> · {fmt(pack.packPrice)} total ·{" "}
-          <span className="font-semibold text-violet-700 dark:text-violet-300">ahorras {fmt(Math.max(0, save))}</span>
-        </div>
-        <Button size="sm" className="bg-violet-600 hover:bg-violet-700 text-white" onClick={onApply}>
-          Aplicar bundle
-        </Button>
-      </div>
-    );
-  }
-  const save = Math.max(0, pack.product.price * pack.minQty - pack.packPrice);
-  return (
-    <div className="flex items-center gap-3 flex-wrap rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-800 dark:bg-emerald-500/10">
-      <div className="flex-1 min-w-[180px] text-sm">
-        <PackageCheck className="inline h-3.5 w-3.5 mr-1 text-emerald-600 dark:text-emerald-400" />
-        <b>{pack.name}</b> disponible · {fmt(pack.packPrice)} total
-        {isAdmin ? ` · ${fmt(packNetUnit(pack))} c/u neto` : ""} ·{" "}
-        <span className="font-semibold text-emerald-700 dark:text-emerald-300">ahorras {fmt(save)}</span>
-      </div>
-      <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white" onClick={onApply}>
-        {pack.variantFree ? "Elegir tallas y aplicar" : "Aplicar pack"}
-      </Button>
     </div>
   );
 }

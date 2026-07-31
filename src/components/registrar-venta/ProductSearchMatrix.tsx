@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,11 +10,11 @@ import { Pack, VolumePack } from "@/interfaces/IPack";
 import { packNetUnit } from "@/hooks/usePacksEngine";
 import {
   groupProductsByModel,
-  initials,
   isMatrixGroup,
   uniqueAttrValues,
   ProductGroup,
 } from "@/utils/productGrouping";
+import Thumb from "./Thumb";
 
 const fmt = (n: number) => `S/ ${n.toFixed(2)}`;
 const normalize = (s: string) =>
@@ -155,42 +154,6 @@ export default function ProductSearchMatrix({
           </Button>
         </div>
       )}
-    </div>
-  );
-}
-
-function Thumb({
-  imageUrl,
-  name,
-  size = 40,
-  className,
-}: {
-  imageUrl?: string | null;
-  name: string;
-  size?: number;
-  className?: string;
-}) {
-  if (imageUrl) {
-    return (
-      <Image
-        src={imageUrl}
-        alt={name}
-        width={size}
-        height={size}
-        className={cn("rounded-xl object-cover shrink-0 border", className)}
-        style={{ width: size, height: size }}
-      />
-    );
-  }
-  return (
-    <div
-      className={cn(
-        "rounded-xl bg-violet-600 text-white flex items-center justify-center font-bold shrink-0",
-        className,
-      )}
-      style={{ width: size, height: size, fontSize: size * 0.34 }}
-    >
-      {initials(name) || "?"}
     </div>
   );
 }
@@ -447,12 +410,12 @@ function MatrixGrid({
                       <td key={c}>
                         <button
                           type="button"
-                          disabled={oos}
+                          title={oos ? "Sin stock · venta bajo pedido" : undefined}
                           onClick={() => onAddVariant(item)}
                           className={cn(
                             "relative w-16 h-11 rounded-lg border flex flex-col items-center justify-center gap-0.5 text-[10px] transition-all",
                             oos
-                              ? "bg-muted border-dashed text-muted-foreground/60 cursor-not-allowed"
+                              ? "bg-muted border-dashed border-amber-300 text-amber-700 dark:text-amber-300 hover:border-amber-500"
                               : inCart
                                 ? "bg-violet-600 border-violet-600 text-white"
                                 : "bg-background hover:border-violet-500 hover:bg-violet-50 dark:hover:bg-violet-500/10",
@@ -465,10 +428,8 @@ function MatrixGrid({
                               {inCart}
                             </span>
                           )}
-                          <span className="font-bold text-[12px]">
-                            {oos ? "—" : inCart || "+"}
-                          </span>
-                          <span className="opacity-80">{oos ? "sin stock" : `${stock} u.`}</span>
+                          <span className="font-bold text-[12px]">{inCart || "+"}</span>
+                          <span className="opacity-80">{oos ? "bajo pedido" : `${stock} u.`}</span>
                         </button>
                       </td>
                     );
@@ -508,12 +469,12 @@ function VariantList({
           <button
             key={item.variantId}
             type="button"
-            disabled={oos}
+            title={oos ? "Sin stock · venta bajo pedido" : undefined}
             onClick={() => onAddVariant(item)}
             className={cn(
               "w-full flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors",
               oos
-                ? "bg-muted border-dashed opacity-70 cursor-not-allowed"
+                ? "bg-muted border-dashed border-amber-300 hover:border-amber-500"
                 : inCart
                   ? "border-violet-500 bg-violet-50 dark:bg-violet-500/10"
                   : "hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-500/10",
@@ -526,9 +487,9 @@ function VariantList({
             </div>
             <Badge
               variant="outline"
-              className={cn("text-[10px]", oos && "border-destructive text-destructive")}
+              className={cn("text-[10px]", oos && "border-amber-300 text-amber-700 dark:text-amber-300")}
             >
-              {oos ? "Sin stock" : `${item.availableStock} u.`}
+              {oos ? "Bajo pedido" : `${item.availableStock} u.`}
             </Badge>
             <span className="font-semibold text-sm text-violet-700 dark:text-violet-300 min-w-[64px] text-right">
               {fmt(item.price)}

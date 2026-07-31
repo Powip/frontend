@@ -25,6 +25,7 @@ import {
   Check,
   type LucideIcon,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -71,7 +72,7 @@ import CartLines from "@/components/registrar-venta/CartLines";
 import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
 import { GiftOption, Pack, VolumePack } from "@/interfaces/IPack";
 
-type ClientSearchState = "idle" | "found" | "not_found";
+type ClientSearchState = "idle" | "found" | "not_found" | "error";
 
 const TONE_CLASSES = {
   violet:
@@ -322,6 +323,7 @@ function RegistrarVentaContent() {
   const isIdle = searchState === "idle";
   const isFound = searchState === "found";
   const isNotFound = searchState === "not_found";
+  const isSearchError = searchState === "error";
 
   const formEnabled = !isIdle;
 
@@ -395,6 +397,7 @@ function RegistrarVentaContent() {
       variantId: item.productVariantId,
       productName: item.productName,
       sku: item.sku,
+      imageUrl: item.imageUrl,
       attributes: item.attributes,
       quantity: item.quantity,
       price: Number(item.unitPrice),
@@ -639,7 +642,9 @@ function RegistrarVentaContent() {
         setSearchState("not_found");
       }
     } catch {
-      // client search failure is silent
+      setClientFound(null);
+      setSearchState("error");
+      toast.error("No se pudo buscar el cliente. Intenta de nuevo.");
     } finally {
       setLoadingClient(false);
     }
@@ -811,8 +816,8 @@ function RegistrarVentaContent() {
 
       let activeClient = clientFound;
 
-      // Auto-crear cliente nuevo si no existe en el sistema
-      if (isNotFound) {
+      // Auto-crear cliente nuevo si no existe en el sistema (o si la búsqueda falló y se completó a mano)
+      if (isNotFound || isSearchError) {
         if (!auth?.company?.id) return;
         if (!validateClientForm()) {
           toast.error(
@@ -1102,6 +1107,7 @@ function RegistrarVentaContent() {
           variantId: product.variantId,
           productName: product.productName,
           sku: product.sku,
+          imageUrl: product.imageUrl,
           attributes: product.attributes,
           quantity: 1,
           price: product.price,
@@ -1135,6 +1141,7 @@ function RegistrarVentaContent() {
           variantId: product.variantId,
           productName: product.productName,
           sku: product.sku,
+          imageUrl: product.imageUrl,
           attributes: product.attributes,
           quantity: qty,
           price: product.price,
@@ -1318,7 +1325,7 @@ function RegistrarVentaContent() {
 
   // Cliente válido: ya encontrado/creado, o nuevo con los datos mínimos requeridos
   const hasValidClientForNew =
-    isNotFound &&
+    (isNotFound || isSearchError) &&
     !!clientForm.fullName.trim() &&
     !!clientForm.province.trim() &&
     !!clientForm.department.trim() &&
@@ -1420,22 +1427,32 @@ function RegistrarVentaContent() {
                         type="tel"
                         placeholder="Número de teléfono"
                         value={clientForm.phoneNumber}
-                        onChange={(e) =>
+                        className={cn(
+                          isFound && "border-green-500 focus-visible:ring-green-500",
+                          (isNotFound || isSearchError) &&
+                            "border-amber-400 focus-visible:ring-amber-400",
+                        )}
+                        onChange={(e) => {
                           setClientForm({
                             ...clientForm,
                             phoneNumber: e.target.value,
-                          })
-                        }
+                          });
+                          if (!isIdle) setSearchState("idle");
+                        }}
                         onKeyDown={(e) => e.key === "Enter" && searchClient()}
                       />
                       <Button
                         onClick={searchClient}
                         disabled={!clientForm.phoneNumber || loadingClient}
                       >
-                        <Search className="h-4 w-4" />
+                        {loadingClient ? (
+                          <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        ) : (
+                          <Search className="h-4 w-4" />
+                        )}
                       </Button>
 
-                      {(isFound || isNotFound) && (
+                      {(isFound || isNotFound || isSearchError) && (
                         <Button
                           variant="ghost"
                           size="icon"
@@ -1445,6 +1462,29 @@ function RegistrarVentaContent() {
                         </Button>
                       )}
                     </div>
+
+                    {loadingClient && (
+                      <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <span className="h-3 w-3 animate-spin rounded-full border-2 border-muted-foreground/40 border-t-transparent" />
+                        Buscando cliente…
+                      </p>
+                    )}
+                    {!loadingClient && isFound && (
+                      <p className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-400">
+                        <Check className="h-3.5 w-3.5" />
+                        Cliente encontrado: <b>{clientFound?.fullName}</b>
+                      </p>
+                    )}
+                    {!loadingClient && isNotFound && (
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        Cliente no encontrado. Completa los datos para crear uno nuevo.
+                      </p>
+                    )}
+                    {!loadingClient && isSearchError && (
+                      <p className="text-xs text-destructive">
+                        No se pudo buscar el cliente. Intenta de nuevo o completa los datos manualmente.
+                      </p>
+                    )}
                   </div>
 
                   {/* Formulario */}
@@ -1865,7 +1905,7 @@ function RegistrarVentaContent() {
                     </Disclosure>
 
                     {/* Acciones */}
-                    {isNotFound && clientForm.fullName.trim() && (
+                    {(isNotFound || isSearchError) && clientForm.fullName.trim() && (
                       <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-500/10 dark:text-blue-300">
                         <span>ℹ️</span>
                         <span>
@@ -2013,6 +2053,7 @@ function RegistrarVentaContent() {
                 packs={packs}
                 channel={orderDetails.salesChannel}
                 appliedPacks={packsEngine.appliedPacks}
+                pendingHints={packsEngine.pendingHints}
                 modelQtyInCart={packsEngine.modelQtyInCart}
                 subtotalPayable={packsEngine.subtotalPayable}
                 totalUnits={packsEngine.totalUnits}
@@ -2039,7 +2080,6 @@ function RegistrarVentaContent() {
                     cart={cart}
                     packs={packs}
                     appliedPacks={packsEngine.appliedPacks}
-                    pendingHints={packsEngine.pendingHints}
                     isAdmin={isAdmin}
                     onQtyChange={handleCartQtyChange}
                     onRemove={removeFromCart}
@@ -2049,7 +2089,6 @@ function RegistrarVentaContent() {
                     onBulkPrice={handleBulkPrice}
                     onBulkDiscount={handleBulkDiscount}
                     onRestorePvp={handleRestorePvp}
-                    onApplyPack={handleApplyPack}
                     onUndoPack={handleUndoPack}
                     pvsOpen={packsEngine.pvsOpen}
                     pvsLoading={packsEngine.pvsLoading}

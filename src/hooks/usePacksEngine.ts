@@ -237,6 +237,7 @@ export function usePacksEngine({
             variantId: variant.variantId,
             productName: variant.productName,
             sku: variant.sku,
+            imageUrl: variant.imageUrl,
             attributes: variant.attributes,
             quantity: qty,
             price: net,
