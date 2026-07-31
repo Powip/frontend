@@ -22,8 +22,8 @@ interface RechazadoModalProps {
 
 export default function RechazadoModal({ isOpen, onClose, row, onReintentar }: RechazadoModalProps) {
   if (!row) return null;
-  const { sale, log } = row;
-  const catalogado = ERRORES_SUNAT.find((e) => log?.response_description?.includes(e.code));
+  const { sale, document: sunatDoc } = row;
+  const catalogado = ERRORES_SUNAT.find((e) => sunatDoc?.sunatDescription?.includes(e.code));
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -41,7 +41,7 @@ export default function RechazadoModal({ isOpen, onClose, row, onReintentar }: R
 
         <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 p-3 text-sm">
           <div className="font-bold text-red-600 dark:text-red-400">
-            {log?.observations || log?.response_description || "SUNAT rechazó el comprobante"}
+            {sunatDoc?.observations || sunatDoc?.sunatDescription || "SUNAT rechazó el comprobante"}
           </div>
           {catalogado && (
             <div className="mt-1 text-red-800 dark:text-red-300">

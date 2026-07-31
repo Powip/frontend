@@ -16,12 +16,13 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Download, FileText, Mail, Link2, MessageCircle, Printer, Receipt, Trash2 } from "lucide-react";
+import { Download, FileText, Loader2, Mail, Link2, MessageCircle, Printer, Receipt, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { GATEWAY } from "@/lib/gateway";
 import { EstadoBadge } from "@/app/facturacion/components/EstadoBadge";
 import { ProximamenteButton } from "@/app/facturacion/components/ProximamenteButton";
 import { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import { useDownloadTaxDocument } from "@/hooks/sunat/sunat-document/use-download-tax-document";
+import { formatDateTime } from "@/utils/date";
 
 interface DetalleComprobanteModalProps {
   isOpen: boolean;
@@ -38,14 +39,46 @@ export default function DetalleComprobanteModal({
   onGenerarNota,
   onAction,
 }: DetalleComprobanteModalProps) {
+  const { downloadPdf, downloadXml, isDownloading } = useDownloadTaxDocument();
+
   if (!row) return null;
-  const { sale, log, estado, tipo, fullNumber } = row;
+  const { sale, document: sunatDoc, estado, tipo, fullNumber } = row;
+
+  // Single source of truth for displayed items
+  const invoiceItems =
+    sunatDoc?.invoicePayload?.items?.map((item) => ({
+      description: item.description,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+    })) ??
+    sale.items.map((item) => ({
+      description: item.productName,
+      quantity: item.quantity,
+      unitPrice: Number(item.unitPrice),
+    }));
+
+  // Use invoice payload for total when available
+  const total =
+    sunatDoc?.invoicePayload?.totals?.totalPrice ??
+    Number(sale.grandTotal);
+
+  const invoiceTotals =
+    sunatDoc?.invoicePayload?.totals ?? {
+      totalValue: 0,
+      totalTax: 0,
+      totalPrice: Number(sale.grandTotal),
+      currency: "PEN",
+    };
+
+  const documentDate = formatDateTime(
+    sunatDoc?.issueDate ?? sale.createdAt
+  );
 
   const compartirWhatsApp = () => {
     const phone = sale.customer.phoneNumber?.replace(/\D/g, "");
     const firstName = (sale.customer.fullName || "").split(" ")[0];
     const msg = encodeURIComponent(
-      `Hola ${firstName}, te enviamos tu comprobante de pago:\n${tipo === "01" ? "Factura" : "Boleta"} N° ${fullNumber}\nTotal: S/ ${Number(sale.grandTotal).toFixed(2)}\nValidado por SUNAT`
+      `Hola ${firstName}, te enviamos tu comprobante de pago:\n${tipo === "01" ? "Factura" : "Boleta"} N° ${fullNumber}\nTotal: S/ ${total.toFixed(2)}\nValidado por SUNAT`
     );
     if (!phone) {
       toast.error("Esta venta no tiene un teléfono de contacto registrado");
@@ -56,33 +89,114 @@ export default function DetalleComprobanteModal({
   };
 
   const imprimir = () => {
-    const w = window.open("", "_blank");
-    if (!w) {
-      toast.error("Habilita las ventanas emergentes para imprimir");
-      return;
+    try {
+      // Create a new window
+      const printWindow = window.open("", "_blank", "width=800,height=600");
+      if (!printWindow) {
+        toast.error("Habilita las ventanas emergentes para imprimir");
+        return;
+      }
+
+      // Build the HTML content as a string using invoiceItems
+      const itemsRows = invoiceItems
+        .map(
+          (it) =>
+            `<tr><td>${it.description}</td><td style="text-align:center">${it.quantity}</td><td style="text-align:right">S/ ${it.unitPrice.toFixed(2)}</td><td style="text-align:right">S/ ${(it.quantity * it.unitPrice).toFixed(2)}</td></tr>`
+        )
+        .join("");
+
+      // Create the document structure
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8">
+            <title>${fullNumber || sale.orderNumber}</title>
+            <style>
+              body {
+                font-family: Arial, sans-serif;
+                padding: 24px;
+                color: #101828;
+                margin: 0;
+              }
+              h1 {
+                font-size: 18px;
+                margin-bottom: 2px;
+              }
+              table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 14px;
+              }
+              th {
+                background: #f2f4f5;
+                text-align: left;
+                padding: 7px 9px;
+                font-size: 11px;
+                font-weight: 600;
+              }
+              td {
+                padding: 7px 9px;
+                font-size: 11.5px;
+                border-bottom: 1px solid #eee;
+              }
+              .subtitle {
+                color: #667085;
+                font-size: 12px;
+                margin-bottom: 8px;
+              }
+              .total {
+                text-align: right;
+                margin-top: 10px;
+                font-weight: bold;
+                font-size: 14px;
+              }
+            </style>
+          </head>
+          <body>
+            <h1>${tipo === "01" ? "Factura Electrónica" : "Boleta de Venta Electrónica"} ${fullNumber || ""}</h1>
+            <div class="subtitle">Cliente: ${sale.customer.fullName} · Venta ${sale.orderNumber}</div>
+            <table>
+              <thead>
+                <tr>
+                  <th>Descripción</th>
+                  <th style="text-align:center">Cant.</th>
+                  <th style="text-align:right">P. Unit.</th>
+                  <th style="text-align:right">Importe</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${itemsRows}
+              </tbody>
+            </table>
+            <div class="total">Total: S/ ${total.toFixed(2)}</div>
+          </body>
+        </html>
+      `;
+
+      // Modern approach: Use DOMParser to create a document
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(htmlContent, "text/html");
+      
+      // Replace the content of the new window with our parsed document
+      printWindow.document.replaceChild(
+        doc.documentElement,
+        printWindow.document.documentElement
+      );
+
+      // Focus and trigger print after content loads
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        // Optionally close the window after printing
+        // printWindow.close();
+      }, 500);
+
+      onAction?.(sale.id, "print");
+    } catch (error) {
+      console.error("Error printing:", error);
+      toast.error("Error al generar la vista previa de impresión");
     }
-    const itemsRows = (sale.items || [])
-      .map(
-        (it) =>
-          `<tr><td>${it.productName}</td><td style="text-align:center">${it.quantity}</td><td style="text-align:right">S/ ${Number(it.price).toFixed(2)}</td><td style="text-align:right">S/ ${(it.quantity * Number(it.price)).toFixed(2)}</td></tr>`
-      )
-      .join("");
-    w.document.write(`<html><head><title>${fullNumber || sale.orderNumber}</title><style>
-      body{font-family:Arial,sans-serif;padding:24px;color:#101828}
-      h1{font-size:18px;margin-bottom:2px} table{width:100%;border-collapse:collapse;margin-top:14px}
-      th{background:#f2f4f5;text-align:left;padding:7px 9px;font-size:11px}
-      td{padding:7px 9px;font-size:11.5px;border-bottom:1px solid #eee}
-    </style></head><body>
-    <h1>${tipo === "01" ? "Factura Electrónica" : "Boleta de Venta Electrónica"} ${fullNumber || ""}</h1>
-    <div style="color:#667085;font-size:12px">Cliente: ${sale.customer.fullName} · Venta ${sale.orderNumber}</div>
-    <table><thead><tr><th>Descripción</th><th>Cant.</th><th>P. Unit.</th><th>Importe</th></tr></thead>
-    <tbody>${itemsRows}</tbody></table>
-    <div style="text-align:right;margin-top:10px;font-weight:bold">Total: S/ ${Number(sale.grandTotal).toFixed(2)}</div>
-    </body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 300);
-    onAction?.(sale.id, "print");
   };
 
   const isFinal = estado === "ACEPTADO" || estado === "ACEPTADO_CON_OBS";
@@ -115,46 +229,76 @@ export default function DetalleComprobanteModal({
           </div>
           <div>
             <div className="text-muted-foreground text-xs">Fecha</div>
-            <div className="font-medium">{new Date(sale.created_at).toLocaleString("es-PE")}</div>
+            <div className="font-medium">{formatDateTime(sunatDoc?.issueDate ?? sale.createdAt)}</div>
           </div>
           <div>
             <div className="text-muted-foreground text-xs">Total</div>
-            <div className="font-bold text-primary">S/ {Number(sale.grandTotal).toFixed(2)}</div>
+            <div className="font-bold text-primary">S/ {total.toFixed(2)}</div>
           </div>
-          {log?.sunat_description && (
+          {sunatDoc?.sunatDescription && (
             <div className="col-span-2">
               <div className="text-muted-foreground text-xs">CDR SUNAT</div>
-              <div className="font-medium">{log.sunat_description}</div>
+              <div className="font-medium">{sunatDoc.sunatDescription}</div>
             </div>
           )}
         </div>
 
-        {sale.items?.length ? (
-          <div className="rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Descripción</TableHead>
-                  <TableHead className="text-center">Cant.</TableHead>
-                  <TableHead className="text-right">P. Unit.</TableHead>
-                  <TableHead className="text-right">Importe</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sale.items.map((it, i) => (
-                  <TableRow key={i}>
-                    <TableCell>{it.productName}</TableCell>
-                    <TableCell className="text-center">{it.quantity}</TableCell>
-                    <TableCell className="text-right">S/ {Number(it.price).toFixed(2)}</TableCell>
-                    <TableCell className="text-right">S/ {(it.quantity * Number(it.price)).toFixed(2)}</TableCell>
+        {invoiceItems.length > 0 && (
+          <>
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Descripción</TableHead>
+                    <TableHead className="text-center">Cant.</TableHead>
+                    <TableHead className="text-right">P. Unit.</TableHead>
+                    <TableHead className="text-right">Importe</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : null}
+                </TableHeader>
 
-        {isFinal && (
+                <TableBody>
+                  {invoiceItems.map((it, i) => (
+                    <TableRow key={i}>
+                      <TableCell>{it.description}</TableCell>
+                      <TableCell className="text-center">
+                        {it.quantity}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        S/ {it.unitPrice.toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        S/ {(it.quantity * it.unitPrice).toFixed(2)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <div className="w-72 space-y-1 text-sm">
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Op. Gravada</span>
+                  <span>S/ {invoiceTotals.totalValue.toFixed(2)}</span>
+                </div>
+
+                <div className="flex justify-between text-muted-foreground">
+                  <span>I.G.V. 18%</span>
+                  <span>S/ {invoiceTotals.totalTax.toFixed(2)}</span>
+                </div>
+
+                <div className="mt-2 flex justify-between border-t pt-2 text-base font-bold">
+                  <span>Total</span>
+                  <span className="text-primary">
+                    S/ {invoiceTotals.totalPrice.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {isFinal && sunatDoc && (
           <>
             <div className="text-sm font-semibold mt-2">Compartir con el cliente</div>
             <div className="grid grid-cols-2 gap-2">
@@ -164,19 +308,35 @@ export default function DetalleComprobanteModal({
               <Button variant="outline" className="justify-start gap-2" onClick={imprimir}>
                 <Printer className="h-4 w-4 text-blue-600" /> Imprimir
               </Button>
-              <Button variant="outline" className="justify-start gap-2" asChild>
-                <a href={`${GATEWAY.integrations}/sunat/pdf/${sale.id}`} target="_blank" rel="noopener noreferrer">
-                  <Download className="h-4 w-4 text-red-600" /> Descargar PDF
-                </a>
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                disabled={isDownloading(sale.id, "pdf")}
+                onClick={() => downloadPdf(sunatDoc)}
+              >
+                {isDownloading(sale.id, "pdf") ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 text-red-600" />
+                )}
+                Descargar PDF
               </Button>
-              <Button variant="outline" className="justify-start gap-2" asChild>
-                <a href={`${GATEWAY.integrations}/sunat/xml/${sale.id}`} target="_blank" rel="noopener noreferrer">
-                  <FileText className="h-4 w-4 text-primary" /> Descargar XML
-                </a>
+              <Button
+                variant="outline"
+                className="justify-start gap-2"
+                disabled={isDownloading(sale.id, "xml")}
+                onClick={() => downloadXml(sunatDoc)}
+              >
+                {isDownloading(sale.id, "xml") ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="h-4 w-4 text-primary" />
+                )}
+                Descargar XML
               </Button>
-              {log?.cdr_url && (
+              {sunatDoc?.cdrUrl && (
                 <Button variant="outline" className="justify-start gap-2" asChild>
-                  <a href={log.cdr_url} target="_blank" rel="noopener noreferrer">
+                  <a href={sunatDoc.cdrUrl} target="_blank" rel="noopener noreferrer">
                     <Download className="h-4 w-4 text-green-600" /> Descargar CDR
                   </a>
                 </Button>

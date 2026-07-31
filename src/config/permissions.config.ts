@@ -7,6 +7,7 @@ export const SUPERADMIN_EMAILS: string[] = [
   "tognolimauricio@gmail.com",
   "cuentaprueba@gmail.com",
   "marcounobejarano@gmail.com",
+  "m_uno_p@hotmail.com",
 ];
 
 export const isSuperadmin = (email?: string): boolean => {

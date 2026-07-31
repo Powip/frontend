@@ -22,12 +22,14 @@ import { Progress } from "@/components/ui/progress";
 import { Zap } from "lucide-react";
 import { IManualInvoicePayload } from "@/api/Facturacion";
 import { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import { useCreateManualInvoice } from "@/hooks/sunat/sunat-document/use-create-manual-invoice";
+import { CreateManualInvoiceInput } from "@/schemas/sunat/create-manual-invoice.schema";
+import { CURRENCIES, DOCUMENT_TYPES, IDENTITY_DOCUMENT_TYPES, TAX_TYPES, UNIT_CODES } from "@/api/sunat/types/sunat-document.types";
 
 interface LoteEmisionModalProps {
   isOpen: boolean;
   onClose: () => void;
   rows: ComprobanteRow[];
-  emitInvoice: (payload: IManualInvoicePayload) => Promise<any>;
   onDone: () => void;
 }
 
@@ -37,36 +39,67 @@ interface LoteResult {
   message: string;
 }
 
-export default function LoteEmisionModal({ isOpen, onClose, rows, emitInvoice, onDone }: LoteEmisionModalProps) {
+export default function LoteEmisionModal({ isOpen, onClose, rows, onDone }: LoteEmisionModalProps) {
+  const {
+    mutateAsync: createInvoice,
+  } = useCreateManualInvoice();
+
   const [tipo, setTipo] = useState<"01" | "03">("03");
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<LoteResult[] | null>(null);
 
-  const buildPayload = (row: ComprobanteRow): IManualInvoicePayload | null => {
+  const buildPayload = (
+    row: ComprobanteRow
+  ): CreateManualInvoiceInput | null => {
     const { sale } = row;
-    const docNumber = (sale.customer.documentNumber || "").trim();
-    if (tipo === "01" && !/^(10|20)\d{9}$/.test(docNumber)) return null;
-    if (tipo === "03" && docNumber.length !== 8 && docNumber.length !== 11) return null;
+
+    const docNumber = sale.customer.documentNumber ?? "";
+
+    const isRuc = tipo === "01";
 
     const total = Number(sale.grandTotal) || 0;
+
     return {
       externalId: String(sale.id),
-      documentType: tipo,
-      customerName: sale.customer.fullName,
-      customerDocType: tipo === "01" ? "6" : docNumber.length === 11 ? "6" : "1",
-      customerDocNumber: docNumber,
-      customerAddress: sale.customer.address || undefined,
-      totalTax: Number(((total * 0.18) / 1.18).toFixed(2)),
-      totalValue: Number((total / 1.18).toFixed(2)),
-      totalPrice: Number(total.toFixed(2)),
-      items: (sale.items || []).map((it) => ({
-        internalCode: String(it.sku || "PROD001"),
+
+      documentType:
+        isRuc
+          ? DOCUMENT_TYPES.FACTURA
+          : DOCUMENT_TYPES.BOLETA,
+
+      customer: {
+        name: sale.customer.fullName,
+
+        documentType:
+          isRuc
+            ? IDENTITY_DOCUMENT_TYPES.RUC
+            : IDENTITY_DOCUMENT_TYPES.DNI,
+
+        documentNumber: docNumber,
+
+        address: sale.customer.address ?? "",
+      },
+
+      totals: {
+        totalTax: Number(((total * 0.18) / 1.18).toFixed(2)),
+        totalValue: Number((total / 1.18).toFixed(2)),
+        totalPrice: Number(total.toFixed(2)),
+        currency: CURRENCIES.PEN,
+      },
+
+      items: sale.items.map((it) => ({
+        internalCode: it.sku ?? "PROD001",
+
         description: it.productName,
+
         quantity: it.quantity,
-        unitPrice: Number(it.price),
-        unitCode: "NIU",
-        taxType: "10",
+
+        unitPrice: Number(it.unitPrice),
+
+        unitCode: UNIT_CODES.UNIT,
+
+        taxType: TAX_TYPES.GRAVADO,
       })),
     };
   };
@@ -85,7 +118,7 @@ export default function LoteEmisionModal({ isOpen, onClose, rows, emitInvoice, o
         });
       } else {
         try {
-          const res = await emitInvoice(payload);
+          const res = await createInvoice(payload);
           acc.push({
             orderNumber: row.sale.orderNumber,
             ok: !!res.success,

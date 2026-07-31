@@ -19,6 +19,8 @@ import { SeriesTab } from "@/app/facturacion/components/tabs/SeriesTab";
 import { ReportesTab } from "@/app/facturacion/components/tabs/ReportesTab";
 import { AyudaTab } from "@/app/facturacion/components/tabs/AyudaTab";
 import NotaCreditoModal from "@/app/facturacion/components/modals/NotaCreditoModal";
+import { useSunatProfiles } from "@/hooks/sunat/sunat-profile/use-sunat-profiles";
+import { getCertificateStatus } from "@/utils/sunat/certificate-status";
 
 export default function FacturacionPage() {
   const { auth, loading: authLoading } = useAuth();
@@ -26,6 +28,24 @@ export default function FacturacionPage() {
 
   const comprobantes = useComprobantesSunat();
   const mock = useFacturacionMock();
+
+  const {
+    data: sunatProfiles = [],
+    isLoading: profilesLoading,
+  } = useSunatProfiles();
+
+  const activeProfiles = sunatProfiles.filter(
+    (profile) => profile.isActive
+  );
+  
+  const hasCertificate = activeProfiles.length > 0;
+
+  const expiringCertificates = activeProfiles
+    .map((profile) => ({
+      profile,
+      ...getCertificateStatus(profile),
+    }))
+    .filter(({ status }) => status !== "ok");
 
   const [ncOpen, setNcOpen] = useState(false);
   const [ncPreselectId, setNcPreselectId] = useState<string | undefined>();
@@ -62,13 +82,20 @@ export default function FacturacionPage() {
             Comprobantes, guías de remisión y notas de crédito/débito — con reportes listos para tu contador.
           </p>
         </div>
-        <Button onClick={comprobantes.fetchSales} variant="outline" className="gap-2">
+        <Button
+          onClick={() => {
+            comprobantes.refreshSales();
+            comprobantes.refreshDocuments();
+          }}
+          variant="outline"
+          className="gap-2"
+        >
           <RefreshCw className={cn("h-4 w-4", comprobantes.loading && "animate-spin")} />
           Actualizar Lista
         </Button>
       </div>
 
-      {!mock.cert.razon && (
+      {!profilesLoading && !hasCertificate && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-4 py-3 text-sm">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
           <div>
@@ -77,26 +104,37 @@ export default function FacturacionPage() {
           </div>
         </div>
       )}
-      {!!mock.cert.razon && mock.cert.diasParaVencer <= 30 && (
+      
+      {expiringCertificates.map(({ profile, daysToExpire, status }) => (
         <div
+          key={profile.id}
           className={cn(
             "flex items-start gap-3 rounded-xl border px-4 py-3 text-sm",
-            mock.cert.diasParaVencer <= 0
+            status === "bad"
               ? "border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40"
               : "border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40"
           )}
         >
-          <AlertTriangle className={cn("mt-0.5 h-4 w-4 shrink-0", mock.cert.diasParaVencer <= 0 ? "text-red-600" : "text-amber-600")} />
+          <AlertTriangle
+            className={cn(
+              "mt-0.5 h-4 w-4 shrink-0",
+              status === "bad"
+                ? "text-red-600"
+                : "text-amber-600"
+            )}
+          />
+
           <div>
             <span className="font-semibold">
-              {mock.cert.diasParaVencer <= 0
-                ? "Tu certificado digital ha expirado. "
-                : `Tu certificado digital vence en ${mock.cert.diasParaVencer} días. `}
+              {status === "bad"
+                ? `El certificado de ${profile.razonSocial} ha expirado. `
+                : `El certificado de ${profile.razonSocial} vence en ${daysToExpire} días. `}
             </span>
-            Renuévalo antes de que expire para no interrumpir la emisión de comprobantes.
+
+            RUC {profile.ruc}. Renuévalo antes de que expire para no interrumpir la emisión de comprobantes.
           </div>
         </div>
-      )}
+      ))}
 
       <Tabs defaultValue="comprobantes">
         <TabsList className="h-auto flex-wrap gap-1 bg-transparent p-0">
@@ -136,7 +174,7 @@ export default function FacturacionPage() {
           <ReportesTab comprobanteRows={comprobantes.rows} notas={mock.notas} guias={mock.guias} />
         </TabsContent>
         <TabsContent value="cert" className="pt-4">
-          <CertificadoTab mock={mock} />
+          <CertificadoTab />
         </TabsContent>
         <TabsContent value="series" className="pt-4">
           <SeriesTab mock={mock} />

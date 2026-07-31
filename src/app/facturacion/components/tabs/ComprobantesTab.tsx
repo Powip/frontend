@@ -69,9 +69,7 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
     loading,
     kpis,
     selectedIds,
-    emitInvoice,
-    refreshLog,
-    fetchSales,
+    refreshDocuments,
     toggleSelected,
     selectAllPendientes,
     clearSelection,
@@ -324,36 +322,42 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredRows.map((row) => (
-                    <TableRow key={row.sale.id}>
-                      <TableCell>
-                        {row.estado === "SIN_EMITIR" && (
-                          <Checkbox
-                            checked={selectedIds.has(row.sale.id)}
-                            onCheckedChange={(v) => toggleSelected(row.sale.id, !!v)}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell className="text-xs whitespace-nowrap">
-                        {format(new Date(row.sale.created_at), "dd/MM/yyyy HH:mm", { locale: es })}
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{row.sale.orderNumber}</div>
-                        <div className="text-[10px] text-muted-foreground">{row.fullNumber || `ID ${row.sale.id.substring(0, 8)}`}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="font-medium">{row.sale.customer.fullName}</div>
-                        <div className="text-[10px] text-muted-foreground">{row.sale.customer.documentNumber || "Sin documento"}</div>
-                      </TableCell>
-                      <TableCell>{tipoChip(row)}</TableCell>
-                      <TableCell className="text-right font-bold">S/ {Number(row.sale.grandTotal).toFixed(2)}</TableCell>
-                      <TableCell className="text-center">
-                        <EstadoBadge estado={row.estado} />
-                      </TableCell>
-                      <TableCell className="text-center">{distribIcons(row)}</TableCell>
-                      <TableCell className="text-right">{accionBtn(row)}</TableCell>
-                    </TableRow>
-                  ))
+                  filteredRows.map((row) => {
+                    const displayedTotal =
+                      row.document?.invoicePayload?.totals?.totalPrice ??
+                      Number(row.sale.grandTotal);
+
+                    return (
+                      <TableRow key={row.sale.id}>
+                        <TableCell>
+                          {row.estado === "SIN_EMITIR" && (
+                            <Checkbox
+                              checked={selectedIds.has(row.sale.id)}
+                              onCheckedChange={(v) => toggleSelected(row.sale.id, !!v)}
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell className="text-xs whitespace-nowrap">
+                          {format(new Date(row.sale.createdAt), "dd/MM/yyyy HH:mm", { locale: es })}
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">{row.sale.orderNumber}</div>
+                          <div className="text-[10px] text-muted-foreground">{row.fullNumber || `ID ${row.sale.id.substring(0, 8)}`}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">{row.sale.customer.fullName}</div>
+                          <div className="text-[10px] text-muted-foreground">{row.sale.customer.documentNumber || "Sin documento"}</div>
+                        </TableCell>
+                        <TableCell>{tipoChip(row)}</TableCell>
+                        <TableCell className="text-right font-bold">S/ {displayedTotal.toFixed(2)}</TableCell>
+                        <TableCell className="text-center">
+                          <EstadoBadge estado={row.estado} />
+                        </TableCell>
+                        <TableCell className="text-center">{distribIcons(row)}</TableCell>
+                        <TableCell className="text-right">{accionBtn(row)}</TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>
@@ -369,7 +373,12 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
           isOpen={!!emitirRow}
           onClose={() => setEmitirRow(null)}
           sale={emitirRow.sale}
-          onSuccess={() => refreshLog(emitirRow.sale.id)}
+          onEmissionFinished={() => {
+            // Whatever the outcome (accepted, observed, rejected...),
+            // the sunat_documents row is the source of truth now —
+            // just refetch it rather than hand-patching local state.
+            refreshDocuments();
+          }}
         />
       )}
 
@@ -397,10 +406,9 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
         isOpen={loteOpen}
         onClose={() => setLoteOpen(false)}
         rows={selectedRows}
-        emitInvoice={emitInvoice}
         onDone={() => {
           clearSelection();
-          fetchSales();
+          refreshDocuments();
         }}
       />
     </div>

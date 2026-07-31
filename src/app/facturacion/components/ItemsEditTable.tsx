@@ -8,18 +8,36 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ItemComprobante } from "@/types/facturacion";
+import { CreateManualInvoiceInput } from "@/schemas/sunat/create-manual-invoice.schema";
+import { TAX_TYPES, UNIT_CODES } from "@/api/sunat/types/sunat-document.types";
+
+type InvoiceItem = CreateManualInvoiceInput["items"][number];
 
 interface ItemsEditTableProps {
-  items: ItemComprobante[];
-  onChange: (items: ItemComprobante[]) => void;
+  items: InvoiceItem[];
+  onChange: (items: InvoiceItem[]) => void;
 }
 
 export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
-  const updateItem = (i: number, field: keyof ItemComprobante, value: string) => {
+  const updateItem = (
+    i: number,
+    field: keyof InvoiceItem,
+    value: string
+  ) => {
     const next = items.map((it, idx) =>
-      idx === i ? { ...it, [field]: field === "desc" ? value : Number(value) || 0 } : it
+      idx === i
+        ? {
+            ...it,
+            [field]:
+              field === "description"
+                ? value
+                : field === "quantity" || field === "unitPrice"
+                  ? Number(value) || 0
+                  : value,
+          }
+        : it
     );
+
     onChange(next);
   };
 
@@ -29,7 +47,17 @@ export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
   };
 
   const addItem = () => {
-    onChange([...items, { desc: "Nuevo ítem", qty: 1, price: 0 }]);
+    onChange([
+      ...items,
+      {
+        internalCode: "PROD001",
+        description: "Nuevo ítem",
+        quantity: 1,
+        unitPrice: 0,
+        unitCode: UNIT_CODES.UNIT,
+        taxType: TAX_TYPES.GRAVADO,
+      },
+    ]);
   };
 
   return (
@@ -50,8 +78,8 @@ export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
               <TableRow key={i}>
                 <TableCell>
                   <Input
-                    value={it.desc}
-                    onChange={(e) => updateItem(i, "desc", e.target.value)}
+                    value={it.description}
+                    onChange={(e) => updateItem(i, "description", e.target.value)}
                     className="h-8 text-xs"
                   />
                 </TableCell>
@@ -59,8 +87,8 @@ export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
                   <Input
                     type="number"
                     min={1}
-                    value={it.qty}
-                    onChange={(e) => updateItem(i, "qty", e.target.value)}
+                    value={it.quantity}
+                    onChange={(e) => updateItem(i, "quantity", e.target.value)}
                     className="h-8 text-xs"
                   />
                 </TableCell>
@@ -68,13 +96,13 @@ export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
                   <Input
                     type="number"
                     step="0.01"
-                    value={it.price}
-                    onChange={(e) => updateItem(i, "price", e.target.value)}
+                    value={it.unitPrice}
+                    onChange={(e) => updateItem(i, "unitPrice", e.target.value)}
                     className="h-8 text-xs"
                   />
                 </TableCell>
                 <TableCell className="text-right text-xs font-medium">
-                  S/ {(it.qty * it.price).toFixed(2)}
+                  S/ {(it.quantity * it.unitPrice).toFixed(2)}
                 </TableCell>
                 <TableCell>
                   <button

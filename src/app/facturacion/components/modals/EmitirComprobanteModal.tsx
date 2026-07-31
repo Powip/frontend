@@ -20,13 +20,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { AlertCircle, CheckCircle2, FileText, Loader2, Search } from "lucide-react";
-import { toast } from "sonner";
-import { generateManualInvoice, IManualInvoicePayload } from "@/api/Facturacion";
 import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
 import { ItemsEditTable } from "@/app/facturacion/components/ItemsEditTable";
 import { ProximamenteButton } from "@/app/facturacion/components/ProximamenteButton";
-import { ErrorSunat, ItemComprobante } from "@/types/facturacion";
-import { Sale } from "@/hooks/useComprobantesSunat";
+import { Order } from "@/models/sales/order";
+import { useCreateManualInvoice } from "@/hooks/sunat/sunat-document/use-create-manual-invoice";
+import { useForm } from "react-hook-form";
+import { CreateManualInvoiceInput, createManualInvoiceSchema } from "@/schemas/sunat/create-manual-invoice.schema";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { CURRENCIES, DOCUMENT_TYPES, IDENTITY_DOCUMENT_TYPES, TAX_TYPES, UNIT_CODES } from "@/api/sunat/types/sunat-document.types";
+import { CreateManualInvoiceResponseDto } from "@/api/sunat/dto/sunat-document.dto";
+import { ItemComprobante } from "@/types/facturacion";
+import { computeInvoiceTotals } from "@/utils/sunat/compute-invoice-totals";
 
 const PIPELINE_STEPS = [
   "Generando XML UBL 2.1",
@@ -38,8 +43,10 @@ const PIPELINE_STEPS = [
 interface EmitirComprobanteModalProps {
   isOpen: boolean;
   onClose: () => void;
-  sale: Sale;
-  onSuccess: () => void;
+  sale: Order;
+  onEmissionFinished: (
+    response: CreateManualInvoiceResponseDto
+  ) => void;
 }
 
 type Step = "form" | "pipeline" | "ok" | "bad";
@@ -48,108 +55,124 @@ export default function EmitirComprobanteModal({
   isOpen,
   onClose,
   sale,
-  onSuccess,
+  onEmissionFinished,
 }: EmitirComprobanteModalProps) {
+  // React Query
+  const {
+    mutateAsync: createInvoice,
+    isPending
+  } = useCreateManualInvoice();
+
+
+  // Form
+  const form = useForm<CreateManualInvoiceInput>({
+    resolver: zodResolver(createManualInvoiceSchema),
+    defaultValues: {
+      externalId: "",
+      documentType: DOCUMENT_TYPES.BOLETA,
+      customer: {
+        name: "",
+        documentType: "1",
+        documentNumber: "",
+        address: "",
+      },
+      totals: {
+        totalTax: 0,
+        totalValue: 0,
+        totalPrice: 0,
+        currency: "PEN",
+      },
+      items: [],
+    },
+  });
+
+  // UI flow
   const [step, setStep] = useState<Step>("form");
-  const [documentType, setDocumentType] = useState<"01" | "03">("03");
-  const [customerDocType, setCustomerDocType] = useState("1");
-  const [customerDocNumber, setCustomerDocNumber] = useState("");
-  const [customerName, setCustomerName] = useState("");
-  const [customerAddress, setCustomerAddress] = useState("");
-  const [items, setItems] = useState<ItemComprobante[]>([]);
   const [pipelineIndex, setPipelineIndex] = useState(0);
-  const [okResult, setOkResult] = useState<{ series: string; correlative: number | string; message: string } | null>(null);
-  const [badResult, setBadResult] = useState<ErrorSunat | { code: string; desc: string; sol: string } | null>(null);
+  const [invoiceResult, setInvoiceResult]
+    = useState<CreateManualInvoiceResponseDto | null>(null);
+
+  // animation only
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     if (!isOpen || !sale) return;
-    setStep("form");
-    const docNumber = sale.customer?.documentNumber || "";
+
+    const docNumber = sale.customer?.documentNumber ?? "";
+
     const isRuc = docNumber.length === 11;
-    setDocumentType(isRuc ? "01" : "03");
-    setCustomerDocType(isRuc ? "6" : "1");
-    setCustomerDocNumber(docNumber);
-    setCustomerName(sale.customer?.fullName || "");
-    setCustomerAddress(sale.customer?.address || "");
-    setItems(
-      (sale.items || []).map((it) => ({
-        desc: it.productName,
-        qty: it.quantity,
-        price: Number(it.price),
-      }))
-    );
-  }, [isOpen, sale]);
+
+    const productItems = sale.items.map((item) => ({
+      internalCode: item.sku ?? "PROD001",
+      description: item.productName,
+      quantity: item.quantity,
+      unitPrice: Number(item.unitPrice),
+      unitCode: UNIT_CODES.UNIT,
+      taxType: TAX_TYPES.GRAVADO,
+    }));
+
+    // Delivery/shipping is charged as part of the sale but was never
+    // represented as its own line — it was only folded into
+    // totals.totalPrice via sale.grandTotal, which meant it was never
+    // actually invoiced at all (the backend computes totals strictly
+    // from items, see invoice.template.ts). Represent it as its own
+    // item so it's properly taxed and included in what SUNAT receives.
+    const shippingAmount = Number(sale.shippingTotal ?? 0);
+
+    const items =
+      shippingAmount > 0
+        ? [
+            ...productItems,
+            {
+              internalCode: "DELIVERY",
+              description: "Servicio de entrega",
+              quantity: 1,
+              unitPrice: shippingAmount,
+              unitCode: UNIT_CODES.UNIT,
+              taxType: TAX_TYPES.GRAVADO,
+            },
+          ]
+        : productItems;
+
+    form.reset({
+      externalId: String(sale.id),
+
+      documentType: isRuc
+        ? DOCUMENT_TYPES.FACTURA
+        : DOCUMENT_TYPES.BOLETA,
+
+      customer: {
+        name: sale.customer?.fullName ?? "",
+
+        documentType: isRuc
+          ? IDENTITY_DOCUMENT_TYPES.RUC
+          : IDENTITY_DOCUMENT_TYPES.DNI,
+
+        documentNumber: docNumber,
+
+        address: sale.customer?.address ?? "",
+      },
+
+      // Always derived from items — never set independently. See the
+      // recompute in the items onChange handler below, which keeps
+      // this in sync any time the user edits an item in the table.
+      totals: {
+        ...computeInvoiceTotals(items),
+        currency: CURRENCIES.PEN,
+      },
+
+      items,
+    });
+
+    setStep("form");
+
+  }, [isOpen, sale, form]);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
-
-  const handleTipoChange = (val: "01" | "03") => {
-    setDocumentType(val);
-    setCustomerDocType(val === "01" ? "6" : "1");
-  };
-
-  const total = items.reduce((s, it) => s + it.qty * it.price, 0);
-  const opGravada = total / 1.18;
-  const igv = total - opGravada;
-
-  const validate = () => {
-    const cleanName = customerName.trim();
-    const cleanDoc = customerDocNumber.trim();
-    const cleanAddress = customerAddress.trim();
-
-    if (documentType === "01") {
-      if (!/^(10|20)\d{9}$/.test(cleanDoc)) {
-        toast.error("Para Facturas se requiere un RUC válido (11 dígitos, empieza con 10 o 20)");
-        return null;
-      }
-      if (!cleanName) {
-        toast.error("La Razón Social es obligatoria");
-        return null;
-      }
-      if (!cleanAddress) {
-        toast.error("La Dirección Fiscal es obligatoria para Facturas");
-        return null;
-      }
-    } else {
-      if (customerDocType === "1" && cleanDoc.length !== 8) {
-        toast.error("El DNI debe tener 8 dígitos");
-        return null;
-      }
-      if (customerDocType === "6" && cleanDoc.length !== 11) {
-        toast.error("El RUC debe tener 11 dígitos");
-        return null;
-      }
-    }
-    if (!items.length || total <= 0) {
-      toast.error("Agrega al menos un ítem con importe mayor a cero");
-      return null;
-    }
-
-    const payload: IManualInvoicePayload = {
-      externalId: String(sale.id),
-      documentType,
-      customerName: cleanName,
-      customerDocType: customerDocType as "1" | "6" | "7",
-      customerDocNumber: cleanDoc,
-      customerAddress: cleanAddress || undefined,
-      totalTax: Number(igv.toFixed(2)),
-      totalValue: Number(opGravada.toFixed(2)),
-      totalPrice: Number(total.toFixed(2)),
-      items: items.map((it, i) => ({
-        internalCode: String(sale.items?.[i]?.sku || "PROD001"),
-        description: it.desc,
-        quantity: it.qty,
-        unitPrice: it.price,
-        unitCode: "NIU",
-        taxType: "10",
-      })),
-    };
-    return payload;
-  };
 
   const runPipelineAnimation = () => {
     setPipelineIndex(0);
@@ -163,74 +186,86 @@ export default function EmitirComprobanteModal({
     }, 650);
   };
 
-  const handleSubmit = async () => {
-    const payload = validate();
-    if (!payload) return;
-
+  const handleSubmit = form.handleSubmit(async (values) => {
     setStep("pipeline");
     runPipelineAnimation();
 
     try {
-      const res = await generateManualInvoice(payload);
-      if (timerRef.current) clearInterval(timerRef.current);
+      const response = await createInvoice(values);
+
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+
       setPipelineIndex(PIPELINE_STEPS.length);
 
-      setTimeout(() => {
-        if (res.success) {
-          setOkResult({
-            series: res.data?.series,
-            correlative: res.data?.correlative,
-            message:
-              res.data?.status === "OBSERVED"
-                ? "SUNAT aceptó el comprobante con observaciones."
-                : "SUNAT ha aceptado el comprobante.",
-          });
-          setStep("ok");
-          onSuccess();
-        } else {
-          setBadResult({ code: "—", desc: res.message || "Error al generar comprobante", sol: "Revisa los datos e intenta nuevamente." });
-          setStep("bad");
-        }
-      }, 400);
-    } catch (error: any) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      const serverMessage = error.response?.data?.message;
-      const displayMessage = Array.isArray(serverMessage)
-        ? serverMessage.join(", ")
-        : serverMessage || "Error de conexión con el servidor";
-      setTimeout(() => {
-        setBadResult({ code: String(error.response?.status || "—"), desc: displayMessage, sol: "Corrige los datos del cliente o los ítems y vuelve a intentar." });
+      setInvoiceResult(response);
+
+      if (
+        response.success &&
+        response.data.cdr.accepted
+      ) {
+        setStep("ok");
+      } else {
         setStep("bad");
-      }, 400);
+      }
+
+      onEmissionFinished(response);
+
+    } catch (error) {
+      setStep("bad");
     }
-  };
+  });
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-[560px] max-h-[90vh] overflow-y-auto">
         {step === "form" && (
-          <>
+          <form onSubmit={handleSubmit}>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl">
                 <FileText className="h-5 w-5 text-primary" />
                 Emitir Comprobante Electrónico
               </DialogTitle>
+
               <DialogDescription>
-                Venta: <span className="font-bold text-foreground">{sale?.orderNumber}</span> — Total:{" "}
-                <span className="font-bold text-primary">S/ {total.toFixed(2)}</span>
+                Venta:{" "}
+                <span className="font-bold text-foreground">
+                  {sale?.orderNumber}
+                </span>{" "}
+                — Total:{" "}
+                <span className="font-bold text-primary">
+                  S/ {Number(form.getValues("totals.totalPrice")).toFixed(2)}
+                </span>
               </DialogDescription>
             </DialogHeader>
 
             <div className="grid gap-5 py-2">
               <div className="grid gap-2">
                 <Label>Tipo de Comprobante</Label>
-                <Select value={documentType} onValueChange={handleTipoChange}>
+                <Select
+                  value={form.getValues("documentType")}
+                  onValueChange={(value) =>
+                    form.setValue(
+                      "documentType",
+                      value as CreateManualInvoiceInput["documentType"],
+                      {
+                        shouldValidate: true,
+                      }
+                    )
+                  }
+                >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Seleccione tipo de comprobante" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="03">Boleta de Venta (B001)</SelectItem>
-                    <SelectItem value="01">Factura (F001)</SelectItem>
+                    <SelectItem value={DOCUMENT_TYPES.BOLETA}>
+                      Boleta de Venta (B001)
+                    </SelectItem>
+
+                    <SelectItem value={DOCUMENT_TYPES.FACTURA}>
+                      Factura (F001)
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -238,30 +273,56 @@ export default function EmitirComprobanteModal({
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label>Tipo Doc. Cliente</Label>
-                  <Select value={customerDocType} onValueChange={setCustomerDocType} disabled={documentType === "01"}>
+                  <Select
+                    value={form.getValues("customer.documentType")}
+                    onValueChange={(value) =>
+                      form.setValue(
+                        "customer.documentType",
+                        value as CreateManualInvoiceInput["customer"]["documentType"],
+                        {
+                          shouldValidate: true,
+                        }
+                      )
+                    }
+                  >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
+
                     <SelectContent>
-                      {documentType === "01" ? (
-                        <SelectItem value="6">RUC</SelectItem>
-                      ) : (
-                        <>
-                          <SelectItem value="1">DNI</SelectItem>
-                          <SelectItem value="0">Sin documento</SelectItem>
-                          <SelectItem value="4">CE</SelectItem>
-                        </>
-                      )}
+                      <SelectItem value={IDENTITY_DOCUMENT_TYPES.DNI}>
+                        DNI
+                      </SelectItem>
+
+                      <SelectItem value={IDENTITY_DOCUMENT_TYPES.RUC}>
+                        RUC
+                      </SelectItem>
+
+                      <SelectItem value="0">
+                        Sin documento
+                      </SelectItem>
+
+                      <SelectItem value="4">
+                        CE
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="grid gap-2">
-                  <Label>{documentType === "01" ? "RUC" : "Número Doc."}</Label>
+                  <Label>Número Doc.</Label>
+
                   <Input
                     placeholder="Ej. 20601234567"
-                    value={customerDocNumber}
-                    onChange={(e) => setCustomerDocNumber(e.target.value)}
+                    {...form.register(
+                      "customer.documentNumber"
+                    )}
                   />
+
+                  {form.formState.errors.customer?.documentNumber && (
+                    <p className="text-sm text-red-500">
+                      {form.formState.errors.customer.documentNumber.message}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -276,56 +337,130 @@ export default function EmitirComprobanteModal({
               />
 
               <div className="grid gap-2">
-                <Label>{documentType === "01" ? "Razón Social" : "Nombre del Cliente"}</Label>
-                <Input value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
-              </div>
-
-              <div className="grid gap-2">
                 <Label>
-                  Dirección Fiscal {documentType === "01" && <span className="text-red-500">*</span>}
+                  Nombre del Cliente
                 </Label>
+
                 <Input
-                  placeholder="Ej. Av. Larco 123, Miraflores"
-                  value={customerAddress}
-                  onChange={(e) => setCustomerAddress(e.target.value)}
+                  {...form.register("customer.name")}
                 />
-                {documentType === "01" && !customerAddress && (
-                  <p className="text-[11px] text-red-500 flex items-center gap-1">
-                    <AlertCircle className="h-3 w-3" /> Requerido para facturas
+
+                {form.formState.errors.customer?.name && (
+                  <p className="text-sm text-red-500">
+                    {form.formState.errors.customer.name.message}
                   </p>
                 )}
               </div>
 
               <div className="grid gap-2">
-                <Label>Ítems del pedido</Label>
-                <ItemsEditTable items={items} onChange={setItems} />
+                <Label>
+                  Dirección Fiscal
+                </Label>
+
+                <Input
+                  placeholder="Ej. Av. Larco 123, Miraflores"
+                  {...form.register("customer.address")}
+                />
+
+                {form.formState.errors.customer?.address && (
+                  <p className="text-sm text-red-500">
+                    {form.formState.errors.customer.address.message}
+                  </p>
+                )}
+              </div>
+
+              <div className="grid gap-2">
+
+                <Label>
+                  Ítems del pedido
+                </Label>
+
+                <ItemsEditTable
+                  items={form.getValues("items")}
+                  onChange={(items) => {
+                    form.setValue("items", items, {
+                      shouldValidate: true,
+                    });
+
+                    // Keep totals in lockstep with items — this was
+                    // the actual bug before: totals stayed frozen at
+                    // whatever form.reset set initially, so editing
+                    // items here never updated the IGV/Total summary
+                    // shown below, nor what got submitted.
+                    form.setValue(
+                      "totals",
+                      {
+                        ...computeInvoiceTotals(items),
+                        currency: form.getValues("totals.currency"),
+                      },
+                      { shouldValidate: true }
+                    );
+                  }}
+                />
+
               </div>
 
               <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Op. gravada</span>
-                  <span>S/ {opGravada.toFixed(2)}</span>
+
+                  <span>
+                    S/{" "}
+                    {(
+                      form.getValues("totals.totalValue") ?? 0
+                    ).toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between text-muted-foreground mt-1">
                   <span>IGV (18%)</span>
-                  <span>S/ {igv.toFixed(2)}</span>
+
+                  <span>
+                    S/{" "}
+                    {(
+                      form.getValues("totals.totalTax") ?? 0
+                    ).toFixed(2)}
+                  </span>
                 </div>
                 <div className="flex justify-between font-bold text-base mt-2 pt-2 border-t">
                   <span>Total</span>
-                  <span className="text-primary">S/ {total.toFixed(2)}</span>
+
+                  <span className="text-primary">
+                    S/{" "}
+                    {(
+                      form.getValues("totals.totalPrice") ?? 0
+                    ).toFixed(2)}
+                  </span>
                 </div>
               </div>
             </div>
 
             <DialogFooter>
-              <Button variant="ghost" onClick={onClose}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onClose}
+              >
                 Cancelar
               </Button>
-              <Button onClick={handleSubmit} className="bg-primary hover:bg-primary/90 text-white">
-                <CheckCircle2 className="mr-2 h-4 w-4" /> Emitir a SUNAT
+              <Button
+                type="submit"
+                className="bg-primary hover:bg-primary/90 text-white"
+                disabled={isPending}
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Emitiendo...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Emitir a SUNAT
+                  </>
+                )}
               </Button>
             </DialogFooter>
-          </>
+          </form>
         )}
 
         {step === "pipeline" && (
@@ -343,55 +478,78 @@ export default function EmitirComprobanteModal({
           </>
         )}
 
-        {step === "ok" && okResult && (
+        {step === "ok" && invoiceResult?.data && (
           <>
             <div className="text-center py-2">
+
               <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-950 dark:text-green-400">
                 <CheckCircle2 className="h-7 w-7" />
               </div>
-              <h3 className="text-lg font-bold">¡Comprobante aceptado por SUNAT!</h3>
+
+              <h3 className="text-lg font-bold">
+                ¡Comprobante aceptado por SUNAT!
+              </h3>
+
               <div className="text-primary font-bold mt-1">
-                {okResult.series}-{String(okResult.correlative).padStart(8, "0")}
+                {invoiceResult.data.series}-
+                {String(invoiceResult.data.correlative).padStart(8, "0")}
               </div>
-              <p className="text-xs text-muted-foreground mt-1">{okResult.message}</p>
+
+              <p className="text-xs text-muted-foreground mt-1">
+                {invoiceResult.message}
+              </p>
+
             </div>
+
             <DialogFooter>
               <Button variant="ghost" onClick={onClose}>
                 Cerrar
               </Button>
-              <Button onClick={onClose} className="bg-primary hover:bg-primary/90 text-white">
+
+              <Button onClick={onClose}>
                 Ver comprobante completo
               </Button>
             </DialogFooter>
           </>
         )}
 
-        {step === "bad" && badResult && (
-          <>
-            <div className="text-center py-2">
-              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400">
-                <AlertCircle className="h-7 w-7" />
-              </div>
-              <h3 className="text-lg font-bold">SUNAT rechazó el comprobante</h3>
-              <div className="mt-3 rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 p-3 text-left text-sm">
-                <div className="font-bold text-red-600 dark:text-red-400">
-                  Código {badResult.code} — {badResult.desc}
-                </div>
-                <div className="mt-1 text-red-800 dark:text-red-300">
-                  <b>Solución:</b> {badResult.sol}
-                </div>
-              </div>
+      {step === "bad" && (
+        <>
+          <div className="text-center py-2">
+
+            <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400">
+              <AlertCircle className="h-7 w-7" />
             </div>
-            <DialogFooter>
-              <Button variant="ghost" onClick={onClose}>
-                Cerrar
-              </Button>
-              <Button onClick={() => setStep("form")} className="bg-primary hover:bg-primary/90 text-white">
-                Corregir datos y reintentar
-              </Button>
-            </DialogFooter>
-          </>
-        )}
+
+            <h3 className="text-lg font-bold">
+              SUNAT rechazó el comprobante
+            </h3>
+
+            <p className="mt-3 text-sm text-red-600">
+              Ocurrió un error al emitir el comprobante.
+            </p>
+
+          </div>
+
+
+          <DialogFooter>
+
+            <Button
+              variant="ghost"
+              onClick={onClose}
+            >
+              Cerrar
+            </Button>
+
+            <Button
+              onClick={() => setStep("form")}
+            >
+              Corregir datos y reintentar
+            </Button>
+
+          </DialogFooter>
+        </>
+      )}
       </DialogContent>
     </Dialog>
   );

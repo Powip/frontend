@@ -22,6 +22,11 @@ export interface IManualInvoicePayload {
   }[];
 }
 
+export const getSalesByStore = async (storeId: string) => {
+  const { data } = await axiosAuth.get(`${GATEWAY.ventas}/order-header/store/${storeId}`);
+  return data;
+};
+
 export const generateManualInvoice = async (payload: IManualInvoicePayload) => {
   const { data } = await axiosAuth.post(`${GATEWAY.integrations}/sunat/generate-manual`, payload);
   return data;

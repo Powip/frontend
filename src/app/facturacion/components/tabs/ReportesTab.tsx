@@ -1,11 +1,20 @@
 "use client";
 
 import * as XLSX from "xlsx";
-import { FileSpreadsheet, FileText, Printer } from "lucide-react";
+import { Download, FileSpreadsheet, FileText, Loader2, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { toast } from "sonner";
 import { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import { useDownloadTaxDocument } from "@/hooks/sunat/sunat-document/use-download-tax-document";
 import { Guia, Nota } from "@/types/facturacion";
 
 interface ReporteData {
@@ -68,6 +77,7 @@ interface ReportesTabProps {
 }
 
 export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps) {
+  const { downloadPdf, downloadXml, isDownloading } = useDownloadTaxDocument();
   const aceptados = comprobanteRows.filter((r) => r.estado === "ACEPTADO" || r.estado === "ACEPTADO_CON_OBS");
 
   const getReporte = (key: "ventas" | "sire" | "notas" | "guias"): ReporteData => {
@@ -79,7 +89,7 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
         rows: aceptados.map((r) => {
           const total = Number(r.sale.grandTotal);
           return [
-            new Date(r.sale.created_at).toLocaleDateString("es-PE"),
+            new Date(r.sale.createdAt).toLocaleDateString("es-PE"),
             r.tipo === "01" ? "Factura" : "Boleta",
             r.fullNumber || "",
             r.sale.customer.fullName,
@@ -112,7 +122,7 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
           const total = Number(r.sale.grandTotal);
           const [serie, numero] = (r.fullNumber || "-").split("-");
           return [
-            new Date(r.sale.created_at).toLocaleDateString("es-PE"),
+            new Date(r.sale.createdAt).toLocaleDateString("es-PE"),
             r.tipo || "03",
             serie || "",
             numero || "",
@@ -195,6 +205,88 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
           </Card>
         ))}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Comprobantes individuales</CardTitle>
+          <CardDescription>
+            Descarga el PDF o el XML firmado tal como fue enviado a SUNAT para cada comprobante aceptado.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fecha</TableHead>
+                  <TableHead>Comprobante</TableHead>
+                  <TableHead>Cliente</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Descargas</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {aceptados.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center h-32 text-muted-foreground">
+                      Aún no hay comprobantes aceptados para descargar
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  aceptados.map((r) => (
+                    <TableRow key={r.sale.id}>
+                      <TableCell className="text-xs whitespace-nowrap">
+                        {new Date(r.sale.createdAt).toLocaleDateString("es-PE")}
+                      </TableCell>
+                      <TableCell className="font-medium">{r.fullNumber || "—"}</TableCell>
+                      <TableCell>{r.sale.customer.fullName}</TableCell>
+                      <TableCell className="text-right font-bold">
+                        S/ {Number(r.sale.grandTotal).toFixed(2)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {r.document ? (
+                          <div className="flex justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5"
+                              disabled={isDownloading(r.sale.id, "pdf")}
+                              onClick={() => downloadPdf(r.document!)}
+                            >
+                              {isDownloading(r.sale.id, "pdf") ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Download className="h-3.5 w-3.5 text-red-600" />
+                              )}
+                              PDF
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="gap-1.5"
+                              disabled={isDownloading(r.sale.id, "xml")}
+                              onClick={() => downloadXml(r.document!)}
+                            >
+                              {isDownloading(r.sale.id, "xml") ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Download className="h-3.5 w-3.5 text-blue-600" />
+                              )}
+                              XML
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
