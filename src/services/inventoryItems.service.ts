@@ -1,5 +1,6 @@
 import { InventoryItemForSale } from "@/interfaces/IProduct";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 interface SearchInventoryItemsResponse {
   data: InventoryItemForSale[];
@@ -17,11 +18,16 @@ export async function searchInventoryItems(params: {
   q?: string;
   page?: number;
   limit?: number;
+  // Pendientes de soporte en el backend (ms-logistics /inventory-item/search
+  // hoy no los filtra) — se mandan igual porque en un GET un query param
+  // desconocido no rompe nada; quedan listos para cuando el backend los sume.
+  brandId?: string;
+  categoryId?: string;
+  subcategoryId?: string;
 }): Promise<SearchInventoryItemsResponse> {
-  const res = await axios.get<SearchInventoryItemsResponse>(
-    `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
-
-    { params }
+  const res = await axiosAuth.get<SearchInventoryItemsResponse>(
+    `${GATEWAY.logistics}/inventory-item/search`,
+    { params },
   );
 
   return res.data;

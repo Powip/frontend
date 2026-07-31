@@ -1,5 +1,5 @@
-import axios from "axios";
-import { API } from "@/lib/api";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import {
   IGetBrand,
   IGetCategory,
@@ -8,108 +8,55 @@ import {
   IProductFilters,
 } from "./Interfaces";
 
-// Categorías
+const BASE = GATEWAY.products;
+
 export const getCategories = async (): Promise<IGetCategory[]> => {
-  try {
-    const { data } = await axios.get(`${API.productos}/categories`);
-    return data;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      throw new Error(
-        error.response?.data?.message || "Error al obtener categorías"
-      );
-    }
-    throw new Error("Error inesperado al obtener categorías");
-  }
+  const { data } = await axiosAuth.get(`${BASE}/categories`);
+  return data;
 };
 
-// Subcategorías
 export const getSubCategories = async (): Promise<IGetSubCategory[]> => {
-  try {
-    const { data } = await axios.get(`${API.productos}/subcategories`);
-    return data;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      throw new Error(
-        error.response?.data?.message || "Error al obtener subcategorías"
-      );
-    }
-    throw new Error("Error inesperado al obtener subcategorías");
-  }
+  const { data } = await axiosAuth.get(`${BASE}/subcategories`);
+  return data;
 };
 
-// Marcas
 export const getBrands = async (): Promise<IGetBrand[]> => {
-  try {
-    const { data } = await axios.get(`${API.productos}/brand`);
-    return data;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      throw new Error(
-        error.response?.data?.message || "Error al obtener marcas"
-      );
-    }
-    throw new Error("Error inesperado al obtener marcas");
-  }
+  const { data } = await axiosAuth.get(`${BASE}/brands`);
+  return data;
 };
 
-// Proveedores
 export const getProviders = async () => {
-  try {
-    const { data } = await axios.get(`${API.productos}/providers`);
-    return data;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      throw new Error(
-        error.response?.data?.message || "Error al obtener Proveedores"
-      );
-    }
-    throw new Error("Error inesperado al obtener Proveedores");
-  }
+  const { data } = await axiosAuth.get(`${BASE}/providers`);
+  return data;
 };
 
-// Atributos por subcategoría
 export const getAttributesBySubcategory = async (subcategoryId: string) => {
   if (!subcategoryId) return [];
-  const { data } = await axios.get(
-    `${API.productos}/products/attributes-by-subcategory/${subcategoryId}`
+  const { data } = await axiosAuth.get(
+    `${BASE}/products/attributes-by-subcategory/${subcategoryId}`,
   );
-  return data.attributes; // array de atributos
+  return data.attributes;
 };
 
-// Productos con filtros
 export const getProducts = async (
-  filters: IProductFilters = {}
+  filters: IProductFilters = {},
 ): Promise<IGetProducts[]> => {
-  try {
-    const params = new URLSearchParams();
+  const params = new URLSearchParams();
+  if (filters.companyId) params.append("companyId", filters.companyId);
+  if (filters.status !== undefined)
+    params.append("status", String(filters.status));
+  if (filters.brandId) params.append("brandId", filters.brandId);
+  if (filters.categoryId) params.append("categoryId", filters.categoryId);
+  if (filters.subcategoryId)
+    params.append("subcategoryId", filters.subcategoryId);
+  if (filters.name) params.append("name", filters.name);
+  if (filters.description) params.append("description", filters.description);
 
-    if (filters.companyId) params.append("companyId", filters.companyId);
-    if (filters.status !== undefined)
-      params.append("status", String(filters.status));
-    if (filters.brandId) params.append("brandId", filters.brandId);
-    if (filters.categoryId) params.append("categoryId", filters.categoryId);
-    if (filters.subcategoryId)
-      params.append("subcategoryId", filters.subcategoryId);
-    if (filters.name) params.append("name", filters.name);
-    if (filters.description) params.append("description", filters.description);
-
-    const { data } = await axios.get(
-      `${API.productos}/products/report?${params}`
-    );
-    return data.data || [];
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      throw new Error(
-        error.response?.data?.message || "Error al obtener productos"
-      );
-    }
-    throw new Error("Error inesperado al obtener productos");
-  }
+  const { data } = await axiosAuth.get(`${BASE}/products/report?${params}`);
+  return data.data || [];
 };
 
-// Eliminar productos
 export const deleteProduct = async (id: string) => {
-  const { data } = await axios.delete(`${API.productos}/product/${id}`);
+  const { data } = await axiosAuth.delete(`${BASE}/product/${id}`);
   return data;
 };

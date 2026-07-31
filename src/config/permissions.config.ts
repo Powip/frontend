@@ -4,6 +4,8 @@ export const SUPERADMIN_EMAILS: string[] = [
   "octatoledo7@gmail.com",
   "joel@aranni.com.pe",
   "maurimartine01@gmail.com",
+  "tognolimauricio@gmail.com",
+  "cuentaprueba@gmail.com"
 ];
 
 export const isSuperadmin = (email?: string): boolean => {
@@ -53,7 +55,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/metricas/call-center": [],
   "/metricas/couriers": [],
   "/metricas/clientes": [],
-  "/metricas/superadmin": [],
+  "/metricas/superadmin": ["__SUPERADMIN__"],
   // Configuración: accesible para todos los autenticados.
   // Las sub-páginas (tiendas, etc.) manejan su propio guard por rol.
   "/configuracion": [],
@@ -64,7 +66,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/administracion/canales": [],
   "/administracion/equilibrio": [],
   "/administracion/margen-producto": [],
-  "/superadmin": [],
+  "/superadmin": ["__SUPERADMIN__"],
 };
 
 // Map sidebar items to required permissions

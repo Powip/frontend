@@ -149,6 +149,7 @@ export function Sidebar({ className }: SidebarProps) {
             badgeUntil: "2026-07-24",
           },
           { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
+          { name: "Packs & Promos", href: "/packs-promos", icon: PackagePlus },
           { name: "Clientes", href: "/clientes", icon: Users },
           // 🔴 KILL SWITCH (hotfix checkouts abandonados) — revertir: descomentar
           // {

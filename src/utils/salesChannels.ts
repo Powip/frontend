@@ -1,0 +1,10 @@
+export const DEFAULT_SALES_CHANNELS = [
+  "TIENDA_FISICA",
+  "WHATSAPP",
+  "INSTAGRAM",
+  "FACEBOOK",
+  "MARKETPLACE",
+  "MERCADOLIBRE",
+  "WEB",
+  "OTRO",
+];
