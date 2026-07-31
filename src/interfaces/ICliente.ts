@@ -26,6 +26,7 @@ export interface Client {
   zone?: DeliveryZone;
   latitude?: number;
   longitude?: number;
+  googleMapsUrl?: string;
   isActive: boolean;
   // Estadísticas de compras (opcionales, vienen del backend si disponibles)
   totalPurchases?: number; // Número total de compras
