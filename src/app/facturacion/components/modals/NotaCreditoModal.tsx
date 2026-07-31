@@ -88,7 +88,7 @@ export default function NotaCreditoModal({ isOpen, onClose, aceptados, preselect
 
   const total = useMemo(() => {
     if (!original) return 0;
-    return (original.sale.items || []).reduce((s, it, i) => (checked[i] ? s + (qty[i] ?? it.quantity) * Number(it.price) : s), 0);
+    return (original.sale.items || []).reduce((s, it, i) => (checked[i] ? s + (qty[i] ?? it.quantity) * Number(it.unitPrice) : s), 0);
   }, [original, checked, qty]);
 
   const handleCrear = () => {
@@ -212,7 +212,7 @@ export default function NotaCreditoModal({ isOpen, onClose, aceptados, preselect
                           />
                         </TableCell>
                         <TableCell className="text-right text-xs font-medium">
-                          S/ {((checked[i] ? qty[i] ?? it.quantity : 0) * Number(it.price)).toFixed(2)}
+                          S/ {((checked[i] ? qty[i] ?? it.quantity : 0) * Number(it.unitPrice)).toFixed(2)}
                         </TableCell>
                       </TableRow>
                     ))}
