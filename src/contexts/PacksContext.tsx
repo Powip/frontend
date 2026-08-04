@@ -9,7 +9,14 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { BundlePack, GiftPack, Pack, VolumePack } from "@/interfaces/IPack";
+import {
+  BundlePack,
+  GiftOption,
+  GiftPack,
+  Pack,
+  PackProductRef,
+  VolumePack,
+} from "@/interfaces/IPack";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   createVolumePromo,
@@ -40,6 +47,63 @@ const PacksContext = createContext<PacksContextValue | undefined>(undefined);
 
 function localStorageKey(companyId?: string) {
   return `powip.packs.local.${companyId ?? "default"}`;
+}
+
+function isPackProductRef(value: unknown): value is PackProductRef {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { productKey?: unknown }).productKey === "string"
+  );
+}
+
+function isGiftOption(value: unknown): value is GiftOption {
+  if (typeof value !== "object" || value === null) return false;
+  const g = value as Record<string, unknown>;
+  return (
+    typeof g.variantId === "string" &&
+    typeof g.productName === "string" &&
+    typeof g.value === "number"
+  );
+}
+
+/** Valida el shape mínimo de un pack BUNDLE/GIFT leído de localStorage.
+ *  Datos corruptos (ej. de una versión previa de esta feature con otro shape)
+ *  no deben propagarse al resto del árbol que consume usePacks() — ver
+ *  incidente de producción: TypeError en render sin Error Boundary. */
+function isValidLocalPack(value: unknown): value is LocalPack {
+  if (typeof value !== "object" || value === null) return false;
+  const p = value as Record<string, unknown>;
+  if (typeof p.id !== "string") return false;
+  if (p.type !== "BUNDLE" && p.type !== "GIFT") return false;
+  if (typeof p.active !== "boolean") return false;
+  if (!Array.isArray(p.channels)) return false;
+  if (p.type === "BUNDLE") {
+    return (
+      typeof p.packPrice === "number" &&
+      Array.isArray(p.items) &&
+      p.items.length >= 1 &&
+      p.items.every(isPackProductRef)
+    );
+  }
+  if (p.triggerBy !== "amount" && p.triggerBy !== "qty") return false;
+  if (
+    p.minAmount !== undefined &&
+    p.minAmount !== null &&
+    typeof p.minAmount !== "number"
+  )
+    return false;
+  if (
+    p.minQty !== undefined &&
+    p.minQty !== null &&
+    typeof p.minQty !== "number"
+  )
+    return false;
+  return (
+    Array.isArray(p.gifts) &&
+    p.gifts.length >= 1 &&
+    p.gifts.every(isGiftOption)
+  );
 }
 
 export function PacksProvider({ children }: { children: React.ReactNode }) {
@@ -78,7 +142,15 @@ export function PacksProvider({ children }: { children: React.ReactNode }) {
     if (!companyId || typeof window === "undefined") return;
     try {
       const raw = window.localStorage.getItem(localStorageKey(companyId));
-      setLocalPacks(raw ? JSON.parse(raw) : []);
+      const parsed: unknown = raw ? JSON.parse(raw) : [];
+      const parsedArray: unknown[] = Array.isArray(parsed) ? parsed : [];
+      const validPacks = parsedArray.filter(isValidLocalPack);
+      if (validPacks.length !== parsedArray.length) {
+        toast.error(
+          "Se encontró un pack dañado y fue eliminado automáticamente. Si era necesario, volvé a crearlo.",
+        );
+      }
+      setLocalPacks(validPacks);
     } catch {
       setLocalPacks([]);
     }
