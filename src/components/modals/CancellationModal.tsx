@@ -28,6 +28,12 @@ const CANCELLATION_REASONS: { value: CancellationReason; label: string }[] = [
   { value: "OTHER", label: "Otro motivo" },
 ];
 
+/** Etiqueta legible de un motivo de anulación — para tablas de solo lectura (p.ej. AnuladosTab). */
+export function getCancellationReasonLabel(reason?: string | null): string {
+  if (!reason) return "Sin motivo";
+  return CANCELLATION_REASONS.find((r) => r.value === reason)?.label ?? reason;
+}
+
 interface CancellationModalProps {
   open: boolean;
   onClose: () => void;

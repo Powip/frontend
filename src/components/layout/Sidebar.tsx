@@ -148,8 +148,20 @@ export function Sidebar({ className }: SidebarProps) {
             badge: "Actualizado",
             badgeUntil: "2026-07-24",
           },
-          { name: "Registrar venta", href: "/registrar-venta", icon: FileText },
-          { name: "Packs & Promos", href: "/packs-promos", icon: PackagePlus },
+          {
+            name: "Registrar venta",
+            href: "/registrar-venta",
+            icon: FileText,
+            badge: "Nuevo",
+            badgeUntil: "2026-08-25",
+          },
+          {
+            name: "Packs & Promos",
+            href: "/packs-promos",
+            icon: PackagePlus,
+            badge: "Nuevo",
+            badgeUntil: "2026-08-25",
+          },
           { name: "Clientes", href: "/clientes", icon: Users },
           // 🔴 KILL SWITCH (hotfix checkouts abandonados) — revertir: descomentar
           // {
@@ -221,7 +233,13 @@ export function Sidebar({ className }: SidebarProps) {
         icon: DollarSign,
         children: [
           { name: "Resumen", href: "/finanzas", icon: BarChart },
-          { name: "Facturación", href: "/facturacion", icon: FileText },
+          {
+            name: "Facturación",
+            href: "/facturacion",
+            icon: FileText,
+            badge: "Nuevo",
+            badgeUntil: "2026-08-25",
+          },
         ],
       },
       {

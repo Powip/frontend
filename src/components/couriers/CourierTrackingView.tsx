@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 import {
   Truck,
   Search,
@@ -17,6 +19,7 @@ import {
   CheckCircle2,
   X,
   Eye,
+  FileSpreadsheet,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -38,6 +41,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
@@ -48,10 +58,27 @@ import {
   trackShalomGuide,
   updateGuideQuote
 } from "@/services/shalomService";
-import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
 import EvaOrderTrackingView from "@/components/tracking/EvaOrderTrackingView";
+import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
+import { fetchCouriers } from "@/services/courierService";
+import { getEvaCredentials } from "@/services/evaService";
+import { getAliclikCredentials } from "@/services/aliclikService";
+import { OrderHeader } from "@/interfaces/IOrder";
+
+function money(n: number): string {
+  return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Tailwind necesita las clases literales (no `grid-cols-${n}`) para no purgarlas.
+const GRID_COLS_CLASS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+};
 
 interface TrackingGuide {
   id: string;
@@ -82,17 +109,30 @@ export default function CourierTrackingView() {
   const [guides, setGuides] = useState<TrackingGuide[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [activeCarrierTab, setActiveCarrierTab] = useState("shalom");
+  const [activeCarrierTab, setActiveCarrierTab] = useState("todos");
+
+  // Qué couriers/integraciones tiene realmente la empresa — las pestañas de
+  // arriba solo deben mostrar los que están configurados, no una lista fija.
+  const [hasShalom, setHasShalom] = useState(false);
+  const [hasAliclik, setHasAliclik] = useState(false);
+  const [hasEva, setHasEva] = useState(false);
+
+  // Pedidos (ms-ventas) para la pestaña "Todos" — trae los datos de cliente,
+  // saldo y costo de envío que la guía de ms-courier no tiene.
+  const [orders, setOrders] = useState<OrderHeader[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+
+  // Couriers reales de la empresa (no los que aparecen sueltos en pedidos
+  // viejos/importados) — mismo servicio que usa el resto de Operaciones.
+  const [companyCouriers, setCompanyCouriers] = useState<string[]>([]);
+  const [courierFilter, setCourierFilter] = useState("ALL");
 
   // Track State
   const [trackingModalOpen, setTrackingModalOpen] = useState(false);
   const [trackResult, setTrackResult] = useState<any>(null);
   const [trackLoading, setTrackLoading] = useState(false);
   const [selectedGuide, setSelectedGuide] = useState<TrackingGuide | null>(null);
-
-  // Details State
-  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
-  const [guideForDetails, setGuideForDetails] = useState<string | null>(null);
 
   const fetchGuides = useCallback(async () => {
     if (!selectedStoreId || !auth?.accessToken) return;
@@ -112,9 +152,84 @@ export default function CourierTrackingView() {
     }
   }, [selectedStoreId, auth]);
 
+  const fetchOrders = useCallback(async () => {
+    if (!selectedStoreId) return;
+    setOrdersLoading(true);
+    try {
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+      );
+      setOrders(res.data ?? []);
+    } catch {
+      setOrders([]);
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, [selectedStoreId]);
+
   useEffect(() => {
     fetchGuides();
-  }, [fetchGuides]);
+    fetchOrders();
+  }, [fetchGuides, fetchOrders]);
+
+  useEffect(() => {
+    if (!auth?.company?.id) return;
+    fetchCouriers(auth.company.id)
+      .then((data) => {
+        const names = data.map((c) => c.name);
+        setCompanyCouriers(names);
+        setHasShalom(names.some((n) => n.toLowerCase().includes("shalom")));
+      })
+      .catch(() => setCompanyCouriers([]));
+  }, [auth?.company?.id]);
+
+  useEffect(() => {
+    if (!auth?.company?.id || !auth?.accessToken) return;
+    const companyId = auth.company.id;
+    const token = auth.accessToken;
+    getEvaCredentials(token, companyId)
+      .then((cred) => setHasEva(!!cred?.isActive))
+      .catch(() => setHasEva(false));
+    getAliclikCredentials(token, companyId)
+      .then((cred) => setHasAliclik(!!cred?.isActive))
+      .catch(() => setHasAliclik(false));
+  }, [auth?.company?.id, auth?.accessToken]);
+
+  // Si la pestaña activa deja de estar disponible (el courier/integración no
+  // está configurado), volver a "Todos" en vez de mostrar contenido vacío.
+  useEffect(() => {
+    if (activeCarrierTab === "shalom" && !hasShalom) setActiveCarrierTab("todos");
+    if (activeCarrierTab === "aliclik" && !hasAliclik) setActiveCarrierTab("todos");
+    if (activeCarrierTab === "eva" && !hasEva) setActiveCarrierTab("todos");
+  }, [activeCarrierTab, hasShalom, hasAliclik, hasEva]);
+
+  // Fecha de despacho = cuándo se creó la guía en ms-courier (no existe un
+  // campo propio en la orden) — se mapea por orderId a partir de `guides`.
+  const dispatchDateByOrderId = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const g of guides) {
+      for (const o of g.orders ?? []) map.set(o.id, g.created_at);
+    }
+    return map;
+  }, [guides]);
+
+  const allOrderRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return orders
+      .filter((o) => !!o.guideNumber)
+      .filter((o) => courierFilter === "ALL" || o.courier === courierFilter)
+      .filter(
+        (o) =>
+          !q ||
+          o.orderNumber?.toLowerCase().includes(q) ||
+          o.courier?.toLowerCase().includes(q) ||
+          o.customer?.fullName?.toLowerCase().includes(q),
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+  }, [orders, search, courierFilter]);
 
   const handleTrackShalom = async (guide: TrackingGuide) => {
     if (!auth?.accessToken || !auth?.company?.id) return;
@@ -201,146 +316,252 @@ export default function CourierTrackingView() {
     }
   };
 
-  const handleRowClick = (guideId: string) => {
-    setGuideForDetails(guideId);
-    setDetailsModalOpen(true);
-  };
-
   const openDocument = (url: string) => {
     window.open(url, "_blank");
   };
 
-  // Usado por la pestaña "Todos": todas las guías reales de la tienda que
-  // matchean la búsqueda, sin filtrar por courier (Shalom y Aliclik tienen
-  // su propia vista dedicada con datos en vivo de su respectiva API).
-  const filteredGuides = guides.filter(
-    (g) =>
-      (g.guideNumber?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-      (g.courierName?.toLowerCase().includes(search.toLowerCase()) ?? false) ||
-      (g.orders?.some((o) =>
-        o.orderNumber?.toLowerCase().includes(search.toLowerCase()),
-      ) ?? false),
-  );
+  const handleExportExcel = () => {
+    if (allOrderRows.length === 0) {
+      toast.warning("No hay pedidos para exportar con los filtros aplicados");
+      return;
+    }
+    const rows = allOrderRows.map((o) => {
+      const despachoAt = dispatchDateByOrderId.get(o.id);
+      return {
+        "N° Pedido": o.orderNumber,
+        "Fecha de venta": new Date(o.created_at).toLocaleDateString("es-PE"),
+        Despacho: despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-",
+        Cliente: o.customer?.fullName || "-",
+        Teléfono: o.customer?.phoneNumber || "-",
+        Ciudad: o.customer?.city || "-",
+        Distrito: o.customer?.district || "-",
+        "Saldo de deuda": getPendingPayment(o),
+        Courier: o.courier || "-",
+        "Costo de envío": o.carrierShippingCost ? Number(o.carrierShippingCost) : 0,
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Rastreo Courier");
+    const buffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    saveAs(
+      new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+      `rastreo_courier_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+  };
 
   return (
     <div className="space-y-6">
       <Tabs value={activeCarrierTab} onValueChange={setActiveCarrierTab} className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-4 mb-6">
-          <TabsTrigger value="shalom">Shalom</TabsTrigger>
+        <TabsList
+          className={`grid w-full max-w-md mb-6 ${
+            GRID_COLS_CLASS[1 + Number(hasShalom) + Number(hasAliclik) + Number(hasEva)]
+          }`}
+        >
+          {hasShalom && <TabsTrigger value="shalom">Shalom</TabsTrigger>}
           <TabsTrigger value="todos">Todos</TabsTrigger>
-          <TabsTrigger value="aliclik">Aliclik</TabsTrigger>
-          <TabsTrigger value="eva">EVA Courier</TabsTrigger>
+          {hasAliclik && <TabsTrigger value="aliclik">Aliclik</TabsTrigger>}
+          {hasEva && <TabsTrigger value="eva">EVA Courier</TabsTrigger>}
         </TabsList>
 
-        <TabsContent value="shalom">
-          <Card className="border-border shadow-sm">
-            <CardHeader className="pb-3 px-4">
-              <CardTitle className="text-lg">Seguimiento Detallado Shalom</CardTitle>
-              <CardDescription>Gestiona las órdenes de Shalom con información de rastreo granular.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ShalomOrderTrackingView />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {hasShalom && (
+          <TabsContent value="shalom">
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-3 px-4">
+                <CardTitle className="text-lg">Seguimiento Detallado Shalom</CardTitle>
+                <CardDescription>Gestiona las órdenes de Shalom con información de rastreo granular.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ShalomOrderTrackingView />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
-        <TabsContent value="aliclik">
-          <Card className="border-border shadow-sm">
-            <CardHeader className="pb-3 px-4">
-              <CardTitle className="text-lg">Seguimiento Aliclik</CardTitle>
-              <CardDescription>Gestiona los pedidos enviados a Aliclik con información de estado y cancelación.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <AliclikOrderTrackingView />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {hasAliclik && (
+          <TabsContent value="aliclik">
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-3 px-4">
+                <CardTitle className="text-lg">Seguimiento Aliclik</CardTitle>
+                <CardDescription>Gestiona los pedidos enviados a Aliclik con información de estado y cancelación.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <AliclikOrderTrackingView />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
-        <TabsContent value="eva">
-          <Card className="border-border shadow-sm">
-            <CardHeader className="pb-3 px-4">
-              <CardTitle className="text-lg">Seguimiento EVA Courier</CardTitle>
-              <CardDescription>Gestiona los pedidos enviados a EVA Courier con información de estado en tiempo real.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <EvaOrderTrackingView />
-            </CardContent>
-          </Card>
-        </TabsContent>
+        {hasEva && (
+          <TabsContent value="eva">
+            <Card className="border-border shadow-sm">
+              <CardHeader className="pb-3 px-4">
+                <CardTitle className="text-lg">Seguimiento EVA Courier</CardTitle>
+                <CardDescription>Gestiona los pedidos enviados a EVA Courier con información de estado en tiempo real.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EvaOrderTrackingView />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
 
         <TabsContent value="todos">
           <Card className="border-border shadow-sm">
             <CardHeader className="pb-3 px-4">
               <div className="flex flex-wrap justify-between items-center gap-2">
                 <div>
-                  <CardTitle className="text-lg">Todas las Guías</CardTitle>
-                  <CardDescription>Resumen general de guías de todos los couriers.</CardDescription>
+                  <CardTitle className="text-lg">Todos los pedidos despachados</CardTitle>
+                  <CardDescription>Un pedido por fila, de cualquier courier.</CardDescription>
                 </div>
                 <div className="text-muted-foreground text-xs font-medium bg-muted/50 px-2 py-1 rounded">
-                  {filteredGuides.length} guías
+                  {allOrderRows.length} pedidos
                 </div>
               </div>
               <div className="flex items-center gap-3 pt-3">
                 <div className="relative flex-1">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    placeholder="Buscar por guía, orden o courier..."
+                    placeholder="Buscar por pedido, cliente o courier..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
                     className="pl-9 bg-background"
                   />
                 </div>
-                <Button onClick={fetchGuides} variant="outline" size="sm" className="gap-2 shrink-0">
-                  <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                <Select value={courierFilter} onValueChange={setCourierFilter}>
+                  <SelectTrigger className="w-[190px] shrink-0 bg-background">
+                    <SelectValue placeholder="Courier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Todos los couriers</SelectItem>
+                    {companyCouriers.map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={() => {
+                    fetchGuides();
+                    fetchOrders();
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 shrink-0"
+                >
+                  <RefreshCw className={ordersLoading || loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
                   Actualizar
+                </Button>
+                <Button
+                  onClick={handleExportExcel}
+                  variant="outline"
+                  size="sm"
+                  className="gap-2 shrink-0"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Exportar Excel
                 </Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">
-               <div className="border-t border-border overflow-hidden">
+               <div className="border-t border-border overflow-x-auto">
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
-                      <TableHead className="font-semibold px-4 h-10 text-xs">N° Guía</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Fecha</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Courier</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-center">Costo</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-right text-xs">Acciones</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">N° Pedido</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Fecha de venta</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Despacho</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Cliente</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Teléfono</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Ciudad</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Distrito</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Saldo de deuda</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Courier</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Costo de envío</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-right text-xs whitespace-nowrap">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {loading ? (
+                    {ordersLoading ? (
                       Array.from({ length: 3 }).map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell colSpan={5} className="h-16 animate-pulse bg-muted/10 px-4" />
+                          <TableCell colSpan={11} className="h-16 animate-pulse bg-muted/10 px-4" />
                         </TableRow>
                       ))
-                    ) : filteredGuides.length === 0 ? (
+                    ) : allOrderRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-32 text-center text-muted-foreground text-sm">
-                          No hay guías para mostrar.
+                        <TableCell colSpan={11} className="h-32 text-center text-muted-foreground text-sm">
+                          No hay pedidos despachados para mostrar.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredGuides.map((guide) => (
-                        <TableRow 
-                          key={guide.id} 
-                          className="hover:bg-muted/40 transition-colors cursor-pointer"
-                          onClick={() => handleRowClick(guide.id)}
-                        >
-                          <TableCell className="font-medium px-4 py-3 text-xs">{guide.guideNumber}</TableCell>
-                          <TableCell className="px-4 py-3 text-[10px] text-center whitespace-nowrap">{new Date(guide.created_at).toLocaleDateString()}</TableCell>
-                          <TableCell className="px-4 py-3 text-center">
-                            <Badge variant="outline" className="text-[10px]">{guide.courierName}</Badge>
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-center text-[10px]">
-                            {guide.quotedAmount ? `${guide.quotedCurrency || "S/"} ${guide.quotedAmount}` : "-"}
-                          </TableCell>
-                          <TableCell className="px-4 py-3 text-right">
-                             <Button size="sm" variant="ghost" className="h-7 w-7 p-0" onClick={() => handleRowClick(guide.id)}><Eye className="h-3.5 w-3.5" /></Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
+                      allOrderRows.map((order) => {
+                        const despachoAt = dispatchDateByOrderId.get(order.id);
+                        return (
+                          <TableRow key={order.id} className="hover:bg-muted/40 transition-colors">
+                            <TableCell className="font-medium px-4 py-3 text-xs whitespace-nowrap">
+                              {order.orderNumber}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-[10px] text-center whitespace-nowrap">
+                              {new Date(order.created_at).toLocaleDateString("es-PE")}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-[10px] text-center whitespace-nowrap">
+                              {despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-"}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-xs">
+                              {order.customer?.fullName || "-"}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
+                              {order.customer?.phoneNumber || "-"}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
+                              {order.customer?.city || "-"}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
+                              {order.customer?.district || "-"}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
+                              {money(getPendingPayment(order))}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-center">
+                              <Badge variant="outline" className="text-[10px]">
+                                {order.courier || "-"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
+                              {order.carrierShippingCost
+                                ? money(Number(order.carrierShippingCost))
+                                : "-"}
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 w-7 p-0"
+                                  title="Ver comprobante de entrega"
+                                  disabled={!order.shippingProofUrl}
+                                  onClick={() => openDocument(order.shippingProofUrl!)}
+                                >
+                                  <FileText className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 w-7 p-0"
+                                  title="Ver pedido"
+                                  onClick={() => setViewOrderId(order.id)}
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
@@ -502,13 +723,14 @@ export default function CourierTrackingView() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE DETALLES DE GUIA */}
-      <GuideDetailsModal 
-        open={detailsModalOpen}
-        onClose={() => setDetailsModalOpen(false)}
-        guideId={guideForDetails || undefined}
-        onGuideUpdated={fetchGuides}
-        isCourierView={true}
+      {/* MODAL DE VER PEDIDO (pestaña "Todos") */}
+      <CustomerServiceModal
+        open={!!viewOrderId}
+        orderId={viewOrderId || ""}
+        onClose={() => setViewOrderId(null)}
+        onOrderUpdated={fetchOrders}
+        isOperaciones
+        showTracking
       />
     </div>
   );

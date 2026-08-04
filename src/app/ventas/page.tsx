@@ -52,13 +52,11 @@ import { OrderHeader, OrderStatus, OrderItem } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import ImportSalesModal from "@/components/modals/ImportSalesModal";
-import ShipmentDetailModal from "@/app/centro-envios/components/ShipmentDetailModal";
-import ReassignDeliveryModal from "@/app/centro-envios/components/ReassignDeliveryModal";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import CreateGuideModal, {
   CreateGuideData,
 } from "@/components/modals/CreateGuideModal";
-import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -249,13 +247,6 @@ export default function VentasPage() {
     null,
   );
   const [isCreatingGuide, setIsCreatingGuide] = useState(false);
-  const [guideDetailsOrderId, setGuideDetailsOrderId] = useState<
-    string | null
-  >(null);
-  const [reassignOrder, setReassignOrder] = useState<OrderHeader | null>(
-    null,
-  );
-  const [isReassignLoading, setIsReassignLoading] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
 
   // Filtros avanzados
@@ -363,6 +354,7 @@ export default function VentasPage() {
   const [rescheduleDialogSaleId, setRescheduleDialogSaleId] = useState<
     string | null
   >(null);
+  const [bulkRescheduleOpen, setBulkRescheduleOpen] = useState(false);
 
   const [reassignSellerModalOpen, setReassignSellerModalOpen] = useState(false);
   const [saleToReassign, setSaleToReassign] = useState<Sale | null>(null);
@@ -455,28 +447,6 @@ export default function VentasPage() {
     );
   };
 
-  // Pedido completo (OrderHeader) para el modal de detalle, igual al de Centro de Envíos
-  const viewOrder = useMemo(
-    () => (ordersData ?? []).find((o) => o.id === viewOrderId) ?? null,
-    [ordersData, viewOrderId],
-  );
-
-  const reassignCandidates = useMemo(() => {
-    if (!reassignOrder || !ordersData) return [];
-    return ordersData.filter(
-      (o) =>
-        o.id !== reassignOrder.id &&
-        o.status === "PREPARADO" &&
-        !o.guideNumber &&
-        o.customer.district === reassignOrder.customer.district &&
-        o.items.some((i) =>
-          reassignOrder.items.some(
-            (oi) => oi.productVariantId === i.productVariantId,
-          ),
-        ),
-    );
-  }, [ordersData, reassignOrder]);
-
   const handleCreateGuide = async (guidesData: CreateGuideData[]) => {
     setIsCreatingGuide(true);
     try {
@@ -502,77 +472,6 @@ export default function VentasPage() {
       toast.error(error?.response?.data?.message || "Error creando guía");
     } finally {
       setIsCreatingGuide(false);
-    }
-  };
-
-  const handleCancelOrderFromModal = async (
-    orderId: string,
-    reason: CancellationReason,
-    notes?: string,
-  ) => {
-    try {
-      await patchOrder(orderId, {
-        status: "ANULADO",
-        cancellationReason: reason,
-        ...(notes ? { notes } : {}),
-      });
-      toast.success("Pedido anulado");
-      refetchOrders();
-    } catch (error: any) {
-      toast.error(
-        error?.response?.data?.message || "No se pudo anular el pedido",
-      );
-    }
-  };
-
-  const handleReassignDelivery = async (
-    failedOrder: OrderHeader,
-    candidate: OrderHeader,
-  ) => {
-    setIsReassignLoading(true);
-    try {
-      await patchOrder(failedOrder.id, {
-        status: "ANULADO",
-        cancellationReason: "DELIVERY_ISSUE",
-        notes: `[REASIGNADO] Entrega reasignada a ${candidate.orderNumber}`,
-      });
-      await patchOrder(candidate.id, {
-        guideNumber: failedOrder.guideNumber,
-        courier: failedOrder.courier,
-        courierId: failedOrder.courierId,
-        status: "EN_ENVIO",
-        notes: `[REASIGNADO] Recibe entrega de ${failedOrder.orderNumber}`,
-      });
-      const logPayload = (orderId: string, comentarios: string) =>
-        axios.post(`${process.env.NEXT_PUBLIC_API_VENTAS}/log-ventas`, {
-          orderId,
-          comentarios,
-          operacion: "COMMENT",
-          userId: auth?.user?.id ?? null,
-          userName: auth?.user?.email ?? null,
-          data: {},
-          isSystemGenerated: true,
-        });
-      await Promise.all([
-        logPayload(
-          failedOrder.id,
-          `Reasignado a ${candidate.orderNumber} (${candidate.customer.fullName})`,
-        ),
-        logPayload(
-          candidate.id,
-          `Recibe entrega reasignada de ${failedOrder.orderNumber} (${failedOrder.customer.fullName}) · misma guía ${failedOrder.guideNumber ?? "—"}`,
-        ),
-      ]);
-      toast.success(
-        `Reasignado · ${candidate.orderNumber} continúa la entrega`,
-      );
-      refetchOrders();
-    } catch (error: any) {
-      toast.error(
-        error?.response?.data?.message || "No se pudo reasignar el pedido",
-      );
-    } finally {
-      setIsReassignLoading(false);
     }
   };
 
@@ -911,11 +810,11 @@ Estado: ${sale.status}
     }
   };
 
-  const handleBulkReprogramar = async () => {
+  const handleBulkReprogramar = async (callbackAtDate: Date) => {
     const selectedIds = Array.from(selectedSaleIds);
     if (selectedIds.length === 0) return;
 
-    const callbackAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const callbackAt = callbackAtDate.toISOString();
     setIsBulkLoading(true);
     const apiBaseUrl = process.env.NEXT_PUBLIC_API_VENTAS || "";
     try {
@@ -976,7 +875,7 @@ Estado: ${sale.status}
   ];
 
   const handleBulkExtraAction = (actionValue: string) => {
-    if (actionValue === BULK_ACTION_REPROGRAMAR) handleBulkReprogramar();
+    if (actionValue === BULK_ACTION_REPROGRAMAR) setBulkRescheduleOpen(true);
   };
 
   const handleBulkWhatsApp = (salesList: Sale[]) => {
@@ -2142,20 +2041,12 @@ Estado: ${sale.status}
         </Tabs>
       </main>
 
-      <ShipmentDetailModal
+      <CustomerServiceModal
         open={!!viewOrderId}
-        order={viewOrder}
+        orderId={viewOrderId || ""}
         onClose={() => setViewOrderId(null)}
         onOrderUpdated={refetchOrders}
-        onOpenGuideDetails={(orderId) => setGuideDetailsOrderId(orderId)}
-        onOpenReassign={(order) => setReassignOrder(order)}
-        onOpenPayment={(id) => {
-          const sale = sales.find((s) => s.id === id);
-          if (sale) {
-            setSelectedSaleForPayment(sale);
-            setPaymentModalOpen(true);
-          }
-        }}
+        showTracking
         onOpenCreateGuide={(order) => setCreateGuideOrder(order)}
       />
 
@@ -2180,27 +2071,6 @@ Estado: ${sale.status}
           onConfirm={handleCreateGuide}
         />
       )}
-
-      {guideDetailsOrderId && (
-        <GuideDetailsModal
-          open={!!guideDetailsOrderId}
-          onClose={() => setGuideDetailsOrderId(null)}
-          orderId={guideDetailsOrderId}
-          isCourierView={false}
-          onGuideUpdated={refetchOrders}
-        />
-      )}
-
-      <ReassignDeliveryModal
-        open={!!reassignOrder}
-        onClose={() => setReassignOrder(null)}
-        order={reassignOrder}
-        candidates={reassignCandidates}
-        isLoading={isReassignLoading}
-        onReprogram={handleIndividualReprogramar}
-        onCancelOrder={handleCancelOrderFromModal}
-        onReassign={handleReassignDelivery}
-      />
 
       <CancellationModal
         open={cancellationModalOpen}
@@ -2358,6 +2228,15 @@ Estado: ${sale.status}
             handleIndividualReprogramar(rescheduleDialogSaleId, date);
             setRescheduleDialogSaleId(null);
           }
+        }}
+      />
+
+      <RescheduleDialog
+        open={bulkRescheduleOpen}
+        onOpenChange={setBulkRescheduleOpen}
+        onConfirm={(date) => {
+          handleBulkReprogramar(date);
+          setBulkRescheduleOpen(false);
         }}
       />
 

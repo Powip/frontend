@@ -18,16 +18,17 @@ import {
   emptySalesFilters,
   applyFilters,
 } from "@/components/ventas/SalesTableFilters";
+import { getCancellationReasonLabel } from "@/components/modals/CancellationModal";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
 import { ITEMS_PER_PAGE, PedidosActions, Sale, money, formatProductsShort } from "./types";
-import { StatusPill } from "./shared";
+import { formatDateTime } from "./shared";
 
-type StatusChip = "" | "ENTREGADO" | "SALDO";
-
-/** Pestaña "Historial" — ENTREGADO, solo lectura + exportar. Los pedidos
- *  ANULADO viven en su propia pestaña ("Anulados"), separados para no
- *  mezclar cancelaciones con entregas. */
-export function HistorialTab({
+/**
+ * Pestaña "Anulados" — pedidos con status ANULADO, separados de Historial
+ * (que solo cubre ENTREGADO) para no mezclar cancelaciones con entregas.
+ * Solo lectura + exportar, igual que Historial.
+ */
+export function AnuladosTab({
   sales,
   actions,
   initialSearch,
@@ -40,47 +41,23 @@ export function HistorialTab({
     ...emptySalesFilters,
     search: initialSearch ?? "",
   });
-  const [statusFilter, setStatusFilter] = useState<StatusChip>("");
   const [page, setPage] = useState(1);
 
-  const byStatus = useMemo(() => {
-    if (statusFilter === "SALDO") return sales.filter((s) => s.pendingPayment > 0);
-    return statusFilter ? sales.filter((s) => s.status === statusFilter) : sales;
-  }, [sales, statusFilter]);
-  const filtered = useMemo(() => applyFilters(byStatus, filters), [byStatus, filters]);
+  const filtered = useMemo(() => applyFilters(sales, filters), [sales, filters]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paged = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
   const canExport = actions.can(OPS_PERMISSIONS.EXPORT);
 
-  const conSaldo = sales.filter((s) => s.pendingPayment > 0).length;
+  const totalAnulado = useMemo(() => sales.reduce((sum, s) => sum + s.total, 0), [sales]);
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {(["", "ENTREGADO", "SALDO"] as const).map((s) => (
-            <button
-              key={s || "todos"}
-              onClick={() => {
-                setStatusFilter(s);
-                setPage(1);
-              }}
-              className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-                statusFilter === s
-                  ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
-                  : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              {s === ""
-                ? `Todos (${sales.length})`
-                : s === "SALDO"
-                ? `Con saldo pendiente (${conSaldo})`
-                : `${s} (${sales.filter((x) => x.status === s).length})`}
-            </button>
-          ))}
-        </div>
+        <span className="text-xs font-semibold text-muted-foreground">
+          {sales.length} pedido(s) anulados · {money(totalAnulado)} en total
+        </span>
         {canExport && (
-          <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onExportExcel(filtered, "historial")}>
+          <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onExportExcel(filtered, "anulados")}>
             <FileSpreadsheet className="h-3.5 w-3.5" />
             Exportar Excel
           </Button>
@@ -94,7 +71,6 @@ export function HistorialTab({
           setPage(1);
         }}
         showZoneFilter
-        showGuideFilter
         showSourceFilter
       />
 
@@ -104,11 +80,10 @@ export function HistorialTab({
             <TableRow>
               <TableHead>N° Orden</TableHead>
               <TableHead>Cliente</TableHead>
-              <TableHead>Fecha</TableHead>
+              <TableHead>Fecha pedido</TableHead>
+              <TableHead>Anulado</TableHead>
               <TableHead>Productos</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Guía / Courier</TableHead>
-              <TableHead>Liquidación</TableHead>
+              <TableHead>Motivo</TableHead>
               <TableHead>Total</TableHead>
               <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
@@ -116,8 +91,8 @@ export function HistorialTab({
           <TableBody>
             {paged.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
-                  Sin historial que mostrar
+                <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                  Sin pedidos anulados
                 </TableCell>
               </TableRow>
             )}
@@ -129,25 +104,14 @@ export function HistorialTab({
                   <div className="text-xs text-muted-foreground">{sale.phoneNumber}</div>
                 </TableCell>
                 <TableCell className="text-sm">{sale.date}</TableCell>
+                <TableCell className="text-sm">{formatDateTime(sale.updatedAt)}</TableCell>
                 <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground" title={formatProductsShort(sale.items)}>
                   {formatProductsShort(sale.items)}
                 </TableCell>
                 <TableCell>
-                  <StatusPill status={sale.status} />
-                </TableCell>
-                <TableCell className="text-sm">
-                  {sale.guideNumber || "—"} · {sale.courier || "—"}
-                </TableCell>
-                <TableCell>
-                  {sale.pendingPayment > 0 ? (
-                    <span className="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-                      Pendiente
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-bold text-green-700 dark:bg-green-500/15 dark:text-green-300">
-                      Liquidado
-                    </span>
-                  )}
+                  <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700 dark:bg-red-500/15 dark:text-red-300">
+                    {getCancellationReasonLabel(sale.cancellationReason)}
+                  </span>
                 </TableCell>
                 <TableCell className="text-sm tabular-nums">{money(sale.total)}</TableCell>
                 <TableCell className="text-right">

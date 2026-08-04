@@ -38,6 +38,7 @@ export interface Sale {
   callStatus?: "PENDING" | "NO_ANSWER" | "CONFIRMED" | "SCHEDULED" | null;
   callAttempts?: number;
   callbackAt?: string | null;
+  cancellationReason?: string | null;
   hasPendingApprovalPayments: boolean;
   sellerName: string | null;
   externalSource?: string | null;
@@ -109,6 +110,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     callStatus: order.callStatus,
     callAttempts: order.callAttempts ?? 0,
     callbackAt: order.callbackAt ?? null,
+    cancellationReason: order.cancellationReason ?? null,
     hasPendingApprovalPayments,
     sellerName: order.sellerName ?? null,
     externalSource: order.externalSource ?? null,
@@ -217,11 +219,9 @@ export interface PedidosActions {
   onView: (sale: Sale) => void;
   onOpenPayment: (sale: Sale) => void;
   onOpenGuide: (sale: Sale) => void;
-  onOpenComments: (sale: Sale) => void;
-  onOpenNotes: (sale: Sale) => void;
   onReassignSeller: (sale: Sale) => void;
   onCancel: (sale: Sale) => void;
-  onChangeStatus: (saleId: string, status: OrderStatus) => void;
+  onChangeStatus: (saleId: string, status: OrderStatus) => void | Promise<void>;
   onMarkNoAnswer: (saleId: string) => void;
   onBulkMarkNoAnswer: (ids: string[]) => void;
   onDeliveryReschedule: (sale: Sale) => void;
@@ -239,7 +239,6 @@ export interface PedidosActions {
   onSyncCourier: () => void;
   onReturnToStock: (sale: Sale) => void;
   onMarkAsLoss: (sale: Sale) => void;
-  onOpenReceipt: (sale: Sale) => void;
   companyId?: string;
 }
 

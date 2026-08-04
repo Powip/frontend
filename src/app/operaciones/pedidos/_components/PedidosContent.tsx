@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Package, Truck, AlertTriangle, Archive, ScanLine } from "lucide-react";
+import { Package, Truck, AlertTriangle, Archive, Ban, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalScanner } from "../../_shared/GlobalScanner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -34,15 +34,13 @@ import AddToExistingGuideModal from "@/components/modals/AddToExistingGuideModal
 import CancellationModal, { CancellationReason } from "@/components/modals/CancellationModal";
 import CourierAssignmentModal from "@/components/modals/CourierAssignmentModal";
 import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
-import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
-import OrderReceiptModal from "@/components/modals/orderReceiptModal";
 import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
 
-import { NotesDialog } from "./NotesDialog";
 import { PorDespacharTab } from "./PorDespacharTab";
 import { EnCaminoTab } from "./EnCaminoTab";
 import { AtencionTab } from "./AtencionTab";
 import { HistorialTab } from "./HistorialTab";
+import { AnuladosTab } from "./AnuladosTab";
 import { PedidosActions, Sale, mapOrderToSale, openWhatsApp } from "./types";
 
 const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS;
@@ -55,6 +53,7 @@ const TAB_ICON: Record<PedidosTabKey, React.ElementType> = {
   camino: Truck,
   atencion: AlertTriangle,
   historial: Archive,
+  anulados: Ban,
 };
 
 type RescheduleTarget = { saleIds: string[] } | null;
@@ -95,9 +94,6 @@ export function PedidosContent() {
   const [isAssigningCourier, setIsAssigningCourier] = useState(false);
   const [reassignSale, setReassignSale] = useState<Sale | null>(null);
   const [isReassigning, setIsReassigning] = useState(false);
-  const [commentsSale, setCommentsSale] = useState<Sale | null>(null);
-  const [notesSale, setNotesSale] = useState<Sale | null>(null);
-  const [receiptSale, setReceiptSale] = useState<Sale | null>(null);
   const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget>(null);
 
   const fetchOrders = useCallback(async () => {
@@ -144,6 +140,7 @@ export function PedidosContent() {
       camino: [],
       atencion: [],
       historial: [],
+      anulados: [],
     };
     for (const order of visibleOrders) grouped[getPedidosTab(order)].push(order);
     const out = {} as Record<PedidosTabKey, Sale[]>;
@@ -520,21 +517,6 @@ export function PedidosContent() {
     [reassignSale, getUserInfo, fetchOrders],
   );
 
-  const handleSaveNotes = useCallback(
-    async (notes: string) => {
-      if (!notesSale) return;
-      try {
-        await axios.patch(`${API_VENTAS}/order-header/${notesSale.id}`, { notes });
-        toast.success("Observaciones guardadas");
-        fetchOrders();
-      } catch {
-        toast.error("No se pudo guardar");
-        throw new Error("save-notes-failed");
-      }
-    },
-    [notesSale, fetchOrders],
-  );
-
   const handleCopySelected = useCallback(async (selected: Sale[]) => {
     if (selected.length === 0) {
       toast.warning("No hay pedidos seleccionados");
@@ -675,8 +657,6 @@ export function PedidosContent() {
     onView: handleView,
     onOpenPayment: setPaymentSale,
     onOpenGuide: setGuideSale,
-    onOpenComments: setCommentsSale,
-    onOpenNotes: setNotesSale,
     onReassignSeller: setReassignSale,
     onCancel: setCancelSale,
     onChangeStatus: handleChangeStatus,
@@ -697,7 +677,6 @@ export function PedidosContent() {
     onSyncCourier: handleSyncCourier,
     onReturnToStock: handleReturnToStock,
     onMarkAsLoss: handleMarkAsLoss,
-    onOpenReceipt: setReceiptSale,
     companyId: auth?.company?.id,
   };
 
@@ -781,6 +760,9 @@ export function PedidosContent() {
         </TabsContent>
         <TabsContent value="historial">
           <HistorialTab sales={salesByTab.historial} actions={actions} initialSearch={initialTab === "historial" ? initialQ : undefined} />
+        </TabsContent>
+        <TabsContent value="anulados">
+          <AnuladosTab sales={salesByTab.anulados} actions={actions} initialSearch={initialTab === "anulados" ? initialQ : undefined} />
         </TabsContent>
       </Tabs>
 
@@ -876,35 +858,10 @@ export function PedidosContent() {
         />
       )}
 
-      {commentsSale && (
-        <CommentsTimelineModal
-          open={!!commentsSale}
-          onClose={() => setCommentsSale(null)}
-          orderId={commentsSale.id}
-          orderNumber={commentsSale.orderNumber}
-        />
-      )}
-
-      {notesSale && (
-        <NotesDialog
-          open={!!notesSale}
-          onClose={() => setNotesSale(null)}
-          orderNumber={notesSale.orderNumber}
-          initialNotes={notesSale.notes}
-          onSave={handleSaveNotes}
-        />
-      )}
-
       <RescheduleDialog
         open={!!rescheduleTarget}
         onOpenChange={(v) => !v && setRescheduleTarget(null)}
         onConfirm={handleRescheduleConfirm}
-      />
-
-      <OrderReceiptModal
-        open={!!receiptSale}
-        orderId={receiptSale?.id ?? null}
-        onClose={() => setReceiptSale(null)}
       />
 
       <GlobalScanner open={scannerOpen} onOpenChange={setScannerOpen} />

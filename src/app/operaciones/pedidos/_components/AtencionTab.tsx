@@ -12,16 +12,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-import { Eye, Clock3, Ban, MessageCircle, PackageCheck, Receipt, TrendingDown } from "lucide-react";
+import { Eye, Clock3, MessageCircle, PackageCheck, TrendingDown } from "lucide-react";
 import {
   SalesTableFilters,
   SalesFilters,
   emptySalesFilters,
   applyFilters,
 } from "@/components/ventas/SalesTableFilters";
-import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
 import { ITEMS_PER_PAGE, PedidosActions, Sale, money, daysSince } from "./types";
-import { FailureBadge, DiasBadge, formatDateTime, guessFailureReason } from "./shared";
+import { FailureBadge, DiasBadge, WhatsAppIcon, formatDateTime, guessFailureReason } from "./shared";
 
 type AtencionSubView = "trabados" | "reprogramados" | "devoluciones";
 
@@ -90,8 +89,6 @@ export function AtencionTab({
   const filtered = useMemo(() => applyFilters(byMotivo, filters), [byMotivo, filters]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paged = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
-
-  const canCancel = actions.can(OPS_PERMISSIONS.CANCEL_ORDER);
 
   const enJuego = useMemo(() => bySubView.reduce((sum, s) => sum + s.total, 0), [bySubView]);
 
@@ -198,7 +195,6 @@ export function AtencionTab({
             <MessageCircle className="h-3.5 w-3.5" />
             WhatsApp masivo
           </Button>
-          <span className="text-[11px] text-muted-foreground">Anular siempre es individual, con motivo.</span>
         </div>
       )}
 
@@ -294,34 +290,18 @@ export function AtencionTab({
                           </Button>
                         </>
                       ) : (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 gap-1 text-xs"
-                            onClick={() => actions.onDeliveryReschedule(sale)}
-                          >
-                            <Clock3 className="h-3 w-3" />
-                            Reprogramar
-                          </Button>
-                          {canCancel && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="h-7 gap-1 text-xs text-red-600 hover:text-red-700"
-                              onClick={() => actions.onCancel(sale)}
-                            >
-                              <Ban className="h-3 w-3" />
-                              Anular
-                            </Button>
-                          )}
-                        </>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 gap-1 text-xs"
+                          onClick={() => actions.onDeliveryReschedule(sale)}
+                        >
+                          <Clock3 className="h-3 w-3" />
+                          Reprogramar
+                        </Button>
                       )}
-                      <Button size="icon" variant="ghost" className="h-7 w-7" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
-                        <MessageCircle className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Comprobante" onClick={() => actions.onOpenReceipt(sale)}>
-                        <Receipt className="h-3.5 w-3.5" />
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:text-green-700" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
+                        <WhatsAppIcon className="h-3.5 w-3.5" />
                       </Button>
                       <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver pedido" onClick={() => actions.onView(sale)}>
                         <Eye className="h-3.5 w-3.5" />

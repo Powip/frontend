@@ -14,6 +14,8 @@ import {
   FileSpreadsheet,
   CalendarClock,
   ListChecks,
+  Eye,
+  Pencil,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,10 +28,28 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useAuth } from "@/contexts/AuthContext";
+import { useOperationsRole, OPS_PERMISSIONS } from "@/contexts/OperationsRoleContext";
 import { useUserAuditInfo } from "@/hooks/useUserAuditInfo";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { DELIVERY_ZONES } from "@/constants/operationsDomain";
 import { getPedidosTab } from "@/utils/domain/operations-pedidos-tabs";
+import {
+  Sale,
+  mapOrderToSale,
+  formatProductsShort,
+  openWhatsApp,
+} from "@/app/operaciones/pedidos/_components/types";
+import {
+  StockIssueIcon,
+  ZoneBadge,
+  StatusPill,
+  CallStatusBadge,
+  PaymentButton,
+  WhatsAppIcon,
+} from "@/app/operaciones/pedidos/_components/shared";
+import { SourceBadge } from "@/components/shared/SourceBadge";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 
 /* -----------------------------------------------------------------------
    Planificación (v6) — ya no es solo pronóstico: los "agendados" (entregas
@@ -58,9 +78,9 @@ type SourceKey = "listos" | "reprogramado" | "vendido";
 type ViewMode = "cal" | "list";
 
 const SOURCE_LABEL: Record<SourceKey, string> = {
-  listos: "Preparado listo",
-  reprogramado: "🔁 Reprogramado a hoy",
-  vendido: "🛍️ Vendido con entrega HOY",
+  listos: "📦 Preparado listo",
+  reprogramado: "🔁 Reprogramado",
+  vendido: "🛍️ Entrega hoy",
 };
 
 const SOURCE_BADGE_CLASS: Record<SourceKey, string> = {
@@ -103,6 +123,7 @@ function formatCountdown(ms: number): string {
 
 export default function PlanificacionTab() {
   const { selectedStoreId } = useAuth();
+  const { can } = useOperationsRole();
   const router = useRouter();
   const getUserInfo = useUserAuditInfo();
 
@@ -114,6 +135,8 @@ export default function PlanificacionTab() {
   const [autoPassOn, setAutoPassOn] = useState(true);
   const [countdown, setCountdown] = useState("");
   const [rescheduleDate, setRescheduleDate] = useState("");
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+  const [paymentSale, setPaymentSale] = useState<Sale | null>(null);
   const [busy, setBusy] = useState(false);
 
   const load = () => {
@@ -240,6 +263,11 @@ export default function PlanificacionTab() {
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`,
             {
               callStatus: "CONFIRMED",
+              // Limpiar la fecha comprometida: tanto esta pantalla como Por
+              // Despachar agrupan por `callbackAt` cuando existe — si no se
+              // limpia, el pedido confirmado sigue cayendo en el mismo día
+              // futuro en vez de pasar a "hoy".
+              callbackAt: null,
               ...getUserInfo(),
             },
           ),
@@ -497,87 +525,155 @@ export default function PlanificacionTab() {
                         onCheckedChange={toggleAll}
                       />
                     </th>
-                    <th className="px-3 py-2">Pedido</th>
-                    <th className="px-3 py-2">Cliente / Destino</th>
+                    <th className="px-3 py-2">N° Orden</th>
+                    <th className="px-3 py-2">Cliente</th>
+                    <th className="px-3 py-2">Distrito</th>
                     <th className="px-3 py-2">Zona</th>
-                    <th className="px-3 py-2">Por qué está agendado</th>
-                    <th className="px-3 py-2 text-right">Por cobrar</th>
-                    <th className="px-3 py-2 text-right">Pasar ahora</th>
+                    <th className="px-3 py-2">Productos</th>
+                    <th className="px-3 py-2">Agendado</th>
+                    <th className="px-3 py-2">Origen</th>
+                    <th className="px-3 py-2 text-right">Total / Saldo</th>
+                    <th className="px-3 py-2">Estado</th>
+                    <th className="px-3 py-2">Guía</th>
+                    <th className="px-3 py-2">Courier</th>
+                    <th className="px-3 py-2">Vendedor</th>
+                    <th className="px-3 py-2 text-right">Acciones</th>
                   </tr>
                 </thead>
                 <tbody>
                   {agendados.length === 0 ? (
                     <tr>
                       <td
-                        colSpan={7}
+                        colSpan={14}
                         className="py-10 text-center text-muted-foreground"
                       >
                         Nada agendado para este día.
                       </td>
                     </tr>
                   ) : (
-                    agendados.map((it) => (
-                      <tr
-                        key={it.order.id}
-                        className="border-t hover:bg-muted/30"
-                      >
-                        <td className="px-3 py-2">
-                          <Checkbox
-                            checked={selectedIds.has(it.order.id)}
-                            onCheckedChange={() => toggleOne(it.order.id)}
-                          />
-                        </td>
-                        <td className="px-3 py-2 font-semibold">
-                          {it.order.orderNumber}
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="font-medium">
-                            {it.order.customer?.fullName}
-                          </div>
-                          <div className="text-xs text-muted-foreground">
-                            {it.order.customer?.district}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 text-xs">
-                          {it.order.customer?.zone ? (
-                            <span className="rounded-full bg-muted px-1.5 py-0.5">
-                              {ZONE_MAP.get(it.order.customer.zone)?.emoji}{" "}
-                              {ZONE_MAP.get(it.order.customer.zone)?.label}
+                    agendados.map((it) => {
+                      const sale = mapOrderToSale(it.order);
+                      return (
+                        <tr
+                          key={it.order.id}
+                          className="border-t hover:bg-muted/30"
+                        >
+                          <td className="px-3 py-2">
+                            <Checkbox
+                              checked={selectedIds.has(sale.id)}
+                              onCheckedChange={() => toggleOne(sale.id)}
+                            />
+                          </td>
+                          <td className="px-3 py-2 font-medium">
+                            <div className="flex items-center gap-1.5">
+                              <StockIssueIcon show={sale.hasStockIssue} />
+                              {sale.orderNumber}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="font-medium">{sale.clientName}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {sale.phoneNumber}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-sm">
+                            {sale.district || "—"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <ZoneBadge zone={sale.zone} />
+                          </td>
+                          <td className="px-3 py-2 max-w-[200px] whitespace-normal text-xs text-muted-foreground">
+                            {formatProductsShort(sale.items)}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${SOURCE_BADGE_CLASS[it.source]}`}
+                            >
+                              {SOURCE_LABEL[it.source]}
                             </span>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td className="px-3 py-2">
-                          <span
-                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${SOURCE_BADGE_CLASS[it.source]}`}
-                          >
-                            {SOURCE_LABEL[it.source]}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">
-                          {money(
-                            Math.max(
-                              0,
-                              Number(it.order.grandTotal || 0) -
-                                paidAmount(it.order),
-                            ),
-                          )}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8"
-                            title="Pasar a Preparados"
-                            disabled={busy}
-                            onClick={() => pasarAPreparados([it.order.id])}
-                          >
-                            <Package className="h-4 w-4" />
-                          </Button>
-                        </td>
-                      </tr>
-                    ))
+                          </td>
+                          <td className="px-3 py-2">
+                            <SourceBadge source={sale.externalSource} />
+                          </td>
+                          <td className="px-3 py-2 text-right text-sm tabular-nums">
+                            {money(sale.total)}
+                            {sale.pendingPayment > 0 && (
+                              <div className="text-xs font-semibold text-red-600">
+                                Saldo {money(sale.pendingPayment)}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-1.5">
+                              <StatusPill status={sale.status} />
+                              <CallStatusBadge sale={sale} />
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-sm">
+                            {sale.guideNumber || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-sm">
+                            {sale.courier || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-sm">
+                            {sale.sellerName || "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                title="Ver pedido"
+                                onClick={() => setViewOrderId(sale.id)}
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </Button>
+                              <PaymentButton
+                                hasPendingApproval={sale.hasPendingApprovalPayments}
+                                onClick={() => setPaymentSale(sale)}
+                              />
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7 text-green-600 hover:text-green-700"
+                                title="WhatsApp"
+                                onClick={() =>
+                                  openWhatsApp(
+                                    sale.phoneNumber,
+                                    sale.orderNumber,
+                                    sale.clientName,
+                                  )
+                                }
+                              >
+                                <WhatsAppIcon className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                title="Editar pedido"
+                                onClick={() =>
+                                  router.push(`/registrar-venta?orderId=${sale.id}`)
+                                }
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                title="Pasar a Preparados"
+                                disabled={busy}
+                                onClick={() => pasarAPreparados([sale.id])}
+                              >
+                                <Package className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -603,6 +699,24 @@ export default function PlanificacionTab() {
           </div>
         </div>
       )}
+
+      <CustomerServiceModal
+        open={!!viewOrderId}
+        orderId={viewOrderId || ""}
+        onClose={() => setViewOrderId(null)}
+        onOrderUpdated={load}
+        isOperaciones
+        showTracking
+      />
+
+      <PaymentVerificationModal
+        open={!!paymentSale}
+        onClose={() => setPaymentSale(null)}
+        orderId={paymentSale?.id || ""}
+        orderNumber={paymentSale?.orderNumber || ""}
+        onPaymentUpdated={load}
+        canApprove={can(OPS_PERMISSIONS.APPROVE_PAYMENTS)}
+      />
     </div>
   );
 }

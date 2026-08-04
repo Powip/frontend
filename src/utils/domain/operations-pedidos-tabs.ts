@@ -9,9 +9,10 @@ export const SHIPPING_STATUSES: OrderStatus[] = [
   "ENTREGADO",
 ];
 
-// Mapeo de las 4 pestañas de Pedidos del módulo Operaciones nuevo — las
-// mismas del mockup (Por Despachar / En Camino / Necesita Atención /
-// Historial). Hubo una versión con una 5ª pestaña "Confirmación" para la
+// Mapeo de las 5 pestañas de Pedidos del módulo Operaciones nuevo — las 4
+// del mockup (Por Despachar / En Camino / Necesita Atención / Historial) más
+// "Anulados", separada de Historial para no mezclar pedidos cancelados con
+// entregados. Hubo una versión con una 5ª pestaña "Confirmación" para la
 // cola de llamadas pre-despacho; se decidió volver a la estructura del
 // mockup y dejar la gestión de llamada solo dentro del modal de pedido
 // (tab "Llamada & Promo" de CustomerServiceModal) — no como pestaña propia.
@@ -21,7 +22,7 @@ export const SHIPPING_STATUSES: OrderStatus[] = [
 // pedido, para que Pedidos, el Tablero (KPIs/bandeja) y cualquier export
 // cuenten exactamente lo mismo.
 
-export type PedidosTabKey = "despachar" | "camino" | "atencion" | "historial";
+export type PedidosTabKey = "despachar" | "camino" | "atencion" | "historial" | "anulados";
 
 export interface PedidosTabDef {
   key: PedidosTabKey;
@@ -37,6 +38,7 @@ export const PEDIDOS_TABS: PedidosTabDef[] = [
   { key: "camino", label: "En Camino" },
   { key: "atencion", label: "Necesita Atención", alerta: true },
   { key: "historial", label: "Historial" },
+  { key: "anulados", label: "Anulados" },
 ];
 
 /** Pedido fallido en tránsito: mismo criterio que ya usan Centro de Envíos y Seguimiento hoy. */
@@ -74,7 +76,8 @@ export function isDeliveryRescheduledForToday(order: OrderHeader): boolean {
 }
 
 export function getPedidosTab(order: OrderHeader): PedidosTabKey {
-  if (order.status === "ENTREGADO" || order.status === "ANULADO") return "historial";
+  if (order.status === "ANULADO") return "anulados";
+  if (order.status === "ENTREGADO") return "historial";
 
   if (order.status === "EN_ENVIO") {
     if (isFailedDelivery(order) || hasCourierSyncError(order)) return "atencion";
@@ -95,6 +98,7 @@ export function countByTab(orders: OrderHeader[]): Record<PedidosTabKey, number>
     camino: 0,
     atencion: 0,
     historial: 0,
+    anulados: 0,
   };
   for (const order of orders) {
     counts[getPedidosTab(order)] += 1;

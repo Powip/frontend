@@ -17,7 +17,6 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useOperationsRole, OPS_PERMISSIONS } from "@/contexts/OperationsRoleContext";
 import {
-  DELIVERY_ZONES,
   GUIDE_STATUS_LABEL,
   GUIDE_STATUS_BADGE_CLASS,
   GuideStatus,
@@ -30,8 +29,6 @@ import GuideDetailsModal, { ShippingGuide } from "@/components/modals/GuideDetai
    estancadas en CREADA hace más de 24h. El detalle/gestión de cada guía
    se abre en GuideDetailsModal, reutilizado tal cual.
 ------------------------------------------------------------------------ */
-
-const ZONE_MAP = new Map(DELIVERY_ZONES.map((z) => [z.value, z]));
 const ALL_STATUSES = Object.keys(GUIDE_STATUS_LABEL) as GuideStatus[];
 
 // No existe en `GUIDE_AGE_THRESHOLDS` (ese umbral es para envejecimiento de
@@ -222,16 +219,28 @@ export default function GuiasActivasTab() {
                       <td className="px-3 py-2">{g.courierName || "Sin asignar"}</td>
                       <td className="px-3 py-2 text-center tabular-nums">{g.orderIds?.length ?? 0}</td>
                       <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-1">
-                          {(g.deliveryZones ?? []).map((z) => (
-                            <span key={z} className="text-[10px]" title={ZONE_MAP.get(z)?.label ?? z}>
-                              {ZONE_MAP.get(z)?.emoji ?? "📍"}
-                            </span>
-                          ))}
-                          {(!g.deliveryZones || g.deliveryZones.length === 0) && (
-                            <span className="text-xs text-muted-foreground">-</span>
-                          )}
-                        </div>
+                        {(() => {
+                          const zones = g.deliveryZones ?? [];
+                          const hasProvincia = zones.includes("PROVINCIAS");
+                          const hasLima = zones.some((z) => z !== "PROVINCIAS");
+                          if (!hasProvincia && !hasLima) {
+                            return <span className="text-xs text-muted-foreground">-</span>;
+                          }
+                          return (
+                            <div className="flex flex-wrap gap-1">
+                              {hasLima && (
+                                <Badge variant="outline" className="text-[11px]">
+                                  Lima
+                                </Badge>
+                              )}
+                              {hasProvincia && (
+                                <Badge variant="outline" className="text-[11px]">
+                                  Provincia
+                                </Badge>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-red-600">
                         {money(g.amountToCollect)}

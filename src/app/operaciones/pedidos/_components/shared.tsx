@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, DollarSign } from "lucide-react";
+import { AlertTriangle, DollarSign, PhoneCall, PhoneMissed } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -27,9 +27,12 @@ import { DELIVERY_ZONES } from "@/constants/operationsDomain";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 import SendToEvaButton from "@/components/eva/SendToEvaButton";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import type { Sale } from "./types";
 
 const ZONE_MAP = new Map(DELIVERY_ZONES.map((z) => [z.value, z]));
+
+export { WhatsAppIcon };
 
 /** Icono de alerta de stock insuficiente — regla de negocio a preservar (auditoría). */
 export function StockIssueIcon({ show }: { show?: boolean }) {
@@ -44,6 +47,56 @@ export function StockIssueIcon({ show }: { show?: boolean }) {
       </Tooltip>
     </TooltipProvider>
   );
+}
+
+/**
+ * Aviso de llamada — el pedido sigue con su `status` real (p.ej. PREPARADO)
+ * sin tocar, pero el filtro rápido por pipeline (PorDespacharTab) prioriza
+ * `callStatus` por sobre `status` para decidir el chip: NO_ANSWER → "No
+ * Contesta", CONFIRMED → "Contactado" (aunque el pedido todavía no pasó a
+ * LLAMADO — se puede confirmar la llamada antes de que termine de armarse).
+ * En ambos casos el pedido sale del chip "Preparado" aunque el Estado siga
+ * diciendo "Preparado"; este aviso aclara por qué.
+ */
+export function CallStatusBadge({ sale }: { sale: Sale }) {
+  if (sale.callStatus === "NO_ANSWER") {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+              <PhoneMissed className="h-3 w-3" />
+              No contesta
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            No respondió la última llamada — por eso no cuenta en el chip
+            &quot;Preparado&quot;.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+  if (sale.callStatus === "CONFIRMED" && sale.status !== "LLAMADO") {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <PhoneCall className="h-3 w-3" />
+              Contactado
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>
+            Ya se confirmó la llamada — por eso cuenta en el chip
+            &quot;Contactado&quot; y no en &quot;Preparado&quot;, aunque el
+            pedido todavía no pasó a estado Llamado.
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+  return null;
 }
 
 export function StatusPill({ status }: { status: OrderStatus }) {

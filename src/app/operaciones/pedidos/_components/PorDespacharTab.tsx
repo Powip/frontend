@@ -23,8 +23,6 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import {
   Eye,
-  MessageSquare,
-  StickyNote,
   UserPen,
   PackagePlus,
   PlusCircle,
@@ -40,7 +38,6 @@ import {
   SlidersHorizontal,
   ListChecks,
   AlertTriangle,
-  Receipt,
   CalendarDays,
   CalendarCheck2,
 } from "lucide-react";
@@ -66,11 +63,12 @@ import {
   saleSource,
 } from "./types";
 import {
-  IntegrationBadges,
+  CallStatusBadge,
   PaymentButton,
   RowStatusSelect,
   StatusPill,
   StockIssueIcon,
+  WhatsAppIcon,
   ZoneBadge,
   formatDateTime,
 } from "./shared";
@@ -91,6 +89,30 @@ const SOURCE_LABEL: Partial<Record<SaleSource, string>> = {
 };
 const REPROGRAMADO_LABEL = "🔁 Reprogramado";
 
+/**
+ * Filtros por etapa real del pedido — reemplaza al viejo filtro por
+ * "Fuente" (que mezclaba de dónde salió la fecha comprometida con el
+ * estado de la llamada, y no dejaba ver de un vistazo cuántos ya se
+ * contactaron). "No Contesta" prevalece sobre "Contactado" porque solo
+ * toca `callStatus` — un pedido nunca queda en ambos a la vez en la
+ * práctica (ver handleChangeStatus/handleMarkNoAnswer en PedidosContent).
+ */
+type PipelineFilter = "" | "preparado" | "contactado" | "no_contesta";
+
+function pipelineKey(sale: Sale): Exclude<PipelineFilter, ""> | "otro" {
+  if (sale.callStatus === "NO_ANSWER") return "no_contesta";
+  if (sale.status === "LLAMADO" || sale.callStatus === "CONFIRMED") return "contactado";
+  if (sale.status === "PREPARADO") return "preparado";
+  return "otro";
+}
+
+const PIPELINE_FILTER_OPTIONS: { key: PipelineFilter; label: string }[] = [
+  { key: "", label: "Todos" },
+  { key: "preparado", label: "Preparado" },
+  { key: "contactado", label: "Contactado" },
+  { key: "no_contesta", label: "No Contesta" },
+];
+
 const SOURCE_BADGE_CLASS: Record<SaleSource, string> = {
   listos:
     "bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-500/15 dark:text-teal-300 dark:border-teal-500/30",
@@ -106,14 +128,12 @@ interface ColumnPrefs {
   guia: boolean;
   courier: boolean;
   vendedor: boolean;
-  integraciones: boolean;
 }
 
 const DEFAULT_COLUMNS: ColumnPrefs = {
   guia: true,
   courier: true,
   vendedor: true,
-  integraciones: true,
 };
 
 // ORDER_STATUS_FLOW (orders-status-flow.ts) solo permite saltar a
@@ -183,7 +203,7 @@ export function PorDespacharTab({
   const [qf, setQf] = useState(
     initialQf === "listos-escanear" ? "listos-escanear" : "",
   );
-  const [sourceFilter, setSourceFilter] = useState<SaleSource | "">("");
+  const [pipelineFilter, setPipelineFilter] = useState<PipelineFilter>("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [dayKey, setDayKey] = useState(todayKey());
@@ -239,6 +259,12 @@ export function PorDespacharTab({
     return counts;
   }, [salesOfDay]);
 
+  const pipelineCounts = useMemo(() => {
+    const counts = { preparado: 0, contactado: 0, no_contesta: 0, otro: 0 };
+    for (const s of salesOfDay) counts[pipelineKey(s)]++;
+    return counts;
+  }, [salesOfDay]);
+
   // "Reprogramados" mira TODOS los días (no solo el que está seleccionado
   // en la barra) — es la única forma de ver de un vistazo todo lo que
   // quedó agendado, sin tener que ir pinchando pronóstico día por día.
@@ -259,9 +285,9 @@ export function PorDespacharTab({
     if (showingReprogramados) return allReprogramados;
     let list = salesOfDay;
     if (qf === "listos-escanear") list = list.filter((s) => !!s.guideNumber);
-    if (sourceFilter) list = list.filter((s) => saleSource(s) === sourceFilter);
+    if (pipelineFilter) list = list.filter((s) => pipelineKey(s) === pipelineFilter);
     return list;
-  }, [salesOfDay, qf, sourceFilter, showingReprogramados, allReprogramados]);
+  }, [salesOfDay, qf, pipelineFilter, showingReprogramados, allReprogramados]);
 
   const filtered = useMemo(() => applyFilters(byQf, filters), [byQf, filters]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
@@ -354,7 +380,6 @@ export function PorDespacharTab({
     (columns.guia ? 1 : 0) +
     (columns.courier ? 1 : 0) +
     (columns.vendedor ? 1 : 0) +
-    (columns.integraciones ? 1 : 0) +
     (showingReprogramados ? 1 : 0);
 
   return (
@@ -455,39 +480,29 @@ export function PorDespacharTab({
           </span>
         ) : (
           <span className="text-xs font-semibold text-muted-foreground">
-            Sale {dayKey === todayKey() ? "hoy" : "ese día"} (
+            {dayKey === todayKey() ? "Pedidos de hoy" : "Pedidos de ese día"} (
             {salesOfDay.length}):
           </span>
         )}
-        <button
-          onClick={() => {
-            setQf("");
-            setSourceFilter("");
-            setPage(1);
-          }}
-          className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-            !showingReprogramados && sourceFilter === ""
-              ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
-              : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
-          }`}
-        >
-          Todo el día ({salesOfDay.length})
-        </button>
-        {(Object.keys(SOURCE_LABEL) as SaleSource[]).map((s) => (
+        {PIPELINE_FILTER_OPTIONS.map((opt) => (
           <button
-            key={s}
+            key={opt.key || "todos"}
             onClick={() => {
               setQf("");
-              setSourceFilter(s);
+              setPipelineFilter(opt.key);
               setPage(1);
             }}
             className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
-              !showingReprogramados && sourceFilter === s
+              !showingReprogramados && pipelineFilter === opt.key
                 ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300"
                 : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
             }`}
           >
-            {SOURCE_LABEL[s]} ({sourceCounts[s]})
+            {opt.label} (
+            {opt.key === ""
+              ? salesOfDay.length
+              : pipelineCounts[opt.key as Exclude<PipelineFilter, "">]}
+            )
           </button>
         ))}
         <span className="mx-1 h-4 w-px bg-border" />
@@ -657,14 +672,15 @@ export function PorDespacharTab({
         <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4">
           <div>
             <h3 className="flex items-center gap-2 font-bold capitalize">
-              Sale {labelForDay(dayKey)}
+              {dayKey === todayKey() ? "Pedidos de hoy" : labelForDay(dayKey)}
               <span className="rounded-full border border-teal-200 bg-teal-100 px-2 py-0.5 text-[11px] font-bold text-teal-700 dark:border-teal-500/30 dark:bg-teal-500/15 dark:text-teal-300">
                 {salesOfDay.length} pedidos
               </span>
             </h3>
             <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-              Todo lo que tiene entrega comprometida para este día, sin importar
-              de qué fuente venga. Empaca, agrupa en guía y entrega al courier.
+              Preparados sin llamar todavía + reprogramados cuya fecha cae
+              {dayKey === todayKey() ? " hoy" : " este día"}. Contactá,
+              agrupá en guía y entregá al courier.
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -698,13 +714,6 @@ export function PorDespacharTab({
                       onCheckedChange={(v) => setColumn("vendedor", !!v)}
                     />{" "}
                     Vendedor
-                  </label>
-                  <label className="flex items-center gap-2">
-                    <Checkbox
-                      checked={columns.integraciones}
-                      onCheckedChange={(v) => setColumn("integraciones", !!v)}
-                    />{" "}
-                    Integraciones
                   </label>
                 </div>
               </PopoverContent>
@@ -760,7 +769,6 @@ export function PorDespacharTab({
                 {columns.guia && <TableHead>Guía</TableHead>}
                 {columns.courier && <TableHead>Courier</TableHead>}
                 {columns.vendedor && <TableHead>Vendedor</TableHead>}
-                {columns.integraciones && <TableHead>Integraciones</TableHead>}
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
@@ -828,18 +836,21 @@ export function PorDespacharTab({
                     )}
                   </TableCell>
                   <TableCell>
-                    {canChangeStatus ? (
-                      <RowStatusSelect
-                        status={sale.status}
-                        onChangeStatus={(s) =>
-                          actions.onChangeStatus(sale.id, s)
-                        }
-                        onMarkNoAnswer={() => actions.onMarkNoAnswer(sale.id)}
-                        onReschedule={() => actions.onDeliveryReschedule(sale)}
-                      />
-                    ) : (
-                      <StatusPill status={sale.status} />
-                    )}
+                    <div className="flex items-center gap-1.5">
+                      {canChangeStatus ? (
+                        <RowStatusSelect
+                          status={sale.status}
+                          onChangeStatus={(s) =>
+                            actions.onChangeStatus(sale.id, s)
+                          }
+                          onMarkNoAnswer={() => actions.onMarkNoAnswer(sale.id)}
+                          onReschedule={() => actions.onDeliveryReschedule(sale)}
+                        />
+                      ) : (
+                        <StatusPill status={sale.status} />
+                      )}
+                      <CallStatusBadge sale={sale} />
+                    </div>
                   </TableCell>
                   {columns.guia && (
                     <TableCell className="text-sm">
@@ -876,15 +887,6 @@ export function PorDespacharTab({
                       </div>
                     </TableCell>
                   )}
-                  {columns.integraciones && (
-                    <TableCell>
-                      <IntegrationBadges
-                        sale={sale}
-                        companyId={actions.companyId}
-                        onSuccess={actions.onSyncCourier}
-                      />
-                    </TableCell>
-                  )}
                   <TableCell>
                     <div className="flex items-center justify-end gap-1">
                       <Button
@@ -903,38 +905,11 @@ export function PorDespacharTab({
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-7 w-7"
-                        title="Comprobante"
-                        onClick={() => actions.onOpenReceipt(sale)}
-                      >
-                        <Receipt className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
+                        className="h-7 w-7 text-green-600 hover:text-green-700"
                         title="WhatsApp"
                         onClick={() => actions.onWhatsApp(sale)}
                       >
-                        <MessageCircle className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title="Comentarios"
-                        onClick={() => actions.onOpenComments(sale)}
-                      >
-                        <MessageSquare className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title="Observaciones"
-                        onClick={() => actions.onOpenNotes(sale)}
-                      >
-                        <StickyNote className="h-3.5 w-3.5" />
+                        <WhatsAppIcon className="h-3.5 w-3.5" />
                       </Button>
                       <Button
                         size="icon"

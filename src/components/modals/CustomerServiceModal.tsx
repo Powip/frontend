@@ -10,7 +10,6 @@ import { toast } from "sonner";
 import {
   Phone,
   PhoneOff,
-  MessageCircle,
   DollarSign,
   Pencil,
   Plus,
@@ -27,9 +26,17 @@ import {
   Loader2,
   Lock,
   AlertCircle,
+  AlertTriangle,
   Eye,
   EyeOff,
+  Repeat,
+  History,
+  Download,
+  RefreshCw,
+  Unlink,
+  ArrowRightLeft,
 } from "lucide-react";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { Textarea } from "../ui/textarea";
 import {
   DropdownMenu,
@@ -39,6 +46,14 @@ import {
 } from "../ui/dropdown-menu";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { Calendar } from "../ui/calendar";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../ui/tabs";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -54,14 +69,20 @@ import CancellationModal, { CancellationReason } from "./CancellationModal";
 import AddProductsModal from "./AddProductsModal";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import GuideDetailsModal from "./GuideDetailsModal";
+import ReassignDeliveryModal from "@/app/centro-envios/components/ReassignDeliveryModal";
 import { useRouter } from "next/navigation";
 import QRCode from "qrcode";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
+import { useQRCode } from "@/hooks/useQrCode";
 import { useAuth } from "@/contexts/AuthContext";
 import ScheduledDeliverySection from "./ScheduledDeliverySection";
+import { trackShalomGuide } from "@/services/shalomService";
 import { DatosIncompletosBlock } from "@/components/atencion-cliente/cc-v2/DatosIncompletosBlock";
 import { CcGestionPanel } from "@/components/atencion-cliente/cc-v2/CcGestionPanel";
 import { CcScriptPanel } from "@/components/atencion-cliente/cc-v2/CcScriptPanel";
-import { SubEstadoCc } from "@/interfaces/IOrder";
+import { OrderHeader, OrderStatus, SubEstadoCc } from "@/interfaces/IOrder";
+import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
 import { isJunkDni } from "@/utils/junk-document.util";
 
 interface LogEntry {
@@ -125,11 +146,15 @@ interface Props {
   showTracking?: boolean;
   /** Modo Operaciones: libera el botón CONFIRMA ENTREGA y muestra Anular siempre */
   isOperaciones?: boolean;
+  /** Si se pasa, habilita "Cambiar courier" en la pestaña Seguimiento (libera de la guía
+   *  actual y delega la creación de una nueva al caller — hoy solo lo usa Ventas). */
+  onOpenCreateGuide?: (order: OrderHeader) => void;
 }
 
 interface OrderReceipt {
   orderId: string;
   orderNumber: string;
+  receiptType?: string;
   status: string;
   createdAt: string;
   salesChannel?: string;
@@ -199,6 +224,7 @@ export default function CustomerServiceModal({
   shippingGuide,
   showTracking = false,
   isOperaciones = false,
+  onOpenCreateGuide,
 }: Props) {
   const router = useRouter();
   const { auth } = useAuth();
@@ -229,6 +255,15 @@ export default function CustomerServiceModal({
     undefined,
   );
   const [isScheduling, setIsScheduling] = useState(false);
+
+  // Pestañas del modal unificado + estado crudo de la orden (para Vendedor,
+  // selector de estado, y como `order` de ReassignDeliveryModal).
+  const [tab, setTab] = useState("resumen");
+  const [orderHeader, setOrderHeader] = useState<OrderHeader | null>(null);
+  const [reassignModalOpen, setReassignModalOpen] = useState(false);
+  const [changingStatus, setChangingStatus] = useState(false);
+  const [syncingTracking, setSyncingTracking] = useState(false);
+  const [releasingGuide, setReleasingGuide] = useState(false);
 
   // CC v2 — datos incompletos y gestión
   const [datosCompletos, setDatosCompletos] = useState<boolean>(true);
@@ -306,6 +341,7 @@ export default function CustomerServiceModal({
       const orderRes = await axios.get(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
       );
+      setOrderHeader(orderRes.data);
       setNotes(orderRes.data.notes || "");
       // CC v2: cargar campos de datos incompletos + sub-estado
       setDatosCompletos(orderRes.data.datosCompletos ?? true);
@@ -516,6 +552,94 @@ export default function CustomerServiceModal({
       console.error("Error generating QR", err);
       return "";
     }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!receipt) return;
+
+    const qrDataUrl = await generateQR(receipt.orderId);
+
+    const doc = new jsPDF();
+    const createdAt = new Date(receipt.createdAt);
+    const formattedDate = createdAt.toLocaleDateString("es-AR");
+    const formattedTime = createdAt.toLocaleTimeString("es-AR");
+
+    if (qrDataUrl) {
+      doc.addImage(qrDataUrl, "PNG", 150, 14, 40, 40);
+    }
+
+    doc.setFontSize(16);
+    doc.text(`Comprobante ${receipt.receiptType || "BOLETA"}`, 14, 20);
+    doc.setFontSize(12);
+    doc.text(`N° Orden: ${receipt.orderNumber}`, 14, 30);
+    doc.text(`Estado: ${receipt.status}`, 14, 36);
+    doc.text(`Fecha: ${formattedDate} ${formattedTime}`, 14, 42);
+
+    doc.text(`Cliente: ${receipt.customer.fullName}`, 14, 52);
+    doc.text(`Teléfono: ${receipt.customer.phoneNumber || "-"}`, 14, 58);
+    doc.text(`DNI: ${receipt.customer.dni ?? "-"}`, 14, 64);
+    doc.text(
+      `Dirección: ${receipt.customer.address}, ${receipt.customer.district}, ${receipt.customer.province}`,
+      14,
+      70,
+    );
+
+    const items = receipt.items.map((item) => [
+      item.productName,
+      Object.entries(item.attributes ?? {})
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" · "),
+      item.quantity.toString(),
+      item.unitPrice.toFixed(2),
+      item.subtotal.toFixed(2),
+    ]);
+
+    autoTable(doc, {
+      startY: 80,
+      head: [
+        ["Producto", "Variantes", "Cantidad", "Precio Unitario", "Subtotal"],
+      ],
+      body: items,
+      theme: "grid",
+      headStyles: { fillColor: [2, 168, 225], textColor: 255 },
+    });
+
+    const finalY = (doc as any).lastAutoTable.finalY || 0;
+
+    const totalPaidPdf = receipt.totals.totalPaid || 0;
+    const pendingAmountPdf = receipt.totals.pendingAmount || 0;
+
+    doc.text(
+      `Productos: S/${receipt.totals.productsTotal.toFixed(2)}`,
+      14,
+      finalY + 10,
+    );
+    doc.text(
+      `IGV 18%: S/${receipt.totals.taxTotal.toFixed(2)}`,
+      14,
+      finalY + 16,
+    );
+    doc.text(
+      `Envío: S/${receipt.totals.shippingTotal.toFixed(2)}`,
+      14,
+      finalY + 22,
+    );
+    doc.setFontSize(14);
+    doc.text(
+      `Total: S/${receipt.totals.grandTotal.toFixed(2)}`,
+      14,
+      finalY + 32,
+    );
+    doc.setFontSize(12);
+    doc.text(
+      `Descuentos: S/${receipt.totals.discountTotal.toFixed(2)}`,
+      14,
+      finalY + 42,
+    );
+    doc.text(`Adelanto: S/${totalPaidPdf.toFixed(2)}`, 14, finalY + 48);
+    doc.text(`Por Cobrar: S/${pendingAmountPdf.toFixed(2)}`, 14, finalY + 54);
+
+    doc.save(`Comprobante_${receipt.orderNumber}.pdf`);
   };
 
   const handlePrint = async () => {
@@ -1088,6 +1212,137 @@ export default function CustomerServiceModal({
     }
   };
 
+  const handleChangeStatus = async (newStatus: OrderStatus) => {
+    if (!receipt || newStatus === receipt.status) return;
+    if (newStatus === "ANULADO") {
+      setCancellationModalOpen(true);
+      return;
+    }
+    if (newStatus === "EN_ENVIO" && !orderHeader?.courier) {
+      toast.error("Asigna un courier antes de pasar a EN_ENVIO");
+      return;
+    }
+    setChangingStatus(true);
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+        { status: newStatus },
+      );
+      toast.success(`Estado actualizado a ${newStatus}`);
+      fetchReceipt();
+      onOrderUpdated?.();
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "No se pudo actualizar el estado",
+      );
+    } finally {
+      setChangingStatus(false);
+    }
+  };
+
+  const handleReprogramDelivery = async (targetId: string, callbackAt: Date) => {
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${targetId}`,
+        { callStatus: "SCHEDULED", callbackAt: callbackAt.toISOString() },
+      );
+      toast.success("Pedido reprogramado");
+      setReassignModalOpen(false);
+      fetchReceipt();
+      onOrderUpdated?.();
+    } catch {
+      toast.error("No se pudo reprogramar el pedido");
+    }
+  };
+
+  const handleForceSyncTracking = async () => {
+    if (!auth?.accessToken || !orderHeader) return;
+    setSyncingTracking(true);
+    try {
+      const guideRes = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderHeader.id}`,
+      );
+      await trackShalomGuide(auth.accessToken, guideRes.data.id);
+      toast.success("Sincronizado con Shalom");
+      fetchReceipt();
+      onOrderUpdated?.();
+    } catch {
+      toast.error("No se pudo sincronizar con Shalom");
+    } finally {
+      setSyncingTracking(false);
+    }
+  };
+
+  // Desvincula el pedido de su guía actual en ms-courier y lo devuelve a
+  // PREPARADO en ms-ventas (mismo patrón que usaba ShipmentDetailModal).
+  const releaseFromGuide = async () => {
+    if (!orderHeader) return;
+    const guideRes = await axios.get(
+      `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderHeader.id}`,
+    );
+    const guideId = guideRes.data.id;
+    await axios.patch(
+      `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}/orders/remove`,
+      { orderIds: [orderHeader.id] },
+    );
+    await axios.patch(
+      `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderHeader.id}`,
+      { guideNumber: null, status: "PREPARADO" },
+    );
+  };
+
+  const handleReleaseFromGuide = async () => {
+    if (!confirm("¿Liberar este pedido de su guía actual? Vuelve a Preparado."))
+      return;
+    setReleasingGuide(true);
+    try {
+      await releaseFromGuide();
+      toast.success("Pedido liberado · vuelve a Preparado");
+      fetchReceipt();
+      onOrderUpdated?.();
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message ||
+          "No se pudo liberar el pedido de la guía",
+      );
+    } finally {
+      setReleasingGuide(false);
+    }
+  };
+
+  const handleChangeCourier = async () => {
+    if (!orderHeader || !onOpenCreateGuide) return;
+    if (
+      !confirm(
+        "Cambiar de courier invalida el registro actual (ej. Shalom) y libera el pedido de su guía. ¿Continuar?",
+      )
+    )
+      return;
+    setReleasingGuide(true);
+    try {
+      await releaseFromGuide();
+      onOrderUpdated?.();
+      onOpenCreateGuide(orderHeader);
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "No se pudo cambiar el courier",
+      );
+    } finally {
+      setReleasingGuide(false);
+    }
+  };
+
+  const trackingUrl = receipt
+    ? `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`
+    : "";
+  const qrUrl = useQRCode(trackingUrl);
+
+  const handleCopyTrackingLink = async () => {
+    if (!trackingUrl) return;
+    await navigator.clipboard.writeText(trackingUrl);
+    toast.success("Link copiado");
+  };
+
   const isConfirmed = receipt?.status === "LLAMADO";
   const isScheduledDelivery =
     !!receipt?.externalSource && receipt?.callStatus === "SCHEDULED";
@@ -1098,26 +1353,72 @@ export default function CustomerServiceModal({
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
-          <DialogTitle className="sr-only">Detalle del Pedido</DialogTitle>
           {loading ? (
             <div className="p-8 text-center">Cargando...</div>
           ) : (
             receipt && (
+              <div className="space-y-4">
+                <DialogHeader>
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div>
+                      <DialogTitle className="text-lg">
+                        Pedido {receipt.orderNumber} · {receipt.customer.fullName}
+                      </DialogTitle>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        Vendedor: {orderHeader?.sellerName || "—"}
+                      </div>
+                    </div>
+                    <Select
+                      value={receipt.status}
+                      onValueChange={(v) => handleChangeStatus(v as OrderStatus)}
+                      disabled={changingStatus}
+                    >
+                      <SelectTrigger className="w-[190px] h-9 text-sm font-semibold">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {getAvailableStatuses(receipt.status as OrderStatus).map(
+                          (s) => (
+                            <SelectItem key={s} value={s}>
+                              {s}
+                            </SelectItem>
+                          ),
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </DialogHeader>
+
+                <Tabs value={tab} onValueChange={setTab}>
+                  <div className="overflow-x-auto -mx-1 px-1">
+                    <TabsList className="w-max min-w-full sm:w-fit">
+                      <TabsTrigger value="resumen" className="whitespace-nowrap">
+                        <Package className="h-4 w-4 mr-1.5" /> Resumen
+                      </TabsTrigger>
+                      <TabsTrigger value="seguimiento" className="whitespace-nowrap">
+                        <Truck className="h-4 w-4 mr-1.5" /> Seguimiento
+                      </TabsTrigger>
+                      <TabsTrigger value="pagos" className="whitespace-nowrap">
+                        <DollarSign className="h-4 w-4 mr-1.5" /> Pagos
+                      </TabsTrigger>
+                      <TabsTrigger value="atencion" className="whitespace-nowrap">
+                        <Phone className="h-4 w-4 mr-1.5" /> Atención al cliente
+                      </TabsTrigger>
+                      <TabsTrigger value="reasignacion" className="whitespace-nowrap">
+                        <Repeat className="h-4 w-4 mr-1.5" /> Reasignación
+                      </TabsTrigger>
+                      <TabsTrigger value="historial" className="whitespace-nowrap">
+                        <History className="h-4 w-4 mr-1.5" /> Historial
+                      </TabsTrigger>
+                    </TabsList>
+                  </div>
+
+                  <TabsContent value="resumen" className="pt-3">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* ================================== */}
                 {/* SECCIÓN IZQUIERDA */}
                 {/* ================================== */}
                 <div className="space-y-4">
-                  {/* Header: N° Orden y Total */}
-                  <div className="border-b pb-4">
-                    <h2 className="text-2xl font-bold">
-                      N° de Orden # {receipt.orderNumber}
-                    </h2>
-                    <p className="text-2xl font-bold text-primary">
-                      Total: S/{receipt.totals.grandTotal.toFixed(2)}
-                    </p>
-                  </div>
-
                   {/* Productos */}
                   <div className="border border-border rounded-lg p-4">
                     <h3 className="font-semibold mb-3 text-lg">Productos</h3>
@@ -1214,6 +1515,50 @@ export default function CustomerServiceModal({
                 {/* SECCIÓN DERECHA */}
                 {/* ================================== */}
                 <div className="space-y-4">
+                  {/* Link de seguimiento del cliente + QR */}
+                  <div className="border border-border rounded-lg p-4 bg-muted/30">
+                    <h3 className="font-semibold mb-3 text-sm flex items-center gap-1.5">
+                      🔗 Link de seguimiento del cliente
+                    </h3>
+                    <div className="flex items-center gap-4">
+                      {qrUrl && (
+                        <img
+                          src={qrUrl}
+                          alt="QR de seguimiento"
+                          className="h-20 w-20 rounded border bg-white p-1 flex-shrink-0"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <a
+                          href={trackingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-mono text-blue-600 truncate block hover:underline"
+                        >
+                          {trackingUrl}
+                        </a>
+                        <div className="flex gap-2 mt-2.5">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs"
+                            onClick={handleCopyTrackingLink}
+                          >
+                            <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-8 text-xs text-green-600"
+                            onClick={handleWhatsApp}
+                          >
+                            <WhatsAppIcon className="h-3.5 w-3.5 mr-1" /> WhatsApp
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Cliente */}
                   <div className="border border-border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -1226,7 +1571,7 @@ export default function CustomerServiceModal({
                           onClick={handleWhatsApp}
                           title="WhatsApp"
                         >
-                          <MessageCircle className="h-4 w-4" />
+                          <WhatsAppIcon className="h-4 w-4" />
                         </Button>
                         <Button
                           size="icon"
@@ -1269,6 +1614,15 @@ export default function CustomerServiceModal({
                           title="Imprimir"
                         >
                           <Printer className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="outline"
+                          className="h-9 w-9 bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
+                          onClick={handleDownloadPdf}
+                          title="Descargar PDF"
+                        >
+                          <Download className="h-4 w-4" />
                         </Button>
 
                         <Button
@@ -1647,8 +2001,17 @@ export default function CustomerServiceModal({
                         )}
                     </div>
                   </div>
+                </div>
+              </div>
+                  </TabsContent>
 
+                  <TabsContent value="seguimiento" className="pt-3 space-y-4">
                   {/* Shipping Guide Section - only shown when shippingGuide data is provided */}
+                  {!shippingGuide && (
+                    <p className="text-sm text-muted-foreground border border-border rounded-lg p-4">
+                      Sin guía de envío asociada a este pedido todavía.
+                    </p>
+                  )}
                   {shippingGuide && (
                     <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50/50 dark:bg-blue-950/30">
                       <div className="flex items-center justify-between mb-3">
@@ -1837,6 +2200,121 @@ export default function CustomerServiceModal({
                     </div>
                   )}
 
+                  {orderHeader?.guideNumber && (
+                    <div className="border rounded-lg p-4">
+                      <div className="text-sm font-bold mb-2.5">
+                        ⚡ Acciones logísticas
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        {orderHeader.courier === "Shalom" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-sm justify-start"
+                            disabled={syncingTracking}
+                            onClick={handleForceSyncTracking}
+                          >
+                            <RefreshCw
+                              className={`h-4 w-4 mr-1.5 ${syncingTracking ? "animate-spin" : ""}`}
+                            />
+                            Forzar sync de tracking
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-sm justify-start"
+                          disabled={releasingGuide}
+                          onClick={handleReleaseFromGuide}
+                        >
+                          <Unlink className="h-4 w-4 mr-1.5" />
+                          Liberar de guía actual
+                        </Button>
+                        {onOpenCreateGuide && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-sm justify-start"
+                            disabled={releasingGuide}
+                            onClick={handleChangeCourier}
+                          >
+                            <ArrowRightLeft className="h-4 w-4 mr-1.5" />
+                            Cambiar courier
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  </TabsContent>
+
+                  <TabsContent value="pagos" className="pt-3 space-y-4">
+                    <div className="grid grid-cols-3 gap-3.5">
+                      <div className="border rounded-lg p-4 text-center">
+                        <div className="text-base sm:text-xl font-black">
+                          S/{receipt.totals.grandTotal.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Total</div>
+                      </div>
+                      <div className="border rounded-lg p-4 text-center">
+                        <div className="text-base sm:text-xl font-black text-green-600">
+                          S/{receipt.totals.totalPaid.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Pagado</div>
+                      </div>
+                      <div className="border rounded-lg p-4 text-center">
+                        <div className="text-base sm:text-xl font-black text-amber-600">
+                          S/{receipt.totals.pendingAmount.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Saldo</div>
+                      </div>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <div className="text-sm font-bold mb-2.5">💳 Pagos registrados</div>
+                      {receipt.payments.length === 0 && (
+                        <div className="text-sm text-muted-foreground">
+                          Sin pagos registrados
+                        </div>
+                      )}
+                      {receipt.payments.map((p) => (
+                        <div
+                          key={p.id}
+                          className="flex items-center justify-between text-sm py-2 border-b last:border-0 border-dashed"
+                        >
+                          <div>
+                            <div className="font-medium">{p.paymentMethod}</div>
+                            <div className="text-muted-foreground text-xs">
+                              {new Date(p.paymentDate).toLocaleDateString("es-PE")}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-semibold">
+                              S/{Number(p.amount).toFixed(2)}
+                            </div>
+                            <div
+                              className={
+                                p.status === "PAID"
+                                  ? "text-green-600 text-xs"
+                                  : p.status === "PENDING"
+                                    ? "text-amber-600 text-xs"
+                                    : "text-red-600 text-xs"
+                              }
+                            >
+                              {p.status}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="w-full text-sm"
+                      onClick={() => setPaymentModalOpen(true)}
+                    >
+                      Gestionar pagos
+                    </Button>
+                  </TabsContent>
+
+                  <TabsContent value="atencion" className="pt-3 space-y-4">
                   {/* Promo del día - only shown in customer service view */}
                   {!hideCallManagement && (
                     <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
@@ -2191,7 +2669,44 @@ export default function CustomerServiceModal({
                       orderNumber={receipt.orderNumber}
                     />
                   )}
+                  </TabsContent>
 
+                  <TabsContent value="reasignacion" className="pt-3 space-y-3.5">
+                    {orderHeader?.status === "EN_ENVIO" &&
+                    orderHeader?.shalomStatus === "DEVUELTO" ? (
+                      <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950 p-4">
+                        <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-bold text-sm">
+                          <AlertTriangle className="h-4 w-4" /> Entrega fallida —
+                          el paquete está en retorno
+                        </div>
+                        <p className="text-sm text-red-700 dark:text-red-300 mt-1.5">
+                          El cliente no recibió el pedido. Puedes reprogramar un
+                          nuevo intento o anular la entrega.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground border rounded-lg p-4">
+                        Este pedido no está marcado como fallido. Si el cliente
+                        no recogió o rechazó la entrega, inicia el flujo para
+                        reprogramar un nuevo intento o anular.
+                      </div>
+                    )}
+                    <Button
+                      className="w-full text-sm"
+                      variant={
+                        orderHeader?.status === "EN_ENVIO" &&
+                        orderHeader?.shalomStatus === "DEVUELTO"
+                          ? "default"
+                          : "outline"
+                      }
+                      onClick={() => setReassignModalOpen(true)}
+                    >
+                      <Repeat className="h-4 w-4 mr-1.5" />
+                      Reprogramar / anular
+                    </Button>
+                  </TabsContent>
+
+                  <TabsContent value="historial" className="pt-3">
                   {/* Comentarios Timeline */}
                   <div className="border border-border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -2318,7 +2833,8 @@ export default function CustomerServiceModal({
                       </p>
                     </div>
                   </div>
-                </div>
+                  </TabsContent>
+                </Tabs>
               </div>
             )
           )}
@@ -2366,6 +2882,19 @@ export default function CustomerServiceModal({
         orderNumber={receipt?.orderNumber || ""}
         onConfirm={handleConfirmCancellation}
         isLoading={isCancelling}
+      />
+
+      {/* Modal de Reasignación (reprogramar / anular entrega) */}
+      <ReassignDeliveryModal
+        open={reassignModalOpen}
+        onClose={() => setReassignModalOpen(false)}
+        order={orderHeader}
+        candidates={[]}
+        onReprogram={handleReprogramDelivery}
+        onCancelOrder={(_id, reason, notes) =>
+          handleConfirmCancellation(reason, notes)
+        }
+        onReassign={() => {}}
       />
 
       {/* Modal de Pagos */}

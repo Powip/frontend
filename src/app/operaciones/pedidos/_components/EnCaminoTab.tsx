@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-import { CheckCircle2, Eye, MessageCircle, Receipt, RefreshCw, Search as SearchIcon } from "lucide-react";
+import { CheckCircle2, Eye, Loader2, MessageCircle, RefreshCw, Search as SearchIcon } from "lucide-react";
 import {
   SalesTableFilters,
   SalesFilters,
@@ -30,7 +30,7 @@ import {
   daysSince,
   money,
 } from "./types";
-import { DiasBadge } from "./shared";
+import { DiasBadge, WhatsAppIcon } from "./shared";
 
 type ViewMode = "pedido" | "guia";
 
@@ -82,6 +82,20 @@ export function EnCaminoTab({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
   const [syncing, setSyncing] = useState(false);
+  const [deliveringIds, setDeliveringIds] = useState<Set<string>>(new Set());
+
+  const handleMarkDelivered = async (saleId: string) => {
+    setDeliveringIds((prev) => new Set(prev).add(saleId));
+    try {
+      await actions.onChangeStatus(saleId, "ENTREGADO");
+    } finally {
+      setDeliveringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(saleId);
+        return next;
+      });
+    }
+  };
 
   const courierOptions = useMemo(() => {
     const set = new Set<string>(actions.apiCouriers);
@@ -328,9 +342,14 @@ export function EnCaminoTab({
                             <Button
                               size="sm"
                               className="h-7 gap-1 bg-green-600 text-xs font-semibold text-white hover:bg-green-700"
-                              onClick={() => actions.onChangeStatus(sale.id, "ENTREGADO")}
+                              disabled={deliveringIds.has(sale.id)}
+                              onClick={() => handleMarkDelivered(sale.id)}
                             >
-                              <CheckCircle2 className="h-3.5 w-3.5" />
+                              {deliveringIds.has(sale.id) ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                              )}
                               Entregado
                             </Button>
                           )}
@@ -340,11 +359,8 @@ export function EnCaminoTab({
                           <Button size="icon" variant="ghost" className="h-7 w-7" title="Rastrear" onClick={() => actions.onView(sale)}>
                             <SearchIcon className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Comprobante" onClick={() => actions.onOpenReceipt(sale)}>
-                            <Receipt className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
-                            <MessageCircle className="h-3.5 w-3.5" />
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:text-green-700" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
+                            <WhatsAppIcon className="h-3.5 w-3.5" />
                           </Button>
                         </div>
                       </TableCell>
