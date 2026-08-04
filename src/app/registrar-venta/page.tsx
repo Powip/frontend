@@ -505,8 +505,11 @@ function RegistrarVentaContent() {
           totalPages: res.meta.totalPages,
         });
         setProductsPage(page);
-      } catch {
-        // product search failure is silent
+      } catch (error) {
+        // Falla silenciosa para el usuario (no bloquea la pantalla), pero se
+        // loguea para poder diagnosticar búsquedas que antes fallaban sin
+        // dejar ningún rastro (ni en UI ni en consola).
+        console.error("Error al buscar productos", error);
       } finally {
         setProductsLoading(false);
       }

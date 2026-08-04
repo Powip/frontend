@@ -71,6 +71,8 @@ export function usePacksEngine({
         return q >= p.minQty && q <= (p.maxQty || Infinity);
       }
       if (p.type === "BUNDLE") {
+        // Pack corrupto en localStorage (ver nota en activePacksForProduct) nunca triggerea
+        if (!Array.isArray(p.items)) return false;
         return p.items.every((i) => modelQtyInCart(i.productKey) > 0);
       }
       if (p.type === "GIFT") {
@@ -94,7 +96,13 @@ export function usePacksEngine({
       activePacksForChannel.filter(
         (p) =>
           (p.type === "VOLUME" && p.product.productKey === productKey) ||
-          (p.type === "BUNDLE" && p.items.some((i) => i.productKey === productKey)),
+          // BUNDLE/GIFT viven en localStorage sin validación de shape (ver
+          // PacksContext.tsx) — un pack local con `items` ausente o corrupto
+          // (ej. de una versión previa de esta feature) no debe romper el
+          // render de ProductSearchMatrix para TODOS los productos.
+          (p.type === "BUNDLE" &&
+            Array.isArray(p.items) &&
+            p.items.some((i) => i.productKey === productKey)),
       ),
     [activePacksForChannel],
   );
