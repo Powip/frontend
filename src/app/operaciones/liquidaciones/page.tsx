@@ -17,7 +17,7 @@ import { DiferenciasTab } from "./_components/DiferenciasTab";
 import { MOCK_DIFERENCIAS, MOCK_LIQUIDACIONES, MOCK_RENDICIONES } from "./_components/mockData";
 import { DiferenciaLiquidacion, PagoLiquidacion, RendicionRepartidor } from "./_components/types";
 import { buildGuiasPorLiquidar } from "./_components/utils";
-import { PowipPulseLoader } from "../_shared/PowipPulseLoader";
+import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 
 /* -----------------------------------------------------------------------
    Liquidaciones COD — pantalla admin-only del módulo Operaciones.

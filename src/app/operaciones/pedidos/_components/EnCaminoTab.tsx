@@ -291,7 +291,7 @@ export function EnCaminoTab({
                   <TableHead>Días</TableHead>
                   <TableHead>Total / Saldo</TableHead>
                   <TableHead>Estado</TableHead>
-                  <TableHead className="text-right">Acciones</TableHead>
+                  <TableHead className="sticky right-0 z-20 bg-muted text-right">Acciones</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -339,7 +339,7 @@ export function EnCaminoTab({
                           {state.label}
                         </span>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="sticky right-0 z-10 bg-inherit border-l">
                         <div className="flex items-center justify-end gap-1">
                           {canChangeStatus && (
                             <Button
@@ -395,7 +395,7 @@ export function EnCaminoTab({
                 <TableHead>Por cobrar</TableHead>
                 <TableHead>Salió</TableHead>
                 <TableHead>Estado</TableHead>
-                <TableHead className="text-right">Acciones</TableHead>
+                <TableHead className="sticky right-0 z-20 bg-muted text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -454,7 +454,7 @@ export function EnCaminoTab({
                         {estadoGrupo}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="sticky right-0 z-10 bg-inherit border-l">
                       <div className="flex items-center justify-end gap-1">
                         {canChangeStatus && (
                           <Button

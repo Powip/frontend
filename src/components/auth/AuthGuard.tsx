@@ -4,6 +4,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useRouter, usePathname } from "next/navigation";
 import { useEffect, ReactNode } from "react";
 import { getRoutePermissions, hasAnyPermission, isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
+import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -54,11 +55,12 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     return <>{children}</>;
   }
 
-  // Mientras carga, mostrar spinner
+  // Mientras carga, mostrar el loader — es lo primero que se ve en cada
+  // recarga completa de la app (F5), antes de que se resuelva la sesión.
   if (loading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      <div className="flex h-screen w-screen items-center justify-center">
+        <PowipPulseLoader label="Cargando..." />
       </div>
     );
   }

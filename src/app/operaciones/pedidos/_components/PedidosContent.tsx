@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Package, Truck, AlertTriangle, Archive, Ban, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalScanner } from "../../_shared/GlobalScanner";
-import { PowipPulseLoader } from "../../_shared/PowipPulseLoader";
+import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOperationsRole } from "@/contexts/OperationsRoleContext";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";

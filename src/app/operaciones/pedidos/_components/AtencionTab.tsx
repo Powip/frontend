@@ -12,15 +12,33 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-import { Eye, Clock3, MessageCircle, PackageCheck, TrendingDown } from "lucide-react";
+import {
+  Eye,
+  Clock3,
+  MessageCircle,
+  PackageCheck,
+  TrendingDown,
+} from "lucide-react";
 import {
   SalesTableFilters,
   SalesFilters,
   emptySalesFilters,
   applyFilters,
 } from "@/components/ventas/SalesTableFilters";
-import { ITEMS_PER_PAGE, PedidosActions, Sale, money, daysSince } from "./types";
-import { FailureBadge, DiasBadge, WhatsAppIcon, formatDateTime, guessFailureReason } from "./shared";
+import {
+  ITEMS_PER_PAGE,
+  PedidosActions,
+  Sale,
+  money,
+  daysSince,
+} from "./types";
+import {
+  FailureBadge,
+  DiasBadge,
+  WhatsAppIcon,
+  formatDateTime,
+  guessFailureReason,
+} from "./shared";
 
 type AtencionSubView = "trabados" | "reprogramados" | "devoluciones";
 
@@ -66,13 +84,20 @@ export function AtencionTab({
     search: initialSearch ?? "",
   });
   const [subView, setSubView] = useState<AtencionSubView>(
-    initialQf === "fallidos" ? "devoluciones" : initialQf === "errores-agencia" ? "trabados" : "trabados",
+    initialQf === "fallidos"
+      ? "devoluciones"
+      : initialQf === "errores-agencia"
+        ? "trabados"
+        : "trabados",
   );
   const [motivoChip, setMotivoChip] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [page, setPage] = useState(1);
 
-  const bySubView = useMemo(() => sales.filter((s) => classify(s) === subView), [sales, subView]);
+  const bySubView = useMemo(
+    () => sales.filter((s) => classify(s) === subView),
+    [sales, subView],
+  );
 
   const motivoOptions = useMemo(() => {
     if (subView !== "trabados") return [];
@@ -82,15 +107,27 @@ export function AtencionTab({
   }, [bySubView, subView]);
 
   const byMotivo = useMemo(
-    () => (subView === "trabados" && motivoChip ? bySubView.filter((s) => guessFailureReason(s) === motivoChip) : bySubView),
+    () =>
+      subView === "trabados" && motivoChip
+        ? bySubView.filter((s) => guessFailureReason(s) === motivoChip)
+        : bySubView,
     [bySubView, subView, motivoChip],
   );
 
-  const filtered = useMemo(() => applyFilters(byMotivo, filters), [byMotivo, filters]);
+  const filtered = useMemo(
+    () => applyFilters(byMotivo, filters),
+    [byMotivo, filters],
+  );
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
-  const paged = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  const paged = filtered.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  );
 
-  const enJuego = useMemo(() => bySubView.reduce((sum, s) => sum + s.total, 0), [bySubView]);
+  const enJuego = useMemo(
+    () => bySubView.reduce((sum, s) => sum + s.total, 0),
+    [bySubView],
+  );
 
   // Contra `sales` (todo lo de esta pestaña) y no contra `filtered` — si no,
   // cambiar de sub-vista (Trabados/Reprogramados/Devoluciones) o de motivo
@@ -145,8 +182,9 @@ export function AtencionTab({
         <div className="flex items-center gap-2 rounded-lg border border-red-300 bg-red-50 p-3 text-xs text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
           <span>💰</span>
           <div>
-            <b>{money(enJuego)} en juego</b> — valor total de los {bySubView.length} pedidos trabados en agencia o con
-            error del courier.
+            <b>{money(enJuego)} en juego</b> — valor total de los{" "}
+            {bySubView.length} pedidos trabados en agencia o con error del
+            courier.
           </div>
         </div>
       )}
@@ -165,7 +203,8 @@ export function AtencionTab({
               onClick={() => setMotivoChip(motivoChip === m ? "" : m)}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${motivoChip === m ? "border-violet-500 bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300" : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"}`}
             >
-              {m} ({bySubView.filter((s) => guessFailureReason(s) === m).length})
+              {m} ({bySubView.filter((s) => guessFailureReason(s) === m).length}
+              )
             </button>
           ))}
         </div>
@@ -184,17 +223,26 @@ export function AtencionTab({
 
       {subView !== "devoluciones" && selectedSales.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2">
-          <span className="text-xs font-semibold text-muted-foreground">{selectedSales.length} seleccionados</span>
+          <span className="text-xs font-semibold text-muted-foreground">
+            {selectedSales.length} seleccionados
+          </span>
           <Button
             size="sm"
             variant="outline"
             className="h-8 gap-1 text-xs"
-            onClick={() => actions.onBulkDeliveryReschedule(selectedSales.map((s) => s.id))}
+            onClick={() =>
+              actions.onBulkDeliveryReschedule(selectedSales.map((s) => s.id))
+            }
           >
             <Clock3 className="h-3.5 w-3.5" />
             Reprogramar en lote
           </Button>
-          <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onBulkWhatsApp(selectedSales)}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            onClick={() => actions.onBulkWhatsApp(selectedSales)}
+          >
             <MessageCircle className="h-3.5 w-3.5" />
             WhatsApp masivo
           </Button>
@@ -207,7 +255,13 @@ export function AtencionTab({
             <TableRow>
               {subView !== "devoluciones" && (
                 <TableHead className="w-8">
-                  <Checkbox checked={paged.length > 0 && paged.every((s) => selectedIds.has(s.id))} onCheckedChange={toggleAllPage} />
+                  <Checkbox
+                    checked={
+                      paged.length > 0 &&
+                      paged.every((s) => selectedIds.has(s.id))
+                    }
+                    onCheckedChange={toggleAllPage}
+                  />
                 </TableHead>
               )}
               <TableHead>N° Orden</TableHead>
@@ -217,13 +271,18 @@ export function AtencionTab({
               <TableHead>Detalle</TableHead>
               {subView === "trabados" && <TableHead>Trabado hace</TableHead>}
               <TableHead>Total / Saldo</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
+              <TableHead className="sticky right-0 z-20 bg-muted text-right">
+                Acciones
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {paged.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                <TableCell
+                  colSpan={8}
+                  className="py-8 text-center text-sm text-muted-foreground"
+                >
                   Nada pendiente en esta sub-vista
                 </TableCell>
               </TableRow>
@@ -231,31 +290,53 @@ export function AtencionTab({
             {paged.map((sale) => {
               const vencido = subView === "reprogramados" && isVencido(sale);
               return (
-                <TableRow key={sale.id} className={vencido ? "bg-red-50 dark:bg-red-500/5" : undefined}>
+                <TableRow
+                  key={sale.id}
+                  className={
+                    vencido ? "bg-red-50 dark:bg-red-500/5" : undefined
+                  }
+                >
                   {subView !== "devoluciones" && (
                     <TableCell>
-                      <Checkbox checked={selectedIds.has(sale.id)} onCheckedChange={() => toggle(sale.id)} />
+                      <Checkbox
+                        checked={selectedIds.has(sale.id)}
+                        onCheckedChange={() => toggle(sale.id)}
+                      />
                     </TableCell>
                   )}
-                  <TableCell className="font-medium">{sale.orderNumber}</TableCell>
+                  <TableCell className="font-medium">
+                    {sale.orderNumber}
+                  </TableCell>
                   <TableCell>
                     <div className="font-medium">{sale.clientName}</div>
-                    <div className="text-xs text-muted-foreground">{sale.phoneNumber}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {sale.phoneNumber}
+                    </div>
                   </TableCell>
-                  <TableCell className="text-sm">{sale.district || "—"}</TableCell>
+                  <TableCell className="text-sm">
+                    {sale.district || "—"}
+                  </TableCell>
                   <TableCell className="text-sm">
                     {sale.guideNumber || "—"} · {sale.courier || "—"}
                   </TableCell>
                   <TableCell>
                     {subView === "reprogramados" ? (
-                      <span className={`text-xs font-medium ${vencido ? "text-red-600" : "text-muted-foreground"}`}>
+                      <span
+                        className={`text-xs font-medium ${vencido ? "text-red-600" : "text-muted-foreground"}`}
+                      >
                         {vencido ? "Vencido — era para " : "Reprogramado para "}
                         {formatDateTime(sale.callbackAt)}
                       </span>
                     ) : subView === "devoluciones" ? (
-                      <FailureBadge shalomError={sale.shalomError} syncErrors={sale.syncErrors} />
+                      <FailureBadge
+                        shalomError={sale.shalomError}
+                        syncErrors={sale.syncErrors}
+                      />
                     ) : (
-                      <FailureBadge shalomError={sale.shalomError} syncErrors={sale.syncErrors} />
+                      <FailureBadge
+                        shalomError={sale.shalomError}
+                        syncErrors={sale.syncErrors}
+                      />
                     )}
                   </TableCell>
                   {subView === "trabados" && (
@@ -266,10 +347,12 @@ export function AtencionTab({
                   <TableCell className="text-sm tabular-nums">
                     {money(sale.total)}
                     {sale.pendingPayment > 0 && (
-                      <div className="text-xs font-semibold text-red-600">Saldo {money(sale.pendingPayment)}</div>
+                      <div className="text-xs font-semibold text-red-600">
+                        Saldo {money(sale.pendingPayment)}
+                      </div>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="sticky right-0 z-10 bg-inherit border-l">
                     <div className="flex items-center justify-end gap-1">
                       {subView === "devoluciones" ? (
                         <>
@@ -303,10 +386,22 @@ export function AtencionTab({
                           Reprogramar
                         </Button>
                       )}
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:text-green-700" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7 text-green-600 hover:text-green-700"
+                        title="WhatsApp"
+                        onClick={() => actions.onWhatsApp(sale)}
+                      >
                         <WhatsAppIcon className="h-3.5 w-3.5" />
                       </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver pedido" onClick={() => actions.onView(sale)}>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Ver pedido"
+                        onClick={() => actions.onView(sale)}
+                      >
                         <Eye className="h-3.5 w-3.5" />
                       </Button>
                     </div>

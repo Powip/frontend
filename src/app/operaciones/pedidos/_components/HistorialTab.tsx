@@ -19,8 +19,8 @@ import {
   applyFilters,
 } from "@/components/ventas/SalesTableFilters";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
-import { ITEMS_PER_PAGE, PedidosActions, Sale, money, formatProductsShort } from "./types";
-import { StatusPill } from "./shared";
+import { ITEMS_PER_PAGE, PedidosActions, Sale, money } from "./types";
+import { ProductThumbnails, StatusPill } from "./shared";
 
 type StatusChip = "" | "ENTREGADO" | "SALDO";
 
@@ -110,7 +110,7 @@ export function HistorialTab({
               <TableHead>Guía / Courier</TableHead>
               <TableHead>Liquidación</TableHead>
               <TableHead>Total</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
+              <TableHead className="sticky right-0 z-20 bg-muted text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -129,8 +129,8 @@ export function HistorialTab({
                   <div className="text-xs text-muted-foreground">{sale.phoneNumber}</div>
                 </TableCell>
                 <TableCell className="text-sm">{sale.date}</TableCell>
-                <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground" title={formatProductsShort(sale.items)}>
-                  {formatProductsShort(sale.items)}
+                <TableCell>
+                  <ProductThumbnails items={sale.items} />
                 </TableCell>
                 <TableCell>
                   <StatusPill status={sale.status} />
@@ -150,7 +150,7 @@ export function HistorialTab({
                   )}
                 </TableCell>
                 <TableCell className="text-sm tabular-nums">{money(sale.total)}</TableCell>
-                <TableCell className="text-right">
+                <TableCell className="sticky right-0 z-10 bg-inherit border-l text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver pedido" onClick={() => actions.onView(sale)}>
                       <Eye className="h-3.5 w-3.5" />

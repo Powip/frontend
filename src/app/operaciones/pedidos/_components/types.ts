@@ -59,6 +59,7 @@ export interface SaleItem {
   productName: string;
   sku: string;
   quantity: number;
+  imageUrl?: string | null;
   /** = subtotal del ítem. No hay COGS real en el modelo de datos (OrderItem
    *  no trae costo) — se usa como proxy de "valor" para Devoluciones. */
   subtotal: number;
@@ -128,6 +129,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
       productName: it.productName,
       sku: it.sku,
       quantity: it.quantity,
+      imageUrl: it.imageUrl ?? null,
       subtotal: Number(it.subtotal || 0),
     })),
   };

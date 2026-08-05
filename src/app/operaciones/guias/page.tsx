@@ -12,7 +12,7 @@ import RastreoCourierTab from "./_components/RastreoCourierTab";
 import CouriersTarifasTab from "./_components/CouriersTarifasTab";
 import NuevaGuiaDialog from "./_components/NuevaGuiaDialog";
 import { GlobalScanner } from "../_shared/GlobalScanner";
-import { PowipPulseLoader } from "../_shared/PowipPulseLoader";
+import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 
 /* -----------------------------------------------------------------------
    Guías & Courier — pantalla del módulo Operaciones nuevo.

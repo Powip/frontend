@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { AlertTriangle, DollarSign, PhoneCall, PhoneMissed } from "lucide-react";
 import {
   Tooltip,
@@ -28,7 +29,7 @@ import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 import SendToEvaButton from "@/components/eva/SendToEvaButton";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
-import type { Sale } from "./types";
+import type { Sale, SaleItem } from "./types";
 
 const ZONE_MAP = new Map(DELIVERY_ZONES.map((z) => [z.value, z]));
 
@@ -106,6 +107,68 @@ export function StatusPill({ status }: { status: OrderStatus }) {
     >
       {getStatusLabel(status)}
     </span>
+  );
+}
+
+const MAX_PRODUCT_THUMBS = 3;
+
+/**
+ * Miniaturas de los items del pedido (mismo look que el preview de
+ * Productos en la tabla de Ventas), con tooltip al hover con
+ * "Nombre xCantidad" de cada item — reemplaza el texto plano truncado
+ * que tenía esta columna en Pedidos.
+ */
+export function ProductThumbnails({ items }: { items: SaleItem[] }) {
+  if (!items || items.length === 0) {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+
+  const shown = items.slice(0, MAX_PRODUCT_THUMBS);
+  const extra = items.length - shown.length;
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex -space-x-2 cursor-default">
+            {shown.map((item, idx) => (
+              <div
+                key={idx}
+                className="h-7 w-7 shrink-0 overflow-hidden rounded-full border-2 border-background bg-muted"
+              >
+                {item.imageUrl ? (
+                  <Image
+                    src={item.imageUrl}
+                    alt={item.productName}
+                    width={28}
+                    height={28}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-[10px] font-semibold text-muted-foreground">
+                    {item.productName.charAt(0)}
+                  </div>
+                )}
+              </div>
+            ))}
+            {extra > 0 && (
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-semibold text-muted-foreground">
+                +{extra}
+              </div>
+            )}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[240px]">
+          <div className="space-y-0.5">
+            {items.map((item, idx) => (
+              <div key={idx} className="text-xs">
+                {item.productName} x{item.quantity}
+              </div>
+            ))}
+          </div>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

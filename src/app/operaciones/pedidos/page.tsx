@@ -2,7 +2,7 @@
 
 import { Suspense } from "react";
 import { PedidosContent } from "./_components/PedidosContent";
-import { PowipPulseLoader } from "../_shared/PowipPulseLoader";
+import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 
 /**
  * Pantalla "Pedidos" del módulo Operaciones nuevo — reemplaza la gestión de

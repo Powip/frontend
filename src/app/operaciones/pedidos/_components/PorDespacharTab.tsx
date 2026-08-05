@@ -57,7 +57,6 @@ import {
   Sale,
   SaleSource,
   computeBulkAvailableStatuses,
-  formatProductsShort,
   money,
   saleDayKey,
   saleSource,
@@ -65,6 +64,7 @@ import {
 import {
   CallStatusBadge,
   PaymentButton,
+  ProductThumbnails,
   RowStatusSelect,
   StatusPill,
   StockIssueIcon,
@@ -101,7 +101,8 @@ type PipelineFilter = "" | "preparado" | "contactado" | "no_contesta";
 
 function pipelineKey(sale: Sale): Exclude<PipelineFilter, ""> | "otro" {
   if (sale.callStatus === "NO_ANSWER") return "no_contesta";
-  if (sale.status === "LLAMADO" || sale.callStatus === "CONFIRMED") return "contactado";
+  if (sale.status === "LLAMADO" || sale.callStatus === "CONFIRMED")
+    return "contactado";
   if (sale.status === "PREPARADO") return "preparado";
   return "otro";
 }
@@ -285,7 +286,8 @@ export function PorDespacharTab({
     if (showingReprogramados) return allReprogramados;
     let list = salesOfDay;
     if (qf === "listos-escanear") list = list.filter((s) => !!s.guideNumber);
-    if (pipelineFilter) list = list.filter((s) => pipelineKey(s) === pipelineFilter);
+    if (pipelineFilter)
+      list = list.filter((s) => pipelineKey(s) === pipelineFilter);
     return list;
   }, [salesOfDay, qf, pipelineFilter, showingReprogramados, allReprogramados]);
 
@@ -683,8 +685,8 @@ export function PorDespacharTab({
             </h3>
             <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
               Preparados sin llamar todavía + reprogramados cuya fecha cae
-              {dayKey === todayKey() ? " hoy" : " este día"}. Contactá,
-              agrupá en guía y entregá al courier.
+              {dayKey === todayKey() ? " hoy" : " este día"}. Contactá, agrupá
+              en guía y entregá al courier.
             </p>
           </div>
           <div className="flex shrink-0 flex-wrap gap-2">
@@ -773,7 +775,9 @@ export function PorDespacharTab({
                 {columns.guia && <TableHead>Guía</TableHead>}
                 {columns.courier && <TableHead>Courier</TableHead>}
                 {columns.vendedor && <TableHead>Vendedor</TableHead>}
-                <TableHead className="text-right">Acciones</TableHead>
+                <TableHead className="sticky right-0 z-20 bg-muted text-right">
+                  Acciones
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -813,8 +817,8 @@ export function PorDespacharTab({
                   <TableCell>
                     <ZoneBadge zone={sale.zone} />
                   </TableCell>
-                  <TableCell className="max-w-[220px] whitespace-normal text-xs text-muted-foreground">
-                    {formatProductsShort(sale.items)}
+                  <TableCell>
+                    <ProductThumbnails items={sale.items} />
                   </TableCell>
                   <TableCell>
                     <span
@@ -848,7 +852,9 @@ export function PorDespacharTab({
                             actions.onChangeStatus(sale.id, s)
                           }
                           onMarkNoAnswer={() => actions.onMarkNoAnswer(sale.id)}
-                          onReschedule={() => actions.onDeliveryReschedule(sale)}
+                          onReschedule={() =>
+                            actions.onDeliveryReschedule(sale)
+                          }
                         />
                       ) : (
                         <StatusPill status={sale.status} />
@@ -891,7 +897,7 @@ export function PorDespacharTab({
                       </div>
                     </TableCell>
                   )}
-                  <TableCell>
+                  <TableCell className="sticky right-0 z-10 bg-gray-100 dark:bg-gray-900 border-l">
                     <div className="flex items-center justify-end gap-1">
                       <Button
                         size="icon"

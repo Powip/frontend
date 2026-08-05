@@ -25,9 +25,8 @@ import {
   PedidosActions,
   Sale,
   money,
-  formatProductsShort,
 } from "./types";
-import { formatDateTime } from "./shared";
+import { ProductThumbnails, formatDateTime } from "./shared";
 
 /**
  * Pestaña "Anulados" — pedidos con status ANULADO, separados de Historial
@@ -105,7 +104,7 @@ export function AnuladosTab({
               <TableHead>Productos</TableHead>
               <TableHead>Motivo</TableHead>
               <TableHead>Total</TableHead>
-              <TableHead className="text-right">Acciones</TableHead>
+              <TableHead className="sticky right-0 z-20 bg-muted text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -134,11 +133,8 @@ export function AnuladosTab({
                 <TableCell className="text-sm">
                   {formatDateTime(sale.updatedAt)}
                 </TableCell>
-                <TableCell
-                  className="max-w-[220px] truncate text-sm text-muted-foreground"
-                  title={formatProductsShort(sale.items)}
-                >
-                  {formatProductsShort(sale.items)}
+                <TableCell>
+                  <ProductThumbnails items={sale.items} />
                 </TableCell>
                 <TableCell>
                   <span className="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700 dark:bg-red-500/15 dark:text-red-300">
@@ -148,7 +144,7 @@ export function AnuladosTab({
                 <TableCell className="text-sm tabular-nums">
                   {money(sale.total)}
                 </TableCell>
-                <TableCell className="text-right">
+                <TableCell className="sticky right-0 z-10 bg-inherit border-l text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button
                       size="icon"
