@@ -20,13 +20,19 @@ import {
 } from "@/components/ventas/SalesTableFilters";
 import { getCancellationReasonLabel } from "@/components/modals/CancellationModal";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
-import { ITEMS_PER_PAGE, PedidosActions, Sale, money, formatProductsShort } from "./types";
+import {
+  ITEMS_PER_PAGE,
+  PedidosActions,
+  Sale,
+  money,
+  formatProductsShort,
+} from "./types";
 import { formatDateTime } from "./shared";
 
 /**
  * Pestaña "Anulados" — pedidos con status ANULADO, separados de Historial
  * (que solo cubre ENTREGADO) para no mezclar cancelaciones con entregas.
- * Solo lectura + exportar, igual que Historial.
+ * Solo lectura + exportar, igual que Historia.
  */
 export function AnuladosTab({
   sales,
@@ -43,12 +49,21 @@ export function AnuladosTab({
   });
   const [page, setPage] = useState(1);
 
-  const filtered = useMemo(() => applyFilters(sales, filters), [sales, filters]);
+  const filtered = useMemo(
+    () => applyFilters(sales, filters),
+    [sales, filters],
+  );
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
-  const paged = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
+  const paged = filtered.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  );
   const canExport = actions.can(OPS_PERMISSIONS.EXPORT);
 
-  const totalAnulado = useMemo(() => sales.reduce((sum, s) => sum + s.total, 0), [sales]);
+  const totalAnulado = useMemo(
+    () => sales.reduce((sum, s) => sum + s.total, 0),
+    [sales],
+  );
 
   return (
     <div className="space-y-3">
@@ -57,7 +72,12 @@ export function AnuladosTab({
           {sales.length} pedido(s) anulados · {money(totalAnulado)} en total
         </span>
         {canExport && (
-          <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onExportExcel(filtered, "anulados")}>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            onClick={() => actions.onExportExcel(filtered, "anulados")}
+          >
             <FileSpreadsheet className="h-3.5 w-3.5" />
             Exportar Excel
           </Button>
@@ -91,21 +111,33 @@ export function AnuladosTab({
           <TableBody>
             {paged.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-sm text-muted-foreground">
+                <TableCell
+                  colSpan={8}
+                  className="py-8 text-center text-sm text-muted-foreground"
+                >
                   Sin pedidos anulados
                 </TableCell>
               </TableRow>
             )}
             {paged.map((sale) => (
               <TableRow key={sale.id}>
-                <TableCell className="font-medium">{sale.orderNumber}</TableCell>
+                <TableCell className="font-medium">
+                  {sale.orderNumber}
+                </TableCell>
                 <TableCell>
                   <div className="font-medium">{sale.clientName}</div>
-                  <div className="text-xs text-muted-foreground">{sale.phoneNumber}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {sale.phoneNumber}
+                  </div>
                 </TableCell>
                 <TableCell className="text-sm">{sale.date}</TableCell>
-                <TableCell className="text-sm">{formatDateTime(sale.updatedAt)}</TableCell>
-                <TableCell className="max-w-[220px] truncate text-sm text-muted-foreground" title={formatProductsShort(sale.items)}>
+                <TableCell className="text-sm">
+                  {formatDateTime(sale.updatedAt)}
+                </TableCell>
+                <TableCell
+                  className="max-w-[220px] truncate text-sm text-muted-foreground"
+                  title={formatProductsShort(sale.items)}
+                >
                   {formatProductsShort(sale.items)}
                 </TableCell>
                 <TableCell>
@@ -113,10 +145,18 @@ export function AnuladosTab({
                     {getCancellationReasonLabel(sale.cancellationReason)}
                   </span>
                 </TableCell>
-                <TableCell className="text-sm tabular-nums">{money(sale.total)}</TableCell>
+                <TableCell className="text-sm tabular-nums">
+                  {money(sale.total)}
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
-                    <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver pedido" onClick={() => actions.onView(sale)}>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      title="Ver pedido"
+                      onClick={() => actions.onView(sale)}
+                    >
                       <Eye className="h-3.5 w-3.5" />
                     </Button>
                   </div>
