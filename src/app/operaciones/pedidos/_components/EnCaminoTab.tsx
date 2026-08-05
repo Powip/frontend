@@ -134,7 +134,10 @@ export function EnCaminoTab({
   const paged = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
   const canChangeStatus = actions.can(OPS_PERMISSIONS.CHANGE_STATUS_MANUAL);
-  const selectedSales = filtered.filter((s) => selectedIds.has(s.id));
+  // Contra `sales` (todo lo de esta pestaña) y no contra `filtered` — si no,
+  // cambiar de filtro/courier/antigüedad descartaría en silencio lo
+  // seleccionado en otra vista al hacer una acción masiva.
+  const selectedSales = sales.filter((s) => selectedIds.has(s.id));
   const bulkStatuses = useMemo(() => computeBulkAvailableStatuses(selectedSales), [selectedSales]);
 
   const toggle = (id: string) => {

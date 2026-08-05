@@ -313,7 +313,11 @@ export function PorDespacharTab({
     });
   };
 
-  const selectedSales = filtered.filter((s) => selectedIds.has(s.id));
+  // Contra `sales` (todo lo de esta pestaña, sin filtrar) y no contra `filtered`
+  // — si se calculara contra la vista actual, cambiar de día/reprogramados/
+  // filtro de pipeline silenciosamente descartaría lo seleccionado en otra
+  // vista al generar guía o hacer cualquier acción masiva.
+  const selectedSales = sales.filter((s) => selectedIds.has(s.id));
   const bulkStatuses = useMemo(
     () => computeBulkAvailableStatuses(selectedSales),
     [selectedSales],

@@ -17,6 +17,7 @@ import { DiferenciasTab } from "./_components/DiferenciasTab";
 import { MOCK_DIFERENCIAS, MOCK_LIQUIDACIONES, MOCK_RENDICIONES } from "./_components/mockData";
 import { DiferenciaLiquidacion, PagoLiquidacion, RendicionRepartidor } from "./_components/types";
 import { buildGuiasPorLiquidar } from "./_components/utils";
+import { PowipPulseLoader } from "../_shared/PowipPulseLoader";
 
 /* -----------------------------------------------------------------------
    Liquidaciones COD — pantalla admin-only del módulo Operaciones.
@@ -228,7 +229,7 @@ function LoadingGrid() {
 
 export default function LiquidacionesPage() {
   return (
-    <Suspense fallback={<LoadingGrid />}>
+    <Suspense fallback={<PowipPulseLoader label="Cargando liquidaciones..." />}>
       <LiquidacionesContent />
     </Suspense>
   );

@@ -92,7 +92,10 @@ export function AtencionTab({
 
   const enJuego = useMemo(() => bySubView.reduce((sum, s) => sum + s.total, 0), [bySubView]);
 
-  const selectedSales = filtered.filter((s) => selectedIds.has(s.id));
+  // Contra `sales` (todo lo de esta pestaña) y no contra `filtered` — si no,
+  // cambiar de sub-vista (Trabados/Reprogramados/Devoluciones) o de motivo
+  // descartaría en silencio lo seleccionado en otra vista.
+  const selectedSales = sales.filter((s) => selectedIds.has(s.id));
   const toggle = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);

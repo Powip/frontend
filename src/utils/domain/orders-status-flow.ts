@@ -58,6 +58,10 @@ export function getStatusChainSteps(current: OrderStatus, target: OrderStatus): 
 /**
  * Obtiene los estados disponibles para una venta según su estado actual.
  * Ahora usa el mismo flujo para LIMA y PROVINCIA.
+ *
+ * INCOMPLETE nunca se incluye: es el estado de un carrito/venta que no
+ * terminó el checkout, no una etapa operativa que se deba poder elegir o
+ * ver ofrecida en un selector de cambio de estado.
  */
 export function getAvailableStatuses(
   currentStatus: OrderStatus,
@@ -66,7 +70,9 @@ export function getAvailableStatuses(
   const validNextStatuses = ORDER_STATUS_FLOW[currentStatus] ?? [];
 
   // Retorna el estado actual + los estados válidos siguientes
-  return [currentStatus, ...validNextStatuses];
+  return [currentStatus, ...validNextStatuses].filter(
+    (s) => s !== "INCOMPLETE",
+  );
 }
 
 const STATUS_PILL_CLASSES: Record<OrderStatus, string> = {

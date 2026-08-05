@@ -12,6 +12,7 @@ import RastreoCourierTab from "./_components/RastreoCourierTab";
 import CouriersTarifasTab from "./_components/CouriersTarifasTab";
 import NuevaGuiaDialog from "./_components/NuevaGuiaDialog";
 import { GlobalScanner } from "../_shared/GlobalScanner";
+import { PowipPulseLoader } from "../_shared/PowipPulseLoader";
 
 /* -----------------------------------------------------------------------
    Guías & Courier — pantalla del módulo Operaciones nuevo.
@@ -117,7 +118,7 @@ function GuiasPageInner() {
 
 export default function GuiasPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Cargando…</div>}>
+    <Suspense fallback={<PowipPulseLoader label="Cargando guías..." />}>
       <GuiasPageInner />
     </Suspense>
   );

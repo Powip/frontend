@@ -30,7 +30,6 @@ import {
   Eye,
   EyeOff,
   Repeat,
-  History,
   Download,
   RefreshCw,
   Unlink,
@@ -1353,6 +1352,9 @@ export default function CustomerServiceModal({
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
         <DialogContent className="sm:max-w-6xl w-[95vw] max-h-[90vh] overflow-y-auto">
+          {(loading || !receipt) && (
+            <DialogTitle className="sr-only">Detalle del Pedido</DialogTitle>
+          )}
           {loading ? (
             <div className="p-8 text-center">Cargando...</div>
           ) : (
@@ -1401,19 +1403,13 @@ export default function CustomerServiceModal({
                       <TabsTrigger value="pagos" className="whitespace-nowrap">
                         <DollarSign className="h-4 w-4 mr-1.5" /> Pagos
                       </TabsTrigger>
-                      <TabsTrigger value="atencion" className="whitespace-nowrap">
-                        <Phone className="h-4 w-4 mr-1.5" /> Atención al cliente
-                      </TabsTrigger>
                       <TabsTrigger value="reasignacion" className="whitespace-nowrap">
                         <Repeat className="h-4 w-4 mr-1.5" /> Reasignación
-                      </TabsTrigger>
-                      <TabsTrigger value="historial" className="whitespace-nowrap">
-                        <History className="h-4 w-4 mr-1.5" /> Historial
                       </TabsTrigger>
                     </TabsList>
                   </div>
 
-                  <TabsContent value="resumen" className="pt-3">
+                  <TabsContent value="resumen" className="pt-3 space-y-4">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* ================================== */}
                 {/* SECCIÓN IZQUIERDA */}
@@ -2003,318 +1999,6 @@ export default function CustomerServiceModal({
                   </div>
                 </div>
               </div>
-                  </TabsContent>
-
-                  <TabsContent value="seguimiento" className="pt-3 space-y-4">
-                  {/* Shipping Guide Section - only shown when shippingGuide data is provided */}
-                  {!shippingGuide && (
-                    <p className="text-sm text-muted-foreground border border-border rounded-lg p-4">
-                      Sin guía de envío asociada a este pedido todavía.
-                    </p>
-                  )}
-                  {shippingGuide && (
-                    <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50/50 dark:bg-blue-950/30">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2">
-                          <Truck className="h-4 w-4" />
-                          Guía de Envío
-                        </h3>
-                        <div className="flex gap-1 items-center">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-7 px-2 text-xs bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
-                            onClick={() => setGuideDetailsModalOpen(true)}
-                            title="Ver Guía Completa"
-                          >
-                            <Eye className="h-3.5 w-3.5 mr-1" />
-                            Ver Guía
-                          </Button>
-                          <Button
-                            size="icon"
-                            variant="outline"
-                            className="h-7 w-7 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900"
-                            onClick={handlePrintShippingReceipt}
-                            title="Imprimir Comprobante de Envío"
-                          >
-                            <Printer className="h-3.5 w-3.5" />
-                          </Button>
-                          <span
-                            className={`px-2 py-1 rounded text-xs font-medium ${
-                              shippingGuide.status === "ENTREGADA"
-                                ? "bg-green-100 text-green-800"
-                                : shippingGuide.status === "EN_RUTA"
-                                  ? "bg-amber-100 text-amber-800"
-                                  : shippingGuide.status === "APROBADA"
-                                    ? "bg-teal-100 text-teal-800"
-                                    : shippingGuide.status === "ASIGNADA"
-                                      ? "bg-blue-100 text-blue-800"
-                                      : shippingGuide.status === "FALLIDA" ||
-                                          shippingGuide.status === "CANCELADA"
-                                        ? "bg-red-100 text-red-800"
-                                        : "bg-gray-100 text-gray-800"
-                            }`}
-                          >
-                            {shippingGuide.status}
-                          </span>
-                          {receipt?.totals.pendingAmount != null &&
-                            receipt.totals.pendingAmount > 0 && (
-                              <span
-                                className="px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800 flex items-center gap-1"
-                                title="Pago pendiente"
-                              >
-                                <AlertCircle className="h-3 w-3" />
-                                Pago Pendiente
-                              </span>
-                            )}
-                          {shippingGuide.daysSinceCreated !== undefined &&
-                            shippingGuide.daysSinceCreated >= 25 && (
-                              <span
-                                className={`px-2 py-1 rounded text-xs font-medium ${
-                                  shippingGuide.daysSinceCreated >= 30
-                                    ? "bg-red-600 text-white"
-                                    : "bg-amber-500 text-white"
-                                }`}
-                              >
-                                {shippingGuide.daysSinceCreated >= 30
-                                  ? "VENCIDO"
-                                  : "PRÓXIMO"}
-                              </span>
-                            )}
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                        <div>
-                          <span className="text-muted-foreground">
-                            N° Guía:{" "}
-                          </span>
-                          <span className="font-medium">
-                            {shippingGuide.guideNumber}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">
-                            Courier:{" "}
-                          </span>
-                          <span className="font-medium">
-                            {shippingGuide.courierName || "-"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">Zona: </span>
-                          <span className="font-medium">
-                            {shippingGuide.deliveryZone}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">
-                            Tipo Envío:{" "}
-                          </span>
-                          <span className="font-medium">
-                            {shippingGuide.deliveryType}
-                          </span>
-                        </div>
-                        {shippingGuide.shippingKey && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Clave Envío:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {shippingGuide.shippingKey}
-                            </span>
-                          </div>
-                        )}
-                        {shippingGuide.shippingOffice && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Oficina:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {shippingGuide.shippingOffice}
-                            </span>
-                          </div>
-                        )}
-                        {shippingGuide.chargeType && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Tipo Cobro:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {shippingGuide.chargeType}
-                            </span>
-                          </div>
-                        )}
-
-                        <div>
-                          <span className="text-muted-foreground">
-                            Días en tránsito:{" "}
-                          </span>
-                          <span
-                            className={`font-medium ${
-                              (shippingGuide.daysSinceCreated || 0) >= 30
-                                ? "text-red-600"
-                                : (shippingGuide.daysSinceCreated || 0) >= 25
-                                  ? "text-amber-600"
-                                  : ""
-                            }`}
-                          >
-                            {shippingGuide.daysSinceCreated || 0} días
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground">
-                            Fecha Creación:{" "}
-                          </span>
-                          <span className="font-medium">
-                            {new Date(
-                              shippingGuide.created_at,
-                            ).toLocaleDateString("es-PE")}
-                          </span>
-                        </div>
-                        {shippingGuide.trackingUrl && (
-                          <div className="col-span-2">
-                            <span className="text-muted-foreground">
-                              Tracking:{" "}
-                            </span>
-                            <a
-                              href={shippingGuide.trackingUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-medium text-blue-600 hover:underline"
-                            >
-                              Ver seguimiento →
-                            </a>
-                          </div>
-                        )}
-                        {shippingGuide.deliveryAddress && (
-                          <div className="col-span-2">
-                            <span className="text-muted-foreground">
-                              Dirección Envío:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {shippingGuide.deliveryAddress}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {orderHeader?.guideNumber && (
-                    <div className="border rounded-lg p-4">
-                      <div className="text-sm font-bold mb-2.5">
-                        ⚡ Acciones logísticas
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                        {orderHeader.courier === "Shalom" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-sm justify-start"
-                            disabled={syncingTracking}
-                            onClick={handleForceSyncTracking}
-                          >
-                            <RefreshCw
-                              className={`h-4 w-4 mr-1.5 ${syncingTracking ? "animate-spin" : ""}`}
-                            />
-                            Forzar sync de tracking
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-sm justify-start"
-                          disabled={releasingGuide}
-                          onClick={handleReleaseFromGuide}
-                        >
-                          <Unlink className="h-4 w-4 mr-1.5" />
-                          Liberar de guía actual
-                        </Button>
-                        {onOpenCreateGuide && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-sm justify-start"
-                            disabled={releasingGuide}
-                            onClick={handleChangeCourier}
-                          >
-                            <ArrowRightLeft className="h-4 w-4 mr-1.5" />
-                            Cambiar courier
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                  </TabsContent>
-
-                  <TabsContent value="pagos" className="pt-3 space-y-4">
-                    <div className="grid grid-cols-3 gap-3.5">
-                      <div className="border rounded-lg p-4 text-center">
-                        <div className="text-base sm:text-xl font-black">
-                          S/{receipt.totals.grandTotal.toFixed(2)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">Total</div>
-                      </div>
-                      <div className="border rounded-lg p-4 text-center">
-                        <div className="text-base sm:text-xl font-black text-green-600">
-                          S/{receipt.totals.totalPaid.toFixed(2)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">Pagado</div>
-                      </div>
-                      <div className="border rounded-lg p-4 text-center">
-                        <div className="text-base sm:text-xl font-black text-amber-600">
-                          S/{receipt.totals.pendingAmount.toFixed(2)}
-                        </div>
-                        <div className="text-xs text-muted-foreground">Saldo</div>
-                      </div>
-                    </div>
-                    <div className="border rounded-lg p-4">
-                      <div className="text-sm font-bold mb-2.5">💳 Pagos registrados</div>
-                      {receipt.payments.length === 0 && (
-                        <div className="text-sm text-muted-foreground">
-                          Sin pagos registrados
-                        </div>
-                      )}
-                      {receipt.payments.map((p) => (
-                        <div
-                          key={p.id}
-                          className="flex items-center justify-between text-sm py-2 border-b last:border-0 border-dashed"
-                        >
-                          <div>
-                            <div className="font-medium">{p.paymentMethod}</div>
-                            <div className="text-muted-foreground text-xs">
-                              {new Date(p.paymentDate).toLocaleDateString("es-PE")}
-                            </div>
-                          </div>
-                          <div className="text-right">
-                            <div className="font-semibold">
-                              S/{Number(p.amount).toFixed(2)}
-                            </div>
-                            <div
-                              className={
-                                p.status === "PAID"
-                                  ? "text-green-600 text-xs"
-                                  : p.status === "PENDING"
-                                    ? "text-amber-600 text-xs"
-                                    : "text-red-600 text-xs"
-                              }
-                            >
-                              {p.status}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <Button
-                      variant="outline"
-                      className="w-full text-sm"
-                      onClick={() => setPaymentModalOpen(true)}
-                    >
-                      Gestionar pagos
-                    </Button>
-                  </TabsContent>
-
-                  <TabsContent value="atencion" className="pt-3 space-y-4">
                   {/* Promo del día - only shown in customer service view */}
                   {!hideCallManagement && (
                     <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
@@ -2669,44 +2353,8 @@ export default function CustomerServiceModal({
                       orderNumber={receipt.orderNumber}
                     />
                   )}
-                  </TabsContent>
 
-                  <TabsContent value="reasignacion" className="pt-3 space-y-3.5">
-                    {orderHeader?.status === "EN_ENVIO" &&
-                    orderHeader?.shalomStatus === "DEVUELTO" ? (
-                      <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950 p-4">
-                        <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-bold text-sm">
-                          <AlertTriangle className="h-4 w-4" /> Entrega fallida —
-                          el paquete está en retorno
-                        </div>
-                        <p className="text-sm text-red-700 dark:text-red-300 mt-1.5">
-                          El cliente no recibió el pedido. Puedes reprogramar un
-                          nuevo intento o anular la entrega.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="text-sm text-muted-foreground border rounded-lg p-4">
-                        Este pedido no está marcado como fallido. Si el cliente
-                        no recogió o rechazó la entrega, inicia el flujo para
-                        reprogramar un nuevo intento o anular.
-                      </div>
-                    )}
-                    <Button
-                      className="w-full text-sm"
-                      variant={
-                        orderHeader?.status === "EN_ENVIO" &&
-                        orderHeader?.shalomStatus === "DEVUELTO"
-                          ? "default"
-                          : "outline"
-                      }
-                      onClick={() => setReassignModalOpen(true)}
-                    >
-                      <Repeat className="h-4 w-4 mr-1.5" />
-                      Reprogramar / anular
-                    </Button>
-                  </TabsContent>
 
-                  <TabsContent value="historial" className="pt-3">
                   {/* Comentarios Timeline */}
                   <div className="border border-border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
@@ -2834,6 +2482,351 @@ export default function CustomerServiceModal({
                     </div>
                   </div>
                   </TabsContent>
+
+                  <TabsContent value="seguimiento" className="pt-3 space-y-4">
+                  {/* Shipping Guide Section - only shown when shippingGuide data is provided */}
+                  {!shippingGuide && (
+                    <p className="text-sm text-muted-foreground border border-border rounded-lg p-4">
+                      Sin guía de envío asociada a este pedido todavía.
+                    </p>
+                  )}
+                  {shippingGuide && (
+                    <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50/50 dark:bg-blue-950/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2">
+                          <Truck className="h-4 w-4" />
+                          Guía de Envío
+                        </h3>
+                        <div className="flex gap-1 items-center">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-7 px-2 text-xs bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900"
+                            onClick={() => setGuideDetailsModalOpen(true)}
+                            title="Ver Guía Completa"
+                          >
+                            <Eye className="h-3.5 w-3.5 mr-1" />
+                            Ver Guía
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="outline"
+                            className="h-7 w-7 bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900"
+                            onClick={handlePrintShippingReceipt}
+                            title="Imprimir Comprobante de Envío"
+                          >
+                            <Printer className="h-3.5 w-3.5" />
+                          </Button>
+                          <span
+                            className={`px-2 py-1 rounded text-xs font-medium ${
+                              shippingGuide.status === "ENTREGADA"
+                                ? "bg-green-100 text-green-800"
+                                : shippingGuide.status === "EN_RUTA"
+                                  ? "bg-amber-100 text-amber-800"
+                                  : shippingGuide.status === "APROBADA"
+                                    ? "bg-teal-100 text-teal-800"
+                                    : shippingGuide.status === "ASIGNADA"
+                                      ? "bg-blue-100 text-blue-800"
+                                      : shippingGuide.status === "FALLIDA" ||
+                                          shippingGuide.status === "CANCELADA"
+                                        ? "bg-red-100 text-red-800"
+                                        : "bg-gray-100 text-gray-800"
+                            }`}
+                          >
+                            {shippingGuide.status}
+                          </span>
+                          {receipt?.totals.pendingAmount != null &&
+                            receipt.totals.pendingAmount > 0 && (
+                              <span
+                                className="px-2 py-1 rounded text-xs font-medium bg-amber-100 text-amber-800 flex items-center gap-1"
+                                title="Pago pendiente"
+                              >
+                                <AlertCircle className="h-3 w-3" />
+                                Pago Pendiente
+                              </span>
+                            )}
+                          {shippingGuide.daysSinceCreated !== undefined &&
+                            shippingGuide.daysSinceCreated >= 25 && (
+                              <span
+                                className={`px-2 py-1 rounded text-xs font-medium ${
+                                  shippingGuide.daysSinceCreated >= 30
+                                    ? "bg-red-600 text-white"
+                                    : "bg-amber-500 text-white"
+                                }`}
+                              >
+                                {shippingGuide.daysSinceCreated >= 30
+                                  ? "VENCIDO"
+                                  : "PRÓXIMO"}
+                              </span>
+                            )}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                        <div>
+                          <span className="text-muted-foreground">
+                            N° Guía:{" "}
+                          </span>
+                          <span className="font-medium">
+                            {shippingGuide.guideNumber}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">
+                            Courier:{" "}
+                          </span>
+                          <span className="font-medium">
+                            {shippingGuide.courierName || "-"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Zona: </span>
+                          <span className="font-medium">
+                            {shippingGuide.deliveryZone}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">
+                            Tipo Envío:{" "}
+                          </span>
+                          <span className="font-medium">
+                            {shippingGuide.deliveryType}
+                          </span>
+                        </div>
+                        {shippingGuide.shippingKey && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Clave Envío:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {shippingGuide.shippingKey}
+                            </span>
+                          </div>
+                        )}
+                        {shippingGuide.shippingOffice && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Oficina:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {shippingGuide.shippingOffice}
+                            </span>
+                          </div>
+                        )}
+                        {shippingGuide.chargeType && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Tipo Cobro:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {shippingGuide.chargeType}
+                            </span>
+                          </div>
+                        )}
+
+                        <div>
+                          <span className="text-muted-foreground">
+                            Días en tránsito:{" "}
+                          </span>
+                          <span
+                            className={`font-medium ${
+                              (shippingGuide.daysSinceCreated || 0) >= 30
+                                ? "text-red-600"
+                                : (shippingGuide.daysSinceCreated || 0) >= 25
+                                  ? "text-amber-600"
+                                  : ""
+                            }`}
+                          >
+                            {shippingGuide.daysSinceCreated || 0} días
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">
+                            Fecha Creación:{" "}
+                          </span>
+                          <span className="font-medium">
+                            {new Date(
+                              shippingGuide.created_at,
+                            ).toLocaleDateString("es-PE")}
+                          </span>
+                        </div>
+                        {shippingGuide.trackingUrl && (
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">
+                              Tracking:{" "}
+                            </span>
+                            <a
+                              href={shippingGuide.trackingUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-blue-600 hover:underline"
+                            >
+                              Ver seguimiento →
+                            </a>
+                          </div>
+                        )}
+                        {shippingGuide.deliveryAddress && (
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">
+                              Dirección Envío:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {shippingGuide.deliveryAddress}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {orderHeader?.guideNumber && (
+                    <div className="border rounded-lg p-4">
+                      <div className="text-sm font-bold mb-2.5">
+                        ⚡ Acciones logísticas
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        {orderHeader.courier === "Shalom" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-sm justify-start"
+                            disabled={syncingTracking}
+                            onClick={handleForceSyncTracking}
+                          >
+                            <RefreshCw
+                              className={`h-4 w-4 mr-1.5 ${syncingTracking ? "animate-spin" : ""}`}
+                            />
+                            Forzar sync de tracking
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-sm justify-start"
+                          disabled={releasingGuide}
+                          onClick={handleReleaseFromGuide}
+                        >
+                          <Unlink className="h-4 w-4 mr-1.5" />
+                          Liberar de guía actual
+                        </Button>
+                        {onOpenCreateGuide && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-sm justify-start"
+                            disabled={releasingGuide}
+                            onClick={handleChangeCourier}
+                          >
+                            <ArrowRightLeft className="h-4 w-4 mr-1.5" />
+                            Cambiar courier
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  </TabsContent>
+
+                  <TabsContent value="pagos" className="pt-3 space-y-4">
+                    <div className="grid grid-cols-3 gap-3.5">
+                      <div className="border rounded-lg p-4 text-center">
+                        <div className="text-base sm:text-xl font-black">
+                          S/{receipt.totals.grandTotal.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Total</div>
+                      </div>
+                      <div className="border rounded-lg p-4 text-center">
+                        <div className="text-base sm:text-xl font-black text-green-600">
+                          S/{receipt.totals.totalPaid.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Pagado</div>
+                      </div>
+                      <div className="border rounded-lg p-4 text-center">
+                        <div className="text-base sm:text-xl font-black text-amber-600">
+                          S/{receipt.totals.pendingAmount.toFixed(2)}
+                        </div>
+                        <div className="text-xs text-muted-foreground">Saldo</div>
+                      </div>
+                    </div>
+                    <div className="border rounded-lg p-4">
+                      <div className="text-sm font-bold mb-2.5">💳 Pagos registrados</div>
+                      {receipt.payments.length === 0 && (
+                        <div className="text-sm text-muted-foreground">
+                          Sin pagos registrados
+                        </div>
+                      )}
+                      {receipt.payments.map((p) => (
+                        <div
+                          key={p.id}
+                          className="flex items-center justify-between text-sm py-2 border-b last:border-0 border-dashed"
+                        >
+                          <div>
+                            <div className="font-medium">{p.paymentMethod}</div>
+                            <div className="text-muted-foreground text-xs">
+                              {new Date(p.paymentDate).toLocaleDateString("es-PE")}
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <div className="font-semibold">
+                              S/{Number(p.amount).toFixed(2)}
+                            </div>
+                            <div
+                              className={
+                                p.status === "PAID"
+                                  ? "text-green-600 text-xs"
+                                  : p.status === "PENDING"
+                                    ? "text-amber-600 text-xs"
+                                    : "text-red-600 text-xs"
+                              }
+                            >
+                              {p.status}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="w-full text-sm"
+                      onClick={() => setPaymentModalOpen(true)}
+                    >
+                      Gestionar pagos
+                    </Button>
+                  </TabsContent>
+
+                  <TabsContent value="reasignacion" className="pt-3 space-y-3.5">
+                    {orderHeader?.status === "EN_ENVIO" &&
+                    orderHeader?.shalomStatus === "DEVUELTO" ? (
+                      <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950 p-4">
+                        <div className="flex items-center gap-2 text-red-700 dark:text-red-300 font-bold text-sm">
+                          <AlertTriangle className="h-4 w-4" /> Entrega fallida —
+                          el paquete está en retorno
+                        </div>
+                        <p className="text-sm text-red-700 dark:text-red-300 mt-1.5">
+                          El cliente no recibió el pedido. Puedes reprogramar un
+                          nuevo intento o anular la entrega.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-muted-foreground border rounded-lg p-4">
+                        Este pedido no está marcado como fallido. Si el cliente
+                        no recogió o rechazó la entrega, inicia el flujo para
+                        reprogramar un nuevo intento o anular.
+                      </div>
+                    )}
+                    <Button
+                      className="w-full text-sm"
+                      variant={
+                        orderHeader?.status === "EN_ENVIO" &&
+                        orderHeader?.shalomStatus === "DEVUELTO"
+                          ? "default"
+                          : "outline"
+                      }
+                      onClick={() => setReassignModalOpen(true)}
+                    >
+                      <Repeat className="h-4 w-4 mr-1.5" />
+                      Reprogramar / anular
+                    </Button>
+                  </TabsContent>
+
                 </Tabs>
               </div>
             )

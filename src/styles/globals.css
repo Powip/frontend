@@ -201,3 +201,16 @@ input[type="number"] {
     border-color: #ccc !important;
   }
 }
+
+/* Palpitar tipo "latido" (doble pulso) para el iso del logo en loaders */
+@keyframes powip-heartbeat {
+  0%, 100% { transform: scale(1); }
+  25% { transform: scale(1.15); }
+  40% { transform: scale(1); }
+  55% { transform: scale(1.1); }
+  70% { transform: scale(1); }
+}
+
+.animate-powip-heartbeat {
+  animation: powip-heartbeat 1.4s ease-in-out infinite;
+}

@@ -5,10 +5,10 @@ import axios from "axios";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Skeleton } from "@/components/ui/skeleton";
 import { Package, Truck, AlertTriangle, Archive, Ban, ScanLine } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { GlobalScanner } from "../../_shared/GlobalScanner";
+import { PowipPulseLoader } from "../../_shared/PowipPulseLoader";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOperationsRole } from "@/contexts/OperationsRoleContext";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
@@ -681,12 +681,7 @@ export function PedidosContent() {
   };
 
   if (loading) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-9 w-full max-w-md rounded-lg" />
-        <Skeleton className="h-96 w-full rounded-xl" />
-      </div>
-    );
+    return <PowipPulseLoader label="Cargando pedidos..." />;
   }
 
   return (

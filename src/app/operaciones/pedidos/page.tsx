@@ -1,8 +1,8 @@
 "use client";
 
 import { Suspense } from "react";
-import { Skeleton } from "@/components/ui/skeleton";
 import { PedidosContent } from "./_components/PedidosContent";
+import { PowipPulseLoader } from "../_shared/PowipPulseLoader";
 
 /**
  * Pantalla "Pedidos" del módulo Operaciones nuevo — reemplaza la gestión de
@@ -12,14 +12,7 @@ import { PedidosContent } from "./_components/PedidosContent";
  */
 export default function PedidosPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="space-y-3">
-          <Skeleton className="h-9 w-full max-w-md rounded-lg" />
-          <Skeleton className="h-96 w-full rounded-xl" />
-        </div>
-      }
-    >
+    <Suspense fallback={<PowipPulseLoader label="Cargando pedidos..." />}>
       <PedidosContent />
     </Suspense>
   );

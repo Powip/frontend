@@ -18,7 +18,6 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrderHeader } from "@/interfaces/IOrder";
 import {
@@ -29,6 +28,7 @@ import {
 } from "@/utils/domain/operations-pedidos-tabs";
 import { GUIDE_AGE_THRESHOLDS } from "@/constants/operationsDomain";
 import { GlobalScanner } from "./_shared/GlobalScanner";
+import { PowipPulseLoader } from "./_shared/PowipPulseLoader";
 
 /* -----------------------------------------------------------------------
    Tablero de Operaciones.
@@ -243,16 +243,7 @@ export default function OperacionesTableroPage() {
   };
 
   if (loading) {
-    return (
-      <div className="space-y-4">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-28 w-full rounded-xl" />
-          ))}
-        </div>
-        <Skeleton className="h-64 w-full rounded-xl" />
-      </div>
-    );
+    return <PowipPulseLoader label="Cargando..." />;
   }
 
   return (
