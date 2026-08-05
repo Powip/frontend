@@ -8,7 +8,12 @@ import {
   ChevronDown,
   Download,
 } from "lucide-react";
-import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
+import {
+  buildDetailedSalesExportRows,
+  exportDetailedSalesToExcel,
+} from "@/utils/exportDetailedSalesReport";
+import { OrderResponseDto } from "@/api/sales/dto/order.dto";
+import { toast } from "sonner";
 import {
   ComposedChart,
   BarChart as RechartsBarChart,
@@ -281,11 +286,11 @@ const FunnelCOD: React.FC<{
     if (!selectedStoreId) return;
     setDownloading(true);
     try {
-      const res = await axios.get(
+      const res = await axios.get<OrderResponseDto[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
         { params: { fromDate, toDate } }
       );
-      
+
       const orders = res.data;
 
       // Ordenar por estado jerárquico
@@ -300,45 +305,25 @@ const FunnelCOD: React.FC<{
         RECHAZADO: 8,
         ANULADO: 9,
       };
-      
-      orders.sort((a: any, b: any) => (statusWeight[a.status] || 99) - (statusWeight[b.status] || 99));
 
-      const exportData: SaleExportData[] = orders.map((o: any) => {
-        const approvedPayments = (o.payments || []).filter((p: any) => p.status === 'PAID');
-        const advancePayment = approvedPayments.reduce((sum: number, p: any) => sum + Number(p.amount), 0);
-        const total = Number(o.grandTotal) || 0;
-        const pendingPayment = Math.max(0, total - advancePayment);
-        const productsStr = (o.items || []).map((i: any) => `${i.quantity}x ${i.productName}`).join(" | ");
+      orders.sort(
+        (a, b) => (statusWeight[a.status] || 99) - (statusWeight[b.status] || 99)
+      );
 
-        return {
-          orderNumber: o.orderNumber,
-          clientName: o.customer?.fullName || "-",
-          phoneNumber: o.customer?.phoneNumber || "-",
-          documentType: o.customer?.documentType || "-",
-          documentNumber: o.customer?.documentNumber || "-",
-          date: new Date(o.created_at).toLocaleDateString("es-PE"),
-          products: productsStr,
-          total,
-          advancePayment,
-          pendingPayment,
-          status: o.status,
-          salesRegion: o.salesRegion || "-",
-          province: o.customer?.province || "-",
-          city: o.customer?.city || "-",
-          district: o.customer?.district || "-",
-          zone: o.customer?.reference || "-",
-          address: o.customer?.address || "-",
-          paymentMethod: (o.payments && o.payments.length > 0) ? o.payments[0].paymentMethod : "N/A",
-          deliveryType: o.deliveryType || "-",
-          courier: o.courier || "-",
-          sellerName: o.sellerName || "-",
-          guideNumber: o.guideNumber || "-"
-        };
-      });
+      // 1 fila por producto/variante del pedido (order.items[]), repitiendo
+      // los datos de cabecera del pedido en cada fila.
+      const exportRows = buildDetailedSalesExportRows(orders);
 
-      exportSalesToExcel(exportData, `funnel_efectividad_cod`);
-    } catch(err) {
-      console.error("Error exporting to Excel", err);
+      if (exportRows.length === 0) {
+        toast.error("No hay datos para exportar en el rango seleccionado");
+        return;
+      }
+
+      exportDetailedSalesToExcel(exportRows, `funnel_efectividad_cod`);
+      toast.success(`Exportados ${exportRows.length} registros`);
+    } catch (error) {
+      console.error("Error exporting to Excel", error);
+      toast.error("Error al exportar el reporte a Excel");
     } finally {
       setDownloading(false);
     }

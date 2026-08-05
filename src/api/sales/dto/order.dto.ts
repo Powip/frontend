@@ -22,6 +22,7 @@ export interface CustomerResponseDto {
 
   latitude: number | null;
   longitude: number | null;
+  googleMapsUrl: string | null;
 
   isActive: boolean;
 
