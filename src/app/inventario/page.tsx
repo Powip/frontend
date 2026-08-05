@@ -50,7 +50,11 @@ import Link from "next/link";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import Image from "next/image";
-import { searchInventoryItems } from "@/services/inventoryItems.service";
+import { isAxiosError } from "axios";
+import {
+  exportInventoryItems,
+  searchInventoryItems,
+} from "@/services/inventoryItems.service";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 
 import AddStockModal from "@/components/modals/AddStockModal";
@@ -75,6 +79,7 @@ export default function AlmacenPage() {
   >([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingInventories, setIsLoadingInventories] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -173,54 +178,89 @@ export default function AlmacenPage() {
   if (!auth) return null;
 
   const handleExportExcel = async () => {
-    if (productsWithDetails.length === 0) {
-      toast.warning("No hay productos para exportar");
+    if (!selectedInventoryId) {
+      toast.warning("Seleccione un almacén para exportar");
       return;
     }
 
-    const workbook = new ExcelJS.Workbook();
-    const worksheet = workbook.addWorksheet("Almacén");
+    setIsExporting(true);
 
-    worksheet.columns = [
-      { header: "SKU Empresa", key: "companySku", width: 20 },
-      { header: "SKU POWIP", key: "sku", width: 20 },
-      { header: "Nombre", key: "name", width: 30 },
-      { header: "Stock", key: "stock", width: 12 },
-      { header: "Reservado", key: "reservado", width: 12 },
-      { header: "Disponible", key: "disponible", width: 12 },
-      { header: "Precio", key: "precio", width: 15 },
-    ];
-
-    worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
-    worksheet.getRow(1).alignment = { horizontal: "center" };
-    worksheet.getRow(1).fill = {
-      type: "pattern",
-      pattern: "solid",
-      fgColor: { argb: "FF02A8E1" },
-    };
-
-    productsWithDetails.forEach((prod) => {
-      worksheet.addRow({
-        companySku: prod.companySku ?? "",
-        sku: prod.sku,
-        name: prod.productName,
-        stock: prod.physicalStock,
-        reservado: prod.reservedStock,
-        disponible: prod.availableStock,
-        precio: prod.priceVta,
+    try {
+      const items = await exportInventoryItems({
+        inventoryId: selectedInventoryId,
+        q: searchQuery || undefined,
       });
-    });
 
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `Almacen_${currentStore?.name || "Tienda"}.xlsx`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+      if (items.length === 0) {
+        toast.warning("No hay productos para exportar");
+        return;
+      }
+
+      const workbook = new ExcelJS.Workbook();
+      const worksheet = workbook.addWorksheet("Almacén");
+
+      worksheet.columns = [
+        { header: "SKU Empresa", key: "companySku", width: 20 },
+        { header: "SKU POWIP", key: "sku", width: 20 },
+        { header: "Nombre", key: "name", width: 30 },
+        { header: "Stock", key: "stock", width: 12 },
+        { header: "Reservado", key: "reservado", width: 12 },
+        { header: "Disponible", key: "disponible", width: 12 },
+        { header: "Precio", key: "precio", width: 15 },
+      ];
+
+      worksheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      worksheet.getRow(1).alignment = { horizontal: "center" };
+      worksheet.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF02A8E1" },
+      };
+
+      items.forEach((prod) => {
+        worksheet.addRow({
+          companySku: prod.companySku ?? "",
+          sku: prod.sku,
+          name: prod.productName,
+          stock: prod.physicalStock,
+          reservado: prod.reservedStock,
+          disponible: prod.availableStock,
+          precio: prod.priceVta,
+        });
+      });
+
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Almacen_${currentStore?.name || "Tienda"}.xlsx`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+
+      toast.success(`Exportados ${items.length} producto(s)`);
+    } catch (err) {
+      console.error("Error al exportar el inventario:", err);
+
+      // Señal principal: el API Gateway (Spring Cloud Gateway, response-timeout
+      // 20s) corta la conexión y devuelve un 5xx (típicamente 504) cuando el
+      // fetch de "todo" se demora demasiado. ECONNABORTED (timeout del lado
+      // cliente de axios) queda como señal secundaria: axiosAuth hoy no
+      // configura timeout propio, así que casi nunca se dispara en producción.
+      const isTimeout =
+        isAxiosError(err) &&
+        ((err.response?.status ?? 0) >= 500 || err.code === "ECONNABORTED");
+
+      toast.error(
+        isTimeout
+          ? "La exportación tardó demasiado. Intente nuevamente o aplique un filtro más específico."
+          : "No se pudo exportar el inventario. Intente nuevamente.",
+      );
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   return (
@@ -331,9 +371,23 @@ export default function AlmacenPage() {
                       <Download className="mr-2 h-4 w-4 rotate-180" />
                       Importar Excel
                     </Button>
-                    <Button variant="outline" size="sm" onClick={handleExportExcel}>
-                      <Download className="mr-2 h-4 w-4" />
-                      Exportar en Excel
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleExportExcel}
+                      disabled={isExporting}
+                    >
+                      {isExporting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Exportando...
+                        </>
+                      ) : (
+                        <>
+                          <Download className="mr-2 h-4 w-4" />
+                          Exportar en Excel
+                        </>
+                      )}
                     </Button>
                   </div>
                 </div>

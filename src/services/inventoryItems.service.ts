@@ -32,3 +32,30 @@ export async function searchInventoryItems(params: {
 
   return res.data;
 }
+
+export interface ExportInventoryItemsParams {
+  inventoryId: string;
+  companyId?: string;
+  q?: string;
+  supplierId?: string;
+  brandId?: string;
+  categoryId?: string;
+  subcategoryId?: string;
+}
+
+/**
+ * Trae TODOS los items del inventario que matchean el filtro aplicado
+ * (sin paginar), usando el modo `all=true` de ms-logistics
+ * `/inventory-item/search` (FEAT-09). Pensado para el export a Excel:
+ * nunca usar para poblar la tabla en pantalla.
+ */
+export async function exportInventoryItems(
+  params: ExportInventoryItemsParams,
+): Promise<InventoryItemForSale[]> {
+  const res = await axiosAuth.get<SearchInventoryItemsResponse>(
+    `${GATEWAY.logistics}/inventory-item/search`,
+    { params: { ...params, all: true } },
+  );
+
+  return res.data.data;
+}
