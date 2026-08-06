@@ -26,6 +26,18 @@ const DESPACHO_STATUSES: OrderStatus[] = ["ASIGNADO_A_GUIA", "EN_ENVIO"];
 const MAX_PAGES = 20; // resguardo ante paginación mal formada del backend
 
 /**
+ * subEstadoCc de los flujos Lima / Carrito abandonado — no son parte del
+ * embudo COD y se excluyen del auto-completado. Ver comentario en
+ * `getCierreDiaClosingData` sobre por qué NO se filtra por tipoGestion.
+ */
+const NON_COD_SUBESTADOS = new Set<string>([
+  "entrega_lima",
+  "carrito_sin_contactar",
+  "carrito_contactado",
+  "carrito_recuperado",
+]);
+
+/**
  * subEstadoCc es terminal en "confirmado" / "anulado_cc" (ver
  * CcGestionPanel.TERMINAL_STATES) — una vez confirmado el avance a
  * despachado/entregado se seguiría por order.status, no por subEstadoCc.
@@ -148,10 +160,17 @@ export async function getCierreDiaClosingData(
   startDate: string,
   endDate: string,
 ): Promise<CierreDiaClosingData> {
-  const [orders, upsell] = await Promise.all([
-    fetchAllPedidosCC({ storeId, tipoGestion: "cod", startDate, endDate }),
+  // Ojo: NO se filtra por tipoGestion: "cod" acá. Un pedido confirmado deja
+  // de estar "en gestión CC" (pasa a Operaciones con status PREPARADO en
+  // adelante) y por eso el listado con tipoGestion=cod dejaba de traerlo —
+  // eso hacía que "confirmados" nunca se contara. En su lugar se trae todo
+  // el rango y se descartan a mano los pedidos de Lima/Carrito abandonado
+  // (subEstadoCc en NON_COD_SUBESTADOS), que no son parte de este embudo.
+  const [allOrders, upsell] = await Promise.all([
+    fetchAllPedidosCC({ storeId, startDate, endDate }),
     getUpsellRecords(storeId, startDate, endDate).catch(() => null),
   ]);
+  const orders = allOrders.filter((o) => !o.subEstadoCc || !NON_COD_SUBESTADOS.has(o.subEstadoCc));
 
   const upsellBySku = new Map<string, number>();
   const upsellOrderNumbers = new Set<string>();
