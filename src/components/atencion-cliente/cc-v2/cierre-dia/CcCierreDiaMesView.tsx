@@ -16,8 +16,9 @@ import { useCierreDiaClosingDataRange, useCierreDiaMonth, useDeleteCierreDia } f
 import { toast } from "sonner";
 import { CcCierreDiaProductTable } from "./CcCierreDiaProductTable";
 import { CcCierreDiaInnerTabs } from "./CcCierreDiaInnerTabs";
+import { CcCierreDiaEstadoBadge } from "./CcCierreDiaEstadoBadge";
 import {
-  computeMetrics, EMPTY_PRODUCT_TOTALS, formatCurrency, formatDate, formatPct,
+  computeMetrics, EMPTY_PRODUCT_TOTALS, formatCurrency, formatDate, formatPct, toEffectiveRecord,
 } from "./cierreDiaUtils";
 
 interface Props {
@@ -36,7 +37,6 @@ const TABS = [
   { key: "resumen", label: "📊 Resumen" },
   { key: "cpv", label: "💰 CPV Día a Día" },
   { key: "productos", label: "📦 Por Producto" },
-  { key: "categorias", label: "🏷️ Por Categoría" },
 ] as const;
 
 function lastDayOfMonth(monthStr: string): string {
@@ -47,11 +47,33 @@ function lastDayOfMonth(monthStr: string): string {
 
 export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia }: Props) {
   const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("resumen");
-  const { data: records = [], isLoading } = useCierreDiaMonth(storeId, monthStr);
+  const startDate = `${monthStr}-01`;
+  const endDate = lastDayOfMonth(monthStr);
+
+  const { data: manualRecords = [], isLoading: isLoadingManual } = useCierreDiaMonth(storeId, monthStr);
+  const { data: closingData, isLoading: isLoadingClosing } = useCierreDiaClosingDataRange(storeId, startDate, endDate);
+  const isLoading = isLoadingManual || isLoadingClosing;
   const deleteMutation = useDeleteCierreDia(storeId);
 
   const [y, m] = monthStr.split("-").map(Number);
   const mesLabel = `${MESES[(m ?? 1) - 1]} ${y}`;
+
+  // Fusiona lo guardado a mano con lo autocompletado desde pedidos reales —
+  // lo manual siempre gana; el resto se calcula solo.
+  const records = useMemo(() => {
+    const manualByDate = new Map(manualRecords.map((r) => [r.date, r]));
+    const autoByDate = new Map((closingData?.byDay ?? []).map((d) => [d.date, d]));
+    const allDates = new Set([...manualByDate.keys(), ...autoByDate.keys()]);
+    const list: NonNullable<ReturnType<typeof toEffectiveRecord>>[] = [];
+    allDates.forEach((ds) => {
+      const eff = toEffectiveRecord(storeId, ds, manualByDate.get(ds), autoByDate.get(ds));
+      if (eff) list.push(eff);
+    });
+    return list.sort((a, b) => a.date.localeCompare(b.date));
+  }, [manualRecords, closingData, storeId]);
+
+  const guardadosCount = records.filter((r) => !r.isAuto).length;
+  const automaticosCount = records.filter((r) => r.isAuto).length;
 
   const totals = useMemo(() => {
     let total = 0, confirmados = 0, entregados = 0, anulados = 0, ingreso = 0, publi = 0, margenNeto = 0, upsells = 0;
@@ -85,7 +107,11 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
       {tab === "resumen" && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <StatCard label="📦 Ingresados" value={totals.total.toLocaleString("es-PE")} sub={`${records.length} días registrados`} />
+            <StatCard
+              label="📦 Ingresados"
+              value={totals.total.toLocaleString("es-PE")}
+              sub={`${guardadosCount} guardados · ${automaticosCount} automáticos`}
+            />
             <StatCard
               label="✅ Tasa confirm."
               value={formatPct(totals.total ? (totals.confirmados / totals.total) * 100 : 0)}
@@ -116,8 +142,10 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
               <div>
-                <CardTitle className="text-sm">Historial de días guardados</CardTitle>
-                <p className="text-xs text-muted-foreground">{records.length} días registrados · {mesLabel}</p>
+                <CardTitle className="text-sm">Historial del mes</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  {guardadosCount} guardado(s) · {automaticosCount} automático(s) · {mesLabel}
+                </p>
               </div>
               <Button size="sm" onClick={() => onRegularizar(`${monthStr}-01`)}>
                 + Agregar / regularizar día
@@ -137,17 +165,20 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
                       <TableHead className="text-right">Ingreso S/</TableHead>
                       <TableHead className="text-right">Margen Neto S/</TableHead>
                       <TableHead className="text-right">% Neto</TableHead>
+                      <TableHead className="text-center">Estado</TableHead>
                       <TableHead className="text-center">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-center py-6 text-muted-foreground">Cargando...</TableCell>
+                        <TableCell colSpan={11} className="text-center py-6 text-muted-foreground">Cargando...</TableCell>
                       </TableRow>
                     ) : records.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={10} className="text-center py-6 text-muted-foreground">No hay días guardados.</TableCell>
+                        <TableCell colSpan={11} className="text-center py-6 text-muted-foreground">
+                          No hay pedidos ni días guardados este mes.
+                        </TableCell>
                       </TableRow>
                     ) : (
                       records.map((r) => {
@@ -163,6 +194,9 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
                             <TableCell className="text-right font-semibold">{formatCurrency(r.ingreso)}</TableCell>
                             <TableCell className="text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(met.margenNeto)}</TableCell>
                             <TableCell className="text-right font-semibold">{formatPct(met.pctMargenNeto)}</TableCell>
+                            <TableCell className="text-center">
+                              <CcCierreDiaEstadoBadge isAuto={r.isAuto} />
+                            </TableCell>
                             <TableCell>
                               <div className="flex items-center justify-center gap-1">
                                 <Button variant="ghost" size="icon" className="h-7 w-7" title="Ver" onClick={() => onVerDia(r.date)}>
@@ -171,35 +205,38 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
                                 <Button variant="ghost" size="icon" className="h-7 w-7" title="Editar" onClick={() => onRegularizar(r.date)}>
                                   <Pencil className="h-3.5 w-3.5" />
                                 </Button>
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600" title="Eliminar">
-                                      <Trash2 className="h-3.5 w-3.5" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle className="flex items-center gap-2">
-                                        <AlertTriangle className="h-5 w-5 text-red-500" />
-                                        ¿Eliminar cierre del día?
-                                      </AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        Vas a eliminar el registro guardado del{" "}
-                                        <strong>{formatDate(r.date, { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</strong>.
-                                        Esta acción no se puede deshacer.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                      <AlertDialogAction
-                                        className="bg-red-600 hover:bg-red-700"
-                                        onClick={() => handleDelete(r.date)}
-                                      >
-                                        Sí, eliminar
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
+                                {!r.isAuto && (
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600" title="Eliminar">
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle className="flex items-center gap-2">
+                                          <AlertTriangle className="h-5 w-5 text-red-500" />
+                                          ¿Eliminar cierre del día?
+                                        </AlertDialogTitle>
+                                        <AlertDialogDescription>
+                                          Vas a eliminar el registro guardado del{" "}
+                                          <strong>{formatDate(r.date, { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}</strong>.
+                                          Esta acción no se puede deshacer. Si todavía hay pedidos reales ese día, va a
+                                          volver a mostrarse automáticamente (sin el gasto publicitario que hayas cargado).
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          className="bg-red-600 hover:bg-red-700"
+                                          onClick={() => handleDelete(r.date)}
+                                        >
+                                          Sí, eliminar
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -218,11 +255,13 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">💰 Inversión publicitaria · Día a día</CardTitle>
-            <p className="text-xs text-muted-foreground">{mesLabel}</p>
+            <p className="text-xs text-muted-foreground">
+              {mesLabel} · ingreso/costo se calculan solos desde los pedidos, el gasto por plataforma siempre hay que cargarlo a mano.
+            </p>
           </CardHeader>
           <CardContent className="px-0">
             {records.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-muted-foreground">No hay días guardados este mes.</div>
+              <div className="px-4 py-8 text-center text-sm text-muted-foreground">No hay pedidos ni días guardados este mes.</div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
@@ -253,7 +292,7 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
                             {hasPlatform ? (
                               <Badge variant="outline" className="text-emerald-600 border-emerald-300">✓ Completo</Badge>
                             ) : (
-                              <Badge variant="outline" className="text-amber-600 border-amber-300">Sin detalle</Badge>
+                              <Badge variant="outline" className="text-amber-600 border-amber-300">Sin publicidad cargada</Badge>
                             )}
                           </TableCell>
                         </TableRow>
@@ -269,18 +308,6 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
 
       {tab === "productos" && (
         <CcCierreDiaMesProductos storeId={storeId} monthStr={monthStr} mesLabel={mesLabel} />
-      )}
-
-      {tab === "categorias" && (
-        <Card className="border-dashed">
-          <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            <Badge variant="outline" className="mb-2">Próximamente</Badge>
-            <p>
-              El rendimiento por categoría no está disponible: el backend de productos no expone la
-              categoría por variante todavía. Mirá la pestaña &quot;Por Producto&quot; mientras tanto.
-            </p>
-          </CardContent>
-        </Card>
       )}
     </div>
   );

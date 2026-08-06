@@ -39,7 +39,7 @@ export function CcTabsL2({ tipoGestion, active, onChange, counts }: Props) {
   const tabs = SUB_TABS[tipoGestion];
 
   return (
-    <div className="flex bg-gray-50 dark:bg-slate-800/60 border-b border-gray-200 dark:border-slate-700 px-4 overflow-x-auto scrollbar-hide">
+    <div className="flex bg-gray-50 dark:bg-slate-800/60 border-b border-gray-200 dark:border-slate-700 px-4 overflow-x-auto overflow-y-hidden scrollbar-none">
       {tabs.map((tab) => {
         const isActive = active === tab.key;
         const count = counts[tab.key] ?? 0;

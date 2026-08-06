@@ -9,11 +9,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCierreDiaClosingDataRange, useCierreDiaRange } from "@/hooks/useCierreDia";
+import { CierreDiaDayTotals } from "@/services/cierreDiaProductosService";
 import { CierreDiaRecord } from "@/interfaces/ICierreDia";
 import { CcCierreDiaProductTable } from "./CcCierreDiaProductTable";
 import { CcCierreDiaInnerTabs } from "./CcCierreDiaInnerTabs";
+import { CcCierreDiaEstadoBadge } from "./CcCierreDiaEstadoBadge";
 import {
-  computeMetrics, EMPTY_PRODUCT_TOTALS, formatCurrency, formatDate, formatPct, marginColorClass,
+  computeMetrics, EMPTY_PRODUCT_TOTALS, formatCurrency, formatDate, formatPct, marginColorClass, toEffectiveRecord,
 } from "./cierreDiaUtils";
 
 interface Props {
@@ -41,7 +43,6 @@ const TABS = [
   { key: "resumen", label: "📊 Resumen" },
   { key: "cpv", label: "💰 CPV por plataforma" },
   { key: "productos", label: "📦 Productos" },
-  { key: "categorias", label: "🏷️ Categorías" },
 ] as const;
 
 export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
@@ -49,21 +50,42 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
   const startDate = range.from ? toISO(range.from) : "";
   const endDate = range.to ? toISO(range.to) : startDate;
 
-  const { data: records = [], isLoading } = useCierreDiaRange(storeId, startDate, endDate);
-  const byDate = useMemo(() => {
+  const { data: records = [], isLoading: isLoadingManual } = useCierreDiaRange(storeId, startDate, endDate);
+  const { data: closingData, isLoading: isLoadingClosing } = useCierreDiaClosingDataRange(storeId, startDate, endDate);
+  const isLoading = isLoadingManual || isLoadingClosing;
+
+  const manualByDate = useMemo(() => {
     const map = new Map<string, CierreDiaRecord>();
     records.forEach((r) => map.set(r.date, r));
     return map;
   }, [records]);
+
+  const autoByDate = useMemo(() => {
+    const map = new Map<string, CierreDiaDayTotals>();
+    closingData?.byDay.forEach((d) => map.set(d.date, d));
+    return map;
+  }, [closingData]);
 
   const dates = useMemo(
     () => (range.from ? eachDate(range.from, range.to ?? range.from) : []),
     [range],
   );
 
+  const effectiveByDate = useMemo(() => {
+    const map = new Map<string, NonNullable<ReturnType<typeof toEffectiveRecord>>>();
+    dates.forEach((ds) => {
+      const eff = toEffectiveRecord(storeId, ds, manualByDate.get(ds), autoByDate.get(ds));
+      if (eff) map.set(ds, eff);
+    });
+    return map;
+  }, [dates, manualByDate, autoByDate, storeId]);
+
+  const guardadosCount = [...effectiveByDate.values()].filter((r) => !r.isAuto).length;
+  const automaticosCount = [...effectiveByDate.values()].filter((r) => r.isAuto).length;
+
   const totals = useMemo(() => {
     let total = 0, confirmados = 0, anulados = 0, ingreso = 0, publi = 0, costo = 0, margenNeto = 0;
-    records.forEach((r) => {
+    effectiveByDate.forEach((r) => {
       const m = computeMetrics(r);
       total += m.total;
       confirmados += r.confirmado + r.despachado + r.entregado;
@@ -74,7 +96,7 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
       margenNeto += m.margenNeto;
     });
     return { total, confirmados, anulados, ingreso, publi, costo, margenNeto };
-  }, [records]);
+  }, [effectiveByDate]);
 
   return (
     <div className="space-y-4">
@@ -91,7 +113,7 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
               <div>
                 <CardTitle className="text-sm">Resumen por rango</CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  {records.length} de {dates.length} día(s) con datos guardados
+                  {guardadosCount} guardado(s) · {automaticosCount} automático(s) · de {dates.length} día(s)
                 </p>
               </div>
             </CardHeader>
@@ -113,13 +135,13 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                   </TableHeader>
                   <TableBody>
                     {dates.map((ds) => {
-                      const r = byDate.get(ds);
+                      const r = effectiveByDate.get(ds);
                       if (!r) {
                         return (
                           <TableRow key={ds} className="opacity-60">
                             <TableCell className="font-medium">{formatDate(ds, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
                             <TableCell colSpan={7} className="text-xs text-amber-600 dark:text-amber-400">
-                              Sin datos —{" "}
+                              Sin pedidos ni cierre guardado —{" "}
                               <button className="underline font-medium" onClick={() => onRegularizar(ds)}>
                                 Regularizar
                               </button>
@@ -142,15 +164,18 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                           <TableCell className="text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(m.margenNeto)}</TableCell>
                           <TableCell className={`text-right font-semibold ${marginColorClass(m.pctMargenNeto)}`}>{formatPct(m.pctMargenNeto)}</TableCell>
                           <TableCell className="text-center">
-                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onRegularizar(ds)}>
-                              ✎ Editar
-                            </Button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <CcCierreDiaEstadoBadge isAuto={r.isAuto} />
+                              <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs" onClick={() => onRegularizar(ds)}>
+                                ✎
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
                     })}
                   </TableBody>
-                  {records.length > 0 && (
+                  {effectiveByDate.size > 0 && (
                     <tfoot>
                       <TableRow className="bg-teal-50 dark:bg-teal-950/30 font-bold">
                         <TableCell>TOTAL / PROM.</TableCell>
@@ -182,6 +207,9 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">💰 Inversión por plataforma · Día a día</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Ingreso/costo se calculan solos desde los pedidos — el gasto por plataforma siempre hay que cargarlo a mano.
+            </p>
           </CardHeader>
           <CardContent className="px-0">
             <div className="overflow-x-auto">
@@ -199,13 +227,13 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                 </TableHeader>
                 <TableBody>
                   {dates.map((ds) => {
-                    const r = byDate.get(ds);
+                    const r = effectiveByDate.get(ds);
                     if (!r) {
                       return (
                         <TableRow key={ds} className="opacity-60">
                           <TableCell className="font-medium">{formatDate(ds, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
                           <TableCell colSpan={5} className="text-xs text-red-600 dark:text-red-400">
-                            Sin datos guardados —{" "}
+                            Sin pedidos ni cierre guardado —{" "}
                             <button className="underline font-medium" onClick={() => onRegularizar(ds)}>Regularizar</button>
                           </TableCell>
                           <TableCell className="text-center">
@@ -228,7 +256,7 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                           {hasPlatform ? (
                             <Badge variant="outline" className="text-emerald-600 border-emerald-300">✓ Completo</Badge>
                           ) : (
-                            <Badge variant="outline" className="text-amber-600 border-amber-300">Sin detalle</Badge>
+                            <Badge variant="outline" className="text-amber-600 border-amber-300">Sin publicidad cargada</Badge>
                           )}
                         </TableCell>
                       </TableRow>
@@ -243,18 +271,6 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
 
       {tab === "productos" && (
         <CcCierreDiaRangoProductos storeId={storeId} startDate={startDate} endDate={endDate} />
-      )}
-
-      {tab === "categorias" && (
-        <Card className="border-dashed">
-          <CardContent className="py-8 text-center text-sm text-muted-foreground">
-            <Badge variant="outline" className="mb-2">Próximamente</Badge>
-            <p>
-              El rendimiento por categoría no está disponible: el backend de productos no expone la
-              categoría por variante todavía. Mirá la pestaña &quot;Productos&quot; mientras tanto.
-            </p>
-          </CardContent>
-        </Card>
       )}
     </div>
   );

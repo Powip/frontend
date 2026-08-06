@@ -9,6 +9,7 @@ import { useCierreDiaClosingDataDay, useCierreDiaDay, useSaveCierreDia } from "@
 import { CcCierreDiaProductTable } from "./CcCierreDiaProductTable";
 import { CcCierreDiaUpsellCards } from "./CcCierreDiaUpsellCards";
 import { CcCierreDiaCpvCard, CpvValues } from "./CcCierreDiaCpvCard";
+import { CcCierreDiaEstadoBadge } from "./CcCierreDiaEstadoBadge";
 import {
   computeMetrics,
   EMPTY_PRODUCT_TOTALS,
@@ -16,6 +17,7 @@ import {
   formatDate,
   formatPct,
   FUNNEL_STATES,
+  toEffectiveRecord,
 } from "./cierreDiaUtils";
 
 interface Props {
@@ -25,15 +27,20 @@ interface Props {
 }
 
 export function CcCierreDiaDayView({ storeId, date, onRegularizar }: Props) {
-  const { data: record, isLoading } = useCierreDiaDay(storeId, date);
+  const { data: manualRecord, isLoading: isLoadingManual } = useCierreDiaDay(storeId, date);
+  const { data: closingData, isLoading: isLoadingProductos, isError: isErrorProductos } =
+    useCierreDiaClosingDataDay(storeId, date);
 
-  if (isLoading) {
+  if (isLoadingManual || isLoadingProductos) {
     return (
       <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center text-gray-400 dark:text-slate-500 text-sm">
         Cargando cierre del día...
       </div>
     );
   }
+
+  const autoDay = closingData?.byDay.find((d) => d.date === date);
+  const record = toEffectiveRecord(storeId, date, manualRecord, autoDay);
 
   if (!record) {
     return (
@@ -42,7 +49,8 @@ export function CcCierreDiaDayView({ storeId, date, onRegularizar }: Props) {
           <PackageSearch className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
           <p className="text-sm font-bold mb-1">Sin datos para este día</p>
           <p className="text-xs text-muted-foreground mb-4">
-            ¿Olvidaste guardar? Puedes regularizar ingresando los datos manualmente.
+            No hay pedidos COD registrados ni un cierre guardado para esta fecha. Puedes
+            regularizarlo ingresando los datos manualmente.
           </p>
           <Button onClick={() => onRegularizar(date)}>
             + Regularizar datos de este día
@@ -54,21 +62,34 @@ export function CcCierreDiaDayView({ storeId, date, onRegularizar }: Props) {
 
   const m = computeMetrics(record);
 
-  return <CcCierreDiaDayContent storeId={storeId} date={date} record={record} metrics={m} onRegularizar={onRegularizar} />;
+  return (
+    <CcCierreDiaDayContent
+      storeId={storeId}
+      date={date}
+      record={record}
+      metrics={m}
+      closingData={closingData}
+      isLoadingProductos={isLoadingProductos}
+      isErrorProductos={isErrorProductos}
+      onRegularizar={onRegularizar}
+    />
+  );
 }
 
 interface ContentProps {
   storeId: string;
   date: string;
-  record: NonNullable<ReturnType<typeof useCierreDiaDay>["data"]>;
+  record: NonNullable<ReturnType<typeof toEffectiveRecord>>;
   metrics: ReturnType<typeof computeMetrics>;
+  closingData: ReturnType<typeof useCierreDiaClosingDataDay>["data"];
+  isLoadingProductos: boolean;
+  isErrorProductos: boolean;
   onRegularizar: (date: string) => void;
 }
 
-function CcCierreDiaDayContent({ storeId, date, record, metrics: m, onRegularizar }: ContentProps) {
-  const { data: closingData, isLoading: isLoadingProductos, isError: isErrorProductos } =
-    useCierreDiaClosingDataDay(storeId, date);
-
+function CcCierreDiaDayContent({
+  storeId, date, record, metrics: m, closingData, isLoadingProductos, isErrorProductos, onRegularizar,
+}: ContentProps) {
   const saveMutation = useSaveCierreDia(storeId);
   const [cpvValues, setCpvValues] = useState<CpvValues>({
     publiMeta: record.publiMeta,
@@ -122,12 +143,19 @@ function CcCierreDiaDayContent({ storeId, date, record, metrics: m, onRegulariza
       {/* header */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h3 className="text-base font-extrabold">
+          <h3 className="text-base font-extrabold flex items-center gap-2 flex-wrap">
             Cierre del Día · <span className="text-teal-600 dark:text-teal-400">{formatDate(date)}</span>
+            <CcCierreDiaEstadoBadge isAuto={record.isAuto} />
           </h3>
           <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-            Guardado el {new Date(record.updatedAt).toLocaleString("es-PE")}
+            {record.isAuto ? (
+              <>Calculado en vivo desde los pedidos COD del día · gasto publicitario pendiente de cargar</>
+            ) : (
+              <>
+                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                Guardado el {new Date(record.updatedAt).toLocaleString("es-PE")}
+              </>
+            )}
           </p>
         </div>
         <div className="flex gap-2">
