@@ -22,6 +22,7 @@ import { confirmOrder } from "@/services/incompleteOrdersService";
 
 import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 import { CcMovimientosTab } from "@/components/atencion-cliente/cc-v2/CcMovimientosTab";
+import { CcCierreDiaTab } from "@/components/atencion-cliente/cc-v2/cierre-dia/CcCierreDiaTab";
 import { CcTabsL1 } from "@/components/atencion-cliente/cc-v2/CcTabsL1";
 import { CcTabsL2, defaultSubEstado } from "@/components/atencion-cliente/cc-v2/CcTabsL2";
 import { CcKpiBar } from "@/components/atencion-cliente/cc-v2/CcKpiBar";
@@ -90,6 +91,7 @@ export default function AtencionClientePage() {
   const [pageCc, setPageCc] = useState(1);
   const [selectedCcIds, setSelectedCcIds] = useState<Set<string>>(new Set());
   const [movimientosActive, setMovimientosActive] = useState(false);
+  const [cierreDiaActive, setCierreDiaActive] = useState(false);
 
   // RBAC: solo admin/owner/superadmin ven la pestaña Movimientos
   const isAdmin =
@@ -301,6 +303,7 @@ export default function AtencionClientePage() {
     setDateFiltro(undefined);
     setSelectedCcIds(new Set());
     setMovimientosActive(false);
+    setCierreDiaActive(false);
   }
 
   if (!auth) return null;
@@ -355,18 +358,23 @@ export default function AtencionClientePage() {
                 counts={l1Counts}
                 showMovimientos={isAdmin}
                 isMovimientos={movimientosActive}
-                onMovimientosClick={() => setMovimientosActive(true)}
+                onMovimientosClick={() => { setMovimientosActive(true); setCierreDiaActive(false); }}
+                showCierreDia={isAdmin}
+                isCierreDia={cierreDiaActive}
+                onCierreDiaClick={() => { setCierreDiaActive(true); setMovimientosActive(false); }}
               />
             </div>
 
-            {/* L2 sub-tabs — se ocultan en Movimientos */}
-            {!movimientosActive && (
+            {/* L2 sub-tabs — se ocultan en Movimientos / Cierre del Día */}
+            {!movimientosActive && !cierreDiaActive && (
               <CcTabsL2 tipoGestion={l1} active={l2} onChange={setL2} counts={l2Counts} />
             )}
 
             {/* Content */}
             <div className="p-6 space-y-4 bg-gray-50 dark:bg-slate-900 min-h-screen">
-              {movimientosActive ? (
+              {cierreDiaActive ? (
+                <CcCierreDiaTab storeId={selectedStoreId ?? ""} />
+              ) : movimientosActive ? (
                 <CcMovimientosTab storeId={selectedStoreId ?? ""} />
               ) : (
                 <>
