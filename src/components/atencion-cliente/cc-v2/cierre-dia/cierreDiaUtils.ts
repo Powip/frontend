@@ -1,4 +1,5 @@
 import { CierreDiaFunnel, CierreDiaMetrics, CierreDiaProductoRow, CierreDiaRecord } from "@/interfaces/ICierreDia";
+import { CierreDiaDayTotals } from "@/services/cierreDiaProductosService";
 import { EMPTY_FUNNEL } from "@/utils/cierreDiaFunnel";
 
 export { EMPTY_FUNNEL };
@@ -49,6 +50,54 @@ export function funnelTotal(f: CierreDiaFunnel): number {
   return (
     f.porConfirmar + f.contactado + f.noContesta + f.confirmado + f.despachado + f.entregado + f.anulado
   );
+}
+
+/** Registro "efectivo" a mostrar: lo guardado manualmente, o si no existe, lo autocompletado desde pedidos reales. */
+export interface CierreDiaEffectiveRecord extends CierreDiaRecord {
+  /** true si viene de pedidos reales (auto) y todavía nadie lo guardó a mano. */
+  isAuto: boolean;
+}
+
+/**
+ * El embudo/ingreso/costo/upsells se pueden calcular solos a partir de los
+ * pedidos reales del día (`byDay`) — lo único que nunca se puede autocompletar
+ * es el gasto publicitario (Meta/TikTok/Google), porque no hay integración
+ * con esas plataformas. Por eso el registro "automático" siempre trae publi
+ * en 0: hay que cargarlo a mano una vez, el resto se recalcula solo.
+ *
+ * Si ya existe un registro guardado manualmente, ese manda siempre (permite
+ * corregir el mapeo automático si se equivoca).
+ */
+export function toEffectiveRecord(
+  storeId: string,
+  date: string,
+  manual: CierreDiaRecord | null | undefined,
+  auto: CierreDiaDayTotals | undefined,
+): CierreDiaEffectiveRecord | undefined {
+  if (manual) return { ...manual, isAuto: false };
+  if (auto && funnelTotal(auto) > 0) {
+    return {
+      storeId,
+      date,
+      porConfirmar: auto.porConfirmar,
+      contactado: auto.contactado,
+      noContesta: auto.noContesta,
+      confirmado: auto.confirmado,
+      despachado: auto.despachado,
+      entregado: auto.entregado,
+      anulado: auto.anulado,
+      ingreso: auto.ingreso,
+      costo: auto.costo,
+      upsells: auto.upsells,
+      publiMeta: 0,
+      publiTiktok: 0,
+      publiGoogle: 0,
+      savedAt: 0,
+      updatedAt: 0,
+      isAuto: true,
+    };
+  }
+  return undefined;
 }
 
 export function computeMetrics(record: CierreDiaRecord): CierreDiaMetrics {

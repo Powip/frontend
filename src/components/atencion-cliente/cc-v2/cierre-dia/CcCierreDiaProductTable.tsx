@@ -28,7 +28,6 @@ function BucketBadge({ value, className }: { value: number; className: string })
 
 export function CcCierreDiaProductTable({ rows, totals, isLoading, isError, subtitle }: Props) {
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"producto" | "categoria">("producto");
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -61,20 +60,6 @@ export function CcCierreDiaProductTable({ rows, totals, isLoading, isError, subt
             className="h-8 pl-7 w-56 text-xs"
           />
         </div>
-        <div className="flex border rounded-md overflow-hidden ml-auto">
-          <button
-            onClick={() => setView("producto")}
-            className={`px-3 py-1.5 text-xs font-semibold ${view === "producto" ? "bg-teal-600 text-white" : "bg-transparent text-muted-foreground hover:bg-muted"}`}
-          >
-            Por Producto
-          </button>
-          <button
-            onClick={() => setView("categoria")}
-            className={`px-3 py-1.5 text-xs font-semibold ${view === "categoria" ? "bg-teal-600 text-white" : "bg-transparent text-muted-foreground hover:bg-muted"}`}
-          >
-            Por Categoría
-          </button>
-        </div>
       </div>
 
       <CardContent className="px-0">
@@ -85,11 +70,6 @@ export function CcCierreDiaProductTable({ rows, totals, isLoading, isError, subt
           </div>
         ) : isLoading ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">Cargando productos...</div>
-        ) : view === "categoria" ? (
-          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-            La vista por categoría todavía no está disponible: el backend de productos no expone la
-            categoría por variante. Usá &quot;Por Producto&quot; mientras tanto.
-          </div>
         ) : rows.length === 0 ? (
           <div className="px-4 py-8 text-center text-sm text-muted-foreground">
             No hay pedidos COD con productos para este período.

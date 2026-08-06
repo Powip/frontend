@@ -68,7 +68,7 @@ export function CcTabsL1({
   onCierreDiaClick,
 }: Props) {
   return (
-    <div className="flex border-b-2 border-gray-200 dark:border-slate-700 overflow-x-auto scrollbar-hide">
+    <div className="flex border-b-2 border-gray-200 dark:border-slate-700 overflow-x-auto overflow-y-hidden scrollbar-none">
       {TABS.map((tab) => {
         const isActive = !isMovimientos && !isCierreDia && active === tab.key;
         const count = counts[tab.key] ?? 0;

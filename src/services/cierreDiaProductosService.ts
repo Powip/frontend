@@ -4,13 +4,18 @@ import { CierreDiaFunnel, CierreDiaProductoRow } from "@/interfaces/ICierreDia";
 import { EMPTY_FUNNEL } from "@/utils/cierreDiaFunnel";
 
 /**
- * Rendimiento por producto + resumen de upsell del Cierre del Día — a
- * diferencia del resto del módulo (que se guarda manualmente), esto se
- * calcula en vivo para cualquier rango de fechas cruzando:
+ * Todo lo "en vivo" del Cierre del Día — a diferencia del resto del módulo
+ * (que se guarda manualmente), esto se calcula cruzando datos reales:
  *  - `getPedidosCC` (embudo real por pedido vía status/subEstadoCc)
  *  - `GET {NEXT_PUBLIC_API_PRODUCTOS}/product-variant/{id}` → priceBase como costo
  *    (mismo patrón que `administracion/margen-producto/page.tsx`)
  *  - `getUpsellRecords` para unidades/monto de upsell (por SKU y por pedido)
+ *
+ * Se usa para dos cosas con distinta unidad de conteo, calculadas en el mismo
+ * recorrido de pedidos para no duplicar llamadas:
+ *  - `rows`/`totals`: por PRODUCTO, embudo en unidades vendidas.
+ *  - `byDay`: por DÍA, embudo en cantidad de PEDIDOS — es lo que autocompleta
+ *    el Cierre del Día cuando todavía no se guardó manualmente.
  *
  * El bucket categoría no se incluye: el endpoint de variante no trae
  * categoría y resolverla exigiría otra llamada por producto (variante → producto
@@ -42,6 +47,13 @@ export function mapOrderToFunnelBucket(
 
 function esFacturable(bucket: keyof CierreDiaFunnel): boolean {
   return bucket === "confirmado" || bucket === "despachado" || bucket === "entregado";
+}
+
+/** Convierte un ISO (UTC) a fecha local YYYY-MM-DD — mismo criterio que usan las vistas. */
+function toLocalDateStr(iso: string): string {
+  const d = new Date(iso);
+  const tz = d.getTimezoneOffset();
+  return new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
 }
 
 /** Límites ISO de un solo día local (para la vista Día). */
@@ -93,6 +105,13 @@ interface Accumulator {
   unidadesFacturables: number; // unidades en confirmado+despachado+entregado — base del costo
 }
 
+interface DayAccumulator {
+  buckets: CierreDiaFunnel; // cantidad de PEDIDOS por bucket (no unidades)
+  ingreso: number;
+  upsells: number;
+  variantUnits: Map<string, number>; // unidades facturables por variante — base del costo del día
+}
+
 export interface CierreDiaUpsellSummary {
   pedidosConfirmados: number;
   pedidosConUpsell: number;
@@ -103,17 +122,26 @@ export interface CierreDiaUpsellSummary {
   pctIncremento: number;
 }
 
+/** Embudo + financiero de UN día, calculado en vivo a partir de pedidos reales. */
+export interface CierreDiaDayTotals extends CierreDiaFunnel {
+  date: string; // YYYY-MM-DD
+  ingreso: number;
+  costo: number;
+  upsells: number;
+}
+
 export interface CierreDiaClosingData {
   rows: CierreDiaProductoRow[];
   totals: CierreDiaProductoRow;
   upsellSummary: CierreDiaUpsellSummary;
+  byDay: CierreDiaDayTotals[]; // ordenado por fecha ascendente
 }
 
 /**
  * Trae y agrega todo lo que necesitan las secciones "en vivo" del Cierre del
- * Día (tabla de productos + resumen de upsell) para un rango de fechas.
- * `startDate`/`endDate` deben venir en ISO datetime (ver `isoDayBounds` /
- * `isoRangeBounds`).
+ * Día (tabla de productos, resumen de upsell y auto-completado por día) para
+ * un rango de fechas. `startDate`/`endDate` deben venir en ISO datetime (ver
+ * `isoDayBounds` / `isoRangeBounds`).
  */
 export async function getCierreDiaClosingData(
   storeId: string,
@@ -135,12 +163,21 @@ export async function getCierreDiaClosingData(
   });
 
   const byVariant = new Map<string, Accumulator>();
+  const byDayAcc = new Map<string, DayAccumulator>();
   const confirmados: OrderHeader[] = [];
 
   for (const order of orders) {
     const bucket = mapOrderToFunnelBucket(order);
     const facturable = esFacturable(bucket);
     if (facturable) confirmados.push(order);
+
+    const orderDate = toLocalDateStr(order.created_at);
+    if (!byDayAcc.has(orderDate)) {
+      byDayAcc.set(orderDate, { buckets: { ...EMPTY_FUNNEL }, ingreso: 0, upsells: 0, variantUnits: new Map() });
+    }
+    const dayAcc = byDayAcc.get(orderDate)!;
+    dayAcc.buckets[bucket] += 1; // conteo de PEDIDOS, no de unidades
+    if (facturable && upsellOrderNumbers.has(order.orderNumber)) dayAcc.upsells += 1;
 
     for (const item of order.items ?? []) {
       const key = item.productVariantId;
@@ -159,6 +196,8 @@ export async function getCierreDiaClosingData(
       if (facturable) {
         acc.ingreso += Number(item.subtotal ?? 0);
         acc.unidadesFacturables += item.quantity;
+        dayAcc.ingreso += Number(item.subtotal ?? 0);
+        dayAcc.variantUnits.set(key, (dayAcc.variantUnits.get(key) ?? 0) + item.quantity);
       }
     }
   }
@@ -218,6 +257,16 @@ export async function getCierreDiaClosingData(
   );
   totals.pctMargen = totals.ingreso ? (totals.margen / totals.ingreso) * 100 : 0;
 
+  const byDay: CierreDiaDayTotals[] = [...byDayAcc.entries()]
+    .map(([date, acc]) => {
+      let costo = 0;
+      acc.variantUnits.forEach((qty, variantId) => {
+        costo += (costMap.get(variantId) ?? 0) * qty;
+      });
+      return { date, ...acc.buckets, ingreso: acc.ingreso, costo, upsells: acc.upsells };
+    })
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   const conUpsell = confirmados.filter((o) => upsellOrderNumbers.has(o.orderNumber));
   const sinUpsell = confirmados.filter((o) => !upsellOrderNumbers.has(o.orderNumber));
   const avgTicket = (list: OrderHeader[]) =>
@@ -235,5 +284,5 @@ export async function getCierreDiaClosingData(
     pctIncremento: ticketSinUpsell ? ((ticketConUpsell - ticketSinUpsell) / ticketSinUpsell) * 100 : 0,
   };
 
-  return { rows, totals, upsellSummary };
+  return { rows, totals, upsellSummary, byDay };
 }

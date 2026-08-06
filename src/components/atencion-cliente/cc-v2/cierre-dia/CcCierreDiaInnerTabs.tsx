@@ -12,14 +12,14 @@ interface Props<T extends string> {
 }
 
 /**
- * Sub-tabs de Rango/Mes (Resumen · CPV · Productos · Categorías). El estilo
+ * Sub-tabs de Rango/Mes (Resumen · CPV · Productos). El estilo
  * "solo subrayado" que tenían antes se confundía fácil con el borde del
  * contenedor — ahora la pestaña activa también lleva fondo + texto en
  * negrita para que se note de un vistazo cuál está seleccionada.
  */
 export function CcCierreDiaInnerTabs<T extends string>({ tabs, active, onChange }: Props<T>) {
   return (
-    <div className="flex gap-1 border-b overflow-x-auto" role="tablist">
+    <div className="flex gap-1 border-b overflow-x-auto overflow-y-hidden scrollbar-none" role="tablist">
       {tabs.map((t) => {
         const isActive = active === t.key;
         return (
