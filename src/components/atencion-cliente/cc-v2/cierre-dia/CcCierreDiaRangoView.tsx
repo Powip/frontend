@@ -1,0 +1,276 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { DateRange } from "react-day-picker";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useCierreDiaClosingDataRange, useCierreDiaRange } from "@/hooks/useCierreDia";
+import { CierreDiaRecord } from "@/interfaces/ICierreDia";
+import { CcCierreDiaProductTable } from "./CcCierreDiaProductTable";
+import { CcCierreDiaInnerTabs } from "./CcCierreDiaInnerTabs";
+import {
+  computeMetrics, EMPTY_PRODUCT_TOTALS, formatCurrency, formatDate, formatPct, marginColorClass,
+} from "./cierreDiaUtils";
+
+interface Props {
+  storeId: string;
+  range: DateRange;
+  onRegularizar: (date: string) => void;
+}
+
+function toISO(d: Date): string {
+  const tz = d.getTimezoneOffset();
+  return new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
+}
+
+function eachDate(from: Date, to: Date): string[] {
+  const out: string[] = [];
+  const cur = new Date(from);
+  while (cur <= to) {
+    out.push(toISO(cur));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return out;
+}
+
+const TABS = [
+  { key: "resumen", label: "📊 Resumen" },
+  { key: "cpv", label: "💰 CPV por plataforma" },
+  { key: "productos", label: "📦 Productos" },
+  { key: "categorias", label: "🏷️ Categorías" },
+] as const;
+
+export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
+  const [tab, setTab] = useState<(typeof TABS)[number]["key"]>("resumen");
+  const startDate = range.from ? toISO(range.from) : "";
+  const endDate = range.to ? toISO(range.to) : startDate;
+
+  const { data: records = [], isLoading } = useCierreDiaRange(storeId, startDate, endDate);
+  const byDate = useMemo(() => {
+    const map = new Map<string, CierreDiaRecord>();
+    records.forEach((r) => map.set(r.date, r));
+    return map;
+  }, [records]);
+
+  const dates = useMemo(
+    () => (range.from ? eachDate(range.from, range.to ?? range.from) : []),
+    [range],
+  );
+
+  const totals = useMemo(() => {
+    let total = 0, confirmados = 0, anulados = 0, ingreso = 0, publi = 0, costo = 0, margenNeto = 0;
+    records.forEach((r) => {
+      const m = computeMetrics(r);
+      total += m.total;
+      confirmados += r.confirmado + r.despachado + r.entregado;
+      anulados += r.anulado;
+      ingreso += r.ingreso;
+      publi += m.publi;
+      costo += r.costo;
+      margenNeto += m.margenNeto;
+    });
+    return { total, confirmados, anulados, ingreso, publi, costo, margenNeto };
+  }, [records]);
+
+  return (
+    <div className="space-y-4">
+      <CcCierreDiaInnerTabs tabs={TABS} active={tab} onChange={setTab} />
+
+      {tab === "resumen" && (
+        isLoading ? (
+          <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center text-gray-400 dark:text-slate-500 text-sm">
+            Cargando...
+          </div>
+        ) : (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <div>
+                <CardTitle className="text-sm">Resumen por rango</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  {records.length} de {dates.length} día(s) con datos guardados
+                </p>
+              </div>
+            </CardHeader>
+            <CardContent className="px-0">
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead className="text-center">Ingresados</TableHead>
+                      <TableHead className="text-center">% Confirm.</TableHead>
+                      <TableHead className="text-center">% Anul.</TableHead>
+                      <TableHead className="text-right">Ingreso S/</TableHead>
+                      <TableHead className="text-right">Publi S/</TableHead>
+                      <TableHead className="text-right">Mg. Neto S/</TableHead>
+                      <TableHead className="text-right">% Neto</TableHead>
+                      <TableHead className="text-center">Estado</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {dates.map((ds) => {
+                      const r = byDate.get(ds);
+                      if (!r) {
+                        return (
+                          <TableRow key={ds} className="opacity-60">
+                            <TableCell className="font-medium">{formatDate(ds, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
+                            <TableCell colSpan={7} className="text-xs text-amber-600 dark:text-amber-400">
+                              Sin datos —{" "}
+                              <button className="underline font-medium" onClick={() => onRegularizar(ds)}>
+                                Regularizar
+                              </button>
+                            </TableCell>
+                            <TableCell className="text-center">
+                              <Badge variant="outline" className="text-amber-600 border-amber-300">Pendiente</Badge>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+                      const m = computeMetrics(r);
+                      return (
+                        <TableRow key={ds}>
+                          <TableCell className="font-medium">{formatDate(ds, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
+                          <TableCell className="text-center font-bold">{m.total}</TableCell>
+                          <TableCell className="text-center text-emerald-600 dark:text-emerald-400 font-semibold">{formatPct(m.tasaConfirmacion)}</TableCell>
+                          <TableCell className="text-center text-red-600 dark:text-red-400 font-semibold">{formatPct(m.tasaAnulacion)}</TableCell>
+                          <TableCell className="text-right font-semibold">{formatCurrency(r.ingreso)}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{formatCurrency(m.publi)}</TableCell>
+                          <TableCell className="text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(m.margenNeto)}</TableCell>
+                          <TableCell className={`text-right font-semibold ${marginColorClass(m.pctMargenNeto)}`}>{formatPct(m.pctMargenNeto)}</TableCell>
+                          <TableCell className="text-center">
+                            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => onRegularizar(ds)}>
+                              ✎ Editar
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                  {records.length > 0 && (
+                    <tfoot>
+                      <TableRow className="bg-teal-50 dark:bg-teal-950/30 font-bold">
+                        <TableCell>TOTAL / PROM.</TableCell>
+                        <TableCell className="text-center">{totals.total}</TableCell>
+                        <TableCell className="text-center text-emerald-600 dark:text-emerald-400">
+                          {formatPct(totals.total ? (totals.confirmados / totals.total) * 100 : 0)}
+                        </TableCell>
+                        <TableCell className="text-center text-red-600 dark:text-red-400">
+                          {formatPct(totals.total ? (totals.anulados / totals.total) * 100 : 0)}
+                        </TableCell>
+                        <TableCell className="text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(totals.ingreso)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(totals.publi)}</TableCell>
+                        <TableCell className="text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(totals.margenNeto)}</TableCell>
+                        <TableCell className="text-right">
+                          {formatPct(totals.ingreso ? (totals.margenNeto / totals.ingreso) * 100 : 0)}
+                        </TableCell>
+                        <TableCell />
+                      </TableRow>
+                    </tfoot>
+                  )}
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+        )
+      )}
+
+      {tab === "cpv" && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">💰 Inversión por plataforma · Día a día</CardTitle>
+          </CardHeader>
+          <CardContent className="px-0">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Fecha</TableHead>
+                    <TableHead className="text-right text-blue-600 dark:text-blue-400">📘 Meta S/</TableHead>
+                    <TableHead className="text-right text-green-600 dark:text-green-400">🎵 TikTok S/</TableHead>
+                    <TableHead className="text-right text-amber-600 dark:text-amber-400">🔍 Google S/</TableHead>
+                    <TableHead className="text-right">Total Publi S/</TableHead>
+                    <TableHead className="text-right">Mg. Neto S/</TableHead>
+                    <TableHead className="text-center">Datos</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {dates.map((ds) => {
+                    const r = byDate.get(ds);
+                    if (!r) {
+                      return (
+                        <TableRow key={ds} className="opacity-60">
+                          <TableCell className="font-medium">{formatDate(ds, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
+                          <TableCell colSpan={5} className="text-xs text-red-600 dark:text-red-400">
+                            Sin datos guardados —{" "}
+                            <button className="underline font-medium" onClick={() => onRegularizar(ds)}>Regularizar</button>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant="outline" className="text-red-600 border-red-300">Sin datos</Badge>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    }
+                    const m = computeMetrics(r);
+                    const hasPlatform = r.publiMeta > 0 || r.publiTiktok > 0 || r.publiGoogle > 0;
+                    return (
+                      <TableRow key={ds}>
+                        <TableCell className="font-medium">{formatDate(ds, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
+                        <TableCell className="text-right text-blue-600 dark:text-blue-400 font-semibold">{r.publiMeta > 0 ? formatCurrency(r.publiMeta) : "—"}</TableCell>
+                        <TableCell className="text-right text-green-600 dark:text-green-400 font-semibold">{r.publiTiktok > 0 ? formatCurrency(r.publiTiktok) : "—"}</TableCell>
+                        <TableCell className="text-right text-amber-600 dark:text-amber-400 font-semibold">{r.publiGoogle > 0 ? formatCurrency(r.publiGoogle) : "—"}</TableCell>
+                        <TableCell className="text-right font-semibold">{formatCurrency(m.publi)}</TableCell>
+                        <TableCell className="text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(m.margenNeto)}</TableCell>
+                        <TableCell className="text-center">
+                          {hasPlatform ? (
+                            <Badge variant="outline" className="text-emerald-600 border-emerald-300">✓ Completo</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-amber-600 border-amber-300">Sin detalle</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {tab === "productos" && (
+        <CcCierreDiaRangoProductos storeId={storeId} startDate={startDate} endDate={endDate} />
+      )}
+
+      {tab === "categorias" && (
+        <Card className="border-dashed">
+          <CardContent className="py-8 text-center text-sm text-muted-foreground">
+            <Badge variant="outline" className="mb-2">Próximamente</Badge>
+            <p>
+              El rendimiento por categoría no está disponible: el backend de productos no expone la
+              categoría por variante todavía. Mirá la pestaña &quot;Productos&quot; mientras tanto.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function CcCierreDiaRangoProductos({
+  storeId, startDate, endDate,
+}: { storeId: string; startDate: string; endDate: string }) {
+  const { data, isLoading, isError } = useCierreDiaClosingDataRange(storeId, startDate, endDate);
+  return (
+    <CcCierreDiaProductTable
+      rows={data?.rows ?? []}
+      totals={data?.totals ?? EMPTY_PRODUCT_TOTALS}
+      isLoading={isLoading}
+      isError={isError}
+      subtitle={`${startDate && endDate ? `${formatDate(startDate)} – ${formatDate(endDate)}` : "Rango seleccionado"} · ${data?.rows.length ?? 0} producto(s)`}
+    />
+  );
+}

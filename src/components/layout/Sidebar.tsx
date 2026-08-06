@@ -37,6 +37,7 @@ import {
 
 import { Button } from "../ui/button";
 import { Badge } from "@/components/ui/badge";
+import { isBadgeActive } from "@/utils/navBadge";
 import {
   Avatar,
   AvatarFallback,
@@ -77,13 +78,6 @@ interface NavigationItem {
     badge?: string;
     badgeUntil?: string;
   }[];
-}
-
-// Muestra el badge solo hasta la fecha límite; pasado ese día desaparece solo,
-// sin tener que volver a tocar este archivo.
-function isBadgeActive(badgeUntil?: string): boolean {
-  if (!badgeUntil) return false;
-  return new Date() < new Date(badgeUntil);
 }
 
 const navBadgeClass =
@@ -145,22 +139,16 @@ export function Sidebar({ className }: SidebarProps) {
             name: "Ventas",
             href: "/ventas",
             icon: ShoppingCart,
-            badge: "Actualizado",
-            badgeUntil: "2026-07-24",
           },
           {
             name: "Registrar venta",
             href: "/registrar-venta",
             icon: FileText,
-            badge: "Nuevo",
-            badgeUntil: "2026-08-25",
           },
           {
             name: "Packs & Promos",
             href: "/packs-promos",
             icon: PackagePlus,
-            badge: "Nuevo",
-            badgeUntil: "2026-08-25",
           },
           { name: "Clientes", href: "/clientes", icon: Users },
           // 🔴 KILL SWITCH (hotfix checkouts abandonados) — revertir: descomentar
@@ -184,29 +172,21 @@ export function Sidebar({ className }: SidebarProps) {
             name: "Tablero",
             href: "/operaciones",
             icon: LayoutDashboard,
-            badge: "Nuevo",
-            badgeUntil: "2026-08-25",
           },
           {
             name: "Pedidos",
             href: "/operaciones/pedidos",
             icon: Package,
-            badge: "Nuevo",
-            badgeUntil: "2026-08-25",
           },
           {
             name: "Guías & Courier",
             href: "/operaciones/guias",
             icon: PackagePlus,
-            badge: "Nuevo",
-            badgeUntil: "2026-08-25",
           },
           {
             name: "Liquidaciones",
             href: "/operaciones/liquidaciones",
             icon: Wallet,
-            badge: "Nuevo",
-            badgeUntil: "2026-08-25",
           },
         ],
       },
@@ -224,7 +204,13 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Atención al cliente",
         icon: Headphones,
         children: [
-          { name: "Gestión CC", href: "/atencion-cliente", icon: Headphones },
+          {
+            name: "Gestión CC",
+            href: "/atencion-cliente",
+            icon: Headphones,
+            badge: "Nuevo",
+            badgeUntil: "2026-08-09",
+          },
           { name: "Agentes", href: "/atencion-cliente/agentes", icon: Users },
         ],
       },
@@ -237,8 +223,6 @@ export function Sidebar({ className }: SidebarProps) {
             name: "Facturación",
             href: "/facturacion",
             icon: FileText,
-            badge: "Nuevo",
-            badgeUntil: "2026-08-25",
           },
         ],
       },

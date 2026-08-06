@@ -1,6 +1,11 @@
 "use client";
 
 import { TipoGestionCC } from "@/interfaces/IOrder";
+import { isBadgeActive } from "@/utils/navBadge";
+
+// Mismo criterio que el badge "Nuevo" de Gestión CC en el sidebar: 3 días
+// desde que se lanzó Cierre del Día, después desaparece solo.
+const CIERRE_DIA_BADGE_UNTIL = "2026-08-09";
 
 interface TabL1Config {
   key: TipoGestionCC;
@@ -46,6 +51,9 @@ interface Props {
   showMovimientos?: boolean;
   isMovimientos?: boolean;
   onMovimientosClick?: () => void;
+  showCierreDia?: boolean;
+  isCierreDia?: boolean;
+  onCierreDiaClick?: () => void;
 }
 
 export function CcTabsL1({
@@ -55,11 +63,14 @@ export function CcTabsL1({
   showMovimientos = false,
   isMovimientos = false,
   onMovimientosClick,
+  showCierreDia = false,
+  isCierreDia = false,
+  onCierreDiaClick,
 }: Props) {
   return (
     <div className="flex border-b-2 border-gray-200 dark:border-slate-700 overflow-x-auto scrollbar-hide">
       {TABS.map((tab) => {
-        const isActive = !isMovimientos && active === tab.key;
+        const isActive = !isMovimientos && !isCierreDia && active === tab.key;
         const count = counts[tab.key] ?? 0;
         return (
           <button
@@ -99,6 +110,28 @@ export function CcTabsL1({
           <span>💰</span>
           <span>Movimientos</span>
         </button>
+      )}
+
+      {showCierreDia && (
+      <button
+        onClick={onCierreDiaClick}
+        className={`
+          flex items-center gap-2 px-4 py-2.5 text-sm whitespace-nowrap flex-shrink-0
+          transition-all duration-100 -mb-0.5
+          ${isCierreDia
+            ? "border-b-2 border-teal-600 text-teal-700 dark:text-teal-400 dark:border-teal-400 font-bold"
+            : "text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-slate-800 border-b-2 border-transparent"
+          }
+        `}
+      >
+        <span>📅</span>
+        <span>Cierre del Día</span>
+        {isBadgeActive(CIERRE_DIA_BADGE_UNTIL) && (
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+            NUEVO
+          </span>
+        )}
+      </button>
       )}
     </div>
   );
