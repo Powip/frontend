@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { es } from "date-fns/locale";
 import {
   Dialog,
   DialogContent,
@@ -12,17 +13,27 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
-import { Loader2, Sparkles } from "lucide-react";
-import { useCierreDiaClosingDataDay, useCierreDiaDay, useSaveCierreDia } from "@/hooks/useCierreDia";
+import { CalendarDays, Loader2, Sparkles } from "lucide-react";
+import {
+  useCierreDiaClosingDataDay,
+  useCierreDiaClosingDataRange,
+  useCierreDiaDay,
+  useCierreDiaMonth,
+  useSaveCierreDia,
+} from "@/hooks/useCierreDia";
 import { CierreDiaFormInput } from "@/interfaces/ICierreDia";
-import { EMPTY_FUNNEL, formatCurrency, formatDate, FUNNEL_STATES, toEffectiveRecord } from "./cierreDiaUtils";
+import { EMPTY_FUNNEL, formatCurrency, formatDate, FUNNEL_STATES, todayISO, toEffectiveRecord } from "./cierreDiaUtils";
 
 interface Props {
   storeId: string;
   date: string | null;
   onClose: () => void;
   onSaved?: () => void;
+  /** Si se pasa, el calendario de "días sin cargar" puede saltar a otra fecha sin cerrar el modal. */
+  onDateChange?: (date: string) => void;
 }
 
 function toNumber(value: string): number {
@@ -30,11 +41,57 @@ function toNumber(value: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-export function CcCierreDiaModal({ storeId, date, onClose, onSaved }: Props) {
+/** Fecha local YYYY-MM-DD, evitando el corrimiento de un día que da `toISOString()` crudo. */
+function toLocalISO(d: Date): string {
+  const tz = d.getTimezoneOffset();
+  return new Date(d.getTime() - tz * 60000).toISOString().slice(0, 10);
+}
+
+function lastDayOfMonth(monthStr: string): string {
+  const [y, m] = monthStr.split("-").map(Number);
+  const day = new Date(y, m, 0).getDate();
+  return `${monthStr}-${String(day).padStart(2, "0")}`;
+}
+
+function daysInMonth(monthStr: string): string[] {
+  const [y, m] = monthStr.split("-").map(Number);
+  const total = new Date(y, m, 0).getDate();
+  return Array.from({ length: total }, (_, i) => `${monthStr}-${String(i + 1).padStart(2, "0")}`);
+}
+
+export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange }: Props) {
   const open = !!date;
   const { data: manualRecord, isLoading: isLoadingManual } = useCierreDiaDay(storeId, date ?? "");
   const { data: closingData, isLoading: isLoadingClosing } = useCierreDiaClosingDataDay(storeId, date ?? "");
   const saveMutation = useSaveCierreDia(storeId);
+
+  // Mes que se está viendo en el calendario del popover — arranca en el mes
+  // de `date` y solo cambia si el usuario navega el calendario (no depende
+  // de la fecha que se está editando en el formulario).
+  const [viewMonth, setViewMonth] = useState(() => (date ?? todayISO()).slice(0, 7));
+  useEffect(() => {
+    if (date) setViewMonth(date.slice(0, 7));
+  }, [date]);
+
+  const { data: monthManualRecords = [] } = useCierreDiaMonth(storeId, viewMonth);
+  const { data: monthClosingData } = useCierreDiaClosingDataRange(
+    storeId,
+    `${viewMonth}-01`,
+    lastDayOfMonth(viewMonth),
+  );
+
+  // Días del mes visible sin ningún dato (ni guardado a mano, ni pedidos
+  // reales de Gestión COD) — el calendario los marca para que se puedan
+  // regularizar sin tener que ir a buscarlos en Rango/Mes.
+  const noCargadoDates = useMemo(() => {
+    const manualByDate = new Map(monthManualRecords.map((r) => [r.date, r]));
+    const autoByDate = new Map((monthClosingData?.byDay ?? []).map((d) => [d.date, d]));
+    const today = todayISO();
+    return daysInMonth(viewMonth)
+      .filter((ds) => ds <= today)
+      .filter((ds) => !toEffectiveRecord(storeId, ds, manualByDate.get(ds), autoByDate.get(ds)))
+      .map((ds) => new Date(`${ds}T00:00:00`));
+  }, [viewMonth, monthManualRecords, monthClosingData, storeId]);
 
   // Mientras esto carga (pedidos + upsells + costo por variante puede tardar
   // unos segundos) el formulario todavía no tiene nada para precargar — sin
@@ -110,9 +167,46 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved }: Props) {
       <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>✏️ Ingresar / Editar datos del día</DialogTitle>
-          <DialogDescription>
-            Fecha: <b className="text-foreground">{date ? formatDate(date, { weekday: "long", day: "2-digit", month: "long", year: "numeric" }) : "—"}</b>
-          </DialogDescription>
+          <div className="flex items-center justify-between gap-2">
+            <DialogDescription>
+              Fecha: <b className="text-foreground">{date ? formatDate(date, { weekday: "long", day: "2-digit", month: "long", year: "numeric" }) : "—"}</b>
+            </DialogDescription>
+            {onDateChange && (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="relative h-7 shrink-0 gap-1.5 text-xs">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    Elegir otro día
+                    {noCargadoDates.length > 0 && (
+                      <span className="absolute -top-1.5 -right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                        {noCargadoDates.length}
+                      </span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="end">
+                  <Calendar
+                    mode="single"
+                    locale={es}
+                    month={new Date(`${viewMonth}-01T00:00:00`)}
+                    onMonthChange={(d) => setViewMonth(toLocalISO(d).slice(0, 7))}
+                    selected={date ? new Date(`${date}T00:00:00`) : undefined}
+                    onSelect={(d) => d && onDateChange(toLocalISO(d))}
+                    disabled={{ after: new Date() }}
+                    modifiers={{ noCargado: noCargadoDates }}
+                    modifiersClassNames={{
+                      noCargado:
+                        "relative after:absolute after:bottom-1 after:left-1/2 after:-translate-x-1/2 after:h-1 after:w-1 after:rounded-full after:bg-red-500",
+                    }}
+                  />
+                  <div className="flex items-center gap-1.5 border-t px-3 py-2 text-[11px] text-muted-foreground">
+                    <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+                    Día sin datos cargados en Gestión COD
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+          </div>
         </DialogHeader>
 
         {isLoadingAuto ? (

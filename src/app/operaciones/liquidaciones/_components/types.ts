@@ -26,6 +26,7 @@ export interface GuiaPorLiquidar {
   /** OrderHeader.id, para llamar a otros endpoints (BACKEND GAP: no hay endpoint de liquidación aún). */
   orderId: string;
   cliente: string;
+  ciudad: string;
   courier: string;
   entregadoAt: string | null;
   diasTranscurridos: number;
@@ -41,7 +42,14 @@ export interface GuiaPorLiquidar {
   comisionPct: number;
   /** = codNeto * comisionPct. */
   comision: number;
-  /** = codNeto - comision. Lo que el negocio debería recibir. */
+  /**
+   * Costo de flete de esa entrega, a cargo del negocio. BACKEND GAP: tabla
+   * local por región (ver FLETE_BY_REGION) — debería venir del tarifario
+   * real de "Couriers & Tarifas", que hoy tampoco modela flete por pedido
+   * individual, solo tarifas generales.
+   */
+  flete: number;
+  /** = codNeto - comision - flete. Lo que el negocio debería recibir. */
   neto: number;
   /** = neto - suma de montos ya cubiertos por liquidaciones registradas en esta sesión. */
   saldoPendiente: number;
@@ -94,6 +102,21 @@ export interface PagoLiquidacion {
   comprobanteNombreArchivo?: string;
   observaciones?: string;
   estado: LiquidacionEstado;
+  /**
+   * Snapshot del desglose por pedido de las guías que cubrió este depósito,
+   * capturado al momento de registrar (ver RegistrarLiquidacionModal) —
+   * permite el drill-down "Ver detalle" sin tener que recalcular contra
+   * OrderHeader (que además puede haber cambiado desde entonces). Opcional
+   * porque las liquidaciones semilla (mockData.ts) no siempre lo tienen.
+   */
+  detalle?: {
+    pedido: string;
+    cliente: string;
+    cobro: number;
+    comision: number;
+    flete: number;
+    neto: number;
+  }[];
 }
 
 export type RendicionEstado = "POR_RENDIR" | "CUADRADO" | "FALTANTE";
@@ -118,6 +141,24 @@ export interface RendicionRepartidor {
   diferencia: number;
   estado: RendicionEstado;
   observaciones?: string;
+  /**
+   * Desglose por guía/pedido de esta rendición, para el drill-down "Ver
+   * detalle". BACKEND GAP: no existe manera de capturar esto desde
+   * RegistrarRendicionModal hoy (el formulario solo pide el total debido y
+   * el total entregado) porque OrderHeader no tiene campo de repartidor
+   * asignado — ver comentario de la interfaz. Por eso solo las rendiciones
+   * semilla (mockData.ts) traen `detalle`; las registradas a mano por el
+   * usuario quedan sin desglose.
+   */
+  detalle?: {
+    guia?: string;
+    pedido: string;
+    cliente: string;
+    debioCobrar: number;
+    cobro: number;
+    ok: boolean;
+    motivo?: string;
+  }[];
 }
 
 export type DiferenciaEstado = "ABIERTA" | "RECLAMADA" | "ACEPTADA_PERDIDA";
@@ -140,6 +181,38 @@ export interface DiferenciaLiquidacion {
   diferencia: number;
   estado: DiferenciaEstado;
   motivoAceptacion?: string;
+}
+
+export type RecordatorioEstado = "SIN_RECORDAR" | "RECORDADO";
+
+/**
+ * Un pedido ENTREGADO donde el cliente pagó menos de lo pactado (saldo por
+ * cobrarle al cliente — distinto a lo que debe el courier). BACKEND GAP:
+ * no existe ninguna señal estructurada para esto. La heurística más
+ * cercana que ya existe en la app (`entregaParcial` en GuiaPorLiquidar,
+ * basada en texto libre de `OrderHeader.notes`) es demasiado poco confiable
+ * para armar una pestaña completa — por eso esta pestaña es 100% datos de
+ * prueba locales, igual que Rendición e Histórico, y no se intenta derivar
+ * de `orders` reales. Ver informe final para el campo real que se
+ * necesitaría (algo como `OrderHeader.deliveryCollectedAmount`).
+ */
+export interface SaldoCliente {
+  id: string;
+  orderNumber: string;
+  cliente: string;
+  telefono: string;
+  ciudad: string;
+  entregadoAt: string;
+  total: number;
+  pagado: number;
+  /** = total - pagado. */
+  saldo: number;
+  recordatoriosEnviados: number;
+  ultimoRecordatorioAt?: string | null;
+}
+
+export function saldoRecordatorioEstado(s: SaldoCliente): RecordatorioEstado {
+  return s.recordatoriosEnviados > 0 ? "RECORDADO" : "SIN_RECORDAR";
 }
 
 /* -----------------------------------------------------------------------
@@ -169,3 +242,15 @@ export const COURIER_DIAS_LIMITE: Record<string, number> = {
 
 export const DEFAULT_COMMISSION_PCT = 0.035;
 export const DEFAULT_DIAS_LIMITE = 10;
+
+/**
+ * Costo de flete plano por región, a falta de un tarifario real por
+ * zona/peso. BACKEND GAP: debería venir de "Couriers & Tarifas"
+ * (ms-courier) por courier + zona, no un monto fijo por región — ver
+ * informe final.
+ */
+export const FLETE_BY_REGION: Record<"LIMA" | "PROVINCIA", number> = {
+  LIMA: 8,
+  PROVINCIA: 12.5,
+};
+export const DEFAULT_FLETE = 10;

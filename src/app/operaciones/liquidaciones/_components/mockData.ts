@@ -7,7 +7,7 @@
 // BACKEND GAP: todo este archivo debería ser reemplazado por llamadas a
 // ms-courier una vez existan los endpoints — ver informe de brechas.
 
-import { DiferenciaLiquidacion, PagoLiquidacion, RendicionRepartidor } from "./types";
+import { DiferenciaLiquidacion, PagoLiquidacion, RendicionRepartidor, SaldoCliente } from "./types";
 
 export const MOCK_REPARTIDORES = ["Carlos Ramírez", "Jhon Quispe", "Miguel Torres"] as const;
 
@@ -24,6 +24,11 @@ export const MOCK_LIQUIDACIONES: PagoLiquidacion[] = [
     numeroOperacion: "Op. 44210087",
     observaciones: "Depósito semanal Shalom",
     estado: "CONCILIADA",
+    detalle: [
+      { pedido: "OV-004821", cliente: "Rosa Delgado", cobro: 220.0, comision: 7.7, flete: 8.0, neto: 204.3 },
+      { pedido: "OV-004833", cliente: "Miguel Ruiz", cobro: 210.0, comision: 7.35, flete: 8.0, neto: 194.65 },
+      { pedido: "OV-004840", cliente: "Lourdes Chávez", cobro: 235.0, comision: 8.23, flete: 12.5, neto: 214.27 },
+    ],
   },
   {
     id: "LQ-0002",
@@ -37,6 +42,10 @@ export const MOCK_LIQUIDACIONES: PagoLiquidacion[] = [
     numeroOperacion: "Op. 998211",
     observaciones: "Faltó cubrir un pedido rechazado",
     estado: "CON_DIFERENCIA",
+    detalle: [
+      { pedido: "OV-004790", cliente: "Fiorella A.", cobro: 149.0, comision: 5.96, flete: 12.5, neto: 130.54 },
+      { pedido: "OV-004802", cliente: "Jorge R.", cobro: 135.0, comision: 5.4, flete: 12.5, neto: 117.1 },
+    ],
   },
   {
     id: "LQ-0003",
@@ -49,6 +58,9 @@ export const MOCK_LIQUIDACIONES: PagoLiquidacion[] = [
     metodo: "efectivo",
     observaciones: "Entregado en oficina",
     estado: "CONCILIADA",
+    detalle: [
+      { pedido: "OV-004855", cliente: "Ana P.", cobro: 158.0, comision: 4.74, flete: 8.0, neto: 145.26 },
+    ],
   },
   {
     id: "LQ-0004",
@@ -61,6 +73,12 @@ export const MOCK_LIQUIDACIONES: PagoLiquidacion[] = [
     metodo: "transferencia",
     numeroOperacion: "Op. 44219012",
     estado: "CONCILIADA",
+    detalle: [
+      { pedido: "OV-004860", cliente: "Rosa Delgado", cobro: 129.0, comision: 4.52, flete: 12.5, neto: 111.98 },
+      { pedido: "OV-004861", cliente: "Miguel Ruiz", cobro: 99.0, comision: 3.47, flete: 12.5, neto: 83.03 },
+      { pedido: "OV-004862", cliente: "Lourdes Chávez", cobro: 96.0, comision: 3.36, flete: 12.5, neto: 80.14 },
+      { pedido: "OV-004863", cliente: "Karina Flores", cobro: 640.0, comision: 22.4, flete: 12.5, neto: 605.1 },
+    ],
   },
 ];
 
@@ -142,6 +160,21 @@ export const MOCK_RENDICIONES: RendicionRepartidor[] = [
     diferencia: -30.0,
     estado: "FALTANTE",
     observaciones: "Dice que un cliente pagó con billete falso, en revisión",
+    detalle: [
+      { guia: "GE-…01450", pedido: "ORD-134901", cliente: "Ana P.", debioCobrar: 89.0, cobro: 89.0, ok: true },
+      {
+        guia: "GE-…01450",
+        pedido: "ORD-134902",
+        cliente: "Luis R.",
+        debioCobrar: 30.0,
+        cobro: 0,
+        ok: false,
+        motivo: "Billete falso",
+      },
+      { guia: "GE-…01451", pedido: "ORD-134903", cliente: "Rosa T.", debioCobrar: 65.0, cobro: 65.0, ok: true },
+      { guia: "GE-…01452", pedido: "ORD-134904", cliente: "Elena M.", debioCobrar: 78.0, cobro: 78.0, ok: true },
+      { guia: "GE-…01452", pedido: "ORD-134905", cliente: "Pedro Q.", debioCobrar: 78.0, cobro: 78.0, ok: true },
+    ],
   },
   {
     id: "RD-0005",
@@ -152,5 +185,60 @@ export const MOCK_RENDICIONES: RendicionRepartidor[] = [
     entregoEfectivo: 398.0,
     diferencia: 0,
     estado: "CUADRADO",
+  },
+];
+
+export const MOCK_SALDOS_CLIENTES: SaldoCliente[] = [
+  {
+    id: "SC-0001",
+    orderNumber: "OV-005013",
+    cliente: "Erickson Riofrio",
+    telefono: "968455459",
+    ciudad: "Piura",
+    entregadoAt: "2026-06-12",
+    total: 104.3,
+    pagado: 74.3,
+    saldo: 30.0,
+    recordatoriosEnviados: 2,
+    ultimoRecordatorioAt: "2026-07-20",
+  },
+  {
+    id: "SC-0002",
+    orderNumber: "OV-005104",
+    cliente: "Karina Flores",
+    telefono: "911284437",
+    ciudad: "Lima",
+    entregadoAt: "2026-06-24",
+    total: 199.0,
+    pagado: 99.0,
+    saldo: 100.0,
+    recordatoriosEnviados: 0,
+    ultimoRecordatorioAt: null,
+  },
+  {
+    id: "SC-0003",
+    orderNumber: "OV-005210",
+    cliente: "Ericka Paico",
+    telefono: "933793553",
+    ciudad: "Lima",
+    entregadoAt: "2026-07-28",
+    total: 99.0,
+    pagado: 30.0,
+    saldo: 69.0,
+    recordatoriosEnviados: 0,
+    ultimoRecordatorioAt: null,
+  },
+  {
+    id: "SC-0004",
+    orderNumber: "OV-005198",
+    cliente: "Marcia Merino",
+    telefono: "948668296",
+    ciudad: "Provincia",
+    entregadoAt: "2026-07-27",
+    total: 125.3,
+    pagado: 68.3,
+    saldo: 57.0,
+    recordatoriosEnviados: 1,
+    ultimoRecordatorioAt: "2026-07-29",
   },
 ];

@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { RendicionRepartidor } from "./types";
 import { formatDate, money } from "./utils";
 import { RegistrarRendicionModal } from "./RegistrarRendicionModal";
+import { DetalleRendicionModal } from "./DetalleRendicionModal";
 
 const ESTADO_BADGE: Record<RendicionRepartidor["estado"], string> = {
   POR_RENDIR:
@@ -45,6 +46,7 @@ export function RendicionRepartidorTab({
   onRegistrar: (rendicion: RendicionRepartidor) => void;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
+  const [detalle, setDetalle] = useState<RendicionRepartidor | null>(null);
 
   const pendientes = useMemo(
     () => rendiciones.filter((r) => r.estado === "POR_RENDIR"),
@@ -119,6 +121,7 @@ export function RendicionRepartidorTab({
                     <TableHead className="text-right">Diferencia</TableHead>
                     <TableHead>Estado</TableHead>
                     <TableHead>Observaciones</TableHead>
+                    <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -147,6 +150,11 @@ export function RendicionRepartidorTab({
                       <TableCell className="max-w-[220px] truncate text-xs text-muted-foreground" title={r.observaciones}>
                         {r.observaciones ?? "—"}
                       </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => setDetalle(r)}>
+                          Ver detalle
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -162,6 +170,8 @@ export function RendicionRepartidorTab({
         pendientes={pendientes}
         onRegistrar={onRegistrar}
       />
+
+      <DetalleRendicionModal rendicion={detalle} onOpenChange={(o) => !o && setDetalle(null)} />
     </div>
   );
 }

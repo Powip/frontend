@@ -83,6 +83,17 @@ export function RegistrarLiquidacionModal({
       comprobanteNombreArchivo,
       observaciones: observaciones || undefined,
       estado: diferencia === 0 ? "CONCILIADA" : "CON_DIFERENCIA",
+      // Snapshot del desglose real de cada guía al momento de registrar —
+      // permite el drill-down "Ver detalle" en Histórico/Diferencias sin
+      // tener que recalcular contra OrderHeader después.
+      detalle: guias.map((g) => ({
+        pedido: g.id,
+        cliente: g.cliente,
+        cobro: g.codNeto,
+        comision: g.comision,
+        flete: g.flete,
+        neto: g.neto,
+      })),
     };
     onRegistrar(pago);
     onOpenChange(false);

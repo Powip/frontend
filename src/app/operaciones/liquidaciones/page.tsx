@@ -11,11 +11,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useOperationsRole, OPS_PERMISSIONS } from "@/contexts/OperationsRoleContext";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { PorLiquidarTab } from "./_components/PorLiquidarTab";
+import { SaldosClientesTab } from "./_components/SaldosClientesTab";
 import { LiquidacionesTab } from "./_components/LiquidacionesTab";
 import { RendicionRepartidorTab } from "./_components/RendicionRepartidorTab";
 import { DiferenciasTab } from "./_components/DiferenciasTab";
-import { MOCK_DIFERENCIAS, MOCK_LIQUIDACIONES, MOCK_RENDICIONES } from "./_components/mockData";
-import { DiferenciaLiquidacion, PagoLiquidacion, RendicionRepartidor } from "./_components/types";
+import {
+  MOCK_DIFERENCIAS,
+  MOCK_LIQUIDACIONES,
+  MOCK_RENDICIONES,
+  MOCK_SALDOS_CLIENTES,
+} from "./_components/mockData";
+import { DiferenciaLiquidacion, PagoLiquidacion, RendicionRepartidor, SaldoCliente } from "./_components/types";
 import { buildGuiasPorLiquidar } from "./_components/utils";
 import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 
@@ -28,10 +34,10 @@ import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
    demás vive en estado local de sesión — ver BACKEND GAP en
    _components/types.ts y el informe de brechas de backend.
 
-   Query param: ?tab=porliq|registradas|rendicion|difs
+   Query param: ?tab=porliq|saldos|registradas|rendicion|difs
 ------------------------------------------------------------------------ */
 
-const TAB_VALUES = ["porliq", "registradas", "rendicion", "difs"] as const;
+const TAB_VALUES = ["porliq", "saldos", "registradas", "rendicion", "difs"] as const;
 type TabValue = (typeof TAB_VALUES)[number];
 
 function isTabValue(v: string | null): v is TabValue {
@@ -56,6 +62,7 @@ function LiquidacionesContent() {
   const [liquidaciones, setLiquidaciones] = useState<PagoLiquidacion[]>(MOCK_LIQUIDACIONES);
   const [diferencias, setDiferencias] = useState<DiferenciaLiquidacion[]>(MOCK_DIFERENCIAS);
   const [rendiciones, setRendiciones] = useState<RendicionRepartidor[]>(MOCK_RENDICIONES);
+  const [saldosClientes, setSaldosClientes] = useState<SaldoCliente[]>(MOCK_SALDOS_CLIENTES);
 
   const handleTabChange = (value: string) => {
     if (!isTabValue(value)) return;
@@ -124,6 +131,31 @@ function LiquidacionesContent() {
     setDiferencias((prev) => prev.map((d) => (d.id === diferencia.id ? diferencia : d)));
   };
 
+  const handleRegistrarPagoCliente = (id: string, montoRecibido: number) => {
+    setSaldosClientes((prev) =>
+      prev
+        .map((s) =>
+          s.id === id
+            ? { ...s, pagado: s.pagado + montoRecibido, saldo: Math.max(0, s.saldo - montoRecibido) }
+            : s,
+        )
+        .filter((s) => s.saldo > 0),
+    );
+    toast.success("Pago registrado");
+  };
+
+  const handleRecordatorioEnviado = (ids: string[]) => {
+    const idSet = new Set(ids);
+    const hoy = new Date().toISOString().slice(0, 10);
+    setSaldosClientes((prev) =>
+      prev.map((s) =>
+        idSet.has(s.id)
+          ? { ...s, recordatoriosEnviados: s.recordatoriosEnviados + 1, ultimoRecordatorioAt: hoy }
+          : s,
+      ),
+    );
+  };
+
   const handleRegistrarRendicion = (rendicion: RendicionRepartidor) => {
     setRendiciones((prev) => {
       const exists = prev.some((r) => r.id === rendicion.id);
@@ -163,6 +195,9 @@ function LiquidacionesContent() {
           <TabsTrigger value="porliq" className="flex-1 gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium sm:text-sm">
             Por Liquidar
           </TabsTrigger>
+          <TabsTrigger value="saldos" className="flex-1 gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium sm:text-sm">
+            Saldos clientes
+          </TabsTrigger>
           <TabsTrigger value="registradas" className="flex-1 gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium sm:text-sm">
             Liquidaciones
           </TabsTrigger>
@@ -186,6 +221,14 @@ function LiquidacionesContent() {
           )}
         </TabsContent>
 
+        <TabsContent value="saldos" className="mt-4">
+          <SaldosClientesTab
+            saldos={saldosClientes}
+            onRegistrarPago={handleRegistrarPagoCliente}
+            onRecordatorioEnviado={handleRecordatorioEnviado}
+          />
+        </TabsContent>
+
         <TabsContent value="registradas" className="mt-4">
           <LiquidacionesTab liquidaciones={liquidaciones} />
         </TabsContent>
@@ -195,7 +238,11 @@ function LiquidacionesContent() {
         </TabsContent>
 
         <TabsContent value="difs" className="mt-4">
-          <DiferenciasTab diferencias={diferencias} onUpdate={handleUpdateDiferencia} />
+          <DiferenciasTab
+            diferencias={diferencias}
+            liquidaciones={liquidaciones}
+            onUpdate={handleUpdateDiferencia}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -207,8 +254,9 @@ function PageHeader() {
     <div>
       <h1 className="text-2xl font-extrabold tracking-tight">Liquidaciones COD</h1>
       <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-        Plata que los couriers cobraron en la entrega y todavía no depositaron, histórico de
-        depósitos, cuadre de caja de motorizados propios y diferencias por resolver.
+        Plata que los couriers cobraron en la entrega y todavía no depositaron, saldos por cobrar
+        a clientes, histórico de depósitos, cuadre de caja de motorizados propios y diferencias
+        por resolver.
       </p>
     </div>
   );

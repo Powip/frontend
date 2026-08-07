@@ -124,6 +124,8 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                     <TableRow>
                       <TableHead>Fecha</TableHead>
                       <TableHead className="text-center">Ingresados</TableHead>
+                      <TableHead className="text-center">N° Confirmados</TableHead>
+                      <TableHead className="text-center">N° Por confirmar / Anul.</TableHead>
                       <TableHead className="text-center">% Confirm.</TableHead>
                       <TableHead className="text-center">% Anul.</TableHead>
                       <TableHead className="text-right">Ingreso S/</TableHead>
@@ -140,7 +142,7 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                         return (
                           <TableRow key={ds} className="opacity-60">
                             <TableCell className="font-medium">{formatDate(ds, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
-                            <TableCell colSpan={7} className="text-xs text-amber-600 dark:text-amber-400">
+                            <TableCell colSpan={9} className="text-xs text-amber-600 dark:text-amber-400">
                               Sin pedidos ni cierre guardado —{" "}
                               <button className="underline font-medium" onClick={() => onRegularizar(ds)}>
                                 Regularizar
@@ -153,12 +155,27 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                         );
                       }
                       const m = computeMetrics(r);
+                      // Confirmados/anulados vienen del embudo de Gestión COD
+                      // (r.confirmado/despachado/entregado/anulado — ver
+                      // mapOrderToFunnelBucket en cierreDiaProductosService.ts,
+                      // que excluye a propósito los subEstadoCc de Lima/Carrito
+                      // abandonado). "Por confirmar / Anul." agrupa lo que
+                      // todavía no llegó a confirmado (porConfirmar+contactado+
+                      // noContesta) junto con lo anulado.
+                      const confirmadosCount = r.confirmado + r.despachado + r.entregado;
+                      const porConfirmarOAnuladoCount = m.total - confirmadosCount;
                       return (
                         <TableRow key={ds}>
                           <TableCell className="font-medium">{formatDate(ds, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
                           <TableCell className="text-center font-bold">{m.total}</TableCell>
-                          <TableCell className="text-center text-emerald-600 dark:text-emerald-400 font-semibold">{formatPct(m.tasaConfirmacion)}</TableCell>
-                          <TableCell className="text-center text-red-600 dark:text-red-400 font-semibold">{formatPct(m.tasaAnulacion)}</TableCell>
+                          <TableCell className="text-center text-emerald-600 dark:text-emerald-400 font-semibold">{confirmadosCount}</TableCell>
+                          <TableCell className="text-center text-muted-foreground font-semibold">{porConfirmarOAnuladoCount}</TableCell>
+                          <TableCell className="text-center text-emerald-600 dark:text-emerald-400 font-semibold">
+                            {formatPct(m.tasaConfirmacion)} <span className="text-[10px] opacity-70">({confirmadosCount})</span>
+                          </TableCell>
+                          <TableCell className="text-center text-red-600 dark:text-red-400 font-semibold">
+                            {formatPct(m.tasaAnulacion)} <span className="text-[10px] opacity-70">({r.anulado})</span>
+                          </TableCell>
                           <TableCell className="text-right font-semibold">{formatCurrency(r.ingreso)}</TableCell>
                           <TableCell className="text-right text-muted-foreground">{formatCurrency(m.publi)}</TableCell>
                           <TableCell className="text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(m.margenNeto)}</TableCell>
@@ -180,11 +197,15 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                       <TableRow className="bg-teal-50 dark:bg-teal-950/30 font-bold">
                         <TableCell>TOTAL / PROM.</TableCell>
                         <TableCell className="text-center">{totals.total}</TableCell>
+                        <TableCell className="text-center text-emerald-600 dark:text-emerald-400">{totals.confirmados}</TableCell>
+                        <TableCell className="text-center text-muted-foreground">{totals.total - totals.confirmados}</TableCell>
                         <TableCell className="text-center text-emerald-600 dark:text-emerald-400">
-                          {formatPct(totals.total ? (totals.confirmados / totals.total) * 100 : 0)}
+                          {formatPct(totals.total ? (totals.confirmados / totals.total) * 100 : 0)}{" "}
+                          <span className="text-[10px] opacity-70">({totals.confirmados})</span>
                         </TableCell>
                         <TableCell className="text-center text-red-600 dark:text-red-400">
-                          {formatPct(totals.total ? (totals.anulados / totals.total) * 100 : 0)}
+                          {formatPct(totals.total ? (totals.anulados / totals.total) * 100 : 0)}{" "}
+                          <span className="text-[10px] opacity-70">({totals.anulados})</span>
                         </TableCell>
                         <TableCell className="text-right text-emerald-600 dark:text-emerald-400">{formatCurrency(totals.ingreso)}</TableCell>
                         <TableCell className="text-right">{formatCurrency(totals.publi)}</TableCell>

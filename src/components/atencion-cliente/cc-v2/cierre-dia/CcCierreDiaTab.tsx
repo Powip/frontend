@@ -153,6 +153,7 @@ export function CcCierreDiaTab({ storeId }: Props) {
         storeId={storeId}
         date={modalDate}
         onClose={() => setModalDate(null)}
+        onDateChange={setModalDate}
       />
     </div>
   );

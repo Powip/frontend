@@ -23,8 +23,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { DiferenciaLiquidacion } from "./types";
+import { DiferenciaLiquidacion, PagoLiquidacion } from "./types";
 import { formatDate, money } from "./utils";
+import { DetalleDiferenciaModal } from "./DetalleDiferenciaModal";
 
 const ESTADO_BADGE: Record<DiferenciaLiquidacion["estado"], string> = {
   ABIERTA:
@@ -49,13 +50,16 @@ const ESTADO_LABEL: Record<DiferenciaLiquidacion["estado"], string> = {
  */
 export function DiferenciasTab({
   diferencias,
+  liquidaciones,
   onUpdate,
 }: {
   diferencias: DiferenciaLiquidacion[];
+  liquidaciones: PagoLiquidacion[];
   onUpdate: (diferencia: DiferenciaLiquidacion) => void;
 }) {
   const [aceptando, setAceptando] = useState<DiferenciaLiquidacion | null>(null);
   const [motivo, setMotivo] = useState("");
+  const [detalle, setDetalle] = useState<DiferenciaLiquidacion | null>(null);
 
   const sorted = [...diferencias].sort((a, b) => (a.fecha < b.fecha ? 1 : -1));
 
@@ -91,7 +95,7 @@ export function DiferenciasTab({
                     <TableHead>ID</TableHead>
                     <TableHead>Fecha</TableHead>
                     <TableHead>Courier</TableHead>
-                    <TableHead className="text-right">Pedidos</TableHead>
+                    <TableHead>Pedido(s)</TableHead>
                     <TableHead className="text-right">Esperado</TableHead>
                     <TableHead className="text-right">Depositado</TableHead>
                     <TableHead className="text-right">Diferencia</TableHead>
@@ -105,7 +109,11 @@ export function DiferenciasTab({
                       <TableCell className="font-mono text-xs">{d.id}</TableCell>
                       <TableCell>{formatDate(d.fecha)}</TableCell>
                       <TableCell className="font-medium">{d.courier}</TableCell>
-                      <TableCell className="text-right">{d.pedidosIds.length}</TableCell>
+                      <TableCell>
+                        <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => setDetalle(d)}>
+                          {d.pedidosIds.length} pedido{d.pedidosIds.length === 1 ? "" : "s"} ▾
+                        </Button>
+                      </TableCell>
                       <TableCell className="text-right">{money(d.montoEsperado)}</TableCell>
                       <TableCell className="text-right">{money(d.montoDepositado)}</TableCell>
                       <TableCell className="text-right font-bold text-red-600 dark:text-red-400">
@@ -190,6 +198,12 @@ export function DiferenciasTab({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DetalleDiferenciaModal
+        diferencia={detalle}
+        pagoOrigen={liquidaciones.find((l) => l.id === detalle?.pagoLiquidacionId) ?? null}
+        onOpenChange={(o) => !o && setDetalle(null)}
+      />
     </>
   );
 }

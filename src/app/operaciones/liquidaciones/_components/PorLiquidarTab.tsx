@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, LayoutList, Table2, Wallet } from "lucide-react";
+import { AlertTriangle, Eye, FileSpreadsheet, LayoutList, Mail, Table2, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -14,11 +14,25 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { GuiaPorLiquidar, PagoLiquidacion } from "./types";
 import { formatDate, money } from "./utils";
 import { RegistrarLiquidacionModal } from "./RegistrarLiquidacionModal";
+import { DetallePedidoModal } from "./DetallePedidoModal";
+import { ExportModal } from "./ExportModal";
 
 type ViewMode = "pedido" | "courier";
+type AntiguedadChip = "todos" | "vencido" | "enplazo";
+
+const ALL_COURIERS = "__todos__";
+const ALL_CIUDADES = "__todas__";
 
 export function PorLiquidarTab({
   guias,
@@ -32,19 +46,54 @@ export function PorLiquidarTab({
   const [viewMode, setViewMode] = useState<ViewMode>("pedido");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modalGuias, setModalGuias] = useState<GuiaPorLiquidar[] | null>(null);
+  const [detalleGuia, setDetalleGuia] = useState<GuiaPorLiquidar | null>(null);
+  const [exportGuias, setExportGuias] = useState<GuiaPorLiquidar[] | null>(null);
+  const [exportKind, setExportKind] = useState<"reclamo" | "seleccion" | "todo">("todo");
+
+  const [search, setSearch] = useState("");
+  const [courierFilter, setCourierFilter] = useState(ALL_COURIERS);
+  const [ciudadFilter, setCiudadFilter] = useState(ALL_CIUDADES);
+  const [fechaDesde, setFechaDesde] = useState("");
+  const [fechaHasta, setFechaHasta] = useState("");
+  const [antiguedad, setAntiguedad] = useState<AntiguedadChip>("todos");
 
   const pendientes = useMemo(() => guias.filter((g) => g.saldoPendiente > 0), [guias]);
+
+  const couriers = useMemo(
+    () => Array.from(new Set(pendientes.map((g) => g.courier))).sort(),
+    [pendientes],
+  );
+  const ciudades = useMemo(
+    () => Array.from(new Set(pendientes.map((g) => g.ciudad))).sort(),
+    [pendientes],
+  );
+
+  const filtered = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return pendientes.filter((g) => {
+      if (term && !g.id.toLowerCase().includes(term) && !g.cliente.toLowerCase().includes(term)) {
+        return false;
+      }
+      if (courierFilter !== ALL_COURIERS && g.courier !== courierFilter) return false;
+      if (ciudadFilter !== ALL_CIUDADES && g.ciudad !== ciudadFilter) return false;
+      if (fechaDesde && g.entregadoAt && g.entregadoAt < fechaDesde) return false;
+      if (fechaHasta && g.entregadoAt && g.entregadoAt > fechaHasta) return false;
+      if (antiguedad === "vencido" && !g.vencido) return false;
+      if (antiguedad === "enplazo" && g.vencido) return false;
+      return true;
+    });
+  }, [pendientes, search, courierFilter, ciudadFilter, fechaDesde, fechaHasta, antiguedad]);
 
   const kpis = useMemo(() => {
     const totalPorLiquidar = pendientes.reduce((sum, g) => sum + g.saldoPendiente, 0);
     const vencidos = pendientes.filter((g) => g.vencido);
     const totalVencido = vencidos.reduce((sum, g) => sum + g.saldoPendiente, 0);
-    const couriers = new Set(pendientes.map((g) => g.courier));
+    const couriersConPendiente = new Set(pendientes.map((g) => g.courier));
     return {
       totalPorLiquidar,
       totalVencido,
       cantVencidos: vencidos.length,
-      cantCouriers: couriers.size,
+      cantCouriers: couriersConPendiente.size,
       cantGuias: pendientes.length,
     };
   }, [pendientes]);
@@ -70,11 +119,11 @@ export function PorLiquidarTab({
     });
   };
 
-  const selectedGuias = pendientes.filter((g) => selected.has(g.id));
+  const selectedGuias = filtered.filter((g) => selected.has(g.id));
 
   const byCourier = useMemo(() => {
     const map = new Map<string, GuiaPorLiquidar[]>();
-    for (const g of pendientes) {
+    for (const g of filtered) {
       if (!map.has(g.courier)) map.set(g.courier, []);
       map.get(g.courier)!.push(g);
     }
@@ -84,16 +133,33 @@ export function PorLiquidarTab({
       cantidad: items.length,
       codNeto: items.reduce((s, g) => s + g.codNeto, 0),
       comision: items.reduce((s, g) => s + g.comision, 0),
+      flete: items.reduce((s, g) => s + g.flete, 0),
       neto: items.reduce((s, g) => s + g.saldoPendiente, 0),
       vencidos: items.filter((g) => g.vencido).length,
     }));
-  }, [pendientes]);
+  }, [filtered]);
 
   const handleRegistrar = (pago: PagoLiquidacion) => {
     onRegistrar(pago);
     setSelected(new Set());
     setModalGuias(null);
   };
+
+  const exportRows = (list: GuiaPorLiquidar[]) =>
+    list.map((g) => ({
+      Pedido: g.id,
+      Cliente: g.cliente,
+      Ciudad: g.ciudad,
+      Courier: g.courier,
+      Entregado: formatDate(g.entregadoAt),
+      "Días transcurridos": g.diasTranscurridos,
+      "Plazo (días)": g.diasLimite,
+      Cobró: g.codNeto,
+      Comisión: g.comision,
+      Flete: g.flete,
+      "Neto a recibir": g.saldoPendiente,
+      Vencido: g.vencido ? "Sí" : "No",
+    }));
 
   return (
     <div className="space-y-4">
@@ -124,9 +190,149 @@ export function PorLiquidarTab({
           icon={<LayoutList className="h-4 w-4" />}
           label="Seleccionados"
           value={String(selected.size)}
-          sub={selectedCourier ? `Courier: ${selectedCourier}` : "Ninguno seleccionado"}
+          sub={selectedCourier ? `Courier: ${selectedCourier}` : "Marca filas para gestionar"}
         />
       </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Antigüedad:
+        </span>
+        {(
+          [
+            ["todos", `Todos (${pendientes.length})`],
+            ["vencido", `Vencido (${pendientes.filter((g) => g.vencido).length})`],
+            ["enplazo", `En plazo (${pendientes.filter((g) => !g.vencido).length})`],
+          ] as [AntiguedadChip, string][]
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setAntiguedad(key)}
+            className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+              antiguedad === key
+                ? key === "vencido"
+                  ? "border-red-300 bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300"
+                  : "border-primary/40 bg-primary/10 text-primary"
+                : "border-border bg-muted/40 text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Buscar por pedido o cliente..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="h-9 max-w-xs flex-1"
+        />
+        <Select value={courierFilter} onValueChange={setCourierFilter}>
+          <SelectTrigger className="h-9 w-[170px]">
+            <SelectValue placeholder="Courier" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_COURIERS}>Todos los couriers</SelectItem>
+            {couriers.map((c) => (
+              <SelectItem key={c} value={c}>
+                {c}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={ciudadFilter} onValueChange={setCiudadFilter}>
+          <SelectTrigger className="h-9 w-[160px]">
+            <SelectValue placeholder="Ciudad" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL_CIUDADES}>Toda ciudad</SelectItem>
+            {ciudades.map((c) => (
+              <SelectItem key={c} value={c}>
+                {c}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Input
+          type="date"
+          value={fechaDesde}
+          onChange={(e) => setFechaDesde(e.target.value)}
+          className="h-9 w-[150px]"
+        />
+        <span className="text-xs text-muted-foreground">→</span>
+        <Input
+          type="date"
+          value={fechaHasta}
+          onChange={(e) => setFechaHasta(e.target.value)}
+          className="h-9 w-[150px]"
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-auto gap-1.5"
+          onClick={() => {
+            setExportKind("todo");
+            setExportGuias(filtered);
+          }}
+        >
+          <FileSpreadsheet className="h-3.5 w-3.5" />
+          Exportar
+        </Button>
+      </div>
+
+      {selectedGuias.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-primary/5 p-2.5">
+          <span className="text-xs font-semibold text-muted-foreground">
+            {selectedGuias.length} pedido{selectedGuias.length === 1 ? "" : "s"} ·{" "}
+            {money(selectedGuias.reduce((s, g) => s + g.saldoPendiente, 0))} neto
+          </span>
+          <Button size="sm" className="h-8 gap-1 text-xs" onClick={() => setModalGuias(selectedGuias)}>
+            <Wallet className="h-3.5 w-3.5" />
+            Registrar liquidación
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            onClick={() => setModalGuias(selectedGuias)}
+            title="Abre el mismo formulario — marca diferencia si el monto depositado no coincide"
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Marcar diferencia
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            onClick={() => {
+              setExportKind("reclamo");
+              setExportGuias(selectedGuias);
+            }}
+          >
+            <Mail className="h-3.5 w-3.5" />
+            Reclamar al courier
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            onClick={() => {
+              setExportKind("seleccion");
+              setExportGuias(selectedGuias);
+            }}
+          >
+            <FileSpreadsheet className="h-3.5 w-3.5" />
+            Exportar selección
+          </Button>
+          <button
+            className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => setSelected(new Set())}
+          >
+            Limpiar ✕
+          </button>
+        </div>
+      )}
 
       <Card className="shadow-sm">
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 border-b py-4">
@@ -150,24 +356,17 @@ export function PorLiquidarTab({
                 Resumen por courier
               </Button>
             </div>
-            {viewMode === "pedido" && (
-              <Button
-                size="sm"
-                disabled={selectedGuias.length === 0}
-                onClick={() => setModalGuias(selectedGuias)}
-              >
-                Registrar liquidación{selectedGuias.length > 0 ? ` (${selectedGuias.length})` : ""}
-              </Button>
-            )}
           </div>
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
             <p className="py-10 text-center text-sm text-muted-foreground">Cargando pedidos…</p>
           ) : viewMode === "pedido" ? (
-            pendientes.length === 0 ? (
+            filtered.length === 0 ? (
               <p className="py-10 text-center text-sm text-muted-foreground">
-                No hay pedidos con COD pendiente de depósito 🎉
+                {pendientes.length === 0
+                  ? "No hay pedidos con COD pendiente de depósito 🎉"
+                  : "Ningún pedido coincide con los filtros."}
               </p>
             ) : (
               <div className="overflow-x-auto">
@@ -177,17 +376,19 @@ export function PorLiquidarTab({
                       <TableHead className="w-8" />
                       <TableHead>Pedido</TableHead>
                       <TableHead>Cliente</TableHead>
+                      <TableHead>Ciudad</TableHead>
                       <TableHead>Entregado</TableHead>
                       <TableHead>Días</TableHead>
                       <TableHead>Courier</TableHead>
                       <TableHead className="text-right">Cobró</TableHead>
                       <TableHead className="text-right">Comisión</TableHead>
+                      <TableHead className="text-right text-violet-600 dark:text-violet-400">Flete</TableHead>
                       <TableHead className="text-right">Neto a recibir</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {pendientes.map((g) => (
+                    {filtered.map((g) => (
                       <TableRow
                         key={g.id}
                         className={g.vencido ? "bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/15" : ""}
@@ -214,6 +415,7 @@ export function PorLiquidarTab({
                           )}
                         </TableCell>
                         <TableCell>{g.cliente}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{g.ciudad}</TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {formatDate(g.entregadoAt)}
                         </TableCell>
@@ -225,17 +427,34 @@ export function PorLiquidarTab({
                         <TableCell className="text-right text-red-600 dark:text-red-400">
                           -{money(g.comision)}
                         </TableCell>
+                        <TableCell className="text-right text-red-600 dark:text-red-400">
+                          -{money(g.flete)}
+                        </TableCell>
                         <TableCell className="text-right font-bold">{money(g.saldoPendiente)}</TableCell>
                         <TableCell className="text-right">
-                          {g.vencido ? (
-                            <Badge variant="destructive" className="text-[10px]">
-                              Vencido
-                            </Badge>
-                          ) : (
-                            <Badge variant="secondary" className="text-[10px]">
-                              Pendiente
-                            </Badge>
-                          )}
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              title="Ver detalle"
+                              onClick={() => setDetalleGuia(g)}
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              title="Reclamar"
+                              onClick={() => {
+                                setExportKind("reclamo");
+                                setExportGuias([g]);
+                              }}
+                            >
+                              <Mail className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -245,7 +464,9 @@ export function PorLiquidarTab({
             )
           ) : byCourier.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
-              No hay pedidos con COD pendiente de depósito 🎉
+              {pendientes.length === 0
+                ? "No hay pedidos con COD pendiente de depósito 🎉"
+                : "Ningún pedido coincide con los filtros."}
             </p>
           ) : (
             <div className="overflow-x-auto">
@@ -257,6 +478,7 @@ export function PorLiquidarTab({
                     <TableHead className="text-right">Vencidos</TableHead>
                     <TableHead className="text-right">Cobró (neto)</TableHead>
                     <TableHead className="text-right">Comisión</TableHead>
+                    <TableHead className="text-right text-violet-600 dark:text-violet-400">Flete</TableHead>
                     <TableHead className="text-right">Neto a recibir</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
@@ -271,11 +493,26 @@ export function PorLiquidarTab({
                       </TableCell>
                       <TableCell className="text-right">{money(c.codNeto)}</TableCell>
                       <TableCell className="text-right text-red-600 dark:text-red-400">-{money(c.comision)}</TableCell>
+                      <TableCell className="text-right text-red-600 dark:text-red-400">-{money(c.flete)}</TableCell>
                       <TableCell className="text-right font-bold">{money(c.neto)}</TableCell>
                       <TableCell className="text-right">
-                        <Button size="sm" onClick={() => setModalGuias(c.items)}>
-                          Registrar liquidación
-                        </Button>
+                        <div className="flex items-center justify-end gap-1">
+                          <Button size="sm" onClick={() => setModalGuias(c.items)}>
+                            Registrar
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            title="Reclamar"
+                            onClick={() => {
+                              setExportKind("reclamo");
+                              setExportGuias(c.items);
+                            }}
+                          >
+                            <Mail className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -294,6 +531,24 @@ export function PorLiquidarTab({
           onRegistrar={handleRegistrar}
         />
       )}
+
+      <DetallePedidoModal guia={detalleGuia} onOpenChange={(o) => !o && setDetalleGuia(null)} />
+
+      <ExportModal
+        open={!!exportGuias}
+        onOpenChange={(o) => !o && setExportGuias(null)}
+        title={exportKind === "reclamo" ? "Reclamo a courier" : "Exportar"}
+        subtitle={
+          exportKind === "reclamo"
+            ? "Cuenta por cobrar a courier — respalda el reclamo de depósito."
+            : exportKind === "seleccion"
+            ? "Exporta la selección actual."
+            : "Exporta lo filtrado en Por Liquidar."
+        }
+        rows={exportRows(exportGuias ?? [])}
+        filename={exportKind === "reclamo" ? "reclamo_courier" : "por_liquidar"}
+        sheetName="Por liquidar"
+      />
     </div>
   );
 }
