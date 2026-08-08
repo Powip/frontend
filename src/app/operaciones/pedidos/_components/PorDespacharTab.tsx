@@ -382,7 +382,7 @@ export function PorDespacharTab({
   };
 
   const visibleColCount =
-    10 +
+    12 +
     (columns.guia ? 1 : 0) +
     (columns.courier ? 1 : 0) +
     (columns.vendedor ? 1 : 0) +
@@ -761,7 +761,9 @@ export function PorDespacharTab({
                   />
                 </TableHead>
                 <TableHead>N° Orden</TableHead>
+                <TableHead>Fecha de Venta</TableHead>
                 <TableHead>Cliente</TableHead>
+                <TableHead>Ciudad</TableHead>
                 <TableHead>Distrito</TableHead>
                 <TableHead>Zona</TableHead>
                 <TableHead>Productos</TableHead>
@@ -805,11 +807,17 @@ export function PorDespacharTab({
                       {sale.orderNumber}
                     </div>
                   </TableCell>
+                  <TableCell className="text-sm">
+                    {formatDateTime(sale.createdAt)}
+                  </TableCell>
                   <TableCell>
                     <div className="font-medium">{sale.clientName}</div>
                     <div className="text-xs text-muted-foreground">
                       {sale.phoneNumber}
                     </div>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {sale.city || "—"}
                   </TableCell>
                   <TableCell className="text-sm">
                     {sale.district || "—"}

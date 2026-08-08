@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
+import { DateRange } from "react-day-picker";
 import {
   Truck,
   Search,
@@ -20,6 +21,7 @@ import {
   X,
   Eye,
   FileSpreadsheet,
+  CalendarIcon,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -40,7 +42,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import {
   Select,
   SelectContent,
@@ -72,13 +77,132 @@ function money(n: number): string {
   return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Tailwind necesita las clases literales (no `grid-cols-${n}`) para no purgarlas.
-const GRID_COLS_CLASS: Record<number, string> = {
-  1: "grid-cols-1",
-  2: "grid-cols-2",
-  3: "grid-cols-3",
-  4: "grid-cols-4",
-};
+// EVA/Aliclik/Shalom pueden despachar un pedido sin pasar por una guía
+// propia (ver `allOrderRows`), así que `order.courier` puede venir vacío
+// para esos casos — se completa con la integración detectada.
+function courierLabel(order: OrderHeader): string {
+  if (order.courier) return order.courier;
+  if (order.evaStatus) return "EVA Courier";
+  if (order.aliclikDispatchStatus) return "Aliclik";
+  if (order.shalomStatus) return "Shalom";
+  return "-";
+}
+
+function courierTabValue(courierName: string): string {
+  return `courier-${courierName.toLowerCase().replace(/\s+/g, "-")}`;
+}
+
+function openDocument(url: string) {
+  window.open(url, "_blank");
+}
+
+function dateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+const ITEMS_PER_PAGE = 15;
+
+const TRACKING_FIELDS = [
+  { key: "externalTrackingNumber", label: "Nro Tracking", placeholder: "Nro Tracking..." },
+  { key: "shippingCode", label: "Código", placeholder: "Código..." },
+  { key: "shippingOffice", label: "Oficina", placeholder: "Oficina..." },
+  { key: "shippingKey", label: "Clave", placeholder: "Clave..." },
+] as const;
+
+type TrackingFieldKey = (typeof TRACKING_FIELDS)[number]["key"];
+
+function trackingValuesOf(order: OrderHeader): Record<TrackingFieldKey, string> {
+  return {
+    externalTrackingNumber: order.externalTrackingNumber || "",
+    shippingCode: order.shippingCode || "",
+    shippingOffice: order.shippingOffice || "",
+    shippingKey: order.shippingKey || "",
+  };
+}
+
+/**
+ * Campos de tracking manual (mismos 4 que "Información de Seguimiento" en
+ * CustomerServiceModal) editables directo desde la fila de la tabla, para
+ * couriers sin integración propia donde alguien tiene que tipear el
+ * número/código/oficina/clave a mano. No guarda solo con el blur — recién
+ * aparece el botón "Guardar" cuando algún campo cambió, y guarda todos los
+ * campos tocados en un solo PATCH.
+ */
+function TrackingInputCells({
+  order,
+  onSaved,
+}: {
+  order: OrderHeader;
+  onSaved: () => void;
+}) {
+  const original = trackingValuesOf(order);
+  const [values, setValues] = useState<Record<TrackingFieldKey, string>>(original);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setValues(trackingValuesOf(order));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    order.id,
+    order.externalTrackingNumber,
+    order.shippingCode,
+    order.shippingOffice,
+    order.shippingKey,
+  ]);
+
+  const dirty = TRACKING_FIELDS.some(({ key }) => values[key] !== original[key]);
+
+  const handleSave = async () => {
+    if (!dirty) return;
+    setSaving(true);
+    try {
+      const payload: Partial<Record<TrackingFieldKey, string | null>> = {};
+      TRACKING_FIELDS.forEach(({ key }) => {
+        if (values[key] !== original[key]) payload[key] = values[key] || null;
+      });
+      await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${order.id}`, payload);
+      toast.success("Tracking guardado");
+      onSaved();
+    } catch {
+      toast.error("No se pudo guardar el tracking");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      {TRACKING_FIELDS.map(({ key, placeholder }, i) => (
+        <TableCell key={key} className="px-2 py-2">
+          <div className="flex items-center gap-1">
+            <Input
+              placeholder={placeholder}
+              value={values[key]}
+              onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+              className="h-7 w-24 text-[11px]"
+            />
+            {i === TRACKING_FIELDS.length - 1 && dirty && (
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7 shrink-0 text-emerald-600 hover:text-emerald-700"
+                title="Guardar tracking"
+                onClick={handleSave}
+                disabled={saving}
+              >
+                {saving ? (
+                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                )}
+              </Button>
+            )}
+          </div>
+        </TableCell>
+      ))}
+    </>
+  );
+}
 
 interface TrackingGuide {
   id: string;
@@ -127,6 +251,9 @@ export default function CourierTrackingView() {
   // viejos/importados) — mismo servicio que usa el resto de Operaciones.
   const [companyCouriers, setCompanyCouriers] = useState<string[]>([]);
   const [courierFilter, setCourierFilter] = useState("ALL");
+  const [fechaRange, setFechaRange] = useState<DateRange | undefined>(undefined);
+  const [fechaCalendarOpen, setFechaCalendarOpen] = useState(false);
+  const [page, setPage] = useState(1);
 
   // Track State
   const [trackingModalOpen, setTrackingModalOpen] = useState(false);
@@ -195,13 +322,27 @@ export default function CourierTrackingView() {
       .catch(() => setHasAliclik(false));
   }, [auth?.company?.id, auth?.accessToken]);
 
+  // Couriers registrados en la cuenta (fetchCouriers) que no tienen una
+  // integración con vista propia (Shalom sí la tiene) — cada uno de estos
+  // recibe su propia pestaña genérica con la tabla de pedidos filtrada.
+  const otherCouriers = useMemo(
+    () => companyCouriers.filter((c) => !c.toLowerCase().includes("shalom")),
+    [companyCouriers],
+  );
+
   // Si la pestaña activa deja de estar disponible (el courier/integración no
   // está configurado), volver a "Todos" en vez de mostrar contenido vacío.
   useEffect(() => {
     if (activeCarrierTab === "shalom" && !hasShalom) setActiveCarrierTab("todos");
     if (activeCarrierTab === "aliclik" && !hasAliclik) setActiveCarrierTab("todos");
+    if (
+      activeCarrierTab.startsWith("courier-") &&
+      !otherCouriers.some((c) => courierTabValue(c) === activeCarrierTab)
+    ) {
+      setActiveCarrierTab("todos");
+    }
     if (activeCarrierTab === "eva" && !hasEva) setActiveCarrierTab("todos");
-  }, [activeCarrierTab, hasShalom, hasAliclik, hasEva]);
+  }, [activeCarrierTab, hasShalom, hasAliclik, hasEva, otherCouriers]);
 
   // Fecha de despacho = cuándo se creó la guía en ms-courier (no existe un
   // campo propio en la orden) — se mapea por orderId a partir de `guides`.
@@ -213,23 +354,84 @@ export default function CourierTrackingView() {
     return map;
   }, [guides]);
 
+  const dispatchedOrders = useMemo(
+    () =>
+      orders.filter(
+        // "Despachado" no es solo tener guía interna (ms-courier): EVA,
+        // Aliclik y Shalom pueden entregar sin pasar nunca por
+        // /shipping-guides, así que un pedido cuenta como despachado si tiene
+        // guía propia O quedó vinculado a cualquier integración de courier.
+        (o) =>
+          !!o.guideNumber ||
+          !!o.evaStatus ||
+          !!o.aliclikDispatchStatus ||
+          !!o.shalomStatus ||
+          !!o.externalTrackingNumber,
+      ),
+    [orders],
+  );
+
+  // El dropdown de filtro no puede depender solo de `companyCouriers`
+  // (fetchCouriers): esos son los couriers registrados para guías propias,
+  // y no incluye "EVA Courier"/"Aliclik"/"Shalom" cuando el pedido se
+  // despachó por esas integraciones sin guía. Se arma con todos los
+  // couriers que realmente aparecen en los pedidos despachados, más los
+  // registrados (por si alguno no tiene pedidos todavía).
+  const courierFilterOptions = useMemo(() => {
+    const set = new Set<string>(companyCouriers);
+    for (const o of dispatchedOrders) set.add(courierLabel(o));
+    set.delete("-");
+    return Array.from(set).sort();
+  }, [companyCouriers, dispatchedOrders]);
+
+  // Mismo criterio date-only que Por Liquidar/Pedidos — compara contra la
+  // fecha de venta (`created_at`).
+  const fechaDesde = fechaRange?.from ? dateKey(fechaRange.from) : "";
+  const fechaHasta = fechaRange?.to
+    ? dateKey(fechaRange.to)
+    : fechaRange?.from
+      ? dateKey(fechaRange.from)
+      : "";
+
   const allOrderRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return orders
-      .filter((o) => !!o.guideNumber)
-      .filter((o) => courierFilter === "ALL" || o.courier === courierFilter)
+    return dispatchedOrders
+      .filter(
+        (o) => courierFilter === "ALL" || courierLabel(o) === courierFilter,
+      )
+      .filter((o) => {
+        if (!fechaDesde && !fechaHasta) return true;
+        const ventaDate = o.created_at ? o.created_at.slice(0, 10) : null;
+        if (!ventaDate) return false;
+        if (fechaDesde && ventaDate < fechaDesde) return false;
+        if (fechaHasta && ventaDate > fechaHasta) return false;
+        return true;
+      })
       .filter(
         (o) =>
           !q ||
           o.orderNumber?.toLowerCase().includes(q) ||
-          o.courier?.toLowerCase().includes(q) ||
+          courierLabel(o).toLowerCase().includes(q) ||
           o.customer?.fullName?.toLowerCase().includes(q),
       )
       .sort(
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
-  }, [orders, search, courierFilter]);
+  }, [dispatchedOrders, search, courierFilter, fechaDesde, fechaHasta]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, courierFilter, fechaDesde, fechaHasta]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(allOrderRows.length / ITEMS_PER_PAGE),
+  );
+  const pagedOrderRows = allOrderRows.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  );
 
   const handleTrackShalom = async (guide: TrackingGuide) => {
     if (!auth?.accessToken || !auth?.company?.id) return;
@@ -316,10 +518,6 @@ export default function CourierTrackingView() {
     }
   };
 
-  const openDocument = (url: string) => {
-    window.open(url, "_blank");
-  };
-
   const handleExportExcel = () => {
     if (allOrderRows.length === 0) {
       toast.warning("No hay pedidos para exportar con los filtros aplicados");
@@ -336,7 +534,7 @@ export default function CourierTrackingView() {
         Ciudad: o.customer?.city || "-",
         Distrito: o.customer?.district || "-",
         "Saldo de deuda": getPendingPayment(o),
-        Courier: o.courier || "-",
+        Courier: courierLabel(o),
         "Costo de envío": o.carrierShippingCost ? Number(o.carrierShippingCost) : 0,
       };
     });
@@ -355,15 +553,16 @@ export default function CourierTrackingView() {
   return (
     <div className="space-y-6">
       <Tabs value={activeCarrierTab} onValueChange={setActiveCarrierTab} className="w-full">
-        <TabsList
-          className={`grid w-full max-w-md mb-6 ${
-            GRID_COLS_CLASS[1 + Number(hasShalom) + Number(hasAliclik) + Number(hasEva)]
-          }`}
-        >
+        <TabsList className="flex h-auto w-full flex-wrap gap-1 mb-6">
           {hasShalom && <TabsTrigger value="shalom">Shalom</TabsTrigger>}
           <TabsTrigger value="todos">Todos</TabsTrigger>
           {hasAliclik && <TabsTrigger value="aliclik">Aliclik</TabsTrigger>}
           {hasEva && <TabsTrigger value="eva">EVA Courier</TabsTrigger>}
+          {otherCouriers.map((c) => (
+            <TabsTrigger key={c} value={courierTabValue(c)}>
+              {c}
+            </TabsTrigger>
+          ))}
         </TabsList>
 
         {hasShalom && (
@@ -408,6 +607,19 @@ export default function CourierTrackingView() {
           </TabsContent>
         )}
 
+        {otherCouriers.map((c) => (
+          <TabsContent key={c} value={courierTabValue(c)}>
+            <CourierOrdersTab
+              courierName={c}
+              dispatchedOrders={dispatchedOrders}
+              dispatchDateByOrderId={dispatchDateByOrderId}
+              loading={ordersLoading}
+              onRefresh={fetchOrders}
+              onView={setViewOrderId}
+            />
+          </TabsContent>
+        ))}
+
         <TabsContent value="todos">
           <Card className="border-border shadow-sm">
             <CardHeader className="pb-3 px-4">
@@ -436,13 +648,54 @@ export default function CourierTrackingView() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="ALL">Todos los couriers</SelectItem>
-                    {companyCouriers.map((c) => (
+                    {courierFilterOptions.map((c) => (
                       <SelectItem key={c} value={c}>
                         {c}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <Popover open={fechaCalendarOpen} onOpenChange={setFechaCalendarOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[190px] justify-start shrink-0 bg-background">
+                      <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span className="text-xs">
+                        {fechaRange?.from
+                          ? `${fechaRange.from.toLocaleDateString("es-PE", { day: "2-digit", month: "short" })} – ${(
+                              fechaRange.to ?? fechaRange.from
+                            ).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" })}`
+                          : "Fecha de venta"}
+                      </span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="range"
+                      selected={fechaRange}
+                      onSelect={(r) => {
+                        if (r?.from && !r.to) {
+                          setFechaRange({ from: r.from, to: new Date() });
+                          setFechaCalendarOpen(false);
+                          return;
+                        }
+                        setFechaRange(r);
+                        if (r?.from && r?.to) setFechaCalendarOpen(false);
+                      }}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                {fechaRange?.from && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    title="Quitar filtro de fecha"
+                    onClick={() => setFechaRange(undefined)}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
                 <Button
                   onClick={() => {
                     fetchGuides();
@@ -481,6 +734,11 @@ export default function CourierTrackingView() {
                       <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Saldo de deuda</TableHead>
                       <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Courier</TableHead>
                       <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Costo de envío</TableHead>
+                      {TRACKING_FIELDS.map((f) => (
+                        <TableHead key={f.key} className="font-semibold px-2 h-10 text-xs whitespace-nowrap">
+                          {f.label}
+                        </TableHead>
+                      ))}
                       <TableHead className="font-semibold px-4 h-10 text-right text-xs whitespace-nowrap">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -488,17 +746,17 @@ export default function CourierTrackingView() {
                     {ordersLoading ? (
                       Array.from({ length: 3 }).map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell colSpan={11} className="h-16 animate-pulse bg-muted/10 px-4" />
+                          <TableCell colSpan={15} className="h-16 animate-pulse bg-muted/10 px-4" />
                         </TableRow>
                       ))
                     ) : allOrderRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={11} className="h-32 text-center text-muted-foreground text-sm">
+                        <TableCell colSpan={15} className="h-32 text-center text-muted-foreground text-sm">
                           No hay pedidos despachados para mostrar.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      allOrderRows.map((order) => {
+                      pagedOrderRows.map((order) => {
                         const despachoAt = dispatchDateByOrderId.get(order.id);
                         return (
                           <TableRow key={order.id} className="hover:bg-muted/40 transition-colors">
@@ -528,7 +786,7 @@ export default function CourierTrackingView() {
                             </TableCell>
                             <TableCell className="px-4 py-3 text-center">
                               <Badge variant="outline" className="text-[10px]">
-                                {order.courier || "-"}
+                                {courierLabel(order)}
                               </Badge>
                             </TableCell>
                             <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
@@ -536,6 +794,7 @@ export default function CourierTrackingView() {
                                 ? money(Number(order.carrierShippingCost))
                                 : "-"}
                             </TableCell>
+                            <TrackingInputCells order={order} onSaved={fetchOrders} />
                             <TableCell className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
                                 <Button
@@ -566,6 +825,14 @@ export default function CourierTrackingView() {
                   </TableBody>
                 </Table>
                </div>
+               <Pagination
+                 currentPage={page}
+                 totalPages={totalPages}
+                 totalItems={allOrderRows.length}
+                 itemsPerPage={ITEMS_PER_PAGE}
+                 onPageChange={setPage}
+                 itemName="pedidos"
+               />
             </CardContent>
           </Card>
         </TabsContent>
@@ -733,5 +1000,287 @@ export default function CourierTrackingView() {
         showTracking
       />
     </div>
+  );
+}
+
+/* -----------------------------------------------------------------------
+   Pestaña genérica por courier — para los couriers registrados en la
+   cuenta (fetchCouriers) que no tienen una integración con vista propia
+   (Shalom/Aliclik/EVA). Misma tabla que "Todos" pero ya acotada a un solo
+   courier, así que no necesita el selector de courier.
+------------------------------------------------------------------------ */
+function CourierOrdersTab({
+  courierName,
+  dispatchedOrders,
+  dispatchDateByOrderId,
+  loading,
+  onRefresh,
+  onView,
+}: {
+  courierName: string;
+  dispatchedOrders: OrderHeader[];
+  dispatchDateByOrderId: Map<string, string>;
+  loading: boolean;
+  onRefresh: () => void;
+  onView: (orderId: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [fechaRange, setFechaRange] = useState<DateRange | undefined>(undefined);
+  const [fechaCalendarOpen, setFechaCalendarOpen] = useState(false);
+  const [page, setPage] = useState(1);
+
+  const fechaDesde = fechaRange?.from ? dateKey(fechaRange.from) : "";
+  const fechaHasta = fechaRange?.to
+    ? dateKey(fechaRange.to)
+    : fechaRange?.from
+      ? dateKey(fechaRange.from)
+      : "";
+
+  const rows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return dispatchedOrders
+      .filter((o) => courierLabel(o) === courierName)
+      .filter((o) => {
+        if (!fechaDesde && !fechaHasta) return true;
+        const ventaDate = o.created_at ? o.created_at.slice(0, 10) : null;
+        if (!ventaDate) return false;
+        if (fechaDesde && ventaDate < fechaDesde) return false;
+        if (fechaHasta && ventaDate > fechaHasta) return false;
+        return true;
+      })
+      .filter(
+        (o) =>
+          !q ||
+          o.orderNumber?.toLowerCase().includes(q) ||
+          o.customer?.fullName?.toLowerCase().includes(q),
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+  }, [dispatchedOrders, courierName, search, fechaDesde, fechaHasta]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, courierName, fechaDesde, fechaHasta]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / ITEMS_PER_PAGE));
+  const pagedRows = rows.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  );
+
+  const handleExportExcel = () => {
+    if (rows.length === 0) {
+      toast.warning("No hay pedidos para exportar con los filtros aplicados");
+      return;
+    }
+    const data = rows.map((o) => {
+      const despachoAt = dispatchDateByOrderId.get(o.id);
+      return {
+        "N° Pedido": o.orderNumber,
+        "Fecha de venta": new Date(o.created_at).toLocaleDateString("es-PE"),
+        Despacho: despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-",
+        Cliente: o.customer?.fullName || "-",
+        Teléfono: o.customer?.phoneNumber || "-",
+        Ciudad: o.customer?.city || "-",
+        Distrito: o.customer?.district || "-",
+        "Saldo de deuda": getPendingPayment(o),
+        "Costo de envío": o.carrierShippingCost ? Number(o.carrierShippingCost) : 0,
+      };
+    });
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, courierName.slice(0, 31));
+    const buffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    saveAs(
+      new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+      `${courierName.replace(/\s+/g, "_")}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+  };
+
+  return (
+    <Card className="border-border shadow-sm">
+      <CardHeader className="pb-3 px-4">
+        <div className="flex flex-wrap justify-between items-center gap-2">
+          <div>
+            <CardTitle className="text-lg">Pedidos — {courierName}</CardTitle>
+            <CardDescription>Un pedido por fila, despachado con {courierName}.</CardDescription>
+          </div>
+          <div className="text-muted-foreground text-xs font-medium bg-muted/50 px-2 py-1 rounded">
+            {rows.length} pedidos
+          </div>
+        </div>
+        <div className="flex items-center gap-3 pt-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por pedido o cliente..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 bg-background"
+            />
+          </div>
+          <Popover open={fechaCalendarOpen} onOpenChange={setFechaCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[190px] justify-start shrink-0 bg-background">
+                <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="text-xs">
+                  {fechaRange?.from
+                    ? `${fechaRange.from.toLocaleDateString("es-PE", { day: "2-digit", month: "short" })} – ${(
+                        fechaRange.to ?? fechaRange.from
+                      ).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" })}`
+                    : "Fecha de venta"}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="range"
+                selected={fechaRange}
+                onSelect={(r) => {
+                  if (r?.from && !r.to) {
+                    setFechaRange({ from: r.from, to: new Date() });
+                    setFechaCalendarOpen(false);
+                    return;
+                  }
+                  setFechaRange(r);
+                  if (r?.from && r?.to) setFechaCalendarOpen(false);
+                }}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
+          {fechaRange?.from && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              title="Quitar filtro de fecha"
+              onClick={() => setFechaRange(undefined)}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button onClick={onRefresh} variant="outline" size="sm" className="gap-2 shrink-0">
+            <RefreshCw className={loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            Actualizar
+          </Button>
+          <Button onClick={handleExportExcel} variant="outline" size="sm" className="gap-2 shrink-0">
+            <FileSpreadsheet className="h-4 w-4" />
+            Exportar Excel
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="border-t border-border overflow-x-auto">
+          <Table>
+            <TableHeader className="bg-muted/30">
+              <TableRow>
+                <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">N° Pedido</TableHead>
+                <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Fecha de venta</TableHead>
+                <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Despacho</TableHead>
+                <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Cliente</TableHead>
+                <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Teléfono</TableHead>
+                <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Ciudad</TableHead>
+                <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Distrito</TableHead>
+                <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Saldo de deuda</TableHead>
+                <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Costo de envío</TableHead>
+                {TRACKING_FIELDS.map((f) => (
+                  <TableHead key={f.key} className="font-semibold px-2 h-10 text-xs whitespace-nowrap">
+                    {f.label}
+                  </TableHead>
+                ))}
+                <TableHead className="font-semibold px-4 h-10 text-right text-xs whitespace-nowrap">Acciones</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 3 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell colSpan={14} className="h-16 animate-pulse bg-muted/10 px-4" />
+                  </TableRow>
+                ))
+              ) : rows.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={14} className="h-32 text-center text-muted-foreground text-sm">
+                    No hay pedidos despachados con {courierName}.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                pagedRows.map((order) => {
+                  const despachoAt = dispatchDateByOrderId.get(order.id);
+                  return (
+                    <TableRow key={order.id} className="hover:bg-muted/40 transition-colors">
+                      <TableCell className="font-medium px-4 py-3 text-xs whitespace-nowrap">
+                        {order.orderNumber}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-[10px] text-center whitespace-nowrap">
+                        {new Date(order.created_at).toLocaleDateString("es-PE")}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-[10px] text-center whitespace-nowrap">
+                        {despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-"}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-xs">
+                        {order.customer?.fullName || "-"}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
+                        {order.customer?.phoneNumber || "-"}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
+                        {order.customer?.city || "-"}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
+                        {order.customer?.district || "-"}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
+                        {money(getPendingPayment(order))}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
+                        {order.carrierShippingCost ? money(Number(order.carrierShippingCost)) : "-"}
+                      </TableCell>
+                      <TrackingInputCells order={order} onSaved={onRefresh} />
+                      <TableCell className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0"
+                            title="Ver comprobante de entrega"
+                            disabled={!order.shippingProofUrl}
+                            onClick={() => openDocument(order.shippingProofUrl!)}
+                          >
+                            <FileText className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-7 w-7 p-0"
+                            title="Ver pedido"
+                            onClick={() => onView(order.id)}
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </div>
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalItems={rows.length}
+          itemsPerPage={ITEMS_PER_PAGE}
+          onPageChange={setPage}
+          itemName="pedidos"
+        />
+      </CardContent>
+    </Card>
   );
 }

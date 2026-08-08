@@ -52,11 +52,14 @@ export const SOURCE_OPTIONS = [
  * Tarifas"). Deliberadamente separado de las integraciones de fulfillment
  * (EVA, Aliclik) — ver `FULFILLMENT_INTEGRATIONS` abajo y el hallazgo E de
  * la auditoría: EVA/Aliclik no tienen tarifa por zona ni SLA, son
- * credenciales + webhook, no pertenecen a esta lista.
+ * credenciales + webhook, no pertenecen a esta lista. Shalom tampoco: se
+ * cotiza por envío vía su propia API (quoteShalom, según dimensiones/zona),
+ * no con una tarifa base fija — CourierTransportTable la excluye de la
+ * tabla por el mismo motivo, aunque su registro de Courier siga existiendo
+ * en ms-courier para poder asignarla a guías.
  */
 export const TRANSPORT_COURIERS = [
   "Motorizado Propio",
-  "Shalom",
   "Olva Courier",
   "Marvisur",
   "Flores",

@@ -5,6 +5,7 @@ import {
   Search,
   RefreshCw,
   AlertTriangle,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +16,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +26,9 @@ import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import CancelAliclikButton from "@/components/aliclik/CancelAliclikButton";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+
+const ITEMS_PER_PAGE = 15;
 
 // ─── TIPOS ──────────────────────────────────────────────────────────────────
 
@@ -93,6 +98,8 @@ export default function AliclikOrderTrackingView() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState<AliclikFilter>("all");
+  const [page, setPage] = useState(1);
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
 
   // ── Fetch ────────────────────────────────────────────────────────────────
 
@@ -149,6 +156,19 @@ export default function AliclikOrderTrackingView() {
       return true;
     });
   }, [orders, search, statusFilter, activeFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, activeFilter]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredOrders.length / ITEMS_PER_PAGE),
+  );
+  const pagedOrders = filteredOrders.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  );
 
   // ── Contadores por estado ─────────────────────────────────────────────────
 
@@ -357,7 +377,7 @@ export default function AliclikOrderTrackingView() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredOrders.map((order) => (
+              pagedOrders.map((order) => (
                 <TableRow
                   key={order.id}
                   className="hover:bg-muted/30 transition-colors"
@@ -404,6 +424,15 @@ export default function AliclikOrderTrackingView() {
                   {/* Acciones */}
                   <TableCell className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-1.5">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Ver pedido"
+                        onClick={() => setViewOrderId(order.id)}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
                       <CancelAliclikButton
                         orderId={order.id}
                         companyId={auth?.company?.id}
@@ -421,7 +450,24 @@ export default function AliclikOrderTrackingView() {
             )}
           </TableBody>
         </Table>
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalItems={filteredOrders.length}
+          itemsPerPage={ITEMS_PER_PAGE}
+          onPageChange={setPage}
+          itemName="pedidos"
+        />
       </div>
+
+      <CustomerServiceModal
+        open={!!viewOrderId}
+        orderId={viewOrderId || ""}
+        onClose={() => setViewOrderId(null)}
+        onOrderUpdated={fetchOrders}
+        isOperaciones
+        showTracking
+      />
     </div>
   );
 }

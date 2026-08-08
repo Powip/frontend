@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Search, RefreshCw } from "lucide-react";
+import { Search, RefreshCw, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,9 @@ import EvaStatusBadge, {
   STATUS_GROUP,
   GROUP_CLS,
 } from "@/components/eva/EvaStatusBadge";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+
+const ITEMS_PER_PAGE = 15;
 
 // ─── HELPERS ────────────────────────────────────────────────────────────────
 
@@ -67,6 +71,8 @@ export default function EvaOrderTrackingView() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
 
   // ── Fetch ────────────────────────────────────────────────────────────────
 
@@ -115,6 +121,19 @@ export default function EvaOrderTrackingView() {
       return true;
     });
   }, [orders, search, statusFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredOrders.length / ITEMS_PER_PAGE),
+  );
+  const pagedOrders = filteredOrders.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  );
 
   // ── Contadores por estado ─────────────────────────────────────────────────
 
@@ -244,6 +263,9 @@ export default function EvaOrderTrackingView() {
               <TableHead className="text-[11px] uppercase font-bold px-4">
                 Tracking EVA
               </TableHead>
+              <TableHead className="text-[11px] uppercase font-bold px-4 text-right">
+                Acciones
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -251,7 +273,7 @@ export default function EvaOrderTrackingView() {
               Array.from({ length: 5 }).map((_, i) => (
                 <TableRow key={i}>
                   <TableCell
-                    colSpan={6}
+                    colSpan={7}
                     className="h-12 animate-pulse bg-muted/20"
                   />
                 </TableRow>
@@ -259,7 +281,7 @@ export default function EvaOrderTrackingView() {
             ) : filteredOrders.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={6}
+                  colSpan={7}
                   className="h-32 text-center text-muted-foreground"
                 >
                   No hay pedidos enviados a EVA Courier
@@ -271,7 +293,7 @@ export default function EvaOrderTrackingView() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredOrders.map((order) => (
+              pagedOrders.map((order) => (
                 <TableRow
                   key={order.id}
                   className="hover:bg-muted/30 transition-colors"
@@ -321,12 +343,42 @@ export default function EvaOrderTrackingView() {
                       <span className="text-muted-foreground">—</span>
                     )}
                   </TableCell>
+
+                  {/* Acciones */}
+                  <TableCell className="px-4 py-3 text-right">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      title="Ver pedido"
+                      onClick={() => setViewOrderId(order.id)}
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                    </Button>
+                  </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalItems={filteredOrders.length}
+          itemsPerPage={ITEMS_PER_PAGE}
+          onPageChange={setPage}
+          itemName="pedidos"
+        />
       </div>
+
+      <CustomerServiceModal
+        open={!!viewOrderId}
+        orderId={viewOrderId || ""}
+        onClose={() => setViewOrderId(null)}
+        onOrderUpdated={fetchOrders}
+        isOperaciones
+        showTracking
+      />
     </div>
   );
 }

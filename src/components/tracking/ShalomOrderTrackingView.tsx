@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +68,8 @@ const calculatePendingPayment = (order: OrderHeader): number => {
     .reduce((sum, p) => sum + (parseFloat(p.amount) || 0), 0);
   return grandTotal - totalPaid;
 };
+
+const ITEMS_PER_PAGE = 15;
 
 const SHALOM_STEPS = [
   { key: "registrado", label: "Registrado" },
@@ -122,6 +125,7 @@ export default function ShalomOrderTrackingView() {
   const [selectedSaleIds, setSelectedSaleIds] = useState<Set<string>>(
     new Set(),
   );
+  const [page, setPage] = useState(1);
 
   // Modal states
   const [orderModalOpen, setOrderModalOpen] = useState(false);
@@ -281,6 +285,19 @@ export default function ShalomOrderTrackingView() {
       return true;
     });
   }, [shalomOrders, guideSearch, guideStatusFilter, pendingFilter, dateFrom, dateTo]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [guideSearch, guideStatusFilter, pendingFilter, dateFrom, dateTo]);
+
+  const totalPages = Math.max(
+    1,
+    Math.ceil(filteredOrders.length / ITEMS_PER_PAGE),
+  );
+  const pagedOrders = filteredOrders.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  );
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -668,7 +685,7 @@ export default function ShalomOrderTrackingView() {
                 </TableCell>
               </TableRow>
             ) : (
-              filteredOrders.map((item) => {
+              pagedOrders.map((item) => {
                 const { order, guide } = item;
                 const pending = calculatePendingPayment(order);
                 return (
@@ -974,6 +991,14 @@ export default function ShalomOrderTrackingView() {
             )}
           </TableBody>
         </Table>
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalItems={filteredOrders.length}
+          itemsPerPage={ITEMS_PER_PAGE}
+          onPageChange={setPage}
+          itemName="pedidos"
+        />
       </div>
 
       <CustomerServiceModal

@@ -157,7 +157,14 @@ export default function CourierTransportTable() {
     }
   };
 
-  const rows = useMemo(() => couriers, [couriers]);
+  // Shalom se cotiza por envío vía su propia API (quoteShalom), no con una
+  // tarifa base fija — se excluye de esta tabla igual que EVA/Aliclik (ver
+  // TRANSPORT_COURIERS en operationsDomain.ts). Su registro de Courier
+  // sigue existiendo en ms-courier para poder asignarla a guías.
+  const rows = useMemo(
+    () => couriers.filter((c) => !c.name.toLowerCase().includes("shalom")),
+    [couriers],
+  );
 
   return (
     <div className="space-y-3">

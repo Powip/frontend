@@ -30,7 +30,7 @@ import {
   daysSince,
   money,
 } from "./types";
-import { DiasBadge, WhatsAppIcon } from "./shared";
+import { DiasBadge, WhatsAppIcon, formatDateTime } from "./shared";
 
 type ViewMode = "pedido" | "guia";
 
@@ -284,6 +284,8 @@ export function EnCaminoTab({
                     <Checkbox checked={paged.length > 0 && paged.every((s) => selectedIds.has(s.id))} onCheckedChange={toggleAllPage} />
                   </TableHead>
                   <TableHead>N° Orden</TableHead>
+                  <TableHead>Fecha de Venta</TableHead>
+                  <TableHead>Fecha de Procesado</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Distrito</TableHead>
                   <TableHead>Guía</TableHead>
@@ -297,7 +299,7 @@ export function EnCaminoTab({
               <TableBody>
                 {paged.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={10} className="py-8 text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={12} className="py-8 text-center text-sm text-muted-foreground">
                       Sin pedidos en camino
                     </TableCell>
                   </TableRow>
@@ -310,6 +312,8 @@ export function EnCaminoTab({
                         <Checkbox checked={selectedIds.has(sale.id)} onCheckedChange={() => toggle(sale.id)} />
                       </TableCell>
                       <TableCell className="font-medium">{sale.orderNumber}</TableCell>
+                      <TableCell className="text-sm">{formatDateTime(sale.createdAt)}</TableCell>
+                      <TableCell className="text-sm">{formatDateTime(sale.updatedAt)}</TableCell>
                       <TableCell>
                         <div className="font-medium">{sale.clientName}</div>
                         <div className="text-xs text-muted-foreground">{sale.phoneNumber}</div>

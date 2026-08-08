@@ -7,6 +7,7 @@ import { AlertTriangle, Eye, Loader2, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import {
   Select,
   SelectContent,
@@ -34,6 +35,7 @@ const ALL_STATUSES = Object.keys(GUIDE_STATUS_LABEL) as GuideStatus[];
 // No existe en `GUIDE_AGE_THRESHOLDS` (ese umbral es para envejecimiento de
 // agencia, un concepto distinto) — este es específico de esta pantalla.
 const STALE_CREADA_HOURS = 24;
+const ITEMS_PER_PAGE = 15;
 
 function money(n?: number | null): string {
   if (n === undefined || n === null) return "-";
@@ -54,9 +56,33 @@ export default function GuiasActivasTab() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [courierFilter, setCourierFilter] = useState<string>("ALL");
+  const [page, setPage] = useState(1);
+  // Fecha de venta = created_at del primer pedido de cada guía. No viene en
+  // /shipping-guides (solo trae orderIds), así que se resuelve aparte con un
+  // GET liviano por guía en paralelo — mismo patrón que ya usa
+  // GuideDetailsModal para traer el detalle de los pedidos de una guía.
+  const [saleDates, setSaleDates] = useState<Record<string, string | null>>({});
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsGuideId, setDetailsGuideId] = useState<string | null>(null);
+
+  const loadSaleDates = async (list: ShippingGuide[]) => {
+    const entries = await Promise.all(
+      list.map(async (g) => {
+        const firstOrderId = g.orderIds?.[0];
+        if (!firstOrderId) return [g.id, null] as const;
+        try {
+          const res = await axios.get(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${firstOrderId}`,
+          );
+          return [g.id, res.data?.created_at ?? null] as const;
+        } catch {
+          return [g.id, null] as const;
+        }
+      }),
+    );
+    setSaleDates(Object.fromEntries(entries));
+  };
 
   const load = async () => {
     if (!selectedStoreId) return;
@@ -66,7 +92,9 @@ export default function GuiasActivasTab() {
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
         auth?.accessToken ? { headers: { Authorization: `Bearer ${auth.accessToken}` } } : undefined,
       );
-      setGuides(res.data ?? []);
+      const list = res.data ?? [];
+      setGuides(list);
+      loadSaleDates(list);
     } catch {
       toast.error("No se pudieron cargar las guías");
     } finally {
@@ -104,6 +132,16 @@ export default function GuiasActivasTab() {
       );
     });
   }, [guides, search, statusFilter, courierFilter]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, statusFilter, courierFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const pagedGuides = filtered.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  );
 
   const openDetails = (guideId: string) => {
     setDetailsGuideId(guideId);
@@ -189,19 +227,20 @@ export default function GuiasActivasTab() {
                 <th className="px-3 py-2">Zonas</th>
                 <th className="px-3 py-2 text-right">Por cobrar</th>
                 <th className="px-3 py-2 text-right">Costo envío</th>
-                <th className="px-3 py-2">Fecha</th>
+                <th className="px-3 py-2">Fecha de Venta</th>
+                <th className="px-3 py-2">Fecha de Envío</th>
                 <th className="px-3 py-2 text-right">Acciones</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-muted-foreground">
+                  <td colSpan={10} className="py-10 text-center text-muted-foreground">
                     No hay guías para los filtros seleccionados.
                   </td>
                 </tr>
               ) : (
-                filtered.map((g) => {
+                pagedGuides.map((g) => {
                   const isStale = g.status === "CREADA" && hoursSince(g.created_at) > STALE_CREADA_HOURS;
                   return (
                     <tr key={g.id} className={`border-t hover:bg-muted/30 ${isStale ? "bg-amber-50/60 dark:bg-amber-500/5" : ""}`}>
@@ -249,6 +288,11 @@ export default function GuiasActivasTab() {
                         {g.quotedAmount ? `${g.quotedCurrency || "S/"} ${g.quotedAmount}` : "-"}
                       </td>
                       <td className="px-3 py-2 whitespace-nowrap text-xs text-muted-foreground">
+                        {saleDates[g.id]
+                          ? new Date(saleDates[g.id]!).toLocaleDateString("es-PE")
+                          : "—"}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap text-xs text-muted-foreground">
                         {new Date(g.created_at).toLocaleDateString("es-PE")}
                       </td>
                       <td className="px-3 py-2 text-right">
@@ -269,6 +313,14 @@ export default function GuiasActivasTab() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          currentPage={page}
+          totalPages={totalPages}
+          totalItems={filtered.length}
+          itemsPerPage={ITEMS_PER_PAGE}
+          onPageChange={setPage}
+          itemName="guías"
+        />
       </div>
 
       <GuideDetailsModal

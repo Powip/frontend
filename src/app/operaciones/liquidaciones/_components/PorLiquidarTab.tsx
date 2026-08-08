@@ -1,7 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { AlertTriangle, Eye, FileSpreadsheet, LayoutList, Mail, Table2, Wallet } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { DateRange } from "react-day-picker";
+import {
+  AlertTriangle,
+  CalendarIcon,
+  ExternalLink,
+  Eye,
+  FileSpreadsheet,
+  LayoutList,
+  Mail,
+  Table2,
+  Wallet,
+  X,
+} from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -13,8 +25,11 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Pagination } from "@/components/ui/pagination";
 import {
   Select,
   SelectContent,
@@ -27,12 +42,18 @@ import { formatDate, money } from "./utils";
 import { RegistrarLiquidacionModal } from "./RegistrarLiquidacionModal";
 import { DetallePedidoModal } from "./DetallePedidoModal";
 import { ExportModal } from "./ExportModal";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 
 type ViewMode = "pedido" | "courier";
 type AntiguedadChip = "todos" | "vencido" | "enplazo";
 
 const ALL_COURIERS = "__todos__";
 const ALL_CIUDADES = "__todas__";
+const ITEMS_PER_PAGE = 15;
+
+function dateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
 export function PorLiquidarTab({
   guias,
@@ -47,15 +68,17 @@ export function PorLiquidarTab({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [modalGuias, setModalGuias] = useState<GuiaPorLiquidar[] | null>(null);
   const [detalleGuia, setDetalleGuia] = useState<GuiaPorLiquidar | null>(null);
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
   const [exportGuias, setExportGuias] = useState<GuiaPorLiquidar[] | null>(null);
   const [exportKind, setExportKind] = useState<"reclamo" | "seleccion" | "todo">("todo");
 
   const [search, setSearch] = useState("");
   const [courierFilter, setCourierFilter] = useState(ALL_COURIERS);
   const [ciudadFilter, setCiudadFilter] = useState(ALL_CIUDADES);
-  const [fechaDesde, setFechaDesde] = useState("");
-  const [fechaHasta, setFechaHasta] = useState("");
+  const [fechaRange, setFechaRange] = useState<DateRange | undefined>(undefined);
+  const [fechaCalendarOpen, setFechaCalendarOpen] = useState(false);
   const [antiguedad, setAntiguedad] = useState<AntiguedadChip>("todos");
+  const [page, setPage] = useState(1);
 
   const pendientes = useMemo(() => guias.filter((g) => g.saldoPendiente > 0), [guias]);
 
@@ -68,21 +91,53 @@ export function PorLiquidarTab({
     [pendientes],
   );
 
+  // Mismo criterio date-only que el resto de la app (ej. PorDespacharTab) —
+  // "YYYY-MM-DD" en horario local, para comparar contra `entregadoAt`.
+  const fechaDesde = fechaRange?.from ? dateKey(fechaRange.from) : "";
+  const fechaHasta = fechaRange?.to
+    ? dateKey(fechaRange.to)
+    : fechaRange?.from
+      ? dateKey(fechaRange.from)
+      : "";
+
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return pendientes.filter((g) => {
-      if (term && !g.id.toLowerCase().includes(term) && !g.cliente.toLowerCase().includes(term)) {
-        return false;
-      }
-      if (courierFilter !== ALL_COURIERS && g.courier !== courierFilter) return false;
-      if (ciudadFilter !== ALL_CIUDADES && g.ciudad !== ciudadFilter) return false;
-      if (fechaDesde && g.entregadoAt && g.entregadoAt < fechaDesde) return false;
-      if (fechaHasta && g.entregadoAt && g.entregadoAt > fechaHasta) return false;
-      if (antiguedad === "vencido" && !g.vencido) return false;
-      if (antiguedad === "enplazo" && g.vencido) return false;
-      return true;
-    });
+    return pendientes
+      .filter((g) => {
+        if (term && !g.id.toLowerCase().includes(term) && !g.cliente.toLowerCase().includes(term)) {
+          return false;
+        }
+        if (courierFilter !== ALL_COURIERS && g.courier !== courierFilter) return false;
+        if (ciudadFilter !== ALL_CIUDADES && g.ciudad !== ciudadFilter) return false;
+        // `entregadoAt` es un timestamp completo (updated_at de la orden);
+        // comparar el string tal cual contra "YYYY-MM-DD" excluía pedidos
+        // entregados justo el día "hasta" (su parte de hora siempre lo hacía
+        // "mayor" al date-only) — se compara solo la parte de fecha.
+        const entregadoDate = g.entregadoAt ? g.entregadoAt.slice(0, 10) : null;
+        if (fechaDesde && entregadoDate && entregadoDate < fechaDesde) return false;
+        if (fechaHasta && entregadoDate && entregadoDate > fechaHasta) return false;
+        if (antiguedad === "vencido" && !g.vencido) return false;
+        if (antiguedad === "enplazo" && g.vencido) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        // Más reciente primero; sin fecha de entrega al final.
+        if (!a.entregadoAt && !b.entregadoAt) return 0;
+        if (!a.entregadoAt) return 1;
+        if (!b.entregadoAt) return -1;
+        return new Date(b.entregadoAt).getTime() - new Date(a.entregadoAt).getTime();
+      });
   }, [pendientes, search, courierFilter, ciudadFilter, fechaDesde, fechaHasta, antiguedad]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [search, courierFilter, ciudadFilter, fechaDesde, fechaHasta, antiguedad, viewMode]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+  const pagedFiltered = filtered.slice(
+    (page - 1) * ITEMS_PER_PAGE,
+    page * ITEMS_PER_PAGE,
+  );
 
   const kpis = useMemo(() => {
     const totalPorLiquidar = pendientes.reduce((sum, g) => sum + g.saldoPendiente, 0);
@@ -254,19 +309,49 @@ export function PorLiquidarTab({
             ))}
           </SelectContent>
         </Select>
-        <Input
-          type="date"
-          value={fechaDesde}
-          onChange={(e) => setFechaDesde(e.target.value)}
-          className="h-9 w-[150px]"
-        />
-        <span className="text-xs text-muted-foreground">→</span>
-        <Input
-          type="date"
-          value={fechaHasta}
-          onChange={(e) => setFechaHasta(e.target.value)}
-          className="h-9 w-[150px]"
-        />
+        <Popover open={fechaCalendarOpen} onOpenChange={setFechaCalendarOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[200px] justify-start">
+              <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+              <span className="text-xs">
+                {fechaRange?.from
+                  ? `${fechaRange.from.toLocaleDateString("es-PE", { day: "2-digit", month: "short" })} – ${(
+                      fechaRange.to ?? fechaRange.from
+                    ).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" })}`
+                  : "Entregado — cualquier fecha"}
+              </span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="range"
+              selected={fechaRange}
+              onSelect={(r) => {
+                // Un solo click elige la fecha "desde" — se completa el
+                // rango hasta hoy en vez de esperar un segundo click.
+                if (r?.from && !r.to) {
+                  setFechaRange({ from: r.from, to: new Date() });
+                  setFechaCalendarOpen(false);
+                  return;
+                }
+                setFechaRange(r);
+                if (r?.from && r?.to) setFechaCalendarOpen(false);
+              }}
+              initialFocus
+            />
+          </PopoverContent>
+        </Popover>
+        {fechaRange?.from && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9"
+            title="Quitar filtro de fecha"
+            onClick={() => setFechaRange(undefined)}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        )}
         <Button
           variant="outline"
           size="sm"
@@ -369,6 +454,7 @@ export function PorLiquidarTab({
                   : "Ningún pedido coincide con los filtros."}
               </p>
             ) : (
+              <>
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader className="bg-muted/30">
@@ -388,7 +474,7 @@ export function PorLiquidarTab({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((g) => (
+                    {pagedFiltered.map((g) => (
                       <TableRow
                         key={g.id}
                         className={g.vencido ? "bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/15" : ""}
@@ -437,10 +523,28 @@ export function PorLiquidarTab({
                               size="icon"
                               variant="ghost"
                               className="h-7 w-7"
-                              title="Ver detalle"
+                              title="Ver pedido"
+                              onClick={() => setViewOrderId(g.orderId)}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              title="Ver detalle de liquidación"
                               onClick={() => setDetalleGuia(g)}
                             >
                               <Eye className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 text-emerald-600 hover:text-emerald-700"
+                              title="Registrar cobro / liquidación de este pedido"
+                              onClick={() => setModalGuias([g])}
+                            >
+                              <Wallet className="h-3.5 w-3.5" />
                             </Button>
                             <Button
                               size="icon"
@@ -461,6 +565,15 @@ export function PorLiquidarTab({
                   </TableBody>
                 </Table>
               </div>
+              <Pagination
+                currentPage={page}
+                totalPages={totalPages}
+                totalItems={filtered.length}
+                itemsPerPage={ITEMS_PER_PAGE}
+                onPageChange={setPage}
+                itemName="pedidos"
+              />
+              </>
             )
           ) : byCourier.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">
@@ -533,6 +646,14 @@ export function PorLiquidarTab({
       )}
 
       <DetallePedidoModal guia={detalleGuia} onOpenChange={(o) => !o && setDetalleGuia(null)} />
+
+      <CustomerServiceModal
+        open={!!viewOrderId}
+        orderId={viewOrderId || ""}
+        onClose={() => setViewOrderId(null)}
+        isOperaciones
+        showTracking
+      />
 
       <ExportModal
         open={!!exportGuias}

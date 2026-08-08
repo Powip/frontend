@@ -20,7 +20,7 @@ import {
 } from "@/components/ventas/SalesTableFilters";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
 import { ITEMS_PER_PAGE, PedidosActions, Sale, money } from "./types";
-import { ProductThumbnails, StatusPill } from "./shared";
+import { ProductThumbnails, StatusPill, formatDateTime } from "./shared";
 
 type StatusChip = "" | "ENTREGADO" | "SALDO";
 
@@ -103,8 +103,9 @@ export function HistorialTab({
           <TableHeader className="bg-muted/60">
             <TableRow>
               <TableHead>N° Orden</TableHead>
+              <TableHead>Fecha de Venta</TableHead>
+              <TableHead>Fecha de Procesado</TableHead>
               <TableHead>Cliente</TableHead>
-              <TableHead>Fecha</TableHead>
               <TableHead>Productos</TableHead>
               <TableHead>Estado</TableHead>
               <TableHead>Guía / Courier</TableHead>
@@ -116,7 +117,7 @@ export function HistorialTab({
           <TableBody>
             {paged.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={10} className="py-8 text-center text-sm text-muted-foreground">
                   Sin historial que mostrar
                 </TableCell>
               </TableRow>
@@ -124,11 +125,12 @@ export function HistorialTab({
             {paged.map((sale) => (
               <TableRow key={sale.id}>
                 <TableCell className="font-medium">{sale.orderNumber}</TableCell>
+                <TableCell className="text-sm">{formatDateTime(sale.createdAt)}</TableCell>
+                <TableCell className="text-sm">{formatDateTime(sale.updatedAt)}</TableCell>
                 <TableCell>
                   <div className="font-medium">{sale.clientName}</div>
                   <div className="text-xs text-muted-foreground">{sale.phoneNumber}</div>
                 </TableCell>
-                <TableCell className="text-sm">{sale.date}</TableCell>
                 <TableCell>
                   <ProductThumbnails items={sale.items} />
                 </TableCell>
