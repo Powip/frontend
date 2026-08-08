@@ -18,6 +18,7 @@ import {
   formatPct,
   FUNNEL_STATES,
   toEffectiveRecord,
+  todayISO,
 } from "./cierreDiaUtils";
 
 interface Props {
@@ -27,9 +28,12 @@ interface Props {
 }
 
 export function CcCierreDiaDayView({ storeId, date, onRegularizar }: Props) {
-  const { data: manualRecord, isLoading: isLoadingManual } = useCierreDiaDay(storeId, date);
+  // Solo el día de hoy se refresca solo (cada 30s + al volver a la pestaña)
+  // — un día pasado ya cerrado no va a cambiar, no vale la pena pollear.
+  const isToday = date === todayISO();
+  const { data: manualRecord, isLoading: isLoadingManual } = useCierreDiaDay(storeId, date, isToday);
   const { data: closingData, isLoading: isLoadingProductos, isError: isErrorProductos } =
-    useCierreDiaClosingDataDay(storeId, date);
+    useCierreDiaClosingDataDay(storeId, date, isToday);
 
   if (isLoadingManual || isLoadingProductos) {
     return (

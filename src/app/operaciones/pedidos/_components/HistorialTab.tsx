@@ -150,7 +150,7 @@ export function HistorialTab({
                   )}
                 </TableCell>
                 <TableCell className="text-sm tabular-nums">{money(sale.total)}</TableCell>
-                <TableCell className="sticky right-0 z-10 bg-inherit border-l text-right">
+                <TableCell className="sticky right-0 z-10 bg-gray-100 dark:bg-gray-900 border-l text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver pedido" onClick={() => actions.onView(sale)}>
                       <Eye className="h-3.5 w-3.5" />

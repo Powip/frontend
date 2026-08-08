@@ -158,8 +158,8 @@ export function CcPedidosTable({
             {showIntentos && <TableHead>Intentos</TableHead>}
             <TableHead>Vendedor</TableHead>
             <TableHead>Región</TableHead>
-            <TableHead>Resumen</TableHead>
-            <TableHead className="text-right">Acciones</TableHead>
+            <TableHead className="sticky right-[112px] z-20 w-[90px] min-w-[90px] bg-white dark:bg-slate-800">Resumen</TableHead>
+            <TableHead className="sticky right-0 z-20 w-[112px] min-w-[112px] bg-white text-right dark:bg-slate-800">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -339,7 +339,7 @@ export function CcPedidosTable({
                 <TableCell className="text-xs text-gray-500 dark:text-slate-400">{order.salesRegion}</TableCell>
 
                 {/* Ver pedido */}
-                <TableCell>
+                <TableCell className="sticky right-[112px] z-10 w-[90px] min-w-[90px] border-l bg-white dark:bg-slate-800">
                   <Button size="sm" variant="outline" onClick={() => onVerPedido(order)}>
                     <FileText className="h-3.5 w-3.5 mr-1" />
                     Ver
@@ -347,7 +347,7 @@ export function CcPedidosTable({
                 </TableCell>
 
                 {/* Acciones */}
-                <TableCell className="text-right">
+                <TableCell className="sticky right-0 z-10 w-[112px] min-w-[112px] border-l bg-white text-right dark:bg-slate-800">
                   <div className="flex gap-1 justify-end">
                     <Button
                       size="icon"

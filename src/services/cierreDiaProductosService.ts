@@ -38,12 +38,22 @@ const NON_COD_SUBESTADOS = new Set<string>([
 ]);
 
 /**
- * subEstadoCc es terminal en "confirmado" / "anulado_cc" (ver
- * CcGestionPanel.TERMINAL_STATES) — una vez confirmado el avance a
- * despachado/entregado se seguiría por order.status, no por subEstadoCc.
- * Este mapeo se infirió leyendo el código de transición de estados
- * (CcGestionPanel.tsx, ventas/page.tsx) — no se pudo validar contra datos
- * reales de producción. Ajustar acá si difiere del comportamiento real.
+ * BUG CONFIRMADO (reportado: % Confirmados / Ingreso / % Neto siempre en 0,
+ * todo cae en "por confirmar/anulados"): el supuesto original de este
+ * mapeo era que `subEstadoCc` se queda en "confirmado" para siempre una vez
+ * seteado. En la práctica, el flujo COD confirma un pedido llamando a
+ * `/confirmar-despacho` (ver CcGestionPanel.tsx → "COD: transacción
+ * completa → mueve a PREPARADO"), que mueve `order.status` a PREPARADO (y
+ * de ahí a LLAMADO) — sin que `subEstadoCc` se quede en "confirmado"
+ * (queda null/desactualizado una vez el pedido "gradúa" de Gestión CC a
+ * Operaciones). Resultado: todo pedido ya confirmado y despachado por
+ * Operaciones, que ya no tiene `subEstadoCc === "confirmado"`, no matcheaba
+ * ninguna condición y caía en el default "porConfirmar".
+ *
+ * Fix: PREPARADO y LLAMADO (los dos estados de Operaciones posteriores a
+ * PENDIENTE y anteriores a ASIGNADO_A_GUIA/EN_ENVIO, ver
+ * ORDER_STATUS_FLOW en orders-status-flow.ts) también cuentan como
+ * "confirmado", sin depender de `subEstadoCc`.
  */
 export function mapOrderToFunnelBucket(
   order: Pick<OrderHeader, "status" | "subEstadoCc">,
@@ -51,7 +61,13 @@ export function mapOrderToFunnelBucket(
   if (order.status === "ANULADO" || order.subEstadoCc === "anulado_cc") return "anulado";
   if (order.status === "ENTREGADO") return "entregado";
   if (DESPACHO_STATUSES.includes(order.status)) return "despachado";
-  if (order.subEstadoCc === "confirmado") return "confirmado";
+  if (
+    order.subEstadoCc === "confirmado" ||
+    order.status === "PREPARADO" ||
+    order.status === "LLAMADO"
+  ) {
+    return "confirmado";
+  }
   if (order.subEstadoCc === "no_contesta") return "noContesta";
   if (order.subEstadoCc === "contactado") return "contactado";
   return "porConfirmar";
@@ -196,7 +212,17 @@ export async function getCierreDiaClosingData(
     }
     const dayAcc = byDayAcc.get(orderDate)!;
     dayAcc.buckets[bucket] += 1; // conteo de PEDIDOS, no de unidades
-    if (facturable && upsellOrderNumbers.has(order.orderNumber)) dayAcc.upsells += 1;
+    if (facturable) {
+      // El ingreso del día se toma de OrderHeader.grandTotal (siempre viene
+      // en la respuesta de este listado) y NO de sumar order.items[].subtotal
+      // — así no depende de que el endpoint de Gestión CC traiga el detalle
+      // de items, que puede venir vacío/parcial en listados paginados. El
+      // desglose por producto (`rows`/`byVariant`, más abajo) sí necesita
+      // items y se queda como estaba: solo afecta a la pestaña "Productos",
+      // no al Ingreso/% Neto de Día/Rango/Mes.
+      dayAcc.ingreso += Number(order.grandTotal ?? 0);
+      if (upsellOrderNumbers.has(order.orderNumber)) dayAcc.upsells += 1;
+    }
 
     for (const item of order.items ?? []) {
       const key = item.productVariantId;
@@ -215,7 +241,6 @@ export async function getCierreDiaClosingData(
       if (facturable) {
         acc.ingreso += Number(item.subtotal ?? 0);
         acc.unidadesFacturables += item.quantity;
-        dayAcc.ingreso += Number(item.subtotal ?? 0);
         dayAcc.variantUnits.set(key, (dayAcc.variantUnits.get(key) ?? 0) + item.quantity);
       }
     }

@@ -339,7 +339,7 @@ export function EnCaminoTab({
                           {state.label}
                         </span>
                       </TableCell>
-                      <TableCell className="sticky right-0 z-10 bg-inherit border-l">
+                      <TableCell className="sticky right-0 z-10 bg-gray-100 dark:bg-gray-900 border-l">
                         <div className="flex items-center justify-end gap-1">
                           {canChangeStatus && (
                             <Button
@@ -454,7 +454,7 @@ export function EnCaminoTab({
                         {estadoGrupo}
                       </span>
                     </TableCell>
-                    <TableCell className="sticky right-0 z-10 bg-inherit border-l">
+                    <TableCell className="sticky right-0 z-10 bg-gray-100 dark:bg-gray-900 border-l">
                       <div className="flex items-center justify-end gap-1">
                         {canChangeStatus && (
                           <Button

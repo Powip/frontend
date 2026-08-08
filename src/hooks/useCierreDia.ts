@@ -9,11 +9,14 @@ import {
 import { getCierreDiaClosingData, isoDayBounds, isoRangeBounds } from "@/services/cierreDiaProductosService";
 import { CierreDiaFormInput } from "@/interfaces/ICierreDia";
 
-export function useCierreDiaDay(storeId: string | null | undefined, date: string) {
+/** @param live refresca solo mientras se está viendo el día de hoy — un día pasado ya cerrado no cambia. */
+export function useCierreDiaDay(storeId: string | null | undefined, date: string, live = false) {
   return useQuery({
     queryKey: ["cierre-dia", "day", storeId, date],
     queryFn: () => getCierreDiaDay(storeId!, date),
     enabled: !!storeId && !!date,
+    refetchInterval: live ? 30_000 : undefined,
+    refetchOnWindowFocus: live,
   });
 }
 
@@ -50,8 +53,11 @@ export function useSaveCierreDia(storeId: string | null | undefined) {
   });
 }
 
-/** Rendimiento por producto + resumen de upsell — un solo día. */
-export function useCierreDiaClosingDataDay(storeId: string | null | undefined, date: string) {
+/**
+ * Rendimiento por producto + resumen de upsell — un solo día.
+ * @param live refresca solo mientras se está viendo hoy — ver useCierreDiaDay.
+ */
+export function useCierreDiaClosingDataDay(storeId: string | null | undefined, date: string, live = false) {
   return useQuery({
     queryKey: ["cierre-dia", "closing-data", storeId, date],
     queryFn: () => {
@@ -61,6 +67,8 @@ export function useCierreDiaClosingDataDay(storeId: string | null | undefined, d
     enabled: !!storeId && !!date,
     staleTime: 60_000,
     retry: 1,
+    refetchInterval: live ? 30_000 : undefined,
+    refetchOnWindowFocus: live,
   });
 }
 
