@@ -26,7 +26,7 @@ import { getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-statu
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
 import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 
-import CustomerServiceModal, { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import CreateGuideModal, { CreateGuideData } from "@/components/modals/CreateGuideModal";
@@ -81,7 +81,6 @@ export function PedidosContent() {
 
   // ---- Modales ----
   const [viewOrderId, setViewOrderId] = useState<string | null>(null);
-  const [viewShippingGuide, setViewShippingGuide] = useState<ShippingGuideData | null>(null);
   const [paymentSale, setPaymentSale] = useState<Sale | null>(null);
   const [guideSale, setGuideSale] = useState<Sale | null>(null);
   const [createGuideOrders, setCreateGuideOrders] = useState<Sale[] | null>(null);
@@ -156,42 +155,8 @@ export function PedidosContent() {
 
   /* ------------------------------ Handlers ------------------------------ */
 
-  const handleView = useCallback(async (sale: Sale) => {
+  const handleView = useCallback((sale: Sale) => {
     setViewOrderId(sale.id);
-    setViewShippingGuide(null);
-    if (sale.status === "EN_ENVIO" && sale.guideNumber) {
-      try {
-        const res = await axios.get(`${API_COURIER}/shipping-guides/order/${sale.id}`);
-        const guide = res.data;
-        let daysSinceCreated = 0;
-        if (guide?.created_at) {
-          daysSinceCreated = Math.ceil(
-            Math.abs(Date.now() - new Date(guide.created_at).getTime()) / (1000 * 60 * 60 * 24),
-          );
-        }
-        setViewShippingGuide({
-          id: guide.id,
-          guideNumber: guide.guideNumber,
-          courierName: guide.courierName,
-          status: guide.status,
-          chargeType: guide.chargeType,
-          amountToCollect: guide.amountToCollect,
-          scheduledDate: guide.scheduledDate?.toString() || null,
-          deliveryZone: guide.deliveryZone,
-          deliveryType: guide.deliveryType,
-          deliveryAddress: guide.deliveryAddress,
-          notes: guide.notes,
-          trackingUrl: guide.trackingUrl,
-          shippingKey: guide.shippingKey,
-          shippingOffice: guide.shippingOffice,
-          shippingProofUrl: guide.shippingProofUrl,
-          created_at: guide.created_at,
-          daysSinceCreated,
-        });
-      } catch {
-        setViewShippingGuide(null);
-      }
-    }
   }, []);
 
   const handleChangeStatus = useCallback(
@@ -767,14 +732,10 @@ export function PedidosContent() {
         <CustomerServiceModal
           open={!!viewOrderId}
           orderId={viewOrderId}
-          onClose={() => {
-            setViewOrderId(null);
-            setViewShippingGuide(null);
-          }}
+          onClose={() => setViewOrderId(null)}
           onOrderUpdated={fetchOrders}
           isOperaciones
           showTracking
-          shippingGuide={viewShippingGuide}
         />
       )}
 

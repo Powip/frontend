@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import {
@@ -52,47 +52,66 @@ export default function AddProductsModal({
 }: Props) {
   const { auth, inventories } = useAuth();
   const [query, setQuery] = useState("");
-  const [allProducts, setAllProducts] = useState<InventoryItemForSale[]>([]);
+  const [products, setProducts] = useState<InventoryItemForSale[]>([]);
   const [loading, setLoading] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [page, setPage] = useState(1);
+  const [meta, setMeta] = useState<{ total: number; totalPages: number } | null>(null);
 
   const inventoryId = inventories?.[0]?.id || "";
+  const companyId = auth?.company?.id;
 
-  // Auto-load products when modal opens
-  useEffect(() => {
-    const fetchAllProducts = async () => {
+  const searchProducts = useCallback(
+    async (pageToLoad: number) => {
       if (!open || !inventoryId) return;
-
       setLoading(true);
       try {
         const res = await searchInventoryItems({
           inventoryId,
-          page: 1,
-          limit: 100, // Fetch a larger batch for local filtering
+          companyId,
+          q: query || undefined,
+          page: pageToLoad,
+          limit: 20,
         });
-        setAllProducts(res.data);
+        setProducts((prev) =>
+          pageToLoad === 1 ? res.data : [...prev, ...res.data],
+        );
+        setMeta({ total: res.meta.total, totalPages: res.meta.totalPages });
+        setPage(pageToLoad);
       } catch (err) {
         console.error("Error fetching products", err);
         toast.error("Error al cargar productos");
       } finally {
         setLoading(false);
       }
-    };
+    },
+    [open, inventoryId, companyId, query],
+  );
 
-    fetchAllProducts();
+  // Carga inicial al abrir el modal o cambiar de inventario (sin debounce).
+  useEffect(() => {
+    if (open && inventoryId) {
+      searchProducts(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, inventoryId]);
 
-  // Local filtering
-  const filteredProducts = useMemo(() => {
-    if (!query) return allProducts;
-    const lowerQuery = query.toLowerCase();
-    return allProducts.filter(
-      (p) =>
-        p.productName.toLowerCase().includes(lowerQuery) ||
-        p.sku.toLowerCase().includes(lowerQuery),
-    );
-  }, [allProducts, query]);
+  // Búsqueda server-side debounced: el listado inicial trae solo una página,
+  // así que filtrar en el cliente ocultaba productos fuera de esa página.
+  useEffect(() => {
+    if (!open || !inventoryId) return;
+    const timer = setTimeout(() => {
+      searchProducts(1);
+    }, 400);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
+
+  const handleLoadMore = () => {
+    if (loading || !meta || page >= meta.totalPages) return;
+    searchProducts(page + 1);
+  };
 
   const addToCart = (product: InventoryItemForSale) => {
     setCart((prev) => {
@@ -234,7 +253,8 @@ export default function AddProductsModal({
 
       toast.success("Productos agregados correctamente");
       setCart([]);
-      setAllProducts([]);
+      setProducts([]);
+      setMeta(null);
       setQuery("");
       onProductsAdded?.();
       onClose();
@@ -248,7 +268,8 @@ export default function AddProductsModal({
 
   const handleClose = () => {
     setCart([]);
-    setAllProducts([]);
+    setProducts([]);
+    setMeta(null);
     setQuery("");
     onClose();
   };
@@ -267,7 +288,7 @@ export default function AddProductsModal({
 
   return (
     <Dialog open={open} onOpenChange={(o: boolean) => !o && handleClose()}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShoppingCart className="h-5 w-5" />
@@ -289,16 +310,16 @@ export default function AddProductsModal({
           </div>
 
           {/* Lista de productos */}
-          {loading ? (
+          {loading && products.length === 0 ? (
             <div className="flex items-center justify-center p-8 bg-muted/20 rounded-lg border border-dashed">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
               <p className="text-sm text-muted-foreground">
                 Cargando productos...
               </p>
             </div>
-          ) : filteredProducts.length > 0 ? (
-            <div className="border rounded-lg divide-y max-h-48 overflow-y-auto">
-              {filteredProducts.map((product) => (
+          ) : products.length > 0 ? (
+            <div className="border rounded-lg divide-y max-h-96 overflow-y-auto">
+              {products.map((product) => (
                 <div
                   key={`${product.inventoryItemId}-${product.variantId}`}
                   className="p-3 flex items-center justify-between hover:bg-muted/50"
@@ -349,6 +370,21 @@ export default function AddProductsModal({
             <div className="text-center text-sm text-muted-foreground p-6">
               No se encontraron productos
             </div>
+          )}
+
+          {meta && page < meta.totalPages && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={handleLoadMore}
+              disabled={loading}
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Cargar más productos ({products.length} de {meta.total})
+            </Button>
           )}
 
           {/* Carrito */}

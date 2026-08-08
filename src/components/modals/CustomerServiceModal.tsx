@@ -220,7 +220,7 @@ export default function CustomerServiceModal({
   onClose,
   onOrderUpdated,
   hideCallManagement = false,
-  shippingGuide,
+  shippingGuide: shippingGuideProp,
   showTracking = false,
   isOperaciones = false,
   onOpenCreateGuide,
@@ -263,6 +263,11 @@ export default function CustomerServiceModal({
   const [changingStatus, setChangingStatus] = useState(false);
   const [syncingTracking, setSyncingTracking] = useState(false);
   const [releasingGuide, setReleasingGuide] = useState(false);
+  const [shippingGuideData, setShippingGuideData] = useState<ShippingGuideData | null>(null);
+  // Si el caller pasa `shippingGuide` explícitamente (aunque sea null), se respeta ese valor
+  // controlado; si no lo pasa (undefined), el modal busca la guía por su cuenta.
+  const shippingGuide =
+    shippingGuideProp !== undefined ? shippingGuideProp : shippingGuideData;
 
   // CC v2 — datos incompletos y gestión
   const [datosCompletos, setDatosCompletos] = useState<boolean>(true);
@@ -360,11 +365,53 @@ export default function CustomerServiceModal({
     }
   }, [orderId]);
 
+  const fetchShippingGuide = useCallback(async () => {
+    if (!orderId) return;
+    try {
+      const res = await axios.get(
+        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderId}`,
+      );
+      const guide = res.data;
+      let daysSinceCreated = 0;
+      if (guide?.created_at) {
+        daysSinceCreated = Math.ceil(
+          Math.abs(Date.now() - new Date(guide.created_at).getTime()) / (1000 * 60 * 60 * 24),
+        );
+      }
+      setShippingGuideData({
+        id: guide.id,
+        guideNumber: guide.guideNumber,
+        courierName: guide.courierName,
+        status: guide.status,
+        chargeType: guide.chargeType,
+        amountToCollect: guide.amountToCollect,
+        scheduledDate: guide.scheduledDate?.toString() || null,
+        deliveryZone: guide.deliveryZone,
+        deliveryType: guide.deliveryType,
+        deliveryAddress: guide.deliveryAddress,
+        notes: guide.notes,
+        trackingUrl: guide.trackingUrl,
+        shippingKey: guide.shippingKey,
+        shippingOffice: guide.shippingOffice,
+        shippingProofUrl: guide.shippingProofUrl,
+        created_at: guide.created_at,
+        daysSinceCreated,
+      });
+    } catch {
+      setShippingGuideData(null);
+    }
+  }, [orderId]);
+
   useEffect(() => {
     if (!open || !orderId) return;
+    setOriginalTracking(null);
     fetchReceipt();
     fetchLogs();
-  }, [open, orderId, fetchReceipt, fetchLogs]);
+    if (shippingGuideProp === undefined) {
+      setShippingGuideData(null);
+      fetchShippingGuide();
+    }
+  }, [open, orderId, fetchReceipt, fetchLogs, fetchShippingGuide, shippingGuideProp]);
 
   const handleUpdateCallStatus = async (
     callStatus: "CONFIRMED" | "NO_ANSWER",
@@ -1505,12 +1552,7 @@ export default function CustomerServiceModal({
                       </div>
                     </div>
                   </div>
-                </div>
 
-                {/* ================================== */}
-                {/* SECCIÓN DERECHA */}
-                {/* ================================== */}
-                <div className="space-y-4">
                   {/* Link de seguimiento del cliente + QR */}
                   <div className="border border-border rounded-lg p-4 bg-muted/30">
                     <h3 className="font-semibold mb-3 text-sm flex items-center gap-1.5">
@@ -1554,7 +1596,12 @@ export default function CustomerServiceModal({
                       </div>
                     </div>
                   </div>
+                </div>
 
+                {/* ================================== */}
+                {/* SECCIÓN DERECHA */}
+                {/* ================================== */}
+                <div className="space-y-4">
                   {/* Cliente */}
                   <div className="border border-border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-3">
