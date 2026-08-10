@@ -391,20 +391,33 @@ function RegistrarVentaContent() {
     setShippingTotalDisplay(shippingValue === 0 ? "" : String(shippingValue));
 
     // --- Productos ---
-    const mappedCart: CartItem[] = orderData.items.map((item) => ({
-      id: crypto.randomUUID(),
-      inventoryItemId: item.productVariantId,
-      variantId: item.productVariantId,
-      productName: item.productName,
-      sku: item.sku,
-      imageUrl: item.imageUrl,
-      attributes: item.attributes,
-      quantity: item.quantity,
-      price: Number(item.unitPrice),
-      pvp: Number(item.unitPrice),
-      discount: Number(item.discountAmount) || 0,
-      packId: null,
-    }));
+    const mappedCart: CartItem[] = orderData.items.map((item) => {
+      const grossUnit = Number(item.unitPrice);
+      const totalDiscount = Number(item.discountAmount) || 0;
+      const netUnit =
+        item.quantity > 0
+          ? Math.max(
+              0,
+              Math.round((grossUnit - totalDiscount / item.quantity) * 100) /
+                100,
+            )
+          : grossUnit;
+
+      return {
+        id: crypto.randomUUID(),
+        inventoryItemId: item.productVariantId,
+        variantId: item.productVariantId,
+        productName: item.productName,
+        sku: item.sku,
+        imageUrl: item.imageUrl,
+        attributes: item.attributes,
+        quantity: item.quantity,
+        price: netUnit,
+        pvp: grossUnit,
+        discount: totalDiscount, // informativo/legado, no se usa para derivar price (buildOrderItem usa pvp - price)
+        packId: null,
+      };
+    });
     setCart(mappedCart);
 
     // --- Modo de impuestos ---
@@ -917,14 +930,14 @@ function RegistrarVentaContent() {
         const pvp = item.pvp ?? item.price;
         const discountAmount = Math.max(
           0,
-          Math.round((pvp - item.price) * 100) / 100,
+          Math.round((pvp - item.price) * item.quantity * 100) / 100,
         );
         return {
           productVariantId: item.variantId,
           sku: item.sku,
           productName: item.productName,
           quantity: item.quantity,
-          unitPrice: item.price,
+          unitPrice: pvp,
           discountType: discountAmount > 0 ? "FIXED" : "NONE",
           discountAmount,
           attributes: item.attributes,
