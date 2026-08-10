@@ -128,9 +128,9 @@ function mapToVolumePack(
     // La API real todavía no confirma "variantes libres" (PVS); hasta que exista
     // el campo, todo pack sincronizado se trata como variante fija.
     variantFree: false,
-    minQty: p.minQty ?? 2,
-    maxQty: p.maxQty ?? null,
-    packPrice: p.packPrice ?? 0,
+    minQty: Number(p.minQty ?? 2),
+    maxQty: p.maxQty != null ? Number(p.maxQty) : null,
+    packPrice: Number.isFinite(Number(p.packPrice)) ? Number(p.packPrice) : 0,
     createdAt: p.createdAt,
     updatedAt: p.updatedAt,
     synced: true,
