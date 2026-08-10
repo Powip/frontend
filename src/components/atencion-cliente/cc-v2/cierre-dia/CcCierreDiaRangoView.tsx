@@ -84,7 +84,7 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
   const automaticosCount = [...effectiveByDate.values()].filter((r) => r.isAuto).length;
 
   const totals = useMemo(() => {
-    let total = 0, confirmados = 0, anulados = 0, ingreso = 0, publi = 0, costo = 0, margenNeto = 0;
+    let total = 0, confirmados = 0, anulados = 0, ingreso = 0, publi = 0, costo = 0, margenNeto = 0, pedidosIngresados = 0;
     effectiveByDate.forEach((r) => {
       const m = computeMetrics(r);
       total += m.total;
@@ -95,8 +95,15 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
       costo += r.costo;
       margenNeto += m.margenNeto;
     });
-    return { total, confirmados, anulados, ingreso, publi, costo, margenNeto };
-  }, [effectiveByDate]);
+    // Pedidos Ingresados se suma aparte, desde `closingData.byDay` — es un
+    // cohorte por fecha de creación, distinto del embudo de arriba (que
+    // agrupa por fecha de última actualización, ver BUG CONFIRMADO en
+    // cierreDiaProductosService.ts). No tiene por qué coincidir con `total`.
+    dates.forEach((ds) => {
+      pedidosIngresados += autoByDate.get(ds)?.pedidosIngresados ?? 0;
+    });
+    return { total, confirmados, anulados, ingreso, publi, costo, margenNeto, pedidosIngresados };
+  }, [effectiveByDate, dates, autoByDate]);
 
   return (
     <div className="space-y-4">
@@ -123,7 +130,8 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Fecha</TableHead>
-                      <TableHead className="text-center">Ingresados</TableHead>
+                      <TableHead className="text-center">Pedidos Ingresados</TableHead>
+                      <TableHead className="text-center">Gestionados</TableHead>
                       <TableHead className="text-center">N° Confirmados</TableHead>
                       <TableHead className="text-center">N° Por confirmar / Anul.</TableHead>
                       <TableHead className="text-center">% Confirm.</TableHead>
@@ -138,11 +146,13 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                   <TableBody>
                     {dates.map((ds) => {
                       const r = effectiveByDate.get(ds);
+                      const pedidosIngresadosDia = autoByDate.get(ds)?.pedidosIngresados ?? 0;
                       if (!r) {
                         return (
                           <TableRow key={ds} className="opacity-60">
                             <TableCell className="font-medium">{formatDate(ds, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
-                            <TableCell colSpan={9} className="text-xs text-amber-600 dark:text-amber-400">
+                            <TableCell className="text-center font-bold">{pedidosIngresadosDia || "—"}</TableCell>
+                            <TableCell colSpan={8} className="text-xs text-amber-600 dark:text-amber-400">
                               Sin pedidos ni cierre guardado —{" "}
                               <button className="underline font-medium" onClick={() => onRegularizar(ds)}>
                                 Regularizar
@@ -167,7 +177,8 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                       return (
                         <TableRow key={ds}>
                           <TableCell className="font-medium">{formatDate(ds, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
-                          <TableCell className="text-center font-bold">{m.total}</TableCell>
+                          <TableCell className="text-center font-bold">{pedidosIngresadosDia}</TableCell>
+                          <TableCell className="text-center text-muted-foreground font-semibold">{m.total}</TableCell>
                           <TableCell className="text-center text-emerald-600 dark:text-emerald-400 font-semibold">{confirmadosCount}</TableCell>
                           <TableCell className="text-center text-muted-foreground font-semibold">{porConfirmarOAnuladoCount}</TableCell>
                           <TableCell className="text-center text-emerald-600 dark:text-emerald-400 font-semibold">
@@ -196,7 +207,8 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                     <tfoot>
                       <TableRow className="bg-teal-50 dark:bg-teal-950/30 font-bold">
                         <TableCell>TOTAL / PROM.</TableCell>
-                        <TableCell className="text-center">{totals.total}</TableCell>
+                        <TableCell className="text-center">{totals.pedidosIngresados}</TableCell>
+                        <TableCell className="text-center text-muted-foreground">{totals.total}</TableCell>
                         <TableCell className="text-center text-emerald-600 dark:text-emerald-400">{totals.confirmados}</TableCell>
                         <TableCell className="text-center text-muted-foreground">{totals.total - totals.confirmados}</TableCell>
                         <TableCell className="text-center text-emerald-600 dark:text-emerald-400">

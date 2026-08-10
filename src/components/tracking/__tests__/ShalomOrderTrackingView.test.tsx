@@ -5,7 +5,8 @@
  * Comportamiento verificado:
  * 1. Filtro normalizado: órdenes con courier/shippingOffice que `isShalomCourier()` reconoce
  *    (SHALOM, shalom con espacio, Shalom via shippingOffice) aparecen en tabla;
- *    courier Olva no aparece; Shalom con shalomStatus null no aparece.
+ *    courier Olva no aparece; Shalom con shalomStatus null SÍ aparece (con badge
+ *    "Sin registrar" — courier ya implica que la guía se creó, ver NuevaGuiaDialog).
  * 2. Banner con fallidos: con N órdenes FALLIDO se muestra el banner con contador;
  *    click en "Ver fallidos" filtra la tabla dejando solo las fallidas.
  * 3. Banner ausente: sin órdenes FALLIDO el banner no se renderiza.
@@ -275,14 +276,15 @@ describe('ShalomOrderTrackingView', () => {
       expect(screen.queryByText('ORD-OLVA')).not.toBeInTheDocument();
     });
 
-    it('NO muestra una orden Shalom con shalomStatus null', async () => {
+    it('SÍ muestra una orden Shalom con shalomStatus null (badge "Sin registrar")', async () => {
       mockOrdersResponse([
         makeOrder({ id: 'o5', orderNumber: 'ORD-NULL-STATUS', courier: 'Shalom', shalomStatus: null }),
       ]);
       render(<ShalomOrderTrackingView />);
-      // La orden sin shalomStatus es filtrada: el fetch termina mostrando el empty state
-      expect(await screen.findByText('No hay órdenes Shalom')).toBeInTheDocument();
-      expect(screen.queryByText('ORD-NULL-STATUS')).not.toBeInTheDocument();
+      // courier="Shalom" ya implica que la guía se creó (ver NuevaGuiaDialog) —
+      // el pedido debe verse aunque shalomStatus todavía no se haya sincronizado.
+      expect(await screen.findByText('ORD-NULL-STATUS')).toBeInTheDocument();
+      expect(screen.getByText('Sin registrar')).toBeInTheDocument();
     });
 
     it('muestra el estado vacío cuando no hay órdenes Shalom', async () => {

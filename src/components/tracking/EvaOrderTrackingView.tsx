@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
-import { Search, RefreshCw, Eye } from "lucide-react";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
+import { Search, RefreshCw, Eye, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -15,6 +17,13 @@ import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
@@ -25,6 +34,7 @@ import EvaStatusBadge, {
   GROUP_CLS,
 } from "@/components/eva/EvaStatusBadge";
 import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 
 const ITEMS_PER_PAGE = 15;
 
@@ -71,6 +81,7 @@ export default function EvaOrderTrackingView() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [saldoFilter, setSaldoFilter] = useState<"all" | "pending" | "paid">("all");
   const [page, setPage] = useState(1);
   const [viewOrderId, setViewOrderId] = useState<string | null>(null);
 
@@ -118,13 +129,19 @@ export default function EvaOrderTrackingView() {
       // Filtro por estado EVA (selector)
       if (statusFilter && order.evaStatus !== statusFilter) return false;
 
+      if (saldoFilter !== "all") {
+        const pending = getPendingPayment(order);
+        if (saldoFilter === "pending" && pending <= 0) return false;
+        if (saldoFilter === "paid" && pending > 0) return false;
+      }
+
       return true;
     });
-  }, [orders, search, statusFilter]);
+  }, [orders, search, statusFilter, saldoFilter]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, saldoFilter]);
 
   const totalPages = Math.max(
     1,
@@ -153,6 +170,38 @@ export default function EvaOrderTrackingView() {
       }))
       .sort((a, b) => b.count - a.count);
   }, [orders]);
+
+  // ── Exportar Excel (respeta los filtros activos) ────────────────────────
+
+  const handleExportExcel = () => {
+    if (filteredOrders.length === 0) {
+      toast.warning("No hay pedidos para exportar con los filtros aplicados");
+      return;
+    }
+    const rows = filteredOrders.map((o) => ({
+      "N° Pedido": o.orderNumber,
+      Cliente: o.customer?.fullName || "-",
+      "Estado EVA": STATUS_LABEL[o.evaStatus ?? ""] ?? o.evaStatus ?? "-",
+      Sincronizado: o.evaSyncedAt ? formatSyncedAt(o.evaSyncedAt) : "-",
+      "Fecha pedido": formatDate(o.created_at),
+      "Tracking EVA": o.evaTrackingId ?? "-",
+      "Saldo de deuda": getPendingPayment(o),
+      "Número de tracking": o.externalTrackingNumber || "-",
+      "Código de envío": o.shippingCode || "-",
+      Oficina: o.shippingOffice || "-",
+      "Clave de envío": o.shippingKey || "-",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "EVA Courier");
+    const buffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    saveAs(
+      new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+      `eva_courier_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+  };
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
 
@@ -193,7 +242,7 @@ export default function EvaOrderTrackingView() {
       )}
 
       {/* ── Barra de filtros ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 border rounded-xl bg-muted/20">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border rounded-xl bg-muted/20">
         <div className="space-y-1">
           <Label className="text-xs font-semibold">Búsqueda rápida</Label>
           <div className="relative">
@@ -221,6 +270,19 @@ export default function EvaOrderTrackingView() {
             ))}
           </select>
         </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold">Saldo</Label>
+          <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
+            <SelectTrigger className="h-9 bg-background">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Con y sin saldo</SelectItem>
+              <SelectItem value="pending">Con saldo pendiente</SelectItem>
+              <SelectItem value="paid">Pagado completo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* ── Contador y refresco ── */}
@@ -237,6 +299,10 @@ export default function EvaOrderTrackingView() {
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Actualizar
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleExportExcel} className="gap-2">
+          <FileSpreadsheet className="h-4 w-4" />
+          Exportar Excel
         </Button>
       </div>
 
@@ -285,7 +351,7 @@ export default function EvaOrderTrackingView() {
                   className="h-32 text-center text-muted-foreground"
                 >
                   No hay pedidos enviados a EVA Courier
-                  {(search || statusFilter) && (
+                  {(search || statusFilter || saldoFilter !== "all") && (
                     <span className="block text-xs mt-1">
                       Probá quitando los filtros activos
                     </span>

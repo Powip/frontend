@@ -156,6 +156,14 @@ export interface CierreDiaDayTotals extends CierreDiaFunnel {
   ingreso: number;
   costo: number;
   upsells: number;
+  /**
+   * Pedidos CREADOS ese día (por order.created_at), sin importar su estado
+   * actual. Es un cohorte distinto del embudo de arriba (bucketeado por
+   * updated_at, ver comentario "BUG CONFIRMADO" más abajo): un pedido creado
+   * el jueves y confirmado el viernes suma acá en jueves, pero su bucket
+   * "confirmado" suma en viernes. Los dos números no tienen por qué coincidir.
+   */
+  pedidosIngresados: number;
 }
 
 export interface CierreDiaClosingData {
@@ -199,6 +207,7 @@ export async function getCierreDiaClosingData(
 
   const byVariant = new Map<string, Accumulator>();
   const byDayAcc = new Map<string, DayAccumulator>();
+  const ingresadosByDay = new Map<string, number>();
   const confirmados: OrderHeader[] = [];
 
   for (const order of orders) {
@@ -206,7 +215,21 @@ export async function getCierreDiaClosingData(
     const facturable = esFacturable(bucket);
     if (facturable) confirmados.push(order);
 
-    const orderDate = toLocalDateStr(order.created_at);
+    // "Pedidos Ingresados" del día: cohorte fijo por fecha de creación, no
+    // se mueve aunque el pedido cambie de estado más adelante (a diferencia
+    // del bucket del embudo, ver comentario BUG CONFIRMADO debajo).
+    const createdDate = toLocalDateStr(order.created_at);
+    ingresadosByDay.set(createdDate, (ingresadosByDay.get(createdDate) ?? 0) + 1);
+
+    // BUG CONFIRMADO: se usaba order.created_at acá, pero el bucket
+    // (confirmado/despachado/etc.) refleja el ESTADO ACTUAL del pedido, no
+    // su estado el día de creación — un pedido creado el jueves y confirmado
+    // recién el viernes contaba como "confirmado" del jueves, y el cierre
+    // del viernes no lo veía. OrderHeader no tiene un campo de fecha por
+    // transición de estado (BACKEND GAP), así que se usa updated_at como
+    // mejor aproximación disponible: coincide con la fecha del último
+    // cambio de estado en la mayoría de los casos.
+    const orderDate = toLocalDateStr(order.updated_at ?? order.created_at);
     if (!byDayAcc.has(orderDate)) {
       byDayAcc.set(orderDate, { buckets: { ...EMPTY_FUNNEL }, ingreso: 0, upsells: 0, variantUnits: new Map() });
     }
@@ -301,13 +324,25 @@ export async function getCierreDiaClosingData(
   );
   totals.pctMargen = totals.ingreso ? (totals.margen / totals.ingreso) * 100 : 0;
 
-  const byDay: CierreDiaDayTotals[] = [...byDayAcc.entries()]
-    .map(([date, acc]) => {
+  // Unión de fechas de ambos mapas: un día puede tener pedidos ingresados
+  // sin ningún cambio de estado ese mismo día (o viceversa), ya que cada uno
+  // se agrupa por una fecha distinta (created_at vs. updated_at).
+  const byDayDates = new Set([...byDayAcc.keys(), ...ingresadosByDay.keys()]);
+  const byDay: CierreDiaDayTotals[] = [...byDayDates]
+    .map((date) => {
+      const acc = byDayAcc.get(date);
       let costo = 0;
-      acc.variantUnits.forEach((qty, variantId) => {
+      acc?.variantUnits.forEach((qty, variantId) => {
         costo += (costMap.get(variantId) ?? 0) * qty;
       });
-      return { date, ...acc.buckets, ingreso: acc.ingreso, costo, upsells: acc.upsells };
+      return {
+        date,
+        ...(acc?.buckets ?? EMPTY_FUNNEL),
+        ingreso: acc?.ingreso ?? 0,
+        costo,
+        upsells: acc?.upsells ?? 0,
+        pedidosIngresados: ingresadosByDay.get(date) ?? 0,
+      };
     })
     .sort((a, b) => a.date.localeCompare(b.date));
 

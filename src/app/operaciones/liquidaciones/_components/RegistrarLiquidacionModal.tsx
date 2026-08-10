@@ -90,9 +90,6 @@ export function RegistrarLiquidacionModal({
         pedido: g.id,
         cliente: g.cliente,
         cobro: g.codNeto,
-        comision: g.comision,
-        flete: g.flete,
-        neto: g.neto,
       })),
     };
     onRegistrar(pago);

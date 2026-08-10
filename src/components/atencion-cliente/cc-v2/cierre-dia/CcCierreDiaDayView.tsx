@@ -94,6 +94,10 @@ interface ContentProps {
 function CcCierreDiaDayContent({
   storeId, date, record, metrics: m, closingData, isLoadingProductos, isErrorProductos, onRegularizar,
 }: ContentProps) {
+  // Pedidos CREADOS hoy (cohorte por created_at) — distinto de `m.total`,
+  // que es el embudo agrupado por fecha de última actualización (ver BUG
+  // CONFIRMADO en cierreDiaProductosService.ts). No tienen por qué coincidir.
+  const pedidosIngresados = closingData?.byDay.find((d) => d.date === date)?.pedidosIngresados ?? 0;
   const saveMutation = useSaveCierreDia(storeId);
   const [cpvValues, setCpvValues] = useState<CpvValues>({
     publiMeta: record.publiMeta,
@@ -185,7 +189,7 @@ function CcCierreDiaDayContent({
             <p className="text-[10px] font-bold uppercase tracking-wide text-white/70">
               Pedidos ingresados
             </p>
-            <p className="text-4xl font-black leading-none">{m.total}</p>
+            <p className="text-4xl font-black leading-none">{pedidosIngresados}</p>
             <p className="text-[9px] text-white/55 mt-0.5">Todos los pedidos creados hoy</p>
           </div>
           <div className="h-10 w-px bg-white/20 hidden sm:block" />
@@ -217,7 +221,7 @@ function CcCierreDiaDayContent({
       {/* funnel */}
       <div>
         <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-2">
-          Estado actual de los pedidos ingresados hoy
+          Estado actual de los pedidos gestionados hoy ({m.total})
         </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
           {FUNNEL_STATES.map((s) => {

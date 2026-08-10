@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState, useCallback } from "react";
+import * as XLSX from "xlsx";
+import { saveAs } from "file-saver";
 import {
   Search,
   RefreshCw,
   AlertTriangle,
   Eye,
+  FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +23,13 @@ import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
@@ -27,6 +37,7 @@ import { OrderHeader } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import CancelAliclikButton from "@/components/aliclik/CancelAliclikButton";
 import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 
 const ITEMS_PER_PAGE = 15;
 
@@ -98,6 +109,7 @@ export default function AliclikOrderTrackingView() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [activeFilter, setActiveFilter] = useState<AliclikFilter>("all");
+  const [saldoFilter, setSaldoFilter] = useState<"all" | "pending" | "paid">("all");
   const [page, setPage] = useState(1);
   const [viewOrderId, setViewOrderId] = useState<string | null>(null);
 
@@ -146,20 +158,22 @@ export default function AliclikOrderTrackingView() {
       if (statusFilter && order.aliclikDispatchStatus !== statusFilter) return false;
 
       // Filtro de tabs internas
-      if (activeFilter === "problem") {
-        return order.aliclikDispatchStatus === "RETURNED";
-      }
-      if (activeFilter === "canceled") {
-        return order.aliclikDispatchStatus === "CANCELED";
+      if (activeFilter === "problem" && order.aliclikDispatchStatus !== "RETURNED") return false;
+      if (activeFilter === "canceled" && order.aliclikDispatchStatus !== "CANCELED") return false;
+
+      if (saldoFilter !== "all") {
+        const pending = getPendingPayment(order);
+        if (saldoFilter === "pending" && pending <= 0) return false;
+        if (saldoFilter === "paid" && pending > 0) return false;
       }
 
       return true;
     });
-  }, [orders, search, statusFilter, activeFilter]);
+  }, [orders, search, statusFilter, activeFilter, saldoFilter]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, activeFilter]);
+  }, [search, statusFilter, activeFilter, saldoFilter]);
 
   const totalPages = Math.max(
     1,
@@ -195,6 +209,37 @@ export default function AliclikOrderTrackingView() {
     () => orders.filter((o) => o.aliclikDispatchStatus === "RETURNED").length,
     [orders],
   );
+
+  // ── Exportar Excel (respeta los filtros activos) ────────────────────────
+
+  const handleExportExcel = () => {
+    if (filteredOrders.length === 0) {
+      toast.warning("No hay pedidos para exportar con los filtros aplicados");
+      return;
+    }
+    const rows = filteredOrders.map((o) => ({
+      "N° Pedido": o.orderNumber,
+      Cliente: o.customer?.fullName || "-",
+      "Estado Aliclik": ALICLIK_STATUS_LABELS[o.aliclikDispatchStatus ?? ""] ?? o.aliclikDispatchStatus ?? "-",
+      Sincronizado: o.aliclikSyncedAt ? formatSyncedAt(o.aliclikSyncedAt) : "-",
+      "Fecha pedido": formatDate(o.created_at),
+      "Saldo de deuda": getPendingPayment(o),
+      "Número de tracking": o.externalTrackingNumber || "-",
+      "Código de envío": o.shippingCode || "-",
+      Oficina: o.shippingOffice || "-",
+      "Clave de envío": o.shippingKey || "-",
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Aliclik");
+    const buffer = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    saveAs(
+      new Blob([buffer], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      }),
+      `aliclik_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+  };
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
 
@@ -235,7 +280,7 @@ export default function AliclikOrderTrackingView() {
       )}
 
       {/* ── Barra de filtros ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 border rounded-xl bg-muted/20">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border rounded-xl bg-muted/20">
         <div className="space-y-1">
           <Label className="text-xs font-semibold">Búsqueda rápida</Label>
           <div className="relative">
@@ -264,6 +309,19 @@ export default function AliclikOrderTrackingView() {
             <option value="RETURNED">Devuelto</option>
             <option value="CANCELED">Cancelado</option>
           </select>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-semibold">Saldo</Label>
+          <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
+            <SelectTrigger className="h-9 bg-background">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Con y sin saldo</SelectItem>
+              <SelectItem value="pending">Con saldo pendiente</SelectItem>
+              <SelectItem value="paid">Pagado completo</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -303,6 +361,10 @@ export default function AliclikOrderTrackingView() {
         >
           <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
           Actualizar
+        </Button>
+        <Button size="sm" variant="outline" onClick={handleExportExcel} className="gap-2">
+          <FileSpreadsheet className="h-4 w-4" />
+          Exportar Excel
         </Button>
       </div>
 
@@ -369,7 +431,7 @@ export default function AliclikOrderTrackingView() {
                   className="h-32 text-center text-muted-foreground"
                 >
                   No hay pedidos enviados a Aliclik
-                  {(search || statusFilter || activeFilter !== "all") && (
+                  {(search || statusFilter || activeFilter !== "all" || saldoFilter !== "all") && (
                     <span className="block text-xs mt-1">
                       Probá quitando los filtros activos
                     </span>

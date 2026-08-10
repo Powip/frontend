@@ -1,13 +1,5 @@
 import { OrderHeader } from "@/interfaces/IOrder";
-import {
-  COURIER_COMMISSION_PCT,
-  COURIER_DIAS_LIMITE,
-  DEFAULT_COMMISSION_PCT,
-  DEFAULT_DIAS_LIMITE,
-  DEFAULT_FLETE,
-  FLETE_BY_REGION,
-  GuiaPorLiquidar,
-} from "./types";
+import { COURIER_DIAS_LIMITE, DEFAULT_DIAS_LIMITE, GuiaPorLiquidar } from "./types";
 
 export function money(n: number): string {
   const sign = n < 0 ? "-" : "";
@@ -53,8 +45,7 @@ function detectEntregaParcial(
  * Construye las filas de "Por Liquidar" a partir de pedidos reales
  * ENTREGADO con courier asignado y saldo pendiente (dinero que el courier
  * cobró en la entrega y todavía no depositó). El resto de los campos
- * (comisión, plazo, estado) se calculan localmente — ver BACKEND GAP en
- * types.ts.
+ * (plazo, estado) se calculan localmente — ver BACKEND GAP en types.ts.
  *
  * @param coveredOrderNumbers orderNumbers ya cubiertos por una liquidación
  *   registrada en esta sesión (estado local, no persiste — ver page.tsx).
@@ -70,12 +61,8 @@ export function buildGuiasPorLiquidar(
       const adelantos = paidAmount(o);
       const codNeto = Math.max(0, codBruto - adelantos);
       const courier = (o.courier ?? "").trim();
-      const comisionPct = COURIER_COMMISSION_PCT[courier] ?? DEFAULT_COMMISSION_PCT;
       const diasLimite = COURIER_DIAS_LIMITE[courier] ?? DEFAULT_DIAS_LIMITE;
-      const comision = codNeto * comisionPct;
-      const flete = FLETE_BY_REGION[o.salesRegion] ?? DEFAULT_FLETE;
-      const neto = Math.max(0, codNeto - comision - flete);
-      const saldoPendiente = coveredOrderNumbers.has(o.orderNumber) ? 0 : neto;
+      const saldoPendiente = coveredOrderNumbers.has(o.orderNumber) ? 0 : codNeto;
       const diasTranscurridos = daysSince(o.updated_at ?? o.created_at);
       const vencido = diasTranscurridos > diasLimite && saldoPendiente > 0;
 
@@ -91,10 +78,6 @@ export function buildGuiasPorLiquidar(
         codBruto,
         adelantos,
         codNeto,
-        comisionPct,
-        comision,
-        flete,
-        neto,
         saldoPendiente,
         estado: saldoPendiente <= 0 ? "LIQUIDADO" : vencido ? "VENCIDO" : "PENDIENTE",
         vencido,
@@ -102,38 +85,6 @@ export function buildGuiasPorLiquidar(
       } satisfies GuiaPorLiquidar;
     })
     .filter((g) => g.saldoPendiente > 0 || g.estado === "LIQUIDADO");
-}
-
-/** Normalización de teléfono peruano para WhatsApp — misma regla que Pedidos (types.ts). */
-function normalizePeruPhone(phoneNumber: string): string {
-  let cleanPhone = phoneNumber.replace(/\D/g, "");
-  if (!cleanPhone.startsWith("51")) {
-    if (cleanPhone.startsWith("0")) cleanPhone = cleanPhone.substring(1);
-    cleanPhone = `51${cleanPhone}`;
-  }
-  return cleanPhone;
-}
-
-/** Mensaje de recordatorio de saldo pendiente, personalizado por cliente. */
-export function buildSaldoWhatsAppMessage(
-  cliente: string,
-  orderNumber: string,
-  saldo: number,
-): string {
-  return `Hola ${cliente} 👋 Tu pedido ${orderNumber} quedó con un saldo de ${money(
-    saldo,
-  )}. Puedes pagarlo por Yape o al recibir. ¡Gracias por tu compra! 🙌`;
-}
-
-export function openSaldoWhatsApp(
-  telefono: string,
-  cliente: string,
-  orderNumber: string,
-  saldo: number,
-) {
-  const cleanPhone = normalizePeruPhone(telefono);
-  const message = buildSaldoWhatsAppMessage(cliente, orderNumber, saldo);
-  window.open(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(message)}`, "_blank");
 }
 
 export function formatDate(dateStr?: string | null): string {

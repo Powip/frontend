@@ -187,8 +187,6 @@ export function PorLiquidarTab({
       items,
       cantidad: items.length,
       codNeto: items.reduce((s, g) => s + g.codNeto, 0),
-      comision: items.reduce((s, g) => s + g.comision, 0),
-      flete: items.reduce((s, g) => s + g.flete, 0),
       neto: items.reduce((s, g) => s + g.saldoPendiente, 0),
       vencidos: items.filter((g) => g.vencido).length,
     }));
@@ -210,8 +208,6 @@ export function PorLiquidarTab({
       "Días transcurridos": g.diasTranscurridos,
       "Plazo (días)": g.diasLimite,
       Cobró: g.codNeto,
-      Comisión: g.comision,
-      Flete: g.flete,
       "Neto a recibir": g.saldoPendiente,
       Vencido: g.vencido ? "Sí" : "No",
     }));
@@ -467,8 +463,6 @@ export function PorLiquidarTab({
                       <TableHead>Días</TableHead>
                       <TableHead>Courier</TableHead>
                       <TableHead className="text-right">Cobró</TableHead>
-                      <TableHead className="text-right">Comisión</TableHead>
-                      <TableHead className="text-right text-violet-600 dark:text-violet-400">Flete</TableHead>
                       <TableHead className="text-right">Neto a recibir</TableHead>
                       <TableHead className="text-right">Acciones</TableHead>
                     </TableRow>
@@ -510,12 +504,6 @@ export function PorLiquidarTab({
                         </TableCell>
                         <TableCell>{g.courier}</TableCell>
                         <TableCell className="text-right">{money(g.codNeto)}</TableCell>
-                        <TableCell className="text-right text-red-600 dark:text-red-400">
-                          -{money(g.comision)}
-                        </TableCell>
-                        <TableCell className="text-right text-red-600 dark:text-red-400">
-                          -{money(g.flete)}
-                        </TableCell>
                         <TableCell className="text-right font-bold">{money(g.saldoPendiente)}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
@@ -590,8 +578,6 @@ export function PorLiquidarTab({
                     <TableHead className="text-right">Pedidos</TableHead>
                     <TableHead className="text-right">Vencidos</TableHead>
                     <TableHead className="text-right">Cobró (neto)</TableHead>
-                    <TableHead className="text-right">Comisión</TableHead>
-                    <TableHead className="text-right text-violet-600 dark:text-violet-400">Flete</TableHead>
                     <TableHead className="text-right">Neto a recibir</TableHead>
                     <TableHead className="text-right">Acciones</TableHead>
                   </TableRow>
@@ -605,8 +591,6 @@ export function PorLiquidarTab({
                         {c.vencidos}
                       </TableCell>
                       <TableCell className="text-right">{money(c.codNeto)}</TableCell>
-                      <TableCell className="text-right text-red-600 dark:text-red-400">-{money(c.comision)}</TableCell>
-                      <TableCell className="text-right text-red-600 dark:text-red-400">-{money(c.flete)}</TableCell>
                       <TableCell className="text-right font-bold">{money(c.neto)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">

@@ -169,12 +169,17 @@ export default function ShalomOrderTrackingView() {
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
 
+      // BUG: exigir shalomStatus no-nulo además del courier dejaba afuera
+      // pedidos realmente despachados por Shalom (courier se setea en el
+      // mismo PATCH que guideNumber al crear la guía, ver NuevaGuiaDialog)
+      // cuyo shalomStatus todavía no se sincronizó/registró contra la API
+      // de Shalom — la tabla ya tiene un badge "Sin registrar" para ese
+      // caso (más abajo), pero nunca llegaba a mostrarse porque el filtro
+      // los descartaba antes. courier/shippingOffice ya son suficientes
+      // para saber que el pedido se despachó por Shalom.
       const shalomOnly = ordersRes.data
         .filter(
-          (o) =>
-            (isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice)) &&
-            o.shalomStatus !== null &&
-            o.shalomStatus !== undefined,
+          (o) => isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice),
         )
         .sort(
           (a, b) =>
@@ -393,6 +398,7 @@ export default function ShalomOrderTrackingView() {
       { header: "Cliente", width: 26 },
       { header: "N° Guía Shalom", width: 20 },
       { header: "Código", width: 14 },
+      { header: "Oficina", width: 16 },
       { header: "Origen", width: 22 },
       { header: "Destino", width: 22 },
       { header: "DNI", width: 14 },
@@ -448,6 +454,7 @@ export default function ShalomOrderTrackingView() {
         order.customer?.fullName || "-",
         order.externalTrackingNumber || "-",
         order.shippingCode || "-",
+        order.shippingOffice || "-",
         order.shalomOriginAgency || "-",
         order.shalomDestinationAgency || "-",
         order.shalomRecipientDoc || "-",

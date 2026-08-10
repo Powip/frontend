@@ -193,7 +193,12 @@ export default function NuevaGuiaDialog({
     }
   };
 
-  const handleAddToExisting = async (guideId: string, guideNumber: string) => {
+  const handleAddToExisting = async (
+    guideId: string,
+    guideNumber: string,
+    guideStatus: string,
+    courierName?: string | null,
+  ) => {
     setSubmitting(true);
     try {
       const orderIds = selectedOrders.map((o) => o.id);
@@ -205,18 +210,37 @@ export default function NuevaGuiaDialog({
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guideId}/orders/add`,
         { orderIds },
       );
+      // BUG: AddToExistingGuideModal deja elegir guías en estado CREADA,
+      // ASIGNADA *o EN_RUTA* (ya aprobadas y despachadas) — pero el botón
+      // "Aprobar Guía" de GuideDetailsModal solo aparece para guías CREADA/
+      // ASIGNADA. Un pedido agregado a una guía que ya está EN_RUTA quedaba
+      // seteado en ASIGNADO_A_GUIA sin ningún botón que lo pase a EN_ENVIO
+      // — trabado para siempre en "Por Despachar" en vez de "En Camino"
+      // (reportado: "se asignó a guía, no aparece en En Camino, hubo que
+      // cambiarlo a mano"). Si la guía ya está despachada, el pedido nuevo
+      // se despacha directo a EN_ENVIO, igual que handleApproveGuide hace
+      // para el resto de pedidos de la guía.
+      const guideAlreadyDispatched = guideStatus !== "CREADA" && guideStatus !== "ASIGNADA";
       for (const orderId of orderIds) {
-        if (orders.find((o) => o.id === orderId)?.status === "PREPARADO") {
+        if (
+          !guideAlreadyDispatched &&
+          orders.find((o) => o.id === orderId)?.status === "PREPARADO"
+        ) {
           await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
             status: "LLAMADO",
           });
         }
         await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
           guideNumber,
-          status: "ASIGNADO_A_GUIA",
+          status: guideAlreadyDispatched ? "EN_ENVIO" : "ASIGNADO_A_GUIA",
+          ...(guideAlreadyDispatched ? { courier: courierName ?? undefined } : {}),
         });
       }
-      toast.success(`Pedidos agregados a la guía ${guideNumber}`);
+      toast.success(
+        guideAlreadyDispatched
+          ? `Pedidos agregados a la guía ${guideNumber} y despachados`
+          : `Pedidos agregados a la guía ${guideNumber}`,
+      );
       setAddModalOpen(false);
       setSelectedIds(new Set());
       await load();

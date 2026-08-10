@@ -124,9 +124,9 @@ function trackingValuesOf(order: OrderHeader): Record<TrackingFieldKey, string> 
  * Campos de tracking manual (mismos 4 que "Información de Seguimiento" en
  * CustomerServiceModal) editables directo desde la fila de la tabla, para
  * couriers sin integración propia donde alguien tiene que tipear el
- * número/código/oficina/clave a mano. No guarda solo con el blur — recién
- * aparece el botón "Guardar" cuando algún campo cambió, y guarda todos los
- * campos tocados en un solo PATCH.
+ * número/código/oficina/clave a mano. Autoguarda solo — sin botón: al salir
+ * de cualquiera de los 4 campos (blur) guarda en un solo PATCH todos los que
+ * hayan cambiado desde el último valor conocido.
  */
 function TrackingInputCells({
   order,
@@ -150,10 +150,9 @@ function TrackingInputCells({
     order.shippingKey,
   ]);
 
-  const dirty = TRACKING_FIELDS.some(({ key }) => values[key] !== original[key]);
-
-  const handleSave = async () => {
-    if (!dirty) return;
+  const handleAutoSave = async () => {
+    const dirty = TRACKING_FIELDS.some(({ key }) => values[key] !== original[key]);
+    if (!dirty || saving) return;
     setSaving(true);
     try {
       const payload: Partial<Record<TrackingFieldKey, string | null>> = {};
@@ -179,23 +178,11 @@ function TrackingInputCells({
               placeholder={placeholder}
               value={values[key]}
               onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+              onBlur={handleAutoSave}
               className="h-7 w-24 text-[11px]"
             />
-            {i === TRACKING_FIELDS.length - 1 && dirty && (
-              <Button
-                size="icon"
-                variant="ghost"
-                className="h-7 w-7 shrink-0 text-emerald-600 hover:text-emerald-700"
-                title="Guardar tracking"
-                onClick={handleSave}
-                disabled={saving}
-              >
-                {saving ? (
-                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                )}
-              </Button>
+            {i === TRACKING_FIELDS.length - 1 && saving && (
+              <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
             )}
           </div>
         </TableCell>
@@ -251,6 +238,7 @@ export default function CourierTrackingView() {
   // viejos/importados) — mismo servicio que usa el resto de Operaciones.
   const [companyCouriers, setCompanyCouriers] = useState<string[]>([]);
   const [courierFilter, setCourierFilter] = useState("ALL");
+  const [saldoFilter, setSaldoFilter] = useState<"ALL" | "PENDING" | "PAID">("ALL");
   const [fechaRange, setFechaRange] = useState<DateRange | undefined>(undefined);
   const [fechaCalendarOpen, setFechaCalendarOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -400,6 +388,11 @@ export default function CourierTrackingView() {
         (o) => courierFilter === "ALL" || courierLabel(o) === courierFilter,
       )
       .filter((o) => {
+        if (saldoFilter === "ALL") return true;
+        const pending = getPendingPayment(o);
+        return saldoFilter === "PENDING" ? pending > 0 : pending <= 0;
+      })
+      .filter((o) => {
         if (!fechaDesde && !fechaHasta) return true;
         const ventaDate = o.created_at ? o.created_at.slice(0, 10) : null;
         if (!ventaDate) return false;
@@ -418,11 +411,11 @@ export default function CourierTrackingView() {
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
-  }, [dispatchedOrders, search, courierFilter, fechaDesde, fechaHasta]);
+  }, [dispatchedOrders, search, courierFilter, saldoFilter, fechaDesde, fechaHasta]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, courierFilter, fechaDesde, fechaHasta]);
+  }, [search, courierFilter, saldoFilter, fechaDesde, fechaHasta]);
 
   const totalPages = Math.max(
     1,
@@ -536,6 +529,10 @@ export default function CourierTrackingView() {
         "Saldo de deuda": getPendingPayment(o),
         Courier: courierLabel(o),
         "Costo de envío": o.carrierShippingCost ? Number(o.carrierShippingCost) : 0,
+        "Número de tracking": o.externalTrackingNumber || "-",
+        "Código de envío": o.shippingCode || "-",
+        Oficina: o.shippingOffice || "-",
+        "Clave de envío": o.shippingKey || "-",
       };
     });
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -653,6 +650,16 @@ export default function CourierTrackingView() {
                         {c}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+                <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
+                  <SelectTrigger className="w-[170px] shrink-0 bg-background">
+                    <SelectValue placeholder="Saldo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ALL">Con y sin saldo</SelectItem>
+                    <SelectItem value="PENDING">Con saldo</SelectItem>
+                    <SelectItem value="PAID">Sin saldo</SelectItem>
                   </SelectContent>
                 </Select>
                 <Popover open={fechaCalendarOpen} onOpenChange={setFechaCalendarOpen}>
@@ -1025,6 +1032,7 @@ function CourierOrdersTab({
   onView: (orderId: string) => void;
 }) {
   const [search, setSearch] = useState("");
+  const [saldoFilter, setSaldoFilter] = useState<"ALL" | "PENDING" | "PAID">("ALL");
   const [fechaRange, setFechaRange] = useState<DateRange | undefined>(undefined);
   const [fechaCalendarOpen, setFechaCalendarOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -1040,6 +1048,11 @@ function CourierOrdersTab({
     const q = search.trim().toLowerCase();
     return dispatchedOrders
       .filter((o) => courierLabel(o) === courierName)
+      .filter((o) => {
+        if (saldoFilter === "ALL") return true;
+        const pending = getPendingPayment(o);
+        return saldoFilter === "PENDING" ? pending > 0 : pending <= 0;
+      })
       .filter((o) => {
         if (!fechaDesde && !fechaHasta) return true;
         const ventaDate = o.created_at ? o.created_at.slice(0, 10) : null;
@@ -1058,11 +1071,11 @@ function CourierOrdersTab({
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
-  }, [dispatchedOrders, courierName, search, fechaDesde, fechaHasta]);
+  }, [dispatchedOrders, courierName, search, saldoFilter, fechaDesde, fechaHasta]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, courierName, fechaDesde, fechaHasta]);
+  }, [search, courierName, saldoFilter, fechaDesde, fechaHasta]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / ITEMS_PER_PAGE));
   const pagedRows = rows.slice(
@@ -1087,6 +1100,10 @@ function CourierOrdersTab({
         Distrito: o.customer?.district || "-",
         "Saldo de deuda": getPendingPayment(o),
         "Costo de envío": o.carrierShippingCost ? Number(o.carrierShippingCost) : 0,
+        "Número de tracking": o.externalTrackingNumber || "-",
+        "Código de envío": o.shippingCode || "-",
+        Oficina: o.shippingOffice || "-",
+        "Clave de envío": o.shippingKey || "-",
       };
     });
     const ws = XLSX.utils.json_to_sheet(data);
@@ -1123,6 +1140,16 @@ function CourierOrdersTab({
               className="pl-9 bg-background"
             />
           </div>
+          <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
+            <SelectTrigger className="w-[170px] shrink-0 bg-background">
+              <SelectValue placeholder="Saldo" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">Con y sin saldo</SelectItem>
+              <SelectItem value="PENDING">Con saldo</SelectItem>
+              <SelectItem value="PAID">Sin saldo</SelectItem>
+            </SelectContent>
+          </Select>
           <Popover open={fechaCalendarOpen} onOpenChange={setFechaCalendarOpen}>
             <PopoverTrigger asChild>
               <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[190px] justify-start shrink-0 bg-background">

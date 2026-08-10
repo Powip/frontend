@@ -12,7 +12,7 @@ import { formatDate, money } from "./utils";
 
 /**
  * Mini modal "Ver detalle" de un pedido desde Por Liquidar — desglose de
- * cobro/comisión/flete/neto de ese pedido puntual. Equivalente al modal
+ * cobro/adelanto/neto de ese pedido puntual. Equivalente al modal
  * "Pedido ORD-…" del mockup, pero sin inventar un saldo de cliente (no hay
  * campo real de "cuánto cobró el courier en la puerta" — ver BACKEND GAP en
  * types.ts / informe final).
@@ -40,9 +40,7 @@ export function DetallePedidoModal({
               <Kv label="Total pedido" value={money(guia.codBruto)} />
               <Kv label="Adelanto del cliente" value={`− ${money(guia.adelantos)}`} tone="pos" />
               <Kv label="Cobró el courier (saldo COD)" value={money(guia.codNeto)} />
-              <Kv label={`Comisión ${guia.courier}`} value={`− ${money(guia.comision)}`} tone="neg" />
-              <Kv label="Flete" value={`− ${money(guia.flete)}`} tone="neg" />
-              <Kv label="Neto a recibir" value={money(guia.neto)} big />
+              <Kv label="Neto a recibir" value={money(guia.saldoPendiente)} big />
             </div>
 
             {guia.entregaParcial && (

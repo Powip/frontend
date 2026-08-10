@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { AlertTriangle, Pencil, Trash2, Eye } from "lucide-react";
 import { useCierreDiaClosingDataRange, useCierreDiaMonth, useDeleteCierreDia } from "@/hooks/useCierreDia";
+import { CierreDiaDayTotals } from "@/services/cierreDiaProductosService";
 import { toast } from "sonner";
 import { CcCierreDiaProductTable } from "./CcCierreDiaProductTable";
 import { CcCierreDiaInnerTabs } from "./CcCierreDiaInnerTabs";
@@ -58,11 +59,16 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
   const [y, m] = monthStr.split("-").map(Number);
   const mesLabel = `${MESES[(m ?? 1) - 1]} ${y}`;
 
+  const autoByDate = useMemo(() => {
+    const map = new Map<string, CierreDiaDayTotals>();
+    (closingData?.byDay ?? []).forEach((d) => map.set(d.date, d));
+    return map;
+  }, [closingData]);
+
   // Fusiona lo guardado a mano con lo autocompletado desde pedidos reales —
   // lo manual siempre gana; el resto se calcula solo.
   const records = useMemo(() => {
     const manualByDate = new Map(manualRecords.map((r) => [r.date, r]));
-    const autoByDate = new Map((closingData?.byDay ?? []).map((d) => [d.date, d]));
     const allDates = new Set([...manualByDate.keys(), ...autoByDate.keys()]);
     const list: NonNullable<ReturnType<typeof toEffectiveRecord>>[] = [];
     allDates.forEach((ds) => {
@@ -70,7 +76,7 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
       if (eff) list.push(eff);
     });
     return list.sort((a, b) => a.date.localeCompare(b.date));
-  }, [manualRecords, closingData, storeId]);
+  }, [manualRecords, autoByDate, storeId]);
 
   const guardadosCount = records.filter((r) => !r.isAuto).length;
   const automaticosCount = records.filter((r) => r.isAuto).length;
@@ -88,8 +94,13 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
       margenNeto += met.margenNeto;
       upsells += r.upsells;
     });
-    return { total, confirmados, entregados, anulados, ingreso, publi, margenNeto, upsells };
-  }, [records]);
+    // Pedidos Ingresados se suma aparte, desde `closingData.byDay` — es un
+    // cohorte por fecha de creación, distinto del embudo de arriba (que
+    // agrupa por fecha de última actualización, ver BUG CONFIRMADO en
+    // cierreDiaProductosService.ts). No tiene por qué coincidir con `total`.
+    const pedidosIngresados = [...autoByDate.values()].reduce((s, d) => s + d.pedidosIngresados, 0);
+    return { total, confirmados, entregados, anulados, ingreso, publi, margenNeto, upsells, pedidosIngresados };
+  }, [records, autoByDate]);
 
   async function handleDelete(date: string) {
     await deleteMutation.mutateAsync(date);
@@ -108,8 +119,8 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
         <>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <StatCard
-              label="📦 Ingresados"
-              value={totals.total.toLocaleString("es-PE")}
+              label="📦 Pedidos Ingresados"
+              value={totals.pedidosIngresados.toLocaleString("es-PE")}
               sub={`${guardadosCount} guardados · ${automaticosCount} automáticos`}
             />
             <StatCard
@@ -157,7 +168,8 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
                   <TableHeader>
                     <TableRow>
                       <TableHead>Fecha</TableHead>
-                      <TableHead className="text-center">Ingresados</TableHead>
+                      <TableHead className="text-center">Pedidos Ingresados</TableHead>
+                      <TableHead className="text-center">Gestionados</TableHead>
                       <TableHead className="text-center">Confirm.</TableHead>
                       <TableHead className="text-center">Entregados</TableHead>
                       <TableHead className="text-center">Anulados</TableHead>
@@ -172,11 +184,11 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
                   <TableBody>
                     {isLoading ? (
                       <TableRow>
-                        <TableCell colSpan={11} className="text-center py-6 text-muted-foreground">Cargando...</TableCell>
+                        <TableCell colSpan={12} className="text-center py-6 text-muted-foreground">Cargando...</TableCell>
                       </TableRow>
                     ) : records.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={11} className="text-center py-6 text-muted-foreground">
+                        <TableCell colSpan={12} className="text-center py-6 text-muted-foreground">
                           No hay pedidos ni días guardados este mes.
                         </TableCell>
                       </TableRow>
@@ -186,7 +198,8 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
                         return (
                           <TableRow key={r.date}>
                             <TableCell className="font-medium">{formatDate(r.date, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
-                            <TableCell className="text-center font-bold">{met.total}</TableCell>
+                            <TableCell className="text-center font-bold">{autoByDate.get(r.date)?.pedidosIngresados ?? 0}</TableCell>
+                            <TableCell className="text-center text-muted-foreground font-semibold">{met.total}</TableCell>
                             <TableCell className="text-center">{r.confirmado + r.despachado + r.entregado}</TableCell>
                             <TableCell className="text-center text-green-700 dark:text-green-400">{r.entregado}</TableCell>
                             <TableCell className="text-center text-red-600 dark:text-red-400">{r.anulado}</TableCell>

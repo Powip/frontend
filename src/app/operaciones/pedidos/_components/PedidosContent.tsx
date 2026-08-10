@@ -429,7 +429,12 @@ export function PedidosContent() {
   );
 
   const handleAddToGuideConfirm = useCallback(
-    async (guideId: string, guideNumber: string) => {
+    async (
+      guideId: string,
+      guideNumber: string,
+      guideStatus: string,
+      courierName?: string | null,
+    ) => {
       const selected = addToGuideOrders ?? [];
       if (selected.length === 0) return;
       setIsAddingToGuide(true);
@@ -437,8 +442,18 @@ export function PedidosContent() {
         await axios.post(`${API_COURIER}/shipping-guides/${guideId}/orders`, {
           orderIds: selected.map((s) => s.id),
         });
+        // BUG: AddToExistingGuideModal deja elegir guías CREADA, ASIGNADA
+        // *o EN_RUTA* (ya aprobadas y despachadas), pero el botón "Aprobar
+        // Guía" de GuideDetailsModal solo aparece para guías CREADA/
+        // ASIGNADA. Un pedido agregado a una guía ya EN_RUTA quedaba en
+        // ASIGNADO_A_GUIA sin ningún botón que lo pase a EN_ENVIO —
+        // trabado en "Por Despachar" en vez de "En Camino" (reportado: "se
+        // asignó a guía, no aparece en En Camino, hubo que cambiarlo a
+        // mano"). Si la guía ya está despachada, el pedido nuevo se
+        // despacha directo a EN_ENVIO, igual que hace la aprobación normal.
+        const guideAlreadyDispatched = guideStatus !== "CREADA" && guideStatus !== "ASIGNADA";
         for (const sale of selected) {
-          if (sale.status === "PREPARADO") {
+          if (!guideAlreadyDispatched && sale.status === "PREPARADO") {
             await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
               status: "LLAMADO",
               ...getUserInfo(),
@@ -446,11 +461,16 @@ export function PedidosContent() {
           }
           await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
             guideNumber,
-            status: "ASIGNADO_A_GUIA",
+            status: guideAlreadyDispatched ? "EN_ENVIO" : "ASIGNADO_A_GUIA",
+            ...(guideAlreadyDispatched ? { courier: courierName ?? undefined } : {}),
             ...getUserInfo(),
           });
         }
-        toast.success(`${selected.length} pedido(s) agregados a la guía ${guideNumber}`);
+        toast.success(
+          guideAlreadyDispatched
+            ? `${selected.length} pedido(s) agregados a la guía ${guideNumber} y despachados`
+            : `${selected.length} pedido(s) agregados a la guía ${guideNumber}`,
+        );
         setAddToGuideOrders(null);
         fetchOrders();
         setGuideSale(selected[0]);

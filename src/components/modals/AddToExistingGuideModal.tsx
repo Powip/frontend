@@ -48,7 +48,12 @@ interface AddToExistingGuideModalProps {
   onClose: () => void;
   selectedOrders: SelectedOrder[];
   storeId: string;
-  onConfirm: (guideId: string, guideNumber: string) => Promise<void>;
+  onConfirm: (
+    guideId: string,
+    guideNumber: string,
+    guideStatus: string,
+    courierName?: string | null,
+  ) => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -134,7 +139,7 @@ export default function AddToExistingGuideModal({
     if (!selectedGuideId) return;
     const guide = guides.find((g) => g.id === selectedGuideId);
     if (guide) {
-      await onConfirm(guide.id, guide.guideNumber);
+      await onConfirm(guide.id, guide.guideNumber, guide.status, guide.courierName);
     }
   };
 
