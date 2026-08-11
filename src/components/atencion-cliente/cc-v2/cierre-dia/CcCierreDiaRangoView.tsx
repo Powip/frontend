@@ -95,12 +95,15 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
       costo += r.costo;
       margenNeto += m.margenNeto;
     });
-    // Pedidos Ingresados se suma aparte, desde `closingData.byDay` — es un
-    // cohorte por fecha de creación, distinto del embudo de arriba (que
-    // agrupa por fecha de última actualización, ver BUG CONFIRMADO en
-    // cierreDiaProductosService.ts). No tiene por qué coincidir con `total`.
+    // Pedidos Ingresados se suma aparte — es un cohorte por fecha de
+    // creación, distinto del embudo de arriba (que agrupa por fecha de
+    // última actualización, ver BUG CONFIRMADO en cierreDiaProductosService.ts).
+    // No tiene por qué coincidir con `total`. Prioriza lo confirmado a mano
+    // (effectiveByDate ya resuelve manual vs. auto — ver toEffectiveRecord)
+    // y cae al valor en vivo solo si no hay ningún registro para ese día.
     dates.forEach((ds) => {
-      pedidosIngresados += autoByDate.get(ds)?.pedidosIngresados ?? 0;
+      pedidosIngresados +=
+        effectiveByDate.get(ds)?.pedidosIngresados ?? autoByDate.get(ds)?.pedidosIngresados ?? 0;
     });
     return { total, confirmados, anulados, ingreso, publi, costo, margenNeto, pedidosIngresados };
   }, [effectiveByDate, dates, autoByDate]);
@@ -146,7 +149,8 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
                   <TableBody>
                     {dates.map((ds) => {
                       const r = effectiveByDate.get(ds);
-                      const pedidosIngresadosDia = autoByDate.get(ds)?.pedidosIngresados ?? 0;
+                      const pedidosIngresadosDia =
+                        r?.pedidosIngresados ?? autoByDate.get(ds)?.pedidosIngresados ?? 0;
                       if (!r) {
                         return (
                           <TableRow key={ds} className="opacity-60">

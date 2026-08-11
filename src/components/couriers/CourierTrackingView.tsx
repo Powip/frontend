@@ -146,7 +146,7 @@ function TrackingInputCells({
   onSaved,
 }: {
   order: OrderHeader;
-  onSaved: () => void;
+  onSaved: (orderId: string, patch: Partial<Record<TrackingFieldKey, string | null>>) => void;
 }) {
   const original = trackingValuesOf(order);
   const [values, setValues] = useState<Record<TrackingFieldKey, string>>(original);
@@ -174,7 +174,11 @@ function TrackingInputCells({
       });
       await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${order.id}`, payload);
       toast.success("Tracking guardado");
-      onSaved();
+      // Actualiza el estado local en vez de refetchear todo — un refetch acá
+      // ponía la tabla entera en loading (skeleton) cada vez que se
+      // autoguardaba un campo, perdiendo el foco/valores de otras filas que
+      // se estuvieran editando al mismo tiempo.
+      onSaved(order.id, payload);
     } catch {
       toast.error("No se pudo guardar el tracking");
     } finally {
@@ -294,6 +298,17 @@ export default function CourierTrackingView() {
       setOrdersLoading(false);
     }
   }, [selectedStoreId]);
+
+  // Aplica el resultado de un autoguardado de tracking sin refetchear toda
+  // la lista (evita el parpadeo de loading en la tabla completa).
+  const applyTrackingPatch = useCallback(
+    (orderId: string, patch: Partial<Record<TrackingFieldKey, string | null>>) => {
+      setOrders((prev) =>
+        prev.map((o) => (o.id === orderId ? { ...o, ...patch } : o)),
+      );
+    },
+    [],
+  );
 
   useEffect(() => {
     fetchGuides();
@@ -626,6 +641,7 @@ export default function CourierTrackingView() {
               dispatchDateByOrderId={dispatchDateByOrderId}
               loading={ordersLoading}
               onRefresh={fetchOrders}
+              onTrackingSaved={applyTrackingPatch}
               onView={setViewOrderId}
             />
           </TabsContent>
@@ -815,7 +831,7 @@ export default function CourierTrackingView() {
                                 ? money(Number(order.carrierShippingCost))
                                 : "-"}
                             </TableCell>
-                            <TrackingInputCells order={order} onSaved={fetchOrders} />
+                            <TrackingInputCells order={order} onSaved={applyTrackingPatch} />
                             <TableCell className="px-4 py-3 text-right">
                               <div className="flex items-center justify-end gap-1">
                                 <Button
@@ -1036,6 +1052,7 @@ function CourierOrdersTab({
   dispatchDateByOrderId,
   loading,
   onRefresh,
+  onTrackingSaved,
   onView,
 }: {
   courierName: string;
@@ -1043,6 +1060,7 @@ function CourierOrdersTab({
   dispatchDateByOrderId: Map<string, string>;
   loading: boolean;
   onRefresh: () => void;
+  onTrackingSaved: (orderId: string, patch: Partial<Record<TrackingFieldKey, string | null>>) => void;
   onView: (orderId: string) => void;
 }) {
   const [search, setSearch] = useState("");
@@ -1283,7 +1301,7 @@ function CourierOrdersTab({
                       <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
                         {order.carrierShippingCost ? money(Number(order.carrierShippingCost)) : "-"}
                       </TableCell>
-                      <TrackingInputCells order={order} onSaved={onRefresh} />
+                      <TrackingInputCells order={order} onSaved={onTrackingSaved} />
                       <TableCell className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button

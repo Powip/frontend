@@ -20,6 +20,14 @@ export interface CierreDiaFunnel {
 export interface CierreDiaRecord extends CierreDiaFunnel {
   storeId: string;
   date: string; // YYYY-MM-DD
+  /**
+   * Pedidos CREADOS ese día (cohorte por created_at, no por estado) —
+   * confirmable a mano para ajustar por duplicados u otros casos que el
+   * conteo automático no puede distinguir. Ver `pedidosIngresados` en
+   * `CierreDiaDayTotals` (cierreDiaProductosService.ts) para el valor
+   * autocompletado de referencia.
+   */
+  pedidosIngresados: number;
   ingreso: number;
   costo: number;
   publiMeta: number;
@@ -31,6 +39,7 @@ export interface CierreDiaRecord extends CierreDiaFunnel {
 }
 
 export interface CierreDiaFormInput extends CierreDiaFunnel {
+  pedidosIngresados: number;
   ingreso: number;
   costo: number;
   publiMeta: number;

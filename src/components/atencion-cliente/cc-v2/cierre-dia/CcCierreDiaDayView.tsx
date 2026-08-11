@@ -97,7 +97,10 @@ function CcCierreDiaDayContent({
   // Pedidos CREADOS hoy (cohorte por created_at) — distinto de `m.total`,
   // que es el embudo agrupado por fecha de última actualización (ver BUG
   // CONFIRMADO en cierreDiaProductosService.ts). No tienen por qué coincidir.
-  const pedidosIngresados = closingData?.byDay.find((d) => d.date === date)?.pedidosIngresados ?? 0;
+  // `record.pedidosIngresados` ya resuelve guardado a mano vs. detectado en
+  // vivo (ver toEffectiveRecord) — así el número confirmado (ajustado por
+  // duplicados, por ejemplo) es el mismo acá que en el modal de edición.
+  const pedidosIngresados = record.pedidosIngresados;
   const saveMutation = useSaveCierreDia(storeId);
   const [cpvValues, setCpvValues] = useState<CpvValues>({
     publiMeta: record.publiMeta,
@@ -127,6 +130,7 @@ function CcCierreDiaDayContent({
       await saveMutation.mutateAsync({
         date,
         input: {
+          pedidosIngresados: record.pedidosIngresados,
           porConfirmar: record.porConfirmar,
           contactado: record.contactado,
           noContesta: record.noContesta,

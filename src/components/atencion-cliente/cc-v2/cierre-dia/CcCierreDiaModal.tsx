@@ -13,7 +13,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { toast } from "sonner";
 import { CalendarDays, Loader2, Sparkles } from "lucide-react";
@@ -25,7 +29,14 @@ import {
   useSaveCierreDia,
 } from "@/hooks/useCierreDia";
 import { CierreDiaFormInput } from "@/interfaces/ICierreDia";
-import { EMPTY_FUNNEL, formatCurrency, formatDate, FUNNEL_STATES, todayISO, toEffectiveRecord } from "./cierreDiaUtils";
+import {
+  EMPTY_FUNNEL,
+  formatCurrency,
+  formatDate,
+  FUNNEL_STATES,
+  todayISO,
+  toEffectiveRecord,
+} from "./cierreDiaUtils";
 
 interface Props {
   storeId: string;
@@ -56,24 +67,42 @@ function lastDayOfMonth(monthStr: string): string {
 function daysInMonth(monthStr: string): string[] {
   const [y, m] = monthStr.split("-").map(Number);
   const total = new Date(y, m, 0).getDate();
-  return Array.from({ length: total }, (_, i) => `${monthStr}-${String(i + 1).padStart(2, "0")}`);
+  return Array.from(
+    { length: total },
+    (_, i) => `${monthStr}-${String(i + 1).padStart(2, "0")}`,
+  );
 }
 
-export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange }: Props) {
+export function CcCierreDiaModal({
+  storeId,
+  date,
+  onClose,
+  onSaved,
+  onDateChange,
+}: Props) {
   const open = !!date;
-  const { data: manualRecord, isLoading: isLoadingManual } = useCierreDiaDay(storeId, date ?? "");
-  const { data: closingData, isLoading: isLoadingClosing } = useCierreDiaClosingDataDay(storeId, date ?? "");
+  const { data: manualRecord, isLoading: isLoadingManual } = useCierreDiaDay(
+    storeId,
+    date ?? "",
+  );
+  const { data: closingData, isLoading: isLoadingClosing } =
+    useCierreDiaClosingDataDay(storeId, date ?? "");
   const saveMutation = useSaveCierreDia(storeId);
 
   // Mes que se está viendo en el calendario del popover — arranca en el mes
   // de `date` y solo cambia si el usuario navega el calendario (no depende
   // de la fecha que se está editando en el formulario).
-  const [viewMonth, setViewMonth] = useState(() => (date ?? todayISO()).slice(0, 7));
+  const [viewMonth, setViewMonth] = useState(() =>
+    (date ?? todayISO()).slice(0, 7),
+  );
   useEffect(() => {
     if (date) setViewMonth(date.slice(0, 7));
   }, [date]);
 
-  const { data: monthManualRecords = [] } = useCierreDiaMonth(storeId, viewMonth);
+  const { data: monthManualRecords = [] } = useCierreDiaMonth(
+    storeId,
+    viewMonth,
+  );
   const { data: monthClosingData } = useCierreDiaClosingDataRange(
     storeId,
     `${viewMonth}-01`,
@@ -85,11 +114,21 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
   // regularizar sin tener que ir a buscarlos en Rango/Mes.
   const noCargadoDates = useMemo(() => {
     const manualByDate = new Map(monthManualRecords.map((r) => [r.date, r]));
-    const autoByDate = new Map((monthClosingData?.byDay ?? []).map((d) => [d.date, d]));
+    const autoByDate = new Map(
+      (monthClosingData?.byDay ?? []).map((d) => [d.date, d]),
+    );
     const today = todayISO();
     return daysInMonth(viewMonth)
       .filter((ds) => ds <= today)
-      .filter((ds) => !toEffectiveRecord(storeId, ds, manualByDate.get(ds), autoByDate.get(ds)))
+      .filter(
+        (ds) =>
+          !toEffectiveRecord(
+            storeId,
+            ds,
+            manualByDate.get(ds),
+            autoByDate.get(ds),
+          ),
+      )
       .map((ds) => new Date(`${ds}T00:00:00`));
   }, [viewMonth, monthManualRecords, monthClosingData, storeId]);
 
@@ -100,10 +139,13 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
   const isLoadingAuto = (isLoadingManual || isLoadingClosing) && !manualRecord;
 
   const autoDay = closingData?.byDay.find((d) => d.date === date);
-  const effective = date ? toEffectiveRecord(storeId, date, manualRecord, autoDay) : undefined;
+  const effective = date
+    ? toEffectiveRecord(storeId, date, manualRecord, autoDay)
+    : undefined;
 
   const [form, setForm] = useState<CierreDiaFormInput>({
     ...EMPTY_FUNNEL,
+    pedidosIngresados: 0,
     ingreso: 0,
     costo: 0,
     publiMeta: 0,
@@ -113,12 +155,14 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
   });
 
   // Precarga con lo guardado a mano si existe; si no, con lo autocompletado
-  // desde los pedidos reales del día (embudo/ingreso/costo/upsells) — el
-  // gasto publicitario siempre arranca en 0 porque nunca se autocompleta.
+  // desde los pedidos reales del día (embudo/ingreso/costo/upsells/pedidos
+  // ingresados) — el gasto publicitario siempre arranca en 0 porque nunca
+  // se autocompleta.
   useEffect(() => {
     if (!open) return;
     if (effective) {
       setForm({
+        pedidosIngresados: effective.pedidosIngresados,
         porConfirmar: effective.porConfirmar,
         contactado: effective.contactado,
         noContesta: effective.noContesta,
@@ -136,6 +180,7 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
     } else {
       setForm({
         ...EMPTY_FUNNEL,
+        pedidosIngresados: 0,
         ingreso: 0,
         costo: 0,
         publiMeta: 0,
@@ -169,12 +214,26 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
           <DialogTitle>✏️ Ingresar / Editar datos del día</DialogTitle>
           <div className="flex items-center justify-between gap-2">
             <DialogDescription>
-              Fecha: <b className="text-foreground">{date ? formatDate(date, { weekday: "long", day: "2-digit", month: "long", year: "numeric" }) : "—"}</b>
+              Fecha:{" "}
+              <b className="text-foreground">
+                {date
+                  ? formatDate(date, {
+                      weekday: "long",
+                      day: "2-digit",
+                      month: "long",
+                      year: "numeric",
+                    })
+                  : "—"}
+              </b>
             </DialogDescription>
             {onDateChange && (
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button variant="outline" size="sm" className="relative h-7 shrink-0 gap-1.5 text-xs">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="relative h-7 shrink-0 gap-1.5 text-xs"
+                  >
                     <CalendarDays className="h-3.5 w-3.5" />
                     Elegir otro día
                     {noCargadoDates.length > 0 && (
@@ -189,7 +248,9 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
                     mode="single"
                     locale={es}
                     month={new Date(`${viewMonth}-01T00:00:00`)}
-                    onMonthChange={(d) => setViewMonth(toLocalISO(d).slice(0, 7))}
+                    onMonthChange={(d) =>
+                      setViewMonth(toLocalISO(d).slice(0, 7))
+                    }
                     selected={date ? new Date(`${date}T00:00:00`) : undefined}
                     onSelect={(d) => d && onDateChange(toLocalISO(d))}
                     disabled={{ after: new Date() }}
@@ -218,15 +279,46 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
           <div className="flex items-start gap-2 rounded-lg bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
             <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5" />
             <span>
-              Precargado automáticamente desde los pedidos reales del día. Revisá los números y
-              cargá el gasto publicitario antes de guardar.
+              Precargado automáticamente desde los pedidos reales del día.
+              Revisá los números y cargá el gasto publicitario antes de guardar.
             </span>
           </div>
         ) : !effective && open ? (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
-            No hay pedidos COD registrados para esta fecha — cargá los datos manualmente.
+            No hay pedidos COD registrados para esta fecha — cargá los datos
+            manualmente.
           </div>
         ) : null}
+
+        <div>
+          <p className="text-xs font-bold uppercase tracking-wide text-teal-600 dark:text-teal-400 mb-2">
+            📥 Pedidos ingresados
+          </p>
+          <div className="flex flex-col gap-1 max-w-[160px]">
+            <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              Pedidos ingresados
+            </Label>
+            <Input
+              type="number"
+              min={0}
+              value={form.pedidosIngresados || ""}
+              placeholder="0"
+              onChange={(e) =>
+                setForm((f) => ({
+                  ...f,
+                  pedidosIngresados: toNumber(e.target.value),
+                }))
+              }
+            />
+            {autoDay &&
+              autoDay.pedidosIngresados !== form.pedidosIngresados && (
+                <p className="text-[10px] text-muted-foreground">
+                  Detectados automáticamente: {autoDay.pedidosIngresados}.
+                  Ajustá si hubo duplicados u otros casos a descontar.
+                </p>
+              )}
+          </div>
+        </div>
 
         <div>
           <p className="text-xs font-bold uppercase tracking-wide text-teal-600 dark:text-teal-400 mb-2">
@@ -244,7 +336,10 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
                   value={form[s.key] || ""}
                   placeholder="0"
                   onChange={(e) =>
-                    setForm((f) => ({ ...f, [s.key]: toNumber(e.target.value) }))
+                    setForm((f) => ({
+                      ...f,
+                      [s.key]: toNumber(e.target.value),
+                    }))
                   }
                 />
               </div>
@@ -267,7 +362,9 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
                 step="0.01"
                 value={form.ingreso || ""}
                 placeholder="0.00"
-                onChange={(e) => setForm((f) => ({ ...f, ingreso: toNumber(e.target.value) }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, ingreso: toNumber(e.target.value) }))
+                }
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -280,7 +377,9 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
                 step="0.01"
                 value={form.costo || ""}
                 placeholder="0.00"
-                onChange={(e) => setForm((f) => ({ ...f, costo: toNumber(e.target.value) }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, costo: toNumber(e.target.value) }))
+                }
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -292,7 +391,9 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
                 min={0}
                 value={form.upsells || ""}
                 placeholder="0"
-                onChange={(e) => setForm((f) => ({ ...f, upsells: toNumber(e.target.value) }))}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, upsells: toNumber(e.target.value) }))
+                }
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -305,7 +406,12 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
                 step="0.01"
                 value={form.publiMeta || ""}
                 placeholder="0.00"
-                onChange={(e) => setForm((f) => ({ ...f, publiMeta: toNumber(e.target.value) }))}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    publiMeta: toNumber(e.target.value),
+                  }))
+                }
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -318,7 +424,12 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
                 step="0.01"
                 value={form.publiTiktok || ""}
                 placeholder="0.00"
-                onChange={(e) => setForm((f) => ({ ...f, publiTiktok: toNumber(e.target.value) }))}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    publiTiktok: toNumber(e.target.value),
+                  }))
+                }
               />
             </div>
             <div className="flex flex-col gap-1">
@@ -331,7 +442,12 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
                 step="0.01"
                 value={form.publiGoogle || ""}
                 placeholder="0.00"
-                onChange={(e) => setForm((f) => ({ ...f, publiGoogle: toNumber(e.target.value) }))}
+                onChange={(e) =>
+                  setForm((f) => ({
+                    ...f,
+                    publiGoogle: toNumber(e.target.value),
+                  }))
+                }
               />
             </div>
           </div>
@@ -342,7 +458,8 @@ export function CcCierreDiaModal({ storeId, date, onClose, onSaved, onDateChange
             💡 Margen neto = Ingreso − Costo − (Meta + TikTok + Google)
           </span>
           <span className="font-bold text-teal-600 dark:text-teal-400 whitespace-nowrap">
-            Total publi: {formatCurrency(publiTotal)} · Margen neto: {formatCurrency(margenNeto)}
+            Total publi: {formatCurrency(publiTotal)} · Margen neto:{" "}
+            {formatCurrency(margenNeto)}
           </span>
         </div>
 

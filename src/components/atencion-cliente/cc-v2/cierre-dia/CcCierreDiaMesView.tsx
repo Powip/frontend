@@ -82,7 +82,7 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
   const automaticosCount = records.filter((r) => r.isAuto).length;
 
   const totals = useMemo(() => {
-    let total = 0, confirmados = 0, entregados = 0, anulados = 0, ingreso = 0, publi = 0, margenNeto = 0, upsells = 0;
+    let total = 0, confirmados = 0, entregados = 0, anulados = 0, ingreso = 0, publi = 0, margenNeto = 0, upsells = 0, pedidosIngresados = 0;
     records.forEach((r) => {
       const met = computeMetrics(r);
       total += met.total;
@@ -93,14 +93,14 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
       publi += met.publi;
       margenNeto += met.margenNeto;
       upsells += r.upsells;
+      // Cohorte por fecha de creación, distinto del embudo (agrupado por
+      // última actualización, ver BUG CONFIRMADO en
+      // cierreDiaProductosService.ts) — `r.pedidosIngresados` ya prioriza lo
+      // confirmado a mano sobre lo detectado en vivo (ver toEffectiveRecord).
+      pedidosIngresados += r.pedidosIngresados;
     });
-    // Pedidos Ingresados se suma aparte, desde `closingData.byDay` — es un
-    // cohorte por fecha de creación, distinto del embudo de arriba (que
-    // agrupa por fecha de última actualización, ver BUG CONFIRMADO en
-    // cierreDiaProductosService.ts). No tiene por qué coincidir con `total`.
-    const pedidosIngresados = [...autoByDate.values()].reduce((s, d) => s + d.pedidosIngresados, 0);
     return { total, confirmados, entregados, anulados, ingreso, publi, margenNeto, upsells, pedidosIngresados };
-  }, [records, autoByDate]);
+  }, [records]);
 
   async function handleDelete(date: string) {
     await deleteMutation.mutateAsync(date);
@@ -198,7 +198,7 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
                         return (
                           <TableRow key={r.date}>
                             <TableCell className="font-medium">{formatDate(r.date, { weekday: "short", day: "2-digit", month: "short" })}</TableCell>
-                            <TableCell className="text-center font-bold">{autoByDate.get(r.date)?.pedidosIngresados ?? 0}</TableCell>
+                            <TableCell className="text-center font-bold">{r.pedidosIngresados}</TableCell>
                             <TableCell className="text-center text-muted-foreground font-semibold">{met.total}</TableCell>
                             <TableCell className="text-center">{r.confirmado + r.despachado + r.entregado}</TableCell>
                             <TableCell className="text-center text-green-700 dark:text-green-400">{r.entregado}</TableCell>

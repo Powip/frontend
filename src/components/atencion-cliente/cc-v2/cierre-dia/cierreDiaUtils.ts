@@ -74,11 +74,24 @@ export function toEffectiveRecord(
   manual: CierreDiaRecord | null | undefined,
   auto: CierreDiaDayTotals | undefined,
 ): CierreDiaEffectiveRecord | undefined {
-  if (manual) return { ...manual, isAuto: false };
-  if (auto && funnelTotal(auto) > 0) {
+  // `manual.pedidosIngresados` puede venir undefined en registros guardados
+  // antes de que este campo existiera — se completa con el valor en vivo
+  // como mejor referencia disponible en vez de dejarlo en blanco/NaN.
+  if (manual) {
+    return {
+      ...manual,
+      pedidosIngresados: manual.pedidosIngresados ?? auto?.pedidosIngresados ?? 0,
+      isAuto: false,
+    };
+  }
+  // También cuenta como "hay algo que mostrar" si entraron pedidos ese día
+  // aunque el embudo (agrupado por última actualización) haya quedado en 0
+  // — ver BUG CONFIRMADO en cierreDiaProductosService.ts.
+  if (auto && (funnelTotal(auto) > 0 || auto.pedidosIngresados > 0)) {
     return {
       storeId,
       date,
+      pedidosIngresados: auto.pedidosIngresados,
       porConfirmar: auto.porConfirmar,
       contactado: auto.contactado,
       noContesta: auto.noContesta,
