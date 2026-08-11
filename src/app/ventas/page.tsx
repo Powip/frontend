@@ -401,10 +401,16 @@ export default function VentasPage() {
   useEffect(() => {
     if (!ordersData) return;
 
-    const sorted = [...ordersData].sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
+    // INCOMPLETE = carrito/checkout que nunca se terminó (con errores de
+    // sync, se repara en Atención al Cliente › Pedidos con errores) — no es
+    // una venta real, así que no debe listarse acá (se colaba en "Todas"
+    // porque `sales` no filtraba por status).
+    const sorted = [...ordersData]
+      .filter((o) => o.status !== "INCOMPLETE")
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
     const mappedSales = sorted.map(mapOrderToSale);
     setSales(mappedSales);
 

@@ -128,8 +128,15 @@ export function PedidosContent() {
   // Pedidos (a diferencia del Tablero) solo trabaja pedidos que ya entraron
   // al pipeline de despacho — un PENDIENTE todavía no fue preparado por
   // almacén, así que no debe listarse ni contar acá (sigue siendo un pedido
-  // de Ventas, no de Operaciones, hasta que se prepare).
-  const visibleOrders = useMemo(() => orders.filter((o) => o.status !== "PENDIENTE"), [orders]);
+  // de Ventas, no de Operaciones, hasta que se prepare). INCOMPLETE tampoco
+  // — es un carrito/checkout que nunca se terminó (con errores de sync, se
+  // gestiona aparte en Atención al Cliente › Pedidos con errores), no un
+  // pedido real; sin este filtro caía por el fallback de getPedidosTab
+  // directo a "Por Despachar", mezclado con pedidos listos para despachar.
+  const visibleOrders = useMemo(
+    () => orders.filter((o) => o.status !== "PENDIENTE" && o.status !== "INCOMPLETE"),
+    [orders],
+  );
 
   const tabCounts = useMemo(() => countByTab(visibleOrders), [visibleOrders]);
 

@@ -159,6 +159,20 @@ function extractLatLngFromGoogleMapsUrl(
   return null;
 }
 
+/** Default: hoy + 24 hs, solo fecha (sin hora). */
+function defaultScheduledDateValue(): string {
+  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+/** ISO (UTC) → valor para <input type="date"> en fecha local (sin hora). */
+function isoToDateValue(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 const emptyClientForm = {
   fullName: "",
   phoneNumber: "",
@@ -235,6 +249,16 @@ function RegistrarVentaContent() {
     notes: "",
   });
   const [salesRegion, setSalesRegion] = useState<"LIMA" | "PROVINCIA">("LIMA");
+
+  /* ---------------- Programar envío ----------------
+     Mismo mecanismo que "Reprogramar" en Pedidos (RescheduleDialog /
+     handleRescheduleConfirm en PedidosContent.tsx): PATCH con
+     `callbackAt` + `callStatus: "SCHEDULED"`. Acá se aplica automáticamente
+     apenas se crea la orden — sin ese paso manual extra — para que el
+     pedido no aparezca en "Por Despachar" de hoy sino recién ese día,
+     marcado como Reprogramado. */
+  const [scheduleDelivery, setScheduleDelivery] = useState(false);
+  const [scheduledDeliveryDate, setScheduledDeliveryDate] = useState("");
 
   /* ---------------- Ubigeo Options ---------------- */
   const departmentOptions = useMemo(() => {
@@ -384,6 +408,15 @@ function RegistrarVentaContent() {
     });
 
     setSalesRegion(orderData.salesRegion);
+
+    // --- Programar envío (si el pedido ya venía reprogramado) ---
+    if (orderData.callStatus === "SCHEDULED" && orderData.callbackAt) {
+      setScheduleDelivery(true);
+      setScheduledDeliveryDate(isoToDateValue(orderData.callbackAt));
+    } else {
+      setScheduleDelivery(false);
+      setScheduledDeliveryDate("");
+    }
 
     // --- Costo de envío ---
     const shippingValue = Number(orderData.shippingTotal) || 0;
@@ -697,6 +730,8 @@ function RegistrarVentaContent() {
       notes: "",
     });
     setSalesRegion("LIMA");
+    setScheduleDelivery(false);
+    setScheduledDeliveryDate("");
 
     // Pagos
     setPaymentMethod("");
@@ -1003,6 +1038,17 @@ function RegistrarVentaContent() {
         ...(metaPubliId.trim() ? { metaPubliId: metaPubliId.trim() } : {}),
       };
 
+      // Si se programó el envío para otra fecha, se aplica el mismo
+      // mecanismo que "Reprogramar" en Pedidos (callbackAt + callStatus
+      // SCHEDULED) — automático acá, sin el paso manual de ir a reprogramar
+      // después de crear la venta.
+      // Se ancla al mediodía local (no medianoche) para que la conversión a
+      // UTC nunca corra la fecha elegida al día anterior/siguiente.
+      const scheduledCallbackAt =
+        scheduleDelivery && scheduledDeliveryDate
+          ? new Date(`${scheduledDeliveryDate}T12:00:00`).toISOString()
+          : null;
+
       try {
         if (!orderData) {
           const response = await axiosAuth.post(
@@ -1035,7 +1081,23 @@ function RegistrarVentaContent() {
             }
           }
 
-          toast.success("Venta registrada");
+          if (scheduledCallbackAt) {
+            try {
+              await axiosAuth.patch(
+                `${GATEWAY.ventas}/order-header/${createdOrderId}`,
+                { callbackAt: scheduledCallbackAt, callStatus: "SCHEDULED" },
+              );
+              toast.success(
+                `Venta registrada y reprogramada para el ${new Date(scheduledCallbackAt).toLocaleDateString("es-PE")}`,
+              );
+            } catch {
+              toast.warning(
+                "Venta registrada, pero no se pudo programar la fecha de envío",
+              );
+            }
+          } else {
+            toast.success("Venta registrada");
+          }
           setReceiptOrderId(createdOrderId);
           setReceiptOpen(true);
           resetForm();
@@ -1071,6 +1133,12 @@ function RegistrarVentaContent() {
             paymentMethod: paymentMethod || null,
             paymentAmount: advancePayment,
             sellerName: sellerDisplayName || null,
+            // Solo se toca si se activó/mantuvo el toggle acá — si se
+            // desactiva al editar no se limpia automáticamente, para no
+            // pisar callStatus si lo estaba usando el flujo de llamadas.
+            ...(scheduledCallbackAt
+              ? { callbackAt: scheduledCallbackAt, callStatus: "SCHEDULED" }
+              : {}),
           };
 
           await axiosAuth.put(
@@ -1444,7 +1512,8 @@ function RegistrarVentaContent() {
                         placeholder="Número de teléfono"
                         value={clientForm.phoneNumber}
                         className={cn(
-                          isFound && "border-green-500 focus-visible:ring-green-500",
+                          isFound &&
+                            "border-green-500 focus-visible:ring-green-500",
                           (isNotFound || isSearchError) &&
                             "border-amber-400 focus-visible:ring-amber-400",
                         )}
@@ -1493,12 +1562,14 @@ function RegistrarVentaContent() {
                     )}
                     {!loadingClient && isNotFound && (
                       <p className="text-xs text-amber-700 dark:text-amber-400">
-                        Cliente no encontrado. Completa los datos para crear uno nuevo.
+                        Cliente no encontrado. Completa los datos para crear uno
+                        nuevo.
                       </p>
                     )}
                     {!loadingClient && isSearchError && (
                       <p className="text-xs text-destructive">
-                        No se pudo buscar el cliente. Intenta de nuevo o completa los datos manualmente.
+                        No se pudo buscar el cliente. Intenta de nuevo o
+                        completa los datos manualmente.
                       </p>
                     )}
                   </div>
@@ -1921,14 +1992,15 @@ function RegistrarVentaContent() {
                     </Disclosure>
 
                     {/* Acciones */}
-                    {(isNotFound || isSearchError) && clientForm.fullName.trim() && (
-                      <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-500/10 dark:text-blue-300">
-                        <span>ℹ️</span>
-                        <span>
-                          Se creará un nuevo cliente al confirmar la venta.
-                        </span>
-                      </div>
-                    )}
+                    {(isNotFound || isSearchError) &&
+                      clientForm.fullName.trim() && (
+                        <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-500/10 dark:text-blue-300">
+                          <span>ℹ️</span>
+                          <span>
+                            Se creará un nuevo cliente al confirmar la venta.
+                          </span>
+                        </div>
+                      )}
 
                     {isFound && hasClientChanges && (
                       <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
@@ -2117,208 +2189,6 @@ function RegistrarVentaContent() {
                     onChangeGift={packsEngine.changeGift}
                     onGiftCancel={packsEngine.giftCancel}
                   />
-                </CardContent>
-              </Card>
-
-              {/* Detalles */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>
-                    <SectionTitle icon={ClipboardList}>
-                      Detalles de la venta
-                    </SectionTitle>
-                  </CardTitle>
-                </CardHeader>
-
-                <CardContent className="space-y-4">
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {/* Tipo de orden */}
-                    <div className="space-y-1">
-                      <Label>
-                        Tipo de orden{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Select
-                        disabled={isSubmitting}
-                        value={orderDetails.orderType ?? ""}
-                        onValueChange={(v) =>
-                          setOrderDetails({
-                            ...orderDetails,
-                            orderType: v as OrderType,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar tipo de orden" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={OrderType.VENTA}>Venta</SelectItem>
-                          <SelectItem value={OrderType.CAMBIO}>
-                            Cambio
-                          </SelectItem>
-                          <SelectItem value={OrderType.RESERVA}>
-                            Reserva
-                          </SelectItem>
-                          <SelectItem value={OrderType.PREVENTA}>
-                            Preventa
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Canal de venta */}
-                    <div className="space-y-1">
-                      <Label>
-                        Canal de venta{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Select
-                        disabled={isSubmitting}
-                        value={orderDetails.salesChannel ?? ""}
-                        onValueChange={(v) =>
-                          setOrderDetails({
-                            ...orderDetails,
-                            salesChannel: v as any,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar canal de venta" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {salesChannels.map((channel: string) => (
-                            <SelectItem key={channel} value={channel}>
-                              {channel.replace(/_/g, " ")}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Canal de cierre */}
-                    <div className="space-y-1">
-                      <Label>
-                        Canal de cierre{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Select
-                        disabled={isSubmitting}
-                        value={orderDetails.closingChannel ?? ""}
-                        onValueChange={(v) =>
-                          setOrderDetails({
-                            ...orderDetails,
-                            closingChannel: v as any,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar canal de cierre" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {closingChannels.map((channel: string) => (
-                            <SelectItem key={channel} value={channel}>
-                              {channel.replace(/_/g, " ")}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Tipo de entrega */}
-                    <div className="space-y-1">
-                      <Label>
-                        Tipo de entrega{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Select
-                        disabled={isSubmitting}
-                        value={orderDetails.deliveryType ?? ""}
-                        onValueChange={(v) =>
-                          setOrderDetails({
-                            ...orderDetails,
-                            deliveryType: v as DeliveryType,
-                            enviaPor: undefined,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar tipo de entrega" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={DeliveryType.RETIRO_TIENDA}>
-                            Retiro en tienda
-                          </SelectItem>
-                          <SelectItem value={DeliveryType.DOMICILIO}>
-                            Envío a domicilio
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Método de envío */}
-                    {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
-                      <div className="md:col-span-2 space-y-1">
-                        <Label>
-                          Método de envío{" "}
-                          <span className="text-destructive">*</span>
-                        </Label>
-                        <Select
-                          disabled={isSubmitting || isLoadingCouriers}
-                          value={orderDetails.enviaPor ?? ""}
-                          onValueChange={(v) =>
-                            setOrderDetails({
-                              ...orderDetails,
-                              enviaPor: v,
-                            })
-                          }
-                        >
-                          <SelectTrigger>
-                            <SelectValue
-                              placeholder={
-                                isLoadingCouriers
-                                  ? "Cargando..."
-                                  : "Seleccionar método de envío"
-                              }
-                            />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {couriers.map((courier) => (
-                              <SelectItem key={courier.id} value={courier.name}>
-                                {courier.name}
-                              </SelectItem>
-                            ))}
-                            <SelectItem value="OTROS">Otros</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    )}
-                  </div>
-
-                  <Disclosure label="Comentarios e ID de publicidad (opcional)">
-                    <div className="space-y-1">
-                      <Label>Comentarios</Label>
-                      <Textarea
-                        placeholder="Observaciones adicionales sobre la venta"
-                        value={orderDetails.notes}
-                        onChange={(e) =>
-                          setOrderDetails({
-                            ...orderDetails,
-                            notes: e.target.value,
-                          })
-                        }
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <Label>ID de publicidad (Meta)</Label>
-                      <Input
-                        type="text"
-                        placeholder="Opcional — ID del panel de ads"
-                        value={metaPubliId}
-                        onChange={(e) => setMetaPubliId(e.target.value)}
-                      />
-                    </div>
-                  </Disclosure>
                 </CardContent>
               </Card>
 
@@ -2554,6 +2424,248 @@ function RegistrarVentaContent() {
                         : "Los precios ya incluyen impuestos"}
                     </p>
                   </div>
+                </CardContent>
+              </Card>
+
+              {/* Detalles */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>
+                    <SectionTitle icon={ClipboardList}>
+                      Detalles de la venta
+                    </SectionTitle>
+                  </CardTitle>
+                </CardHeader>
+
+                <CardContent className="space-y-4">
+                  <div className="grid md:grid-cols-2 gap-4">
+                    {/* Tipo de orden */}
+                    <div className="space-y-1">
+                      <Label>
+                        Tipo de orden{" "}
+                        <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        disabled={isSubmitting}
+                        value={orderDetails.orderType ?? ""}
+                        onValueChange={(v) =>
+                          setOrderDetails({
+                            ...orderDetails,
+                            orderType: v as OrderType,
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar tipo de orden" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={OrderType.VENTA}>Venta</SelectItem>
+                          <SelectItem value={OrderType.CAMBIO}>
+                            Cambio
+                          </SelectItem>
+                          <SelectItem value={OrderType.RESERVA}>
+                            Reserva
+                          </SelectItem>
+                          <SelectItem value={OrderType.PREVENTA}>
+                            Preventa
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Canal de venta */}
+                    <div className="space-y-1">
+                      <Label>
+                        Canal de venta{" "}
+                        <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        disabled={isSubmitting}
+                        value={orderDetails.salesChannel ?? ""}
+                        onValueChange={(v) =>
+                          setOrderDetails({
+                            ...orderDetails,
+                            salesChannel: v as any,
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar canal de venta" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {salesChannels.map((channel: string) => (
+                            <SelectItem key={channel} value={channel}>
+                              {channel.replace(/_/g, " ")}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Canal de cierre */}
+                    <div className="space-y-1">
+                      <Label>
+                        Canal de cierre{" "}
+                        <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        disabled={isSubmitting}
+                        value={orderDetails.closingChannel ?? ""}
+                        onValueChange={(v) =>
+                          setOrderDetails({
+                            ...orderDetails,
+                            closingChannel: v as any,
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar canal de cierre" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {closingChannels.map((channel: string) => (
+                            <SelectItem key={channel} value={channel}>
+                              {channel.replace(/_/g, " ")}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Tipo de entrega */}
+                    <div className="space-y-1">
+                      <Label>
+                        Tipo de entrega{" "}
+                        <span className="text-destructive">*</span>
+                      </Label>
+                      <Select
+                        disabled={isSubmitting}
+                        value={orderDetails.deliveryType ?? ""}
+                        onValueChange={(v) =>
+                          setOrderDetails({
+                            ...orderDetails,
+                            deliveryType: v as DeliveryType,
+                            enviaPor: undefined,
+                          })
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Seleccionar tipo de entrega" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value={DeliveryType.RETIRO_TIENDA}>
+                            Retiro en tienda
+                          </SelectItem>
+                          <SelectItem value={DeliveryType.DOMICILIO}>
+                            Envío a domicilio
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Método de envío */}
+                    {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
+                      <div className="md:col-span-2 space-y-1">
+                        <Label>
+                          Método de envío{" "}
+                          <span className="text-destructive">*</span>
+                        </Label>
+                        <Select
+                          disabled={isSubmitting || isLoadingCouriers}
+                          value={orderDetails.enviaPor ?? ""}
+                          onValueChange={(v) =>
+                            setOrderDetails({
+                              ...orderDetails,
+                              enviaPor: v,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue
+                              placeholder={
+                                isLoadingCouriers
+                                  ? "Cargando..."
+                                  : "Seleccionar método de envío"
+                              }
+                            />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {couriers.map((courier) => (
+                              <SelectItem key={courier.id} value={courier.name}>
+                                {courier.name}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value="OTROS">Otros</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Programar envío para otra fecha */}
+                  <div className="space-y-2 rounded-lg border border-dashed p-3">
+                    <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+                      <Checkbox
+                        checked={scheduleDelivery}
+                        disabled={isSubmitting}
+                        onCheckedChange={(v) => {
+                          const checked = !!v;
+                          setScheduleDelivery(checked);
+                          if (checked && !scheduledDeliveryDate) {
+                            setScheduledDeliveryDate(
+                              defaultScheduledDateValue(),
+                            );
+                          }
+                        }}
+                      />
+                      Programar venta para otra fecha
+                    </label>
+                    {scheduleDelivery && (
+                      <div className="space-y-1 pl-6">
+                        <Label
+                          htmlFor="scheduled-delivery-date"
+                          className="text-xs"
+                        >
+                          Fecha
+                        </Label>
+                        <Input
+                          id="scheduled-delivery-date"
+                          type="date"
+                          className="h-9 max-w-xs"
+                          disabled={isSubmitting}
+                          value={scheduledDeliveryDate}
+                          onChange={(e) =>
+                            setScheduledDeliveryDate(e.target.value)
+                          }
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  <Disclosure label="Comentarios e ID de publicidad (opcional)">
+                    <div className="space-y-1">
+                      <Label>Comentarios</Label>
+                      <Textarea
+                        placeholder="Observaciones adicionales sobre la venta"
+                        value={orderDetails.notes}
+                        onChange={(e) =>
+                          setOrderDetails({
+                            ...orderDetails,
+                            notes: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label>ID de publicidad (Meta)</Label>
+                      <Input
+                        type="text"
+                        placeholder="Opcional — ID del panel de ads"
+                        value={metaPubliId}
+                        onChange={(e) => setMetaPubliId(e.target.value)}
+                      />
+                    </div>
+                  </Disclosure>
                 </CardContent>
               </Card>
 

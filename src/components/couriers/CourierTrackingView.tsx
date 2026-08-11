@@ -67,7 +67,7 @@ import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
 import EvaOrderTrackingView from "@/components/tracking/EvaOrderTrackingView";
-import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
+import { getPendingPayment, trackingUrlFor } from "@/app/centro-envios/components/shipmentUtils";
 import { fetchCouriers } from "@/services/courierService";
 import { getEvaCredentials } from "@/services/evaService";
 import { getAliclikCredentials } from "@/services/aliclikService";
@@ -86,6 +86,19 @@ function courierLabel(order: OrderHeader): string {
   if (order.aliclikDispatchStatus) return "Aliclik";
   if (order.shalomStatus) return "Shalom";
   return "-";
+}
+
+// La fecha de despacho salía en blanco para todo pedido despachado por
+// EVA/Aliclik/Shalom sin guía interna (ver comentario en `dispatchedOrders`
+// más abajo) — `dispatchDateByOrderId` solo conoce fechas de guías propias
+// de ms-courier. A falta de un campo real de "fecha de despacho", se usa
+// `updated_at` como mejor aproximación disponible (mismo criterio que el
+// fix de Cierre del Día).
+function dispatchDateFor(
+  order: OrderHeader,
+  dispatchDateByOrderId: Map<string, string>,
+): string {
+  return dispatchDateByOrderId.get(order.id) ?? order.updated_at;
 }
 
 function courierTabValue(courierName: string): string {
@@ -517,7 +530,7 @@ export default function CourierTrackingView() {
       return;
     }
     const rows = allOrderRows.map((o) => {
-      const despachoAt = dispatchDateByOrderId.get(o.id);
+      const despachoAt = dispatchDateFor(o, dispatchDateByOrderId);
       return {
         "N° Pedido": o.orderNumber,
         "Fecha de venta": new Date(o.created_at).toLocaleDateString("es-PE"),
@@ -533,6 +546,7 @@ export default function CourierTrackingView() {
         "Código de envío": o.shippingCode || "-",
         Oficina: o.shippingOffice || "-",
         "Clave de envío": o.shippingKey || "-",
+        "Link de rastreo": trackingUrlFor(o),
       };
     });
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -764,7 +778,7 @@ export default function CourierTrackingView() {
                       </TableRow>
                     ) : (
                       pagedOrderRows.map((order) => {
-                        const despachoAt = dispatchDateByOrderId.get(order.id);
+                        const despachoAt = dispatchDateFor(order, dispatchDateByOrderId);
                         return (
                           <TableRow key={order.id} className="hover:bg-muted/40 transition-colors">
                             <TableCell className="font-medium px-4 py-3 text-xs whitespace-nowrap">
@@ -1089,7 +1103,7 @@ function CourierOrdersTab({
       return;
     }
     const data = rows.map((o) => {
-      const despachoAt = dispatchDateByOrderId.get(o.id);
+      const despachoAt = dispatchDateFor(o, dispatchDateByOrderId);
       return {
         "N° Pedido": o.orderNumber,
         "Fecha de venta": new Date(o.created_at).toLocaleDateString("es-PE"),
@@ -1104,6 +1118,7 @@ function CourierOrdersTab({
         "Código de envío": o.shippingCode || "-",
         Oficina: o.shippingOffice || "-",
         "Clave de envío": o.shippingKey || "-",
+        "Link de rastreo": trackingUrlFor(o),
       };
     });
     const ws = XLSX.utils.json_to_sheet(data);
@@ -1238,7 +1253,7 @@ function CourierOrdersTab({
                 </TableRow>
               ) : (
                 pagedRows.map((order) => {
-                  const despachoAt = dispatchDateByOrderId.get(order.id);
+                  const despachoAt = dispatchDateFor(order, dispatchDateByOrderId);
                   return (
                     <TableRow key={order.id} className="hover:bg-muted/40 transition-colors">
                       <TableCell className="font-medium px-4 py-3 text-xs whitespace-nowrap">
