@@ -42,7 +42,6 @@ export const getProducts = async (
   filters: IProductFilters = {},
 ): Promise<IGetProducts[]> => {
   const params = new URLSearchParams();
-  if (filters.companyId) params.append("companyId", filters.companyId);
   if (filters.status !== undefined)
     params.append("status", String(filters.status));
   if (filters.brandId) params.append("brandId", filters.brandId);

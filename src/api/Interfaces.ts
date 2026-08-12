@@ -46,7 +46,6 @@ export interface IGetProducts {
 }
 
 export interface IProductFilters {
-  companyId?: string;
   status?: boolean;
   brandId?: string;
   categoryId?: string;

@@ -37,7 +37,7 @@ import { initials } from "@/utils/productGrouping";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-const fmt = (n: number) => `S/ ${n.toFixed(2)}`;
+const fmt = (n: number) => `S/ ${(Number(n) || 0).toFixed(2)}`;
 
 const PACK_TYPE_LABEL: Record<PackType, string> = {
   VOLUME: "Volumen",
@@ -396,18 +396,33 @@ function PackFormModal({
     editingPack?.type === "GIFT" ? editingPack.gifts : [],
   );
 
-  const productSearch = useProductCatalog(companyId);
+  // Instancias independientes: cada Combobox necesita su propio estado de
+  // búsqueda (query/products) — compartir una sola instancia entre selectores
+  // hace que buscar en uno pise los resultados que tenía el otro.
+  const productSearchVolume = useProductCatalog(companyId);
+  const productSearchBundle1 = useProductCatalog(companyId);
+  const productSearchBundle2 = useProductCatalog(companyId);
 
-  const productOptions = useMemo(
-    () =>
-      productSearch.products.map((p) => ({
-        value: p.id,
-        label: `${p.name} — ${fmt(p.priceVta)}`,
-      })),
-    [productSearch.products],
+  const toOptions = (list: IGetProducts[]) =>
+    list.map((p) => ({
+      value: p.id,
+      label: `${p.name} — ${fmt(p.priceVta)}`,
+    }));
+
+  const productOptionsVolume = useMemo(
+    () => toOptions(productSearchVolume.products),
+    [productSearchVolume.products],
+  );
+  const productOptionsBundle1 = useMemo(
+    () => toOptions(productSearchBundle1.products),
+    [productSearchBundle1.products],
+  );
+  const productOptionsBundle2 = useMemo(
+    () => toOptions(productSearchBundle2.products),
+    [productSearchBundle2.products],
   );
 
-  const findProduct = (id: string) => productSearch.products.find((p) => p.id === id);
+  const findInList = (list: IGetProducts[], id: string) => list.find((p) => p.id === id);
 
   const toggleChannel = (c: string) =>
     setChannels((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
@@ -422,7 +437,7 @@ function PackFormModal({
       return;
     }
     if (type === "VOLUME") {
-      const product = findProduct(volProductId);
+      const product = findInList(productSearchVolume.products, volProductId);
       const min = Number(volMin);
       const price = Number(volPrice);
       if (!product) {
@@ -466,8 +481,8 @@ function PackFormModal({
         setError("Un bundle requiere 2 productos distintos.");
         return;
       }
-      const p1 = findProduct(bunProductId1);
-      const p2 = findProduct(bunProductId2);
+      const p1 = findInList(productSearchBundle1.products, bunProductId1);
+      const p2 = findInList(productSearchBundle2.products, bunProductId2);
       const price = Number(bunPrice);
       if (!p1 || !p2) {
         setError("Selecciona ambos productos.");
@@ -590,11 +605,11 @@ function PackFormModal({
               <div className="space-y-1">
                 <Label>Producto</Label>
                 <Combobox
-                  options={productOptions}
+                  options={productOptionsVolume}
                   value={volProductId}
                   onValueChange={setVolProductId}
-                  onSearchChange={productSearch.setQuery}
-                  isLoading={productSearch.loading}
+                  onSearchChange={productSearchVolume.setQuery}
+                  isLoading={productSearchVolume.loading}
                   placeholder="Buscar producto..."
                   searchPlaceholder="Nombre del producto..."
                 />
@@ -625,20 +640,20 @@ function PackFormModal({
               <div className="space-y-1">
                 <Label>Productos del bundle (mínimo 2)</Label>
                 <Combobox
-                  options={productOptions}
+                  options={productOptionsBundle1}
                   value={bunProductId1}
                   onValueChange={setBunProductId1}
-                  onSearchChange={productSearch.setQuery}
-                  isLoading={productSearch.loading}
+                  onSearchChange={productSearchBundle1.setQuery}
+                  isLoading={productSearchBundle1.loading}
                   placeholder="Producto 1..."
                   searchPlaceholder="Buscar producto..."
                 />
                 <Combobox
-                  options={productOptions}
+                  options={productOptionsBundle2}
                   value={bunProductId2}
                   onValueChange={setBunProductId2}
-                  onSearchChange={productSearch.setQuery}
-                  isLoading={productSearch.loading}
+                  onSearchChange={productSearchBundle2.setQuery}
+                  isLoading={productSearchBundle2.loading}
                   placeholder="Producto 2..."
                   searchPlaceholder="Buscar producto..."
                 />
