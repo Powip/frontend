@@ -3,9 +3,20 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserMultiFormatReader } from "@zxing/browser";
 import type { IScannerControls } from "@zxing/browser";
-import { NotFoundException, type Exception, type Result } from "@zxing/library";
+import {
+  DecodeHintType,
+  NotFoundException,
+  type Exception,
+  type Result,
+} from "@zxing/library";
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Sin TRY_HARDER, el lector 1D (código de barras CODE128 de la etiqueta) se
+// intenta pero con una sola pasada de binarización — en la práctica casi
+// nunca detecta el barcode impreso, aunque el QR sí decodifica bien. Con
+// TRY_HARDER se activan pasadas extra que lo hacen confiable para 1D.
+const HINTS = new Map<DecodeHintType, unknown>([[DecodeHintType.TRY_HARDER, true]]);
 
 interface CameraScannerProps {
   /** Solo se enciende la cámara mientras esto es true (drawer abierto + modo cámara elegido). */
@@ -98,7 +109,7 @@ export default function CameraScanner({
     };
 
     const start = async (constraints: MediaStreamConstraints) => {
-      const reader = readerRef.current ?? new BrowserMultiFormatReader();
+      const reader = readerRef.current ?? new BrowserMultiFormatReader(HINTS);
       readerRef.current = reader;
       try {
         const controls = await reader.decodeFromConstraints(
@@ -140,7 +151,15 @@ export default function CameraScanner({
       if (!active) return;
       setStatus("starting");
       setErrorMessage(null);
-      await start({ video: { facingMode: "environment" } });
+      // ideal (no min/exact) para que no rompa en cámaras que no llegan a
+      // esa resolución — más píxeles ayudan mucho a leer barcodes 1D chicos.
+      await start({
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
     });
     sessionRef.current = thisSession.catch(() => {});
 

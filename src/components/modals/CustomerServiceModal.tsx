@@ -74,7 +74,6 @@ import QRCode from "qrcode";
 import JsBarcode from "jsbarcode";
 import html2canvas from "html2canvas-pro";
 import jsPDF from "jspdf";
-import { useQRCode } from "@/hooks/useQrCode";
 import { useAuth } from "@/contexts/AuthContext";
 import ScheduledDeliverySection from "./ScheduledDeliverySection";
 import { trackShalomGuide } from "@/services/shalomService";
@@ -1016,7 +1015,7 @@ export default function CustomerServiceModal({
           }
           .logo-box img { width: 100%; height: 100%; object-fit: contain; }
           .company-name { font-size: 16px; font-weight: bold; }
-          .company-meta { font-size: 10px; color: #666; margin-top: 2px; }
+          .company-meta { font-size: 10px; color: #333; font-weight: 500; margin-top: 2px; }
 
           .order-block {
             display: flex;
@@ -1026,7 +1025,7 @@ export default function CustomerServiceModal({
           }
           .order-qr { width: 72px; height: 72px; flex-shrink: 0; }
           .order-number { font-size: 20px; font-weight: bold; letter-spacing: 0.5px; }
-          .order-dates { font-size: 10px; color: #444; margin-top: 3px; display: flex; gap: 10px; }
+          .order-dates { font-size: 10px; color: #222; font-weight: 500; margin-top: 3px; display: flex; gap: 10px; }
           .order-dates b { color: #111; }
           .status-badge {
             display: inline-block;
@@ -1081,7 +1080,7 @@ export default function CustomerServiceModal({
             font-size: 10.5px;
             margin-bottom: 3px;
           }
-          .location-info div { color: #555; }
+          .location-info div { color: #222; font-weight: 500; }
 
           .courier-row {
             display: flex;
@@ -1100,25 +1099,25 @@ export default function CustomerServiceModal({
             margin-bottom: 6px;
           }
           .picking-title { font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-          .picking-almacen { font-size: 9.5px; color: #666; text-align: right; }
+          .picking-almacen { font-size: 9.5px; color: #333; font-weight: 500; text-align: right; }
 
           .pick-item { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px dotted #ddd; }
           .pick-checkbox { width: 14px; height: 14px; border: 1.5px solid #333; border-radius: 2px; margin-top: 2px; flex-shrink: 0; }
           .pick-qty { text-align: center; width: 26px; flex-shrink: 0; }
           .pick-qty .num { font-size: 15px; font-weight: bold; line-height: 1; }
-          .pick-qty .unit { font-size: 8px; color: #666; }
+          .pick-qty .unit { font-size: 8px; color: #333; font-weight: 500; }
           .pick-body { flex: 1; min-width: 0; }
           .pick-name { font-weight: bold; font-size: 11px; }
-          .pick-meta { font-size: 9px; color: #666; margin-top: 1px; }
+          .pick-meta { font-size: 9px; color: #333; font-weight: 500; margin-top: 1px; }
           .pick-price { font-size: 11px; font-weight: 600; white-space: nowrap; }
-          .pick-summary { font-size: 9.5px; color: #666; margin-top: 6px; }
+          .pick-summary { font-size: 9.5px; color: #333; font-weight: 500; margin-top: 6px; }
 
           .totals { margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10.5px; }
-          .totals-line { color: #555; margin-bottom: 4px; }
+          .totals-line { color: #222; font-weight: 500; margin-bottom: 4px; }
           .total-main { display: flex; justify-content: space-between; align-items: baseline; }
           .total-main .label { font-size: 14px; font-weight: bold; }
           .total-main .value { font-size: 18px; font-weight: bold; }
-          .advance-line { display: flex; justify-content: space-between; font-size: 10px; color: #555; margin-top: 3px; }
+          .advance-line { display: flex; justify-content: space-between; font-size: 10px; color: #222; font-weight: 500; margin-top: 3px; }
 
           .tracking-section {
             margin-top: 10px;
@@ -1128,7 +1127,7 @@ export default function CustomerServiceModal({
           }
           .tracking-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
           .tracking-item { line-height: 1.2; }
-          .tracking-label { color: #666; font-size: 8px; text-decoration: underline; }
+          .tracking-label { color: #333; font-weight: 600; font-size: 8px; text-decoration: underline; }
           .tracking-value { font-weight: bold; display: block; }
 
           @media print {
@@ -1674,22 +1673,24 @@ export default function CustomerServiceModal({
     }
   };
 
-  const trackingUrl = receipt
-    ? `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`
-    : "";
-  const qrUrl = useQRCode(trackingUrl);
-
-  const handleCopyTrackingLink = async () => {
-    if (!trackingUrl) return;
-    await navigator.clipboard.writeText(trackingUrl);
-    toast.success("Link copiado");
-  };
-
   const isConfirmed = receipt?.status === "LLAMADO";
   const isScheduledDelivery =
     !!receipt?.externalSource && receipt?.callStatus === "SCHEDULED";
 
   if (!receipt && !loading) return null;
+
+  // Si no hay nada que mostrar en la columna de gestión (llamada/upsell/aliclik/script),
+  // el historial de comentarios pasa a ocupar el ancho completo en vez de dejar un hueco vacío.
+  const hasGestionColumn =
+    !hideCallManagement ||
+    !!receipt?.upsellOffered ||
+    !!receipt?.upsellAccepted ||
+    !!aliclikDispatchStatus ||
+    !!aliclikSyncedAt ||
+    !!subEstadoCc;
+
+  // Más reciente primero
+  const displayLogs = [...logs].reverse();
 
   return (
     <>
@@ -1848,59 +1849,15 @@ export default function CustomerServiceModal({
                       </div>
                     </div>
                   </div>
-
-                  {/* Link de seguimiento del cliente + QR */}
-                  <div className="border border-border rounded-lg p-4 bg-muted/30">
-                    <h3 className="font-semibold mb-3 text-sm flex items-center gap-1.5">
-                      🔗 Link de seguimiento del cliente
-                    </h3>
-                    <div className="flex items-center gap-4">
-                      {qrUrl && (
-                        <img
-                          src={qrUrl}
-                          alt="QR de seguimiento"
-                          className="h-20 w-20 rounded border bg-white p-1 flex-shrink-0"
-                        />
-                      )}
-                      <div className="min-w-0">
-                        <a
-                          href={trackingUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-mono text-blue-600 truncate block hover:underline"
-                        >
-                          {trackingUrl}
-                        </a>
-                        <div className="flex gap-2 mt-2.5">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-xs"
-                            onClick={handleCopyTrackingLink}
-                          >
-                            <Copy className="h-3.5 w-3.5 mr-1" /> Copiar
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-8 text-xs text-green-600"
-                            onClick={handleWhatsApp}
-                          >
-                            <WhatsAppIcon className="h-3.5 w-3.5 mr-1" /> WhatsApp
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
                 </div>
 
                 {/* ================================== */}
                 {/* SECCIÓN DERECHA */}
                 {/* ================================== */}
-                <div className="space-y-4">
-                  {/* Cliente */}
-                  <div className="border border-border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-3">
+                <div className="flex flex-col">
+                  {/* Cliente — misma altura que Productos + Resumen de Pagos */}
+                  <div className="border border-border rounded-lg p-5 flex-1 flex flex-col">
+                    <div className="flex items-center justify-between mb-4">
                       <h3 className="font-semibold text-lg">Cliente</h3>
                       <div className="flex gap-1">
                         <Button
@@ -1977,7 +1934,7 @@ export default function CustomerServiceModal({
                         </Button>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
                       <div className="flex items-center gap-1">
                         <span className="text-muted-foreground">Nombre: </span>
                         <span className="font-medium">
@@ -2138,7 +2095,7 @@ export default function CustomerServiceModal({
 
                       {/* New Tracking Info Section in Modal */}
                       {showTracking && receipt && (
-                        <div className="mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
+                        <div className="col-span-2 mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
                           <label className="text-xs font-bold text-muted-foreground mb-3 block uppercase tracking-wider">
                             Información de Seguimiento
                           </label>
@@ -2283,7 +2240,7 @@ export default function CustomerServiceModal({
                           receipt.shippingCode ||
                           receipt.shippingKey ||
                           receipt.shippingOffice) && (
-                          <div className="mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
+                          <div className="col-span-2 mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
                             <div className="grid grid-cols-2 gap-4">
                               <div>
                                 <span className="text-muted-foreground block text-xs underline mb-1">
@@ -2342,26 +2299,37 @@ export default function CustomerServiceModal({
                   </div>
                 </div>
               </div>
+                  <div
+                    className={
+                      hasGestionColumn
+                        ? "grid grid-cols-1 lg:grid-cols-2 gap-4 items-start"
+                        : "space-y-3"
+                    }
+                  >
+                  {/* ================================== */}
+                  {/* COLUMNA IZQUIERDA: gestión del pedido */}
+                  {/* ================================== */}
+                  {hasGestionColumn && (
+                  <div className="space-y-3">
                   {/* Promo del día - only shown in customer service view */}
                   {!hideCallManagement && (
-                    <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-semibold text-red-700 dark:text-red-400">
-                          Promo del día
-                        </h3>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-7 text-red-600 dark:text-red-400"
-                          onClick={() => setAddProductsModalOpen(true)}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Agregar productos
-                        </Button>
-                      </div>
-                      <p className="text-sm text-red-600 dark:text-red-400">
-                        Agregar más productos a la venta
+                    <div className="flex items-center justify-between gap-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+                      <p className="text-sm text-red-700 dark:text-red-400 truncate">
+                        <span className="font-semibold">Promo del día</span>
+                        <span className="text-red-600 dark:text-red-400 hidden sm:inline">
+                          {" "}
+                          — agregar más productos a la venta
+                        </span>
                       </p>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 shrink-0 text-red-600 dark:text-red-400"
+                        onClick={() => setAddProductsModalOpen(true)}
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Agregar
+                      </Button>
                     </div>
                   )}
 
@@ -2408,7 +2376,7 @@ export default function CustomerServiceModal({
                         }}
                       />
                     ) : (
-                    <div className="border border-border rounded-lg p-4">
+                    <div className="border border-border rounded-lg p-3">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold">Gestión de llamada</h3>
                         <span
@@ -2696,10 +2664,14 @@ export default function CustomerServiceModal({
                       orderNumber={receipt.orderNumber}
                     />
                   )}
+                  </div>
+                  )}
 
-
+                  {/* ================================== */}
+                  {/* COLUMNA DERECHA: historial y comentarios */}
+                  {/* ================================== */}
                   {/* Comentarios Timeline */}
-                  <div className="border border-border rounded-lg p-4">
+                  <div className="border border-border rounded-lg p-3">
                     <div className="flex items-center justify-between mb-3">
                       <h3 className="font-semibold">Historial / Comentarios</h3>
                       <DropdownMenu>
@@ -2720,74 +2692,58 @@ export default function CustomerServiceModal({
                       </DropdownMenu>
                     </div>
 
-                    {/* Timeline */}
-                    <div className="max-h-[200px] overflow-y-auto mb-3 pr-1">
+                    {/* Historial — más reciente arriba; scrollea de a un comentario por vez */}
+                    <div className="h-[92px] overflow-y-auto mb-3 pr-1 snap-y snap-mandatory">
                       {logsLoading ? (
                         <div className="text-center text-muted-foreground py-4">
                           Cargando historial...
                         </div>
-                      ) : logs.length === 0 ? (
+                      ) : displayLogs.length === 0 ? (
                         <div className="text-center text-muted-foreground py-4">
                           No hay registros en el historial
                         </div>
                       ) : (
-                        <div className="space-y-3">
-                          {logs.map((log, index) => (
+                        <div className="space-y-2">
+                          {displayLogs.map((log) => (
                             <div
                               key={log.id}
-                              className={`relative pl-5 pb-2 ${
-                                index < logs.length - 1
-                                  ? "border-l-2 border-muted ml-1.5"
-                                  : "ml-1.5"
-                              }`}
+                              className={`snap-start rounded-md p-2 ${log.isSystemGenerated ? "bg-muted/30 border border-muted" : "bg-primary/10 border border-primary/20"}`}
                             >
-                              {/* Dot */}
-                              <div
-                                className={`absolute -left-[7px] top-0 w-3 h-3 rounded-full border-2 ${
-                                  log.isSystemGenerated
-                                    ? "bg-muted border-muted-foreground"
-                                    : "bg-primary border-primary"
-                                }`}
-                              />
-
-                              {/* Content */}
-                              <div
-                                className={`rounded-md p-2 ${log.isSystemGenerated ? "bg-muted/30 border border-muted" : "bg-primary/10 border border-primary/20"}`}
-                              >
-                                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-1">
-                                  <div className="flex items-center gap-1.5">
-                                    <Clock className="h-3 w-3" />
-                                    <span>{formatLogDate(log.timestamp)}</span>
-                                    <span
-                                      className={`px-1 py-0.5 rounded text-xs ${log.isSystemGenerated ? "bg-muted" : "bg-primary/20 text-primary"}`}
-                                    >
-                                      {log.isSystemGenerated ? (
-                                        <>
-                                          <Settings className="h-2 w-2 inline mr-0.5" />{" "}
-                                          Sistema
-                                        </>
-                                      ) : (
-                                        OPERACION_LABELS[log.operacion] ||
-                                        log.operacion
-                                      )}
-                                    </span>
-                                  </div>
-                                  {log.userName && (
-                                    <div className="flex items-center gap-1 text-xs font-medium">
-                                      <User className="h-3 w-3" />
-                                      <span>{log.userName}</span>
-                                    </div>
-                                  )}
+                              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground mb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Clock className="h-3 w-3" />
+                                  <span>{formatLogDate(log.timestamp)}</span>
+                                  <span
+                                    className={`px-1 py-0.5 rounded text-xs ${log.isSystemGenerated ? "bg-muted" : "bg-primary/20 text-primary"}`}
+                                  >
+                                    {log.isSystemGenerated ? (
+                                      <>
+                                        <Settings className="h-2 w-2 inline mr-0.5" />{" "}
+                                        Sistema
+                                      </>
+                                    ) : (
+                                      OPERACION_LABELS[log.operacion] ||
+                                      log.operacion
+                                    )}
+                                  </span>
                                 </div>
-                                {log.comentarios && (
-                                  <p className="text-sm">{log.comentarios}</p>
-                                )}
-                                {!log.comentarios && log.isSystemGenerated && (
-                                  <p className="text-xs text-muted-foreground italic">
-                                    Acción automática
-                                  </p>
+                                {log.userName && (
+                                  <div className="flex items-center gap-1 text-xs font-medium">
+                                    <User className="h-3 w-3" />
+                                    <span>{log.userName}</span>
+                                  </div>
                                 )}
                               </div>
+                              {log.comentarios && (
+                                <p className="text-sm whitespace-pre-wrap">
+                                  {log.comentarios}
+                                </p>
+                              )}
+                              {!log.comentarios && log.isSystemGenerated && (
+                                <p className="text-xs text-muted-foreground italic">
+                                  Acción automática
+                                </p>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -2823,6 +2779,7 @@ export default function CustomerServiceModal({
                         Enter para enviar
                       </p>
                     </div>
+                  </div>
                   </div>
                   </TabsContent>
 

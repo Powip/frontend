@@ -27,7 +27,6 @@ export function GlobalScanner({
   const { auth, selectedStoreId } = useAuth();
   const getUserInfo = useUserAuditInfo();
   const [orders, setOrders] = useState<OrderHeader[]>([]);
-  const [loaded, setLoaded] = useState(false);
 
   const loadOrders = useCallback(async () => {
     if (!selectedStoreId) return;
@@ -39,14 +38,17 @@ export function GlobalScanner({
         (o) => o.deliveryType === "DOMICILIO" && SHIPPING_STATUSES.includes(o.status),
       );
       setOrders(shippable);
-      setLoaded(true);
     } catch {
       toast.error("No se pudieron cargar los pedidos para escanear");
     }
   }, [selectedStoreId]);
 
+  // Recarga siempre al abrir — un pedido puede haber cambiado de estado (p.ej.
+  // recién pasó a PREPARADO) o de tienda seleccionada desde la última vez que
+  // se abrió el panel en esta misma página, y antes se quedaba con la lista
+  // vieja hasta recargar la página completa.
   const handleOpenChange = (next: boolean) => {
-    if (next && !loaded) loadOrders();
+    if (next) loadOrders();
     onOpenChange(next);
   };
 
