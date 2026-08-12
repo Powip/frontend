@@ -659,7 +659,7 @@ Estado: ${sale.status}
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
-      await printReceipts(receipts);
+      await printReceipts(receipts, auth?.company);
 
       // Guardar ventas pendientes y mostrar modal de confirmación
       setPendingPrintSales(selectedPendientes);
@@ -750,7 +750,7 @@ Estado: ${sale.status}
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
-      await printReceipts(receipts);
+      await printReceipts(receipts, auth?.company);
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedIdsForActiveTab(new Set());

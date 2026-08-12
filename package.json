@@ -45,6 +45,7 @@
     "file-saver": "^2.0.5",
     "framer-motion": "^12.23.16",
     "googleapis": "^171.4.0",
+    "html2canvas-pro": "^2.3.3",
     "html2pdf.js": "^0.12.1",
     "jsbarcode": "^3.12.1",
     "jspdf": "^3.0.4",

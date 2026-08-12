@@ -567,13 +567,13 @@ export function PedidosContent() {
         const res = await axios.get(`${API_VENTAS}/order-header/${sale.id}/receipt`);
         receipts.push(res.data);
       }
-      await printReceipts(receipts);
+      await printReceipts(receipts, auth?.company);
     } catch {
       toast.error("No se pudieron generar las etiquetas");
     } finally {
       setIsBulkLoading(false);
     }
-  }, []);
+  }, [auth?.company]);
 
   const handleBulkWhatsApp = useCallback((selected: Sale[]) => {
     if (selected.length === 0) {

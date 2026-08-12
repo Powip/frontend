@@ -1,11 +1,19 @@
 import QRCode from "qrcode";
+import JsBarcode from "jsbarcode";
 
 /**
  * Receipt data structure matching the backend's OrderReceipt format
+ * (mismo endpoint /order-header/:id/receipt que usa CustomerServiceModal —
+ * ver `OrderReceipt` ahí; acá solo se declaran los campos que este template
+ * usa, aunque la respuesta real trae más).
  */
 export interface ReceiptData {
   orderId: string;
   orderNumber: string;
+  receiptType?: string;
+  status?: string;
+  createdAt?: string;
+  callbackAt?: string | null;
   salesChannel?: string;
   customer: {
     fullName: string;
@@ -27,6 +35,7 @@ export interface ReceiptData {
     discountAmount: number;
     attributes?: Record<string, any>;
   }[];
+  payments?: { paymentMethod: string }[];
   totals: {
     productsTotal: number;
     taxTotal: number;
@@ -38,9 +47,31 @@ export interface ReceiptData {
   };
 }
 
-/**
- * Generates a QR code data URL from text
- */
+/** Datos de empresa para el header de cada etiqueta — mismo shape que `auth.company`. */
+export interface PrintCompany {
+  name?: string;
+  cuit?: string;
+  logoUrl?: string;
+}
+
+/** Etiqueta de estado — mismo vocabulario de despacho que CustomerServiceModal. */
+const PRINT_STATUS_LABEL: Record<string, { label: string; bg: string; color: string }> = {
+  PENDIENTE: { label: "POR DESPACHAR", bg: "#e0e7ff", color: "#3730a3" },
+  PREPARADO: { label: "POR DESPACHAR", bg: "#e0e7ff", color: "#3730a3" },
+  LLAMADO: { label: "POR DESPACHAR", bg: "#e0e7ff", color: "#3730a3" },
+  ASIGNADO_A_GUIA: { label: "ASIGNADO A GUÍA", bg: "#e0e7ff", color: "#3730a3" },
+  EN_ENVIO: { label: "EN CAMINO", bg: "#cffafe", color: "#155e75" },
+  ENTREGADO: { label: "ENTREGADO", bg: "#dcfce7", color: "#166534" },
+  ANULADO: { label: "ANULADO", bg: "#fee2e2", color: "#991b1b" },
+};
+
+function fmtShort(d: string | Date): string {
+  const date = new Date(d);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${String(date.getFullYear()).slice(-2)}`;
+}
+
+/** Generates a QR code data URL from text */
 async function generateQR(text: string): Promise<string> {
   try {
     return await QRCode.toDataURL(text, { width: 120 });
@@ -50,160 +81,188 @@ async function generateQR(text: string): Promise<string> {
   }
 }
 
+/** Generates a CODE128 barcode data URL — mismo formato que usa el escáner de Operaciones. */
+function generateBarcode(text: string): string {
+  try {
+    const canvas = document.createElement("canvas");
+    JsBarcode(canvas, text, {
+      format: "CODE128",
+      width: 2,
+      height: 40,
+      displayValue: true,
+      fontSize: 12,
+      margin: 0,
+    });
+    return canvas.toDataURL();
+  } catch (err) {
+    console.error("Error generating barcode", err);
+    return "";
+  }
+}
+
 /**
- * Generates HTML for a single receipt in compact 80mm thermal format
+ * Generates HTML for a single receipt — mismo diseño de etiqueta de
+ * despacho/picking que el botón "Imprimir" de CustomerServiceModal (logo,
+ * QR al link público de rastreo, código de barras, banner de cobro contra
+ * entrega, datos de cliente/ubicación, checklist de picking, totales).
+ *
+ * No incluye Courier ni Almacén: a diferencia del modal de un solo pedido
+ * (que tiene el OrderHeader completo), acá los 3 puntos que imprimen en
+ * lote (Pedidos/Ventas/Finanzas) no siempre tienen esos datos ya cargados
+ * sin pedirlos aparte — se dejan afuera para no duplicar llamadas de red
+ * por cada pedido seleccionado.
  */
 function generateReceiptHTML(
   receipt: ReceiptData,
   qrDataUrl: string,
+  barcodeDataUrl: string,
+  company: PrintCompany | null | undefined,
   isLast: boolean,
 ): string {
   const totalPaid = receipt.totals.totalPaid || 0;
   const pendingAmount = receipt.totals.pendingAmount || 0;
+  const statusInfo = receipt.status
+    ? (PRINT_STATUS_LABEL[receipt.status] ?? { label: receipt.status, bg: "#f1f5f9", color: "#334155" })
+    : null;
+  const paymentMethods =
+    Array.from(new Set((receipt.payments ?? []).map((p) => p.paymentMethod))).join(" / ") || "-";
 
   return `
-    <div style="page-break-after: ${isLast ? "auto" : "always"}; max-width: 280px; margin: 0 auto; font-family: Arial, sans-serif; font-size: 11px; padding: 15px;">
-      <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 6px; padding-bottom: 8px; border-bottom: 1px dashed #333;">
-        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" style="width: 70px; height: 70px; flex-shrink: 0;">` : ""}
-        <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
-          <div style="font-size: 11px; font-weight: bold; text-align: center; margin-bottom: 2px; text-transform: uppercase;">Comprobante de pedido</div>
-          <div style="font-size: 14px; font-weight: bold; margin-bottom: 4px;">Orden # ${receipt.orderNumber}</div>
-          <div style="font-size: 16px; font-weight: bold;">Total: S/ ${receipt.totals.grandTotal.toFixed(2)}</div>
+    <div style="page-break-after: ${isLast ? "auto" : "always"}; max-width: 380px; margin: 0 auto; font-family: Arial, sans-serif; font-size: 12px; padding: 14px; color: #111;">
+      <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 2px solid #111; margin-bottom: 10px;">
+        <div style="width: 48px; height: 48px; border-radius: 8px; background: #1f2937; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: bold; flex-shrink: 0; overflow: hidden;">
+          ${company?.logoUrl ? `<img src="${company.logoUrl}" alt="Logo" style="width: 100%; height: 100%; object-fit: contain;">` : "LOGO"}
+        </div>
+        <div>
+          <div style="font-size: 16px; font-weight: bold;">${company?.name ?? "-"}</div>
+          ${company?.cuit ? `<div style="font-size: 10px; color: #666; margin-top: 2px;">RUC ${company.cuit}</div>` : ""}
         </div>
       </div>
 
-      <div style="margin-bottom: 10px;">
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 10px;">
-          <div style="line-height: 1.3;">
-            <span style="color: #666;">Nombre:</span>
-            <span style="font-weight: 500;">${receipt.customer.fullName}</span>
+      <div style="display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px;">
+        ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" style="width: 72px; height: 72px; flex-shrink: 0;">` : ""}
+        <div>
+          <div style="font-size: 20px; font-weight: bold; letter-spacing: 0.5px;">${receipt.orderNumber}</div>
+          <div style="font-size: 10px; color: #444; margin-top: 3px; display: flex; gap: 10px;">
+            ${receipt.createdAt ? `<span>Creado: <b style="color:#111;">${fmtShort(receipt.createdAt)}</b></span>` : ""}
+            ${receipt.callbackAt ? `<span>Entrega: <b style="color:#111;">${fmtShort(receipt.callbackAt)}</b></span>` : ""}
           </div>
-          <div style="line-height: 1.3;">
-            <span style="color: #666;">Distrito:</span>
-            <span style="font-weight: 500;">${receipt.customer.district || "-"}</span>
-          </div>
-          <div style="line-height: 1.3;">
-            <span style="color: #666;">Teléfono:</span>
-            <span style="font-weight: 500;">${receipt.customer.phoneNumber || "-"}</span>
-          </div>
-          <div style="line-height: 1.3;">
-            <span style="color: #666;">Tipo:</span>
-            <span style="font-weight: 500;">${receipt.customer.clientType || "-"}</span>
-          </div>
-          <div style="line-height: 1.3;">
-            <span style="color: #666;">Dirección:</span>
-            <span style="font-weight: 500;">${receipt.customer.address || "-"}</span>
-          </div>
-          <div style="line-height: 1.3;">
-            <span style="color: #666;">Referencia:</span>
-            <span style="font-weight: 500;">${receipt.customer.reference || "-"}</span>
-          </div>
-          <div style="line-height: 1.3;">
-            <span style="color: #666;">Departamento:</span>
-            <span style="font-weight: 500;">${receipt.customer.city || "-"}</span>
-          </div>
-          <div style="line-height: 1.3;">
-            <span style="color: #666;">Canal:</span>
-            <span style="font-weight: 500;">${receipt.salesChannel || "-"}</span>
-          </div>
-          <div style="line-height: 1.3;">
-            <span style="color: #666;">Provincia:</span>
-            <span style="font-weight: 500;">${receipt.customer.province || "-"}</span>
-          </div>
-          <div style="line-height: 1.3;">
-            <span style="color: #666;">DNI:</span>
-            <span style="font-weight: 500;">${receipt.customer.dni || "-"}</span>
-          </div>
+          ${
+            statusInfo
+              ? `<div style="display: inline-block; margin-top: 5px; padding: 2px 8px; border-radius: 4px; font-size: 9px; font-weight: bold; background: ${statusInfo.bg}; color: ${statusInfo.color};">${statusInfo.label}</div>`
+              : ""
+          }
         </div>
       </div>
 
-      <div style="margin-bottom: 10px;">
-        <div style="font-weight: bold; margin-bottom: 6px; font-size: 12px;">Productos</div>
-        <table style="width: 100%; font-size: 9px; border-collapse: collapse;">
-          <thead>
-            <tr>
-              <th style="text-align: center; border-bottom: 1px solid #333; padding: 4px 2px; font-size: 8px; width: 25px;">Qty</th>
-              <th style="text-align: left; border-bottom: 1px solid #333; padding: 4px 2px; font-size: 8px;">Producto</th>
-              <th style="text-align: right; border-bottom: 1px solid #333; padding: 4px 2px; font-size: 8px;">Precio</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${receipt.items
-              .map((item) => {
-                const attrs = item.attributes
-                  ? Object.values(item.attributes).join("/")
-                  : "";
-                const discount = Number(item.discountAmount) || 0;
-                const subtotal = Number(item.subtotal);
-                return `
-                <tr>
-                  <td style="padding: 3px 2px; border-bottom: 1px dotted #ddd; text-align: center; vertical-align: top;">${item.quantity}</td>
-                  <td style="padding: 3px 2px; border-bottom: 1px dotted #ddd; vertical-align: top;">
-                    ${item.productName}${attrs ? ` (${attrs})` : ""}
-                    ${discount > 0 ? `<div style="font-size: 8px; color: #666;">Dcto: -S/${discount.toFixed(2)}</div>` : ""}
-                  </td>
-                  <td style="padding: 3px 2px; border-bottom: 1px dotted #ddd; text-align: right; vertical-align: top; white-space: nowrap;">S/${subtotal.toFixed(2)}</td>
-                </tr>
-              `;
-              })
-              .join("")}
-          </tbody>
-        </table>
+      ${
+        barcodeDataUrl
+          ? `<div style="text-align: center; margin: 8px 0 10px; padding-bottom: 8px; border-bottom: 1px dashed #999;"><img src="${barcodeDataUrl}" alt="Código de barras" style="max-width: 100%; height: 48px;"></div>`
+          : ""
+      }
+
+      ${
+        pendingAmount > 0
+          ? `
+      <div style="display: flex; justify-content: space-between; align-items: center; background: #111; color: #fff; padding: 8px 10px; border-radius: 6px; margin-bottom: 10px;">
+        <div style="font-size: 10px; font-weight: bold; text-transform: uppercase; line-height: 1.4;">Por cobrar contra entrega<br/>Pago: ${paymentMethods}</div>
+        <div style="font-size: 20px; font-weight: bold; white-space: nowrap;">S/ ${pendingAmount.toFixed(2)}</div>
+      </div>`
+          : `
+      <div style="display: flex; justify-content: space-between; align-items: center; background: #dcfce7; color: #166534; padding: 8px 10px; border-radius: 6px; margin-bottom: 10px; font-size: 11px; font-weight: bold;">
+        <span>✓ Pagado</span>
+        <span>S/ ${receipt.totals.grandTotal.toFixed(2)}</span>
+      </div>`
+      }
+
+      <div style="display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #ccc;">
+        <div style="font-size: 10.5px; line-height: 1.55;">
+          <div><b>Cliente:</b> ${receipt.customer.fullName}</div>
+          <div><b>Tel:</b> ${receipt.customer.phoneNumber || "-"} · <b>DNI:</b> ${receipt.customer.dni || "-"}</div>
+          <div><b>Dir:</b> ${receipt.customer.address || "-"}</div>
+          ${receipt.customer.reference ? `<div><b>Ref:</b> ${receipt.customer.reference}</div>` : ""}
+        </div>
+        <div style="text-align: right; font-size: 10px; flex-shrink: 0;">
+          ${receipt.customer.district ? `<div style="display: inline-block; background: #fef3c7; color: #92400e; font-weight: bold; padding: 2px 8px; border-radius: 4px; font-size: 10.5px; margin-bottom: 3px;">${receipt.customer.district}</div>` : ""}
+          <div style="color: #555;">${receipt.customer.city || "-"}</div>
+          <div style="color: #555;">Prov. ${receipt.customer.province || "-"}</div>
+          <div style="color: #555;">Canal: ${receipt.salesChannel || "-"}</div>
+        </div>
       </div>
 
-      <div style="border-top: 1px dashed #333; padding-top: 8px;">
-        <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 10px;">
-          <span>Productos:</span>
-          <span>S/ ${receipt.totals.productsTotal.toFixed(2)}</span>
+      <div style="font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Preparar / Picking</div>
+
+      ${receipt.items
+        .map((item) => {
+          const attrs = item.attributes ? Object.values(item.attributes).join(" / ") : "";
+          return `
+        <div style="display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px dotted #ddd;">
+          <div style="width: 14px; height: 14px; border: 1.5px solid #333; border-radius: 2px; margin-top: 2px; flex-shrink: 0;"></div>
+          <div style="text-align: center; width: 26px; flex-shrink: 0;">
+            <div style="font-size: 15px; font-weight: bold; line-height: 1;">${item.quantity}</div>
+            <div style="font-size: 8px; color: #666;">und</div>
+          </div>
+          <div style="flex: 1; min-width: 0;">
+            <div style="font-weight: bold; font-size: 11px;">${item.productName}</div>
+            <div style="font-size: 9px; color: #666; margin-top: 1px;">${attrs ? `${attrs} · ` : ""}${item.sku ? `SKU: ${item.sku}` : ""}</div>
+          </div>
+          <div style="font-size: 11px; font-weight: 600; white-space: nowrap;">S/ ${Number(item.subtotal).toFixed(2)}</div>
+        </div>`;
+        })
+        .join("")}
+
+      <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10.5px;">
+        <div style="color: #555; margin-bottom: 4px;">
+          Productos S/ ${receipt.totals.productsTotal.toFixed(2)} · IGV 18% S/ ${receipt.totals.taxTotal.toFixed(2)} · Envío S/ ${receipt.totals.shippingTotal.toFixed(2)} · Desc S/ ${receipt.totals.discountTotal.toFixed(2)}
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 10px;">
-          <span>IGV 18%:</span>
-          <span>S/ ${receipt.totals.taxTotal.toFixed(2)}</span>
+        <div style="display: flex; justify-content: space-between; align-items: baseline;">
+          <span style="font-size: 14px; font-weight: bold;">Total</span>
+          <span style="font-size: 18px; font-weight: bold;">S/ ${receipt.totals.grandTotal.toFixed(2)}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 10px;">
-          <span>Envío:</span>
-          <span>S/ ${receipt.totals.shippingTotal.toFixed(2)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; font-size: 14px; font-weight: bold; border-top: 1px solid #333; padding-top: 6px; margin-top: 6px;">
-          <span>Total:</span>
-          <span>S/ ${receipt.totals.grandTotal.toFixed(2)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 10px;">
-          <span>Descuentos:</span>
-          <span>S/ ${receipt.totals.discountTotal.toFixed(2)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; margin-bottom: 3px; font-size: 10px;">
-          <span>Adelanto:</span>
-          <span>S/ ${totalPaid.toFixed(2)}</span>
-        </div>
-        <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 10px; color: #333;">
-          <span>Por Cobrar:</span>
-          <span>S/ ${pendingAmount.toFixed(2)}</span>
-        </div>
+        ${
+          totalPaid > 0
+            ? `<div style="display: flex; justify-content: space-between; font-size: 10px; color: #555; margin-top: 3px;"><span>Adelanto pagado</span><span>- S/ ${totalPaid.toFixed(2)}</span></div>`
+            : ""
+        }
       </div>
     </div>
   `;
 }
 
 /**
- * Prints multiple receipts using the compact 80mm thermal format with QR codes.
- * Opens a new print window and triggers the print dialog.
+ * Prints multiple receipts using the label format (logo, QR de rastreo,
+ * código de barras, banner de cobro/pago, checklist de picking) — mismo
+ * diseño que el botón "Imprimir" de un solo pedido (CustomerServiceModal),
+ * uno por página. Abre una ventana nueva y dispara el diálogo de impresión.
  *
  * @param receipts - Array of receipt data to print
+ * @param company - Datos de la empresa (auth.company) para el header — opcional.
  * @returns Promise that resolves when print dialog is triggered, or rejects on error
  */
-export async function printReceipts(receipts: ReceiptData[]): Promise<void> {
+export async function printReceipts(
+  receipts: ReceiptData[],
+  company?: PrintCompany | null,
+): Promise<void> {
   if (receipts.length === 0) {
     throw new Error("No receipts to print");
   }
 
-  // Generate QR codes for all receipts in parallel
-  const qrPromises = receipts.map((r) => generateQR(r.orderId));
-  const qrUrls = await Promise.all(qrPromises);
+  const landingUrl = process.env.NEXT_PUBLIC_LANDING_URL;
 
-  // Generate HTML for all receipts
+  // Genera QR (link público de rastreo, no el orderId crudo) y código de
+  // barras (N° de pedido) para todos los recibos en paralelo.
+  const qrPromises = receipts.map((r) => generateQR(`${landingUrl}/rastreo/${r.orderNumber}`));
+  const qrUrls = await Promise.all(qrPromises);
+  const barcodeUrls = receipts.map((r) => generateBarcode(r.orderNumber));
+
   const receiptHTMLs = receipts.map((receipt, index) =>
-    generateReceiptHTML(receipt, qrUrls[index], index === receipts.length - 1),
+    generateReceiptHTML(
+      receipt,
+      qrUrls[index],
+      barcodeUrls[index],
+      company,
+      index === receipts.length - 1,
+    ),
   );
 
   const printContent = `
@@ -211,13 +270,13 @@ export async function printReceipts(receipts: ReceiptData[]): Promise<void> {
     <html>
     <head>
       <meta charset="utf-8">
-      <title>Impresión de Recibos</title>
+      <title>Impresión de Etiquetas</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: Arial, sans-serif; }
         @media print {
           body { padding: 0; }
-          @page { margin: 5mm; size: 80mm auto; }
+          @page { margin: 5mm; size: 100mm auto; }
         }
       </style>
     </head>
@@ -228,7 +287,7 @@ export async function printReceipts(receipts: ReceiptData[]): Promise<void> {
   `;
 
   // Open print window
-  const printWindow = window.open("", "_blank", "width=400,height=600");
+  const printWindow = window.open("", "_blank", "width=420,height=750");
   if (!printWindow) {
     throw new Error(
       "No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.",
