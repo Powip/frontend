@@ -5,11 +5,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { Button } from "../ui/button";
 import OrderReceiptView from "./orderReceiptView";
 import PaymentProofUploadModal from "./PaymentProofUploadModal";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import QRCode from "qrcode";
 import { toast } from "sonner";
 import { Upload, Truck } from "lucide-react";
+import { useAuth } from "@/contexts/AuthContext";
+import { printOrderLabel } from "@/utils/printOrderLabel";
+import { OrderHeader } from "@/interfaces/IOrder";
 
 interface Props {
   open: boolean;
@@ -23,8 +24,10 @@ export default function OrderReceiptModal({
   onClose,
   onStatusChange,
 }: Props) {
+  const { auth } = useAuth();
   const [loading, setLoading] = useState(false);
   const [receipt, setReceipt] = useState<any>(null);
+  const [orderHeader, setOrderHeader] = useState<OrderHeader | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(
     null,
@@ -33,10 +36,12 @@ export default function OrderReceiptModal({
   useEffect(() => {
     if (!open) {
       setReceipt(null);
+      setOrderHeader(null);
       return;
     }
     if (!orderId) {
       setReceipt(null);
+      setOrderHeader(null);
       return;
     }
 
@@ -44,10 +49,14 @@ export default function OrderReceiptModal({
       setReceipt(null);
       setLoading(true);
       try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
-        );
-        setReceipt(res.data);
+        const [receiptRes, orderRes] = await Promise.all([
+          axios.get(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}/receipt`,
+          ),
+          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`),
+        ]);
+        setReceipt(receiptRes.data);
+        setOrderHeader(orderRes.data);
       } catch (err) {
         console.error("Error fetching receipt", err);
       } finally {
@@ -367,102 +376,12 @@ export default function OrderReceiptModal({
     };
   };
 
+  // Misma etiqueta de despacho que "Imprimir" en el modal de pedido
+  // (CustomerServiceModal) — antes este botón armaba un PDF genérico propio
+  // con jsPDF que no tenía nada que ver con la etiqueta real.
   const handleDownloadPdf = async () => {
     if (!receipt) return;
-
-    const qrDataUrl = await generateQR(receipt.orderId);
-
-    const doc = new jsPDF();
-    const createdAt = new Date(receipt.createdAt);
-    const formattedDate = createdAt.toLocaleDateString("es-AR");
-    const formattedTime = createdAt.toLocaleTimeString("es-AR");
-
-    // QR en PDF
-    if (qrDataUrl) {
-      doc.addImage(qrDataUrl, "PNG", 150, 14, 40, 40); // posición y tamaño
-    }
-
-    // Header
-    doc.setFontSize(16);
-    doc.text(`Comprobante ${receipt.receiptType}`, 14, 20);
-    doc.setFontSize(12);
-    doc.text(`N° Orden: ${receipt.orderNumber}`, 14, 30);
-    doc.text(`Estado: ${receipt.status}`, 14, 36);
-    doc.text(`Fecha: ${formattedDate} ${formattedTime}`, 14, 42);
-
-    // Cliente
-    doc.text(`Cliente: ${receipt.customer.fullName}`, 14, 52);
-    doc.text(`Teléfono: ${receipt.customer.phoneNumber}`, 14, 58);
-    doc.text(`DNI: ${receipt.customer.dni ?? "-"}`, 14, 64);
-    doc.text(
-      `Dirección: ${receipt.customer.address}, ${receipt.customer.district}, ${receipt.customer.province}`,
-      14,
-      70,
-    );
-
-    // Items
-    const items = receipt.items.map((item: any) => [
-      item.productName,
-      Object.entries(item.attributes)
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(" · "),
-      item.quantity.toString(),
-      item.unitPrice.toFixed(2),
-      item.subtotal.toFixed(2),
-    ]);
-
-    autoTable(doc, {
-      startY: 80,
-      head: [
-        ["Producto", "Variantes", "Cantidad", "Precio Unitario", "Subtotal"],
-      ],
-      body: items,
-      theme: "grid",
-      headStyles: { fillColor: [2, 168, 225], textColor: 255 },
-    });
-
-    const finalY = (doc as any).lastAutoTable.finalY || 0;
-
-    // Calcular adelanto y monto por cobrar
-    const totalPaid = Array.isArray(receipt.payments)
-      ? receipt.payments.reduce(
-          (acc: number, payment: any) => acc + Number(payment.amount || 0),
-          0,
-        )
-      : 0;
-    const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
-
-    doc.text(
-      `Productos: S/${receipt.totals.productsTotal.toFixed(2)}`,
-      14,
-      finalY + 10,
-    );
-    doc.text(
-      `IGV 18%: S/${receipt.totals.taxTotal.toFixed(2)}`,
-      14,
-      finalY + 16,
-    );
-    doc.text(
-      `Envío: S/${receipt.totals.shippingTotal.toFixed(2)}`,
-      14,
-      finalY + 22,
-    );
-    doc.setFontSize(14);
-    doc.text(
-      `Total: S/${receipt.totals.grandTotal.toFixed(2)}`,
-      14,
-      finalY + 32,
-    );
-    doc.setFontSize(12);
-    doc.text(
-      `Descuentos: S/${receipt.totals.discountTotal.toFixed(2)}`,
-      14,
-      finalY + 42,
-    );
-    doc.text(`Adelanto: S/${totalPaid.toFixed(2)}`, 14, finalY + 48);
-    doc.text(`Por Cobrar: S/${pendingAmount.toFixed(2)}`, 14, finalY + 54);
-
-    doc.save(`Comprobante_${receipt.orderNumber}.pdf`);
+    await printOrderLabel(receipt, orderHeader, auth?.company);
   };
 
   const handleWhatsapp = () => {

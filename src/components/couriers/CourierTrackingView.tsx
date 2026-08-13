@@ -101,6 +101,18 @@ function dispatchDateFor(
   return dispatchDateByOrderId.get(order.id) ?? order.updated_at;
 }
 
+// Total de unidades del pedido (suma de cantidades de todos los items) —
+// para la columna "Pedidos" del export a Excel.
+function itemsQuantity(order: OrderHeader): number {
+  return order.items?.reduce((sum, item) => sum + item.quantity, 0) ?? 0;
+}
+
+// Resumen legible de los productos del pedido para la columna "Productos".
+function productsSummary(order: OrderHeader): string {
+  if (!order.items || order.items.length === 0) return "-";
+  return order.items.map((item) => `${item.productName} x${item.quantity}`).join("; ");
+}
+
 function courierTabValue(courierName: string): string {
   return `courier-${courierName.toLowerCase().replace(/\s+/g, "-")}`;
 }
@@ -109,8 +121,18 @@ function openDocument(url: string) {
   window.open(url, "_blank");
 }
 
-function dateKey(d: Date): string {
-  return d.toISOString().slice(0, 10);
+// "YYYY-MM-DD" en horario LOCAL — a propósito no usa toISOString(), que
+// convierte a UTC y desalinea la comparación contra `created_at` (un pedido
+// creado de noche en Lima puede caer en la madrugada UTC del día siguiente,
+// haciendo que un pedido del 5/7 local matchee el filtro del 6/7). Se usa
+// tanto para las fechas elegidas en el Calendar como para `created_at`, así
+// ambos lados de la comparación quedan en el mismo horario.
+function dateKey(d: Date | string): string {
+  const date = typeof d === "string" ? new Date(d) : d;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 const ITEMS_PER_PAGE = 15;
@@ -377,12 +399,15 @@ export default function CourierTrackingView() {
         // Aliclik y Shalom pueden entregar sin pasar nunca por
         // /shipping-guides, así que un pedido cuenta como despachado si tiene
         // guía propia O quedó vinculado a cualquier integración de courier.
+        // Se excluyen los anulados: conservan guía/tracking de antes de
+        // anularse, pero no deben listarse como pedidos despachados vigentes.
         (o) =>
-          !!o.guideNumber ||
-          !!o.evaStatus ||
-          !!o.aliclikDispatchStatus ||
-          !!o.shalomStatus ||
-          !!o.externalTrackingNumber,
+          o.status !== "ANULADO" &&
+          (!!o.guideNumber ||
+            !!o.evaStatus ||
+            !!o.aliclikDispatchStatus ||
+            !!o.shalomStatus ||
+            !!o.externalTrackingNumber),
       ),
     [orders],
   );
@@ -422,7 +447,7 @@ export default function CourierTrackingView() {
       })
       .filter((o) => {
         if (!fechaDesde && !fechaHasta) return true;
-        const ventaDate = o.created_at ? o.created_at.slice(0, 10) : null;
+        const ventaDate = o.created_at ? dateKey(o.created_at) : null;
         if (!ventaDate) return false;
         if (fechaDesde && ventaDate < fechaDesde) return false;
         if (fechaHasta && ventaDate > fechaHasta) return false;
@@ -550,10 +575,14 @@ export default function CourierTrackingView() {
         "N° Pedido": o.orderNumber,
         "Fecha de venta": new Date(o.created_at).toLocaleDateString("es-PE"),
         Despacho: despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-",
+        Vendedora: o.sellerName || "-",
+        "Canal de venta": o.salesChannel || "-",
         Cliente: o.customer?.fullName || "-",
         Teléfono: o.customer?.phoneNumber || "-",
         Ciudad: o.customer?.city || "-",
         Distrito: o.customer?.district || "-",
+        Pedidos: itemsQuantity(o),
+        Productos: productsSummary(o),
         "Saldo de deuda": getPendingPayment(o),
         Courier: courierLabel(o),
         "Costo de envío": o.carrierShippingCost ? Number(o.carrierShippingCost) : 0,
@@ -1087,7 +1116,7 @@ function CourierOrdersTab({
       })
       .filter((o) => {
         if (!fechaDesde && !fechaHasta) return true;
-        const ventaDate = o.created_at ? o.created_at.slice(0, 10) : null;
+        const ventaDate = o.created_at ? dateKey(o.created_at) : null;
         if (!ventaDate) return false;
         if (fechaDesde && ventaDate < fechaDesde) return false;
         if (fechaHasta && ventaDate > fechaHasta) return false;
@@ -1126,10 +1155,14 @@ function CourierOrdersTab({
         "N° Pedido": o.orderNumber,
         "Fecha de venta": new Date(o.created_at).toLocaleDateString("es-PE"),
         Despacho: despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-",
+        Vendedora: o.sellerName || "-",
+        "Canal de venta": o.salesChannel || "-",
         Cliente: o.customer?.fullName || "-",
         Teléfono: o.customer?.phoneNumber || "-",
         Ciudad: o.customer?.city || "-",
         Distrito: o.customer?.district || "-",
+        Pedidos: itemsQuantity(o),
+        Productos: productsSummary(o),
         "Saldo de deuda": getPendingPayment(o),
         "Costo de envío": o.carrierShippingCost ? Number(o.carrierShippingCost) : 0,
         "Número de tracking": o.externalTrackingNumber || "-",
