@@ -26,7 +26,10 @@ export interface ReceiptData {
     clientType?: string;
     reference?: string;
   };
-  items: {
+  // Opcionales a propósito: un pedido en lote puede llegar con el receipt
+  // incompleto (backend devuelve el header sin items/totals armados todavía)
+  // y no queremos que eso tumbe la impresión de todo el lote.
+  items?: {
     productName: string;
     sku?: string;
     quantity: number;
@@ -36,7 +39,7 @@ export interface ReceiptData {
     attributes?: Record<string, any>;
   }[];
   payments?: { paymentMethod: string }[];
-  totals: {
+  totals?: {
     productsTotal: number;
     taxTotal: number;
     shippingTotal: number;
@@ -119,8 +122,18 @@ function generateReceiptHTML(
   company: PrintCompany | null | undefined,
   isLast: boolean,
 ): string {
-  const totalPaid = receipt.totals.totalPaid || 0;
-  const pendingAmount = receipt.totals.pendingAmount || 0;
+  const totals = receipt.totals ?? {
+    productsTotal: 0,
+    taxTotal: 0,
+    shippingTotal: 0,
+    discountTotal: 0,
+    grandTotal: 0,
+    totalPaid: 0,
+    pendingAmount: 0,
+  };
+  const items = receipt.items ?? [];
+  const totalPaid = totals.totalPaid || 0;
+  const pendingAmount = totals.pendingAmount || 0;
   const statusInfo = receipt.status
     ? (PRINT_STATUS_LABEL[receipt.status] ?? { label: receipt.status, bg: "#f1f5f9", color: "#334155" })
     : null;
@@ -171,7 +184,7 @@ function generateReceiptHTML(
           : `
       <div style="display: flex; justify-content: space-between; align-items: center; background: #dcfce7; color: #166534; padding: 8px 10px; border-radius: 6px; margin-bottom: 10px; font-size: 11px; font-weight: bold;">
         <span>✓ Pagado</span>
-        <span>S/ ${receipt.totals.grandTotal.toFixed(2)}</span>
+        <span>S/ ${totals.grandTotal.toFixed(2)}</span>
       </div>`
       }
 
@@ -192,7 +205,7 @@ function generateReceiptHTML(
 
       <div style="font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;">Preparar / Picking</div>
 
-      ${receipt.items
+      ${items
         .map((item) => {
           const attrs = item.attributes ? Object.values(item.attributes).join(" / ") : "";
           return `
@@ -213,11 +226,11 @@ function generateReceiptHTML(
 
       <div style="margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10.5px;">
         <div style="color: #555; margin-bottom: 4px;">
-          Productos S/ ${receipt.totals.productsTotal.toFixed(2)} · IGV 18% S/ ${receipt.totals.taxTotal.toFixed(2)} · Envío S/ ${receipt.totals.shippingTotal.toFixed(2)} · Desc S/ ${receipt.totals.discountTotal.toFixed(2)}
+          Productos S/ ${totals.productsTotal.toFixed(2)} · IGV 18% S/ ${totals.taxTotal.toFixed(2)} · Envío S/ ${totals.shippingTotal.toFixed(2)} · Desc S/ ${totals.discountTotal.toFixed(2)}
         </div>
         <div style="display: flex; justify-content: space-between; align-items: baseline;">
           <span style="font-size: 14px; font-weight: bold;">Total</span>
-          <span style="font-size: 18px; font-weight: bold;">S/ ${receipt.totals.grandTotal.toFixed(2)}</span>
+          <span style="font-size: 18px; font-weight: bold;">S/ ${totals.grandTotal.toFixed(2)}</span>
         </div>
         ${
           totalPaid > 0
@@ -230,21 +243,47 @@ function generateReceiptHTML(
 }
 
 /**
+ * Abre la ventana de impresión con un placeholder mientras se arman las
+ * etiquetas. Hay que llamarla de forma SÍNCRONA, apenas arranca el handler
+ * del click y antes de cualquier `await` (fetch de recibos, generación de
+ * QR/código de barras, etc.) — los navegadores solo confían en
+ * `window.open()` como originado por el usuario si no hubo awaits de por
+ * medio. Si se abre más tarde, el popup queda bloqueado en silencio y recién
+ * se nota como un error genérico al final de todo el flujo.
+ */
+export function openPrintWindow(): Window | null {
+  const printWindow = window.open("", "_blank", "width=420,height=750");
+  printWindow?.document.write(
+    `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etiquetas</title></head>` +
+      `<body style="font-family:Arial,sans-serif;padding:24px;color:#666;">Generando etiquetas…</body></html>`,
+  );
+  return printWindow;
+}
+
+/**
  * Prints multiple receipts using the label format (logo, QR de rastreo,
  * código de barras, banner de cobro/pago, checklist de picking) — mismo
  * diseño que el botón "Imprimir" de un solo pedido (CustomerServiceModal),
- * uno por página. Abre una ventana nueva y dispara el diálogo de impresión.
+ * uno por página. Escribe el contenido final en la ventana ya abierta
+ * (ver `openPrintWindow`) y dispara el diálogo de impresión.
  *
  * @param receipts - Array of receipt data to print
  * @param company - Datos de la empresa (auth.company) para el header — opcional.
+ * @param printWindow - Ventana obtenida con `openPrintWindow()` antes de esperar nada.
  * @returns Promise that resolves when print dialog is triggered, or rejects on error
  */
 export async function printReceipts(
   receipts: ReceiptData[],
-  company?: PrintCompany | null,
+  company: PrintCompany | null | undefined,
+  printWindow: Window | null,
 ): Promise<void> {
   if (receipts.length === 0) {
     throw new Error("No receipts to print");
+  }
+  if (!printWindow) {
+    throw new Error(
+      "No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.",
+    );
   }
 
   const landingUrl = process.env.NEXT_PUBLIC_LANDING_URL;
@@ -286,14 +325,8 @@ export async function printReceipts(
     </html>
   `;
 
-  // Open print window
-  const printWindow = window.open("", "_blank", "width=420,height=750");
-  if (!printWindow) {
-    throw new Error(
-      "No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.",
-    );
-  }
-
+  // Reemplaza el placeholder de openPrintWindow() por el contenido final.
+  printWindow.document.open();
   printWindow.document.write(printContent);
   printWindow.document.close();
 

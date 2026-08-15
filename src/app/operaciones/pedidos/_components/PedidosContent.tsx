@@ -24,7 +24,7 @@ import { fetchCouriers } from "@/services/courierService";
 import { reassignSeller } from "@/services/atencionClienteService";
 import { getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
-import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
+import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 
 import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
@@ -560,15 +560,47 @@ export function PedidosContent() {
       toast.warning("No hay pedidos seleccionados para imprimir");
       return;
     }
+
+    // Abrir la ventana ANTES de cualquier await: si se abre después de
+    // esperar las requests de abajo, el navegador la bloquea en silencio
+    // (así se veía el bug: "queda cargando y da error" con varios pedidos).
+    const printWindow = openPrintWindow();
+    if (!printWindow) {
+      toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.");
+      return;
+    }
+
     setIsBulkLoading(true);
     try {
+      const results = await Promise.allSettled(
+        selected.map((sale) => axios.get<ReceiptData>(`${API_VENTAS}/order-header/${sale.id}/receipt`)),
+      );
+
       const receipts: ReceiptData[] = [];
-      for (const sale of selected) {
-        const res = await axios.get(`${API_VENTAS}/order-header/${sale.id}/receipt`);
-        receipts.push(res.data);
+      const failed: string[] = [];
+      results.forEach((result, i) => {
+        if (result.status === "fulfilled") {
+          receipts.push(result.value.data);
+        } else {
+          failed.push(selected[i].orderNumber);
+          console.error(`Error al obtener el comprobante de ${selected[i].orderNumber}`, result.reason);
+        }
+      });
+
+      if (receipts.length === 0) {
+        printWindow.close();
+        toast.error("No se pudo obtener ningún pedido seleccionado");
+        return;
       }
-      await printReceipts(receipts, auth?.company);
-    } catch {
+
+      await printReceipts(receipts, auth?.company, printWindow);
+
+      if (failed.length > 0) {
+        toast.warning(`Se imprimieron ${receipts.length} etiqueta(s). No se pudo generar la de: ${failed.join(", ")}`);
+      }
+    } catch (error) {
+      printWindow.close();
+      console.error("Error al generar etiquetas en lote", error);
       toast.error("No se pudieron generar las etiquetas");
     } finally {
       setIsBulkLoading(false);
