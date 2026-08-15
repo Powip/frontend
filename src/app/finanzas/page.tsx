@@ -44,7 +44,7 @@ import CancellationModal, {
   CancellationReason,
 } from "@/components/modals/CancellationModal";
 import { getAvailableStatuses } from "@/utils/domain/orders-status-flow";
-import { printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
+import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
@@ -460,6 +460,14 @@ Estado: ${sale.status}
       return;
     }
 
+    // Abrir la ventana ANTES de cualquier await: si se abre después de
+    // esperar las requests de abajo, el navegador la bloquea en silencio.
+    const printWindow = openPrintWindow();
+    if (!printWindow) {
+      toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.");
+      return;
+    }
+
     setIsPrinting(true);
     toast.info(`Preparando ${selectedSales.length} recibo(s) para imprimir...`);
 
@@ -474,11 +482,12 @@ Estado: ${sale.status}
       );
 
       // Imprimir usando la utilidad compartida (formato compacto con QR)
-      await printReceipts(receipts, auth?.company);
+      await printReceipts(receipts, auth?.company, printWindow);
 
       toast.success(`${selectedSales.length} recibo(s) enviados a imprimir`);
       setSelectedSaleIds(new Set());
     } catch (error) {
+      printWindow.close();
       console.error("Error en impresión masiva", error);
       toast.error("Error al preparar los recibos para imprimir");
     } finally {
