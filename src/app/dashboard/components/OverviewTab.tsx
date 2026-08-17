@@ -24,8 +24,9 @@ import { hasAdminAccess } from "@/config/permissions.config";
 import { useCcKpisFunnel } from "@/hooks/useCcKpisFunnel";
 import { useCcAging } from "@/hooks/useCcAging";
 import { useCcUpsell } from "@/hooks/useCcUpsell";
+import { useCcKpisFinancieros } from "@/hooks/useCcKpisFinancieros";
+import { useCcConfirmedSales } from "@/hooks/useCcConfirmedSales";
 import { useAgentePerformance } from "@/hooks/useAgentePerformance";
-import { useDashboardSummary } from "@/hooks/useDashboardSummary";
 import { useDashboardByChannel } from "@/hooks/useDashboardByChannel";
 import { useDashboardByLocation } from "@/hooks/useDashboardByLocation";
 import { useDashboardByPayment } from "@/hooks/useDashboardByPayment";
@@ -119,7 +120,8 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
   const funnelQuery = useCcKpisFunnel(selectedStoreId, range);
   const agingQuery = useCcAging(selectedStoreId, range);
   const upsellQuery = useCcUpsell(selectedStoreId, range);
-  const summaryQuery = useDashboardSummary(selectedStoreId, fromDate, toDate, sellerId);
+  const financierosQuery = useCcKpisFinancieros(selectedStoreId, range);
+  const confirmedSalesQuery = useCcConfirmedSales(selectedStoreId, range);
   const channelQuery = useDashboardByChannel(selectedStoreId, fromDate, toDate, sellerId);
   const locationQuery = useDashboardByLocation(selectedStoreId, fromDate, toDate, sellerId);
   const paymentQuery = useDashboardByPayment(selectedStoreId, fromDate, toDate, sellerId);
@@ -129,30 +131,36 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
   const couriersListQuery = useDashboardCouriersList(companyId);
   const inventoryQuery = useDashboardInventory(inventoryId);
 
-  const summary = summaryQuery.data;
   const funnel = funnelQuery.data;
   const upsell = upsellQuery.data;
+  const financieros = financierosQuery.data;
   const agentes = useMemo(() => agentesQuery.data ?? [], [agentesQuery.data]);
 
+  // "Ventas" acá = solo pedidos con subEstadoCc="confirmado" en Gestión COD.
+  // Antes esto salía de /stats/summary (ms-ventas), que suma TODOS los
+  // pedidos de la tienda sin importar su estado — mezclaba pedidos recién
+  // ingresados (que todavía pueden anularse o no contestar) con ventas
+  // reales. facturacionConfirmada/countConfirmados ya vienen filtrados por
+  // Call Center a "confirmado" — ver useCcKpisFinancieros.
   const kpis = [
     {
       label: "Ventas Totales",
-      value: summary ? `S/ ${summary.totalSales.toLocaleString("es-PE", { maximumFractionDigits: 0 })}` : summaryQuery.isError ? "Error" : "—",
-      sub: summaryQuery.isError ? "No se pudo cargar" : "Período seleccionado",
+      value: financieros ? `S/ ${financieros.facturacionConfirmada.toLocaleString("es-PE", { maximumFractionDigits: 0 })}` : financierosQuery.isError ? "Error" : "—",
+      sub: financierosQuery.isError ? "No se pudo cargar" : "Confirmadas · Gestión COD",
       primary: true,
-      loading: summaryQuery.isPending,
+      loading: financierosQuery.isPending,
     },
     {
       label: "Órdenes",
-      value: summary ? summary.totalOrders : summaryQuery.isError ? "Error" : "—",
-      sub: summaryQuery.isError ? "No se pudo cargar" : "Total ingresadas",
-      loading: summaryQuery.isPending,
+      value: financieros ? financieros.countConfirmados : financierosQuery.isError ? "Error" : "—",
+      sub: financierosQuery.isError ? "No se pudo cargar" : "Confirmadas · Gestión COD",
+      loading: financierosQuery.isPending,
     },
     {
       label: "Ticket Promedio",
-      value: summary ? `S/ ${summary.averageTicket.toLocaleString("es-PE", { maximumFractionDigits: 0 })}` : summaryQuery.isError ? "Error" : "—",
-      sub: "Por orden",
-      loading: summaryQuery.isPending,
+      value: financieros ? `S/ ${financieros.ticketPromedio.toLocaleString("es-PE", { maximumFractionDigits: 0 })}` : financierosQuery.isError ? "Error" : "—",
+      sub: "Por orden confirmada",
+      loading: financierosQuery.isPending,
     },
     {
       label: "Efectividad COD",
@@ -241,17 +249,28 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
   }, [agingQuery.data]);
 
   const today = format(new Date(), "yyyy-MM-dd");
+  // Agrupa por día los mismos pedidos confirmados de arriba (no todos los
+  // pedidos ingresados) — usa ccConfirmadoAt (fecha real de confirmación),
+  // con fallback a created_at si por algún motivo no está seteada.
   const ventasDiarias = useMemo(() => {
-    return (summary?.dailySales ?? []).map((d) => {
-      const dateObj = new Date(`${d.date}T12:00:00`);
-      return {
-        day: format(dateObj, "dd"),
-        label: `${format(dateObj, "dd-MMM", { locale: es })} · S/${d.amount.toLocaleString("es-PE")}`,
-        amount: d.amount,
-        isToday: d.date === today,
-      };
+    const pedidos = confirmedSalesQuery.data ?? [];
+    const byDay = new Map<string, number>();
+    pedidos.forEach((o) => {
+      const dateKey = (o.ccConfirmadoAt ?? o.created_at).slice(0, 10);
+      byDay.set(dateKey, (byDay.get(dateKey) ?? 0) + (parseFloat(o.grandTotal) || 0));
     });
-  }, [summary, today]);
+    return [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, amount]) => {
+        const dateObj = new Date(`${date}T12:00:00`);
+        return {
+          day: format(dateObj, "dd"),
+          label: `${format(dateObj, "dd-MMM", { locale: es })} · S/${amount.toLocaleString("es-PE")}`,
+          amount,
+          isToday: date === today,
+        };
+      });
+  }, [confirmedSalesQuery.data, today]);
   const maxVenta = Math.max(...ventasDiarias.map((d) => d.amount), 1);
 
   const geoTop = (locationQuery.data ?? []).slice(0, 5);
@@ -534,7 +553,7 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
       <div className="grid grid-cols-[2fr_1fr_1fr] gap-3.5">
         <SectionCard
           title="Ventas Diarias"
-          subtitle="Ventas en el período"
+          subtitle="Confirmadas · Gestión COD"
           right={
             <div className="flex items-center gap-3 text-[10px] font-medium text-muted-foreground">
               <span className="flex items-center gap-1.5">
@@ -543,9 +562,9 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
             </div>
           }
         >
-          {summaryQuery.isPending ? (
+          {confirmedSalesQuery.isPending ? (
             <Skeleton className="h-32 w-full" />
-          ) : summaryQuery.isError ? (
+          ) : confirmedSalesQuery.isError ? (
             <p className="text-xs text-red-600 dark:text-red-400 py-10 text-center">No se pudo cargar las ventas diarias.</p>
           ) : ventasDiarias.length === 0 ? (
             <p className="text-xs text-muted-foreground py-10 text-center">Sin ventas registradas en el período.</p>
