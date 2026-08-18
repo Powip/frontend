@@ -42,9 +42,9 @@ const MOTIVOS_NC = [
   "Descuento por ítem",
   "Bonificación",
   "Descuento global",
-];
+] as const;
 
-const MOTIVOS_TOTAL = new Set([
+const MOTIVOS_TOTAL = new Set<string>([
   "Devolución total",
   "Anulación de la operación",
   "Anulación por error en el RUC",
@@ -65,65 +65,101 @@ export default function NotaCreditoModal({
   preselectId,
   crearNota,
 }: NotaCreditoModalProps) {
-  const [originalId, setOriginalId] = useState(preselectId || aceptados[0]?.sale.id || "");
-  const [motivo, setMotivo] = useState(MOTIVOS_NC[0]);
-  const [checked, setChecked] = useState<Record<number, boolean>>({});
-  const [qty, setQty] = useState<Record<number, number>>({});
+  const defaultOriginalId = preselectId ?? aceptados[0]?.sale.id ?? "";
+
+  const [originalId, setOriginalId] = useState(defaultOriginalId);
+  const [motivo, setMotivo] = useState<string>(MOTIVOS_NC[0]);
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [qty, setQty] = useState<Record<string, number>>({});
   const [montoManual, setMontoManual] = useState("");
 
-  const original = aceptados.find((r) => r.sale.id === originalId);
+  const original = useMemo(
+    () => aceptados.find((row) => row.sale.id === originalId),
+    [aceptados, originalId],
+  );
+
+  const originalItems = original?.sale.items ?? [];
 
   useEffect(() => {
-    if (!isOpen) return;
-    const id = preselectId || aceptados[0]?.sale.id || "";
+    if (!isOpen) {
+      return;
+    }
+
+    const id = preselectId ?? aceptados[0]?.sale.id ?? "";
+
     setOriginalId(id);
     setMotivo(MOTIVOS_NC[0]);
     setMontoManual("");
-  }, [isOpen, preselectId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, preselectId, aceptados]);
 
   useEffect(() => {
-    if (!original) return;
+    if (!original) {
+      setChecked({});
+      setQty({});
+      return;
+    }
+
     const isTotal = MOTIVOS_TOTAL.has(motivo);
-    const nextChecked: Record<number, boolean> = {};
-    const nextQty: Record<number, number> = {};
-    (original.sale.items || []).forEach((it, i) => {
-      nextChecked[i] = isTotal;
-      nextQty[i] = it.quantity;
-    });
+    const nextChecked: Record<string, boolean> = {};
+    const nextQty: Record<string, number> = {};
+
+    for (const item of originalItems) {
+      const itemId = String(item.id);
+
+      nextChecked[itemId] = isTotal;
+      nextQty[itemId] = item.quantity;
+    }
+
     setChecked(nextChecked);
     setQty(nextQty);
-  }, [originalId, motivo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [original, originalItems, motivo]);
 
-  const isManual = motivo === "Descuento global" || !original?.sale.items?.length;
+  const isManual = motivo === "Descuento global" || originalItems.length === 0;
 
   const total = useMemo(() => {
-    if (!original) return 0;
-    return (original.sale.items || []).reduce(
-      (s, it, i) => (checked[i] ? s + (qty[i] ?? it.quantity) * Number(it.unitPrice) : s),
-      0,
-    );
-  }, [original, checked, qty]);
+    if (!original) {
+      return 0;
+    }
+
+    return originalItems.reduce((sum, item) => {
+      const itemId = String(item.id);
+
+      if (!checked[itemId]) {
+        return sum;
+      }
+
+      const quantity = qty[itemId] ?? item.quantity;
+
+      return sum + quantity * Number(item.unitPrice);
+    }, 0);
+  }, [original, originalItems, checked, qty]);
 
   const handleCrear = () => {
     if (!original) {
       toast.error("Selecciona el comprobante original");
       return;
     }
+
     let monto = 0;
+
     if (isManual) {
-      monto = parseFloat(montoManual) || 0;
+      monto = Number.parseFloat(montoManual) || 0;
     } else {
       const anySelected = Object.values(checked).some(Boolean);
+
       if (!anySelected) {
         toast.error("Selecciona al menos un ítem para la nota");
         return;
       }
+
       monto = total;
     }
-    if (!monto) {
+
+    if (monto <= 0) {
       toast.error("Ingresa o calcula un monto válido");
       return;
     }
+
     crearNota({
       original: original.fullNumber || original.sale.orderNumber,
       tipoOriginal: original.tipo === "01" ? "01" : "03",
@@ -131,18 +167,28 @@ export default function NotaCreditoModal({
       motivo,
       monto,
     });
+
     toast.success("Nota de crédito registrada (vista previa — aún no enviada a SUNAT).");
+
     onClose();
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+    >
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[600px]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
             <FileMinus className="h-5 w-5 text-primary" />
             Nueva Nota de Crédito
           </DialogTitle>
+
           <DialogDescription>
             Elige a qué factura o boleta corresponde — toda nota queda ligada a un comprobante
             original ya aceptado por SUNAT.
@@ -150,22 +196,24 @@ export default function NotaCreditoModal({
         </DialogHeader>
 
         {aceptados.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-6 text-center">
+          <p className="py-6 text-center text-sm text-muted-foreground">
             Aún no tienes comprobantes aceptados para notar.
           </p>
         ) : (
           <div className="grid gap-4">
             <div className="grid gap-2">
               <Label>Comprobante original</Label>
+
               <Select value={originalId} onValueChange={setOriginalId}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Selecciona un comprobante" />
                 </SelectTrigger>
+
                 <SelectContent>
-                  {aceptados.map((r) => (
-                    <SelectItem key={r.sale.id} value={r.sale.id}>
-                      {r.fullNumber} — {r.sale.customer.fullName} — S/{" "}
-                      {Number(r.sale.grandTotal).toFixed(2)}
+                  {aceptados.map((row) => (
+                    <SelectItem key={row.sale.id} value={row.sale.id}>
+                      {row.fullNumber} — {row.sale.customer.fullName} — S/{" "}
+                      {Number(row.sale.grandTotal).toFixed(2)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -174,14 +222,16 @@ export default function NotaCreditoModal({
 
             <div className="grid gap-2">
               <Label>Motivo (catálogo SUNAT 09)</Label>
+
               <Select value={motivo} onValueChange={setMotivo}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
+
                 <SelectContent>
-                  {MOTIVOS_NC.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m}
+                  {MOTIVOS_NC.map((item) => (
+                    <SelectItem key={item} value={item}>
+                      {item}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -191,16 +241,18 @@ export default function NotaCreditoModal({
             {isManual ? (
               <div className="grid gap-2">
                 <Label>Monto de la nota</Label>
+
                 <Input
                   type="number"
+                  min="0"
                   step="0.01"
                   value={montoManual}
-                  onChange={(e) => setMontoManual(e.target.value)}
+                  onChange={(event) => setMontoManual(event.target.value)}
                   placeholder="Ej. 38.00"
                 />
               </div>
             ) : (
-              <div className="rounded-md border">
+              <div className="overflow-hidden rounded-md border">
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -211,45 +263,65 @@ export default function NotaCreditoModal({
                       <TableHead className="text-right">Importe</TableHead>
                     </TableRow>
                   </TableHeader>
+
                   <TableBody>
-                    {(original?.sale.items || []).map((it, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Checkbox
-                            checked={!!checked[i]}
-                            onCheckedChange={(v) => setChecked((prev) => ({ ...prev, [i]: !!v }))}
-                          />
-                        </TableCell>
-                        <TableCell className="text-xs">{it.productName}</TableCell>
-                        <TableCell className="text-xs">{it.quantity}</TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min={1}
-                            max={it.quantity}
-                            value={qty[i] ?? it.quantity}
-                            onChange={(e) =>
-                              setQty((prev) => ({ ...prev, [i]: Number(e.target.value) || 0 }))
-                            }
-                            className="h-8 text-xs"
-                          />
-                        </TableCell>
-                        <TableCell className="text-right text-xs font-medium">
-                          S/{" "}
-                          {(
-                            (checked[i] ? (qty[i] ?? it.quantity) : 0) * Number(it.unitPrice)
-                          ).toFixed(2)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {originalItems.map((item) => {
+                      const itemId = String(item.id);
+                      const selected = !!checked[itemId];
+                      const quantity = qty[itemId] ?? item.quantity;
+
+                      return (
+                        <TableRow key={itemId}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selected}
+                              onCheckedChange={(value) =>
+                                setChecked((previous) => ({
+                                  ...previous,
+                                  [itemId]: !!value,
+                                }))
+                              }
+                            />
+                          </TableCell>
+
+                          <TableCell className="text-xs">{item.productName}</TableCell>
+
+                          <TableCell className="text-xs">{item.quantity}</TableCell>
+
+                          <TableCell>
+                            <Input
+                              type="number"
+                              min={1}
+                              max={item.quantity}
+                              value={quantity}
+                              disabled={!selected}
+                              onChange={(event) => {
+                                const nextValue = Number(event.target.value) || 0;
+
+                                setQty((previous) => ({
+                                  ...previous,
+                                  [itemId]: Math.min(Math.max(nextValue, 0), item.quantity),
+                                }));
+                              }}
+                              className="h-8 text-xs"
+                            />
+                          </TableCell>
+
+                          <TableCell className="text-right text-xs font-medium">
+                            S/ {((selected ? quantity : 0) * Number(item.unitPrice)).toFixed(2)}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </div>
             )}
 
             {!isManual && (
-              <div className="rounded-md border bg-muted/30 px-4 py-3 flex justify-between font-bold">
+              <div className="flex justify-between rounded-md border bg-muted/30 px-4 py-3 font-bold">
                 <span>Monto de la nota</span>
+
                 <span className="text-primary">S/ {total.toFixed(2)}</span>
               </div>
             )}
@@ -260,8 +332,9 @@ export default function NotaCreditoModal({
           <Button variant="ghost" onClick={onClose}>
             Cancelar
           </Button>
+
           {aceptados.length > 0 && (
-            <Button onClick={handleCrear} className="bg-primary hover:bg-primary/90 text-white">
+            <Button onClick={handleCrear} className="bg-primary text-white hover:bg-primary/90">
               Emitir Nota de Crédito
             </Button>
           )}
