@@ -1,6 +1,10 @@
 "use client";
 
+import { FileMinus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -9,10 +13,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -28,10 +30,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { FileMinus } from "lucide-react";
-import { toast } from "sonner";
-import { ComprobanteRow } from "@/hooks/useComprobantesSunat";
-import { useFacturacionMock } from "@/hooks/useFacturacionMock";
+import type { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import type { useFacturacionMock } from "@/hooks/useFacturacionMock";
 
 const MOTIVOS_NC = [
   "Devolución total",
@@ -44,7 +44,11 @@ const MOTIVOS_NC = [
   "Descuento global",
 ];
 
-const MOTIVOS_TOTAL = new Set(["Devolución total", "Anulación de la operación", "Anulación por error en el RUC"]);
+const MOTIVOS_TOTAL = new Set([
+  "Devolución total",
+  "Anulación de la operación",
+  "Anulación por error en el RUC",
+]);
 
 interface NotaCreditoModalProps {
   isOpen: boolean;
@@ -54,7 +58,13 @@ interface NotaCreditoModalProps {
   crearNota: ReturnType<typeof useFacturacionMock>["crearNota"];
 }
 
-export default function NotaCreditoModal({ isOpen, onClose, aceptados, preselectId, crearNota }: NotaCreditoModalProps) {
+export default function NotaCreditoModal({
+  isOpen,
+  onClose,
+  aceptados,
+  preselectId,
+  crearNota,
+}: NotaCreditoModalProps) {
   const [originalId, setOriginalId] = useState(preselectId || aceptados[0]?.sale.id || "");
   const [motivo, setMotivo] = useState(MOTIVOS_NC[0]);
   const [checked, setChecked] = useState<Record<number, boolean>>({});
@@ -88,7 +98,10 @@ export default function NotaCreditoModal({ isOpen, onClose, aceptados, preselect
 
   const total = useMemo(() => {
     if (!original) return 0;
-    return (original.sale.items || []).reduce((s, it, i) => (checked[i] ? s + (qty[i] ?? it.quantity) * Number(it.unitPrice) : s), 0);
+    return (original.sale.items || []).reduce(
+      (s, it, i) => (checked[i] ? s + (qty[i] ?? it.quantity) * Number(it.unitPrice) : s),
+      0,
+    );
   }, [original, checked, qty]);
 
   const handleCrear = () => {
@@ -131,7 +144,8 @@ export default function NotaCreditoModal({ isOpen, onClose, aceptados, preselect
             Nueva Nota de Crédito
           </DialogTitle>
           <DialogDescription>
-            Elige a qué factura o boleta corresponde — toda nota queda ligada a un comprobante original ya aceptado por SUNAT.
+            Elige a qué factura o boleta corresponde — toda nota queda ligada a un comprobante
+            original ya aceptado por SUNAT.
           </DialogDescription>
         </DialogHeader>
 
@@ -150,7 +164,8 @@ export default function NotaCreditoModal({ isOpen, onClose, aceptados, preselect
                 <SelectContent>
                   {aceptados.map((r) => (
                     <SelectItem key={r.sale.id} value={r.sale.id}>
-                      {r.fullNumber} — {r.sale.customer.fullName} — S/ {Number(r.sale.grandTotal).toFixed(2)}
+                      {r.fullNumber} — {r.sale.customer.fullName} — S/{" "}
+                      {Number(r.sale.grandTotal).toFixed(2)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -176,7 +191,13 @@ export default function NotaCreditoModal({ isOpen, onClose, aceptados, preselect
             {isManual ? (
               <div className="grid gap-2">
                 <Label>Monto de la nota</Label>
-                <Input type="number" step="0.01" value={montoManual} onChange={(e) => setMontoManual(e.target.value)} placeholder="Ej. 38.00" />
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={montoManual}
+                  onChange={(e) => setMontoManual(e.target.value)}
+                  placeholder="Ej. 38.00"
+                />
               </div>
             ) : (
               <div className="rounded-md border">
@@ -207,12 +228,17 @@ export default function NotaCreditoModal({ isOpen, onClose, aceptados, preselect
                             min={1}
                             max={it.quantity}
                             value={qty[i] ?? it.quantity}
-                            onChange={(e) => setQty((prev) => ({ ...prev, [i]: Number(e.target.value) || 0 }))}
+                            onChange={(e) =>
+                              setQty((prev) => ({ ...prev, [i]: Number(e.target.value) || 0 }))
+                            }
                             className="h-8 text-xs"
                           />
                         </TableCell>
                         <TableCell className="text-right text-xs font-medium">
-                          S/ {((checked[i] ? qty[i] ?? it.quantity : 0) * Number(it.unitPrice)).toFixed(2)}
+                          S/{" "}
+                          {(
+                            (checked[i] ? (qty[i] ?? it.quantity) : 0) * Number(it.unitPrice)
+                          ).toFixed(2)}
                         </TableCell>
                       </TableRow>
                     ))}

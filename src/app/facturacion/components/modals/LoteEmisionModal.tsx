@@ -1,6 +1,16 @@
 "use client";
 
+import { Zap } from "lucide-react";
 import { useState } from "react";
+import { IManualInvoicePayload } from "@/api/Facturacion";
+import {
+  CURRENCIES,
+  DOCUMENT_TYPES,
+  IDENTITY_DOCUMENT_TYPES,
+  TAX_TYPES,
+  UNIT_CODES,
+} from "@/api/sunat/types/sunat-document.types";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +19,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -17,14 +28,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
-import { Zap } from "lucide-react";
-import { IManualInvoicePayload } from "@/api/Facturacion";
-import { ComprobanteRow } from "@/hooks/useComprobantesSunat";
 import { useCreateManualInvoice } from "@/hooks/sunat/sunat-document/use-create-manual-invoice";
-import { CreateManualInvoiceInput } from "@/schemas/sunat/create-manual-invoice.schema";
-import { CURRENCIES, DOCUMENT_TYPES, IDENTITY_DOCUMENT_TYPES, TAX_TYPES, UNIT_CODES } from "@/api/sunat/types/sunat-document.types";
+import type { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import type { CreateManualInvoiceInput } from "@/schemas/sunat/create-manual-invoice.schema";
 
 interface LoteEmisionModalProps {
   isOpen: boolean;
@@ -40,18 +46,14 @@ interface LoteResult {
 }
 
 export default function LoteEmisionModal({ isOpen, onClose, rows, onDone }: LoteEmisionModalProps) {
-  const {
-    mutateAsync: createInvoice,
-  } = useCreateManualInvoice();
+  const { mutateAsync: createInvoice } = useCreateManualInvoice();
 
   const [tipo, setTipo] = useState<"01" | "03">("03");
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<LoteResult[] | null>(null);
 
-  const buildPayload = (
-    row: ComprobanteRow
-  ): CreateManualInvoiceInput | null => {
+  const buildPayload = (row: ComprobanteRow): CreateManualInvoiceInput | null => {
     const { sale } = row;
 
     const docNumber = sale.customer.documentNumber ?? "";
@@ -63,18 +65,12 @@ export default function LoteEmisionModal({ isOpen, onClose, rows, onDone }: Lote
     return {
       externalId: String(sale.id),
 
-      documentType:
-        isRuc
-          ? DOCUMENT_TYPES.FACTURA
-          : DOCUMENT_TYPES.BOLETA,
+      documentType: isRuc ? DOCUMENT_TYPES.FACTURA : DOCUMENT_TYPES.BOLETA,
 
       customer: {
         name: sale.customer.fullName,
 
-        documentType:
-          isRuc
-            ? IDENTITY_DOCUMENT_TYPES.RUC
-            : IDENTITY_DOCUMENT_TYPES.DNI,
+        documentType: isRuc ? IDENTITY_DOCUMENT_TYPES.RUC : IDENTITY_DOCUMENT_TYPES.DNI,
 
         documentNumber: docNumber,
 
@@ -164,7 +160,11 @@ export default function LoteEmisionModal({ isOpen, onClose, rows, onDone }: Lote
         {!results && (
           <div className="grid gap-2">
             <Label>Tipo de comprobante para todos</Label>
-            <Select value={tipo} onValueChange={(v) => setTipo(v as "01" | "03")} disabled={running}>
+            <Select
+              value={tipo}
+              onValueChange={(v) => setTipo(v as "01" | "03")}
+              disabled={running}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -199,7 +199,11 @@ export default function LoteEmisionModal({ isOpen, onClose, rows, onDone }: Lote
             {results ? "Cerrar" : "Cancelar"}
           </Button>
           {!results && (
-            <Button onClick={runLote} disabled={running} className="bg-primary hover:bg-primary/90 text-white">
+            <Button
+              onClick={runLote}
+              disabled={running}
+              className="bg-primary hover:bg-primary/90 text-white"
+            >
               Emitir {rows.length} comprobantes
             </Button>
           )}
