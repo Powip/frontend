@@ -1,4 +1,5 @@
 import { Plus, Trash2 } from "lucide-react";
+import { TAX_TYPES, UNIT_CODES } from "@/api/sunat/types/sunat-document.types";
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -8,8 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { CreateManualInvoiceInput } from "@/schemas/sunat/create-manual-invoice.schema";
-import { TAX_TYPES, UNIT_CODES } from "@/api/sunat/types/sunat-document.types";
+import type { CreateManualInvoiceInput } from "@/schemas/sunat/create-manual-invoice.schema";
 
 type InvoiceItem = CreateManualInvoiceInput["items"][number];
 
@@ -19,11 +19,7 @@ interface ItemsEditTableProps {
 }
 
 export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
-  const updateItem = (
-    i: number,
-    field: keyof InvoiceItem,
-    value: string
-  ) => {
+  const updateItem = (i: number, field: keyof InvoiceItem, value: string) => {
     const next = items.map((it, idx) =>
       idx === i
         ? {
@@ -35,7 +31,7 @@ export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
                   ? Number(value) || 0
                   : value,
           }
-        : it
+        : it,
     );
 
     onChange(next);

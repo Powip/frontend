@@ -1,16 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { AlertTriangle, Plus, Truck } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useMemo, useState } from "react";
+import { BetaBanner } from "@/app/facturacion/components/BetaBanner";
+import GuiaRemisionModal from "@/app/facturacion/components/modals/GuiaRemisionModal";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -19,11 +15,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BetaBanner } from "@/app/facturacion/components/BetaBanner";
+import type { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import type { useFacturacionMock } from "@/hooks/useFacturacionMock";
 import { ESTADOS_GUIA, MOTIVOS_TRASLADO } from "@/types/facturacion";
-import { useFacturacionMock } from "@/hooks/useFacturacionMock";
-import { ComprobanteRow } from "@/hooks/useComprobantesSunat";
-import GuiaRemisionModal from "@/app/facturacion/components/modals/GuiaRemisionModal";
 
 interface GuiasTabProps {
   mock: ReturnType<typeof useFacturacionMock>;
@@ -42,11 +36,13 @@ export function GuiasTab({ mock, comprobanteRows }: GuiasTabProps) {
         cliente: r.sale.customer.fullName,
         fullNumber: r.fullNumber,
       })),
-    [comprobanteRows]
+    [comprobanteRows],
   );
 
   const aceptadas = guias.filter((g) => g.estado === "ACEPTADA").length;
-  const pendientes = guias.filter((g) => g.estado === "GENERADA" || g.estado === "ENVIADA_SUNAT").length;
+  const pendientes = guias.filter(
+    (g) => g.estado === "GENERADA" || g.estado === "ENVIADA_SUNAT",
+  ).length;
   const rechazadas = guias.filter((g) => g.estado === "RECHAZADA").length;
 
   return (
@@ -55,10 +51,15 @@ export function GuiasTab({ mock, comprobanteRows }: GuiasTabProps) {
         <div>
           <h2 className="text-lg font-bold">Guías de Remisión Electrónica</h2>
           <p className="text-sm text-muted-foreground">
-            GRE-Remitente: sustenta el traslado de mercadería desde tu almacén hasta el cliente o entre tiendas.
+            GRE-Remitente: sustenta el traslado de mercadería desde tu almacén hasta el cliente o
+            entre tiendas.
           </p>
         </div>
-        <Button className="bg-primary hover:bg-primary/90 text-white gap-1.5" onClick={() => setModalOpen(true)} disabled={!pedidos.length}>
+        <Button
+          className="bg-primary hover:bg-primary/90 text-white gap-1.5"
+          onClick={() => setModalOpen(true)}
+          disabled={!pedidos.length}
+        >
           <Plus className="h-4 w-4" /> Emitir Guía de Remisión
         </Button>
       </div>
@@ -66,14 +67,17 @@ export function GuiasTab({ mock, comprobanteRows }: GuiasTabProps) {
       <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-4 py-3 text-sm">
         <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
         <div>
-          <span className="font-semibold">Se emite ANTES de que el paquete salga del almacén. </span>
-          No al momento de la entrega. SUNAT sanciona su omisión desde el 1 de julio de 2026, y desde el 1 de junio de 2026 rigen
-          validaciones más estrictas.
+          <span className="font-semibold">
+            Se emite ANTES de que el paquete salga del almacén.{" "}
+          </span>
+          No al momento de la entrega. SUNAT sanciona su omisión desde el 1 de julio de 2026, y
+          desde el 1 de junio de 2026 rigen validaciones más estrictas.
         </div>
       </div>
 
       <BetaBanner>
-        Este módulo se muestra con fines de vista previa: las guías creadas aquí no se envían a SUNAT ni se guardan en el backend.
+        Este módulo se muestra con fines de vista previa: las guías creadas aquí no se envían a
+        SUNAT ni se guardan en el backend.
       </BetaBanner>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -118,7 +122,9 @@ export function GuiasTab({ mock, comprobanteRows }: GuiasTabProps) {
       <Card>
         <CardHeader>
           <CardTitle>Guías Emitidas</CardTitle>
-          <CardDescription>La guía queda ligada al comprobante cuando este ya fue emitido.</CardDescription>
+          <CardDescription>
+            La guía queda ligada al comprobante cuando este ya fue emitido.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="rounded-md border overflow-x-auto">
@@ -152,16 +158,27 @@ export function GuiasTab({ mock, comprobanteRows }: GuiasTabProps) {
                         <TableCell className="text-xs whitespace-nowrap">{g.fecha}</TableCell>
                         <TableCell>
                           <div className="font-medium">{g.pedido}</div>
-                          <div className="text-[10px] text-muted-foreground">{g.fullNumber || "Sin número"}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {g.fullNumber || "Sin número"}
+                          </div>
                         </TableCell>
                         <TableCell className="text-xs">
                           {alm?.nombre || "—"} → {g.destino}
                         </TableCell>
                         <TableCell className="text-xs">{mot?.label || g.motivo}</TableCell>
-                        <TableCell className="text-xs">{g.modalidad === "02" ? "Privado" : "Público"}</TableCell>
-                        <TableCell className="text-xs">{g.docRelacionado || <span className="text-muted-foreground">Sin comprobante aún</span>}</TableCell>
+                        <TableCell className="text-xs">
+                          {g.modalidad === "02" ? "Privado" : "Público"}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {g.docRelacionado || (
+                            <span className="text-muted-foreground">Sin comprobante aún</span>
+                          )}
+                        </TableCell>
                         <TableCell>
-                          <Badge variant="outline" className={`border-transparent font-semibold ${estado.badgeClassName}`}>
+                          <Badge
+                            variant="outline"
+                            className={`border-transparent font-semibold ${estado.badgeClassName}`}
+                          >
                             {estado.label}
                           </Badge>
                         </TableCell>

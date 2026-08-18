@@ -1,15 +1,10 @@
 "use client";
 
 import { FileMinus, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { BetaBanner } from "@/app/facturacion/components/BetaBanner";
 import { Badge } from "@/components/ui/badge";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -18,8 +13,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { BetaBanner } from "@/app/facturacion/components/BetaBanner";
-import { useFacturacionMock } from "@/hooks/useFacturacionMock";
+import type { useFacturacionMock } from "@/hooks/useFacturacionMock";
 
 interface NotasTabProps {
   mock: ReturnType<typeof useFacturacionMock>;
@@ -39,7 +33,11 @@ export function NotasTab({ mock, hasAceptados, onNuevaNota }: NotasTabProps) {
             Anula, corrige o modifica un comprobante ya emitido y aceptado por SUNAT.
           </p>
         </div>
-        <Button className="bg-primary hover:bg-primary/90 text-white gap-1.5" onClick={onNuevaNota} disabled={!hasAceptados}>
+        <Button
+          className="bg-primary hover:bg-primary/90 text-white gap-1.5"
+          onClick={onNuevaNota}
+          disabled={!hasAceptados}
+        >
           <Plus className="h-4 w-4" /> Nueva Nota de Crédito
         </Button>
       </div>
@@ -83,7 +81,9 @@ export function NotasTab({ mock, hasAceptados, onNuevaNota }: NotasTabProps) {
                       <TableCell className="text-xs">{n.original}</TableCell>
                       <TableCell className="text-xs">{n.cliente}</TableCell>
                       <TableCell className="text-xs">{n.motivo}</TableCell>
-                      <TableCell className="text-right font-bold">S/ {n.monto.toFixed(2)}</TableCell>
+                      <TableCell className="text-right font-bold">
+                        S/ {n.monto.toFixed(2)}
+                      </TableCell>
                       <TableCell>
                         <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-950 dark:text-green-300">
                           {n.estado}
