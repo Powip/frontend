@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,14 +11,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import type { TaxDocumentRow } from "@/hooks/useTaxDocuments";
 import { ERRORES_SUNAT } from "@/types/facturacion";
 
 interface RechazadoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  row: ComprobanteRow | null;
-  onReintentar: (row: ComprobanteRow) => void;
+  row: TaxDocumentRow | null;
+  onReintentar: (row: TaxDocumentRow) => void;
 }
 
 export default function RechazadoModal({
@@ -26,9 +27,18 @@ export default function RechazadoModal({
   row,
   onReintentar,
 }: RechazadoModalProps) {
-  if (!row) return null;
-  const { sale, document: sunatDoc } = row;
-  const catalogado = ERRORES_SUNAT.find((e) => sunatDoc?.sunatDescription?.includes(e.code));
+  if (!row) {
+    return null;
+  }
+
+  const { sale, taxDocument } = row;
+
+  const catalogado = ERRORES_SUNAT.find((error) =>
+    taxDocument?.sunatDescription?.includes(error.code),
+  );
+
+  const errorMessage =
+    taxDocument?.observations || taxDocument?.sunatDescription || "SUNAT rechazó el comprobante";
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -38,16 +48,19 @@ export default function RechazadoModal({
             <AlertTriangle className="h-5 w-5 text-red-500" />
             Comprobante Rechazado
           </DialogTitle>
+
           <DialogDescription>
-            Venta: <span className="font-bold text-foreground">{sale.orderNumber}</span> —{" "}
-            {sale.customer.fullName} — S/ {Number(sale.grandTotal).toFixed(2)}
+            Venta: <span className="font-bold text-foreground">{sale.orderNumber}</span>
+            {" — "}
+            {sale.customer.fullName}
+            {" — "}
+            S/ {Number(sale.grandTotal).toFixed(2)}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40 p-3 text-sm">
-          <div className="font-bold text-red-600 dark:text-red-400">
-            {sunatDoc?.observations || sunatDoc?.sunatDescription || "SUNAT rechazó el comprobante"}
-          </div>
+        <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm dark:border-red-900 dark:bg-red-950/40">
+          <div className="font-bold text-red-600 dark:text-red-400">{errorMessage}</div>
+
           {catalogado && (
             <div className="mt-1 text-red-800 dark:text-red-300">
               <b>Solución sugerida:</b> {catalogado.sol}
@@ -59,12 +72,13 @@ export default function RechazadoModal({
           <Button variant="ghost" onClick={onClose}>
             Cerrar
           </Button>
+
           <Button
             onClick={() => {
               onClose();
               onReintentar(row);
             }}
-            className="bg-primary hover:bg-primary/90 text-white"
+            className="bg-primary text-white hover:bg-primary/90"
           >
             Corregir y reintentar
           </Button>

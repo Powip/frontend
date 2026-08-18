@@ -24,50 +24,134 @@ interface ReporteData {
   rows: (string | number)[][];
 }
 
+type ReporteKey = "ventas" | "sire" | "notas" | "guias";
+type DownloadType = "xls" | "csv" | "pdf";
+
 function downloadXLS(filename: string, headers: string[], rows: (string | number)[][]) {
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  XLSX.utils.book_append_sheet(wb, ws, "Reporte");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Reporte");
+  XLSX.writeFile(workbook, `${filename}.xlsx`);
+}
+
+function escapeCsvValue(value: string | number): string {
+  const stringValue = String(value ?? "");
+
+  return /[;"\n]/.test(stringValue) ? `"${stringValue.replace(/"/g, '""')}"` : stringValue;
 }
 
 function downloadCSV(filename: string, headers: string[], rows: (string | number)[][]) {
-  const escape = (v: string | number) => {
-    const s = String(v ?? "");
-    return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const lines = [headers.join(";"), ...rows.map((r) => r.map(escape).join(";"))];
-  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8;" });
+  const lines = [
+    headers.map(escapeCsvValue).join(";"),
+    ...rows.map((row) => row.map(escapeCsvValue).join(";")),
+  ];
+
+  const csvContent = `﻿${lines.join("\r\n")}`;
+  const blob = new Blob([csvContent], {
+    type: "text/csv;charset=utf-8;",
+  });
+
   const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `${filename}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = `${filename}.csv`;
+
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+
   URL.revokeObjectURL(url);
 }
 
+function escapeHtml(value: string | number): string {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function abrirImpresionPDF(title: string, headers: string[], rows: (string | number)[][]) {
-  const w = window.open("", "_blank");
-  if (!w) {
+  const printWindow = window.open("", "_blank");
+
+  if (!printWindow) {
     toast.error("Habilita las ventanas emergentes para generar el PDF");
     return;
   }
-  const th = headers.map((h) => `<th>${h}</th>`).join("");
-  const trs = rows.map((r) => `<tr>${r.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("");
-  w.document.write(`<html><head><title>${title}</title><style>
-    body{font-family:Arial,sans-serif;padding:24px;color:#101828}
-    h1{font-size:18px;margin-bottom:2px} table{width:100%;border-collapse:collapse;margin-top:14px}
-    th{background:#6D4FE0;color:#fff;text-align:left;padding:7px 9px;font-size:11px}
-    td{padding:7px 9px;font-size:11.5px;border-bottom:1px solid #eee}
-  </style></head><body>
-  <h1>${title}</h1><div style="color:#667085;font-size:12px">Powip · Generado el ${new Date().toLocaleDateString("es-PE")}</div>
-  <table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>
-  </body></html>`);
-  w.document.close();
-  w.focus();
-  setTimeout(() => w.print(), 400);
+
+  const tableHeaders = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
+
+  const tableRows = rows
+    .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+    .join("");
+
+  printWindow.document.write(`
+    <html>
+      <head>
+        <title>${escapeHtml(title)}</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            padding: 24px;
+            color: #101828;
+          }
+
+          h1 {
+            font-size: 18px;
+            margin-bottom: 2px;
+          }
+
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 14px;
+          }
+
+          th {
+            background: #6D4FE0;
+            color: #fff;
+            text-align: left;
+            padding: 7px 9px;
+            font-size: 11px;
+          }
+
+          td {
+            padding: 7px 9px;
+            font-size: 11.5px;
+            border-bottom: 1px solid #eee;
+          }
+        </style>
+      </head>
+
+      <body>
+        <h1>${escapeHtml(title)}</h1>
+
+        <div style="color:#667085;font-size:12px">
+          Powip · Generado el ${escapeHtml(new Date().toLocaleDateString("es-PE"))}
+        </div>
+
+        <table>
+          <thead>
+            <tr>${tableHeaders}</tr>
+          </thead>
+
+          <tbody>
+            ${tableRows}
+          </tbody>
+        </table>
+      </body>
+    </html>
+  `);
+
+  printWindow.document.close();
+  printWindow.focus();
+
+  setTimeout(() => {
+    printWindow.print();
+  }, 400);
 }
 
 interface ReportesTabProps {
@@ -78,11 +162,12 @@ interface ReportesTabProps {
 
 export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps) {
   const { downloadPdf, downloadXml, isDownloading } = useDownloadTaxDocument();
+
   const aceptados = comprobanteRows.filter(
-    (r) => r.estado === "ACEPTADO" || r.estado === "ACEPTADO_CON_OBS",
+    (row) => row.estado === "ACEPTADO" || row.estado === "ACEPTADO_CON_OBS",
   );
 
-  const getReporte = (key: "ventas" | "sire" | "notas" | "guias"): ReporteData => {
+  const getReporte = (key: ReporteKey): ReporteData => {
     if (key === "ventas") {
       return {
         title: "Registro de Ventas",
@@ -98,22 +183,26 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
           "Total",
           "Estado",
         ],
-        rows: aceptados.map((r) => {
-          const total = Number(r.sale.grandTotal);
+        rows: aceptados.map((row) => {
+          const total = Number(row.sale.grandTotal);
+          const baseImponible = total / 1.18;
+          const igv = total - baseImponible;
+
           return [
-            new Date(r.sale.createdAt).toLocaleDateString("es-PE"),
-            r.tipo === "01" ? "Factura" : "Boleta",
-            r.fullNumber || "",
-            r.sale.customer.fullName,
-            r.sale.customer.documentNumber || "",
-            (total / 1.18).toFixed(2),
-            (total - total / 1.18).toFixed(2),
+            new Date(row.sale.createdAt).toLocaleDateString("es-PE"),
+            row.tipo === "01" ? "Factura" : "Boleta",
+            row.fullNumber || "",
+            row.sale.customer.fullName,
+            row.sale.customer.documentNumber || "",
+            baseImponible.toFixed(2),
+            igv.toFixed(2),
             total.toFixed(2),
-            r.estado,
+            row.estado,
           ];
         }),
       };
     }
+
     if (key === "sire") {
       return {
         title: "Registro de Ventas e Ingresos (formato SIRE)",
@@ -130,24 +219,28 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
           "IGV",
           "Importe Total",
         ],
-        rows: aceptados.map((r) => {
-          const total = Number(r.sale.grandTotal);
-          const [serie, numero] = (r.fullNumber || "-").split("-");
+        rows: aceptados.map((row) => {
+          const total = Number(row.sale.grandTotal);
+          const baseImponible = total / 1.18;
+          const igv = total - baseImponible;
+          const [serie = "", numero = ""] = (row.fullNumber || "-").split("-");
+
           return [
-            new Date(r.sale.createdAt).toLocaleDateString("es-PE"),
-            r.tipo || "03",
-            serie || "",
-            numero || "",
-            r.tipo === "01" ? "6" : "1",
-            r.sale.customer.documentNumber || "",
-            r.sale.customer.fullName,
-            (total / 1.18).toFixed(2),
-            (total - total / 1.18).toFixed(2),
+            new Date(row.sale.createdAt).toLocaleDateString("es-PE"),
+            row.tipo || "03",
+            serie,
+            numero,
+            row.tipo === "01" ? "6" : "1",
+            row.sale.customer.documentNumber || "",
+            row.sale.customer.fullName,
+            baseImponible.toFixed(2),
+            igv.toFixed(2),
             total.toFixed(2),
           ];
         }),
       };
     }
+
     if (key === "notas") {
       return {
         title: "Registro de Notas de Crédito y Débito",
@@ -161,41 +254,57 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
           "Monto",
           "Estado",
         ],
-        rows: notas.map((n) => [
-          n.fecha,
-          n.num,
-          n.original,
-          n.cliente,
-          n.motivo,
-          n.monto.toFixed(2),
-          n.estado,
+        rows: notas.map((nota) => [
+          nota.fecha,
+          nota.num,
+          nota.original,
+          nota.cliente,
+          nota.motivo,
+          nota.monto.toFixed(2),
+          nota.estado,
         ]),
       };
     }
+
     return {
       title: "Registro de Guías de Remisión",
       filename: "powip_guias_remision",
       headers: ["Fecha", "N° Guía", "Pedido", "Destino", "Estado"],
-      rows: guias.map((g) => [g.fecha, g.fullNumber || "—", g.pedido, g.destino, g.estado]),
+      rows: guias.map((guia) => [
+        guia.fecha,
+        guia.fullNumber || "—",
+        guia.pedido,
+        guia.destino,
+        guia.estado,
+      ]),
     };
   };
 
-  const handleDescargar = (
-    key: "ventas" | "sire" | "notas" | "guias",
-    tipo: "xls" | "csv" | "pdf",
-  ) => {
-    const r = getReporte(key);
-    if (!r.rows.length) {
+  const handleDescargar = (key: ReporteKey, tipo: DownloadType) => {
+    const reporte = getReporte(key);
+
+    if (!reporte.rows.length) {
       toast.error("No hay datos disponibles para este reporte todavía");
       return;
     }
-    if (tipo === "xls") downloadXLS(r.filename, r.headers, r.rows);
-    else if (tipo === "csv") downloadCSV(r.filename, r.headers, r.rows);
-    else abrirImpresionPDF(r.title, r.headers, r.rows);
+
+    switch (tipo) {
+      case "xls":
+        downloadXLS(reporte.filename, reporte.headers, reporte.rows);
+        break;
+
+      case "csv":
+        downloadCSV(reporte.filename, reporte.headers, reporte.rows);
+        break;
+
+      case "pdf":
+        abrirImpresionPDF(reporte.title, reporte.headers, reporte.rows);
+        break;
+    }
   };
 
   const cards: {
-    key: "ventas" | "sire" | "notas" | "guias";
+    key: ReporteKey;
     title: string;
     desc: string;
     beta?: boolean;
@@ -228,48 +337,57 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-bold">Reportes</h2>
+
         <p className="text-sm text-muted-foreground">
           Descarga en Excel, CSV o PDF todo lo que tu contador necesita, sin salir de Powip.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {cards.map((c) => (
-          <Card key={c.key}>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {cards.map((card) => (
+          <Card key={card.key}>
             <CardContent className="pt-6">
-              <h4 className="font-bold flex items-center gap-2">
-                {c.title}
-                {c.beta && (
-                  <span className="text-[10px] font-semibold text-primary bg-primary/10 rounded-full px-2 py-0.5">
+              <h4 className="flex items-center gap-2 font-bold">
+                {card.title}
+
+                {card.beta && (
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
                     Beta
                   </span>
                 )}
               </h4>
-              <p className="text-xs text-muted-foreground mt-1 mb-4">{c.desc}</p>
+
+              <p className="mb-4 mt-1 text-xs text-muted-foreground">{card.desc}</p>
+
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   className="flex-1 gap-1.5"
-                  onClick={() => handleDescargar(c.key, "xls")}
+                  onClick={() => handleDescargar(card.key, "xls")}
                 >
-                  <FileSpreadsheet className="h-3.5 w-3.5 text-green-600" /> Excel
+                  <FileSpreadsheet className="h-3.5 w-3.5 text-green-600" />
+                  Excel
                 </Button>
+
                 <Button
                   variant="outline"
                   size="sm"
                   className="flex-1 gap-1.5"
-                  onClick={() => handleDescargar(c.key, "csv")}
+                  onClick={() => handleDescargar(card.key, "csv")}
                 >
-                  <FileText className="h-3.5 w-3.5" /> CSV
+                  <FileText className="h-3.5 w-3.5" />
+                  CSV
                 </Button>
+
                 <Button
                   variant="outline"
                   size="sm"
                   className="flex-1 gap-1.5"
-                  onClick={() => handleDescargar(c.key, "pdf")}
+                  onClick={() => handleDescargar(card.key, "pdf")}
                 >
-                  <Printer className="h-3.5 w-3.5 text-red-600" /> PDF
+                  <Printer className="h-3.5 w-3.5 text-red-600" />
+                  PDF
                 </Button>
               </div>
             </CardContent>
@@ -280,13 +398,15 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Comprobantes individuales</CardTitle>
+
           <CardDescription>
             Descarga el PDF o el XML firmado tal como fue enviado a SUNAT para cada comprobante
             aceptado.
           </CardDescription>
         </CardHeader>
+
         <CardContent>
-          <div className="rounded-md border overflow-x-auto">
+          <div className="overflow-x-auto rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -297,62 +417,72 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
                   <TableHead className="text-right">Descargas</TableHead>
                 </TableRow>
               </TableHeader>
+
               <TableBody>
                 {aceptados.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center h-32 text-muted-foreground">
+                    <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
                       Aún no hay comprobantes aceptados para descargar
                     </TableCell>
                   </TableRow>
                 ) : (
-                  aceptados.map((r) => (
-                    <TableRow key={r.sale.id}>
-                      <TableCell className="text-xs whitespace-nowrap">
-                        {new Date(r.sale.createdAt).toLocaleDateString("es-PE")}
-                      </TableCell>
-                      <TableCell className="font-medium">{r.fullNumber || "—"}</TableCell>
-                      <TableCell>{r.sale.customer.fullName}</TableCell>
-                      <TableCell className="text-right font-bold">
-                        S/ {Number(r.sale.grandTotal).toFixed(2)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        {r.document ? (
-                          <div className="flex justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-1.5"
-                              disabled={isDownloading(r.sale.id, "pdf")}
-                              onClick={() => downloadPdf(r.document!)}
-                            >
-                              {isDownloading(r.sale.id, "pdf") ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Download className="h-3.5 w-3.5 text-red-600" />
-                              )}
-                              PDF
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="gap-1.5"
-                              disabled={isDownloading(r.sale.id, "xml")}
-                              onClick={() => downloadXml(r.document!)}
-                            >
-                              {isDownloading(r.sale.id, "xml") ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : (
-                                <Download className="h-3.5 w-3.5 text-blue-600" />
-                              )}
-                              XML
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground text-xs">—</span>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  aceptados.map((row) => {
+                    const document = row.document;
+
+                    return (
+                      <TableRow key={row.sale.id}>
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {new Date(row.sale.createdAt).toLocaleDateString("es-PE")}
+                        </TableCell>
+
+                        <TableCell className="font-medium">{row.fullNumber || "—"}</TableCell>
+
+                        <TableCell>{row.sale.customer.fullName}</TableCell>
+
+                        <TableCell className="text-right font-bold">
+                          S/ {Number(row.sale.grandTotal).toFixed(2)}
+                        </TableCell>
+
+                        <TableCell className="text-right">
+                          {document ? (
+                            <div className="flex justify-end gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5"
+                                disabled={isDownloading(row.sale.id, "pdf")}
+                                onClick={() => downloadPdf(document)}
+                              >
+                                {isDownloading(row.sale.id, "pdf") ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Download className="h-3.5 w-3.5 text-red-600" />
+                                )}
+                                PDF
+                              </Button>
+
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1.5"
+                                disabled={isDownloading(row.sale.id, "xml")}
+                                onClick={() => downloadXml(document)}
+                              >
+                                {isDownloading(row.sale.id, "xml") ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Download className="h-3.5 w-3.5 text-blue-600" />
+                                )}
+                                XML
+                              </Button>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>

@@ -18,12 +18,17 @@ interface ItemsEditTableProps {
   onChange: (items: InvoiceItem[]) => void;
 }
 
+interface ItemWithKey {
+  item: InvoiceItem;
+  key: string;
+}
+
 export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
-  const updateItem = (i: number, field: keyof InvoiceItem, value: string) => {
-    const next = items.map((it, idx) =>
-      idx === i
+  const updateItem = (index: number, field: keyof InvoiceItem, value: string) => {
+    const next = items.map((item, currentIndex) =>
+      currentIndex === index
         ? {
-            ...it,
+            ...item,
             [field]:
               field === "description"
                 ? value
@@ -31,15 +36,16 @@ export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
                   ? Number(value) || 0
                   : value,
           }
-        : it,
+        : item,
     );
 
     onChange(next);
   };
 
-  const removeItem = (i: number) => {
+  const removeItem = (index: number) => {
     if (items.length <= 1) return;
-    onChange(items.filter((_, idx) => idx !== i));
+
+    onChange(items.filter((_, currentIndex) => currentIndex !== index));
   };
 
   const addItem = () => {
@@ -56,6 +62,11 @@ export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
     ]);
   };
 
+  const itemsWithKeys: ItemWithKey[] = items.map((item, index) => ({
+    item,
+    key: `${item.internalCode}-${item.description}-${item.quantity}-${item.unitPrice}-${index}`,
+  }));
+
   return (
     <div className="space-y-2">
       <div className="rounded-md border">
@@ -69,43 +80,55 @@ export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
               <TableHead className="w-8" />
             </TableRow>
           </TableHeader>
+
           <TableBody>
-            {items.map((it, i) => (
-              <TableRow key={i}>
+            {itemsWithKeys.map(({ item, key }, index) => (
+              <TableRow key={key}>
                 <TableCell>
                   <Input
-                    value={it.description}
-                    onChange={(e) => updateItem(i, "description", e.target.value)}
+                    value={item.description}
+                    onChange={(event) =>
+                      updateItem(index, "description", event.target.value)
+                    }
                     className="h-8 text-xs"
                   />
                 </TableCell>
+
                 <TableCell>
                   <Input
                     type="number"
                     min={1}
-                    value={it.quantity}
-                    onChange={(e) => updateItem(i, "quantity", e.target.value)}
+                    value={item.quantity}
+                    onChange={(event) =>
+                      updateItem(index, "quantity", event.target.value)
+                    }
                     className="h-8 text-xs"
                   />
                 </TableCell>
+
                 <TableCell>
                   <Input
                     type="number"
                     step="0.01"
-                    value={it.unitPrice}
-                    onChange={(e) => updateItem(i, "unitPrice", e.target.value)}
+                    value={item.unitPrice}
+                    onChange={(event) =>
+                      updateItem(index, "unitPrice", event.target.value)
+                    }
                     className="h-8 text-xs"
                   />
                 </TableCell>
+
                 <TableCell className="text-right text-xs font-medium">
-                  S/ {(it.quantity * it.unitPrice).toFixed(2)}
+                  S/ {(item.quantity * item.unitPrice).toFixed(2)}
                 </TableCell>
+
                 <TableCell>
                   <button
                     type="button"
-                    onClick={() => removeItem(i)}
+                    onClick={() => removeItem(index)}
                     className="text-red-500 hover:text-red-600"
                     title="Quitar ítem"
+                    aria-label={`Quitar ${item.description}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -115,12 +138,14 @@ export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
           </TableBody>
         </Table>
       </div>
+
       <button
         type="button"
         onClick={addItem}
         className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
       >
-        <Plus className="h-3.5 w-3.5" /> Agregar ítem
+        <Plus className="h-3.5 w-3.5" />
+        Agregar ítem
       </button>
     </div>
   );
