@@ -1,10 +1,4 @@
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -20,7 +14,10 @@ const DISTRIBUCION = [
   { k: "Imprimir", v: "Vista HTML con formato SUNAT, lista para imprimir o guardar como PDF" },
   { k: "PDF", v: "Descarga directa generada por el OSE" },
   { k: "Email", v: "Próximamente: envío automático con el PDF adjunto" },
-  { k: "Link público", v: "Próximamente: powip.lat/comprobante/token — el cliente lo consulta cuando quiera" },
+  {
+    k: "Link público",
+    v: "Próximamente: powip.lat/comprobante/token — el cliente lo consulta cuando quiera",
+  },
 ];
 
 function codeColor(code: string) {
@@ -34,7 +31,9 @@ export function AyudaTab() {
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-bold">Ayuda · Códigos de error SUNAT</h2>
-        <p className="text-sm text-muted-foreground">Referencia rápida cuando un comprobante es rechazado por el OSE / SUNAT.</p>
+        <p className="text-sm text-muted-foreground">
+          Referencia rápida cuando un comprobante es rechazado por el OSE / SUNAT.
+        </p>
       </div>
 
       <Card>
@@ -93,7 +92,9 @@ export function AyudaTab() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">Distribución al cliente</CardTitle>
-          <CardDescription>Una vez ACEPTADO, el comprobante se puede compartir sin salir de Powip.</CardDescription>
+          <CardDescription>
+            Una vez ACEPTADO, el comprobante se puede compartir sin salir de Powip.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm">

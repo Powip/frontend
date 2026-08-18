@@ -1,5 +1,7 @@
 "use client";
 
+import { AlertTriangle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -8,10 +10,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { AlertTriangle } from "lucide-react";
+import type { ComprobanteRow } from "@/hooks/useComprobantesSunat";
 import { ERRORES_SUNAT } from "@/types/facturacion";
-import { ComprobanteRow } from "@/hooks/useComprobantesSunat";
 
 interface RechazadoModalProps {
   isOpen: boolean;
@@ -20,7 +20,12 @@ interface RechazadoModalProps {
   onReintentar: (row: ComprobanteRow) => void;
 }
 
-export default function RechazadoModal({ isOpen, onClose, row, onReintentar }: RechazadoModalProps) {
+export default function RechazadoModal({
+  isOpen,
+  onClose,
+  row,
+  onReintentar,
+}: RechazadoModalProps) {
   if (!row) return null;
   const { sale, document: sunatDoc } = row;
   const catalogado = ERRORES_SUNAT.find((e) => sunatDoc?.sunatDescription?.includes(e.code));
@@ -34,8 +39,8 @@ export default function RechazadoModal({ isOpen, onClose, row, onReintentar }: R
             Comprobante Rechazado
           </DialogTitle>
           <DialogDescription>
-            Venta: <span className="font-bold text-foreground">{sale.orderNumber}</span> — {sale.customer.fullName} — S/{" "}
-            {Number(sale.grandTotal).toFixed(2)}
+            Venta: <span className="font-bold text-foreground">{sale.orderNumber}</span> —{" "}
+            {sale.customer.fullName} — S/ {Number(sale.grandTotal).toFixed(2)}
           </DialogDescription>
         </DialogHeader>
 

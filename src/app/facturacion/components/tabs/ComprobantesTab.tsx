@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
@@ -14,10 +13,17 @@ import {
   Search,
   Zap,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { useMemo, useState } from "react";
+import { EstadoBadge } from "@/app/facturacion/components/EstadoBadge";
+import DetalleComprobanteModal from "@/app/facturacion/components/modals/DetalleComprobanteModal";
+import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
+import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
+import RechazadoModal from "@/app/facturacion/components/modals/RechazadoModal";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -26,13 +32,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
   Table,
   TableBody,
   TableCell,
@@ -40,14 +39,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { EstadoBadge } from "@/app/facturacion/components/EstadoBadge";
-import { ESTADOS_COMPROBANTE, EstadoComprobante } from "@/types/facturacion";
-import { ComprobanteRow, useComprobantesSunat } from "@/hooks/useComprobantesSunat";
-import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
-import DetalleComprobanteModal from "@/app/facturacion/components/modals/DetalleComprobanteModal";
-import RechazadoModal from "@/app/facturacion/components/modals/RechazadoModal";
-import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
+import type { ComprobanteRow, useComprobantesSunat } from "@/hooks/useComprobantesSunat";
+import { cn } from "@/lib/utils";
+import { ESTADOS_COMPROBANTE, type EstadoComprobante } from "@/types/facturacion";
 
 const PIPELINE_ORDER: EstadoComprobante[] = [
   "SIN_EMITIR",
@@ -92,7 +86,8 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
       if (filterEstado && r.estado !== filterEstado) return false;
       if (filterTipo && r.tipo !== filterTipo) return false;
       if (q) {
-        const hay = `${r.sale.customer.fullName} ${r.sale.orderNumber} ${r.fullNumber || ""}`.toLowerCase();
+        const hay =
+          `${r.sale.customer.fullName} ${r.sale.orderNumber} ${r.fullNumber || ""}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
@@ -105,9 +100,19 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
     pendientesVisibles.length > 0 && pendientesVisibles.every((r) => selectedIds.has(r.sale.id));
 
   const tipoChip = (row: ComprobanteRow) => {
-    if (row.tipo === "03") return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300">Boleta B001</Badge>;
-    if (row.tipo === "01") return <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Factura F001</Badge>;
-    return <Badge variant="outline" className="text-muted-foreground">Sin definir</Badge>;
+    if (row.tipo === "03")
+      return (
+        <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100 dark:bg-blue-950 dark:text-blue-300">
+          Boleta B001
+        </Badge>
+      );
+    if (row.tipo === "01")
+      return <Badge className="bg-primary/10 text-primary hover:bg-primary/10">Factura F001</Badge>;
+    return (
+      <Badge variant="outline" className="text-muted-foreground">
+        Sin definir
+      </Badge>
+    );
   };
 
   const distribIcons = (row: ComprobanteRow) => {
@@ -117,8 +122,12 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
     const sent = sentMap[row.sale.id] || {};
     return (
       <div className="flex items-center gap-1.5">
-        <MessageCircle className={cn("h-4 w-4", sent.wa ? "text-green-600" : "text-muted-foreground/30")} />
-        <Printer className={cn("h-4 w-4", sent.print ? "text-blue-600" : "text-muted-foreground/30")} />
+        <MessageCircle
+          className={cn("h-4 w-4", sent.wa ? "text-green-600" : "text-muted-foreground/30")}
+        />
+        <Printer
+          className={cn("h-4 w-4", sent.print ? "text-blue-600" : "text-muted-foreground/30")}
+        />
       </div>
     );
   };
@@ -127,7 +136,11 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
     switch (row.estado) {
       case "SIN_EMITIR":
         return (
-          <Button size="sm" className="bg-primary hover:bg-primary/90 text-white" onClick={() => setEmitirRow(row)}>
+          <Button
+            size="sm"
+            className="bg-primary hover:bg-primary/90 text-white"
+            onClick={() => setEmitirRow(row)}
+          >
             Gestionar
           </Button>
         );
@@ -171,7 +184,9 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{kpis.emitidosHoy}</div>
-            <p className="text-[11px] text-muted-foreground mt-1">Boletas + facturas aceptadas hoy</p>
+            <p className="text-[11px] text-muted-foreground mt-1">
+              Boletas + facturas aceptadas hoy
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -215,14 +230,18 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary"
       >
         <ChevronDown className={cn("h-4 w-4 transition-transform", showPipeline && "rotate-180")} />
-        {showPipeline ? "Ocultar pipeline de facturación" : "Ver cómo funciona el pipeline de facturación"}
+        {showPipeline
+          ? "Ocultar pipeline de facturación"
+          : "Ver cómo funciona el pipeline de facturación"}
       </button>
 
       {showPipeline && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Ciclo de vida de un comprobante</CardTitle>
-            <CardDescription>Desde que una venta pasa a ENTREGADO hasta que SUNAT confirma su validez.</CardDescription>
+            <CardDescription>
+              Desde que una venta pasa a ENTREGADO hasta que SUNAT confirma su validez.
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex gap-2 overflow-x-auto pb-2">
@@ -230,8 +249,12 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
                 const meta = ESTADOS_COMPROBANTE[key];
                 return (
                   <div key={key} className="min-w-[160px] flex-1 rounded-lg border bg-muted/30 p-3">
-                    <div className="text-[11px] font-bold tracking-wide uppercase">{meta.label}</div>
-                    <div className="text-[11px] text-muted-foreground mt-1 leading-snug">{meta.description}</div>
+                    <div className="text-[11px] font-bold tracking-wide uppercase">
+                      {meta.label}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground mt-1 leading-snug">
+                      {meta.description}
+                    </div>
                   </div>
                 );
               })}
@@ -242,8 +265,14 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
 
       {selectedRows.length > 0 && (
         <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary">
-          <span>{selectedRows.length} seleccionado{selectedRows.length === 1 ? "" : "s"}</span>
-          <Button size="sm" className="ml-auto bg-primary hover:bg-primary/90 text-white gap-1.5" onClick={() => setLoteOpen(true)}>
+          <span>
+            {selectedRows.length} seleccionado{selectedRows.length === 1 ? "" : "s"}
+          </span>
+          <Button
+            size="sm"
+            className="ml-auto bg-primary hover:bg-primary/90 text-white gap-1.5"
+            onClick={() => setLoteOpen(true)}
+          >
             <Zap className="h-3.5 w-3.5" /> Emitir seleccionados
           </Button>
         </div>
@@ -254,7 +283,9 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <CardTitle>Ventas Entregadas</CardTitle>
-              <CardDescription>Mostrando ventas listas para facturar y su estado ante SUNAT.</CardDescription>
+              <CardDescription>
+                Mostrando ventas listas para facturar y su estado ante SUNAT.
+              </CardDescription>
             </div>
           </div>
           <div className="flex flex-col md:flex-row gap-2 pt-2">
@@ -267,7 +298,10 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <Select value={filterEstado || "all"} onValueChange={(v) => setFilterEstado(v === "all" ? "" : v)}>
+            <Select
+              value={filterEstado || "all"}
+              onValueChange={(v) => setFilterEstado(v === "all" ? "" : v)}
+            >
               <SelectTrigger className="w-full md:w-48">
                 <SelectValue placeholder="Todos los estados" />
               </SelectTrigger>
@@ -280,7 +314,10 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
                 ))}
               </SelectContent>
             </Select>
-            <Select value={filterTipo || "all"} onValueChange={(v) => setFilterTipo(v === "all" ? "" : v)}>
+            <Select
+              value={filterTipo || "all"}
+              onValueChange={(v) => setFilterTipo(v === "all" ? "" : v)}
+            >
               <SelectTrigger className="w-full md:w-44">
                 <SelectValue placeholder="Todos los tipos" />
               </SelectTrigger>
@@ -318,7 +355,9 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
                 {filteredRows.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="text-center h-40 text-muted-foreground">
-                      {loading ? "Cargando ventas..." : "No hay comprobantes que coincidan con el filtro"}
+                      {loading
+                        ? "Cargando ventas..."
+                        : "No hay comprobantes que coincidan con el filtro"}
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -342,21 +381,27 @@ export function ComprobantesTab({ comprobantes, onGenerarNota }: ComprobantesTab
                         </TableCell>
                         <TableCell>
                           <div className="font-medium">{row.sale.orderNumber}</div>
-                          <div className="text-[10px] text-muted-foreground">{row.fullNumber || `ID ${row.sale.id.substring(0, 8)}`}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {row.fullNumber || `ID ${row.sale.id.substring(0, 8)}`}
+                          </div>
                         </TableCell>
                         <TableCell>
                           <div className="font-medium">{row.sale.customer.fullName}</div>
-                          <div className="text-[10px] text-muted-foreground">{row.sale.customer.documentNumber || "Sin documento"}</div>
+                          <div className="text-[10px] text-muted-foreground">
+                            {row.sale.customer.documentNumber || "Sin documento"}
+                          </div>
                         </TableCell>
                         <TableCell>{tipoChip(row)}</TableCell>
-                        <TableCell className="text-right font-bold">S/ {displayedTotal.toFixed(2)}</TableCell>
+                        <TableCell className="text-right font-bold">
+                          S/ {displayedTotal.toFixed(2)}
+                        </TableCell>
                         <TableCell className="text-center">
                           <EstadoBadge estado={row.estado} />
                         </TableCell>
                         <TableCell className="text-center">{distribIcons(row)}</TableCell>
                         <TableCell className="text-right">{accionBtn(row)}</TableCell>
                       </TableRow>
-                    )
+                    );
                   })
                 )}
               </TableBody>

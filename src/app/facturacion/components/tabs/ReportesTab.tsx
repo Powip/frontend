@@ -1,7 +1,8 @@
 "use client";
 
-import * as XLSX from "xlsx";
 import { Download, FileSpreadsheet, FileText, Loader2, Printer } from "lucide-react";
+import { toast } from "sonner";
+import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -12,10 +13,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { toast } from "sonner";
-import { ComprobanteRow } from "@/hooks/useComprobantesSunat";
 import { useDownloadTaxDocument } from "@/hooks/sunat/sunat-document/use-download-tax-document";
-import { Guia, Nota } from "@/types/facturacion";
+import type { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import type { Guia, Nota } from "@/types/facturacion";
 
 interface ReporteData {
   title: string;
@@ -78,14 +78,26 @@ interface ReportesTabProps {
 
 export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps) {
   const { downloadPdf, downloadXml, isDownloading } = useDownloadTaxDocument();
-  const aceptados = comprobanteRows.filter((r) => r.estado === "ACEPTADO" || r.estado === "ACEPTADO_CON_OBS");
+  const aceptados = comprobanteRows.filter(
+    (r) => r.estado === "ACEPTADO" || r.estado === "ACEPTADO_CON_OBS",
+  );
 
   const getReporte = (key: "ventas" | "sire" | "notas" | "guias"): ReporteData => {
     if (key === "ventas") {
       return {
         title: "Registro de Ventas",
         filename: "powip_registro_ventas",
-        headers: ["Fecha", "Tipo", "Serie-Correlativo", "Cliente", "Doc. Cliente", "Op. Gravada", "IGV", "Total", "Estado"],
+        headers: [
+          "Fecha",
+          "Tipo",
+          "Serie-Correlativo",
+          "Cliente",
+          "Doc. Cliente",
+          "Op. Gravada",
+          "IGV",
+          "Total",
+          "Estado",
+        ],
         rows: aceptados.map((r) => {
           const total = Number(r.sale.grandTotal);
           return [
@@ -140,8 +152,24 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
       return {
         title: "Registro de Notas de Crédito y Débito",
         filename: "powip_notas_credito",
-        headers: ["Fecha", "N° Nota", "Comprobante Original", "Cliente", "Motivo", "Monto", "Estado"],
-        rows: notas.map((n) => [n.fecha, n.num, n.original, n.cliente, n.motivo, n.monto.toFixed(2), n.estado]),
+        headers: [
+          "Fecha",
+          "N° Nota",
+          "Comprobante Original",
+          "Cliente",
+          "Motivo",
+          "Monto",
+          "Estado",
+        ],
+        rows: notas.map((n) => [
+          n.fecha,
+          n.num,
+          n.original,
+          n.cliente,
+          n.motivo,
+          n.monto.toFixed(2),
+          n.estado,
+        ]),
       };
     }
     return {
@@ -152,7 +180,10 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
     };
   };
 
-  const handleDescargar = (key: "ventas" | "sire" | "notas" | "guias", tipo: "xls" | "csv" | "pdf") => {
+  const handleDescargar = (
+    key: "ventas" | "sire" | "notas" | "guias",
+    tipo: "xls" | "csv" | "pdf",
+  ) => {
     const r = getReporte(key);
     if (!r.rows.length) {
       toast.error("No hay datos disponibles para este reporte todavía");
@@ -163,22 +194,43 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
     else abrirImpresionPDF(r.title, r.headers, r.rows);
   };
 
-  const cards: { key: "ventas" | "sire" | "notas" | "guias"; title: string; desc: string; beta?: boolean }[] = [
-    { key: "ventas", title: "Registro de Ventas", desc: "Boletas y facturas aceptadas — listo para tu contador." },
+  const cards: {
+    key: "ventas" | "sire" | "notas" | "guias";
+    title: string;
+    desc: string;
+    beta?: boolean;
+  }[] = [
+    {
+      key: "ventas",
+      title: "Registro de Ventas",
+      desc: "Boletas y facturas aceptadas — listo para tu contador.",
+    },
     {
       key: "sire",
       title: "Libro Electrónico (formato SIRE/RVIE)",
       desc: "Las mismas ventas en el formato columnar que exige el registro de ventas e ingresos electrónico.",
     },
-    { key: "notas", title: "Notas de Crédito y Débito", desc: "Todas las NC/ND emitidas en esta sesión de vista previa.", beta: true },
-    { key: "guias", title: "Guías de Remisión", desc: "Trazabilidad de los traslados emitidos en esta sesión de vista previa.", beta: true },
+    {
+      key: "notas",
+      title: "Notas de Crédito y Débito",
+      desc: "Todas las NC/ND emitidas en esta sesión de vista previa.",
+      beta: true,
+    },
+    {
+      key: "guias",
+      title: "Guías de Remisión",
+      desc: "Trazabilidad de los traslados emitidos en esta sesión de vista previa.",
+      beta: true,
+    },
   ];
 
   return (
     <div className="space-y-5">
       <div>
         <h2 className="text-lg font-bold">Reportes</h2>
-        <p className="text-sm text-muted-foreground">Descarga en Excel, CSV o PDF todo lo que tu contador necesita, sin salir de Powip.</p>
+        <p className="text-sm text-muted-foreground">
+          Descarga en Excel, CSV o PDF todo lo que tu contador necesita, sin salir de Powip.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -187,17 +239,36 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
             <CardContent className="pt-6">
               <h4 className="font-bold flex items-center gap-2">
                 {c.title}
-                {c.beta && <span className="text-[10px] font-semibold text-primary bg-primary/10 rounded-full px-2 py-0.5">Beta</span>}
+                {c.beta && (
+                  <span className="text-[10px] font-semibold text-primary bg-primary/10 rounded-full px-2 py-0.5">
+                    Beta
+                  </span>
+                )}
               </h4>
               <p className="text-xs text-muted-foreground mt-1 mb-4">{c.desc}</p>
               <div className="flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => handleDescargar(c.key, "xls")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-1.5"
+                  onClick={() => handleDescargar(c.key, "xls")}
+                >
                   <FileSpreadsheet className="h-3.5 w-3.5 text-green-600" /> Excel
                 </Button>
-                <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => handleDescargar(c.key, "csv")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-1.5"
+                  onClick={() => handleDescargar(c.key, "csv")}
+                >
                   <FileText className="h-3.5 w-3.5" /> CSV
                 </Button>
-                <Button variant="outline" size="sm" className="flex-1 gap-1.5" onClick={() => handleDescargar(c.key, "pdf")}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-1.5"
+                  onClick={() => handleDescargar(c.key, "pdf")}
+                >
                   <Printer className="h-3.5 w-3.5 text-red-600" /> PDF
                 </Button>
               </div>
@@ -210,7 +281,8 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
         <CardHeader>
           <CardTitle className="text-base">Comprobantes individuales</CardTitle>
           <CardDescription>
-            Descarga el PDF o el XML firmado tal como fue enviado a SUNAT para cada comprobante aceptado.
+            Descarga el PDF o el XML firmado tal como fue enviado a SUNAT para cada comprobante
+            aceptado.
           </CardDescription>
         </CardHeader>
         <CardContent>

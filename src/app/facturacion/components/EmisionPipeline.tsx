@@ -19,7 +19,7 @@ export function EmisionPipeline({ steps, activeIndex }: EmisionPipelineProps) {
                 "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-colors",
                 done && "bg-green-500 text-white",
                 active && "bg-primary text-primary-foreground",
-                !done && !active && "bg-muted text-muted-foreground"
+                !done && !active && "bg-muted text-muted-foreground",
               )}
             >
               {done ? (
@@ -33,7 +33,7 @@ export function EmisionPipeline({ steps, activeIndex }: EmisionPipelineProps) {
             <span
               className={cn(
                 "text-sm font-medium",
-                done || active ? "text-foreground" : "text-muted-foreground"
+                done || active ? "text-foreground" : "text-muted-foreground",
               )}
             >
               {label}

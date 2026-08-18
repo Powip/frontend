@@ -1,6 +1,10 @@
 "use client";
 
+import { AlertTriangle, CheckCircle2, Loader2, Truck } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -9,7 +13,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -19,14 +22,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { AlertTriangle, CheckCircle2, Loader2, Truck } from "lucide-react";
-import { toast } from "sonner";
+import type { useFacturacionMock } from "@/hooks/useFacturacionMock";
 import { cn } from "@/lib/utils";
-import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
-import { Almacen, Guia, MODALIDAD_TRANSPORTE, MOTIVOS_TRASLADO } from "@/types/facturacion";
-import { useFacturacionMock } from "@/hooks/useFacturacionMock";
+import { type Almacen, Guia, MODALIDAD_TRANSPORTE, MOTIVOS_TRASLADO } from "@/types/facturacion";
 
-const PIPELINE_STEPS = ["Generando XML de la GRE-Remitente (UBL 2.1)", "Firmando digitalmente", "Enviando a SUNAT"];
+const PIPELINE_STEPS = [
+  "Generando XML de la GRE-Remitente (UBL 2.1)",
+  "Firmando digitalmente",
+  "Enviando a SUNAT",
+];
 
 interface PedidoOption {
   id: string;
@@ -43,7 +47,13 @@ interface GuiaRemisionModalProps {
   emitirGuia: ReturnType<typeof useFacturacionMock>["emitirGuia"];
 }
 
-export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos, emitirGuia }: GuiaRemisionModalProps) {
+export default function GuiaRemisionModal({
+  isOpen,
+  onClose,
+  almacenes,
+  pedidos,
+  emitirGuia,
+}: GuiaRemisionModalProps) {
   const [step, setStep] = useState<"form" | "pipeline" | "ok" | "bad">("form");
   const [pedidoId, setPedidoId] = useState(pedidos[0]?.id || "");
   const [almacenId, setAlmacenId] = useState(almacenes[0]?.id || "");
@@ -58,7 +68,9 @@ export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos,
   const [peso, setPeso] = useState("1.0");
   const [pipelineIndex, setPipelineIndex] = useState(0);
   const [okNumber, setOkNumber] = useState("");
-  const [badError, setBadError] = useState<{ code: string; desc: string; sol: string } | null>(null);
+  const [badError, setBadError] = useState<{ code: string; desc: string; sol: string } | null>(
+    null,
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -113,7 +125,13 @@ export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos,
         setOkNumber(result.guia.fullNumber || "");
         setStep("ok");
       } else {
-        setBadError(result.error || { code: "—", desc: "Rechazado", sol: "Revisa los datos e intenta nuevamente." });
+        setBadError(
+          result.error || {
+            code: "—",
+            desc: "Rechazado",
+            sol: "Revisa los datos e intenta nuevamente.",
+          },
+        );
         setStep("bad");
       }
     }, 350);
@@ -130,7 +148,8 @@ export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos,
                 Emitir Guía de Remisión (Remitente)
               </DialogTitle>
               <DialogDescription>
-                Se emite antes de que el paquete salga del almacén — no esperes a que el pedido llegue a ENTREGADO.
+                Se emite antes de que el paquete salga del almacén — no esperes a que el pedido
+                llegue a ENTREGADO.
               </DialogDescription>
             </DialogHeader>
 
@@ -195,8 +214,9 @@ export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos,
                   </SelectContent>
                 </Select>
                 <p className="text-[11px] text-muted-foreground bg-primary/5 border border-primary/20 rounded-md px-3 py-2 mt-1">
-                  Para ventas COD sin comprobante emitido aún, usa &quot;14 — Venta sujeta a confirmación del comprador&quot;: la guía
-                  sale primero y la boleta la referencia después.
+                  Para ventas COD sin comprobante emitido aún, usa &quot;14 — Venta sujeta a
+                  confirmación del comprador&quot;: la guía sale primero y la boleta la referencia
+                  después.
                 </p>
               </div>
 
@@ -210,7 +230,9 @@ export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos,
                       onClick={() => setModalidad(m.code)}
                       className={cn(
                         "flex-1 rounded-md border px-3 py-2 text-xs font-semibold text-center",
-                        modalidad === m.code ? "border-primary bg-primary/10 text-primary" : "text-muted-foreground"
+                        modalidad === m.code
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "text-muted-foreground",
                       )}
                     >
                       {m.label}
@@ -223,22 +245,38 @@ export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos,
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label>Transportista</Label>
-                    <Input value={transportista} onChange={(e) => setTransportista(e.target.value)} placeholder="Ej. Shalom Empresarial S.A.C." />
+                    <Input
+                      value={transportista}
+                      onChange={(e) => setTransportista(e.target.value)}
+                      placeholder="Ej. Shalom Empresarial S.A.C."
+                    />
                   </div>
                   <div className="grid gap-2">
                     <Label>RUC del transportista</Label>
-                    <Input value={transportistaRuc} onChange={(e) => setTransportistaRuc(e.target.value)} placeholder="20xxxxxxxxx" />
+                    <Input
+                      value={transportistaRuc}
+                      onChange={(e) => setTransportistaRuc(e.target.value)}
+                      placeholder="20xxxxxxxxx"
+                    />
                   </div>
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label>Placa del vehículo</Label>
-                    <Input value={placa} onChange={(e) => setPlaca(e.target.value)} placeholder="ABC-123" />
+                    <Input
+                      value={placa}
+                      onChange={(e) => setPlaca(e.target.value)}
+                      placeholder="ABC-123"
+                    />
                   </div>
                   <div className="grid gap-2">
                     <Label>Licencia del conductor</Label>
-                    <Input value={licencia} onChange={(e) => setLicencia(e.target.value)} placeholder="Q12345678" />
+                    <Input
+                      value={licencia}
+                      onChange={(e) => setLicencia(e.target.value)}
+                      placeholder="Q12345678"
+                    />
                   </div>
                 </div>
               )}
@@ -256,7 +294,8 @@ export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos,
 
               {pedido?.fullNumber && (
                 <p className="text-xs text-muted-foreground">
-                  Esta guía referenciará el comprobante <b>{pedido.fullNumber}</b>, ya emitido para este pedido.
+                  Esta guía referenciará el comprobante <b>{pedido.fullNumber}</b>, ya emitido para
+                  este pedido.
                 </p>
               )}
             </div>
@@ -276,9 +315,12 @@ export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos,
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl">
-                <Loader2 className="h-5 w-5 animate-spin text-primary" /> Emitiendo guía de remisión...
+                <Loader2 className="h-5 w-5 animate-spin text-primary" /> Emitiendo guía de
+                remisión...
               </DialogTitle>
-              <DialogDescription>Pedido {pedido?.orderNumber} — no cierres esta ventana</DialogDescription>
+              <DialogDescription>
+                Pedido {pedido?.orderNumber} — no cierres esta ventana
+              </DialogDescription>
             </DialogHeader>
             <EmisionPipeline steps={PIPELINE_STEPS} activeIndex={pipelineIndex} />
           </>
@@ -292,10 +334,15 @@ export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos,
               </div>
               <h3 className="text-lg font-bold">¡Guía aceptada por SUNAT!</h3>
               <div className="text-primary font-bold mt-1">{okNumber}</div>
-              <p className="text-xs text-muted-foreground mt-1">El pedido ya puede salir del almacén.</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                El pedido ya puede salir del almacén.
+              </p>
             </div>
             <DialogFooter>
-              <Button onClick={onClose} className="bg-primary hover:bg-primary/90 text-white w-full">
+              <Button
+                onClick={onClose}
+                className="bg-primary hover:bg-primary/90 text-white w-full"
+              >
                 Cerrar
               </Button>
             </DialogFooter>
@@ -322,7 +369,10 @@ export default function GuiaRemisionModal({ isOpen, onClose, almacenes, pedidos,
               <Button variant="ghost" onClick={onClose}>
                 Cerrar
               </Button>
-              <Button onClick={() => setStep("form")} className="bg-primary hover:bg-primary/90 text-white">
+              <Button
+                onClick={() => setStep("form")}
+                className="bg-primary hover:bg-primary/90 text-white"
+              >
                 Corregir y reintentar
               </Button>
             </DialogFooter>
