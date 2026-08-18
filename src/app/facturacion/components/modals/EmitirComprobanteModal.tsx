@@ -124,9 +124,7 @@ function createItems(sale: Order): SunatItem[] {
     // correct 237.29 = 280/1.18). The displayed unit price is still
     // rounded for readability; it just isn't what the subtotal is
     // derived from anymore.
-    const unitPrice = isTaxIncluded
-      ? roundCurrency(rawUnitPrice / (1 + IGV_RATE))
-      : rawUnitPrice;
+    const unitPrice = isTaxIncluded ? roundCurrency(rawUnitPrice / (1 + IGV_RATE)) : rawUnitPrice;
     const subtotal = isTaxIncluded
       ? roundCurrency((rawUnitPrice * quantity) / (1 + IGV_RATE))
       : roundCurrency(rawUnitPrice * quantity);
