@@ -1,14 +1,18 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { DateRange } from "react-day-picker";
+import { toast } from "sonner";
 import {
   AlertTriangle,
   ChevronRight,
+  Download,
   Headphones,
+  Loader2,
   Package,
   Phone,
   Settings2,
@@ -21,21 +25,25 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { hasAdminAccess } from "@/config/permissions.config";
+import { OrderResponseDto } from "@/api/sales/dto/order.dto";
+import { buildDetailedSalesExportRows, exportDetailedSalesToExcel } from "@/utils/exportDetailedSalesReport";
 import { useCcKpisFunnel } from "@/hooks/useCcKpisFunnel";
 import { useCcAging } from "@/hooks/useCcAging";
 import { useCcUpsell } from "@/hooks/useCcUpsell";
-import { useCcKpisFinancieros } from "@/hooks/useCcKpisFinancieros";
-import { useCcConfirmedSales } from "@/hooks/useCcConfirmedSales";
 import { useAgentePerformance } from "@/hooks/useAgentePerformance";
 import { useDashboardByChannel } from "@/hooks/useDashboardByChannel";
 import { useDashboardByLocation } from "@/hooks/useDashboardByLocation";
 import { useDashboardByPayment } from "@/hooks/useDashboardByPayment";
 import { useDashboardReceivables } from "@/hooks/useDashboardReceivables";
-import { useDashboardShippingGuides } from "@/hooks/useDashboardShippingGuides";
 import { useDashboardCouriersList } from "@/hooks/useDashboardCouriersList";
 import { useDashboardInventory } from "@/hooks/useDashboardInventory";
+import { useDashboardOrders } from "@/hooks/useDashboardOrders";
 import {
+  AGENT_COLORS,
   AvatarCircle,
+  esVenta,
+  getInitials,
+  HoverTip,
   KpiCard,
   KpiGrid,
   MockBadge,
@@ -48,16 +56,6 @@ import {
 import { mockAlert, mockModulos } from "./mock-data";
 
 const MODULE_ICONS = { Package, Settings2, Truck, Headphones, Phone, Users } as const;
-
-const AGENT_COLORS = ["bg-violet-600", "bg-blue-500", "bg-pink-500", "bg-amber-500", "bg-emerald-500"];
-
-function getInitials(name: string | null): string {
-  if (!name) return "?";
-  const parts = name.trim().split(/\s+/);
-  return parts.length > 1 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : name.slice(0, 2).toUpperCase();
-}
-
-const GUIDE_TERMINAL_STATUSES = new Set(["ENTREGADA", "FALLIDA", "PARCIAL"]);
 
 const CHANNEL_META: Record<string, { label: string; color: string; pillClass: string }> = {
   WHATSAPP: { label: "WA", color: "bg-emerald-500", pillClass: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400" },
@@ -120,47 +118,104 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
   const funnelQuery = useCcKpisFunnel(selectedStoreId, range);
   const agingQuery = useCcAging(selectedStoreId, range);
   const upsellQuery = useCcUpsell(selectedStoreId, range);
-  const financierosQuery = useCcKpisFinancieros(selectedStoreId, range);
-  const confirmedSalesQuery = useCcConfirmedSales(selectedStoreId, range);
+  const ordersQuery = useDashboardOrders(selectedStoreId);
   const channelQuery = useDashboardByChannel(selectedStoreId, fromDate, toDate, sellerId);
   const locationQuery = useDashboardByLocation(selectedStoreId, fromDate, toDate, sellerId);
   const paymentQuery = useDashboardByPayment(selectedStoreId, fromDate, toDate, sellerId);
   const agentesQuery = useAgentePerformance(selectedStoreId, companyId, range ?? { from: undefined, to: undefined });
   const receivablesQuery = useDashboardReceivables(selectedStoreId, fromDate, toDate, sellerId);
-  const guidesQuery = useDashboardShippingGuides(selectedStoreId);
   const couriersListQuery = useDashboardCouriersList(companyId);
   const inventoryQuery = useDashboardInventory(inventoryId);
 
   const funnel = funnelQuery.data;
   const upsell = upsellQuery.data;
-  const financieros = financierosQuery.data;
   const agentes = useMemo(() => agentesQuery.data ?? [], [agentesQuery.data]);
 
-  // "Ventas" acá = solo pedidos con subEstadoCc="confirmado" en Gestión COD.
-  // Antes esto salía de /stats/summary (ms-ventas), que suma TODOS los
-  // pedidos de la tienda sin importar su estado — mezclaba pedidos recién
-  // ingresados (que todavía pueden anularse o no contestar) con ventas
-  // reales. facturacionConfirmada/countConfirmados ya vienen filtrados por
-  // Call Center a "confirmado" — ver useCcKpisFinancieros.
+  // Export "Ventas Detallado" (1 fila por producto/variante del pedido) de la
+  // card Pipeline COD — misma utilidad que usaba el dashboard viejo en
+  // "Funnel Efectividad COD" (src/components/dashboard/stats.tsx), reconectada acá.
+  const [exportingFunnel, setExportingFunnel] = useState(false);
+  const handleExportFunnel = async () => {
+    if (!selectedStoreId) return;
+    setExportingFunnel(true);
+    try {
+      const res = await axios.get<OrderResponseDto[]>(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+        { params: { fromDate, toDate } },
+      );
+      const orders = res.data;
+
+      const statusWeight: Record<string, number> = {
+        PENDIENTE: 1,
+        LLAMADO: 2,
+        PREPARADO: 3,
+        ASIGNADO_A_GUIA: 4,
+        EN_ENVIO: 5,
+        ENTREGADO: 6,
+        PAGADO: 7,
+        RECHAZADO: 8,
+        ANULADO: 9,
+      };
+      orders.sort((a, b) => (statusWeight[a.status] || 99) - (statusWeight[b.status] || 99));
+
+      const exportRows = buildDetailedSalesExportRows(orders);
+      if (exportRows.length === 0) {
+        toast.error("No hay datos para exportar en el rango seleccionado");
+        return;
+      }
+      exportDetailedSalesToExcel(exportRows, "funnel_efectividad_cod");
+      toast.success(`Exportados ${exportRows.length} registros`);
+    } catch (error) {
+      console.error("Error exporting to Excel", error);
+      toast.error("Error al exportar el reporte a Excel");
+    } finally {
+      setExportingFunnel(false);
+    }
+  };
+
+  // "Ventas" acá = pedidos COD confirmados (o despachados/entregados, ver
+  // esVenta arriba) MÁS pedidos normales pagados/entregados — regla interna,
+  // no se expone en la UI. Antes salía de /stats/summary (ms-ventas), que
+  // suma TODOS los pedidos de la tienda sin importar su estado — mezclaba
+  // pedidos recién ingresados (que todavía pueden anularse o no contestar)
+  // con ventas reales. Se filtra en cliente sobre updated_at (fecha del
+  // último cambio de estado, mejor aproximación disponible a "fecha de
+  // venta" — ver comentario "BUG CONFIRMADO" en cierreDiaProductosService.ts).
+  const ventasDelPeriodo = useMemo(() => {
+    const all = ordersQuery.data ?? [];
+    if (!fromDate || !toDate) return [];
+    return all.filter((o) => {
+      if (!esVenta(o)) return false;
+      const dateKey = (o.updated_at ?? o.created_at).slice(0, 10);
+      return dateKey >= fromDate && dateKey <= toDate;
+    });
+  }, [ordersQuery.data, fromDate, toDate]);
+
+  const ventasTotalesMonto = useMemo(
+    () => ventasDelPeriodo.reduce((sum, o) => sum + (parseFloat(o.grandTotal) || 0), 0),
+    [ventasDelPeriodo],
+  );
+  const ticketPromedio = ventasDelPeriodo.length > 0 ? ventasTotalesMonto / ventasDelPeriodo.length : 0;
+
   const kpis = [
     {
       label: "Ventas Totales",
-      value: financieros ? `S/ ${financieros.facturacionConfirmada.toLocaleString("es-PE", { maximumFractionDigits: 0 })}` : financierosQuery.isError ? "Error" : "—",
-      sub: financierosQuery.isError ? "No se pudo cargar" : "Confirmadas · Gestión COD",
+      value: ordersQuery.data ? `S/ ${ventasTotalesMonto.toLocaleString("es-PE", { maximumFractionDigits: 0 })}` : ordersQuery.isError ? "Error" : "—",
+      sub: ordersQuery.isError ? "No se pudo cargar" : "Período seleccionado",
       primary: true,
-      loading: financierosQuery.isPending,
+      loading: ordersQuery.isPending,
     },
     {
       label: "Órdenes",
-      value: financieros ? financieros.countConfirmados : financierosQuery.isError ? "Error" : "—",
-      sub: financierosQuery.isError ? "No se pudo cargar" : "Confirmadas · Gestión COD",
-      loading: financierosQuery.isPending,
+      value: ordersQuery.data ? ventasDelPeriodo.length : ordersQuery.isError ? "Error" : "—",
+      sub: ordersQuery.isError ? "No se pudo cargar" : "Total ingresadas",
+      loading: ordersQuery.isPending,
     },
     {
       label: "Ticket Promedio",
-      value: financieros ? `S/ ${financieros.ticketPromedio.toLocaleString("es-PE", { maximumFractionDigits: 0 })}` : financierosQuery.isError ? "Error" : "—",
-      sub: "Por orden confirmada",
-      loading: financierosQuery.isPending,
+      value: ordersQuery.data ? `S/ ${ticketPromedio.toLocaleString("es-PE", { maximumFractionDigits: 0 })}` : ordersQuery.isError ? "Error" : "—",
+      sub: "Por orden",
+      loading: ordersQuery.isPending,
     },
     {
       label: "Efectividad COD",
@@ -249,28 +304,37 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
   }, [agingQuery.data]);
 
   const today = format(new Date(), "yyyy-MM-dd");
-  // Agrupa por día los mismos pedidos confirmados de arriba (no todos los
-  // pedidos ingresados) — usa ccConfirmadoAt (fecha real de confirmación),
-  // con fallback a created_at si por algún motivo no está seteada.
+  // Agrupa por día las mismas ventas de arriba (ventasDelPeriodo) — usa
+  // updated_at (fecha del último cambio de estado) como mejor aproximación
+  // disponible a "fecha de venta", mismo criterio que usa el
+  // auto-completado de Cierre del Día (ver comentario "BUG CONFIRMADO" en
+  // cierreDiaProductosService.ts): OrderHeader no tiene un campo de fecha
+  // por transición de estado, así que no hay una fecha de confirmación
+  // exacta. Fallback a created_at si no está seteada.
   const ventasDiarias = useMemo(() => {
-    const pedidos = confirmedSalesQuery.data ?? [];
-    const byDay = new Map<string, number>();
-    pedidos.forEach((o) => {
-      const dateKey = (o.ccConfirmadoAt ?? o.created_at).slice(0, 10);
-      byDay.set(dateKey, (byDay.get(dateKey) ?? 0) + (parseFloat(o.grandTotal) || 0));
+    const byDay = new Map<string, { amount: number; orders: number; units: number }>();
+    ventasDelPeriodo.forEach((o) => {
+      const dateKey = (o.updated_at ?? o.created_at).slice(0, 10);
+      const entry = byDay.get(dateKey) ?? { amount: 0, orders: 0, units: 0 };
+      entry.amount += parseFloat(o.grandTotal) || 0;
+      entry.orders += 1;
+      entry.units += (o.items ?? []).reduce((sum, item) => sum + (item.quantity || 0), 0);
+      byDay.set(dateKey, entry);
     });
     return [...byDay.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, amount]) => {
+      .map(([date, stats]) => {
         const dateObj = new Date(`${date}T12:00:00`);
         return {
           day: format(dateObj, "dd"),
-          label: `${format(dateObj, "dd-MMM", { locale: es })} · S/${amount.toLocaleString("es-PE")}`,
-          amount,
+          dateLabel: format(dateObj, "dd-MMM", { locale: es }),
+          amount: stats.amount,
+          orders: stats.orders,
+          units: stats.units,
           isToday: date === today,
         };
       });
-  }, [confirmedSalesQuery.data, today]);
+  }, [ventasDelPeriodo, today]);
   const maxVenta = Math.max(...ventasDiarias.map((d) => d.amount), 1);
 
   const geoTop = (locationQuery.data ?? []).slice(0, 5);
@@ -339,18 +403,22 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
     };
   }, [inventoryItems, criticalItems]);
 
-  const guides = useMemo(() => guidesQuery.data ?? [], [guidesQuery.data]);
+  // El status de la guía (ShippingGuide.status, ms-courier) nunca avanza más
+  // allá de ASIGNADA para varias tiendas — esa integración no sincroniza el
+  // estado real de entrega ahí. OrderHeader.status sí lo hace de forma
+  // confiable, así que el rendimiento por courier se calcula desde los
+  // pedidos (ordersQuery, ya usado arriba para ventasDelPeriodo).
+  const allOrders = useMemo(() => ordersQuery.data ?? [], [ordersQuery.data]);
   const couriersList = useMemo(() => couriersListQuery.data ?? [], [couriersListQuery.data]);
   const courierRows = useMemo(() => {
     const byName = new Map<string, { envios: number; delivered: number }>();
     couriersList.forEach((c) => byName.set(c.name, { envios: 0, delivered: 0 }));
-    guides.forEach((g) => {
-      const name = g.courierName ?? "Sin asignar";
-      if (name === "Sin asignar") return;
-      const entry = byName.get(name) ?? { envios: 0, delivered: 0 };
+    allOrders.forEach((o) => {
+      if (!o.courier) return;
+      const entry = byName.get(o.courier) ?? { envios: 0, delivered: 0 };
       entry.envios += 1;
-      if (g.status === "ENTREGADA") entry.delivered += 1;
-      byName.set(name, entry);
+      if (o.status === "ENTREGADO") entry.delivered += 1;
+      byName.set(o.courier, entry);
     });
     return [...byName.entries()]
       .map(([name, s], i) => ({
@@ -363,9 +431,9 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
       }))
       .sort((a, b) => b.envios - a.envios)
       .slice(0, 3);
-  }, [couriersList, guides]);
+  }, [couriersList, allOrders]);
   const couriersActivos = courierRows.filter((c) => c.envios > 0).length;
-  const enTransito = guides.filter((g) => !GUIDE_TERMINAL_STATUSES.has(g.status)).length;
+  const enTransito = allOrders.filter((o) => o.courier && (o.status === "ASIGNADO_A_GUIA" || o.status === "EN_ENVIO")).length;
   const receivables = receivablesQuery.data;
 
   const handleModuleClick = (key: string) => {
@@ -415,7 +483,22 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
 
       {/* Pipeline COD + Canal de origen */}
       <div className="grid grid-cols-[3fr_2fr] gap-3.5">
-        <SectionCard title="Pipeline COD" subtitle="Flujo completo de pedidos · período seleccionado">
+        <SectionCard
+          title="Pipeline COD"
+          subtitle="Flujo completo de pedidos · período seleccionado"
+          right={
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5 text-xs h-7"
+              disabled={exportingFunnel || !selectedStoreId}
+              onClick={handleExportFunnel}
+            >
+              {exportingFunnel ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+              Exportar a Excel
+            </Button>
+          }
+        >
           {funnelQuery.isPending ? (
             <SkeletonRows rows={4} />
           ) : funnelQuery.isError ? (
@@ -425,38 +508,54 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
           ) : (
             <>
               <div className="flex items-stretch gap-0">
-                {pipeline.map((stage, idx) => (
-                  <div key={stage.key} className="flex-1 flex items-center">
-                    <div
-                      className={cn(
-                        "flex-1 rounded-lg px-2 py-2.5 text-center mx-1",
-                        idx === 0 && "bg-slate-100 dark:bg-slate-800/60",
-                        idx === 1 && "bg-blue-50 dark:bg-blue-500/10",
-                        idx === 2 && "bg-violet-50 dark:bg-violet-500/10",
-                        idx === 3 && "bg-emerald-50 dark:bg-emerald-500/10"
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "text-xl font-extrabold leading-none",
-                          idx === 0 && "text-slate-600 dark:text-slate-300",
-                          idx === 1 && "text-blue-700 dark:text-blue-400",
-                          idx === 2 && "text-violet-700 dark:text-violet-400",
-                          idx === 3 && "text-emerald-700 dark:text-emerald-400"
-                        )}
+                {pipeline.map((stage, idx) => {
+                  const prev = idx > 0 ? pipeline[idx - 1] : null;
+                  const drop = prev ? Math.max(prev.value - stage.value, 0) : 0;
+                  return (
+                    <div key={stage.key} className="flex-1 flex items-center">
+                      <HoverTip
+                        className="flex-1 mx-1"
+                        title={stage.label}
+                        rows={[
+                          { label: "Pedidos", value: stage.value },
+                          { label: "% del total ingresado", value: `${stage.pct}%` },
+                          ...(prev
+                            ? [{ label: `No avanzaron desde ${prev.label}`, value: drop }]
+                            : []),
+                        ]}
                       >
-                        {stage.value}
-                      </div>
-                      <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">
-                        {stage.label}
-                      </div>
-                      <div className="text-[10px] text-muted-foreground/70 mt-0.5">{stage.pct}%</div>
+                        <div
+                          className={cn(
+                            "rounded-lg px-2 py-2.5 text-center cursor-default",
+                            idx === 0 && "bg-slate-100 dark:bg-slate-800/60",
+                            idx === 1 && "bg-blue-50 dark:bg-blue-500/10",
+                            idx === 2 && "bg-violet-50 dark:bg-violet-500/10",
+                            idx === 3 && "bg-emerald-50 dark:bg-emerald-500/10"
+                          )}
+                        >
+                          <div
+                            className={cn(
+                              "text-xl font-extrabold leading-none",
+                              idx === 0 && "text-slate-600 dark:text-slate-300",
+                              idx === 1 && "text-blue-700 dark:text-blue-400",
+                              idx === 2 && "text-violet-700 dark:text-violet-400",
+                              idx === 3 && "text-emerald-700 dark:text-emerald-400"
+                            )}
+                          >
+                            {stage.value}
+                          </div>
+                          <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mt-0.5">
+                            {stage.label}
+                          </div>
+                          <div className="text-[10px] text-muted-foreground/70 mt-0.5">{stage.pct}%</div>
+                        </div>
+                      </HoverTip>
+                      {idx < pipeline.length - 1 && (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0 -mx-0.5" />
+                      )}
                     </div>
-                    {idx < pipeline.length - 1 && (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground/40 shrink-0 -mx-0.5" />
-                    )}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
 
               {leaks.length > 0 && (
@@ -498,29 +597,39 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
           ) : (
             <div className="flex flex-col gap-2.5">
               {topChannels.map((canal) => (
-                <div key={canal.channel} className="flex items-center gap-2.5">
-                  <span
-                    className={cn(
-                      "inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold w-9",
-                      canal.meta.pillClass
-                    )}
-                  >
-                    {canal.meta.label}
-                  </span>
-                  <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div className={cn("h-full rounded-full", canal.meta.color)} style={{ width: `${canal.barPct}%` }} />
-                  </div>
-                  <div className="flex gap-3 shrink-0">
-                    <div className="text-right">
-                      <div className="text-xs font-bold text-foreground">{canal.ordersCount}</div>
-                      <div className="text-[9px] text-muted-foreground">ped.</div>
+                <HoverTip
+                  key={canal.channel}
+                  title={canal.channel.replace(/_/g, " ")}
+                  rows={[
+                    { label: "Pedidos", value: canal.ordersCount },
+                    { label: "Facturación", value: `S/ ${canal.totalAmount.toLocaleString("es-PE")}` },
+                    { label: "% del total", value: `${roundPct(canal.percentage)}%` },
+                  ]}
+                >
+                  <div className="flex items-center gap-2.5 cursor-default">
+                    <span
+                      className={cn(
+                        "inline-flex items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold w-9",
+                        canal.meta.pillClass
+                      )}
+                    >
+                      {canal.meta.label}
+                    </span>
+                    <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+                      <div className={cn("h-full rounded-full", canal.meta.color)} style={{ width: `${canal.barPct}%` }} />
                     </div>
-                    <div className="text-right w-10">
-                      <div className="text-xs font-bold text-muted-foreground">{roundPct(canal.percentage)}%</div>
-                      <div className="text-[9px] text-muted-foreground">del total</div>
+                    <div className="flex gap-3 shrink-0">
+                      <div className="text-right">
+                        <div className="text-xs font-bold text-foreground">{canal.ordersCount}</div>
+                        <div className="text-[9px] text-muted-foreground">ped.</div>
+                      </div>
+                      <div className="text-right w-10">
+                        <div className="text-xs font-bold text-muted-foreground">{roundPct(canal.percentage)}%</div>
+                        <div className="text-[9px] text-muted-foreground">del total</div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                </HoverTip>
               ))}
             </div>
           )}
@@ -553,7 +662,7 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
       <div className="grid grid-cols-[2fr_1fr_1fr] gap-3.5">
         <SectionCard
           title="Ventas Diarias"
-          subtitle="Confirmadas · Gestión COD"
+          subtitle="Ventas en el período"
           right={
             <div className="flex items-center gap-3 text-[10px] font-medium text-muted-foreground">
               <span className="flex items-center gap-1.5">
@@ -562,17 +671,26 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
             </div>
           }
         >
-          {confirmedSalesQuery.isPending ? (
+          {ordersQuery.isPending ? (
             <Skeleton className="h-32 w-full" />
-          ) : confirmedSalesQuery.isError ? (
+          ) : ordersQuery.isError ? (
             <p className="text-xs text-red-600 dark:text-red-400 py-10 text-center">No se pudo cargar las ventas diarias.</p>
           ) : ventasDiarias.length === 0 ? (
             <p className="text-xs text-muted-foreground py-10 text-center">Sin ventas registradas en el período.</p>
           ) : (
             <>
-              <div className="flex items-end gap-1 h-32">
+              <div className="flex items-end justify-center gap-1 h-32">
                 {ventasDiarias.map((d, i) => (
-                  <div key={`${d.day}-${i}`} className="group relative flex-1 h-full flex items-end">
+                  <HoverTip
+                    key={`${d.day}-${i}`}
+                    className="flex-1 max-w-12 h-full flex items-end"
+                    title={d.dateLabel}
+                    rows={[
+                      { label: "Ventas", value: `S/ ${d.amount.toLocaleString("es-PE")}` },
+                      { label: "Órdenes", value: d.orders },
+                      { label: "Unidades", value: d.units },
+                    ]}
+                  >
                     <div
                       className={cn(
                         "w-full rounded-t transition-opacity group-hover:opacity-80",
@@ -580,18 +698,15 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
                       )}
                       style={{ height: `${Math.max((d.amount / maxVenta) * 100, 3)}%` }}
                     />
-                    <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap rounded bg-foreground px-1.5 py-0.5 text-[10px] font-semibold text-background opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                      {d.label}
-                    </div>
-                  </div>
+                  </HoverTip>
                 ))}
               </div>
-              <div className="flex gap-1 mt-1">
+              <div className="flex justify-center gap-1 mt-1">
                 {ventasDiarias.map((d, i) => (
                   <span
                     key={`${d.day}-lbl-${i}`}
                     className={cn(
-                      "flex-1 text-center text-[9px]",
+                      "flex-1 max-w-12 text-center text-[9px]",
                       d.isToday ? "text-violet-600 dark:text-violet-400 font-bold" : "text-muted-foreground"
                     )}
                   >
@@ -761,9 +876,9 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
         </SectionCard>
 
         <SectionCard title="Couriers" subtitle="Rendimiento de entrega">
-          {guidesQuery.isPending || couriersListQuery.isPending ? (
+          {ordersQuery.isPending || couriersListQuery.isPending ? (
             <SkeletonRows rows={5} />
-          ) : guidesQuery.isError || couriersListQuery.isError ? (
+          ) : ordersQuery.isError || couriersListQuery.isError ? (
             <p className="text-xs text-red-600 dark:text-red-400 py-4 text-center">No se pudo cargar couriers.</p>
           ) : (
             <>
@@ -825,13 +940,21 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
           ) : (
             <div className="flex flex-col gap-2">
               {geoTop.map((geo) => (
-                <ProgressRow
+                <HoverTip
                   key={geo.name}
-                  label={geo.name}
-                  pct={geo.percentage}
-                  color="bg-violet-500"
-                  right={<span className="text-xs font-semibold text-muted-foreground w-10 text-right">{roundPct(geo.percentage)}%</span>}
-                />
+                  title={geo.name}
+                  rows={[
+                    { label: "Pedidos", value: geo.ordersCount },
+                    { label: "Facturación", value: `S/ ${geo.totalAmount.toLocaleString("es-PE")}` },
+                  ]}
+                >
+                  <ProgressRow
+                    label={geo.name}
+                    pct={geo.percentage}
+                    color="bg-violet-500"
+                    right={<span className="text-xs font-semibold text-muted-foreground w-10 text-right">{roundPct(geo.percentage)}%</span>}
+                  />
+                </HoverTip>
               ))}
             </div>
           )}
@@ -848,11 +971,20 @@ export function OverviewTab({ fromDate, toDate, onGoToTab }: OverviewTabProps) {
                 {pagos.map((p) => {
                   const meta = PAYMENT_META[p.method] ?? PAYMENT_META.OTRO;
                   return (
-                    <div key={p.method} className="flex items-center gap-2">
-                      <span className={cn("h-2.5 w-2.5 rounded-full shrink-0", meta.color)} />
-                      <span className="flex-1 text-xs text-foreground">{p.method.replace(/_/g, " ")}</span>
-                      <span className={cn("text-xs font-bold", meta.textColor)}>{roundPct(p.percentage)}%</span>
-                    </div>
+                    <HoverTip
+                      key={p.method}
+                      title={p.method.replace(/_/g, " ")}
+                      rows={[
+                        { label: "Pedidos", value: p.ordersCount },
+                        { label: "Facturación", value: `S/ ${p.totalAmount.toLocaleString("es-PE")}` },
+                      ]}
+                    >
+                      <div className="flex items-center gap-2 cursor-default">
+                        <span className={cn("h-2.5 w-2.5 rounded-full shrink-0", meta.color)} />
+                        <span className="flex-1 text-xs text-foreground">{p.method.replace(/_/g, " ")}</span>
+                        <span className={cn("text-xs font-bold", meta.textColor)}>{roundPct(p.percentage)}%</span>
+                      </div>
+                    </HoverTip>
                   );
                 })}
               </div>

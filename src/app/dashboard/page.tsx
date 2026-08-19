@@ -26,24 +26,20 @@ const FinanzasTab = dynamic(() => import("./components/FinanzasTab").then((m) =>
 const TABS = [
   { value: "general", label: "Resumen General", ready: true },
   { value: "cod", label: "Gestión COD", ready: false },
-  { value: "comercial", label: "Análisis Comercial", ready: false },
-  { value: "geo", label: "Geografía & Clientes", ready: false },
-  { value: "equipo", label: "Equipo & Upsell", ready: false },
-  { value: "operaciones", label: "Operaciones", ready: false },
-  { value: "courier", label: "Courier", ready: false },
-  { value: "finanzas", label: "Finanzas", ready: false },
+  { value: "comercial", label: "Análisis Comercial", ready: true },
+  { value: "geo", label: "Geografía & Clientes", ready: true },
+  { value: "equipo", label: "Equipo & Upsell", ready: true },
+  { value: "operaciones", label: "Operaciones", ready: true },
+  { value: "courier", label: "Courier", ready: true },
+  { value: "finanzas", label: "Finanzas", ready: true },
 ];
 
 const VISIBLE_TABS = TABS.filter((tab) => tab.ready);
 
 export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState("general");
-  const [fromDate, setFromDate] = useState<string>(
-    format(startOfMonth(new Date()), "yyyy-MM-dd")
-  );
-  const [toDate, setToDate] = useState<string>(
-    format(endOfMonth(new Date()), "yyyy-MM-dd")
-  );
+  const [fromDate, setFromDate] = useState<string>(format(startOfMonth(new Date()), "yyyy-MM-dd"));
+  const [toDate, setToDate] = useState<string>(format(endOfMonth(new Date()), "yyyy-MM-dd"));
 
   const handlePeriodChange = (from: string, to: string) => {
     setFromDate(from);
@@ -92,27 +88,27 @@ export default function DashboardPage() {
           </TabsContent>
 
           <TabsContent value="comercial" className="flex-1 overflow-y-auto mt-0 scrollbar-none outline-none">
-            <ComercialTab />
+            <ComercialTab fromDate={fromDate} toDate={toDate} />
           </TabsContent>
 
           <TabsContent value="geo" className="flex-1 overflow-y-auto mt-0 scrollbar-none outline-none">
-            <GeoTab />
+            <GeoTab fromDate={fromDate} toDate={toDate} />
           </TabsContent>
 
           <TabsContent value="equipo" className="flex-1 overflow-y-auto mt-0 scrollbar-none outline-none">
-            <EquipoTab />
+            <EquipoTab fromDate={fromDate} toDate={toDate} />
           </TabsContent>
 
           <TabsContent value="operaciones" className="flex-1 overflow-y-auto mt-0 scrollbar-none outline-none">
-            <OperacionesTab />
+            <OperacionesTab fromDate={fromDate} toDate={toDate} />
           </TabsContent>
 
           <TabsContent value="courier" className="flex-1 overflow-y-auto mt-0 scrollbar-none outline-none">
-            <CourierTab />
+            <CourierTab fromDate={fromDate} toDate={toDate} />
           </TabsContent>
 
           <TabsContent value="finanzas" className="flex-1 overflow-y-auto mt-0 scrollbar-none outline-none">
-            <FinanzasTab />
+            <FinanzasTab fromDate={fromDate} toDate={toDate} />
           </TabsContent>
         </Tabs>
       </div>

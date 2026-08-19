@@ -5,12 +5,72 @@ import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { OrderHeader } from "@/interfaces/IOrder";
+import { esFacturable, mapOrderToFunnelBucket, NON_COD_SUBESTADOS } from "@/services/cierreDiaProductosService";
+
+export const AGENT_COLORS = ["bg-violet-600", "bg-blue-500", "bg-pink-500", "bg-amber-500", "bg-emerald-500"];
+
+/**
+ * "Venta" = pedido de Gestión CC (COD) que llegó a confirmado (o más
+ * adelante: despachado/entregado — ver esFacturable/mapOrderToFunnelBucket
+ * en cierreDiaProductosService.ts), MÁS pedidos "normales" que nunca pasan
+ * por Gestión CC (pagados directo por Yape/Plin/tarjeta/etc.) y llegan a
+ * PAGADO o ENTREGADO. Un pedido sin subEstadoCc nunca entró al flujo CC.
+ * Regla interna compartida por todas las tabs del dashboard — no se expone
+ * en la UI.
+ */
+export function esVenta(o: Pick<OrderHeader, "status" | "subEstadoCc">): boolean {
+  if (o.subEstadoCc) {
+    if (NON_COD_SUBESTADOS.has(o.subEstadoCc)) return false;
+    return esFacturable(mapOrderToFunnelBucket(o));
+  }
+  return o.status === "PAGADO" || o.status === "ENTREGADO";
+}
+
+/** Iniciales para un avatar a partir de un nombre completo (o "?" si no hay nombre). */
+export function getInitials(name: string | null | undefined): string {
+  if (!name) return "?";
+  const parts = name.trim().split(/\s+/);
+  return parts.length > 1 ? `${parts[0][0]}${parts[1][0]}`.toUpperCase() : name.slice(0, 2).toUpperCase();
+}
 
 /** Redondea un porcentaje que puede venir del backend con muchos decimales (ej. 29.411764705882355). */
 export function roundPct(value: number | undefined | null, decimals = 0): number {
   if (value === undefined || value === null || Number.isNaN(value)) return 0;
   const factor = 10 ** decimals;
   return Math.round(value * factor) / factor;
+}
+
+/**
+ * Tooltip on hover reutilizable: envuelve cualquier elemento (barra, fila,
+ * celda) y muestra un desglose de datos que ya están en memoria (sin
+ * llamadas extra) apenas se pasa el mouse por encima.
+ */
+export function HoverTip({
+  title,
+  rows,
+  children,
+  className,
+}: {
+  title?: ReactNode;
+  rows: { label: string; value: ReactNode }[];
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("group relative", className)}>
+      {children}
+      <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 whitespace-nowrap rounded-lg bg-foreground px-2.5 py-1.5 text-background opacity-0 group-hover:opacity-100 transition-opacity z-20 shadow-lg">
+        {title && <div className="text-[10px] font-bold border-b border-background/20 pb-1 mb-1">{title}</div>}
+        {rows.map((r) => (
+          <div key={r.label} className="flex items-center justify-between gap-3 text-[10px]">
+            <span className="opacity-70">{r.label}</span>
+            <span className="font-semibold">{r.value}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /** Filas de skeleton genéricas para secciones que todavía están cargando datos reales. */
@@ -138,10 +198,28 @@ interface KpiCardProps {
   valueClassName?: string;
   accentDanger?: boolean;
   loading?: boolean;
+  /** Marca el KPI como dato de ejemplo (sin conectar aún) — borde/fondo rojo + badge. */
+  mock?: boolean;
 }
 
 /** Tarjeta de indicador clave (KPI), con variante destacada "primary" en violeta. */
-export function KpiCard({ label, value, sub, trend, primary, valueClassName, accentDanger, loading }: KpiCardProps) {
+export function KpiCard({ label, value, sub, trend, primary, valueClassName, accentDanger, loading, mock }: KpiCardProps) {
+  if (mock) {
+    return (
+      <div className="rounded-xl border-2 border-red-500 bg-red-50 dark:bg-red-950/30 p-4">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">{label}</p>
+          <MockBadge />
+        </div>
+        <p className={cn("text-2xl font-extrabold tracking-tight leading-none text-foreground", valueClassName)}>
+          {value}
+        </p>
+        {sub && <p className="text-xs text-muted-foreground mt-1.5">{sub}</p>}
+        {trend && <div className="mt-2">{trend && <TrendBadge {...trend} />}</div>}
+      </div>
+    );
+  }
+
   if (primary) {
     return (
       <div className="rounded-xl p-4 bg-gradient-to-br from-violet-600 to-violet-500 text-white shadow-sm relative overflow-hidden">
@@ -240,6 +318,16 @@ export function AvatarCircle({
     </div>
   );
 }
+
+export const CHANNEL_SHORT: Record<string, string> = {
+  WHATSAPP: "WA",
+  INSTAGRAM: "IG",
+  FACEBOOK: "FB",
+  TIENDA_FISICA: "Tda",
+  MERCADOLIBRE: "ML",
+  MARKETPLACE: "Mkt",
+  OTRO: "Otro",
+};
 
 const CHANNEL_PILL_STYLES: Record<string, string> = {
   WA: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400",
