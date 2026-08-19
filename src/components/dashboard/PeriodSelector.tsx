@@ -36,8 +36,6 @@ import {
 interface PeriodSelectorProps {
   onPeriodChange: (fromDate: string, toDate: string) => void;
   className?: string;
-  /** Preset activo al montar (por label, ver PRESETS). Default: "Mes Actual". */
-  defaultPreset?: string;
 }
 
 type Preset = {
@@ -112,11 +110,12 @@ const PRESETS: Preset[] = [
 export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
   onPeriodChange,
   className,
-  defaultPreset = "Mes Actual",
 }) => {
-  const initialPreset = PRESETS.find((p) => p.label === defaultPreset) ?? PRESETS.find((p) => p.label === "Mes Actual")!;
-  const [date, setDate] = useState<DateRange | undefined>(initialPreset.getValue());
-  const [activePreset, setActivePreset] = useState<string>(initialPreset.label);
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date()),
+  });
+  const [activePreset, setActivePreset] = useState<string>("Mes Actual");
 
   const handlePresetChange = (presetLabel: string) => {
     const preset = PRESETS.find((p) => p.label === presetLabel);

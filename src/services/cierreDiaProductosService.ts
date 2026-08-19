@@ -30,7 +30,7 @@ const MAX_PAGES = 20; // resguardo ante paginación mal formada del backend
  * embudo COD y se excluyen del auto-completado. Ver comentario en
  * `getCierreDiaClosingData` sobre por qué NO se filtra por tipoGestion.
  */
-export const NON_COD_SUBESTADOS = new Set<string>([
+const NON_COD_SUBESTADOS = new Set<string>([
   "entrega_lima",
   "carrito_sin_contactar",
   "carrito_contactado",
@@ -73,7 +73,7 @@ export function mapOrderToFunnelBucket(
   return "porConfirmar";
 }
 
-export function esFacturable(bucket: keyof CierreDiaFunnel): boolean {
+function esFacturable(bucket: keyof CierreDiaFunnel): boolean {
   return bucket === "confirmado" || bucket === "despachado" || bucket === "entregado";
 }
 
@@ -100,7 +100,7 @@ export function isoRangeBounds(startDate: string, endDate: string): { startDate:
   };
 }
 
-export async function fetchAllPedidosCC(filters: PedidosCcFilters): Promise<OrderHeader[]> {
+async function fetchAllPedidosCC(filters: PedidosCcFilters): Promise<OrderHeader[]> {
   const limit = 200;
   let page = 1;
   let all: OrderHeader[] = [];
@@ -113,7 +113,7 @@ export async function fetchAllPedidosCC(filters: PedidosCcFilters): Promise<Orde
   return all;
 }
 
-export async function fetchVariantCost(variantId: string): Promise<number> {
+async function fetchVariantCost(variantId: string): Promise<number> {
   try {
     const res = await fetch(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${variantId}`);
     if (!res.ok) return 0;
