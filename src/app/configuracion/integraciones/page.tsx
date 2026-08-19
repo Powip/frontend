@@ -1,7 +1,7 @@
 'use client';
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowRight, Package, ShoppingBag, Truck, Send } from "lucide-react";
+import { ArrowRight, Package, ShoppingBag, Truck, Send, MessageCircle } from "lucide-react";
 import Link from "next/link";
 
 export default function IntegracionesHubPage() {
@@ -31,6 +31,15 @@ export default function IntegracionesHubPage() {
       href: "/configuracion/integraciones/eva",
       color: "text-blue-600 dark:text-blue-400",
       bgColor: "bg-blue-50 dark:bg-blue-950/40",
+      status: "Disponible",
+    },
+    {
+      title: "Yavendio",
+      description: "Conectá tu catálogo a Yavendio para vender por WhatsApp/IA y recibir automáticamente en Powip los pedidos cerrados ahí.",
+      icon: MessageCircle,
+      href: "/configuracion/integraciones/yavendio",
+      color: "text-teal-600 dark:text-teal-400",
+      bgColor: "bg-teal-50 dark:bg-teal-950/40",
       status: "Disponible",
     },
     {

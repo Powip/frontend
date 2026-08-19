@@ -21,6 +21,16 @@ export interface OutOfStockItem {
   physicalStock: number;
 }
 
+export interface PowipProduct {
+  id: string;
+  name: string;
+  sku: string;
+  companySku?: string;
+  status: boolean;
+  hasVariants: boolean;
+  imageUrl?: string;
+}
+
 export const getProductSummary = async (
   accessToken: string,
 ): Promise<ProductSummary> => {
@@ -74,6 +84,29 @@ export const getCompanyProductCount = async (
   );
   return response.data.length;
 };
+
+/**
+ * Lista completa de productos de la empresa (activos e inactivos), sin
+ * paginar — mismo endpoint que `getCompanyProductCount`, pero devuelve el
+ * array completo en vez de solo su `.length`. Usado por el picker de
+ * sincronización manual a Yavendio (FEAT-13 Fase 3b), que necesita mostrar
+ * también los productos descontinuados (`status === false`).
+ */
+export const getCompanyProducts = async (
+  accessToken: string,
+  companyId: string,
+): Promise<PowipProduct[]> => {
+  const response = await axios.get(
+    `${API_PRODUCTS}/products/company/${companyId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  return response.data;
+};
+
 export const getProductById = async (id: string): Promise<any> => {
   const response = await axios.get(`${API_PRODUCTS}/products/${id}`);
   return response.data;
