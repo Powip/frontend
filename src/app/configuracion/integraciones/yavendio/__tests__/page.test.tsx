@@ -128,7 +128,6 @@ jest.mock('@/services/yavendioService', () => ({
  * YavendioProductPickerModal.test.tsx.
  */
 jest.mock('../_components/YavendioProductPickerModal', () => {
-  const React = require('react');
   return {
     __esModule: true,
     default: ({
