@@ -57,6 +57,17 @@ export const SourceBadge: React.FC<SourceBadgeProps> = ({ source }) => {
     );
   }
 
+  if (normalizedSource === "yavendio") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-teal-600 dark:text-teal-400 bg-teal-50 dark:bg-teal-950/40 border border-teal-200 dark:border-teal-900"
+        title="Pedido importado desde Yavendio"
+      >
+        Yavendio
+      </span>
+    );
+  }
+
   return (
     <span
       className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-muted text-muted-foreground border border-border"
