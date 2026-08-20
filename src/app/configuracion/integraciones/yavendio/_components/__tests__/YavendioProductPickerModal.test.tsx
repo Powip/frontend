@@ -55,7 +55,6 @@ jest.mock('@/services/yavendioService', () => ({
 }));
 
 jest.mock('@/components/ui/dialog', () => {
-  const React = require('react');
   const Dialog = ({ open, children }: { open?: boolean; children?: React.ReactNode }) =>
     open ? <div data-testid="dialog">{children}</div> : null;
   const DialogContent = ({ children }: { children?: React.ReactNode }) => (
@@ -67,7 +66,6 @@ jest.mock('@/components/ui/dialog', () => {
 });
 
 jest.mock('@/components/ui/checkbox', () => {
-  const React = require('react');
   const Checkbox = ({
     checked,
     onCheckedChange,
