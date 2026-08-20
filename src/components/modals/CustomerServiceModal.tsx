@@ -1633,6 +1633,40 @@ export default function CustomerServiceModal({
                           {receipt.customer.reference || "-"}
                         </span>
                       </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-muted-foreground">
+                          Link Maps:{" "}
+                        </span>
+                        {orderHeader?.customer?.googleMapsUrl ? (
+                          <>
+                            <a
+                              href={orderHeader.customer.googleMapsUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="font-medium text-primary underline underline-offset-2 truncate max-w-[160px]"
+                              title={orderHeader.customer.googleMapsUrl}
+                            >
+                              Ver ubicación
+                            </a>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-5 w-5 text-muted-foreground hover:text-foreground"
+                              onClick={() =>
+                                copyField(
+                                  orderHeader.customer!.googleMapsUrl,
+                                  "Link de Maps",
+                                )
+                              }
+                              title="Copiar link"
+                            >
+                              <Copy className="h-3 w-3" />
+                            </Button>
+                          </>
+                        ) : (
+                          <span className="font-medium">-</span>
+                        )}
+                      </div>
 
                       {/* New Tracking Info Section in Modal */}
                       {showTracking && receipt && (

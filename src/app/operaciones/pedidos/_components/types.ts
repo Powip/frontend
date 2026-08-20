@@ -27,6 +27,7 @@ export interface Sale {
   city?: string;
   district: string;
   address: string;
+  googleMapsUrl?: string | null;
   advancePayment: number;
   pendingPayment: number;
   notes: string;
@@ -102,6 +103,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     city: order.customer?.city ?? "",
     district: order.customer?.district ?? "",
     address: order.customer?.address ?? "",
+    googleMapsUrl: order.customer?.googleMapsUrl ?? null,
     advancePayment,
     pendingPayment,
     notes: order.notes ?? "",

@@ -418,7 +418,19 @@ export default function OrderReceiptModal({
         </DialogHeader>
 
         {loading && <p>Cargando comprobante...</p>}
-        {!loading && receipt && <OrderReceiptView data={receipt} />}
+        {!loading && receipt && (
+          <OrderReceiptView
+            data={{
+              ...receipt,
+              // El endpoint /receipt no trae googleMapsUrl — se completa con
+              // el customer del order-header completo (ya lo pedimos arriba).
+              customer: {
+                ...receipt.customer,
+                googleMapsUrl: orderHeader?.customer?.googleMapsUrl,
+              },
+            }}
+          />
+        )}
 
         <div className="flex justify-end gap-2 mt-4">
           <Button

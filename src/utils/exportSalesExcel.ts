@@ -21,6 +21,7 @@ export interface SaleExportData {
   district: string;
   zone?: string;
   address: string;
+  googleMapsUrl?: string | null;
   paymentMethod: string;
   deliveryType: string;
   courier?: string | null;
@@ -62,6 +63,7 @@ export function exportSalesToExcel(
     Distrito: s.district || "-",
     Zona: s.zone || "-",
     Dirección: s.address || "-",
+    "Link Maps": s.googleMapsUrl || "-",
     "Método Pago": s.paymentMethod,
     "Tipo Entrega": s.deliveryType,
     Vendedor: s.sellerName || "-",

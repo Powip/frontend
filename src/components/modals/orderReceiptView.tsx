@@ -256,6 +256,21 @@ export default function OrderReceiptView({ data }: Props) {
           <span className="text-muted-foreground">Dni: </span>
           <span className="text-black-600 font-medium">{customer.dni || customer.documentNumber || "-"}</span>
         </div>
+        <div>
+          <span className="text-muted-foreground">Link Maps: </span>
+          {customer.googleMapsUrl ? (
+            <a
+              href={customer.googleMapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 font-medium underline underline-offset-2"
+            >
+              Ver ubicación
+            </a>
+          ) : (
+            <span className="text-black-600 font-medium">-</span>
+          )}
+        </div>
       </div>
 
       {/* Products Section */}

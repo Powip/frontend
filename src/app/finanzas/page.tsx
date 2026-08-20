@@ -86,6 +86,7 @@ export interface Sale {
   salesRegion: "LIMA" | "PROVINCIA";
   district: string;
   address: string;
+  googleMapsUrl?: string | null;
   advancePayment: number;
   pendingPayment: number;
   courier: string | null;
@@ -140,6 +141,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     salesRegion: order.salesRegion,
     district: order.customer.district ?? "",
     address: order.customer.address ?? "",
+    googleMapsUrl: order.customer.googleMapsUrl ?? null,
     advancePayment,
     pendingPayment,
     courier: order.courier ?? null,
@@ -442,6 +444,7 @@ Estado: ${sale.status}
       district: s.district,
       zone: s.zone,
       address: s.address,
+      googleMapsUrl: s.googleMapsUrl,
       paymentMethod: s.paymentMethod,
       deliveryType: s.deliveryType,
       courier: s.courier,

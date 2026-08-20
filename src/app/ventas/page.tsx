@@ -144,6 +144,7 @@ export interface Sale {
   province: string;
   zone: string;
   address: string;
+  googleMapsUrl?: string | null;
   advancePayment: number;
   pendingPayment: number;
   hasStockIssue?: boolean;
@@ -217,6 +218,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     province: order.customer.province ?? "",
     zone: order.customer.zone ?? "",
     address: order.customer.address ?? "",
+    googleMapsUrl: order.customer.googleMapsUrl ?? null,
     advancePayment,
     pendingPayment,
     hasStockIssue: order.hasStockIssue ?? false,
@@ -623,6 +625,7 @@ Estado: ${sale.status}
       district: s.district,
       zone: s.zone,
       address: s.address,
+      googleMapsUrl: s.googleMapsUrl,
       paymentMethod: s.paymentMethod,
       deliveryType: s.deliveryType,
     }));

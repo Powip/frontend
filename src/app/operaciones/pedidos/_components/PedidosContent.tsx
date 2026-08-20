@@ -545,6 +545,7 @@ export function PedidosContent() {
       district: s.district,
       zone: s.zone,
       address: s.address,
+      googleMapsUrl: s.googleMapsUrl,
       paymentMethod: s.paymentMethod,
       deliveryType: s.deliveryType,
       courier: s.courier,

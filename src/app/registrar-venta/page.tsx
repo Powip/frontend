@@ -23,6 +23,7 @@ import {
   Store,
   ChevronDown,
   Check,
+  AlertTriangle,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -799,7 +800,17 @@ function RegistrarVentaContent() {
     if (!clientForm.address.trim())
       errors.address = "Debes completar este dato.";
 
-    if (clientForm.documentType) {
+    if (salesRegion === "PROVINCIA") {
+      // Fuera de Lima el DNI es obligatorio (requisito de couriers de
+      // provincia para poder despachar el pedido).
+      if (clientForm.documentType !== "DNI") {
+        errors.documentType = "El DNI es obligatorio para ventas de provincia.";
+      } else if (!clientForm.documentNumber.trim()) {
+        errors.documentNumber = "El DNI es obligatorio para ventas de provincia.";
+      } else if (!/^\d{7,8}$/.test(clientForm.documentNumber)) {
+        errors.documentNumber = "DNI debe tener 7 u 8 dígitos.";
+      }
+    } else if (clientForm.documentType) {
       if (!clientForm.documentNumber.trim()) {
         errors.documentNumber = "Debes completar este dato.";
       } else if (
@@ -1407,6 +1418,13 @@ function RegistrarVentaContent() {
 
   const hasValidPayments = !!paymentMethod;
 
+  // Fuera de Lima el DNI es obligatorio (aplica a cliente nuevo o encontrado,
+  // ya que clientForm refleja los datos que realmente se van a enviar).
+  const hasValidDocumentForRegion =
+    salesRegion !== "PROVINCIA" ||
+    (clientForm.documentType === "DNI" &&
+      /^\d{7,8}$/.test(clientForm.documentNumber.trim()));
+
   // Cliente válido: ya encontrado/creado, o nuevo con los datos mínimos requeridos
   const hasValidClientForNew =
     (isNotFound || isSearchError) &&
@@ -1419,6 +1437,7 @@ function RegistrarVentaContent() {
 
   const canSubmit =
     (!!clientFound || hasValidClientForNew) &&
+    hasValidDocumentForRegion &&
     hasValidCart &&
     !!orderDetails.orderType &&
     !!orderDetails.salesChannel &&
@@ -1432,6 +1451,10 @@ function RegistrarVentaContent() {
     {
       ok: !!clientFound || hasValidClientForNew,
       msg: "Completa los datos del cliente (nombre, dirección)",
+    },
+    {
+      ok: hasValidDocumentForRegion,
+      msg: "Completa el DNI del cliente (obligatorio para ventas de provincia)",
     },
     { ok: !!orderDetails.orderType, msg: "Selecciona el tipo de orden" },
     { ok: !!orderDetails.salesChannel, msg: "Selecciona el canal de venta" },
@@ -1636,20 +1659,123 @@ function RegistrarVentaContent() {
                       </div>
                     </div>
 
-                    <div className="space-y-1">
-                      <Label>Numero de Telefono</Label>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label>Numero de Telefono</Label>
+                        <Input
+                          disabled={!formEnabled}
+                          placeholder="Numero de telefono"
+                          value={clientForm.phoneNumber}
+                          onChange={(e) =>
+                            setClientForm({
+                              ...clientForm,
+                              phoneNumber: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
 
-                      <Input
-                        disabled={!formEnabled}
-                        placeholder="Numero de telefono"
-                        value={clientForm.phoneNumber}
-                        onChange={(e) =>
-                          setClientForm({
-                            ...clientForm,
-                            phoneNumber: e.target.value,
-                          })
-                        }
-                      />
+                      <div className="space-y-1">
+                        <Label
+                          className={
+                            clientErrors.documentType ? "text-destructive" : ""
+                          }
+                        >
+                          Tipo de documento
+                          {salesRegion === "PROVINCIA" && (
+                            <span className="text-destructive"> *</span>
+                          )}
+                        </Label>
+                        <Select
+                          disabled={!formEnabled || isSubmitting}
+                          value={clientForm.documentType ?? "NONE"}
+                          onValueChange={(v) => {
+                            if (v === "NONE") {
+                              setClientForm({
+                                ...clientForm,
+                                documentType: undefined,
+                                documentNumber: "",
+                              });
+                            } else {
+                              setClientForm({
+                                ...clientForm,
+                                documentType: v as DocumentType,
+                              });
+                            }
+                            if (clientErrors.documentType) {
+                              setClientErrors({
+                                ...clientErrors,
+                                documentType: undefined,
+                              });
+                            }
+                          }}
+                        >
+                          <SelectTrigger
+                            className={
+                              clientErrors.documentType
+                                ? "border-destructive"
+                                : ""
+                            }
+                          >
+                            <SelectValue placeholder="Tipo de documento" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="NONE">No aplica</SelectItem>
+                            <SelectItem value="DNI">DNI</SelectItem>
+                            <SelectItem value="CARNET">
+                              Carnet de Extranjería
+                            </SelectItem>
+                            <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {clientErrors.documentType && (
+                          <p className="text-xs text-destructive mt-1">
+                            {clientErrors.documentType}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="space-y-1">
+                        <Label
+                          className={
+                            clientErrors.documentNumber
+                              ? "text-destructive"
+                              : ""
+                          }
+                        >
+                          N° Documento
+                          {salesRegion === "PROVINCIA" && (
+                            <span className="text-destructive"> *</span>
+                          )}
+                        </Label>
+                        <Input
+                          disabled={!formEnabled || !clientForm.documentType}
+                          placeholder="Número"
+                          value={clientForm.documentNumber}
+                          className={
+                            clientErrors.documentNumber
+                              ? "border-destructive"
+                              : ""
+                          }
+                          onChange={(e) => {
+                            setClientForm({
+                              ...clientForm,
+                              documentNumber: e.target.value,
+                            });
+                            if (clientErrors.documentNumber) {
+                              setClientErrors({
+                                ...clientErrors,
+                                documentNumber: undefined,
+                              });
+                            }
+                          }}
+                        />
+                        {clientErrors.documentNumber && (
+                          <p className="text-xs text-destructive mt-1">
+                            {clientErrors.documentNumber}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-2">
@@ -1828,72 +1954,18 @@ function RegistrarVentaContent() {
                         Se calcula automáticamente según el departamento, pero
                         puedes cambiarlo manualmente.
                       </p>
+                      {salesRegion === "PROVINCIA" && (
+                        <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-400">
+                          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                          <p className="text-xs font-medium">
+                            Venta de provincia detectada. El DNI es
+                            obligatorio para poder despachar el pedido.
+                          </p>
+                        </div>
+                      )}
                     </div>
 
-                    <Disclosure label="Agregar documento, referencia y ubicación (opcional)">
-                      <div className="grid grid-cols-2 gap-2">
-                        <Select
-                          disabled={!formEnabled || isSubmitting}
-                          value={clientForm.documentType ?? "NONE"}
-                          onValueChange={(v) => {
-                            if (v === "NONE") {
-                              setClientForm({
-                                ...clientForm,
-                                documentType: undefined,
-                                documentNumber: "",
-                              });
-                            } else {
-                              setClientForm({
-                                ...clientForm,
-                                documentType: v as DocumentType,
-                              });
-                            }
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Tipo de documento" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="NONE">No aplica</SelectItem>
-                            <SelectItem value="DNI">DNI</SelectItem>
-                            <SelectItem value="CARNET">
-                              Carnet de Extranjería
-                            </SelectItem>
-                            <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
-                          </SelectContent>
-                        </Select>
-
-                        <div>
-                          <Input
-                            disabled={!formEnabled || !clientForm.documentType}
-                            placeholder="Número"
-                            value={clientForm.documentNumber}
-                            className={
-                              clientErrors.documentNumber
-                                ? "border-destructive"
-                                : ""
-                            }
-                            onChange={(e) => {
-                              setClientForm({
-                                ...clientForm,
-                                documentNumber: e.target.value,
-                              });
-                              if (clientErrors.documentNumber) {
-                                setClientErrors({
-                                  ...clientErrors,
-                                  documentNumber: undefined,
-                                });
-                              }
-                            }}
-                          />
-                          {clientErrors.documentNumber && (
-                            <p className="text-xs text-destructive mt-1">
-                              {clientErrors.documentNumber}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
+                    <Disclosure label="Agregar referencia y ubicación (opcional)">
                       <div className="space-y-1">
                         <Label>
                           Referencia{" "}
