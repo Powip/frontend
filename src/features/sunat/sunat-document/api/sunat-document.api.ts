@@ -1,5 +1,7 @@
 import { API } from "@/lib/api";
 import axiosAuth from "@/lib/axiosAuth";
+import type { DownloadFileResult } from "@/types/download-file.types";
+import { extractFilename } from "@/utils/http/extract-filename";
 import type { BulkPdfRequestDto } from "../dto/bulk-pdf-request.dto";
 import type { CreateSunatDocumentsRequestDto } from "../dto/create-sunat-documents-request.dto";
 import type { ListSunatDocumentsQueryDto } from "../dto/list-sunat-documents-query.dto";
@@ -42,16 +44,21 @@ export async function getSunatDocumentApi(id: string): Promise<SunatDocumentResp
   return data;
 }
 
-export async function getSunatDocumentPdfApi(id: string): Promise<Blob> {
-  const { data } = await axiosAuth.get<Blob>(`${API.sunat}/api/v1/sunat-documents/${id}/pdf`, {
+export async function getSunatDocumentPdfApi(id: string): Promise<DownloadFileResult> {
+  const response = await axiosAuth.get<Blob>(`${API.sunat}/api/v1/sunat-documents/${id}/pdf`, {
     responseType: "blob",
   });
 
-  return data;
+  return {
+    blob: response.data,
+    filename: extractFilename(response.headers["content-disposition"]),
+  };
 }
 
-export async function createSunatDocumentsBulkPdfApi(requestDto: BulkPdfRequestDto): Promise<Blob> {
-  const { data } = await axiosAuth.post<Blob>(
+export async function createSunatDocumentsBulkPdfApi(
+  requestDto: BulkPdfRequestDto,
+): Promise<DownloadFileResult> {
+  const response = await axiosAuth.post<Blob>(
     `${API.sunat}/api/v1/sunat-documents/bulk-pdf`,
     requestDto,
     {
@@ -59,13 +66,16 @@ export async function createSunatDocumentsBulkPdfApi(requestDto: BulkPdfRequestD
     },
   );
 
-  return data;
+  return {
+    blob: response.data,
+    filename: extractFilename(response.headers["content-disposition"]),
+  };
 }
 
 export async function createSunatDocumentsBulkPdfZipApi(
   requestDto: BulkPdfRequestDto,
-): Promise<Blob> {
-  const { data } = await axiosAuth.post<Blob>(
+): Promise<DownloadFileResult> {
+  const response = await axiosAuth.post<Blob>(
     `${API.sunat}/api/v1/sunat-documents/bulk-pdf-zip`,
     requestDto,
     {
@@ -73,5 +83,8 @@ export async function createSunatDocumentsBulkPdfZipApi(
     },
   );
 
-  return data;
+  return {
+    blob: response.data,
+    filename: extractFilename(response.headers["content-disposition"]),
+  };
 }

@@ -12,11 +12,11 @@ export function toCreateSunatDocumentsRequestDto(
 
       customer: document.customer
         ? {
-            name: document.customer.name,
-            identityDocumentType: document.customer.identityDocumentType,
-            identityDocumentNumber: document.customer.identityDocumentNumber,
-            countryCode: document.customer.countryCode,
-            address: document.customer.address,
+            name: document.customer.name ?? undefined,
+            identityDocumentType: document.customer.identityDocumentType ?? undefined,
+            identityDocumentNumber: document.customer.identityDocumentNumber ?? undefined,
+            countryCode: document.customer.countryCode ?? undefined,
+            address: document.customer.address ?? undefined,
           }
         : undefined,
 

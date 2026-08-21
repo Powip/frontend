@@ -4,7 +4,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { AlertCircle, CheckCircle2, FileText, Loader2, Search } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
-
 import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
 import { ItemsEditTable } from "@/app/facturacion/components/ItemsEditTable";
 import { ProximamenteButton } from "@/app/facturacion/components/ProximamenteButton";
@@ -34,16 +33,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
 import {
-  CURRENCIES,
   IDENTITY_DOCUMENT_TYPES,
   SUNAT_DOCUMENT_TYPES,
-  SUNAT_TAX_AFFECTATION_TYPES,
-  UNIT_CODES,
 } from "@/features/sunat/sunat-document/enums/sunat-document.enums";
 import { useCreateSunatDocuments } from "@/features/sunat/sunat-document/hooks/use-create-sunat-documents";
 import type { CreateSunatDocumentsFormValues } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { createSunatDocumentsSchema } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
+import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
 import type { Order } from "@/models/sales/order";
 
 const PIPELINE_STEPS = [
@@ -52,16 +50,6 @@ const PIPELINE_STEPS = [
   "Enviando al OSE",
   "Esperando CDR de SUNAT",
 ];
-
-const IGV_RATE = 0.18;
-
-// Rounds to soles-cents. Without this, dividing a tax-inclusive price by
-// 1.18 leaves a repeating decimal (e.g. 140 / 1.18 = 118.64406779661017)
-// that would otherwise flow untouched into the form, the summary, and
-// the request sent to the backend.
-function roundCurrency(value: number): number {
-  return Math.round(value * 100) / 100;
-}
 
 interface EmitirComprobanteModalProps {
   isOpen: boolean;
@@ -72,156 +60,27 @@ interface EmitirComprobanteModalProps {
 
 type Step = "form" | "pipeline" | "ok" | "bad";
 
-type SunatDocument = CreateSunatDocumentsFormValues["documents"][number];
+function getCustomerFormValues(
+  sale: Order,
+): NonNullable<CreateSunatDocumentsFormValues["documents"][number]["customer"]> {
+  const documentType = sale.customer.documentType;
 
-type SunatItem = SunatDocument["items"][number];
-
-type ItemsEditTableItem = {
-  internalCode: string;
-  description: string;
-  quantity: number;
-  unitPrice: number;
-  unitCode: SunatItem["unitCode"];
-  taxType: SunatItem["taxType"];
-};
-
-function getDocumentTypeFromSale(sale: Order) {
-  const documentNumber = sale.customer?.documentNumber ?? "";
-
-  return documentNumber.length === 11
-    ? SUNAT_DOCUMENT_TYPES.INVOICE
-    : SUNAT_DOCUMENT_TYPES.SALES_RECEIPT;
-}
-
-function getCustomerDocumentType(sale: Order) {
-  const documentNumber = sale.customer?.documentNumber ?? "";
-
-  return documentNumber.length === 11 ? IDENTITY_DOCUMENT_TYPES.RUC : IDENTITY_DOCUMENT_TYPES.DNI;
-}
-
-function createItems(sale: Order): SunatItem[] {
-  // "sale.items[].unitPrice" means two different things depending on how
-  // the sale was closed (see registrar-venta/page.tsx: "Si INCLUIDO, los
-  // precios ya incluyen impuestos"):
-  //   - taxMode "AUTOMATICO": unitPrice is tax-exclusive (base price);
-  //     18% IGV gets added on top.
-  //   - taxMode "INCLUIDO": unitPrice is tax-inclusive (what the customer
-  //     actually paid); IGV is already baked in.
-  // SUNAT line items need the tax-exclusive unit price, so for INCLUIDO
-  // sales we back the 18% out here — otherwise calculateTotals() below
-  // would add a second 18% on top of an already tax-inclusive price and
-  // the comprobante's grandTotal would end up ~18% higher than the sale.
-  const isTaxIncluded = sale.taxMode === "INCLUIDO";
-
-  const productItems: SunatItem[] = sale.items.map((item) => {
-    const quantity = Number(item.quantity);
-    const rawUnitPrice = Number(item.unitPrice);
-
-    // Compute the line's net subtotal from the full gross line total,
-    // not from quantity × an already-rounded unit price — rounding the
-    // unit price first and then multiplying compounds the lost fraction
-    // (e.g. 140/1.18 → 118.64 per unit, × 2 = 237.28, a cent short of the
-    // correct 237.29 = 280/1.18). The displayed unit price is still
-    // rounded for readability; it just isn't what the subtotal is
-    // derived from anymore.
-    const unitPrice = isTaxIncluded ? roundCurrency(rawUnitPrice / (1 + IGV_RATE)) : rawUnitPrice;
-    const subtotal = isTaxIncluded
-      ? roundCurrency((rawUnitPrice * quantity) / (1 + IGV_RATE))
-      : roundCurrency(rawUnitPrice * quantity);
-
-    return {
-      sku: item.sku ?? `PRODUCT-${item.id}`,
-      productName: item.productName,
-      quantity,
-      unitPrice,
-      subtotal,
-      discountAmount: 0,
-      unitCode: UNIT_CODES.UNIT,
-      taxType: SUNAT_TAX_AFFECTATION_TYPES.GRAVADO,
-    };
-  });
-
-  const shippingTotal = Number(sale.shippingTotal ?? 0);
-
-  if (shippingTotal <= 0) {
-    return productItems;
-  }
-
-  return [
-    ...productItems,
-    {
-      sku: "DELIVERY",
-      productName: "Servicio de entrega",
-      quantity: 1,
-      unitPrice: shippingTotal,
-      subtotal: shippingTotal,
-      discountAmount: 0,
-      unitCode: UNIT_CODES.UNIT,
-      // Shipping is never taxed for this business (see registrar-venta/
-      // page.tsx: shippingTotal is added AFTER the tax calc, untouched,
-      // regardless of taxMode). Marking it GRAVADO made calculateTotals()
-      // below tack another 18% onto it, which it shouldn't get.
-      taxType: SUNAT_TAX_AFFECTATION_TYPES.INAFECTO,
-    },
-  ];
-}
-
-function calculateTotals(items: SunatItem[]) {
-  const subtotal = roundCurrency(items.reduce((sum, item) => sum + item.subtotal, 0));
-
-  const discountTotal = roundCurrency(items.reduce((sum, item) => sum + item.discountAmount, 0));
-
-  // Only GRAVADO (taxed) items belong in the IGV base — e.g. shipping is
-  // INAFECTO and must not have 18% tacked on top of it.
-  const taxableAmount = items
-    .filter((item) => item.taxType === SUNAT_TAX_AFFECTATION_TYPES.GRAVADO)
-    .reduce((sum, item) => sum + Math.max(item.subtotal - item.discountAmount, 0), 0);
-
-  const taxTotal = roundCurrency(taxableAmount * IGV_RATE);
-
-  const grandTotal = roundCurrency(Math.max(subtotal - discountTotal, 0) + taxTotal);
+  const identityDocumentType =
+    documentType === "RUC"
+      ? IDENTITY_DOCUMENT_TYPES.RUC
+      : documentType === "CARNET"
+        ? IDENTITY_DOCUMENT_TYPES.CARNET_EXTRANJERIA
+        : documentType === "PASAPORTE"
+          ? IDENTITY_DOCUMENT_TYPES.PASAPORTE
+          : IDENTITY_DOCUMENT_TYPES.DNI;
 
   return {
-    currency: CURRENCIES.PEN,
-    subtotal,
-    discountTotal,
-    shippingTotal: 0,
-    taxTotal,
-    grandTotal,
+    name: sale.customer.fullName,
+    identityDocumentType,
+    identityDocumentNumber: sale.customer.documentNumber,
+    countryCode: "PE",
+    address: sale.customer.address,
   };
-}
-
-function toItemsEditTableItems(items: SunatItem[]): ItemsEditTableItem[] {
-  return items.map((item) => ({
-    internalCode: item.sku,
-    description: item.productName,
-    quantity: item.quantity,
-    unitPrice: item.unitPrice,
-    unitCode: item.unitCode,
-    taxType: item.taxType,
-  }));
-}
-
-function fromItemsEditTableItems(
-  currentItems: SunatItem[],
-  nextItems: ItemsEditTableItem[],
-): SunatItem[] {
-  return nextItems.map((item, index) => {
-    const currentItem = currentItems[index];
-
-    const subtotal = roundCurrency(item.quantity * item.unitPrice);
-
-    return {
-      sku: item.internalCode,
-      productName: item.description,
-      quantity: item.quantity,
-      unitPrice: item.unitPrice,
-      subtotal,
-      discountAmount: currentItem?.discountAmount ?? 0,
-      unitCode: item.unitCode,
-      taxType: item.taxType,
-    };
-  });
 }
 
 export default function EmitirComprobanteModal({
@@ -235,23 +94,7 @@ export default function EmitirComprobanteModal({
   const form = useForm<CreateSunatDocumentsFormValues>({
     resolver: zodResolver(createSunatDocumentsSchema),
     defaultValues: {
-      documents: [
-        {
-          orderId: "",
-          taxDocumentType: SUNAT_DOCUMENT_TYPES.SALES_RECEIPT,
-          series: "B001",
-          customer: undefined,
-          totals: {
-            currency: CURRENCIES.PEN,
-            subtotal: 0,
-            discountTotal: 0,
-            shippingTotal: 0,
-            taxTotal: 0,
-            grandTotal: 0,
-          },
-          items: [],
-        },
-      ],
+      documents: [buildSunatDocumentFromSale(sale)],
     },
     mode: "onBlur",
   });
@@ -266,48 +109,24 @@ export default function EmitirComprobanteModal({
     name: "documents.0.taxDocumentType",
   });
 
-  const items = useWatch({
-    control: form.control,
-    name: "documents.0.items",
-  });
-
   const totals = useWatch({
     control: form.control,
     name: "documents.0.totals",
   });
 
   const isInvoice = documentType === SUNAT_DOCUMENT_TYPES.INVOICE;
+  const grandTotal = Number(totals?.grandTotal ?? 0);
+  const isCustomerRequired = isInvoice || grandTotal >= 700;
 
   useEffect(() => {
     if (!isOpen) {
       return;
     }
 
-    const items = createItems(sale);
-    const type = getDocumentTypeFromSale(sale);
+    const document = buildSunatDocumentFromSale(sale);
 
     form.reset({
-      documents: [
-        {
-          orderId: String(sale.id),
-
-          taxDocumentType: type,
-
-          series: type === SUNAT_DOCUMENT_TYPES.INVOICE ? "F001" : "B001",
-
-          customer: {
-            name: sale.customer?.fullName ?? "",
-            identityDocumentType: getCustomerDocumentType(sale),
-            identityDocumentNumber: sale.customer?.documentNumber ?? "",
-            countryCode: "PE",
-            address: sale.customer?.address ?? "",
-          },
-
-          totals: calculateTotals(items),
-
-          items,
-        },
-      ],
+      documents: [document],
     });
 
     setStep("form");
@@ -323,17 +142,6 @@ export default function EmitirComprobanteModal({
   }, []);
 
   useEffect(() => {
-    if (!items) {
-      return;
-    }
-
-    form.setValue("documents.0.totals", calculateTotals(items), {
-      shouldValidate: true,
-      shouldDirty: true,
-    });
-  }, [items, form]);
-
-  useEffect(() => {
     if (!documentType) {
       return;
     }
@@ -346,18 +154,14 @@ export default function EmitirComprobanteModal({
       },
     );
 
-    if (documentType === SUNAT_DOCUMENT_TYPES.INVOICE) {
-      const customer = form.getValues("documents.0.customer");
-
-      if (!customer) {
-        form.setValue("documents.0.customer", {
-          name: sale.customer?.fullName ?? "",
-          identityDocumentType: getCustomerDocumentType(sale),
-          identityDocumentNumber: sale.customer?.documentNumber ?? "",
-          countryCode: "PE",
-          address: sale.customer?.address ?? "",
-        });
-      }
+    const customer = form.getValues("documents.0.customer");
+    if (
+      !customer &&
+      (documentType === SUNAT_DOCUMENT_TYPES.INVOICE || sale.customer?.documentNumber)
+    ) {
+      form.setValue("documents.0.customer", getCustomerFormValues(sale), {
+        shouldValidate: true,
+      });
     }
   }, [documentType, form, sale]);
 
@@ -384,7 +188,24 @@ export default function EmitirComprobanteModal({
     runPipelineAnimation();
 
     try {
-      const response = await createSunatDocuments.mutateAsync(values);
+      // Map null -> undefined for payload compatibility
+      const payload = {
+        ...values,
+        documents: values.documents.map((doc) => ({
+          ...doc,
+          customer: doc.customer
+            ? {
+                name: doc.customer.name ?? undefined,
+                identityDocumentType: doc.customer.identityDocumentType ?? undefined,
+                identityDocumentNumber: doc.customer.identityDocumentNumber ?? undefined,
+                countryCode: doc.customer.countryCode ?? undefined,
+                address: doc.customer.address ?? undefined,
+              }
+            : undefined,
+        })),
+      };
+
+      const response = await createSunatDocuments.mutateAsync(payload);
 
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -435,7 +256,7 @@ export default function EmitirComprobanteModal({
         }
       }}
     >
-      <DialogContent className="flex max-h-[90vh] flex-col p-0 sm:max-w-[640px]">
+      <DialogContent className="flex max-h-[90vh] flex-col p-0 sm:max-w-[720px]">
         {step === "form" && (
           <>
             <DialogHeader className="shrink-0 border-b px-6 py-5">
@@ -447,7 +268,7 @@ export default function EmitirComprobanteModal({
               <DialogDescription>
                 Venta <span className="font-bold text-foreground">{sale.orderNumber}</span> — Total{" "}
                 <span className="font-bold text-primary">
-                  {totals?.currency ?? "PEN"} {Number(totals?.grandTotal ?? 0).toFixed(2)}
+                  {totals?.currency ?? "PEN"} {grandTotal.toFixed(2)}
                 </span>
               </DialogDescription>
             </DialogHeader>
@@ -511,84 +332,114 @@ export default function EmitirComprobanteModal({
                       </div>
                     </div>
 
-                    {isInvoice && (
-                      <>
-                        <div className="flex items-center justify-between gap-4">
-                          <Label>Datos del cliente</Label>
+                    <div className="space-y-4 rounded-md border p-4">
+                      <div className="flex items-center justify-between gap-4">
+                        <Label className="font-semibold">
+                          Datos del cliente{" "}
+                          {!isCustomerRequired && (
+                            <span className="text-xs font-normal text-muted-foreground">
+                              (Opcional para boletas &lt; S/ 700)
+                            </span>
+                          )}
+                        </Label>
 
-                          <ProximamenteButton
-                            label={
-                              <>
-                                <Search className="mr-2 h-3.5 w-3.5" />
-                                Verificar RENIEC / SUNAT
-                              </>
-                            }
-                            tooltip="La verificación automática con RENIEC/SUNAT está en desarrollo."
-                          />
-                        </div>
+                        <ProximamenteButton
+                          label={
+                            <>
+                              <Search className="mr-2 h-3.5 w-3.5" />
+                              Verificar RENIEC / SUNAT
+                            </>
+                          }
+                          tooltip="La verificación automática con RENIEC/SUNAT está en desarrollo."
+                        />
+                      </div>
 
-                        <div className="grid gap-5 sm:grid-cols-2">
-                          <FormField
-                            control={form.control}
-                            name="documents.0.customer.identityDocumentType"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Tipo Doc.</FormLabel>
-
-                                <Select value={field.value} onValueChange={field.onChange}>
-                                  <FormControl>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Seleccione" />
-                                    </SelectTrigger>
-                                  </FormControl>
-
-                                  <SelectContent>
-                                    <SelectItem value={IDENTITY_DOCUMENT_TYPES.RUC}>RUC</SelectItem>
-
-                                    <SelectItem value={IDENTITY_DOCUMENT_TYPES.DNI}>DNI</SelectItem>
-
-                                    <SelectItem value="4">CE</SelectItem>
-                                  </SelectContent>
-                                </Select>
-
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          <FormField
-                            control={form.control}
-                            name="documents.0.customer.identityDocumentNumber"
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Número Doc.</FormLabel>
-
-                                <FormControl>
-                                  <Input {...field} placeholder="20601234567" />
-                                </FormControl>
-
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-
+                      <div className="grid gap-5 sm:grid-cols-2">
                         <FormField
                           control={form.control}
-                          name="documents.0.customer.name"
+                          name="documents.0.customer.identityDocumentType"
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel>Nombre / Razón Social</FormLabel>
+                              <FormLabel>Tipo Doc.</FormLabel>
 
-                              <FormControl>
-                                <Input {...field} />
-                              </FormControl>
+                              <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                                <FormControl>
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Sin documento" />
+                                  </SelectTrigger>
+                                </FormControl>
+
+                                <SelectContent>
+                                  {isInvoice ? (
+                                    <SelectItem value={IDENTITY_DOCUMENT_TYPES.RUC}>RUC</SelectItem>
+                                  ) : (
+                                    <>
+                                      <SelectItem value={IDENTITY_DOCUMENT_TYPES.DNI}>
+                                        DNI
+                                      </SelectItem>
+                                      <SelectItem value={IDENTITY_DOCUMENT_TYPES.RUC}>
+                                        RUC
+                                      </SelectItem>
+                                      <SelectItem
+                                        value={IDENTITY_DOCUMENT_TYPES.CARNET_EXTRANJERIA}
+                                      >
+                                        CE
+                                      </SelectItem>
+                                      <SelectItem value={IDENTITY_DOCUMENT_TYPES.PASAPORTE}>
+                                        Pasaporte
+                                      </SelectItem>
+                                    </>
+                                  )}
+                                </SelectContent>
+                              </Select>
 
                               <FormMessage />
                             </FormItem>
                           )}
                         />
 
+                        <FormField
+                          control={form.control}
+                          name="documents.0.customer.identityDocumentNumber"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Número Doc.</FormLabel>
+
+                              <FormControl>
+                                <Input
+                                  {...field}
+                                  value={field.value ?? ""}
+                                  placeholder={isInvoice ? "20601234567" : "71234567"}
+                                />
+                              </FormControl>
+
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <FormField
+                        control={form.control}
+                        name="documents.0.customer.name"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Nombre / Razón Social</FormLabel>
+
+                            <FormControl>
+                              <Input
+                                {...field}
+                                value={field.value ?? ""}
+                                placeholder="Ej. Juan Pérez / Cliente Varios"
+                              />
+                            </FormControl>
+
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      {isInvoice && (
                         <FormField
                           control={form.control}
                           name="documents.0.customer.address"
@@ -597,36 +448,29 @@ export default function EmitirComprobanteModal({
                               <FormLabel>Dirección Fiscal</FormLabel>
 
                               <FormControl>
-                                <Input {...field} placeholder="Av. Larco 123, Miraflores" />
+                                <Input
+                                  {...field}
+                                  value={field.value ?? ""}
+                                  placeholder="Av. Larco 123, Miraflores"
+                                />
                               </FormControl>
 
                               <FormMessage />
                             </FormItem>
                           )}
                         />
-                      </>
-                    )}
-
-                    {!isInvoice && (
-                      <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                        Para una boleta, los datos del cliente son opcionales.
-                      </div>
-                    )}
+                      )}
+                    </div>
 
                     <FormField
                       control={form.control}
                       name="documents.0.items"
-                      render={({ field }) => (
+                      render={() => (
                         <FormItem>
                           <FormLabel>Ítems del pedido</FormLabel>
 
                           <FormControl>
-                            <ItemsEditTable
-                              items={toItemsEditTableItems(field.value)}
-                              onChange={(nextItems) => {
-                                field.onChange(fromItemsEditTableItems(field.value, nextItems));
-                              }}
-                            />
+                            <ItemsEditTable />
                           </FormControl>
 
                           <FormMessage />
@@ -675,7 +519,7 @@ export default function EmitirComprobanteModal({
                         <span>Total</span>
 
                         <span className="text-primary">
-                          {totals?.currency ?? "PEN"} {Number(totals?.grandTotal ?? 0).toFixed(2)}
+                          {totals?.currency ?? "PEN"} {grandTotal.toFixed(2)}
                         </span>
                       </div>
                     </div>

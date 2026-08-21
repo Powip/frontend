@@ -1,5 +1,9 @@
+"use client";
+
 import { Plus, Trash2 } from "lucide-react";
-import { TAX_TYPES, UNIT_CODES } from "@/api/sunat/types/sunat-document.types";
+import { useEffect } from "react";
+import { useFieldArray, useFormContext, useWatch } from "react-hook-form";
+
 import { Input } from "@/components/ui/input";
 import {
   Table,
@@ -9,63 +13,86 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { CreateManualInvoiceInput } from "@/schemas/sunat/create-manual-invoice.schema";
 
-type InvoiceItem = CreateManualInvoiceInput["items"][number];
+import {
+  SUNAT_TAX_AFFECTATION_TYPES,
+  UNIT_CODES,
+} from "@/features/sunat/sunat-document/enums/sunat-document.enums";
+import type { CreateSunatDocumentsFormValues } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
+import {
+  calculateSunatDocumentTotals,
+  roundCurrency,
+} from "@/features/sunat/sunat-document/utils/calculate-sunat-document-totals";
 
-interface ItemsEditTableProps {
-  items: InvoiceItem[];
-  onChange: (items: InvoiceItem[]) => void;
-}
+export function ItemsEditTable() {
+  const { control, register, setValue, getValues } =
+    useFormContext<CreateSunatDocumentsFormValues>();
 
-interface ItemWithKey {
-  item: InvoiceItem;
-  key: string;
-}
+  const { fields, append, remove } = useFieldArray({
+    control,
+    name: "documents.0.items",
+  });
 
-export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
-  const updateItem = (index: number, field: keyof InvoiceItem, value: string) => {
-    const next = items.map((item, currentIndex) =>
-      currentIndex === index
-        ? {
-            ...item,
-            [field]:
-              field === "description"
-                ? value
-                : field === "quantity" || field === "unitPrice"
-                  ? Number(value) || 0
-                  : value,
-          }
-        : item,
-    );
+  const items = useWatch({
+    control,
+    name: "documents.0.items",
+  });
 
-    onChange(next);
-  };
+  useEffect(() => {
+    if (!items || items.length === 0) {
+      return;
+    }
 
-  const removeItem = (index: number) => {
-    if (items.length <= 1) return;
+    const recalculatedItems = items.map((item) => {
+      const quantity = Number(item.quantity) || 0;
+      const unitPrice = Number(item.unitPrice) || 0;
+      const discountAmount = Number(item.discountAmount) || 0;
 
-    onChange(items.filter((_, currentIndex) => currentIndex !== index));
-  };
+      const subtotal = roundCurrency(Math.max(0, quantity * unitPrice));
 
-  const addItem = () => {
-    onChange([
-      ...items,
-      {
-        internalCode: "PROD001",
-        description: "Nuevo ítem",
-        quantity: 1,
-        unitPrice: 0,
-        unitCode: UNIT_CODES.UNIT,
-        taxType: TAX_TYPES.GRAVADO,
-      },
-    ]);
-  };
+      return {
+        ...item,
+        quantity,
+        unitPrice,
+        discountAmount,
+        subtotal,
+      };
+    });
 
-  const itemsWithKeys: ItemWithKey[] = items.map((item, index) => ({
-    item,
-    key: `${item.internalCode}-${item.description}-${item.quantity}-${item.unitPrice}-${index}`,
-  }));
+    recalculatedItems.forEach((item, index) => {
+      if (items[index]?.subtotal !== item.subtotal) {
+        setValue(`documents.0.items.${index}.subtotal`, item.subtotal, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+      }
+    });
+
+    const totals = calculateSunatDocumentTotals(recalculatedItems);
+    const currentTotals = getValues("documents.0.totals");
+
+    (Object.keys(totals) as (keyof typeof totals)[]).forEach((key) => {
+      if (currentTotals?.[key] !== totals[key]) {
+        setValue(`documents.0.totals.${key}`, totals[key], {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+      }
+    });
+  }, [items, setValue, getValues]);
+
+  function addItem() {
+    append({
+      sku: "PROD001",
+      productName: "Nuevo ítem",
+      quantity: 1,
+      unitPrice: 0,
+      subtotal: 0,
+      discountAmount: 0,
+      unitCode: UNIT_CODES.UNIT,
+      taxType: SUNAT_TAX_AFFECTATION_TYPES.GRAVADO,
+    });
+  }
 
   return (
     <div className="space-y-2">
@@ -76,65 +103,86 @@ export function ItemsEditTable({ items, onChange }: ItemsEditTableProps) {
               <TableHead>Descripción</TableHead>
               <TableHead className="w-20">Cant.</TableHead>
               <TableHead className="w-28">P. Unit.</TableHead>
+              <TableHead className="w-24">Descuento</TableHead>
               <TableHead className="w-24 text-right">Importe</TableHead>
               <TableHead className="w-8" />
             </TableRow>
           </TableHeader>
 
           <TableBody>
-            {itemsWithKeys.map(({ item, key }, index) => (
-              <TableRow key={key}>
-                <TableCell>
-                  <Input
-                    value={item.description}
-                    onChange={(event) =>
-                      updateItem(index, "description", event.target.value)
-                    }
-                    className="h-8 text-xs"
-                  />
-                </TableCell>
+            {fields.map((field, index) => {
+              const item = items?.[index] ?? field;
 
-                <TableCell>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={item.quantity}
-                    onChange={(event) =>
-                      updateItem(index, "quantity", event.target.value)
-                    }
-                    className="h-8 text-xs"
-                  />
-                </TableCell>
+              const rawSubtotal = Number(item.subtotal) || 0;
+              const rawDiscount = Number(item.discountAmount) || 0;
+              const lineImporte = Math.max(0, rawSubtotal - rawDiscount);
 
-                <TableCell>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={item.unitPrice}
-                    onChange={(event) =>
-                      updateItem(index, "unitPrice", event.target.value)
-                    }
-                    className="h-8 text-xs"
-                  />
-                </TableCell>
+              return (
+                <TableRow key={field.id}>
+                  <TableCell>
+                    <Input
+                      {...register(`documents.0.items.${index}.productName`)}
+                      className="h-8 text-xs"
+                    />
+                  </TableCell>
 
-                <TableCell className="text-right text-xs font-medium">
-                  S/ {(item.quantity * item.unitPrice).toFixed(2)}
-                </TableCell>
+                  <TableCell>
+                    <Input
+                      type="number"
+                      min={1}
+                      {...register(`documents.0.items.${index}.quantity`, {
+                        valueAsNumber: true,
+                        setValueAs: (v) => (v === "" || Number.isNaN(v) ? 0 : Number(v)),
+                      })}
+                      className="h-8 text-xs"
+                    />
+                  </TableCell>
 
-                <TableCell>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(index)}
-                    className="text-red-500 hover:text-red-600"
-                    title="Quitar ítem"
-                    aria-label={`Quitar ${item.description}`}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </TableCell>
-              </TableRow>
-            ))}
+                  <TableCell>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      {...register(`documents.0.items.${index}.unitPrice`, {
+                        valueAsNumber: true,
+                        setValueAs: (v) => (v === "" || Number.isNaN(v) ? 0 : Number(v)),
+                      })}
+                      className="h-8 text-xs"
+                    />
+                  </TableCell>
+
+                  <TableCell>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      {...register(`documents.0.items.${index}.discountAmount`, {
+                        valueAsNumber: true,
+                        setValueAs: (v) => (v === "" || Number.isNaN(v) ? 0 : Number(v)),
+                      })}
+                      className="h-8 text-xs"
+                    />
+                  </TableCell>
+
+                  <TableCell className="text-right text-xs font-medium">
+                    S/ {lineImporte.toFixed(2)}
+                  </TableCell>
+
+                  <TableCell>
+                    <button
+                      type="button"
+                      onClick={() => remove(index)}
+                      disabled={fields.length <= 1}
+                      className="text-red-500 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                      title="Quitar ítem"
+                      aria-label={`Quitar ${item.productName}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </div>

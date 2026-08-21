@@ -1,15 +1,9 @@
 "use client";
 
-import { Zap } from "lucide-react";
-import { useState } from "react";
+import { AlertCircle, CheckCircle2, FileText, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
-import {
-  CURRENCIES,
-  DOCUMENT_TYPES,
-  IDENTITY_DOCUMENT_TYPES,
-  TAX_TYPES,
-  UNIT_CODES,
-} from "@/api/sunat/types/sunat-document.types";
+import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,152 +13,176 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Progress } from "@/components/ui/progress";
+
+import { SUNAT_DOCUMENT_TYPES } from "@/features/sunat/sunat-document/enums/sunat-document.enums";
+import { useCreateSunatDocuments } from "@/features/sunat/sunat-document/hooks/use-create-sunat-documents";
+import { toCreateSunatDocumentsRequestDto } from "@/features/sunat/sunat-document/mappers/to-create-sunat-documents-request-dto.mapper";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { useCreateManualInvoice } from "@/hooks/sunat/sunat-document/use-create-manual-invoice";
-import type { TaxDocumentRow } from "@/hooks/useTaxDocuments";
-import type { CreateManualInvoiceInput } from "@/schemas/sunat/create-manual-invoice.schema";
+  type CreateSunatDocumentsFormValues,
+  createSunatDocumentsSchema,
+} from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
+import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
+
+import type { Order } from "@/models/sales/order";
+
+const PIPELINE_STEPS = [
+  "Generando XML UBL 2.1",
+  "Firmando digitalmente con certificado P12",
+  "Enviando al OSE",
+  "Esperando CDR de SUNAT",
+];
 
 interface LoteEmisionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  rows: TaxDocumentRow[];
-  onDone: () => void;
+  sales: Order[];
+  onEmissionFinished?: (response: unknown) => void;
 }
 
-interface LoteResult {
-  orderNumber: string;
-  ok: boolean;
-  message: string;
-}
+type Step = "review" | "pipeline" | "ok" | "bad";
 
-export default function LoteEmisionModal({ isOpen, onClose, rows, onDone }: LoteEmisionModalProps) {
-  const { mutateAsync: createInvoice } = useCreateManualInvoice();
+export default function LoteEmisionModal({
+  isOpen,
+  onClose,
+  sales,
+  onEmissionFinished,
+}: LoteEmisionModalProps) {
+  const createSunatDocuments = useCreateSunatDocuments();
 
-  const [tipo, setTipo] = useState<"01" | "03">("03");
-  const [running, setRunning] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [results, setResults] = useState<LoteResult[] | null>(null);
+  const [step, setStep] = useState<Step>("review");
+  const [pipelineIndex, setPipelineIndex] = useState(0);
 
-  const buildPayload = (row: TaxDocumentRow): CreateManualInvoiceInput => {
-    const { sale } = row;
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-    const docNumber = sale.customer.documentNumber ?? "";
+  /**
+   * Order -> SUNAT document mapping is centralized in the builder.
+   *
+   * The same builder is used by the single-emission modal.
+   */
+  const documents = sales.map(buildSunatDocumentFromSale);
 
-    const isFactura = tipo === "01";
+  const invoiceCount = documents.filter(
+    (document) => document.taxDocumentType === SUNAT_DOCUMENT_TYPES.INVOICE,
+  ).length;
 
-    const total = Number(sale.grandTotal) || 0;
+  const salesReceiptCount = documents.filter(
+    (document) => document.taxDocumentType === SUNAT_DOCUMENT_TYPES.SALES_RECEIPT,
+  ).length;
 
-    return {
-      externalId: String(sale.id),
-
-      documentType: isFactura ? DOCUMENT_TYPES.FACTURA : DOCUMENT_TYPES.BOLETA,
-
-      customer: {
-        name: sale.customer.fullName,
-
-        documentType: isFactura ? IDENTITY_DOCUMENT_TYPES.RUC : IDENTITY_DOCUMENT_TYPES.DNI,
-
-        documentNumber: docNumber,
-
-        address: sale.customer.address ?? "",
-      },
-
-      totals: {
-        totalTax: Number(((total * 0.18) / 1.18).toFixed(2)),
-        totalValue: Number((total / 1.18).toFixed(2)),
-        totalPrice: Number(total.toFixed(2)),
-        currency: CURRENCIES.PEN,
-      },
-
-      items: sale.items.map((item) => ({
-        internalCode: item.sku ?? "PROD001",
-        description: item.productName,
-        quantity: item.quantity,
-        unitPrice: Number(item.unitPrice),
-        unitCode: UNIT_CODES.UNIT,
-        taxType: TAX_TYPES.GRAVADO,
-      })),
-    };
-  };
-
-  const runLote = async () => {
-    if (rows.length === 0) {
+  useEffect(() => {
+    if (!isOpen) {
       return;
     }
 
-    setRunning(true);
-    setProgress(0);
-    setResults(null);
+    setStep("review");
+    setPipelineIndex(0);
+  }, [isOpen]);
 
-    const accumulatedResults: LoteResult[] = [];
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, []);
 
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
+  function runPipelineAnimation() {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
 
-      try {
-        const payload = buildPayload(row);
-        const response = await createInvoice(payload);
+    setPipelineIndex(0);
 
-        accumulatedResults.push({
-          orderNumber: row.sale.orderNumber,
-          ok: Boolean(response.success),
-          message: response.success
-            ? `Comprobante ${response.data?.series}-${response.data?.correlative} generado`
-            : response.message || "Error al emitir",
-        });
-      } catch (error: unknown) {
-        const responseData =
-          error &&
-          typeof error === "object" &&
-          "response" in error &&
-          error.response &&
-          typeof error.response === "object" &&
-          "data" in error.response
-            ? error.response.data
-            : null;
+    let index = 0;
 
-        const message =
-          responseData &&
-          typeof responseData === "object" &&
-          "message" in responseData &&
-          typeof responseData.message === "string"
-            ? responseData.message
-            : "Error de conexión";
+    timerRef.current = setInterval(() => {
+      index += 1;
 
-        accumulatedResults.push({
-          orderNumber: row.sale.orderNumber,
-          ok: false,
-          message,
-        });
+      if (index >= PIPELINE_STEPS.length - 1) {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+        }
       }
 
-      const currentProgress = Math.round(((i + 1) / rows.length) * 100);
+      setPipelineIndex(Math.min(index, PIPELINE_STEPS.length - 1));
+    }, 650);
+  }
 
-      setProgress(currentProgress);
-      setResults([...accumulatedResults]);
-    }
+  async function handleSubmit() {
+    const payload: CreateSunatDocumentsFormValues = {
+      documents,
+    };
 
-    setRunning(false);
-    onDone();
-  };
+    /*
+     * Bulk emission does not use react-hook-form, so validate
+     * the generated payload explicitly before sending it.
+     */
+    const parsed = createSunatDocumentsSchema.safeParse(payload);
 
-  const handleClose = () => {
-    if (running) {
+    if (!parsed.success) {
+      setStep("bad");
       return;
     }
 
-    setResults(null);
-    setProgress(0);
+    setStep("pipeline");
+    runPipelineAnimation();
+
+    try {
+      // Convert form/schema types to clean API Request DTO (stripping nulls)
+      const requestDto = toCreateSunatDocumentsRequestDto(parsed.data);
+
+      const response = await createSunatDocuments.mutateAsync(requestDto);
+
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+
+      setPipelineIndex(PIPELINE_STEPS.length);
+      setStep("ok");
+
+      /*
+       * The API response is already the bulk response:
+       *
+       * {
+       *   results: [
+       *     SunatDocumentResponseDto |
+       *     SunatDocumentBulkErrorResponseDto
+       *   ]
+       * }
+       *
+       * There is no CreateSunatDocumentSuccess.
+       */
+      onEmissionFinished?.(response);
+    } catch {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+
+      setStep("bad");
+    }
+  }
+
+  function handleClose() {
+    if (createSunatDocuments.isPending) {
+      return;
+    }
+
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
+    setStep("review");
+    setPipelineIndex(0);
+
     onClose();
-  };
+  }
+
+  function handleRetry() {
+    setStep("review");
+    setPipelineIndex(0);
+  }
+
+  const isPending = createSunatDocuments.isPending;
 
   return (
     <Dialog
@@ -175,80 +193,181 @@ export default function LoteEmisionModal({ isOpen, onClose, rows, onDone }: Lote
         }
       }}
     >
-      <DialogContent className="sm:max-w-[480px]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-xl">
-            <Zap className="h-5 w-5 text-primary" />
-            Emitir en Lote
-          </DialogTitle>
+      <DialogContent className="flex max-h-[90vh] flex-col p-0 sm:max-w-[640px]">
+        {step === "review" && (
+          <>
+            <DialogHeader className="shrink-0 border-b px-6 py-5">
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <FileText className="h-5 w-5 text-primary" />
+                Emisión masiva de comprobantes
+              </DialogTitle>
 
-          <DialogDescription>
-            {rows.length} comprobante{rows.length === 1 ? "" : "s"} seleccionado
-            {rows.length === 1 ? "" : "s"} — se emitirán con el mismo tipo de documento.
-          </DialogDescription>
-        </DialogHeader>
+              <DialogDescription>
+                Se emitirán <span className="font-bold text-foreground">{documents.length}</span>{" "}
+                comprobantes electrónicos.
+              </DialogDescription>
+            </DialogHeader>
 
-        {!results && (
-          <div className="grid gap-2">
-            <Label>Tipo de comprobante para todos</Label>
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+              <div className="grid gap-5">
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-md border bg-muted/30 px-4 py-3">
+                    <div className="text-sm text-muted-foreground">Total</div>
 
-            <Select
-              value={tipo}
-              onValueChange={(value) => setTipo(value as "01" | "03")}
-              disabled={running}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
+                    <div className="mt-1 text-2xl font-bold">{documents.length}</div>
+                  </div>
 
-              <SelectContent>
-                <SelectItem value="03">Boleta de Venta (B001)</SelectItem>
-                <SelectItem value="01">Factura (F001)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+                  <div className="rounded-md border bg-muted/30 px-4 py-3">
+                    <div className="text-sm text-muted-foreground">Facturas</div>
 
-        {running && (
-          <div className="my-2">
-            <Progress value={progress} />
+                    <div className="mt-1 text-2xl font-bold">{invoiceCount}</div>
+                  </div>
 
-            <div className="mt-2 text-center text-sm text-muted-foreground">{progress}%</div>
-          </div>
-        )}
+                  <div className="rounded-md border bg-muted/30 px-4 py-3">
+                    <div className="text-sm text-muted-foreground">Boletas</div>
 
-        {results && (
-          <div className="max-h-64 divide-y overflow-y-auto rounded-md border text-sm">
-            {results.map((result) => (
-              <div
-                key={result.orderNumber}
-                className="flex items-center justify-between gap-2 px-3 py-2"
-              >
-                <span className="font-medium">{result.orderNumber}</span>
+                    <div className="mt-1 text-2xl font-bold">{salesReceiptCount}</div>
+                  </div>
+                </div>
 
-                <span className={result.ok ? "text-green-600" : "text-red-600"}>
-                  {result.message}
-                </span>
+                <div className="rounded-md border">
+                  <div className="border-b px-4 py-3">
+                    <h3 className="font-semibold">Comprobantes a emitir</h3>
+                  </div>
+
+                  <div className="divide-y">
+                    {documents.map((document) => (
+                      <div
+                        key={document.orderId}
+                        className="flex items-center justify-between gap-4 px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-medium">{document.orderId}</div>
+
+                          <div className="text-sm text-muted-foreground">
+                            {document.taxDocumentType === SUNAT_DOCUMENT_TYPES.INVOICE
+                              ? "Factura"
+                              : "Boleta de Venta"}{" "}
+                            · {document.series}
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="font-medium">
+                            {document.totals.currency} {document.totals.grandTotal.toFixed(2)}
+                          </div>
+
+                          <div className="text-sm text-muted-foreground">
+                            {document.items.length} {document.items.length === 1 ? "ítem" : "ítems"}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+                  <p>
+                    Cada comprobante será generado a partir de los datos de su venta
+                    correspondiente.
+                  </p>
+
+                  <p className="mt-1">
+                    Las facturas requieren información del cliente. En las boletas, el cliente es
+                    opcional.
+                  </p>
+                </div>
               </div>
-            ))}
-          </div>
+            </div>
+
+            <DialogFooter className="shrink-0 border-t px-6 py-4">
+              <Button type="button" variant="ghost" onClick={handleClose} disabled={isPending}>
+                Cancelar
+              </Button>
+
+              <Button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isPending || documents.length === 0}
+              >
+                {isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Emitiendo...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="mr-2 h-4 w-4" />
+                    Emitir {documents.length} comprobantes
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </>
         )}
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={handleClose} disabled={running}>
-            {results ? "Cerrar" : "Cancelar"}
-          </Button>
+        {step === "pipeline" && (
+          <>
+            <DialogHeader className="px-6 py-5">
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                Emitiendo comprobantes...
+              </DialogTitle>
 
-          {!results && (
-            <Button
-              onClick={runLote}
-              disabled={running || rows.length === 0}
-              className="bg-primary text-white hover:bg-primary/90"
-            >
-              Emitir {rows.length} comprobante{rows.length === 1 ? "" : "s"}
-            </Button>
-          )}
-        </DialogFooter>
+              <DialogDescription>
+                Procesando {documents.length} comprobantes. No cierres esta ventana.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="px-6 pb-6">
+              <EmisionPipeline steps={PIPELINE_STEPS} activeIndex={pipelineIndex} />
+            </div>
+          </>
+        )}
+
+        {step === "ok" && (
+          <>
+            <div className="px-6 py-8 text-center">
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-green-600 dark:bg-green-950 dark:text-green-400">
+                <CheckCircle2 className="h-7 w-7" />
+              </div>
+
+              <h3 className="text-lg font-bold">Emisión masiva procesada</h3>
+
+              <p className="mt-2 text-sm text-muted-foreground">
+                SUNAT/OSE procesó la solicitud de emisión de {documents.length} comprobantes.
+              </p>
+            </div>
+
+            <DialogFooter className="border-t px-6 py-4">
+              <Button onClick={handleClose}>Ver resultados</Button>
+            </DialogFooter>
+          </>
+        )}
+
+        {step === "bad" && (
+          <>
+            <div className="px-6 py-8 text-center">
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-950 dark:text-red-400">
+                <AlertCircle className="h-7 w-7" />
+              </div>
+
+              <h3 className="text-lg font-bold">No se pudo procesar la emisión</h3>
+
+              <p className="mt-3 text-sm text-red-600">
+                Revisa los datos de las ventas seleccionadas e intenta nuevamente.
+              </p>
+            </div>
+
+            <DialogFooter className="border-t px-6 py-4">
+              <Button variant="ghost" onClick={handleClose}>
+                Cerrar
+              </Button>
+
+              <Button onClick={handleRetry}>Revisar y reintentar</Button>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

@@ -4,23 +4,9 @@ import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useListSunatDocuments } from "@/features/sunat/sunat-document/hooks/use-list-sunat-documents";
 import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
-import type { Order } from "@/models/sales/order";
 import { useSalesByStore } from "./sales/use-stales-by-store";
-
-export interface TaxDocumentRow {
-  sale: Order;
-  /**
-   * The latest SUNAT document associated with this sale, if one exists.
-   *
-   * `undefined` means the sale has not been emitted to SUNAT yet.
-   */
-  taxDocument?: SunatDocument;
-}
-
-// Stable references so an undefined React Query `data` value does not
-// create a new array on every render.
-const EMPTY_SALES: Order[] = [];
-const EMPTY_DOCUMENTS: SunatDocument[] = [];
+import { EMPTY_DOCUMENTS, EMPTY_SALES } from "@/features/sunat/shared/constants/sunat.constants";
+import { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 
 export function useTaxDocuments() {
   const { selectedStoreId } = useAuth();

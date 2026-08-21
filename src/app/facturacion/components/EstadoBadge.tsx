@@ -1,15 +1,19 @@
 import { Badge } from "@/components/ui/badge";
+import {
+  TAX_DOCUMENT_STATUSES,
+  type TaxDocumentStatus,
+} from "@/features/sunat/shared/types/sunat.types";
 import { cn } from "@/lib/utils";
-import { ESTADOS_COMPROBANTE, type EstadoComprobante } from "@/types/facturacion";
 
 export function EstadoBadge({
   estado,
   className,
 }: {
-  estado: EstadoComprobante;
+  estado: TaxDocumentStatus;
   className?: string;
 }) {
-  const meta = ESTADOS_COMPROBANTE[estado];
+  const meta = TAX_DOCUMENT_STATUSES[estado];
+
   return (
     <Badge
       variant="outline"

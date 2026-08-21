@@ -3,7 +3,6 @@
 import { Download, Link2, Loader2, Mail, MessageCircle, Receipt, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-
 import { ProximamenteButton } from "@/app/facturacion/components/ProximamenteButton";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,10 +20,15 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { getSunatDocumentPdfApi } from "@/features/sunat/sunat-document/api/sunat-document.api";
-import type { SunatDocumentCdrStatus } from "@/features/sunat/sunat-document/enums/sunat-document.enums";
-import type { TaxDocumentRow } from "@/hooks/useTaxDocuments";
+import {
+  TAX_DOCUMENT_STATUSES,
+  type TaxDocumentStatus,
+} from "@/features/sunat/shared/types/sunat.types";
+import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
+import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import { getDocumentTypeLabel } from "@/features/sunat/sunat-document/utils/get-document-type-label";
 import { formatDateTime } from "@/utils/date";
+import { downloadFile } from "@/utils/http/download-file";
 
 interface DetalleComprobanteModalProps {
   isOpen: boolean;
@@ -34,69 +38,8 @@ interface DetalleComprobanteModalProps {
   onAction?: (saleId: string, type: "wa" | "print") => void;
 }
 
-type TaxDocumentStatus = SunatDocumentCdrStatus | "SIN_EMITIR";
-
 function getStatus(row: TaxDocumentRow): TaxDocumentStatus {
   return row.taxDocument?.cdrStatus ?? "SIN_EMITIR";
-}
-
-function getStatusLabel(status: TaxDocumentStatus): string {
-  switch (status) {
-    case "ACCEPTED":
-      return "Aceptado";
-
-    case "ACCEPTED_WITH_OBSERVATION":
-      return "Aceptado con observación";
-
-    case "PENDING":
-      return "Pendiente";
-
-    case "REJECTED":
-      return "Rechazado";
-
-    case "RETRY_EXCEEDED":
-      return "Reintentos agotados";
-
-    case "SIN_EMITIR":
-      return "Sin emitir";
-  }
-}
-
-function getStatusClass(status: TaxDocumentStatus): string {
-  switch (status) {
-    case "ACCEPTED":
-      return "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300";
-
-    case "ACCEPTED_WITH_OBSERVATION":
-      return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
-
-    case "PENDING":
-      return "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300";
-
-    case "REJECTED":
-    case "RETRY_EXCEEDED":
-      return "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300";
-
-    case "SIN_EMITIR":
-      return "bg-muted text-muted-foreground";
-  }
-}
-
-function getDocumentTypeLabel(taxDocument: TaxDocumentRow["taxDocument"]): string {
-  if (!taxDocument) {
-    return "Comprobante";
-  }
-
-  switch (taxDocument.taxDocumentType) {
-    case "01":
-      return "Factura Electrónica";
-
-    case "03":
-      return "Boleta de Venta Electrónica";
-
-    default:
-      return "Comprobante Electrónico";
-  }
 }
 
 function getDocumentNumber(taxDocument: TaxDocumentRow["taxDocument"]): string | null {
@@ -105,19 +48,6 @@ function getDocumentNumber(taxDocument: TaxDocumentRow["taxDocument"]): string |
   }
 
   return `${taxDocument.series}-${taxDocument.correlative}`;
-}
-
-function downloadBlob(blob: Blob, filename: string): void {
-  const url = window.URL.createObjectURL(blob);
-
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-
-  window.URL.revokeObjectURL(url);
 }
 
 export default function DetalleComprobanteModal({
@@ -129,6 +59,8 @@ export default function DetalleComprobanteModal({
 }: DetalleComprobanteModalProps) {
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
+  const { mutateAsync: downloadSunatDocumentPdf } = useSunatDocumentPdf();
+
   if (!row) {
     return null;
   }
@@ -136,6 +68,8 @@ export default function DetalleComprobanteModal({
   const { sale, taxDocument } = row;
 
   const status = getStatus(row);
+
+  const statusMeta = TAX_DOCUMENT_STATUSES[status];
 
   const fullNumber = getDocumentNumber(taxDocument);
 
@@ -198,11 +132,11 @@ export default function DetalleComprobanteModal({
     setDownloadingPdf(true);
 
     try {
-      const blob = await getSunatDocumentPdfApi(taxDocument.id);
+      const file = await downloadSunatDocumentPdf(taxDocument.id);
 
-      const filename = `${taxDocument.rucIssuer}-${taxDocument.taxDocumentType}-${fullNumber ?? sale.orderNumber}.pdf`;
+      downloadFile(file);
 
-      downloadBlob(blob, filename);
+      onAction?.(sale.id, "print");
     } catch (error) {
       console.error("Error downloading SUNAT document PDF:", error);
 
@@ -231,8 +165,8 @@ export default function DetalleComprobanteModal({
         </DialogHeader>
 
         <div className="flex items-center gap-2">
-          <span className={`rounded-md px-2 py-1 text-xs font-medium ${getStatusClass(status)}`}>
-            {getStatusLabel(status)}
+          <span className={`rounded-md px-2 py-1 text-xs font-medium ${statusMeta.badgeClassName}`}>
+            {statusMeta.label}
           </span>
 
           <span className="text-sm text-muted-foreground">{documentType}</span>
@@ -314,6 +248,7 @@ export default function DetalleComprobanteModal({
               <div className="w-72 space-y-1 text-sm">
                 <div className="flex justify-between text-muted-foreground">
                   <span>Subtotal</span>
+
                   <span>
                     {currency} {subtotal.toFixed(2)}
                   </span>
@@ -322,6 +257,7 @@ export default function DetalleComprobanteModal({
                 {discountTotal > 0 && (
                   <div className="flex justify-between text-muted-foreground">
                     <span>Descuento</span>
+
                     <span>
                       -{currency} {discountTotal.toFixed(2)}
                     </span>
@@ -331,6 +267,7 @@ export default function DetalleComprobanteModal({
                 {shippingTotal > 0 && (
                   <div className="flex justify-between text-muted-foreground">
                     <span>Envío</span>
+
                     <span>
                       {currency} {shippingTotal.toFixed(2)}
                     </span>
@@ -339,6 +276,7 @@ export default function DetalleComprobanteModal({
 
                 <div className="flex justify-between text-muted-foreground">
                   <span>I.G.V.</span>
+
                   <span>
                     {currency} {taxTotal.toFixed(2)}
                   </span>

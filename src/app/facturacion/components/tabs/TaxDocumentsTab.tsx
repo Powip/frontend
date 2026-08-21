@@ -8,12 +8,14 @@ import {
   Clock,
   DollarSign,
   FileCheck,
+  Loader2,
   MessageCircle,
   Printer,
   Search,
   Zap,
 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { toast } from "sonner";
 import DetalleComprobanteModal from "@/app/facturacion/components/modals/DetalleComprobanteModal";
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
@@ -39,12 +41,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-import type { SunatDocumentCdrStatus } from "@/features/sunat/sunat-document/enums/sunat-document.enums";
-import type { TaxDocumentRow, useTaxDocuments } from "@/hooks/useTaxDocuments";
-
+import {
+  TAX_DOCUMENT_STATUSES,
+  type TaxDocumentStatus,
+} from "@/features/sunat/shared/types/sunat.types";
+import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
+import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
+import type { useTaxDocuments } from "@/hooks/useTaxDocuments";
 import { cn } from "@/lib/utils";
 
-type TaxDocumentStatus = SunatDocumentCdrStatus | "SIN_EMITIR";
+type SentMap = Record<string, { wa?: boolean; print?: boolean }>;
 
 const PIPELINE_ORDER: TaxDocumentStatus[] = [
   "SIN_EMITIR",
@@ -54,39 +60,6 @@ const PIPELINE_ORDER: TaxDocumentStatus[] = [
   "REJECTED",
   "RETRY_EXCEEDED",
 ];
-
-const STATUS_META: Record<
-  TaxDocumentStatus,
-  {
-    label: string;
-    description: string;
-  }
-> = {
-  SIN_EMITIR: {
-    label: "Sin emitir",
-    description: "La venta todavía no tiene un documento SUNAT.",
-  },
-  PENDING: {
-    label: "Pendiente",
-    description: "El documento está siendo procesado por SUNAT/OSE.",
-  },
-  ACCEPTED: {
-    label: "Aceptado",
-    description: "SUNAT/OSE aceptó el comprobante.",
-  },
-  ACCEPTED_WITH_OBSERVATION: {
-    label: "Aceptado con observación",
-    description: "El comprobante fue aceptado pero contiene observaciones.",
-  },
-  REJECTED: {
-    label: "Rechazado",
-    description: "SUNAT/OSE rechazó el comprobante.",
-  },
-  RETRY_EXCEEDED: {
-    label: "Reintentos agotados",
-    description: "El documento agotó los intentos de procesamiento.",
-  },
-};
 
 interface TaxDocumentsTabProps {
   comprobantes: ReturnType<typeof useTaxDocuments>;
@@ -158,38 +131,9 @@ function getDocumentTypeBadge(taxDocument: TaxDocumentRow["taxDocument"]) {
 }
 
 function getStatusBadge(status: TaxDocumentStatus) {
-  switch (status) {
-    case "ACCEPTED":
-      return (
-        <Badge className="bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-950 dark:text-green-300">
-          Aceptado
-        </Badge>
-      );
+  const meta = TAX_DOCUMENT_STATUSES[status];
 
-    case "ACCEPTED_WITH_OBSERVATION":
-      return (
-        <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300">
-          Aceptado con obs.
-        </Badge>
-      );
-
-    case "PENDING":
-      return (
-        <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-100 dark:bg-amber-950 dark:text-amber-300">
-          Pendiente
-        </Badge>
-      );
-
-    case "REJECTED":
-      return <Badge variant="destructive">Rechazado</Badge>;
-
-    case "RETRY_EXCEEDED":
-      return <Badge variant="destructive">Reintentos agotados</Badge>;
-
-    case "SIN_EMITIR":
-    default:
-      return <Badge variant="outline">Sin emitir</Badge>;
-  }
+  return <Badge className={meta.badgeClassName}>{meta.label}</Badge>;
 }
 
 export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTabProps) {
@@ -205,20 +149,16 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
     clearSelection,
   } = comprobantes;
 
+  const { mutateAsync: fetchTaxDocumentPdf } = useSunatDocumentPdf();
+
+  const [loadingPdfId, setLoadingPdfId] = useState<string | null>(null);
+
   const [search, setSearch] = useState("");
   const [filterEstado, setFilterEstado] = useState<TaxDocumentStatus | "">("");
   const [filterTipo, setFilterTipo] = useState("");
   const [showPipeline, setShowPipeline] = useState(false);
 
-  const [sentMap, setSentMap] = useState<
-    Record<
-      string,
-      {
-        wa?: boolean;
-        print?: boolean;
-      }
-    >
-  >({});
+  const [sentMap, setSentMap] = useState<SentMap>({});
 
   const [emitirRow, setEmitirRow] = useState<TaxDocumentRow | null>(null);
 
@@ -270,6 +210,57 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
     pendientesVisibles.length > 0 &&
     pendientesVisibles.every((row) => selectedIds.has(row.sale.id));
 
+  const handlePrint = async (row: TaxDocumentRow) => {
+    if (!row.taxDocument) {
+      return;
+    }
+
+    setLoadingPdfId(row.taxDocument.id);
+
+    try {
+      const { blob } = await fetchTaxDocumentPdf(row.taxDocument.id);
+
+      const url = window.URL.createObjectURL(blob);
+
+      // No `download` attribute here on purpose: this opens the PDF as a
+      // preview in a new tab using the browser's native PDF viewer, which
+      // has its own print button — same endpoint used by "Descargar PDF",
+      // just displayed inline instead of forced as a file save.
+      window.open(url, "_blank", "noopener,noreferrer");
+
+      setSentMap((previous: SentMap) => ({
+        ...previous,
+        [row.sale.id]: {
+          ...previous[row.sale.id],
+          print: true,
+        },
+      }));
+    } catch (error) {
+      console.error("Error fetching SUNAT document PDF:", error);
+      toast.error("No se pudo obtener el PDF del comprobante");
+    } finally {
+      setLoadingPdfId(null);
+    }
+  };
+
+  const handleWhatsApp = (row: TaxDocumentRow) => {
+    setSentMap((previous: SentMap) => ({
+      ...previous,
+      [row.sale.id]: {
+        ...previous[row.sale.id],
+        wa: true,
+      },
+    }));
+
+    const phone = row.sale.customer.documentNumber ?? "";
+
+    const text = encodeURIComponent(
+      `Hola ${row.sale.customer.fullName}, adjuntamos su comprobante ${getDocumentNumber(row)}.`,
+    );
+
+    window.open(`https://wa.me/${phone}?text=${text}`, "_blank", "noopener,noreferrer");
+  };
+
   const getDistributionIcons = (row: TaxDocumentRow) => {
     const status = getRowStatus(row);
 
@@ -278,16 +269,40 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
     }
 
     const sent = sentMap[row.sale.id] ?? {};
+    const isThisRowLoadingPdf = loadingPdfId === row.taxDocument?.id;
 
     return (
-      <div className="flex items-center justify-center gap-1.5">
-        <MessageCircle
-          className={cn("h-4 w-4", sent.wa ? "text-green-600" : "text-muted-foreground/30")}
-        />
+      <div className="flex items-center justify-center gap-1">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="Enviar por WhatsApp"
+          onClick={() => handleWhatsApp(row)}
+        >
+          <MessageCircle
+            className={cn("h-4 w-4", sent.wa ? "text-green-600" : "text-muted-foreground/50")}
+          />
+        </Button>
 
-        <Printer
-          className={cn("h-4 w-4", sent.print ? "text-blue-600" : "text-muted-foreground/30")}
-        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          title="Ver / Imprimir PDF"
+          disabled={isThisRowLoadingPdf}
+          onClick={() => handlePrint(row)}
+        >
+          {isThisRowLoadingPdf ? (
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          ) : (
+            <Printer
+              className={cn("h-4 w-4", sent.print ? "text-blue-600" : "text-muted-foreground/50")}
+            />
+          )}
+        </Button>
       </div>
     );
   };
@@ -425,7 +440,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           <CardContent>
             <div className="flex gap-2 overflow-x-auto pb-2">
               {PIPELINE_ORDER.map((status) => {
-                const meta = STATUS_META[status];
+                const meta = TAX_DOCUMENT_STATUSES[status];
 
                 return (
                   <div
@@ -504,7 +519,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
               <SelectContent>
                 <SelectItem value="all">Todos los estados</SelectItem>
 
-                {Object.entries(STATUS_META).map(([status, meta]) => (
+                {Object.entries(TAX_DOCUMENT_STATUSES).map(([status, meta]) => (
                   <SelectItem key={status} value={status}>
                     {meta.label}
                   </SelectItem>
@@ -653,7 +668,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           onGenerarNota(row);
         }}
         onAction={(saleId, type) =>
-          setSentMap((previous) => ({
+          setSentMap((previous: SentMap) => ({
             ...previous,
             [saleId]: {
               ...previous[saleId],
@@ -675,8 +690,8 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
       <LoteEmisionModal
         isOpen={loteOpen}
         onClose={() => setLoteOpen(false)}
-        rows={selectedRows}
-        onDone={() => {
+        sales={selectedRows.map((row) => row.sale)}
+        onEmissionFinished={() => {
           clearSelection();
           refreshListDocuments();
         }}

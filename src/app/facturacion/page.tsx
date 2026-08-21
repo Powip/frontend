@@ -15,11 +15,12 @@ import { SeriesTab } from "@/app/facturacion/components/tabs/SeriesTab";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
+import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
 import { type ComprobanteRow, useComprobantesSunat } from "@/hooks/useComprobantesSunat";
 import { useFacturacionMock } from "@/hooks/useFacturacionMock";
-import { type TaxDocumentRow, useTaxDocuments } from "@/hooks/useTaxDocuments";
+import { useTaxDocuments } from "@/hooks/useTaxDocuments";
 import { cn } from "@/lib/utils";
 import { TaxDocumentsTab } from "./components/tabs/TaxDocumentsTab";
 

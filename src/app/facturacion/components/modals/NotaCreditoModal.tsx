@@ -92,6 +92,7 @@ export default function NotaCreditoModal({
     setMontoManual("");
   }, [isOpen, preselectId, aceptados]);
 
+  // ✅ Fixed effect dependency to prevent maximum update depth exceeded
   useEffect(() => {
     if (!original) {
       setChecked({});
@@ -99,11 +100,12 @@ export default function NotaCreditoModal({
       return;
     }
 
+    const items = original.sale.items ?? [];
     const isTotal = MOTIVOS_TOTAL.has(motivo);
     const nextChecked: Record<string, boolean> = {};
     const nextQty: Record<string, number> = {};
 
-    for (const item of originalItems) {
+    for (const item of items) {
       const itemId = String(item.id);
 
       nextChecked[itemId] = isTotal;
@@ -112,7 +114,7 @@ export default function NotaCreditoModal({
 
     setChecked(nextChecked);
     setQty(nextQty);
-  }, [original, originalItems, motivo]);
+  }, [original, motivo]);
 
   const isManual = motivo === "Descuento global" || originalItems.length === 0;
 

@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import type { TaxDocumentRow } from "@/hooks/useTaxDocuments";
+import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { ERRORES_SUNAT } from "@/types/facturacion";
 
 interface RechazadoModalProps {

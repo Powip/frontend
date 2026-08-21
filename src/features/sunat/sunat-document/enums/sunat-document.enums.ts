@@ -75,10 +75,10 @@ export const DEFAULT_SUNAT_DOCUMENT_SEQUENCES = [
 ] as const;
 
 export const SUNAT_DOCUMENT_TYPE_LABELS: Record<SunatDocumentType, string> = {
-  [SUNAT_DOCUMENT_TYPES.INVOICE]: "Factura",
-  [SUNAT_DOCUMENT_TYPES.SALES_RECEIPT]: "Boleta de venta",
-  [SUNAT_DOCUMENT_TYPES.CREDIT_NOTE]: "Nota de crédito",
-  [SUNAT_DOCUMENT_TYPES.DEBIT_NOTE]: "Nota de débito",
+  [SUNAT_DOCUMENT_TYPES.INVOICE]: "Factura Electrónica",
+  [SUNAT_DOCUMENT_TYPES.SALES_RECEIPT]: "Boleta de Venta Electrónica",
+  [SUNAT_DOCUMENT_TYPES.CREDIT_NOTE]: "Nota de Crédito Electrónica",
+  [SUNAT_DOCUMENT_TYPES.DEBIT_NOTE]: "Nota de Débito Electrónica",
 };
 
 export const SUNAT_DOCUMENT_TYPE_OPTIONS = Object.values(SUNAT_DOCUMENT_TYPES).map((value) => ({
