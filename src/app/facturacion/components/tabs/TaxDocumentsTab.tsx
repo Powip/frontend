@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import {
   AlertCircle,
+  Archive,
   ChevronDown,
   Clock,
   DollarSign,
@@ -20,10 +21,17 @@ import DetalleComprobanteModal from "@/app/facturacion/components/modals/Detalle
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
 import RechazadoModal from "@/app/facturacion/components/modals/RechazadoModal";
+import { PdfPreviewDialog } from "@/components/pdf/PdfPreviewDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -40,15 +48,18 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-
 import {
   TAX_DOCUMENT_STATUSES,
   type TaxDocumentStatus,
 } from "@/features/sunat/shared/types/sunat.types";
 import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
+import { useSunatDocumentsBulkPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-documents-bulk-pdf";
+import { useSunatDocumentsBulkPdfZip } from "@/features/sunat/sunat-document/hooks/use-sunat-documents-bulk-pdf-zip";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import type { useTaxDocuments } from "@/hooks/useTaxDocuments";
 import { cn } from "@/lib/utils";
+import type { DownloadFileResult } from "@/types/download-file.types";
+import { downloadFile } from "@/utils/http/download-file";
 
 type SentMap = Record<string, { wa?: boolean; print?: boolean }>;
 
@@ -136,6 +147,25 @@ function getStatusBadge(status: TaxDocumentStatus) {
   return <Badge className={meta.badgeClassName}>{meta.label}</Badge>;
 }
 
+function buildWhatsAppUrl(phone: string | null | undefined, message?: string): string | null {
+  if (!phone) return null;
+
+  const digits = phone.replace(/\D/g, "");
+
+  let fullNumber = "";
+
+  if (digits.length === 9 && digits.startsWith("9")) {
+    fullNumber = `51${digits}`;
+  } else if (digits.length === 11 && digits.startsWith("519")) {
+    fullNumber = digits;
+  } else {
+    return null;
+  }
+
+  const baseUrl = `https://api.whatsapp.com/send?phone=${fullNumber}`;
+  return message ? `${baseUrl}&text=${encodeURIComponent(message)}` : baseUrl;
+}
+
 export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTabProps) {
   const {
     rows,
@@ -145,13 +175,15 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
     selectedRows,
     refreshListDocuments,
     toggleSelected,
-    selectAllPending,
     clearSelection,
   } = comprobantes;
 
   const { mutateAsync: fetchTaxDocumentPdf } = useSunatDocumentPdf();
+  const { mutateAsync: fetchBulkPdf, isPending: isBulkPdfLoading } = useSunatDocumentsBulkPdf();
+  const { mutateAsync: fetchBulkZip, isPending: isBulkZipLoading } = useSunatDocumentsBulkPdfZip();
 
   const [loadingPdfId, setLoadingPdfId] = useState<string | null>(null);
+  const [pdfPreview, setPdfPreview] = useState<DownloadFileResult | null>(null);
 
   const [search, setSearch] = useState("");
   const [filterEstado, setFilterEstado] = useState<TaxDocumentStatus | "">("");
@@ -159,13 +191,9 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
   const [showPipeline, setShowPipeline] = useState(false);
 
   const [sentMap, setSentMap] = useState<SentMap>({});
-
   const [emitirRow, setEmitirRow] = useState<TaxDocumentRow | null>(null);
-
   const [detalleRow, setDetalleRow] = useState<TaxDocumentRow | null>(null);
-
   const [rechazadoRow, setRechazadoRow] = useState<TaxDocumentRow | null>(null);
-
   const [loteOpen, setLoteOpen] = useState(false);
 
   const filteredRows = useMemo(() => {
@@ -187,6 +215,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
         const searchable = [
           row.sale.customer.fullName,
           row.sale.customer.documentNumber,
+          row.sale.customer.phoneNumber,
           row.sale.orderNumber,
           getDocumentNumber(row),
           row.sale.id,
@@ -204,31 +233,47 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
     });
   }, [rows, search, filterEstado, filterTipo]);
 
-  const pendientesVisibles = filteredRows.filter((row) => !row.taxDocument);
+  const selectedPendientes = useMemo(
+    () => selectedRows.filter((r) => !r.taxDocument),
+    [selectedRows],
+  );
 
-  const allPendientesSelected =
-    pendientesVisibles.length > 0 &&
-    pendientesVisibles.every((row) => selectedIds.has(row.sale.id));
+  const selectedEmitidos = useMemo(
+    () => selectedRows.filter((r) => r.taxDocument && isAcceptedStatus(getRowStatus(r))),
+    [selectedRows],
+  );
+
+  const isBulkActionPending = isBulkPdfLoading || isBulkZipLoading;
+
+  const allFilteredSelected =
+    filteredRows.length > 0 && filteredRows.every((row) => selectedIds.has(row.sale.id));
+
+  const handleToggleSelectAll = (checked: boolean) => {
+    if (checked) {
+      filteredRows.forEach((row) => {
+        toggleSelected(row.sale.id, true);
+      });
+    } else {
+      clearSelection();
+    }
+  };
+
+  const getSelectedDocumentIds = (): string[] => {
+    return selectedEmitidos
+      .map((row) => row.taxDocument?.id)
+      .filter((id): id is string => Boolean(id));
+  };
 
   const handlePrint = async (row: TaxDocumentRow) => {
-    if (!row.taxDocument) {
-      return;
-    }
+    if (!row.taxDocument) return;
 
     setLoadingPdfId(row.taxDocument.id);
 
     try {
-      const { blob } = await fetchTaxDocumentPdf(row.taxDocument.id);
+      const file = await fetchTaxDocumentPdf(row.taxDocument.id);
+      setPdfPreview(file);
 
-      const url = window.URL.createObjectURL(blob);
-
-      // No `download` attribute here on purpose: this opens the PDF as a
-      // preview in a new tab using the browser's native PDF viewer, which
-      // has its own print button — same endpoint used by "Descargar PDF",
-      // just displayed inline instead of forced as a file save.
-      window.open(url, "_blank", "noopener,noreferrer");
-
-      setSentMap((previous: SentMap) => ({
+      setSentMap((previous) => ({
         ...previous,
         [row.sale.id]: {
           ...previous[row.sale.id],
@@ -243,8 +288,45 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
     }
   };
 
+  const handleBulkPrint = async () => {
+    const ids = getSelectedDocumentIds();
+    if (ids.length === 0) return;
+
+    try {
+      const fileResult = await fetchBulkPdf({ ids });
+      setPdfPreview(fileResult);
+    } catch (error) {
+      console.error("Error creating bulk PDF:", error);
+      toast.error("No se pudo generar el documento concatenado para impresión");
+    }
+  };
+
+  const handleBulkDownloadZip = async () => {
+    const ids = getSelectedDocumentIds();
+    if (ids.length === 0) return;
+
+    try {
+      const fileResult = await fetchBulkZip({ ids });
+      downloadFile(fileResult);
+      toast.success("Archivo ZIP descargado exitosamente");
+    } catch (error) {
+      console.error("Error creating bulk ZIP:", error);
+      toast.error("No se pudo descargar el archivo ZIP");
+    }
+  };
+
   const handleWhatsApp = (row: TaxDocumentRow) => {
-    setSentMap((previous: SentMap) => ({
+    const whatsappUrl = buildWhatsAppUrl(
+      row.sale.customer.phoneNumber,
+      `Hola ${row.sale.customer.fullName}, adjuntamos su comprobante ${getDocumentNumber(row)}.`,
+    );
+
+    if (!whatsappUrl) {
+      toast.error("El cliente no tiene un teléfono celular válido (9 dígitos)");
+      return;
+    }
+
+    setSentMap((previous) => ({
       ...previous,
       [row.sale.id]: {
         ...previous[row.sale.id],
@@ -252,13 +334,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
       },
     }));
 
-    const phone = row.sale.customer.documentNumber ?? "";
-
-    const text = encodeURIComponent(
-      `Hola ${row.sale.customer.fullName}, adjuntamos su comprobante ${getDocumentNumber(row)}.`,
-    );
-
-    window.open(`https://wa.me/${phone}?text=${text}`, "_blank", "noopener,noreferrer");
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   };
 
   const getDistributionIcons = (row: TaxDocumentRow) => {
@@ -270,6 +346,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
 
     const sent = sentMap[row.sale.id] ?? {};
     const isThisRowLoadingPdf = loadingPdfId === row.taxDocument?.id;
+    const hasValidPhone = Boolean(buildWhatsAppUrl(row.sale.customer.phoneNumber));
 
     return (
       <div className="flex items-center justify-center gap-1">
@@ -278,11 +355,18 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          title="Enviar por WhatsApp"
+          title={hasValidPhone ? "Enviar por WhatsApp" : "Teléfono no válido"}
           onClick={() => handleWhatsApp(row)}
         >
           <MessageCircle
-            className={cn("h-4 w-4", sent.wa ? "text-green-600" : "text-muted-foreground/50")}
+            className={cn(
+              "h-4 w-4",
+              sent.wa
+                ? "text-green-600"
+                : hasValidPhone
+                  ? "text-muted-foreground/50"
+                  : "text-muted-foreground/20",
+            )}
           />
         </Button>
 
@@ -358,10 +442,8 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
               Emitidos Hoy
             </CardTitle>
           </CardHeader>
-
           <CardContent>
             <div className="text-2xl font-bold">{kpis.emitidosHoy}</div>
-
             <p className="mt-1 text-[11px] text-muted-foreground">
               Boletas + facturas aceptadas hoy
             </p>
@@ -375,10 +457,8 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
               Pendientes de Envío
             </CardTitle>
           </CardHeader>
-
           <CardContent>
             <div className="text-2xl font-bold">{kpis.pendientes}</div>
-
             <p className="mt-1 text-[11px] text-muted-foreground">Ventas por regularizar</p>
           </CardContent>
         </Card>
@@ -390,10 +470,8 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
               Rechazados
             </CardTitle>
           </CardHeader>
-
           <CardContent>
             <div className="text-2xl font-bold">{kpis.rechazados}</div>
-
             <p className="mt-1 text-[11px] text-muted-foreground">Requieren atención</p>
           </CardContent>
         </Card>
@@ -405,10 +483,8 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
               Facturado este mes
             </CardTitle>
           </CardHeader>
-
           <CardContent>
             <div className="text-2xl font-bold">S/ {kpis.facturadoMes.toFixed(2)}</div>
-
             <p className="mt-1 text-[11px] text-muted-foreground">Boletas + Facturas aceptadas</p>
           </CardContent>
         </Card>
@@ -421,7 +497,6 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary"
       >
         <ChevronDown className={cn("h-4 w-4 transition-transform", showPipeline && "rotate-180")} />
-
         {showPipeline
           ? "Ocultar pipeline de facturación"
           : "Ver cómo funciona el pipeline de facturación"}
@@ -431,7 +506,6 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Ciclo de vida de un comprobante</CardTitle>
-
             <CardDescription>
               Desde que una venta pasa a ENTREGADO hasta que SUNAT confirma su validez.
             </CardDescription>
@@ -450,7 +524,6 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
                     <div className="text-[11px] font-bold uppercase tracking-wide">
                       {meta.label}
                     </div>
-
                     <div className="mt-1 text-[11px] leading-snug text-muted-foreground">
                       {meta.description}
                     </div>
@@ -462,22 +535,69 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
         </Card>
       )}
 
-      {/* Selection */}
+      {/* Contextual Bulk Action Toolbar */}
       {selectedRows.length > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-sm font-semibold text-primary">
           <span>
-            {selectedRows.length} seleccionado
-            {selectedRows.length === 1 ? "" : "s"}
+            {selectedRows.length} seleccionado{selectedRows.length === 1 ? "" : "s"}
           </span>
 
-          <Button
-            size="sm"
-            className="ml-auto gap-1.5 bg-primary text-white hover:bg-primary/90"
-            onClick={() => setLoteOpen(true)}
-          >
-            <Zap className="h-3.5 w-3.5" />
-            Emitir seleccionados
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Bulk Emission Button */}
+            {selectedPendientes.length > 0 && (
+              <Button
+                size="sm"
+                className="gap-1.5 bg-primary text-white hover:bg-primary/90"
+                onClick={() => setLoteOpen(true)}
+                disabled={isBulkActionPending}
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Emitir seleccionados ({selectedPendientes.length})
+              </Button>
+            )}
+
+            {/* Bulk Print / Download Dropdown Menu */}
+            {selectedEmitidos.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 border-primary/40 text-primary hover:bg-primary/10"
+                    disabled={isBulkActionPending}
+                  >
+                    {isBulkActionPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Printer className="h-3.5 w-3.5" />
+                    )}
+                    Comprobantes ({selectedEmitidos.length})
+                    <ChevronDown className="h-3 w-3 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem
+                    onClick={handleBulkPrint}
+                    disabled={isBulkActionPending}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <Printer className="h-4 w-4 text-primary" />
+                    <span>Ver / Imprimir en PDF</span>
+                  </DropdownMenuItem>
+
+                  <DropdownMenuItem
+                    onClick={handleBulkDownloadZip}
+                    disabled={isBulkActionPending}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <Archive className="h-4 w-4 text-blue-600" />
+                    <span>Descargar Lote (.ZIP)</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
       )}
 
@@ -487,7 +607,6 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
             <div>
               <CardTitle>Ventas Entregadas</CardTitle>
-
               <CardDescription>
                 Mostrando ventas listas para facturar y su estado ante SUNAT.
               </CardDescription>
@@ -497,7 +616,6 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           <div className="flex flex-col gap-2 pt-2 md:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-
               <Input
                 placeholder="Buscar cliente, correlativo, N° venta..."
                 className="pl-9"
@@ -515,10 +633,8 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
               <SelectTrigger className="w-full md:w-52">
                 <SelectValue placeholder="Todos los estados" />
               </SelectTrigger>
-
               <SelectContent>
                 <SelectItem value="all">Todos los estados</SelectItem>
-
                 {Object.entries(TAX_DOCUMENT_STATUSES).map(([status, meta]) => (
                   <SelectItem key={status} value={status}>
                     {meta.label}
@@ -534,12 +650,9 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
               <SelectTrigger className="w-full md:w-44">
                 <SelectValue placeholder="Todos los tipos" />
               </SelectTrigger>
-
               <SelectContent>
                 <SelectItem value="all">Todos los tipos</SelectItem>
-
                 <SelectItem value="03">Boleta</SelectItem>
-
                 <SelectItem value="01">Factura</SelectItem>
               </SelectContent>
             </Select>
@@ -553,9 +666,9 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
                 <TableRow>
                   <TableHead className="w-8">
                     <Checkbox
-                      checked={allPendientesSelected}
-                      onCheckedChange={(value) => selectAllPending(!!value)}
-                      disabled={pendientesVisibles.length === 0}
+                      checked={allFilteredSelected}
+                      onCheckedChange={(value) => handleToggleSelectAll(!!value)}
+                      disabled={filteredRows.length === 0}
                     />
                   </TableHead>
 
@@ -593,12 +706,10 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
                     return (
                       <TableRow key={row.sale.id}>
                         <TableCell>
-                          {!taxDocument && (
-                            <Checkbox
-                              checked={selectedIds.has(row.sale.id)}
-                              onCheckedChange={(value) => toggleSelected(row.sale.id, !!value)}
-                            />
-                          )}
+                          <Checkbox
+                            checked={selectedIds.has(row.sale.id)}
+                            onCheckedChange={(value) => toggleSelected(row.sale.id, !!value)}
+                          />
                         </TableCell>
 
                         <TableCell className="whitespace-nowrap text-xs">
@@ -607,7 +718,6 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
 
                         <TableCell>
                           <div className="font-medium">{row.sale.orderNumber}</div>
-
                           <div className="text-[10px] text-muted-foreground">
                             {documentNumber ?? `ID ${row.sale.id.substring(0, 8)}`}
                           </div>
@@ -615,7 +725,6 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
 
                         <TableCell>
                           <div className="font-medium">{row.sale.customer.fullName}</div>
-
                           <div className="text-[10px] text-muted-foreground">
                             {row.sale.customer.documentNumber || "Sin documento"}
                           </div>
@@ -652,9 +761,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           isOpen={!!emitirRow}
           onClose={() => setEmitirRow(null)}
           sale={emitirRow.sale}
-          onEmissionFinished={() => {
-            refreshListDocuments();
-          }}
+          onEmissionFinished={() => refreshListDocuments()}
         />
       )}
 
@@ -668,7 +775,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
           onGenerarNota(row);
         }}
         onAction={(saleId, type) =>
-          setSentMap((previous: SentMap) => ({
+          setSentMap((previous) => ({
             ...previous,
             [saleId]: {
               ...previous[saleId],
@@ -676,6 +783,18 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
             },
           }))
         }
+      />
+
+      {/* PDF preview modal */}
+      <PdfPreviewDialog
+        open={pdfPreview !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPdfPreview(null);
+          }
+        }}
+        file={pdfPreview}
+        title={pdfPreview?.filename ?? undefined}
       />
 
       {/* Rejected document */}
@@ -690,7 +809,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
       <LoteEmisionModal
         isOpen={loteOpen}
         onClose={() => setLoteOpen(false)}
-        sales={selectedRows.map((row) => row.sale)}
+        sales={selectedPendientes.map((row) => row.sale)}
         onEmissionFinished={() => {
           clearSelection();
           refreshListDocuments();
