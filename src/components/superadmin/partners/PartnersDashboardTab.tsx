@@ -1,21 +1,20 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, TrendingDown, Target, Crown } from "lucide-react";
-import { getKpisPartners } from "@/services/superadmin/partnersService";
-import { SectionHeader, StatusBadge, TableSkeleton } from "@/components/superadmin/shared";
+import { useKpisPartners } from "@/hooks/superadmin/usePartners";
+import { SectionHeader, StatusBadge, TableSkeleton, SimuladoBadge } from "@/components/superadmin/shared";
 import { money, moneyCompact } from "@/components/superadmin/shared/format";
 
 const NIVEL_TONE = { Oro: "amber", Plata: "gray", Base: "blue" } as const;
 
 export function PartnersDashboardTab() {
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "partners", "kpis"], queryFn: getKpisPartners });
+  const { data, isLoading, isSimulado } = useKpisPartners();
 
   if (isLoading || !data) return <TableSkeleton rows={6} cols={4} />;
 
   return (
     <div>
-      <SectionHeader title="ROI del canal" sub="Partners vs. adquisición paga" />
+      <SectionHeader title="ROI del canal" sub="Partners vs. adquisición paga" actions={isSimulado ? <SimuladoBadge /> : undefined} />
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-xl border bg-card p-4 shadow-sm">
           <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">

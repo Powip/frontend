@@ -1,11 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { History } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getAuditLog } from "@/services/superadmin/auditoriaService";
-import { TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { useAuditoria } from "@/hooks/superadmin/useAuditoria";
+import { TableSkeleton, EmptyBlock, SimuladoBadge, SIMULADO_CARD_CLASS } from "@/components/superadmin/shared";
 import { formatDateTime } from "@/components/superadmin/shared/format";
+import { cn } from "@/lib/utils";
 
 function fmtJson(v?: Record<string, unknown>): string {
   if (!v || !Object.keys(v).length) return "—";
@@ -17,19 +17,22 @@ interface Props {
 }
 
 export function AuditoriaTable({ q }: Props) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["superadmin", "auditoria", "list", { q }],
-    queryFn: () => getAuditLog(q),
-  });
+  const { data, isLoading, isSimulado } = useAuditoria({ q });
 
   if (isLoading) return <TableSkeleton rows={8} cols={7} />;
-  if (!data?.length) {
+  if (!data.length) {
     return <EmptyBlock icon={History} title="Sin resultados" description="No hay registros de auditoría para esta búsqueda." />;
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
-      <Table>
+    <div className={cn(isSimulado && cn("rounded-xl p-3.5", SIMULADO_CARD_CLASS))}>
+      {isSimulado && (
+        <div className="mb-2 flex justify-end">
+          <SimuladoBadge />
+        </div>
+      )}
+      <div className="overflow-x-auto rounded-lg border bg-card">
+        <Table>
         <TableHeader>
           <TableRow>
             <TableHead>Fecha</TableHead>
@@ -56,7 +59,8 @@ export function AuditoriaTable({ q }: Props) {
             </TableRow>
           ))}
         </TableBody>
-      </Table>
+        </Table>
+      </div>
     </div>
   );
 }

@@ -2,19 +2,18 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ArrowLeft, Copy, Users2, Wallet, HandCoins, Award, Building2 } from "lucide-react";
 import {
-  getPartnerById,
-  getReferidosDelPartner,
-  getComisionesDelPartner,
-  getLiquidaciones,
-  getConfigPrograma,
-} from "@/services/superadmin/partnersService";
+  usePartnerDetail,
+  useReferidosDePartner,
+  useComisionesDePartner,
+  useLiquidacionesDePartner,
+  useConfigPrograma,
+} from "@/hooks/superadmin/usePartners";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { KpiCard, KpiRow, KpiCardSkeleton, StatusBadge, TableSkeleton } from "@/components/superadmin/shared";
+import { KpiCard, KpiRow, KpiCardSkeleton, StatusBadge, TableSkeleton, SimuladoBadge } from "@/components/superadmin/shared";
 import { money, formatDate } from "@/components/superadmin/shared/format";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EstadoComision, EstadoLiquidacion, EstadoReferido } from "@/interfaces/superadmin";
@@ -42,30 +41,14 @@ export default function PortalPartnerPage({ params }: { params: Promise<{ id: st
   const { id } = use(params);
   const [copied, setCopied] = useState<string | null>(null);
 
-  const { data: partner, isLoading } = useQuery({
-    queryKey: ["superadmin", "partners", "detail", id],
-    queryFn: () => getPartnerById(id),
-  });
-  const { data: referidos } = useQuery({
-    queryKey: ["superadmin", "partners", "referidos", id],
-    queryFn: () => getReferidosDelPartner(id),
-    enabled: !!partner,
-  });
-  const { data: comisiones } = useQuery({
-    queryKey: ["superadmin", "partners", "comisiones", id],
-    queryFn: () => getComisionesDelPartner(id),
-    enabled: !!partner,
-  });
-  const { data: liquidaciones } = useQuery({
-    queryKey: ["superadmin", "partners", "liquidaciones"],
-    queryFn: getLiquidaciones,
-    enabled: !!partner,
-  });
-  const { data: config } = useQuery({
-    queryKey: ["superadmin", "partners", "config"],
-    queryFn: getConfigPrograma,
-    enabled: !!partner,
-  });
+  const { data: partner, isLoading, isSimulado: partnerSimulado } = usePartnerDetail(id);
+  const { data: referidos, isSimulado: referidosSimulado } = useReferidosDePartner(id);
+  const { data: comisiones, isSimulado: comisionesSimulado } = useComisionesDePartner(id);
+  // Scoped por partnerId — ver docs/superadmin/partners-endpoints.md: antes
+  // esto traía TODAS las liquidaciones de la red y filtraba acá, exponiendo
+  // la facturación de otros partners en el portal de uno solo.
+  const { data: misLiquidaciones, isSimulado: liquidacionesSimulado } = useLiquidacionesDePartner(id);
+  const { data: config } = useConfigPrograma();
 
   if (isLoading) return <TableSkeleton rows={10} cols={4} />;
 
@@ -75,9 +58,8 @@ export default function PortalPartnerPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  const misLiquidaciones = liquidaciones?.filter((l) => l.partnerId === id) ?? [];
-  const comisionesPendientes = comisiones?.filter((c) => c.estado === "pendiente").reduce((a, c) => a + c.monto, 0) ?? 0;
-  const opcion = config?.opciones.find((o) => o.id === partner.opcionComision);
+  const comisionesPendientes = comisiones.filter((c) => c.estado === "pendiente").reduce((a, c) => a + c.monto, 0);
+  const opcion = config.opciones.find((o) => o.id === partner.opcionComision);
 
   function copiar(valor: string, label: string) {
     navigator.clipboard?.writeText(valor).catch(() => {});
@@ -101,7 +83,10 @@ export default function PortalPartnerPage({ params }: { params: Promise<{ id: st
           {partner.nombre.slice(0, 2).toUpperCase()}
         </span>
         <div className="min-w-0">
-          <h1 className="text-lg font-extrabold tracking-tight">{partner.nombre}</h1>
+          <h1 className="text-lg font-extrabold tracking-tight">
+            {partner.nombre}
+            {partnerSimulado && <SimuladoBadge />}
+          </h1>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <StatusBadge label={partner.estado} tone={partner.estado === "activo" ? "green" : partner.estado === "pendiente" ? "amber" : "red"} />
             <StatusBadge label={`Nivel ${partner.nivel}`} tone="violet" />
@@ -138,96 +123,111 @@ export default function PortalPartnerPage({ params }: { params: Promise<{ id: st
         </TabsContent>
 
         <TabsContent value="referidos">
-          {!referidos ? (
-            <TableSkeleton rows={5} cols={4} />
-          ) : !referidos.length ? (
+          {!referidos.length ? (
             <EmptyState icon={Users2} title="Sin referidos todavía" description="Comparte tu link para empezar a referir negocios." />
           ) : (
-            <ul className="space-y-2">
-              {referidos.map((r) => (
-                <li key={r.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-xs">
-                  <div className="min-w-0">
-                    <div className="font-semibold truncate">{r.negocio}</div>
-                    <div className="text-[10.5px] text-muted-foreground truncate">
-                      {r.plan} · {formatDate(r.creadoEn)}
+            <>
+              {referidosSimulado && (
+                <div className="mb-2 flex justify-end">
+                  <SimuladoBadge />
+                </div>
+              )}
+              <ul className="space-y-2">
+                {referidos.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between rounded-lg border px-3 py-2.5 text-xs">
+                    <div className="min-w-0">
+                      <div className="font-semibold truncate">{r.negocio}</div>
+                      <div className="text-[10.5px] text-muted-foreground truncate">
+                        {r.plan} · {formatDate(r.creadoEn)}
+                      </div>
                     </div>
-                  </div>
-                  <StatusBadge label={r.estado} tone={ESTADO_REFERIDO_TONE[r.estado]} />
-                </li>
-              ))}
-            </ul>
+                    <StatusBadge label={r.estado} tone={ESTADO_REFERIDO_TONE[r.estado]} />
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </TabsContent>
 
         <TabsContent value="comisiones">
-          {!comisiones ? (
-            <TableSkeleton rows={5} cols={5} />
-          ) : !comisiones.length ? (
+          {!comisiones.length ? (
             <EmptyState icon={HandCoins} title="Sin comisiones todavía" description="Tus comisiones aparecerán aquí a medida que tus referidos se activen." />
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-xs">
-                <thead className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Referido</th>
-                    <th className="px-3 py-2 text-left font-semibold">Tipo</th>
-                    <th className="px-3 py-2 text-left font-semibold">Periodo</th>
-                    <th className="px-3 py-2 text-right font-semibold">Monto</th>
-                    <th className="px-3 py-2 text-left font-semibold">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {comisiones.map((c) => (
-                    <tr key={c.id} className="border-t">
-                      <td className="px-3 py-2 font-semibold">{c.referidoNombre}</td>
-                      <td className="px-3 py-2 capitalize">{c.tipo.replace("_", " ")}</td>
-                      <td className="px-3 py-2">{c.periodo}</td>
-                      <td className="px-3 py-2 text-right font-bold">{money(c.monto)}</td>
-                      <td className="px-3 py-2">
-                        <StatusBadge label={c.estado} tone={ESTADO_COMISION_TONE[c.estado]} />
-                      </td>
+            <>
+              {comisionesSimulado && (
+                <div className="mb-2 flex justify-end">
+                  <SimuladoBadge />
+                </div>
+              )}
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Referido</th>
+                      <th className="px-3 py-2 text-left font-semibold">Tipo</th>
+                      <th className="px-3 py-2 text-left font-semibold">Periodo</th>
+                      <th className="px-3 py-2 text-right font-semibold">Monto</th>
+                      <th className="px-3 py-2 text-left font-semibold">Estado</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {comisiones.map((c) => (
+                      <tr key={c.id} className="border-t">
+                        <td className="px-3 py-2 font-semibold">{c.referidoNombre}</td>
+                        <td className="px-3 py-2 capitalize">{c.tipo.replace("_", " ")}</td>
+                        <td className="px-3 py-2">{c.periodo}</td>
+                        <td className="px-3 py-2 text-right font-bold">{money(c.monto)}</td>
+                        <td className="px-3 py-2">
+                          <StatusBadge label={c.estado} tone={ESTADO_COMISION_TONE[c.estado]} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </TabsContent>
 
         <TabsContent value="pagos">
-          {!liquidaciones ? (
-            <TableSkeleton rows={5} cols={5} />
-          ) : !misLiquidaciones.length ? (
+          {!misLiquidaciones.length ? (
             <EmptyState icon={Wallet} title="Sin pagos todavía" description="Tus liquidaciones aparecerán aquí al cierre de cada ciclo." />
           ) : (
-            <div className="overflow-x-auto rounded-lg border">
-              <table className="w-full text-xs">
-                <thead className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Ciclo</th>
-                    <th className="px-3 py-2 text-right font-semibold">Bruto</th>
-                    <th className="px-3 py-2 text-right font-semibold">Reversos</th>
-                    <th className="px-3 py-2 text-right font-semibold">Retención</th>
-                    <th className="px-3 py-2 text-right font-semibold">Neto</th>
-                    <th className="px-3 py-2 text-left font-semibold">Estado</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {misLiquidaciones.map((l) => (
-                    <tr key={l.id} className="border-t">
-                      <td className="px-3 py-2">{l.ciclo}</td>
-                      <td className="px-3 py-2 text-right">{money(l.montoBruto)}</td>
-                      <td className="px-3 py-2 text-right text-red-600 dark:text-red-400">-{money(l.montoReversos)}</td>
-                      <td className="px-3 py-2 text-right text-muted-foreground">-{money(l.retencion)}</td>
-                      <td className="px-3 py-2 text-right font-bold">{money(l.neto)}</td>
-                      <td className="px-3 py-2">
-                        <StatusBadge label={l.estado} tone={ESTADO_LIQUIDACION_TONE[l.estado]} />
-                      </td>
+            <>
+              {liquidacionesSimulado && (
+                <div className="mb-2 flex justify-end">
+                  <SimuladoBadge />
+                </div>
+              )}
+              <div className="overflow-x-auto rounded-lg border">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/40 text-[11px] uppercase tracking-wide text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold">Ciclo</th>
+                      <th className="px-3 py-2 text-right font-semibold">Bruto</th>
+                      <th className="px-3 py-2 text-right font-semibold">Reversos</th>
+                      <th className="px-3 py-2 text-right font-semibold">Retención</th>
+                      <th className="px-3 py-2 text-right font-semibold">Neto</th>
+                      <th className="px-3 py-2 text-left font-semibold">Estado</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {misLiquidaciones.map((l) => (
+                      <tr key={l.id} className="border-t">
+                        <td className="px-3 py-2">{l.ciclo}</td>
+                        <td className="px-3 py-2 text-right">{money(l.montoBruto)}</td>
+                        <td className="px-3 py-2 text-right text-red-600 dark:text-red-400">-{money(l.montoReversos)}</td>
+                        <td className="px-3 py-2 text-right text-muted-foreground">-{money(l.retencion)}</td>
+                        <td className="px-3 py-2 text-right font-bold">{money(l.neto)}</td>
+                        <td className="px-3 py-2">
+                          <StatusBadge label={l.estado} tone={ESTADO_LIQUIDACION_TONE[l.estado]} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
         </TabsContent>
 

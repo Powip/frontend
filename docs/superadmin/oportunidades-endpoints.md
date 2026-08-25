@@ -40,9 +40,31 @@ Mismo problema: `courierService.fetchCouriers(companyId)` es real pero por-empre
 GET {NEXT_PUBLIC_API_SUPERADMIN}/api/v1/oportunidades/couriers-red
 ```
 
+```jsonc
+{
+  "data": [
+    { "courier": "Olva Courier", "empresasCount": 38, "entregaPct": 91.4, "devolucionPct": 6.2 },
+    { "courier": "Shalom", "empresasCount": 22, "entregaPct": 87.9, "devolucionPct": 9.1 }
+  ]
+}
+```
+
 ### Segmentación (rubro / plan)
 
 Bloqueado en el origen: ni `rubro` ni `plan` existen como campos en `ms-company` (ver `docs/superadmin/empresas-endpoints.md`). No hay nada que agregar todavía — primero hace falta que esos campos existan por empresa.
+
+El frontend (`useSegmentacionRed` en `useOportunidades.ts`) ya apunta a la forma final para el día que esos campos existan (nótese: acá la respuesta es el array directo, sin envolver en `data`, a diferencia de los demás endpoints de este doc):
+
+```
+GET {NEXT_PUBLIC_API_SUPERADMIN}/api/v1/oportunidades/segmentacion
+```
+
+```jsonc
+[
+  { "rubro": "Moda y accesorios", "count": 42, "mrr": 6800 },
+  { "rubro": "Electrodomésticos", "count": 19, "mrr": 4100 }
+]
+```
 
 ### Empresas en riesgo / Adelantos COD en tránsito
 

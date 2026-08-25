@@ -1,26 +1,18 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Settings, Bot } from "lucide-react";
-import { getAgentes, toggleAgente } from "@/services/superadmin/agentesService";
+import { useAgentesIa, useToggleAgenteIa } from "@/hooks/superadmin/useAgentesIa";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { TableSkeleton, EmptyBlock, SimuladoBadge, SIMULADO_CARD_CLASS } from "@/components/superadmin/shared";
 import { money } from "@/components/superadmin/shared/format";
+import { cn } from "@/lib/utils";
 
 export function AgentesGrid() {
-  const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "agentes", "list"], queryFn: getAgentes });
-
-  const { mutate: toggle } = useMutation({
-    mutationFn: toggleAgente,
-    onSuccess: (agente) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "agentes"] });
-      if (agente) toast.success(`${agente.nombre} ${agente.activo ? "activado" : "desactivado"}.`);
-    },
-  });
+  const { data, isLoading, isSimulado } = useAgentesIa();
+  const { mutate: toggle } = useToggleAgenteIa();
 
   if (isLoading) return <TableSkeleton rows={4} cols={4} />;
   if (!data?.length) {
@@ -30,14 +22,26 @@ export function AgentesGrid() {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {data.map((agente) => (
-        <Card key={agente.id} className="shadow-sm">
+        <Card key={agente.id} className={cn("shadow-sm", isSimulado && SIMULADO_CARD_CLASS)}>
           <CardContent className="p-4">
             <div className="flex items-start justify-between gap-2">
               <div>
-                <div className="text-xs font-bold">{agente.nombre}</div>
+                <div className="text-xs font-bold">
+                  {agente.nombre}
+                  {isSimulado && <SimuladoBadge />}
+                </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">{agente.descripcion}</p>
               </div>
-              <Switch checked={agente.activo} onCheckedChange={() => toggle(agente.id)} />
+              <Switch
+                checked={agente.activo}
+                onCheckedChange={() =>
+                  toggle(agente.id, {
+                    onSuccess: (actualizado) => {
+                      if (actualizado) toast.success(`${actualizado.nombre} ${actualizado.activo ? "activado" : "desactivado"}.`);
+                    },
+                  })
+                }
+              />
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <div className="rounded-lg bg-muted/50 p-2 text-center">

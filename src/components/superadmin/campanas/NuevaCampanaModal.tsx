@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -9,35 +8,35 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { crearCampana } from "@/services/superadmin/campanasService";
+import { useCrearCampana } from "@/hooks/superadmin/useCampanas";
 import { CanalCampana } from "@/interfaces/superadmin";
 
 export function NuevaCampanaModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const queryClient = useQueryClient();
   const [nombre, setNombre] = useState("");
   const [segmento, setSegmento] = useState("");
   const [canal, setCanal] = useState<CanalCampana>("WhatsApp");
   const [mensaje, setMensaje] = useState("");
 
-  const { mutate, isPending } = useMutation({
-    mutationFn: crearCampana,
-    onSuccess: (c) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "campanas"] });
-      toast.success(`Campaña "${c.nombre}" creada como borrador.`);
-      onOpenChange(false);
-      setNombre("");
-      setSegmento("");
-      setMensaje("");
-      setCanal("WhatsApp");
-    },
-  });
+  const { mutate, isPending } = useCrearCampana();
 
   function handleSubmit() {
     if (!nombre.trim() || !segmento.trim() || !mensaje.trim()) {
       toast.error("Nombre, segmento y mensaje son obligatorios.");
       return;
     }
-    mutate({ nombre: nombre.trim(), segmento: segmento.trim(), canal, mensaje: mensaje.trim() });
+    mutate(
+      { nombre: nombre.trim(), segmento: segmento.trim(), canal, mensaje: mensaje.trim() },
+      {
+        onSuccess: (c) => {
+          toast.success(`Campaña "${c.nombre}" creada como borrador.`);
+          onOpenChange(false);
+          setNombre("");
+          setSegmento("");
+          setMensaje("");
+          setCanal("WhatsApp");
+        },
+      }
+    );
   }
 
   return (

@@ -1,42 +1,38 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { invitarMiembro } from "@/services/superadmin/equipoService";
+import { useInvitarMiembro } from "@/hooks/superadmin/useEquipo";
 import { ROL_LABEL, RolInterno } from "@/interfaces/superadmin";
 
 const ROLES: RolInterno[] = ["super", "ventas", "soporte", "onboarding", "finanzas", "csm"];
 
 export function InvitarMiembroModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const queryClient = useQueryClient();
   const [nombre, setNombre] = useState("");
   const [email, setEmail] = useState("");
   const [rol, setRol] = useState<RolInterno>("ventas");
 
-  const { mutate, isPending } = useMutation({
-    mutationFn: invitarMiembro,
-    onSuccess: (m) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "equipo"] });
-      toast.success(`Se invitó a ${m.nombre} como ${ROL_LABEL[m.rol]}.`);
-      onOpenChange(false);
-      setNombre("");
-      setEmail("");
-      setRol("ventas");
-    },
-  });
+  const { mutate, isPending } = useInvitarMiembro();
+
+  function handleSuccess(m: { nombre: string; rol: RolInterno }) {
+    toast.success(`Se invitó a ${m.nombre} como ${ROL_LABEL[m.rol]}.`);
+    onOpenChange(false);
+    setNombre("");
+    setEmail("");
+    setRol("ventas");
+  }
 
   function handleSubmit() {
     if (!nombre.trim() || !email.trim()) {
       toast.error("Nombre y email son obligatorios.");
       return;
     }
-    mutate({ nombre: nombre.trim(), email: email.trim(), rol });
+    mutate({ nombre: nombre.trim(), email: email.trim(), rol }, { onSuccess: handleSuccess });
   }
 
   return (

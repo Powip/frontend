@@ -11,12 +11,13 @@ import { EstadoSuscripcionesCard } from "@/components/superadmin/suscripciones/E
 import { SuscripcionesTable } from "@/components/superadmin/suscripciones/SuscripcionesTable";
 import { ProximosVencimientosCard } from "@/components/superadmin/suscripciones/ProximosVencimientosCard";
 import { EstadoSuscripcion, PlanEmpresa } from "@/interfaces/superadmin";
-import { suscripcionesMock } from "@/mocks/superadmin";
+import { useSuscripcionesTabla } from "@/hooks/superadmin/useSuscripciones";
 
 export default function SuscripcionesPage() {
   const [q, setQ] = useState("");
   const [estado, setEstado] = useState<EstadoSuscripcion | "todos">("todos");
   const [plan, setPlan] = useState<PlanEmpresa | "todos">("todos");
+  const { data: allForExport } = useSuscripcionesTabla({ q, estado, plan, page: 1, pageSize: 100000 });
 
   return (
     <div>
@@ -26,7 +27,7 @@ export default function SuscripcionesPage() {
         actions={
           <ExportButton
             filename="suscripciones"
-            rows={suscripcionesMock.map((s) => ({
+            rows={allForExport.data.map((s) => ({
               Empresa: s.empresaNombre,
               Plan: s.plan,
               Ciclo: s.ciclo,

@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CheckCircle2, Send } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { getTicketById, responderTicket, resolverTicket } from "@/services/superadmin/soporteService";
-import { StatusBadge, ESTADO_TICKET_TONE } from "@/components/superadmin/shared";
+import { useTicketDetalle, useResponderTicket, useCambiarEstadoTicket } from "@/hooks/superadmin/useSoporte";
+import { StatusBadge, ESTADO_TICKET_TONE, SimuladoBadge } from "@/components/superadmin/shared";
 import { formatDateTime } from "@/components/superadmin/shared/format";
 import { cn } from "@/lib/utils";
 
@@ -18,36 +17,32 @@ interface Props {
 }
 
 export function TicketDetailDrawer({ ticketId, onClose }: Props) {
-  const queryClient = useQueryClient();
   const [texto, setTexto] = useState("");
 
-  const { data: ticket } = useQuery({
-    queryKey: ["superadmin", "ticket", ticketId],
-    queryFn: () => getTicketById(ticketId!),
-    enabled: !!ticketId,
-  });
+  const { data: ticket, isSimulado } = useTicketDetalle(ticketId);
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: ["superadmin", "soporte"] });
-    queryClient.invalidateQueries({ queryKey: ["superadmin", "ticket", ticketId] });
-  };
+  const { mutate: responder, isPending: enviando } = useResponderTicket(ticketId);
+  const { mutate: cambiarEstado, isPending: resolviendo } = useCambiarEstadoTicket(ticketId);
 
-  const { mutate: responder, isPending: enviando } = useMutation({
-    mutationFn: (txt: string) => responderTicket(ticketId!, txt),
-    onSuccess: () => {
-      invalidate();
-      toast.success("Respuesta enviada.");
-      setTexto("");
-    },
-  });
+  function handleResponder(txt: string) {
+    responder(txt, {
+      onSuccess: () => {
+        toast.success("Respuesta enviada.");
+        setTexto("");
+      },
+      onError: () => toast.error("Todavía no existe backend real para esto — ver docs/superadmin/soporte-endpoints.md."),
+    });
+  }
 
-  const { mutate: resolver, isPending: resolviendo } = useMutation({
-    mutationFn: () => resolverTicket(ticketId!),
-    onSuccess: () => {
-      invalidate();
-      toast.success("Ticket marcado como resuelto.");
-    },
-  });
+  function handleResolver() {
+    cambiarEstado(
+      { estado: "Resuelto" },
+      {
+        onSuccess: () => toast.success("Ticket marcado como resuelto."),
+        onError: () => toast.error("Todavía no existe backend real para esto — ver docs/superadmin/soporte-endpoints.md."),
+      }
+    );
+  }
 
   return (
     <Sheet open={!!ticketId} onOpenChange={(o) => !o && onClose()}>
@@ -55,7 +50,10 @@ export function TicketDetailDrawer({ ticketId, onClose }: Props) {
         {ticket && (
           <>
             <SheetHeader>
-              <SheetTitle>{ticket.asunto}</SheetTitle>
+              <SheetTitle>
+                {ticket.asunto}
+                {isSimulado && <SimuladoBadge />}
+              </SheetTitle>
             </SheetHeader>
 
             <div className="mt-1 text-xs text-muted-foreground">{ticket.empresaNombre}</div>
@@ -74,7 +72,7 @@ export function TicketDetailDrawer({ ticketId, onClose }: Props) {
                   variant="outline"
                   className="gap-1.5 text-emerald-600 border-emerald-500/30"
                   disabled={resolviendo}
-                  onClick={() => resolver()}
+                  onClick={handleResolver}
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   Marcar resuelto
@@ -128,7 +126,7 @@ export function TicketDetailDrawer({ ticketId, onClose }: Props) {
                 size="sm"
                 className="mt-2 gap-1.5"
                 disabled={enviando || !texto.trim()}
-                onClick={() => responder(texto.trim())}
+                onClick={() => handleResponder(texto.trim())}
               >
                 <Send className="h-3.5 w-3.5" />
                 Enviar

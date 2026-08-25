@@ -9,12 +9,15 @@ import { FiltersBar, SearchInput } from "@/components/superadmin/shared/FiltersB
 import { UsuariosKpis } from "@/components/superadmin/usuarios/UsuariosKpis";
 import { UsuariosTable } from "@/components/superadmin/usuarios/UsuariosTable";
 import { CrearUsuarioModal } from "@/components/superadmin/usuarios/CrearUsuarioModal";
-import { usuariosEmpresaMock } from "@/mocks/superadmin";
+import { useUsuariosEmpresaBase, useRolesDisponibles } from "@/hooks/superadmin/useUsuarios";
 
 export default function UsuariosPage() {
   const [q, setQ] = useState("");
   const [rol, setRol] = useState("todos");
   const [open, setOpen] = useState(false);
+
+  const { usuarios } = useUsuariosEmpresaBase();
+  const { data: roles } = useRolesDisponibles();
 
   return (
     <div>
@@ -25,7 +28,7 @@ export default function UsuariosPage() {
           <>
             <ExportButton
               filename="usuarios"
-              rows={usuariosEmpresaMock.map((u) => ({ Nombre: u.nombre, Email: u.email, Empresa: u.empresaNombre, Rol: u.rol, Registro: u.registro }))}
+              rows={usuarios.map((u) => ({ Nombre: u.nombre, Email: u.email, Empresa: u.empresaNombre, Rol: u.rol, Registro: u.registro }))}
             />
             <Button size="sm" className="gap-1.5" onClick={() => setOpen(true)}>
               <UserPlus className="h-3.5 w-3.5" />
@@ -47,9 +50,11 @@ export default function UsuariosPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos los roles</SelectItem>
-            <SelectItem value="Administrador">Administrador</SelectItem>
-            <SelectItem value="Vendedor">Vendedor</SelectItem>
-            <SelectItem value="Soporte">Soporte</SelectItem>
+            {roles.map((r) => (
+              <SelectItem key={r.id ?? r.name} value={r.name}>
+                {r.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </FiltersBar>

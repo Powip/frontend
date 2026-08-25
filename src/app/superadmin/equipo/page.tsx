@@ -8,11 +8,12 @@ import { EquipoKpis } from "@/components/superadmin/equipo/EquipoKpis";
 import { EquipoTable } from "@/components/superadmin/equipo/EquipoTable";
 import { MatrizPermisos } from "@/components/superadmin/equipo/MatrizPermisos";
 import { InvitarMiembroModal } from "@/components/superadmin/equipo/InvitarMiembroModal";
-import { equipoPowipMock } from "@/mocks/superadmin";
+import { useEquipo } from "@/hooks/superadmin/useEquipo";
 import { ROL_LABEL } from "@/interfaces/superadmin";
 
 export default function EquipoPage() {
   const [open, setOpen] = useState(false);
+  const { data: equipo } = useEquipo();
 
   return (
     <div>
@@ -23,7 +24,7 @@ export default function EquipoPage() {
           <>
             <ExportButton
               filename="equipo"
-              rows={equipoPowipMock.map((m) => ({
+              rows={equipo.map((m) => ({
                 Nombre: m.nombre,
                 Email: m.email,
                 Rol: ROL_LABEL[m.rol],

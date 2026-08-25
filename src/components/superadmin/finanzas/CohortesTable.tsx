@@ -1,21 +1,24 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { Users2 } from "lucide-react";
-import { getCohortes } from "@/services/superadmin/finanzasService";
+import { useCohortes } from "@/hooks/superadmin/useFinanzas";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { TableSkeleton, EmptyBlock, SimuladoBadge } from "@/components/superadmin/shared";
 
 export function CohortesTable() {
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "finanzas", "cohortes"], queryFn: getCohortes });
+  const { data: cohortesData, isLoading, isSimulado } = useCohortes();
+  const data = cohortesData?.data;
 
   const maxMeses = data?.reduce((max, c) => Math.max(max, c.retencion.length), 0) ?? 0;
 
   return (
     <Card className="shadow-sm">
       <CardHeader className="pb-2">
-        <CardTitle className="text-[13px] font-bold">Retención por cohorte</CardTitle>
+        <CardTitle className="text-[13px] font-bold">
+          Retención por cohorte
+          {isSimulado && <SimuladoBadge />}
+        </CardTitle>
         <p className="text-[11px] text-muted-foreground">
           % de empresas activas por mes siguiente al alta (mes 0 = mes de alta).
         </p>

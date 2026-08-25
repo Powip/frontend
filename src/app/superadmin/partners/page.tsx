@@ -13,13 +13,19 @@ import { LiquidacionesTab } from "@/components/superadmin/partners/Liquidaciones
 import { ReglasComisionesTab } from "@/components/superadmin/partners/ReglasComisionesTab";
 import { CasuisticaTab } from "@/components/superadmin/partners/CasuisticaTab";
 import { EstadoPartner, NivelPartner } from "@/interfaces/superadmin";
-import { partnersMock } from "@/mocks/superadmin";
+import { usePartnersList } from "@/hooks/superadmin/usePartners";
 
 export default function PartnersPage() {
   const [q, setQ] = useState("");
   const [estado, setEstado] = useState<EstadoPartner | "todos">("todos");
   const [nivel, setNivel] = useState<NivelPartner | "todos">("todos");
   const [openPartnerId, setOpenPartnerId] = useState<string | null>(null);
+
+  // Export sigue el mismo filtro que la tabla, sin volver a paginar (ver
+  // docs/superadmin/partners-endpoints.md — el día que exista paginación
+  // real en la base, esto pasa a delegar en un export server-side como ya
+  // hace Adquisición, en vez de traer una página grande acá).
+  const { data: exportData } = usePartnersList({ q, estado, nivel, page: 1, pageSize: 500 });
 
   return (
     <div>
@@ -77,7 +83,7 @@ export default function PartnersPage() {
             <div className="ml-auto">
               <ExportButton
                 filename="partners"
-                rows={partnersMock.map((p) => ({
+                rows={exportData.data.map((p) => ({
                   Nombre: p.nombre,
                   Handle: p.handle,
                   Tipo: p.tipo,

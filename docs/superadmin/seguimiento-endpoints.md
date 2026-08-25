@@ -10,7 +10,46 @@
 
 **Pedido concreto al backend**: agregar a `GET /leads` soporte para `has_next_action=true` + `sort=next_action_date&dir=asc`, paginado en la base. Con eso la bandeja de Seguimiento deja de depender de traer una página "a ojo" y pasa a ser 100% correcta con cualquier volumen.
 
-**Marcar "Hecho"**: `PATCH /leads/{id}` con `{ next_action: null, next_action_date: null }` — ya funciona hoy, es el mismo endpoint genérico que usa Adquisición.
+```
+GET {NEXT_PUBLIC_API_SUPERADMIN}/api/superadmin/leads?has_next_action=true&sort=next_action_date&dir=asc&page=1&limit=20
+```
+
+```jsonc
+{
+  "data": [
+    {
+      "id": "uuid",
+      "contact_name": "Rosa Delgado",
+      "business_name": "TecnoHogar Express",
+      "phone_whatsapp": "+51999888777",
+      "email": "rosa@tecnohogar.pe",
+      "source": "instagram",
+      "pipeline_stage": "negociacion",
+      "assigned_to": "Heidy Medina",
+      "next_action": "Llamar para cerrar plan Pro",
+      "next_action_date": "2026-08-19T00:00:00Z",
+      "created_at": "2026-07-01T00:00:00Z",
+      "updated_at": "2026-08-12T00:00:00Z"
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 34, "total_pages": 2 }
+}
+```
+
+Mismo shape que ya devuelve `GET /leads` hoy (`RealLead[]` + `pagination`, ver `docs/superadmin/adquisicion-endpoints.md`) — lo único que falta son los query params `has_next_action`/`sort`/`dir` para que el filtro y el orden se resuelvan en la base en vez de traer una página "a ojo" y filtrar client-side.
+
+**Marcar "Hecho"**:
+
+```
+PATCH {NEXT_PUBLIC_API_SUPERADMIN}/api/superadmin/leads/{id}
+```
+
+**Body:**
+```jsonc
+{ "next_action": null, "next_action_date": null }
+```
+
+**Response:** devuelve el lead actualizado (mismo shape que `RealLead` de arriba), con `next_action`/`next_action_date` ya en `null` — ya funciona hoy, es el mismo endpoint genérico que usa Adquisición.
 
 ## 🔴 Simulado — lado "empresas" (postventa)
 

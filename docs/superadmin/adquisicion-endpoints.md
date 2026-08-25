@@ -36,6 +36,220 @@ La spec pide "advertir si ya existe" por email/whatsapp al crear un lead manual.
 | Rendimiento por SDR | `GET /api/superadmin/pipeline/summary` | `salesperson_breakdown: [{salesperson, managed_leads, closed_leads}]` — falta `demos` y `cpl` (ver abajo) |
 | Embudo comercial | `GET /api/superadmin/conversion-funnel` | Ya usado por el Dashboard también |
 
+### Bodies reales (leídos de cada `route.ts`, no inventados)
+
+**Listar leads**
+```
+GET /api/superadmin/leads?stage=nuevo&source=whatsapp&assigned_to=Heidy%20Medina&search=bella&page=1&limit=20
+```
+```jsonc
+{
+  "data": [
+    {
+      "id": "3f2b6b0a-2e2a-4c9a-9c1e-3a1a2f9c0b11",
+      "contact_name": "Rosa Delgado",
+      "business_name": "Bella Piel Cosmética",
+      "phone_whatsapp": "+51987654321",
+      "email": "rosa@bellapiel.pe",
+      "source": "whatsapp",
+      "pipeline_stage": "nuevo",
+      "plan_interest": "Pro",
+      "orders_per_day": 12,
+      "courier": "Shalom",
+      "interested_in": "Automatizar pedidos por WhatsApp",
+      "assigned_to": "Heidy Medina",
+      "observations": "Vende maquillaje, pidió demo",
+      "city": "Lima",
+      "next_action": "Llamar para agendar demo",
+      "next_action_date": "2026-08-26T15:00:00.000Z",
+      "created_at": "2026-08-20T14:32:10.000Z",
+      "updated_at": "2026-08-22T09:10:00.000Z",
+      "is_landing": false
+    }
+  ],
+  "pagination": { "page": 1, "limit": 20, "total": 134, "total_pages": 7 }
+}
+```
+Nota: hoy `limit` default es `500` (no 20) porque el backend pagina en memoria (ver problema de rendimiento arriba) — el frontend igual manda `limit=20` explícito.
+
+**Crear lead**
+```
+POST /api/superadmin/leads
+```
+**Body:**
+```jsonc
+{
+  "contact_name": "Rosa Delgado",
+  "business_name": "Bella Piel Cosmética",
+  "phone_whatsapp": "+51987654321",
+  "email": "rosa@bellapiel.pe",
+  "source": "whatsapp"
+}
+```
+**Response** (201 — el insert solo persiste estas 5 columnas + `pipeline_stage: "nuevo"` fijo; el resto del modal se manda después via `PATCH /leads/{id}` y `POST /leads/{id}/activity`, ver `useCreateLead` en el hook):
+```jsonc
+{
+  "message": "Lead created successfully",
+  "data": {
+    "id": "3f2b6b0a-2e2a-4c9a-9c1e-3a1a2f9c0b11",
+    "contact_name": "Rosa Delgado",
+    "business_name": "Bella Piel Cosmética",
+    "phone_whatsapp": "+51987654321",
+    "email": "rosa@bellapiel.pe",
+    "source": "whatsapp",
+    "pipeline_stage": "nuevo",
+    "updated_at": "2026-08-24T18:00:00.000Z"
+  }
+}
+```
+
+**Detalle + timeline de un lead**
+```
+GET /api/superadmin/leads/{id}
+```
+```jsonc
+{
+  "id": "3f2b6b0a-2e2a-4c9a-9c1e-3a1a2f9c0b11",
+  "contact_name": "Rosa Delgado",
+  "business_name": "Bella Piel Cosmética",
+  "phone_whatsapp": "+51987654321",
+  "email": "rosa@bellapiel.pe",
+  "source": "whatsapp",
+  "pipeline_stage": "demo_agendada",
+  "plan_interest": "Pro",
+  "orders_per_day": 12,
+  "next_action": "Realizar demo",
+  "next_action_date": "2026-08-26T15:00:00.000Z",
+  "created_at": "2026-08-20T14:32:10.000Z",
+  "updated_at": "2026-08-22T09:10:00.000Z",
+  // devuelto plano (sin wrapper `{data}`) — la ruta hace NextResponse.json(lead) directo
+  "activities": [
+    {
+      "id": "a1c9e2f0-...",
+      "lead_id": "3f2b6b0a-2e2a-4c9a-9c1e-3a1a2f9c0b11",
+      "activity_type": "status_change",
+      "old_stage": "contactado",
+      "new_stage": "demo_agendada",
+      "description": "Stage changed from contactado to demo_agendada",
+      "performed_by": "Heidy Medina",
+      "metadata": {},
+      "created_at": "2026-08-22T09:10:00.000Z"
+    },
+    {
+      "id": "b2d0f3a1-...",
+      "lead_id": "3f2b6b0a-2e2a-4c9a-9c1e-3a1a2f9c0b11",
+      "activity_type": "other",
+      "description": "[WhatsApp] Interesado — Preguntó por el plan Pro, pidió demo",
+      "performed_by": "Heidy Medina",
+      "metadata": {},
+      "created_at": "2026-08-21T11:00:00.000Z"
+    }
+  ]
+}
+```
+
+**Cambiar de etapa**
+```
+PATCH /api/superadmin/leads/{id}/stage
+```
+**Body:**
+```jsonc
+{ "new_stage": "demo_agendada", "old_stage": "contactado", "performed_by": "Heidy Medina" }
+```
+**Response:**
+```jsonc
+{
+  "message": "Stage updated successfully",
+  "data": { "id": "3f2b6b0a-...", "pipeline_stage": "demo_agendada", "updated_at": "2026-08-24T18:05:00.000Z" /* ...resto del lead */ }
+}
+```
+
+**Registrar gestión/nota**
+```
+POST /api/superadmin/leads/{id}/activity
+```
+**Body:**
+```jsonc
+{
+  "activity_type": "other",
+  "description": "[WhatsApp] Interesado — Preguntó por el plan Pro, pidió demo",
+  "performed_by": "Heidy Medina",
+  "metadata": {}
+}
+```
+**Response:**
+```jsonc
+{
+  "message": "Activity logged successfully",
+  "data": {
+    "id": "b2d0f3a1-...",
+    "lead_id": "3f2b6b0a-...",
+    "activity_type": "other",
+    "description": "[WhatsApp] Interesado — Preguntó por el plan Pro, pidió demo",
+    "performed_by": "Heidy Medina",
+    "metadata": {},
+    "created_at": "2026-08-24T18:10:00.000Z"
+  }
+}
+```
+
+**Actualizar campos sueltos**
+```
+PATCH /api/superadmin/leads/{id}
+```
+**Body** (cualquier columna real de `leads`, ej. desde "Agendar demo"):
+```jsonc
+{ "next_action": "Realizar demo", "next_action_date": "2026-08-26T15:00:00.000Z", "assigned_to": "Heidy Medina" }
+```
+**Response** (devuelve el lead completo actualizado, sin wrapper — `NextResponse.json(data)` directo, mismas columnas que el ejemplo de "Detalle" arriba).
+
+**Convertir lead en empresa**
+```
+POST /api/superadmin/leads/{id}/activate
+```
+**Body:** `{}` (sin payload — la ruta ni siquiera lee el body, solo el `{id}` de la URL)
+
+**Response** (RPC `activate_lead_v3`; el frontend solo confirma `data.success`/`data.error` — el resto de las columnas que devuelva la RPC no está documentado en el código, así que no se inventan acá):
+```jsonc
+{ "success": true /* + posibles campos propios de la RPC no visibles desde el frontend, ej. empresaId/userId creados */ }
+```
+En error: `{ "success": false, "error": "mensaje" }` (mapeado a HTTP 400 por la ruta).
+
+**Rendimiento por SDR**
+```
+GET /api/superadmin/pipeline/summary
+```
+```jsonc
+{
+  "leads_this_month": 42,
+  "leads_previous_month": 35,
+  "closed_this_month": 6,
+  "closed_previous_month": 4,
+  "effectiveness": 18.5,
+  "states_count": {
+    "nuevo": 20, "contactado": 15, "respondio": 8,
+    "demo_pendiente": 3, "demo_agendada": 4, "demo_realizada": 2,
+    "pendiente_decision": 5, "pendiente_pago": 2, "pago_recibido": 6,
+    "cerrado": 10, "perdido": 12, "cancelado": 1
+  },
+  "salesperson_breakdown": [
+    { "salesperson": "Heidy Medina", "managed_leads": 48, "closed_leads": 9 },
+    { "salesperson": "No asignado", "managed_leads": 12, "closed_leads": 0 }
+  ],
+  "contact_count": 88,
+  "close_rate": 18.5,
+  "closed_count": 16
+}
+```
+
+**Embudo comercial**
+```
+GET /api/superadmin/conversion-funnel
+```
+```jsonc
+{ "leads": 134, "prospects": 61, "closed": 16, "active": 52 }
+```
+
 ---
 
 ## 🟡 Campos que el frontend quiere mostrar/editar y la tabla `leads` no tiene

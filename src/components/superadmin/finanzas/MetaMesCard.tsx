@@ -1,13 +1,13 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { getResumenMes } from "@/services/superadmin/finanzasService";
+import { useResumenMes } from "@/hooks/superadmin/useFinanzas";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Gauge } from "@/components/superadmin/shared/charts/Gauge";
 import { money } from "@/components/superadmin/shared/format";
+import { SimuladoBadge } from "@/components/superadmin/shared";
 
 export function MetaMesCard() {
-  const { data } = useQuery({ queryKey: ["superadmin", "finanzas", "resumen-mes"], queryFn: getResumenMes });
+  const { data, isSimulado } = useResumenMes();
 
   if (!data) return null;
 
@@ -16,7 +16,10 @@ export function MetaMesCard() {
   return (
     <Card className="shadow-sm h-full">
       <CardHeader className="pb-2">
-        <CardTitle className="text-[13px] font-bold">Meta del mes vs. avance</CardTitle>
+        <CardTitle className="text-[13px] font-bold">
+          Meta del mes vs. avance
+          {isSimulado && <SimuladoBadge />}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <Gauge value={data.avancePct} max={100} label={`${money(data.facturadoMes)} de ${money(data.meta)} de meta`} tone={tone} />

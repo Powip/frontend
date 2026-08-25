@@ -6,7 +6,6 @@ import {
   ITicket,
   ILogSistema,
   IAuditLog,
-  RolInterno,
 } from "@/interfaces/superadmin";
 import { daysAgoISO, money, nextId } from "./seed";
 import { empresasMock } from "./empresas";
@@ -23,15 +22,6 @@ export const equipoPowipMock: IMiembroPowip[] = [
   { id: "team-9", nombre: "Andrea Vásquez", email: "andrea@powip.pe", rol: "finanzas", estado: "activo", creadoEn: daysAgoISO(60) },
   { id: "team-10", nombre: "Renato Chávez", email: "renato@powip.pe", rol: "ventas", estado: "invitado", creadoEn: daysAgoISO(3) },
 ];
-
-export const ROL_MODULOS: Record<RolInterno, string[]> = {
-  super: ["*"],
-  ventas: ["dashboard", "adquisicion", "seguimiento", "partners"],
-  soporte: ["dashboard", "soporte", "empresas"],
-  onboarding: ["dashboard", "empresas", "seguimiento", "integraciones"],
-  finanzas: ["dashboard", "finanzas", "facturacion", "suscripciones"],
-  csm: ["dashboard", "seguimiento", "empresas", "oportunidades"],
-};
 
 export const integracionesMock: IIntegracion[] = [
   { id: "int-1", nombre: "Shopify", categoria: "Ecommerce", estado: "operativo", uptimePct: 99.8, activa: true, ultimoEvento: daysAgoISO(0), icono: "🛍️" },

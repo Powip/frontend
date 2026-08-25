@@ -1,12 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { ScrollText, Info, AlertTriangle, XOctagon } from "lucide-react";
-import { getKpisLogs } from "@/services/superadmin/logsService";
+import { useKpisLogs } from "@/hooks/superadmin/useLogs";
 import { KpiCard, KpiCardSkeleton, KpiRow } from "@/components/superadmin/shared";
 
 export function LogsKpis() {
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "logs", "kpis"], queryFn: getKpisLogs });
+  const { data, isLoading, isSimulado } = useKpisLogs();
 
   if (isLoading || !data) {
     return (
@@ -18,10 +17,10 @@ export function LogsKpis() {
 
   return (
     <KpiRow>
-      <KpiCard icon={ScrollText} color="teal" label="Total eventos" value={data.total} />
-      <KpiCard icon={Info} color="blue" label="Info" value={data.info} />
-      <KpiCard icon={AlertTriangle} color="amber" label="Warn" value={data.warn} />
-      <KpiCard icon={XOctagon} color="red" label="Error" value={data.error} />
+      <KpiCard icon={ScrollText} color="teal" label="Total eventos" value={data.total} simulado={isSimulado} />
+      <KpiCard icon={Info} color="blue" label="Info" value={data.info} simulado={isSimulado} />
+      <KpiCard icon={AlertTriangle} color="amber" label="Warn" value={data.warn} simulado={isSimulado} />
+      <KpiCard icon={XOctagon} color="red" label="Error" value={data.error} simulado={isSimulado} />
     </KpiRow>
   );
 }

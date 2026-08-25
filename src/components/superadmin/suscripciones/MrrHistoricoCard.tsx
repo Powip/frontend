@@ -1,22 +1,25 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { getMrrHistoricoSuscripciones } from "@/services/superadmin/suscripcionesService";
+import { useMrrHistoricoSuscripciones } from "@/hooks/superadmin/useSuscripciones";
 import StatsChart from "@/components/superadmin/StatsChart";
 import { Card, CardContent } from "@/components/ui/card";
+import { SimuladoBadge, SIMULADO_CARD_CLASS } from "@/components/superadmin/shared";
+import { cn } from "@/lib/utils";
 
 export function MrrHistoricoCard() {
-  const { data } = useQuery({
-    queryKey: ["superadmin", "suscripciones", "mrr-historico"],
-    queryFn: getMrrHistoricoSuscripciones,
-  });
+  const { data, isSimulado } = useMrrHistoricoSuscripciones();
 
   return (
-    <Card className="shadow-sm h-full">
+    <Card className={cn("shadow-sm h-full", isSimulado && SIMULADO_CARD_CLASS)}>
       <CardContent className="pt-5">
+        {isSimulado && (
+          <div className="mb-1 flex justify-end">
+            <SimuladoBadge />
+          </div>
+        )}
         <StatsChart
           title="MRR histórico — últimos meses"
-          data={data ?? []}
+          data={data}
           xKey="mes"
           lines={[{ key: "mrr", name: "MRR (S/)", color: "#027778" }]}
         />

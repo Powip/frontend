@@ -1,13 +1,12 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { Receipt, CheckCircle2, Clock, AlertTriangle } from "lucide-react";
-import { getKpisFacturacion } from "@/services/superadmin/facturacionService";
+import { useKpisFacturacion } from "@/hooks/superadmin/useFacturacion";
 import { KpiCard, KpiCardSkeleton, KpiRow } from "@/components/superadmin/shared";
 import { money } from "@/components/superadmin/shared/format";
 
 export function FacturacionKpis() {
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "facturacion", "kpis"], queryFn: getKpisFacturacion });
+  const { data, isLoading, isSimulado } = useKpisFacturacion();
 
   if (isLoading || !data) {
     return (
@@ -19,10 +18,10 @@ export function FacturacionKpis() {
 
   return (
     <KpiRow>
-      <KpiCard icon={Receipt} color="teal" label="Facturado del mes" value={money(data.facturadoMes)} />
-      <KpiCard icon={CheckCircle2} color="green" label="Cobrado" value={money(data.cobrado)} />
-      <KpiCard icon={Clock} color="amber" label="Pendiente" value={money(data.pendiente)} />
-      <KpiCard icon={AlertTriangle} color="red" label="Vencido" value={money(data.vencido)} />
+      <KpiCard icon={Receipt} color="teal" label="Facturado del mes" value={money(data.facturadoMes)} simulado={isSimulado} />
+      <KpiCard icon={CheckCircle2} color="green" label="Cobrado" value={money(data.cobrado)} simulado={isSimulado} />
+      <KpiCard icon={Clock} color="amber" label="Pendiente" value={money(data.pendiente)} simulado={isSimulado} />
+      <KpiCard icon={AlertTriangle} color="red" label="Vencido" value={money(data.vencido)} simulado={isSimulado} />
     </KpiRow>
   );
 }

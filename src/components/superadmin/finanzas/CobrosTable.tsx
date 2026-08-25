@@ -1,20 +1,23 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { Wallet } from "lucide-react";
-import { getCobros } from "@/services/superadmin/finanzasService";
+import { useCobros } from "@/hooks/superadmin/useFinanzas";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge, ESTADO_FACTURA_TONE, TableSkeleton, EmptyBlock, ExportButton } from "@/components/superadmin/shared";
+import { StatusBadge, ESTADO_FACTURA_TONE, TableSkeleton, EmptyBlock, ExportButton, SimuladoBadge } from "@/components/superadmin/shared";
 import { money, formatDate } from "@/components/superadmin/shared/format";
 
 export function CobrosTable() {
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "finanzas", "cobros"], queryFn: getCobros });
+  const { data: cobros, isLoading, isSimulado } = useCobros();
+  const data = cobros?.data;
 
   return (
     <Card className="shadow-sm">
       <CardHeader className="pb-2 flex flex-row items-center justify-between gap-2">
-        <CardTitle className="text-[13px] font-bold">Detalle de cobros</CardTitle>
+        <CardTitle className="text-[13px] font-bold">
+          Detalle de cobros
+          {isSimulado && <SimuladoBadge />}
+        </CardTitle>
         <ExportButton
           filename="cobros"
           rows={(data ?? []).map((c) => ({ ID: c.id, Empresa: c.empresaNombre, Monto: c.monto, Estado: c.estado, Fecha: c.fecha }))}

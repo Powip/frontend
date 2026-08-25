@@ -46,7 +46,13 @@ export interface IEmpresa {
 /* -----------------------------------------
    4.2 usuario_empresa
 ----------------------------------------- */
-export type RolUsuarioEmpresa = "Administrador" | "Vendedor" | "Soporte";
+/**
+ * Antes era una union cerrada ("Administrador" | "Vendedor" | "Soporte") inventada en el mock.
+ * Los roles reales de ms-auth son otros (AGENTES, VENTAS, OPERACIONES, COURIER, CALLER, ADMIN/ADMINISTRADOR,
+ * ver docs/superadmin/usuarios-endpoints.md) y no coinciden 1:1 — se deja como string libre en vez de
+ * adivinar un mapeo que backend/producto todavía no confirmó.
+ */
+export type RolUsuarioEmpresa = string;
 export type EstadoUsuarioEmpresa = "activo" | "inactivo" | "invitado";
 
 export interface IUsuarioEmpresa {

@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Eye, KeyRound, UserX, ShieldCheck } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-import { getUsuariosEmpresa } from "@/services/superadmin/empresasService";
+import { useUsuariosList, useDeleteUsuarioEmpresa } from "@/hooks/superadmin/useUsuarios";
 import { IUsuarioEmpresa } from "@/interfaces/superadmin";
 import { RowActionsMenu, StatusBadge, TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
 import { formatDate } from "@/components/superadmin/shared/format";
@@ -14,25 +13,28 @@ import { UsuarioDetailDrawer } from "./UsuarioDetailDrawer";
 import { Users } from "lucide-react";
 
 export function UsuariosTable({ q, rol }: { q: string; rol: string }) {
-  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<IUsuarioEmpresa | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["superadmin", "usuarios", "list", { q, rol, page }],
-    queryFn: () => getUsuariosEmpresa({ q, rol, page, pageSize: 10 }),
-  });
+  const { data, meta, isLoading } = useUsuariosList({ q, rol, page, pageSize: 10 });
 
-  const { mutate: desactivar } = useMutation({
-    mutationFn: async (nombre: string) => nombre,
-    onSuccess: (nombre) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "usuarios"] });
-      toast.success(`${nombre} fue desactivado.`);
-    },
-  });
+  // Editar rol es una mutación real (useUpdateUsuarioRol, ver useUsuarios.ts)
+  // pero todavía no hay una UI de edición diseñada para esta tabla — ver
+  // docs/superadmin/usuarios-endpoints.md.
+  const { mutate: desactivar, isPending: desactivando } = useDeleteUsuarioEmpresa();
+
+  function handleDesactivar(u: IUsuarioEmpresa) {
+    // "Desactivar" hoy es un borrado real (no hay baja lógica en el backend,
+    // ver doc) — se pide confirmación explícita antes de llamar al endpoint real.
+    if (!window.confirm(`¿Eliminar a ${u.nombre}? Esta acción no se puede deshacer (no existe una baja lógica todavía).`)) return;
+    desactivar(u.id, {
+      onSuccess: () => toast.success(`${u.nombre} fue eliminado.`),
+      onError: () => toast.error(`No se pudo eliminar a ${u.nombre}.`),
+    });
+  }
 
   if (isLoading) return <TableSkeleton rows={8} cols={5} />;
-  if (!data?.data.length) {
+  if (!data.length) {
     return <EmptyBlock icon={Users} title="Sin resultados para estos filtros" description="Prueba limpiando la búsqueda o el filtro de rol." />;
   }
 
@@ -51,7 +53,7 @@ export function UsuariosTable({ q, rol }: { q: string; rol: string }) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.data.map((u) => (
+            {data.map((u) => (
               <TableRow key={u.id} className="cursor-pointer" onClick={() => setSelected(u)}>
                 <TableCell>
                   <div className="text-xs font-semibold">{u.nombre}</div>
@@ -69,13 +71,24 @@ export function UsuariosTable({ q, rol }: { q: string; rol: string }) {
                   <RowActionsMenu
                     actions={[
                       { label: "Ver perfil", icon: Eye, onClick: () => setSelected(u) },
-                      { label: "Editar rol", icon: ShieldCheck, onClick: () => toast.info("Editar rol (mock).") },
+                      {
+                        label: "Editar rol",
+                        icon: ShieldCheck,
+                        onClick: () =>
+                          toast.info("Cambiar rol es un endpoint real (updateUser), pero todavía no tiene una UI de edición en esta tabla."),
+                      },
                       {
                         label: "Resetear contraseña",
                         icon: KeyRound,
-                        onClick: () => toast.success(`Enlace de reseteo enviado a ${u.email}.`),
+                        onClick: () => toast.error("No existe un endpoint de reseteo por link todavía — ver docs/superadmin/usuarios-endpoints.md."),
                       },
-                      { label: "Desactivar", icon: UserX, danger: true, separatorBefore: true, onClick: () => desactivar(u.nombre) },
+                      {
+                        label: "Desactivar",
+                        icon: UserX,
+                        danger: true,
+                        separatorBefore: true,
+                        onClick: () => !desactivando && handleDesactivar(u),
+                      },
                     ]}
                   />
                 </TableCell>
@@ -85,10 +98,10 @@ export function UsuariosTable({ q, rol }: { q: string; rol: string }) {
         </Table>
       </div>
       <Pagination
-        currentPage={data.meta.page}
-        totalPages={data.meta.totalPages}
-        totalItems={data.meta.total}
-        itemsPerPage={data.meta.pageSize}
+        currentPage={meta.page}
+        totalPages={meta.totalPages}
+        totalItems={meta.total}
+        itemsPerPage={meta.pageSize}
         onPageChange={setPage}
         itemName="usuarios"
       />

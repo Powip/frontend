@@ -5,14 +5,13 @@ import { PageHeader, ExportButton } from "@/components/superadmin/shared";
 import { FiltersBar, SearchInput } from "@/components/superadmin/shared/FiltersBar";
 import { formatDateTime } from "@/components/superadmin/shared/format";
 import { AuditoriaTable } from "@/components/superadmin/auditoria/AuditoriaTable";
-import { auditLogMock } from "@/mocks/superadmin";
-import { matchesQuery } from "@/services/superadmin/shared";
+import { useAuditoria } from "@/hooks/superadmin/useAuditoria";
 
 export default function AuditoriaPage() {
   const [q, setQ] = useState("");
+  const { data: auditRows } = useAuditoria({ q });
 
-  const exportRows = auditLogMock
-    .filter((a) => matchesQuery([a.actorNombre, a.accion, a.entidad], q))
+  const exportRows = auditRows
     .map((a) => ({
       Fecha: formatDateTime(a.ts),
       Usuario: a.actorNombre,

@@ -1,41 +1,43 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Check, X } from "lucide-react";
-import { getAppsPendientes, aprobarApp, rechazarApp } from "@/services/superadmin/marketplaceService";
+import { useAppsPendientes, useAprobarApp, useRechazarApp } from "@/hooks/superadmin/useMarketplace";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { StatusBadge, SectionHeader } from "@/components/superadmin/shared";
+import { StatusBadge, SectionHeader, SimuladoBadge } from "@/components/superadmin/shared";
 
 export function AppsPendientes() {
-  const queryClient = useQueryClient();
-  const { data } = useQuery({
-    queryKey: ["superadmin", "marketplace", "pendientes"],
-    queryFn: getAppsPendientes,
-  });
+  const { data, isSimulado } = useAppsPendientes();
 
-  const { mutate: aprobar } = useMutation({
-    mutationFn: aprobarApp,
-    onSuccess: (app) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "marketplace"] });
-      if (app) toast.success(`${app.nombre} fue aprobada y publicada.`);
-    },
-  });
+  const { mutate: aprobar } = useAprobarApp();
+  const { mutate: rechazar } = useRechazarApp();
 
-  const { mutate: rechazar } = useMutation({
-    mutationFn: rechazarApp,
-    onSuccess: (app) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "marketplace"] });
-      if (app) toast.error(`${app.nombre} fue rechazada.`);
-    },
-  });
+  function handleAprobar(id: string) {
+    aprobar(id, {
+      onSuccess: (app) => {
+        if (app) toast.success(`${app.nombre} fue aprobada y publicada.`);
+      },
+    });
+  }
+
+  function handleRechazar(id: string) {
+    rechazar(id, {
+      onSuccess: (app) => {
+        if (app) toast.error(`${app.nombre} fue rechazada.`);
+      },
+    });
+  }
 
   if (!data?.length) return null;
 
   return (
     <div className="mb-6">
-      <SectionHeader title="Pendientes de aprobación" sub={`${data.length} app(s) esperando revisión`} />
+      <SectionHeader
+        title="Pendientes de aprobación"
+        sub={`${data.length} app(s) esperando revisión`}
+        actions={isSimulado ? <SimuladoBadge /> : undefined}
+      />
       <div className="space-y-2">
         {data.map((app) => (
           <Card key={app.id} className="shadow-sm">
@@ -47,11 +49,11 @@ export function AppsPendientes() {
               </div>
               <StatusBadge label={app.categoria} tone="blue" />
               <div className="flex items-center gap-2">
-                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => rechazar(app.id)}>
+                <Button size="sm" variant="outline" className="gap-1.5" onClick={() => handleRechazar(app.id)}>
                   <X className="h-3.5 w-3.5" />
                   Rechazar
                 </Button>
-                <Button size="sm" className="gap-1.5" onClick={() => aprobar(app.id)}>
+                <Button size="sm" className="gap-1.5" onClick={() => handleAprobar(app.id)}>
                   <Check className="h-3.5 w-3.5" />
                   Aprobar
                 </Button>

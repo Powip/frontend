@@ -1,9 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { getEstadoSuscripcionesResumen } from "@/services/superadmin/suscripcionesService";
+import { useResumenEstadoSuscripciones } from "@/hooks/superadmin/useSuscripciones";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { StatusBadge, BadgeTone } from "@/components/superadmin/shared";
+import { StatusBadge, BadgeTone, SimuladoBadge } from "@/components/superadmin/shared";
 import { EstadoSuscripcion } from "@/interfaces/superadmin";
 
 const TONE: Record<EstadoSuscripcion, BadgeTone> = {
@@ -21,17 +20,17 @@ const LABEL: Record<EstadoSuscripcion, string> = {
 };
 
 export function EstadoSuscripcionesCard() {
-  const { data } = useQuery({
-    queryKey: ["superadmin", "suscripciones", "estado-resumen"],
-    queryFn: getEstadoSuscripcionesResumen,
-  });
+  const { data, isSimulado } = useResumenEstadoSuscripciones();
 
-  const total = data ? Object.values(data).reduce((a, b) => a + b, 0) : 0;
+  const total = data ? (["activa", "trial", "vencida", "cancelada"] as EstadoSuscripcion[]).reduce((sum, k) => sum + data[k], 0) : 0;
 
   return (
     <Card className="shadow-sm h-full">
       <CardHeader className="pb-2">
-        <CardTitle className="text-[13px] font-bold">Estado de suscripciones</CardTitle>
+        <CardTitle className="text-[13px] font-bold">
+          Estado de suscripciones
+          {isSimulado && <SimuladoBadge />}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {data && (

@@ -1,11 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { LifeBuoy } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getTickets } from "@/services/superadmin/soporteService";
+import { useTicketsSoporte } from "@/hooks/superadmin/useSoporte";
 import { PrioridadTicket } from "@/interfaces/superadmin";
-import { StatusBadge, ESTADO_TICKET_TONE, TableSkeleton, EmptyBlock, BadgeTone } from "@/components/superadmin/shared";
+import { StatusBadge, ESTADO_TICKET_TONE, TableSkeleton, EmptyBlock, BadgeTone, SimuladoBadge } from "@/components/superadmin/shared";
 import { formatDateTime } from "@/components/superadmin/shared/format";
 
 const PRIORIDAD_TONE: Record<PrioridadTicket, BadgeTone> = {
@@ -20,10 +19,7 @@ interface Props {
 }
 
 export function SoporteTable({ prioridad, onOpenTicket }: Props) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["superadmin", "soporte", "list", { prioridad }],
-    queryFn: () => getTickets(prioridad),
-  });
+  const { data, isLoading, isSimulado } = useTicketsSoporte(prioridad);
 
   if (isLoading) return <TableSkeleton rows={8} cols={6} />;
   if (!data?.length) {
@@ -46,7 +42,10 @@ export function SoporteTable({ prioridad, onOpenTicket }: Props) {
         <TableBody>
           {data.map((t) => (
             <TableRow key={t.id} className="cursor-pointer" onClick={() => onOpenTicket(t.id)}>
-              <TableCell className="text-xs font-semibold">{t.empresaNombre}</TableCell>
+              <TableCell className="text-xs font-semibold">
+                {t.empresaNombre}
+                {isSimulado && <SimuladoBadge />}
+              </TableCell>
               <TableCell className="text-xs">{t.asunto}</TableCell>
               <TableCell>
                 <StatusBadge label={t.prioridad} tone={PRIORIDAD_TONE[t.prioridad]} />

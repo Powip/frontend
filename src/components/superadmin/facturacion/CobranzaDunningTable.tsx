@@ -1,38 +1,27 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { BellRing, CheckCircle2, Info, ShieldAlert } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { getFacturasVencidas, marcarFacturaPagada, recordarCobro } from "@/services/superadmin/facturacionService";
-import { StatusBadge, TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { useFacturasVencidas, useMarcarFacturaPagada, useRecordarCobro } from "@/hooks/superadmin/useFacturacion";
+import { StatusBadge, TableSkeleton, EmptyBlock, SimuladoBadge } from "@/components/superadmin/shared";
 import { money, formatDate } from "@/components/superadmin/shared/format";
 
 export function CobranzaDunningTable() {
-  const queryClient = useQueryClient();
+  const { data, isLoading, isSimulado } = useFacturasVencidas();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["superadmin", "facturacion", "vencidas"],
-    queryFn: getFacturasVencidas,
-  });
+  const { mutate: recordar } = useRecordarCobro();
+  const { mutate: marcarCobrado } = useMarcarFacturaPagada();
 
-  const { mutate: recordar } = useMutation({
-    mutationFn: (id: string) => recordarCobro(id),
-    onSuccess: (factura) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "facturacion"] });
-      if (factura) toast.success(`Recordatorio enviado a ${factura.empresaNombre}.`);
-    },
-  });
+  function handleRecordar(id: string) {
+    recordar(id, { onSuccess: (factura) => factura && toast.success(`Recordatorio enviado a ${factura.empresaNombre}.`) });
+  }
 
-  const { mutate: marcarCobrado } = useMutation({
-    mutationFn: (id: string) => marcarFacturaPagada(id),
-    onSuccess: (factura) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "facturacion"] });
-      if (factura) toast.success(`Factura ${factura.id} marcada como cobrada.`);
-    },
-  });
+  function handleMarcarCobrado(id: string) {
+    marcarCobrado(id, { onSuccess: (factura) => factura && toast.success(`Factura ${factura.id} marcada como cobrada.`) });
+  }
 
   return (
     <div className="space-y-3.5">
@@ -45,8 +34,9 @@ export function CobranzaDunningTable() {
       </div>
 
       <Card className="shadow-sm">
-        <CardHeader className="pb-2">
+        <CardHeader className="flex flex-row items-center justify-between pb-2">
           <CardTitle className="text-[13px] font-bold">Facturas vencidas</CardTitle>
+          {isSimulado && <SimuladoBadge />}
         </CardHeader>
         <CardContent>
           {isLoading && <TableSkeleton rows={5} cols={6} />}
@@ -89,11 +79,11 @@ export function CobranzaDunningTable() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1.5">
-                          <Button variant="outline" size="sm" className="h-7 gap-1 text-[11px]" onClick={() => recordar(f.id)}>
+                          <Button variant="outline" size="sm" className="h-7 gap-1 text-[11px]" onClick={() => handleRecordar(f.id)}>
                             <BellRing className="h-3 w-3" />
                             Recordar
                           </Button>
-                          <Button size="sm" className="h-7 gap-1 text-[11px]" onClick={() => marcarCobrado(f.id)}>
+                          <Button size="sm" className="h-7 gap-1 text-[11px]" onClick={() => handleMarcarCobrado(f.id)}>
                             <CheckCircle2 className="h-3 w-3" />
                             Marcar Cobrado
                           </Button>

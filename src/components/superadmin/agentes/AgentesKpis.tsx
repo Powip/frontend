@@ -1,12 +1,11 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { Bot, Zap, MessageSquare, Target } from "lucide-react";
-import { getKpisAgentes } from "@/services/superadmin/agentesService";
+import { useKpisAgentesIa } from "@/hooks/superadmin/useAgentesIa";
 import { KpiCard, KpiCardSkeleton } from "@/components/superadmin/shared";
 
 export function AgentesKpis() {
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "agentes", "kpis"], queryFn: getKpisAgentes });
+  const { data, isLoading, isSimulado } = useKpisAgentesIa();
 
   if (isLoading || !data) {
     return (
@@ -20,15 +19,16 @@ export function AgentesKpis() {
 
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <KpiCard icon={Bot} color="teal" label="Total agentes" value={data.total} />
-      <KpiCard icon={Zap} color="green" label="Activos" value={data.activos} />
+      <KpiCard icon={Bot} color="teal" label="Total agentes" value={data.total} simulado={isSimulado} />
+      <KpiCard icon={Zap} color="green" label="Activos" value={data.activos} simulado={isSimulado} />
       <KpiCard
         icon={MessageSquare}
         color="blue"
         label="Interacciones del mes"
         value={data.interaccionesTotales.toLocaleString("es-PE")}
+        simulado={isSimulado}
       />
-      <KpiCard icon={Target} color="violet" label="Cierres asistidos" value={data.cierresAsistidos} />
+      <KpiCard icon={Target} color="violet" label="Cierres asistidos" value={data.cierresAsistidos} simulado={isSimulado} />
     </div>
   );
 }

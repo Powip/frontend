@@ -1,32 +1,26 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Wallet, CircleDollarSign } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { getLiquidaciones, confirmarPagoLiquidacion } from "@/services/superadmin/partnersService";
-import { ExportButton, StatusBadge, TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { useLiquidaciones, useConfirmarPagoLiquidacion } from "@/hooks/superadmin/usePartners";
+import { ExportButton, StatusBadge, TableSkeleton, EmptyBlock, SimuladoBadge } from "@/components/superadmin/shared";
 import { money } from "@/components/superadmin/shared/format";
 
 export function LiquidacionesTab() {
-  const queryClient = useQueryClient();
+  const { data, isLoading, isSimulado } = useLiquidaciones();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["superadmin", "partners", "liquidaciones"],
-    queryFn: getLiquidaciones,
-  });
+  const { mutate: confirmarPago, isPending } = useConfirmarPagoLiquidacion();
 
-  const { mutate: confirmarPago, isPending } = useMutation({
-    mutationFn: confirmarPagoLiquidacion,
-    onSuccess: (liq) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "partners"] });
-      if (liq) toast.success(`Pago confirmado para ${liq.partnerNombre} (${liq.ciclo}).`);
-    },
-  });
+  function handleConfirmarPago(id: string) {
+    confirmarPago(id, {
+      onSuccess: (liq) => liq && toast.success(`Pago confirmado para ${liq.partnerNombre} (${liq.ciclo}).`),
+    });
+  }
 
   if (isLoading) return <TableSkeleton rows={6} cols={7} />;
-  if (!data?.length) {
+  if (!data.length) {
     return <EmptyBlock icon={Wallet} title="Sin liquidaciones" description="Todavía no hay ciclos de liquidación generados." />;
   }
 
@@ -63,7 +57,10 @@ export function LiquidacionesTab() {
           <TableBody>
             {data.map((l) => (
               <TableRow key={l.id}>
-                <TableCell className="text-xs font-semibold">{l.partnerNombre}</TableCell>
+                <TableCell className="text-xs font-semibold">
+                  {l.partnerNombre}
+                  {isSimulado && <SimuladoBadge />}
+                </TableCell>
                 <TableCell className="text-xs">{l.ciclo}</TableCell>
                 <TableCell className="text-xs">{money(l.montoBruto)}</TableCell>
                 <TableCell className="text-xs text-red-600 dark:text-red-400">-{money(l.montoReversos)}</TableCell>
@@ -74,7 +71,7 @@ export function LiquidacionesTab() {
                 </TableCell>
                 <TableCell>
                   {l.estado === "pendiente" && (
-                    <Button size="sm" className="h-7 gap-1.5 text-[11px]" disabled={isPending} onClick={() => confirmarPago(l.id)}>
+                    <Button size="sm" className="h-7 gap-1.5 text-[11px]" disabled={isPending} onClick={() => handleConfirmarPago(l.id)}>
                       <CircleDollarSign className="h-3 w-3" />
                       Confirmar pago
                     </Button>

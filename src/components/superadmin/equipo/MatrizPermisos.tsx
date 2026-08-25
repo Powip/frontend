@@ -1,24 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Check } from "lucide-react";
-import { getMatrizPermisos } from "@/services/superadmin/equipoService";
+import { useMatrizPermisos } from "@/hooks/superadmin/useEquipo";
 import { ROL_LABEL, RolInterno } from "@/interfaces/superadmin";
 import { SUPERADMIN_NAV } from "@/config/superadminNav.config";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TableSkeleton } from "@/components/superadmin/shared";
+import { TableSkeleton, SimuladoBadge } from "@/components/superadmin/shared";
 import { cn } from "@/lib/utils";
 
 const ROLES: RolInterno[] = ["super", "ventas", "soporte", "onboarding", "finanzas", "csm"];
 
 /**
- * Matriz de permisos rol × módulo — Sección 8.11. Es una demo visual: el
- * estado se copia de ROL_MODULOS al montar y los toggles solo viven en
- * memoria de este componente (no se persiste al mock).
+ * Matriz de permisos rol × módulo — Sección 8.11. No es un dato pendiente
+ * de backend: ROL_VISTAS (superadminNav.config.ts) ya gobierna el sidebar
+ * hoy, así que se marca simulada a propósito (ver
+ * docs/superadmin/equipo-endpoints.md). El estado inicial se copia de esa
+ * constante al montar y los toggles solo viven en memoria de este
+ * componente (no se persisten).
  */
 export function MatrizPermisos() {
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "equipo", "matriz"], queryFn: getMatrizPermisos });
+  const { data, isLoading, isSimulado } = useMatrizPermisos();
   const [matriz, setMatriz] = useState<Record<RolInterno, string[]> | null>(null);
 
   useEffect(() => {
@@ -48,7 +50,10 @@ export function MatrizPermisos() {
   return (
     <Card className="shadow-sm">
       <CardHeader className="pb-2">
-        <CardTitle className="text-[13px] font-bold">Matriz de permisos (rol × módulo)</CardTitle>
+        <CardTitle className="flex items-center text-[13px] font-bold">
+          Matriz de permisos (rol × módulo)
+          {isSimulado && <SimuladoBadge />}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">

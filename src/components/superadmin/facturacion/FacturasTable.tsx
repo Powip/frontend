@@ -1,46 +1,45 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CheckCircle2, Send, Download, FileText } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
 import { EstadoFactura } from "@/interfaces/superadmin";
-import { getFacturas, marcarFacturaPagada, reenviarFactura } from "@/services/superadmin/facturacionService";
-import { RowActionsMenu, StatusBadge, ESTADO_FACTURA_TONE, TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { useFacturas, useMarcarFacturaPagada, useReenviarFactura } from "@/hooks/superadmin/useFacturacion";
+import { RowActionsMenu, StatusBadge, ESTADO_FACTURA_TONE, TableSkeleton, EmptyBlock, SimuladoBadge, SIMULADO_CARD_CLASS } from "@/components/superadmin/shared";
 import { money, formatDate } from "@/components/superadmin/shared/format";
+import { cn } from "@/lib/utils";
 
 export function FacturasTable({ q, estado }: { q: string; estado: EstadoFactura | "todos" }) {
   const [page, setPage] = useState(1);
-  const queryClient = useQueryClient();
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["superadmin", "facturacion", "list", { q, estado, page }],
-    queryFn: () => getFacturas({ q, estado, page, pageSize: 10 }),
-  });
+  const { data, meta, isLoading, isSimulado } = useFacturas({ q, estado, page, pageSize: 10 });
 
-  const { mutate: pagar } = useMutation({
-    mutationFn: (id: string) => marcarFacturaPagada(id),
-    onSuccess: (factura) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "facturacion"] });
-      if (factura) toast.success(`Factura ${factura.id} marcada como pagada.`);
-    },
-  });
+  const { mutate: pagar } = useMarcarFacturaPagada();
+  const { mutate: reenviar } = useReenviarFactura();
 
-  const { mutate: reenviar } = useMutation({
-    mutationFn: (id: string) => reenviarFactura(id),
-    onSuccess: ({ id }) => toast.success(`Factura ${id} reenviada al cliente.`),
-  });
+  function handlePagar(id: string) {
+    pagar(id, { onSuccess: (factura) => factura && toast.success(`Factura ${factura.id} marcada como pagada.`) });
+  }
+
+  function handleReenviar(id: string) {
+    reenviar(id, { onSuccess: ({ id }) => toast.success(`Factura ${id} reenviada al cliente.`) });
+  }
 
   if (isLoading) return <TableSkeleton rows={8} cols={7} />;
-  if (!data?.data.length) {
+  if (!data.length) {
     return <EmptyBlock icon={FileText} title="Sin facturas para estos filtros" description="Prueba limpiando la búsqueda o el filtro de estado." />;
   }
 
   return (
-    <div>
-      <div className="overflow-x-auto rounded-lg border">
+    <div className={cn(isSimulado && cn("rounded-xl p-3.5", SIMULADO_CARD_CLASS))}>
+      {isSimulado && (
+        <div className="mb-2 flex justify-end">
+          <SimuladoBadge />
+        </div>
+      )}
+      <div className="overflow-x-auto rounded-lg border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -55,7 +54,7 @@ export function FacturasTable({ q, estado }: { q: string; estado: EstadoFactura 
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.data.map((f) => (
+            {data.map((f) => (
               <TableRow key={f.id}>
                 <TableCell className="text-xs font-medium">{f.id}</TableCell>
                 <TableCell className="text-xs">{f.empresaNombre}</TableCell>
@@ -72,12 +71,12 @@ export function FacturasTable({ q, estado }: { q: string; estado: EstadoFactura 
                       {
                         label: "Marcar pagado",
                         icon: CheckCircle2,
-                        onClick: () => pagar(f.id),
+                        onClick: () => handlePagar(f.id),
                       },
                       {
                         label: "Reenviar",
                         icon: Send,
-                        onClick: () => reenviar(f.id),
+                        onClick: () => handleReenviar(f.id),
                       },
                       {
                         label: "Descargar PDF",
@@ -94,10 +93,10 @@ export function FacturasTable({ q, estado }: { q: string; estado: EstadoFactura 
         </Table>
       </div>
       <Pagination
-        currentPage={data.meta.page}
-        totalPages={data.meta.totalPages}
-        totalItems={data.meta.total}
-        itemsPerPage={data.meta.pageSize}
+        currentPage={meta.page}
+        totalPages={meta.totalPages}
+        totalItems={meta.total}
+        itemsPerPage={meta.pageSize}
         onPageChange={setPage}
         itemName="facturas"
       />

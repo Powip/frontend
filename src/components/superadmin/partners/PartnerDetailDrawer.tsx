@@ -1,19 +1,19 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Globe, Link2, CheckCircle2, Ban } from "lucide-react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import {
-  getPartnerById,
-  getReferidosDelPartner,
-  aprobarPartner,
-  suspenderPartner,
+  usePartnerDetail,
+  useReferidosDePartner,
+  useConfigPrograma,
+  useAprobarPartner,
+  useSuspenderPartner,
   calcularDetalleComision,
-} from "@/services/superadmin/partnersService";
-import { StatusBadge } from "@/components/superadmin/shared";
+} from "@/hooks/superadmin/usePartners";
+import { StatusBadge, SimuladoBadge } from "@/components/superadmin/shared";
 import { money, formatDate } from "@/components/superadmin/shared/format";
 import { EstadoPartner, EstadoReferido } from "@/interfaces/superadmin";
 
@@ -38,37 +38,21 @@ interface Props {
 
 export function PartnerDetailDrawer({ partnerId, onClose }: Props) {
   const router = useRouter();
-  const queryClient = useQueryClient();
 
-  const { data: partner } = useQuery({
-    queryKey: ["superadmin", "partners", "detail", partnerId],
-    queryFn: () => getPartnerById(partnerId!),
-    enabled: !!partnerId,
-  });
+  const { data: partner, isSimulado: partnerSimulado } = usePartnerDetail(partnerId);
+  const { data: referidos, isSimulado: referidosSimulado } = useReferidosDePartner(partnerId);
+  const { data: config } = useConfigPrograma();
 
-  const { data: referidos } = useQuery({
-    queryKey: ["superadmin", "partners", "referidos", partnerId],
-    queryFn: () => getReferidosDelPartner(partnerId!),
-    enabled: !!partnerId,
-  });
+  const { mutate: aprobar } = useAprobarPartner();
+  const { mutate: suspender } = useSuspenderPartner();
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["superadmin", "partners"] });
+  function handleAprobar(id: string) {
+    aprobar(id, { onSuccess: (p) => p && toast.success(`${p.nombre} fue aprobado y ahora está activo.`) });
+  }
 
-  const { mutate: aprobar } = useMutation({
-    mutationFn: aprobarPartner,
-    onSuccess: (p) => {
-      invalidate();
-      if (p) toast.success(`${p.nombre} fue aprobado y ahora está activo.`);
-    },
-  });
-
-  const { mutate: suspender } = useMutation({
-    mutationFn: suspenderPartner,
-    onSuccess: (p) => {
-      invalidate();
-      if (p) toast.success(`${p.nombre} ahora está "${p.estado}".`);
-    },
-  });
+  function handleSuspender(id: string) {
+    suspender(id, { onSuccess: (p) => p && toast.success(`${p.nombre} ahora está "${p.estado}".`) });
+  }
 
   function copiarLink() {
     if (!partner) return;
@@ -82,7 +66,10 @@ export function PartnerDetailDrawer({ partnerId, onClose }: Props) {
         {partner && (
           <>
             <SheetHeader>
-              <SheetTitle>{partner.nombre}</SheetTitle>
+              <SheetTitle>
+                {partner.nombre}
+                {partnerSimulado && <SimuladoBadge />}
+              </SheetTitle>
             </SheetHeader>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -115,7 +102,7 @@ export function PartnerDetailDrawer({ partnerId, onClose }: Props) {
                 Ver portal del partner
               </Button>
               {partner.estado === "pendiente" && (
-                <Button size="sm" className="gap-1.5" onClick={() => aprobar(partner.id)}>
+                <Button size="sm" className="gap-1.5" onClick={() => handleAprobar(partner.id)}>
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   Aprobar
                 </Button>
@@ -124,7 +111,7 @@ export function PartnerDetailDrawer({ partnerId, onClose }: Props) {
                 size="sm"
                 variant="outline"
                 className="gap-1.5 text-destructive border-destructive/30"
-                onClick={() => suspender(partner.id)}
+                onClick={() => handleSuspender(partner.id)}
               >
                 <Ban className="h-3.5 w-3.5" />
                 {partner.estado === "suspendido" ? "Reactivar" : "Suspender"}
@@ -154,7 +141,10 @@ export function PartnerDetailDrawer({ partnerId, onClose }: Props) {
 
             {/* Detalle de comisión por referido */}
             <div className="mt-5">
-              <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Detalle de comisión por referido</div>
+              <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                Detalle de comisión por referido
+                {referidosSimulado && <SimuladoBadge />}
+              </div>
               <div className="overflow-x-auto rounded-lg border">
                 <table className="w-full text-[11px]">
                   <thead className="bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground">
@@ -166,8 +156,8 @@ export function PartnerDetailDrawer({ partnerId, onClose }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {referidos?.map((r) => {
-                      const detalle = calcularDetalleComision(partner, r);
+                    {referidos.map((r) => {
+                      const detalle = calcularDetalleComision(partner, r, config);
                       return (
                         <tr key={r.id} className="border-t">
                           <td className="px-2.5 py-2 font-semibold truncate max-w-[140px]">{r.negocio}</td>
@@ -185,7 +175,7 @@ export function PartnerDetailDrawer({ partnerId, onClose }: Props) {
                         </tr>
                       );
                     })}
-                    {!referidos?.length && (
+                    {!referidos.length && (
                       <tr>
                         <td colSpan={4} className="px-2.5 py-3 text-center text-muted-foreground">
                           Sin referidos todavía.

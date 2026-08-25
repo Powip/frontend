@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus, TicketPercent } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,46 +9,46 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { getCupones, crearCupon, toggleCupon } from "@/services/superadmin/configService";
-import { SectionHeader, StatusBadge, TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { useCuponesConfig, useCrearCupon, useToggleCupon } from "@/hooks/superadmin/useConfig";
+import { SectionHeader, StatusBadge, TableSkeleton, EmptyBlock, SimuladoBadge } from "@/components/superadmin/shared";
 import { formatDate } from "@/components/superadmin/shared/format";
+import { ICupon } from "@/interfaces/superadmin";
 
 export function CuponesTab() {
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [codigo, setCodigo] = useState("");
   const [beneficio, setBeneficio] = useState("");
   const [aplicaA, setAplicaA] = useState("");
 
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "config", "cupones"], queryFn: getCupones });
+  const { data, isLoading, isSimulado } = useCuponesConfig();
 
-  const { mutate: toggle } = useMutation({
-    mutationFn: toggleCupon,
-    onSuccess: (cupon) => {
-      if (!cupon) return;
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "config", "cupones"] });
-      toast.success(`Cupón ${cupon.codigo} ${cupon.activo ? "activado" : "desactivado"}.`);
-    },
-  });
+  const { mutate: toggle } = useToggleCupon();
 
-  const { mutate: crear, isPending } = useMutation({
-    mutationFn: crearCupon,
-    onSuccess: (c) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "config", "cupones"] });
-      toast.success(`Cupón ${c.codigo} creado.`);
-      setOpen(false);
-      setCodigo("");
-      setBeneficio("");
-      setAplicaA("");
-    },
-  });
+  function handleToggle(cupon: ICupon) {
+    toggle(cupon.id, {
+      onSuccess: () => toast.success(`Cupón ${cupon.codigo} ${cupon.activo ? "desactivado" : "activado"}.`),
+    });
+  }
+
+  const { mutate: crear, isPending } = useCrearCupon();
 
   function handleSubmit() {
     if (!codigo.trim() || !beneficio.trim() || !aplicaA.trim()) {
       toast.error("Código, beneficio y aplica a son obligatorios.");
       return;
     }
-    crear({ codigo: codigo.trim().toUpperCase(), beneficio: beneficio.trim(), aplicaA: aplicaA.trim() });
+    crear(
+      { codigo: codigo.trim().toUpperCase(), beneficio: beneficio.trim(), aplicaA: aplicaA.trim() },
+      {
+        onSuccess: (c) => {
+          toast.success(`Cupón ${c.codigo} creado.`);
+          setOpen(false);
+          setCodigo("");
+          setBeneficio("");
+          setAplicaA("");
+        },
+      }
+    );
   }
 
   return (
@@ -63,6 +62,12 @@ export function CuponesTab() {
           </Button>
         }
       />
+
+      {isSimulado && (
+        <div className="text-[11px] text-muted-foreground mb-3">
+          <SimuladoBadge /> Distinto de los packs de producto (promos.service.ts) — ver docs/superadmin/config-endpoints.md.
+        </div>
+      )}
 
       {isLoading || !data ? (
         <TableSkeleton rows={3} cols={5} />
@@ -92,7 +97,7 @@ export function CuponesTab() {
                   </TableCell>
                   <TableCell className="text-xs">{c.vigenteHasta ? formatDate(c.vigenteHasta) : "—"}</TableCell>
                   <TableCell>
-                    <Switch checked={c.activo} onCheckedChange={() => toggle(c.id)} />
+                    <Switch checked={c.activo} onCheckedChange={() => handleToggle(c)} />
                   </TableCell>
                 </TableRow>
               ))}

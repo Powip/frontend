@@ -1,22 +1,21 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { CalendarClock } from "lucide-react";
-import { getProximosVencimientos } from "@/services/superadmin/suscripcionesService";
+import { useProximosVencimientos } from "@/hooks/superadmin/useSuscripciones";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { EmptyBlock, StatusBadge, ESTADO_FACTURA_TONE } from "@/components/superadmin/shared";
+import { EmptyBlock, StatusBadge, ESTADO_FACTURA_TONE, SimuladoBadge } from "@/components/superadmin/shared";
 import { formatDate, relativeDays } from "@/components/superadmin/shared/format";
 
 export function ProximosVencimientosCard() {
-  const { data, isLoading } = useQuery({
-    queryKey: ["superadmin", "suscripciones", "proximos-vencimientos"],
-    queryFn: () => getProximosVencimientos(8),
-  });
+  const { data, isLoading, isSimulado } = useProximosVencimientos(8);
 
   return (
     <Card className="shadow-sm h-full">
       <CardHeader className="pb-2">
-        <CardTitle className="text-[13px] font-bold">Próximos vencimientos</CardTitle>
+        <CardTitle className="text-[13px] font-bold">
+          Próximos vencimientos
+          {isSimulado && <SimuladoBadge />}
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading && <div className="space-y-2">{Array.from({ length: 5 }, (_, i) => <div key={i} className="h-9 animate-pulse rounded-md bg-muted/50" />)}</div>}

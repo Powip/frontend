@@ -1,34 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Save, ShieldCheck, Undo2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
-import { getConfigPrograma, actualizarConfigPrograma } from "@/services/superadmin/partnersService";
-import { SectionHeader, TableSkeleton } from "@/components/superadmin/shared";
+import { useConfigPrograma, useActualizarConfigPrograma } from "@/hooks/superadmin/usePartners";
+import { SectionHeader, TableSkeleton, SimuladoBadge } from "@/components/superadmin/shared";
 import { IConfigPrograma } from "@/interfaces/superadmin";
 
 export function ReglasComisionesTab() {
-  const queryClient = useQueryClient();
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "partners", "config"], queryFn: getConfigPrograma });
+  const { data, isLoading, isSimulado } = useConfigPrograma();
   const [form, setForm] = useState<IConfigPrograma | null>(null);
 
   useEffect(() => {
     if (data && !form) setForm(data);
   }, [data, form]);
 
-  const { mutate: guardar, isPending } = useMutation({
-    mutationFn: (input: IConfigPrograma) => actualizarConfigPrograma(input),
-    onSuccess: (config) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "partners", "config"] });
-      setForm(config);
-      toast.success("Cambio registrado en Auditoría.");
-    },
-  });
+  const { mutate: guardar, isPending } = useActualizarConfigPrograma();
+
+  function handleGuardar(input: IConfigPrograma) {
+    guardar(input, {
+      onSuccess: (config) => {
+        setForm(config);
+        toast.success("Cambio registrado en Auditoría.");
+      },
+    });
+  }
 
   if (isLoading || !form) return <TableSkeleton rows={6} cols={3} />;
 
@@ -38,7 +38,11 @@ export function ReglasComisionesTab() {
 
   return (
     <div>
-      <SectionHeader title="Opciones de comisión" sub="Porcentaje sobre el 1er mes y sobre el recurrente, por opción de acuerdo" />
+      <SectionHeader
+        title="Opciones de comisión"
+        sub="Porcentaje sobre el 1er mes y sobre el recurrente, por opción de acuerdo"
+        actions={isSimulado ? <SimuladoBadge /> : undefined}
+      />
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         {form.opciones.map((o) => (
           <div key={o.id} className="rounded-xl border bg-card p-4 shadow-sm">
@@ -130,7 +134,7 @@ export function ReglasComisionesTab() {
       </div>
 
       <div className="flex gap-2">
-        <Button size="sm" className="gap-1.5" disabled={isPending} onClick={() => guardar(form)}>
+        <Button size="sm" className="gap-1.5" disabled={isPending} onClick={() => handleGuardar(form)}>
           <Save className="h-3.5 w-3.5" />
           Guardar cambios
         </Button>

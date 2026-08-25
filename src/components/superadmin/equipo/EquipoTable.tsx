@@ -1,16 +1,15 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Eye, Users } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { getEquipo } from "@/services/superadmin/equipoService";
+import { useEquipo, MATRIZ_PERMISOS } from "@/hooks/superadmin/useEquipo";
 import { ROL_LABEL } from "@/interfaces/superadmin";
-import { ROL_MODULOS } from "@/mocks/superadmin";
-import { RowActionsMenu, StatusBadge, TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { RowActionsMenu, StatusBadge, TableSkeleton, EmptyBlock, SimuladoBadge, SIMULADO_CARD_CLASS } from "@/components/superadmin/shared";
+import { cn } from "@/lib/utils";
 
 export function EquipoTable() {
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "equipo", "list"], queryFn: getEquipo });
+  const { data, isLoading, isSimulado } = useEquipo();
 
   if (isLoading) return <TableSkeleton rows={8} cols={5} />;
   if (!data?.length) {
@@ -18,7 +17,12 @@ export function EquipoTable() {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border">
+    <div className={cn("overflow-x-auto rounded-lg border", isSimulado && SIMULADO_CARD_CLASS)}>
+      {isSimulado && (
+        <div className="flex justify-end border-b bg-card p-2">
+          <SimuladoBadge />
+        </div>
+      )}
       <Table>
         <TableHeader>
           <TableRow>
@@ -31,7 +35,7 @@ export function EquipoTable() {
         </TableHeader>
         <TableBody>
           {data.map((m) => {
-            const modulos = ROL_MODULOS[m.rol];
+            const modulos = MATRIZ_PERMISOS[m.rol];
             const tieneTodo = modulos.includes("*");
             return (
               <TableRow key={m.id}>

@@ -1,12 +1,24 @@
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { IUsuarioEmpresa } from "@/interfaces/superadmin";
-import { StatusBadge } from "@/components/superadmin/shared";
+import { StatusBadge, SimuladoBadge } from "@/components/superadmin/shared";
 import { formatDate } from "@/components/superadmin/shared/format";
 
+/**
+ * Ilustrativo — no hay ninguna matriz de permisos por rol en ms-auth. Los
+ * roles reales (AGENTES, VENTAS, OPERACIONES, COURIER, CALLER, ADMIN, ver
+ * docs/superadmin/usuarios-endpoints.md) no coinciden con estas etiquetas
+ * inventadas; se deja como ejemplo marcado "Simulado" en vez de mapear roles
+ * reales a permisos que nadie confirmó.
+ */
 const PERMISOS_POR_ROL: Record<string, string[]> = {
   Administrador: ["Ver todo", "Crear/editar productos", "Gestionar usuarios", "Ver finanzas", "Exportar datos"],
-  Vendedor: ["Registrar ventas", "Ver productos", "Ver sus pedidos"],
-  Soporte: ["Ver pedidos", "Responder tickets", "Ver clientes"],
+  ADMIN: ["Ver todo", "Crear/editar productos", "Gestionar usuarios", "Ver finanzas", "Exportar datos"],
+  ADMINISTRADOR: ["Ver todo", "Crear/editar productos", "Gestionar usuarios", "Ver finanzas", "Exportar datos"],
+  VENTAS: ["Registrar ventas", "Ver productos", "Ver sus pedidos"],
+  AGENTES: ["Ver pedidos", "Responder tickets", "Ver clientes"],
+  OPERACIONES: ["Ver pedidos", "Gestionar inventario", "Ver couriers"],
+  COURIER: ["Ver guías de envío", "Actualizar estado de entrega"],
+  CALLER: ["Ver pedidos", "Ver clientes"],
 };
 
 export function UsuarioDetailDrawer({ usuario, onClose }: { usuario: IUsuarioEmpresa | null; onClose: () => void }) {
@@ -30,9 +42,12 @@ export function UsuarioDetailDrawer({ usuario, onClose }: { usuario: IUsuarioEmp
                 <Kv k="Último acceso" v={formatDate(usuario.ultimoAcceso)} />
               </div>
               <div>
-                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">Permisos por rol</div>
+                <div className="mb-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                  Permisos por rol
+                  <SimuladoBadge />
+                </div>
                 <ul className="space-y-1.5">
-                  {(PERMISOS_POR_ROL[usuario.rol] ?? []).map((p) => (
+                  {(PERMISOS_POR_ROL[usuario.rol] ?? PERMISOS_POR_ROL[usuario.rol.toUpperCase()] ?? []).map((p) => (
                     <li key={p} className="text-xs text-muted-foreground">
                       • {p}
                     </li>

@@ -1,15 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { CheckCircle2, XCircle, UserPlus } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EstadoReferido } from "@/interfaces/superadmin";
-import { getColaReferidos, aprobarReferido, rechazarReferido } from "@/services/superadmin/partnersService";
-import { FiltersBar, StatusBadge, TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { useColaReferidos, useAprobarReferido, useRechazarReferido } from "@/hooks/superadmin/usePartners";
+import { FiltersBar, StatusBadge, TableSkeleton, EmptyBlock, SimuladoBadge } from "@/components/superadmin/shared";
 import { formatDate } from "@/components/superadmin/shared/format";
 
 const ESTADOS: (EstadoReferido | "todos")[] = ["todos", "pendiente", "aprobado", "activo", "rechazado", "cancelado"];
@@ -23,31 +22,20 @@ const ESTADO_TONE: Record<EstadoReferido, "green" | "amber" | "red" | "blue" | "
 };
 
 export function ColaReferidosTab() {
-  const queryClient = useQueryClient();
   const [estado, setEstado] = useState<EstadoReferido | "todos">("pendiente");
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["superadmin", "partners", "cola-referidos", estado],
-    queryFn: () => getColaReferidos(estado),
-  });
+  const { data, isLoading, isSimulado } = useColaReferidos(estado);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["superadmin", "partners"] });
+  const { mutate: aprobar } = useAprobarReferido();
+  const { mutate: rechazar } = useRechazarReferido();
 
-  const { mutate: aprobar } = useMutation({
-    mutationFn: aprobarReferido,
-    onSuccess: (r) => {
-      invalidate();
-      if (r) toast.success(`${r.negocio} fue aprobado.`);
-    },
-  });
+  function handleAprobar(id: string) {
+    aprobar(id, { onSuccess: (r) => r && toast.success(`${r.negocio} fue aprobado.`) });
+  }
 
-  const { mutate: rechazar } = useMutation({
-    mutationFn: rechazarReferido,
-    onSuccess: (r) => {
-      invalidate();
-      if (r) toast.error(`${r.negocio} fue rechazado.`);
-    },
-  });
+  function handleRechazar(id: string) {
+    rechazar(id, { onSuccess: (r) => r && toast.error(`${r.negocio} fue rechazado.`) });
+  }
 
   return (
     <div>
@@ -68,7 +56,7 @@ export function ColaReferidosTab() {
 
       {isLoading ? (
         <TableSkeleton rows={6} cols={6} />
-      ) : !data?.length ? (
+      ) : !data.length ? (
         <EmptyBlock icon={UserPlus} title="Sin referidos en la cola" description="No hay referidos para este filtro de estado." />
       ) : (
         <div className="overflow-x-auto rounded-lg border">
@@ -89,7 +77,10 @@ export function ColaReferidosTab() {
                 <TableRow key={r.id}>
                   <TableCell>
                     <div className="min-w-0">
-                      <div className="font-semibold text-xs truncate">{r.negocio}</div>
+                      <div className="font-semibold text-xs truncate">
+                        {r.negocio}
+                        {isSimulado && <SimuladoBadge />}
+                      </div>
                       <div className="text-[10.5px] text-muted-foreground truncate">{r.email}</div>
                     </div>
                   </TableCell>
@@ -103,11 +94,11 @@ export function ColaReferidosTab() {
                   <TableCell>
                     {r.estado === "pendiente" && (
                       <div className="flex gap-1.5">
-                        <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px] text-emerald-600 border-emerald-500/30" onClick={() => aprobar(r.id)}>
+                        <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px] text-emerald-600 border-emerald-500/30" onClick={() => handleAprobar(r.id)}>
                           <CheckCircle2 className="h-3 w-3" />
                           Aprobar
                         </Button>
-                        <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px] text-destructive border-destructive/30" onClick={() => rechazar(r.id)}>
+                        <Button size="sm" variant="outline" className="h-7 gap-1 text-[11px] text-destructive border-destructive/30" onClick={() => handleRechazar(r.id)}>
                           <XCircle className="h-3 w-3" />
                           Rechazar
                         </Button>

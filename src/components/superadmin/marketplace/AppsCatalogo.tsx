@@ -1,13 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Store } from "lucide-react";
-import { getApps } from "@/services/superadmin/marketplaceService";
+import { useAppsMarketplace } from "@/hooks/superadmin/useMarketplace";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { StatusBadge, BadgeTone, TableSkeleton, EmptyBlock, SectionHeader } from "@/components/superadmin/shared";
+import {
+  StatusBadge,
+  BadgeTone,
+  TableSkeleton,
+  EmptyBlock,
+  SectionHeader,
+  SimuladoBadge,
+  SIMULADO_CARD_CLASS,
+} from "@/components/superadmin/shared";
+import { cn } from "@/lib/utils";
 
 const ESTADO_TONE: Record<string, BadgeTone> = {
   publicada: "green",
@@ -16,7 +24,7 @@ const ESTADO_TONE: Record<string, BadgeTone> = {
 };
 
 export function AppsCatalogo() {
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "marketplace", "list"], queryFn: getApps });
+  const { data, isLoading, isSimulado } = useAppsMarketplace();
   const [instaladas, setInstaladas] = useState<Set<string>>(new Set());
 
   function toggleInstalar(id: string, nombre: string) {
@@ -35,13 +43,17 @@ export function AppsCatalogo() {
 
   return (
     <div>
-      <SectionHeader title="Catálogo de apps" sub="Apps y partners integrados a nivel plataforma." />
+      <SectionHeader
+        title="Catálogo de apps"
+        sub="Apps y partners integrados a nivel plataforma."
+        actions={isSimulado ? <SimuladoBadge /> : undefined}
+      />
       {isLoading ? (
         <TableSkeleton rows={4} cols={4} />
       ) : !data?.length ? (
         <EmptyBlock icon={Store} title="Sin apps" description="No hay apps registradas en el marketplace." />
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className={cn("grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3", isSimulado && cn("rounded-xl p-3", SIMULADO_CARD_CLASS))}>
           {data.map((app) => (
             <Card key={app.id} className="shadow-sm">
               <CardContent className="p-4">

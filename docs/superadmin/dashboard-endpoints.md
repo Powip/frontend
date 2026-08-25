@@ -228,7 +228,24 @@ PATCH /api/v1/dashboard/centro-accion/{id}   body: { "hecho": true }
 
 ```
 GET /api/v1/dashboard/producto-kpis
+```
+```jsonc
+{ "data": [{ "label": "DAU", "value": 412 }, { "label": "WAU", "value": 1180 }, { "label": "MAU", "value": 2940 }] }
+```
+
+```
 GET /api/v1/dashboard/adopcion-modulos
+```
+```jsonc
+{
+  "data": [
+    { "modulo": "Ventas", "pct": 92 },
+    { "modulo": "Inventario", "pct": 78 },
+    { "modulo": "SUNAT", "pct": 41 },
+    { "modulo": "Couriers", "pct": 65 },
+    { "modulo": "Call Center", "pct": 33 }
+  ]
+}
 ```
 
 **Requiere.** Tracking de uso real (qué usuario entró, qué módulo tocó, cuándo) — no existe ninguna instrumentación de producto hoy en el stack. Es el ítem más caro de toda la lista; probablemente vale la pena resolverlo con una herramienta de analítica de producto ya armada (Amplitude/Mixpanel/PostHog) antes que construir tracking propio, y que este endpoint simplemente proxyee/agregue esos datos.

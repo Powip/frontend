@@ -2,12 +2,11 @@
 
 import { useState } from "react";
 import { RefreshCw } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
 import { EstadoSuscripcion, PlanEmpresa } from "@/interfaces/superadmin";
-import { getSuscripciones } from "@/services/superadmin/suscripcionesService";
-import { StatusBadge, TableSkeleton, EmptyBlock, BadgeTone } from "@/components/superadmin/shared";
+import { useSuscripcionesTabla } from "@/hooks/superadmin/useSuscripciones";
+import { StatusBadge, TableSkeleton, EmptyBlock, BadgeTone, SimuladoBadge } from "@/components/superadmin/shared";
 import { money, formatDate } from "@/components/superadmin/shared/format";
 
 const TONE: Record<EstadoSuscripcion, BadgeTone> = {
@@ -20,13 +19,10 @@ const TONE: Record<EstadoSuscripcion, BadgeTone> = {
 export function SuscripcionesTable({ q, estado, plan }: { q: string; estado: EstadoSuscripcion | "todos"; plan: PlanEmpresa | "todos" }) {
   const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["superadmin", "suscripciones", "list", { q, estado, plan, page }],
-    queryFn: () => getSuscripciones({ q, estado, plan, page, pageSize: 10 }),
-  });
+  const { data, isLoading, isSimulado } = useSuscripcionesTabla({ q, estado, plan, page, pageSize: 10 });
 
   if (isLoading) return <TableSkeleton rows={8} cols={7} />;
-  if (!data?.data.length) {
+  if (!data.data.length) {
     return <EmptyBlock icon={RefreshCw} title="Sin resultados para estos filtros" description="Prueba limpiando la búsqueda o el filtro de estado/plan." />;
   }
 
@@ -36,7 +32,10 @@ export function SuscripcionesTable({ q, estado, plan }: { q: string; estado: Est
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Empresa</TableHead>
+              <TableHead>
+                Empresa
+                {isSimulado && <SimuladoBadge />}
+              </TableHead>
               <TableHead>Plan</TableHead>
               <TableHead>Ciclo</TableHead>
               <TableHead>MRR</TableHead>

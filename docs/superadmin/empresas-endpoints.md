@@ -37,6 +37,134 @@
 
 El modal "Nueva Empresa" del frontend ahora pide también los datos del usuario dueño (nombre, apellido, email, documento, teléfono) — no es un campo más, es un paso necesario del flujo real.
 
+### Bodies reales — Directorio de Empresas (leídos de `companyService.ts`/`userService.ts`)
+
+**Listar empresas**
+```
+GET {NEXT_PUBLIC_API_COMPANY}/company?includeStores=true
+```
+```jsonc
+[
+  {
+    "id": "8a2f1e40-...",
+    "name": "Bella Piel Cosmética",
+    "user_id": "1c3d4e50-...",
+    "stores": [{ "id": "st-01", "name": "Tienda Principal" }],
+    "cuit": "20601234567",
+    "billing_address": "Av. Javier Prado 1234, San Isidro",
+    "phone": "+51987654321",
+    "logo_url": "https://cdn.powip.com/logos/bella-piel.png",
+    "sales_channels": ["whatsapp", "web", "tiktok"],
+    "closing_channels": ["whatsapp"],
+    "billing_email": "facturacion@bellapiel.pe",
+    "created_at": "2026-02-10T12:00:00.000Z"
+  }
+]
+```
+Nota: sin paginación, sin `is_active`/`plan`/`status` — ver bloqueos arriba. `companyService.getAllCompanies` no mapea `iva`/`powipCommissionRate` (a diferencia de `fetchCompanyById`), aunque la API los devuelva.
+
+**Ver Perfil 360 (detalle de empresa)**
+```
+GET {NEXT_PUBLIC_API_COMPANY}/company/{id}/with-stores
+```
+```jsonc
+{
+  "id": "8a2f1e40-...",
+  "name": "Bella Piel Cosmética",
+  "user_id": "1c3d4e50-...",
+  "stores": [{ "id": "st-01", "name": "Tienda Principal" }],
+  "cuit": "20601234567",
+  "billing_address": "Av. Javier Prado 1234, San Isidro",
+  "phone": "+51987654321",
+  "logo_url": "https://cdn.powip.com/logos/bella-piel.png",
+  "sales_channels": ["whatsapp", "web", "tiktok"],
+  "closing_channels": ["whatsapp"],
+  "billing_email": "facturacion@bellapiel.pe",
+  "iva": 18,
+  "powipCommissionRate": 3.5
+}
+```
+
+**Cambiar plan / Suspender (`updateCompany`)**
+```
+PATCH {NEXT_PUBLIC_API_COMPANY}/company/{id}
+```
+**Body** (los únicos campos que el DTO acepta hoy — nótese que no hay `plan` ni `estado`, por eso está bloqueado):
+```jsonc
+{
+  "name": "Bella Piel Cosmética",
+  "cuit": "20601234567",
+  "billing_address": "Av. Javier Prado 1234, San Isidro",
+  "phone": "+51987654321",
+  "logo_url": "https://cdn.powip.com/logos/bella-piel.png",
+  "sales_channels": ["whatsapp", "web", "tiktok"],
+  "closing_channels": ["whatsapp"],
+  "powip_commission_rate": 3.5
+}
+```
+**Response:** devuelve la empresa actualizada, mismo shape que "Ver Perfil 360" arriba.
+
+**Eliminar empresa**
+```
+DELETE {NEXT_PUBLIC_API_COMPANY}/company/{id}
+```
+Sin body. Response: el body crudo que devuelva `ms-company` (el frontend no lo tipa, solo verifica que el request no rechace).
+
+**Entrar como admin (impersonar)**: no hay endpoint — ver el bloqueo arriba, no se fuerza un ejemplo acá.
+
+### Bodies reales — Alta de empresa (flujo de 2-3 pasos)
+
+**Paso 1 — crear el usuario dueño**
+```
+POST {NEXT_PUBLIC_API_USERS}/api/v1/auth/admin/register
+```
+**Body:**
+```jsonc
+{
+  "identityDocument": "45678912",
+  "name": "Rosa",
+  "surname": "Delgado",
+  "email": "rosa@bellapiel.pe",
+  "password": "Powipx7k92q1",
+  "address": "Pendiente",
+  "city": "LIMA",
+  "province": "LIMA",
+  "district": "LIMA",
+  "phoneNumber": "+51987654321",
+  "role": { "name": "ADMIN" }
+}
+```
+**Response:**
+```jsonc
+{ "id": "1c3d4e50-...", "userId": "1c3d4e50-...", "name": "Rosa", "surname": "Delgado", "email": "rosa@bellapiel.pe" }
+```
+
+**Paso 2 — crear la empresa**
+```
+POST {NEXT_PUBLIC_API_COMPANY}/company
+```
+**Body:**
+```jsonc
+{
+  "name": "Bella Piel Cosmética",
+  "user_id": "1c3d4e50-...",
+  "cuit": "20601234567",
+  "billing_address": "Av. Javier Prado 1234, San Isidro",
+  "phone": "+51987654321",
+  "billing_email": "rosa@bellapiel.pe"
+}
+```
+**Response:** empresa creada, mismo shape que "Ver Perfil 360" arriba (sin `sales_channels` todavía).
+
+**Paso 3 — opcional, setear canales de venta**
+```
+PATCH {NEXT_PUBLIC_API_COMPANY}/company/{id}
+```
+**Body:**
+```jsonc
+{ "sales_channels": ["whatsapp", "web"] }
+```
+
 ## Perfil 360 — estado real por tab
 
 | Tab | Estado | Fuente / gap |
@@ -52,6 +180,138 @@ El modal "Nueva Empresa" del frontend ahora pide también los datos del usuario 
 | **Suscripción** | 🟡 Real con join manual | `subscriptionService.getSubscriptionByUserId(token, userId)` — la empresa no tiene suscripción propia, hay que resolver primero `companyService.fetchCompanyById(id).userId` y consultar con ese id. Pedido a backend: exponer `getSubscriptionByCompanyId` directo evitaría este join. |
 | **Usuarios** | 🟢 Real | `userService.getUsersByCompany(companyId, token)`. |
 | **Soporte** | 🔴 Simulado | No existe ningún servicio de tickets real en el repo, ni documentado como pendiente en otro lado. Mismo estado que el módulo `/superadmin/soporte` completo. |
+
+### Bodies reales — por tab del Perfil 360 (leídos de cada `*Service.ts`)
+
+**Ventas & GMV**
+```
+GET {NEXT_PUBLIC_API_VENTAS}/order-header/summary/company/{companyId}?fromDate=2026-08-01&toDate=2026-08-24
+```
+```jsonc
+{ "totalSales": 18450.5, "orderCount": 132, "income": [{ "date": "2026-08-20", "amount": 1200 }] }
+```
+```
+GET {NEXT_PUBLIC_API_VENTAS}/stats/billing?storeId={companyId}&year=2026
+```
+```jsonc
+[{ "month": "Ago", "currentYear": 18450.5, "previousYear": 15200 }]
+```
+```
+GET {NEXT_PUBLIC_API_VENTAS}/stats/daily-income?storeId={companyId}&fromDate=2026-08-01&toDate=2026-08-24
+```
+```jsonc
+[{ "date": "2026-08-20", "totalIncome": 1200 }]
+```
+Ticket promedio se deriva en el front (`totalSales / orderCount`), no viene de ningún endpoint.
+
+**Pedidos**
+```
+GET {ms-ventas}/atencion-al-cliente/pedidos?storeId={companyId}&page=1&limit=10
+```
+```jsonc
+{
+  "data": [
+    {
+      "id": "ord-9f2a...",
+      "orderNumber": "OV-000482",
+      "customer": { "fullName": "Juan Pérez" },
+      "grandTotal": "89.90",
+      "status": "EN_ENVIO",
+      "courier": "Shalom",
+      "created_at": "2026-08-23T16:20:00.000Z"
+    }
+  ],
+  "total": 132,
+  "page": 1,
+  "totalPages": 14
+}
+```
+
+**Productos & SKUs**
+```
+GET {NEXT_PUBLIC_API_PRODUCTOS}/products/company/{companyId}
+```
+```jsonc
+[
+  { "id": "prod-01", "name": "Serum Vitamina C 30ml", "sku": "BP-SVC-30", "companySku": "SVC30", "status": true, "hasVariants": false, "imageUrl": "https://cdn.powip.com/products/serum.png" }
+]
+```
+Sin precio/stock en el DTO — "Top vendidos" no existe en ningún endpoint, queda simulado.
+
+**Facturación (SUNAT)**: bloqueado por impersonación — no hay endpoint admin con `companyId` explícito hoy, no se fuerza un ejemplo (ver bloqueo arriba).
+
+**Envíos & Couriers**
+```
+GET {NEXT_PUBLIC_API_COURIER}/couriers/company/{companyId}
+```
+```jsonc
+[{ "id": "cour-01", "name": "Shalom", "phone": "+51999888777", "email": "ops@shalom.pe", "companyId": "8a2f1e40-...", "isActive": true, "created_at": "2026-01-15T00:00:00.000Z" }]
+```
+```
+GET {NEXT_PUBLIC_API_COURIER}/couriers/{courierId}/guides
+```
+```jsonc
+[{ "id": "guide-01", "guideNumber": "SHL-000921", "created_at": "2026-08-23T16:25:00.000Z", "status": "en_transito", "deliveryType": "domicilio", "deliveryAddress": "Av. Arequipa 1200, Lince" }]
+```
+Sin % entrega/devolución agregado — se puede derivar de las guías o queda simulado.
+
+**Integraciones & Upsell** (cada vendor con su propio `getXCredentials`/`getXStatus`, se consultan en paralelo):
+```
+GET {NEXT_PUBLIC_API_INTEGRATIONS}/eva/credentials/{companyId}
+```
+```jsonc
+{ "id": "eva-cred-01", "companyId": "8a2f1e40-...", "baseUrl": "https://api.eva.pe", "clientType": "MARKETPLACE", "maskedApiKey": "eva_****9f3a", "hasWebhookSecret": true, "isActive": true, "createdAt": "2026-03-01T00:00:00.000Z", "updatedAt": "2026-07-10T00:00:00.000Z" }
+```
+(o `null` con 404 si la empresa no tiene credenciales EVA configuradas)
+```
+GET {NEXT_PUBLIC_API_INTEGRATIONS}/shalom/status/{companyId}
+```
+```jsonc
+{ "isLoggedIn": true, "username": "bellapiel_ops", "hasInstance": true }
+```
+```
+GET {NEXT_PUBLIC_API_INTEGRATIONS}/shopify/status/{companyId}
+```
+```jsonc
+[{ "isConnected": true, "shop_url": "bella-piel.myshopify.com", "store_id": "st-01", "inventory_id": "inv-01" }]
+```
+```
+GET {NEXT_PUBLIC_API_INTEGRATIONS}/aliclik/credentials/{companyId}
+```
+```jsonc
+{ "id": "alk-cred-01", "companyId": "8a2f1e40-...", "baseUrl": "https://api.aliclik.pe", "isActive": true, "webhookSecret": "whsec_***", "importStoreId": "st-01", "createdAt": "2026-04-12T00:00:00.000Z", "updatedAt": "2026-07-01T00:00:00.000Z" }
+```
+"Upsell" (qué ofrecer) sigue siendo 100% editorial/simulado — no hay ningún cálculo de oportunidad real detrás de esto.
+
+**Suscripción**
+```
+GET {NEXT_PUBLIC_API_SUBS}/subscriptions/user/{userId}
+```
+```jsonc
+[
+  {
+    "id": "sub-01",
+    "userId": "1c3d4e50-...",
+    "plan": { "id": "plan-pro", "name": "Pro", "description": "Plan Pro mensual", "price": 179, "durationInDays": 30 },
+    "startDate": "2026-08-01T00:00:00.000Z",
+    "endDate": "2026-08-31T23:59:59.000Z",
+    "status": "ACTIVE",
+    "autoRenewal": true,
+    "initPoint": "https://mercadopago.com/checkout/..."
+  }
+]
+```
+Es un array (historial) — la vigente es la de `startDate` más reciente (join manual por `userId`, ver pedido de `getSubscriptionByCompanyId` directo arriba).
+
+**Usuarios**
+```
+GET {NEXT_PUBLIC_API_USERS}/api/v1/auth/company/{companyId}/users
+```
+```jsonc
+[{ "id": "1c3d4e50-...", "name": "Rosa", "surname": "Delgado", "email": "rosa@bellapiel.pe", "phoneNumber": "+51987654321", "identityDocument": "45678912", "status": true }]
+```
+
+**Salud** y **Soporte**: simulados a propósito, sin ningún endpoint real detrás — no se fuerza un ejemplo (ver estado arriba).
 
 ## Resumen para planificar
 

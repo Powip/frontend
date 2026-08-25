@@ -1,44 +1,42 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { crearReporteProgramado, getReportesDisponibles } from "@/services/superadmin/reportesService";
+import { useReportesDisponibles, useCrearReporteProgramado } from "@/hooks/superadmin/useReportes";
 import { IReporteProgramado } from "@/interfaces/superadmin";
 
 const FRECUENCIAS: IReporteProgramado["frecuencia"][] = ["Diario", "Semanal", "Mensual"];
 
 export function ProgramarReporteModal({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const queryClient = useQueryClient();
-  const { data: reportes } = useQuery({ queryKey: ["superadmin", "reportes", "disponibles"], queryFn: getReportesDisponibles });
+  const { data: reportes } = useReportesDisponibles();
 
   const [reporte, setReporte] = useState("");
   const [frecuencia, setFrecuencia] = useState<IReporteProgramado["frecuencia"]>("Semanal");
   const [destinatario, setDestinatario] = useState("");
 
-  const { mutate, isPending } = useMutation({
-    mutationFn: crearReporteProgramado,
-    onSuccess: (r) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "reportes"] });
-      toast.success(`"${r.reporte}" programado en frecuencia ${r.frecuencia.toLowerCase()}.`);
-      onOpenChange(false);
-      setReporte("");
-      setDestinatario("");
-      setFrecuencia("Semanal");
-    },
-  });
+  const { mutate, isPending } = useCrearReporteProgramado();
 
   function handleSubmit() {
     if (!reporte || !destinatario.trim()) {
       toast.error("Reporte y destinatario son obligatorios.");
       return;
     }
-    mutate({ reporte, frecuencia, destinatario: destinatario.trim() });
+    mutate(
+      { reporte, frecuencia, destinatario: destinatario.trim() },
+      {
+        onSuccess: () => {
+          onOpenChange(false);
+          setReporte("");
+          setDestinatario("");
+          setFrecuencia("Semanal");
+        },
+      }
+    );
   }
 
   return (

@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Eye, Link2, CheckCircle2, Ban, Globe, Users2 } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
 import { EstadoPartner, NivelPartner } from "@/interfaces/superadmin";
-import { getPartners, aprobarPartner, suspenderPartner } from "@/services/superadmin/partnersService";
-import { RowActionsMenu, StatusBadge, TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { usePartnersList, useAprobarPartner, useSuspenderPartner } from "@/hooks/superadmin/usePartners";
+import { RowActionsMenu, StatusBadge, TableSkeleton, EmptyBlock, SimuladoBadge } from "@/components/superadmin/shared";
 import { moneyCompact, formatDate } from "@/components/superadmin/shared/format";
 
 const ESTADO_PARTNER_TONE: Record<EstadoPartner, "green" | "amber" | "red"> = {
@@ -31,31 +30,20 @@ interface Props {
 }
 
 export function PartnersTable({ q, estado, nivel, onOpenPartner }: Props) {
-  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["superadmin", "partners", "list", { q, estado, nivel, page }],
-    queryFn: () => getPartners({ q, estado, nivel, page, pageSize: 10 }),
-  });
+  const { data, isLoading, isSimulado } = usePartnersList({ q, estado, nivel, page, pageSize: 10 });
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["superadmin", "partners"] });
+  const { mutate: aprobar } = useAprobarPartner();
+  const { mutate: suspender } = useSuspenderPartner();
 
-  const { mutate: aprobar } = useMutation({
-    mutationFn: aprobarPartner,
-    onSuccess: (partner) => {
-      invalidate();
-      if (partner) toast.success(`${partner.nombre} fue aprobado y ahora está activo.`);
-    },
-  });
+  function handleAprobar(id: string) {
+    aprobar(id, { onSuccess: (partner) => partner && toast.success(`${partner.nombre} fue aprobado y ahora está activo.`) });
+  }
 
-  const { mutate: suspender } = useMutation({
-    mutationFn: suspenderPartner,
-    onSuccess: (partner) => {
-      invalidate();
-      if (partner) toast.success(`${partner.nombre} ahora está "${partner.estado}".`);
-    },
-  });
+  function handleSuspender(id: string) {
+    suspender(id, { onSuccess: (partner) => partner && toast.success(`${partner.nombre} ahora está "${partner.estado}".`) });
+  }
 
   function copiarLink(slugLink: string) {
     navigator.clipboard?.writeText(`https://${slugLink}`).catch(() => {});
@@ -63,7 +51,7 @@ export function PartnersTable({ q, estado, nivel, onOpenPartner }: Props) {
   }
 
   if (isLoading) return <TableSkeleton rows={8} cols={6} />;
-  if (!data?.data.length) {
+  if (!data.data.length) {
     return <EmptyBlock icon={Users2} title="Sin partners para estos filtros" description="Prueba limpiando la búsqueda o el filtro de estado/nivel." />;
   }
 
@@ -89,7 +77,10 @@ export function PartnersTable({ q, estado, nivel, onOpenPartner }: Props) {
               <TableRow key={p.id} className="cursor-pointer" onClick={() => onOpenPartner(p.id)}>
                 <TableCell>
                   <div className="min-w-0">
-                    <div className="font-semibold text-xs truncate">{p.nombre}</div>
+                    <div className="font-semibold text-xs truncate">
+                      {p.nombre}
+                      {isSimulado && <SimuladoBadge />}
+                    </div>
                     <div className="text-[10.5px] text-muted-foreground truncate">{p.handle}</div>
                   </div>
                 </TableCell>
@@ -115,14 +106,14 @@ export function PartnersTable({ q, estado, nivel, onOpenPartner }: Props) {
                         onClick: () => window.open(`/superadmin/partners/${p.id}/portal`, "_blank"),
                       },
                       ...(p.estado === "pendiente"
-                        ? [{ label: "Aprobar", icon: CheckCircle2, separatorBefore: true, onClick: () => aprobar(p.id) }]
+                        ? [{ label: "Aprobar", icon: CheckCircle2, separatorBefore: true, onClick: () => handleAprobar(p.id) }]
                         : []),
                       {
                         label: p.estado === "suspendido" ? "Reactivar" : "Suspender",
                         icon: Ban,
                         separatorBefore: p.estado !== "pendiente",
                         danger: p.estado !== "suspendido",
-                        onClick: () => suspender(p.id),
+                        onClick: () => handleSuspender(p.id),
                       },
                     ]}
                   />

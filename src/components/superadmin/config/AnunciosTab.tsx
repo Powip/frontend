@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Plus, Megaphone } from "lucide-react";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -10,35 +9,32 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { getAnuncios, crearAnuncio } from "@/services/superadmin/configService";
-import { SectionHeader, StatusBadge, TableSkeleton, EmptyBlock } from "@/components/superadmin/shared";
+import { useAnunciosConfig, useCrearAnuncio } from "@/hooks/superadmin/useConfig";
+import { SectionHeader, StatusBadge, TableSkeleton, EmptyBlock, SimuladoBadge } from "@/components/superadmin/shared";
 import { formatDate } from "@/components/superadmin/shared/format";
 
 export function AnunciosTab() {
-  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [titulo, setTitulo] = useState("");
   const [cuerpo, setCuerpo] = useState("");
 
-  const { data, isLoading } = useQuery({ queryKey: ["superadmin", "config", "anuncios"], queryFn: getAnuncios });
+  const { data, isLoading, isSimulado } = useAnunciosConfig();
 
-  const { mutate: crear, isPending } = useMutation({
-    mutationFn: crearAnuncio,
-    onSuccess: (a) => {
-      queryClient.invalidateQueries({ queryKey: ["superadmin", "config", "anuncios"] });
-      toast.success(`Anuncio "${a.titulo}" creado como borrador.`);
-      setOpen(false);
-      setTitulo("");
-      setCuerpo("");
-    },
-  });
+  const { mutate: crear, isPending } = useCrearAnuncio();
+
+  function onCrearSuccess(a: { titulo: string }) {
+    toast.success(`Anuncio "${a.titulo}" creado como borrador.`);
+    setOpen(false);
+    setTitulo("");
+    setCuerpo("");
+  }
 
   function handleSubmit() {
     if (!titulo.trim() || !cuerpo.trim()) {
       toast.error("Título y cuerpo son obligatorios.");
       return;
     }
-    crear({ titulo: titulo.trim(), cuerpo: cuerpo.trim() });
+    crear({ titulo: titulo.trim(), cuerpo: cuerpo.trim() }, { onSuccess: onCrearSuccess });
   }
 
   return (
@@ -52,6 +48,12 @@ export function AnunciosTab() {
           </Button>
         }
       />
+
+      {isSimulado && (
+        <div className="text-[11px] text-muted-foreground mb-3">
+          <SimuladoBadge /> No existe sistema de anuncios en el backend todavía — ver docs/superadmin/config-endpoints.md.
+        </div>
+      )}
 
       {isLoading || !data ? (
         <TableSkeleton rows={3} cols={3} />

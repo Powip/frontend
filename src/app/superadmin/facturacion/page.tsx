@@ -9,11 +9,12 @@ import { FacturacionKpis } from "@/components/superadmin/facturacion/Facturacion
 import { FacturasTable } from "@/components/superadmin/facturacion/FacturasTable";
 import { CobranzaDunningTable } from "@/components/superadmin/facturacion/CobranzaDunningTable";
 import { EstadoFactura } from "@/interfaces/superadmin";
-import { facturasMock } from "@/mocks/superadmin";
+import { useFacturas } from "@/hooks/superadmin/useFacturacion";
 
 export default function FacturacionPage() {
   const [q, setQ] = useState("");
   const [estado, setEstado] = useState<EstadoFactura | "todos">("todos");
+  const { data: allForExport } = useFacturas({ q, estado, page: 1, pageSize: 100000 });
 
   return (
     <div>
@@ -23,7 +24,7 @@ export default function FacturacionPage() {
         actions={
           <ExportButton
             filename="facturacion"
-            rows={facturasMock.map((f) => ({
+            rows={allForExport.map((f) => ({
               ID: f.id,
               Empresa: f.empresaNombre,
               Plan: f.plan,
