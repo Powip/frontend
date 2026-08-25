@@ -41,6 +41,8 @@ export interface DetailedSaleExportRow {
   mapsLink: string;
   latitude: number | null;
   longitude: number | null;
+  possibleDuplicate: boolean;
+  relatedOrders: string;
 }
 
 const SIZE_ATTRIBUTE_KEYS = ["talla", "talle", "size"];
@@ -69,20 +71,189 @@ function findAttributeValue(
 }
 
 /**
+ * Short "talla" tokens used across Powip stores. No shared enum/list of
+ * sizes exists elsewhere in the frontend — product attribute values are
+ * entered freely per-product (`app/productos/create-product/create-product.tsx`)
+ * — so this is a best-effort set built from the real product names sampled
+ * during the FEAT-15 investigation.
+ * Anything that doesn't match this list is assumed to be a color.
+ */
+const KNOWN_SIZE_TOKENS = new Set([
+  "XS",
+  "S",
+  "M",
+  "L",
+  "XL",
+  "XXL",
+  "XXXL",
+  "2XL",
+  "3XL",
+  "STD",
+  "UNICA",
+  "ÚNICA",
+  "UNITALLA",
+]);
+
+/**
+ * Matches the "<name> - <segment1> / <segment2>" pattern some product names
+ * carry embedded (mostly Shopify imports whose `attributes` isn't
+ * populated), e.g. "CHOMPA OVEJERA KUNCA - S / Arena" or
+ * "CHOMPA OVEJERA UNISEX - Negro / M". The greedy `.*` before the literal
+ * "-" makes sure the LAST " - seg1 / seg2" occurrence in the string is the
+ * one captured, in case the product name itself contains a dash.
+ */
+const PRODUCT_NAME_SIZE_COLOR_PATTERN = /^.*-\s*([^/]+?)\s*\/\s*([^/]+?)\s*$/;
+
+function normalizeSizeToken(value: string): string {
+  return value.trim().toUpperCase();
+}
+
+/**
+ * Attempts to parse Talla/Color embedded in the product name, as a fallback
+ * for orders whose `item.attributes` doesn't carry them. Returns null when
+ * the name doesn't match the expected pattern, or when neither segment
+ * resembles a known talla token (so we can't tell which segment is which).
+ */
+function parseSizeAndColorFromProductName(
+  productName: string | null | undefined,
+): { size: string; color: string } | null {
+  if (!productName) return null;
+
+  const match = productName.match(PRODUCT_NAME_SIZE_COLOR_PATTERN);
+  if (!match) return null;
+
+  const first = match[1].trim();
+  const second = match[2].trim();
+  if (!first || !second) return null;
+
+  const firstIsSize = KNOWN_SIZE_TOKENS.has(normalizeSizeToken(first));
+  const secondIsSize = KNOWN_SIZE_TOKENS.has(normalizeSizeToken(second));
+
+  if (firstIsSize && !secondIsSize) {
+    return { size: first, color: second };
+  }
+  if (secondIsSize && !firstIsSize) {
+    return { size: second, color: first };
+  }
+  if (firstIsSize && secondIsSize) {
+    return { size: first, color: second };
+  }
+
+  return null;
+}
+
+/**
  * Extracts Talla/Color from an order item's free-form `attributes`.
  * Orders imported from Shopify typically don't populate `attributes`,
  * so both values fall back to "-" — known/accepted data limitation.
  */
 export function extractSizeAndColor(
   attributes: Record<string, string> | null | undefined,
+  productName?: string | null,
 ): { size: string; color: string } {
-  return {
-    size: findAttributeValue(attributes, SIZE_ATTRIBUTE_KEYS),
-    color: findAttributeValue(attributes, COLOR_ATTRIBUTE_KEYS),
-  };
+  const size = findAttributeValue(attributes, SIZE_ATTRIBUTE_KEYS);
+  const color = findAttributeValue(attributes, COLOR_ATTRIBUTE_KEYS);
+
+  if (size === "-" && color === "-") {
+    const parsedFromName = parseSizeAndColorFromProductName(productName);
+    if (parsedFromName) return parsedFromName;
+  }
+
+  return { size, color };
 }
 
-function buildRowsForOrder(order: OrderResponseDto): DetailedSaleExportRow[] {
+/**
+ * Normalizes a Peru phone number to digits-only with a guaranteed "51"
+ * country prefix, so the same number matches across orders regardless of
+ * how it was entered (e.g. "+51987654321" vs "987654321").
+ */
+function normalizePhoneNumber(phoneNumber: string | null | undefined): string {
+  let cleanPhone = (phoneNumber || "").replace(/\D/g, "");
+  if (!cleanPhone) return "";
+
+  if (!cleanPhone.startsWith("51")) {
+    if (cleanPhone.startsWith("0")) {
+      cleanPhone = cleanPhone.substring(1);
+    }
+    cleanPhone = `51${cleanPhone}`;
+  }
+
+  return cleanPhone;
+}
+
+function normalizeProductName(productName: string | null | undefined): string {
+  return (productName || "").trim().toLowerCase();
+}
+
+const DUPLICATE_DETECTION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+function appendRelatedOrder(
+  relatedOrderNumbersByOrderId: Map<string, string[]>,
+  orderId: string,
+  relatedOrderNumber: string,
+): void {
+  const existing = relatedOrderNumbersByOrderId.get(orderId);
+  if (existing) {
+    existing.push(relatedOrderNumber);
+  } else {
+    relatedOrderNumbersByOrderId.set(orderId, [relatedOrderNumber]);
+  }
+}
+
+/**
+ * Detects pairs of orders that look like the same customer submitted the
+ * COD form more than once. Two orders are flagged as a possible duplicate
+ * of each other when ALL of:
+ *   1. Same `customer.phoneNumber` (normalized: digits only + "51" country prefix).
+ *   2. At least 1 `item.productName` in common (normalized: trim + lowercase).
+ *   3. `created_at` difference under 24h.
+ *
+ * @returns a Map of `order.id` -> the `orderNumber`s of the OTHER orders it
+ * matched with. Orders with no match are absent from the map.
+ */
+export function detectPossibleDuplicates(
+  orders: OrderResponseDto[],
+): Map<string, string[]> {
+  const relatedOrderNumbersByOrderId = new Map<string, string[]>();
+
+  const normalizedOrders = orders.map((order) => ({
+    order,
+    phone: normalizePhoneNumber(order.customer?.phoneNumber),
+    productNames: new Set(
+      (order.items || []).map((item) => normalizeProductName(item.productName)),
+    ),
+    createdAtMs: new Date(order.created_at).getTime(),
+  }));
+
+  for (let i = 0; i < normalizedOrders.length; i++) {
+    for (let j = i + 1; j < normalizedOrders.length; j++) {
+      const a = normalizedOrders[i];
+      const b = normalizedOrders[j];
+
+      if (!a.phone || a.phone !== b.phone) continue;
+
+      const timeDiffMs = Math.abs(a.createdAtMs - b.createdAtMs);
+      if (Number.isNaN(timeDiffMs) || timeDiffMs >= DUPLICATE_DETECTION_WINDOW_MS) {
+        continue;
+      }
+
+      const hasCommonProduct = Array.from(a.productNames).some(
+        (name) => name !== "" && b.productNames.has(name),
+      );
+      if (!hasCommonProduct) continue;
+
+      appendRelatedOrder(relatedOrderNumbersByOrderId, a.order.id, b.order.orderNumber);
+      appendRelatedOrder(relatedOrderNumbersByOrderId, b.order.id, a.order.orderNumber);
+    }
+  }
+
+  return relatedOrderNumbersByOrderId;
+}
+
+function buildRowsForOrder(
+  order: OrderResponseDto,
+  relatedOrderNumbers: string[],
+): DetailedSaleExportRow[] {
   const approvedPayments = (order.payments || []).filter(
     (p) => p.status === "PAID",
   );
@@ -99,9 +270,11 @@ function buildRowsForOrder(order: OrderResponseDto): DetailedSaleExportRow[] {
   const date = new Date(order.created_at).toLocaleDateString("es-PE");
 
   const items: OrderItemResponseDto[] = order.items || [];
+  const possibleDuplicate = relatedOrderNumbers.length > 0;
+  const relatedOrders = relatedOrderNumbers.join(", ");
 
   return items.map((item) => {
-    const { size, color } = extractSizeAndColor(item.attributes);
+    const { size, color } = extractSizeAndColor(item.attributes, item.productName);
 
     return {
       orderNumber: order.orderNumber,
@@ -134,6 +307,8 @@ function buildRowsForOrder(order: OrderResponseDto): DetailedSaleExportRow[] {
       mapsLink: order.customer?.googleMapsUrl || "-",
       latitude: order.customer?.latitude ?? null,
       longitude: order.customer?.longitude ?? null,
+      possibleDuplicate,
+      relatedOrders,
     };
   });
 }
@@ -146,7 +321,10 @@ function buildRowsForOrder(order: OrderResponseDto): DetailedSaleExportRow[] {
 export function buildDetailedSalesExportRows(
   orders: OrderResponseDto[],
 ): DetailedSaleExportRow[] {
-  return orders.flatMap(buildRowsForOrder);
+  const relatedOrderNumbersByOrderId = detectPossibleDuplicates(orders);
+  return orders.flatMap((order) =>
+    buildRowsForOrder(order, relatedOrderNumbersByOrderId.get(order.id) || []),
+  );
 }
 
 /**
@@ -193,6 +371,8 @@ export function exportDetailedSalesToExcel(
     "LINK MAPS": r.mapsLink,
     Latitud: r.latitude ?? "-",
     Longitud: r.longitude ?? "-",
+    "Posible Duplicado": r.possibleDuplicate ? "Sí" : "No",
+    "Pedidos Relacionados": r.relatedOrders,
   }));
 
   const worksheet = XLSX.utils.json_to_sheet(exportData);

@@ -82,6 +82,9 @@ export default function PaymentVerificationModal({
   const [uploadingProofForId, setUploadingProofForId] = useState<string | null>(
     null,
   );
+  const [processingPaymentId, setProcessingPaymentId] = useState<
+    string | null
+  >(null);
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const pathname = usePathname();
 
@@ -186,6 +189,7 @@ export default function PaymentVerificationModal({
   };
 
   const handleApprovePayment = async (paymentId: string) => {
+    setProcessingPaymentId(paymentId);
     try {
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/approve`,
@@ -196,6 +200,8 @@ export default function PaymentVerificationModal({
     } catch (error) {
       console.error("Error aprobando pago", error);
       toast.error("Error al aprobar el pago");
+    } finally {
+      setProcessingPaymentId(null);
     }
   };
 
@@ -207,6 +213,7 @@ export default function PaymentVerificationModal({
     ) {
       return;
     }
+    setProcessingPaymentId(paymentId);
     try {
       await axios.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/reject`,
@@ -218,6 +225,8 @@ export default function PaymentVerificationModal({
     } catch (error) {
       console.error("Error rechazando pago", error);
       toast.error("Error al rechazar el pago");
+    } finally {
+      setProcessingPaymentId(null);
     }
   };
 
@@ -352,7 +361,19 @@ export default function PaymentVerificationModal({
                               size="sm"
                               variant="outline"
                               className="bg-green-50 hover:bg-green-100 text-green-600"
-                              onClick={() => handleApprovePayment(payment.id)}
+                              disabled={processingPaymentId === payment.id}
+                              onClick={() => {
+                                if (!payment.paymentProofUrl) {
+                                  if (
+                                    !confirm(
+                                      "¿Seguro que querés aprobar este pago sin comprobante adjunto?",
+                                    )
+                                  ) {
+                                    return;
+                                  }
+                                }
+                                handleApprovePayment(payment.id);
+                              }}
                             >
                               <Check className="h-4 w-4 mr-1" />
                               Aprobar
@@ -361,6 +382,7 @@ export default function PaymentVerificationModal({
                               size="sm"
                               variant="outline"
                               className="bg-red-50 hover:bg-red-100 text-red-600"
+                              disabled={processingPaymentId === payment.id}
                               onClick={() => handleRejectPayment(payment.id)}
                             >
                               <X className="h-4 w-4 mr-1" />
