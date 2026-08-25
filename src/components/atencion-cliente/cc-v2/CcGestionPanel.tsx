@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Check, Phone, PhoneOff, MapPin, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SubEstadoCc } from "@/interfaces/IOrder";
@@ -40,6 +41,7 @@ function TerminalBadge({ colorCls, label, sub }: { colorCls: string; label: stri
 }
 
 export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosCompletos, onUpdated, aliclikDispatchStatus, aliclikSyncedAt, evaStatus, evaSyncedAt }: Props) {
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState<string | null>(null);
   const [confirmando, setConfirmando] = useState(false);
   const [checks, setChecks] = useState(() => CHECKLIST_ITEMS.map(() => false));
@@ -54,6 +56,9 @@ export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosComple
       try {
         const result = await updateSubEstadoCC(orderId, nuevoEstado, comentario);
         onUpdated();
+        if (TERMINAL_STATES.includes(nuevoEstado) || result.autoCanceled) {
+          queryClient.invalidateQueries({ queryKey: ["orders"] });
+        }
         if (result.autoCanceled) {
           toast.warning("No contesta, limite de intentos. Se envia a Anulados");
         } else {
@@ -67,7 +72,7 @@ export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosComple
         setChecks(CHECKLIST_ITEMS.map(() => false));
       }
     },
-    [orderId, onUpdated],
+    [orderId, onUpdated, queryClient],
   );
 
   const cancelarConfirmacion = () => {
@@ -82,6 +87,7 @@ export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosComple
     try {
       await confirmarEntregaLima(orderId, new Date(limaDatetime).toISOString());
       onUpdated();
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
       toast.success("Entrega Lima confirmada");
     } catch {
       toast.error("Error al confirmar entrega Lima");
@@ -246,6 +252,7 @@ export function CcGestionPanel({ orderId, subEstadoCc, callAttempts, datosComple
                   try {
                     await confirmarDespacho(orderId);
                     onUpdated();
+                    queryClient.invalidateQueries({ queryKey: ["orders"] });
                     toast.success("Pedido confirmado → pasó a Operaciones como Preparado");
                   } catch (err: any) {
                     const msg = err?.response?.data?.message ?? "Error al confirmar el despacho";

@@ -1,6 +1,7 @@
 import {
   extractSizeAndColor,
   buildDetailedSalesExportRows,
+  detectPossibleDuplicates,
 } from '../exportDetailedSalesReport';
 import type {
   OrderResponseDto,
@@ -179,6 +180,38 @@ describe('extractSizeAndColor', () => {
     expect(extractSizeAndColor({ Talla: '0' })).toEqual({ size: '0', color: '-' });
     expect(extractSizeAndColor({ Color: '' })).toEqual({ size: '-', color: '' });
   });
+
+  it('usa attributes directo (sin fallback al nombre) cuando ya trae talla/color, aunque el nombre también matchee el patrón', () => {
+    const result = extractSizeAndColor(
+      { Talla: 'M', Color: 'Negro' },
+      'CHOMPA OVEJERA KUNCA - S / Arena',
+    );
+    expect(result).toEqual({ size: 'M', color: 'Negro' });
+  });
+
+  it('con attributes vacío, hace fallback parseando "Talla / Color" del nombre — talla primero', () => {
+    const result = extractSizeAndColor({}, 'CHOMPA OVEJERA KUNCA - S / Arena');
+    expect(result).toEqual({ size: 'S', color: 'Arena' });
+  });
+
+  it('con attributes null, hace fallback parseando "Color / Talla" del nombre — talla segundo', () => {
+    const result = extractSizeAndColor(null, 'CHOMPA OVEJERA UNISEX - Negro / M');
+    expect(result).toEqual({ size: 'M', color: 'Negro' });
+  });
+
+  it('con attributes undefined, hace fallback parseando el nombre', () => {
+    const result = extractSizeAndColor(undefined, 'POLERA BASICA - XL / Blanco');
+    expect(result).toEqual({ size: 'XL', color: 'Blanco' });
+  });
+
+  it('nombre sin el patrón "- seg1 / seg2" esperado devuelve "-"/"-" (sin fallback posible)', () => {
+    const result = extractSizeAndColor({}, 'Producto genérico sin variante');
+    expect(result).toEqual({ size: '-', color: '-' });
+  });
+
+  it('sin nombre de producto (undefined) y attributes vacío devuelve "-"/"-"', () => {
+    expect(extractSizeAndColor({})).toEqual({ size: '-', color: '-' });
+  });
 });
 
 describe('buildDetailedSalesExportRows', () => {
@@ -309,6 +342,145 @@ describe('buildDetailedSalesExportRows', () => {
 
   it('devuelve un array vacío cuando la lista de pedidos está vacía', () => {
     expect(buildDetailedSalesExportRows([])).toEqual([]);
+  });
+});
+
+describe('detectPossibleDuplicates', () => {
+  it('marca mutuamente 2 pedidos con el mismo teléfono (distinto formato), producto en común y <24h', () => {
+    const orderA = makeOrder({
+      id: 'order-a',
+      orderNumber: '#3001',
+      customer: { ...makeOrder().customer, phoneNumber: '+51987654321' },
+      items: [makeItem({ id: 'item-a', productName: 'Polo Negro' })],
+      created_at: '2026-08-01T10:00:00.000Z',
+    });
+    const orderB = makeOrder({
+      id: 'order-b',
+      orderNumber: '#3002',
+      customer: { ...makeOrder().customer, phoneNumber: '987654321' },
+      items: [makeItem({ id: 'item-b', productName: 'Polo Negro' })],
+      created_at: '2026-08-01T15:00:00.000Z', // 5h después
+    });
+
+    const result = detectPossibleDuplicates([orderA, orderB]);
+
+    expect(result.get('order-a')).toEqual(['#3002']);
+    expect(result.get('order-b')).toEqual(['#3001']);
+  });
+
+  it('NO marca pedidos con teléfonos distintos aunque compartan producto y sean cercanos en el tiempo', () => {
+    const orderA = makeOrder({
+      id: 'order-a',
+      orderNumber: '#3001',
+      customer: { ...makeOrder().customer, phoneNumber: '987654321' },
+      items: [makeItem({ productName: 'Polo Negro' })],
+      created_at: '2026-08-01T10:00:00.000Z',
+    });
+    const orderB = makeOrder({
+      id: 'order-b',
+      orderNumber: '#3002',
+      customer: { ...makeOrder().customer, phoneNumber: '912345678' },
+      items: [makeItem({ productName: 'Polo Negro' })],
+      created_at: '2026-08-01T11:00:00.000Z',
+    });
+
+    const result = detectPossibleDuplicates([orderA, orderB]);
+
+    expect(result.size).toBe(0);
+  });
+
+  it('NO marca pedidos con el mismo teléfono si no comparten ningún producto', () => {
+    const orderA = makeOrder({
+      id: 'order-a',
+      orderNumber: '#3001',
+      customer: { ...makeOrder().customer, phoneNumber: '987654321' },
+      items: [makeItem({ productName: 'Polo Negro' })],
+      created_at: '2026-08-01T10:00:00.000Z',
+    });
+    const orderB = makeOrder({
+      id: 'order-b',
+      orderNumber: '#3002',
+      customer: { ...makeOrder().customer, phoneNumber: '987654321' },
+      items: [makeItem({ productName: 'Jean Azul' })],
+      created_at: '2026-08-01T11:00:00.000Z',
+    });
+
+    const result = detectPossibleDuplicates([orderA, orderB]);
+
+    expect(result.size).toBe(0);
+  });
+
+  it('NO marca pedidos con el mismo teléfono y producto si difieren en 24h o más', () => {
+    const orderA = makeOrder({
+      id: 'order-a',
+      orderNumber: '#3001',
+      customer: { ...makeOrder().customer, phoneNumber: '987654321' },
+      items: [makeItem({ productName: 'Polo Negro' })],
+      created_at: '2026-08-01T00:00:00.000Z',
+    });
+    const orderB = makeOrder({
+      id: 'order-b',
+      orderNumber: '#3002',
+      customer: { ...makeOrder().customer, phoneNumber: '987654321' },
+      items: [makeItem({ productName: 'Polo Negro' })],
+      created_at: '2026-08-02T01:00:00.000Z', // 25h después
+    });
+
+    const result = detectPossibleDuplicates([orderA, orderB]);
+
+    expect(result.size).toBe(0);
+  });
+
+  it('devuelve un Map vacío cuando no hay pedidos', () => {
+    expect(detectPossibleDuplicates([]).size).toBe(0);
+  });
+});
+
+describe('buildDetailedSalesExportRows — columnas "Posible Duplicado" / "Pedidos Relacionados"', () => {
+  it('marca possibleDuplicate=true y relatedOrders con el otro pedido, en TODAS las filas de ambos pedidos duplicados', () => {
+    const orderA = makeOrder({
+      id: 'order-a',
+      orderNumber: '#4001',
+      customer: { ...makeOrder().customer, phoneNumber: '987654321' },
+      items: [
+        makeItem({ id: 'item-a1', productName: 'Polo Negro' }),
+        makeItem({ id: 'item-a2', productName: 'Gorra Roja' }),
+      ],
+      created_at: '2026-08-01T10:00:00.000Z',
+    });
+    const orderB = makeOrder({
+      id: 'order-b',
+      orderNumber: '#4002',
+      customer: { ...makeOrder().customer, phoneNumber: '987654321' },
+      items: [makeItem({ id: 'item-b1', productName: 'Polo Negro' })],
+      created_at: '2026-08-01T12:00:00.000Z',
+    });
+
+    const rows = buildDetailedSalesExportRows([orderA, orderB]);
+    const rowsA = rows.filter((r) => r.orderNumber === '#4001');
+    const rowsB = rows.filter((r) => r.orderNumber === '#4002');
+
+    expect(rowsA).toHaveLength(2);
+    for (const row of rowsA) {
+      expect(row.possibleDuplicate).toBe(true);
+      expect(row.relatedOrders).toBe('#4002');
+    }
+    expect(rowsB).toHaveLength(1);
+    expect(rowsB[0].possibleDuplicate).toBe(true);
+    expect(rowsB[0].relatedOrders).toBe('#4001');
+  });
+
+  it('un pedido sin duplicados tiene possibleDuplicate=false y relatedOrders=""', () => {
+    const order = makeOrder({
+      orderNumber: '#5001',
+      customer: { ...makeOrder().customer, phoneNumber: '900000000' },
+      items: [makeItem({ productName: 'Polo Negro' })],
+    });
+
+    const rows = buildDetailedSalesExportRows([order]);
+
+    expect(rows[0].possibleDuplicate).toBe(false);
+    expect(rows[0].relatedOrders).toBe('');
   });
 });
 

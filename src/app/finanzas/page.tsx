@@ -201,16 +201,24 @@ export default function FinanzasPage() {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const [ordersRes, guidesRes] = await Promise.all([
+      const [ordersRes, leadsCodRes, guidesRes] = await Promise.all([
         axios.get<OrderHeader[]>(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+        ),
+        axios.get<OrderHeader[]>(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}/leads-cod`,
         ),
         axios.get(
           `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
         ),
       ]);
 
-      const mappedSales = ordersRes.data.map(mapOrderToSale);
+      const ordersById = new Map<string, OrderHeader>();
+      ordersRes.data.forEach((order) => ordersById.set(order.id, order));
+      leadsCodRes.data.forEach((order) => ordersById.set(order.id, order));
+      const allOrders = Array.from(ordersById.values());
+
+      const mappedSales = allOrders.map(mapOrderToSale);
       const allGuides = guidesRes.data || [];
 
       // Crear un mapa de orderId -> guide para acceso O(1)
