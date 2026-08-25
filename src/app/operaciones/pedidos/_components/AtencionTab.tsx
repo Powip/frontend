@@ -99,6 +99,18 @@ export function AtencionTab({
     [sales, subView],
   );
 
+  const statusOptions = useMemo(() => {
+    const set = new Set<Sale["status"]>();
+    for (const s of sales) set.add(s.status);
+    return Array.from(set);
+  }, [sales]);
+
+  const channelOptions = useMemo(() => {
+    const set = new Set<string>(actions.salesChannels);
+    for (const s of sales) if (s.salesChannel) set.add(s.salesChannel);
+    return Array.from(set).sort();
+  }, [sales, actions.salesChannels]);
+
   const motivoOptions = useMemo(() => {
     if (subView !== "trabados") return [];
     const set = new Set<string>();
@@ -218,7 +230,11 @@ export function AtencionTab({
         }}
         showZoneFilter
         showCourierFilter
+        showStatusFilter
+        showChannelFilter
         availableCouriers={actions.apiCouriers}
+        availableStatuses={statusOptions}
+        availableChannels={channelOptions}
       />
 
       {subView !== "devoluciones" && selectedSales.length > 0 && (

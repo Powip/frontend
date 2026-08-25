@@ -48,6 +48,12 @@ export function AnuladosTab({
   });
   const [page, setPage] = useState(1);
 
+  const channelOptions = useMemo(() => {
+    const set = new Set<string>(actions.salesChannels);
+    for (const s of sales) if (s.salesChannel) set.add(s.salesChannel);
+    return Array.from(set).sort();
+  }, [sales, actions.salesChannels]);
+
   const filtered = useMemo(
     () => applyFilters(sales, filters),
     [sales, filters],
@@ -91,6 +97,8 @@ export function AnuladosTab({
         }}
         showZoneFilter
         showSourceFilter
+        showChannelFilter
+        availableChannels={channelOptions}
       />
 
       <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">

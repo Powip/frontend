@@ -221,6 +221,18 @@ export function PorDespacharTab({
     });
   };
 
+  const statusOptions = useMemo(() => {
+    const set = new Set<OrderStatus>();
+    for (const s of sales) set.add(s.status);
+    return Array.from(set);
+  }, [sales]);
+
+  const channelOptions = useMemo(() => {
+    const set = new Set<string>(actions.salesChannels);
+    for (const s of sales) if (s.salesChannel) set.add(s.salesChannel);
+    return Array.from(set).sort();
+  }, [sales, actions.salesChannels]);
+
   // Cuántos pedidos salen cada día — base del pronóstico Y del calendario mensual.
   const dayCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -550,7 +562,11 @@ export function PorDespacharTab({
         showZoneFilter
         showGuideFilter
         showCourierFilter
+        showStatusFilter
+        showChannelFilter
         availableCouriers={actions.apiCouriers}
+        availableStatuses={statusOptions}
+        availableChannels={channelOptions}
       />
 
       {noLlamadosEnSeleccion > 0 && (

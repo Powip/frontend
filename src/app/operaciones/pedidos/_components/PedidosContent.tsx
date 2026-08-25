@@ -21,6 +21,7 @@ import {
   getPedidosTab,
 } from "@/utils/domain/operations-pedidos-tabs";
 import { fetchCouriers } from "@/services/courierService";
+import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { reassignSeller } from "@/services/atencionClienteService";
 import { getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
@@ -675,9 +676,14 @@ export function PedidosContent() {
     [getUserInfo, fetchOrders],
   );
 
+  const salesChannels = auth?.company?.sales_channels?.length
+    ? auth.company.sales_channels
+    : DEFAULT_SALES_CHANNELS;
+
   const actions: PedidosActions = {
     can,
     apiCouriers,
+    salesChannels,
     isBulkLoading,
     onView: handleView,
     onOpenPayment: setPaymentSale,

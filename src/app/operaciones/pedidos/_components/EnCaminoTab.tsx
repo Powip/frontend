@@ -103,6 +103,18 @@ export function EnCaminoTab({
     return Array.from(set).sort();
   }, [sales, actions.apiCouriers]);
 
+  const statusOptions = useMemo(() => {
+    const set = new Set<Sale["status"]>();
+    for (const s of sales) set.add(s.status);
+    return Array.from(set);
+  }, [sales]);
+
+  const channelOptions = useMemo(() => {
+    const set = new Set<string>(actions.salesChannels);
+    for (const s of sales) if (s.salesChannel) set.add(s.salesChannel);
+    return Array.from(set).sort();
+  }, [sales, actions.salesChannels]);
+
   const mas15Dias = useMemo(() => sales.filter((s) => daysSince(s.createdAt) > 15), [sales]);
 
   const byQf = useMemo(() => {
@@ -235,7 +247,11 @@ export function EnCaminoTab({
           setPage(1);
         }}
         showZoneFilter
+        showStatusFilter
+        showChannelFilter
         availableCouriers={actions.apiCouriers}
+        availableStatuses={statusOptions}
+        availableChannels={channelOptions}
       />
 
       {mas15Dias.length > 0 && qf !== "mas-15-dias" && (

@@ -5,6 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Search, X, ChevronDown, ChevronUp, Filter } from "lucide-react";
+import { OrderStatus } from "@/interfaces/IOrder";
+import { getStatusLabel } from "@/utils/domain/orders-status-flow";
 
 export interface SalesFilters {
   dateFrom: string;
@@ -18,6 +20,8 @@ export interface SalesFilters {
   zone: string;
   hasGuide: "" | "yes" | "no";
   source: "" | "shopify" | "google_sheets" | "manual";
+  status: OrderStatus | "";
+  salesChannel: string;
 }
 
 export const emptySalesFilters: SalesFilters = {
@@ -32,6 +36,8 @@ export const emptySalesFilters: SalesFilters = {
   zone: "",
   hasGuide: "",
   source: "",
+  status: "",
+  salesChannel: "",
 };
 
 interface SalesTableFiltersProps {
@@ -42,7 +48,18 @@ interface SalesTableFiltersProps {
   showZoneFilter?: boolean;
   showGuideFilter?: boolean;
   showSourceFilter?: boolean;
+  showStatusFilter?: boolean;
+  showChannelFilter?: boolean;
   availableCouriers?: string[];
+  /** Estados reales presentes en la vista actual — evita ofrecer opciones que no matchean nada. */
+  availableStatuses?: OrderStatus[];
+  /** Canales de venta de la empresa (Configuración › Tiendas) + los que ya aparecen en los datos. */
+  availableChannels?: string[];
+}
+
+/** "TIENDA_FISICA" → "TIENDA FISICA" — mismo criterio que el <select> de Canal de venta en Registrar Venta. */
+function channelLabel(channel: string): string {
+  return channel.replace(/_/g, " ");
 }
 
 // Debe reflejar exactamente las opciones reales de PaymentVerificationModal
@@ -110,7 +127,11 @@ export function SalesTableFilters({
   showZoneFilter = false,
   showGuideFilter = false,
   showSourceFilter = true,
+  showStatusFilter = false,
+  showChannelFilter = false,
   availableCouriers = [],
+  availableStatuses = [],
+  availableChannels = [],
 }: SalesTableFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -219,6 +240,46 @@ export function SalesTableFilters({
                 ))}
               </select>
             </div>
+
+            {/* Estado */}
+            {showStatusFilter && (
+              <div className="space-y-1">
+                <Label className="text-xs">Estado</Label>
+                <select
+                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  value={filters.status}
+                  onChange={(e) =>
+                    updateFilter("status", e.target.value as OrderStatus | "")
+                  }
+                >
+                  <option value="">Todos</option>
+                  {availableStatuses.map((s) => (
+                    <option key={s} value={s}>
+                      {getStatusLabel(s)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Canal de venta */}
+            {showChannelFilter && (
+              <div className="space-y-1">
+                <Label className="text-xs">Canal de venta</Label>
+                <select
+                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  value={filters.salesChannel}
+                  onChange={(e) => updateFilter("salesChannel", e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {availableChannels.map((c) => (
+                    <option key={c} value={c}>
+                      {channelLabel(c)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Saldo pendiente */}
             <div className="space-y-1">
@@ -376,6 +437,8 @@ export function applyFilters<T extends {
   zone?: string;
   guideNumber?: string | null;
   externalSource?: string | null;
+  status?: OrderStatus;
+  salesChannel?: string | null;
 }>(data: T[], filters: SalesFilters): T[] {
   return data.filter((item) => {
     // Search filter (cliente, teléfono, N° orden)
@@ -442,6 +505,16 @@ export function applyFilters<T extends {
 
     // Zone filter
     if (filters.zone && item.zone !== filters.zone) {
+      return false;
+    }
+
+    // Status filter
+    if (filters.status && item.status !== filters.status) {
+      return false;
+    }
+
+    // Sales channel filter
+    if (filters.salesChannel && item.salesChannel !== filters.salesChannel) {
       return false;
     }
 

@@ -42,6 +42,7 @@ export interface Sale {
   cancellationReason?: string | null;
   hasPendingApprovalPayments: boolean;
   sellerName: string | null;
+  salesChannel?: string | null;
   externalSource?: string | null;
   externalId?: string | null;
   aliclikDispatchStatus?: string | null;
@@ -116,6 +117,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     cancellationReason: order.cancellationReason ?? null,
     hasPendingApprovalPayments,
     sellerName: order.sellerName ?? null,
+    salesChannel: order.salesChannel ?? null,
     externalSource: order.externalSource ?? null,
     externalId: order.externalId ?? null,
     aliclikDispatchStatus: order.aliclikDispatchStatus ?? null,
@@ -219,6 +221,7 @@ export function saleSource(sale: Sale): SaleSource {
 export interface PedidosActions {
   can: (permission: OpsPermission) => boolean;
   apiCouriers: string[];
+  salesChannels: string[];
   isBulkLoading: boolean;
   onView: (sale: Sale) => void;
   onOpenPayment: (sale: Sale) => void;

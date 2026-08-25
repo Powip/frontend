@@ -70,6 +70,7 @@ export interface PrintLabelCompany {
   name?: string;
   cuit?: string;
   logoUrl?: string;
+  billingAddress?: string;
   stores?: { id: string; name: string }[];
 }
 

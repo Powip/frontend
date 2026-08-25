@@ -43,6 +43,12 @@ export function HistorialTab({
   const [statusFilter, setStatusFilter] = useState<StatusChip>("");
   const [page, setPage] = useState(1);
 
+  const channelOptions = useMemo(() => {
+    const set = new Set<string>(actions.salesChannels);
+    for (const s of sales) if (s.salesChannel) set.add(s.salesChannel);
+    return Array.from(set).sort();
+  }, [sales, actions.salesChannels]);
+
   const byStatus = useMemo(() => {
     if (statusFilter === "SALDO") return sales.filter((s) => s.pendingPayment > 0);
     return statusFilter ? sales.filter((s) => s.status === statusFilter) : sales;
@@ -96,6 +102,8 @@ export function HistorialTab({
         showZoneFilter
         showGuideFilter
         showSourceFilter
+        showChannelFilter
+        availableChannels={channelOptions}
       />
 
       <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
