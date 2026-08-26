@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Label } from "@/components/ui/label";
 
-import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
+import { OrderHeader, OrderStatus, SubEstadoCc } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
@@ -71,6 +71,17 @@ const ALL_STATUSES: OrderStatus[] = [
   "ANULADO",
 ];
 
+const PAGOS_PENDIENTES_STATUSES: OrderStatus[] = [
+  "PREPARADO",
+  "LLAMADO",
+  "ASIGNADO_A_GUIA",
+  "EN_ENVIO",
+  "ENTREGADO",
+  "PAGADO",
+];
+
+const CC_CONFIRMED_SUBESTADOS: SubEstadoCc[] = ["confirmado", "carrito_recuperado"];
+
 export interface Sale {
   id: string;
   orderNumber: string;
@@ -105,6 +116,7 @@ export interface Sale {
   sellerName: string | null;
   externalSource?: string | null;
   externalId?: string | null;
+  subEstadoCc?: SubEstadoCc | null;
 }
 
 /* -----------------------------------------
@@ -158,6 +170,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
     sellerName: order.sellerName ?? null,
     externalSource: order.externalSource ?? null,
     externalId: order.externalId ?? null,
+    subEstadoCc: order.subEstadoCc ?? null,
   };
 }
 
@@ -242,7 +255,12 @@ export default function FinanzasPage() {
         return sale;
       });
 
-      setSales(enrichedSales);
+      // Excluir pedidos anulados: no corresponde revisarlos en ninguna vista de Finanzas
+      const activeSales = enrichedSales.filter(
+        (sale) => sale.status !== ORDER_STATUS.ANULADO,
+      );
+
+      setSales(activeSales);
     } catch (error) {
       console.error("Error fetching orders", error);
     }
@@ -873,7 +891,12 @@ Estado: ${sale.status}
 
   // Ventas con pagos pendientes de aprobación
   const pagosPendientes = useMemo(() => {
-    const filtered = sales.filter((s) => s.hasPendingPayments);
+    const filtered = sales.filter(
+      (s) =>
+        s.hasPendingPayments &&
+        PAGOS_PENDIENTES_STATUSES.includes(s.status) &&
+        (!s.subEstadoCc || CC_CONFIRMED_SUBESTADOS.includes(s.subEstadoCc)),
+    );
     return applyFilters(filtered, filtersPagosPendientes);
   }, [sales, filtersPagosPendientes]);
 
