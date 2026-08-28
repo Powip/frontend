@@ -13,9 +13,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { useDownloadTaxDocument } from "@/hooks/sunat/sunat-document/use-download-tax-document";
-import type { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import { useSunatDocumentPdf } from "@/features/sunat/sunat-document/hooks/use-sunat-document-pdf";
+import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import type { Guia, Nota } from "@/types/facturacion";
+import { downloadFile } from "@/utils/http/download-file";
 
 interface ReporteData {
   title: string;
@@ -155,17 +156,49 @@ function abrirImpresionPDF(title: string, headers: string[], rows: (string | num
 }
 
 interface ReportesTabProps {
-  comprobanteRows: ComprobanteRow[];
+  comprobanteRows: TaxDocumentRow[];
   notas: Nota[];
   guias: Guia[];
 }
 
+function getFullNumber(row: TaxDocumentRow): string | null {
+  if (!row.taxDocument) {
+    return null;
+  }
+
+  return `${row.taxDocument.series}-${row.taxDocument.correlative}`;
+}
+
+/** Spanish label matching the estado shown elsewhere in Facturación. */
+function getEstadoLabel(row: TaxDocumentRow): "ACEPTADO" | "ACEPTADO_CON_OBS" {
+  return row.taxDocument?.cdrStatus === "ACCEPTED_WITH_OBSERVATION"
+    ? "ACEPTADO_CON_OBS"
+    : "ACEPTADO";
+}
+
 export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps) {
-  const { downloadPdf, downloadXml, isDownloading } = useDownloadTaxDocument();
+  const {
+    mutate: downloadSunatDocumentPdf,
+    isPending: isDownloadingPdf,
+    variables: downloadingDocumentId,
+  } = useSunatDocumentPdf();
 
   const aceptados = comprobanteRows.filter(
-    (row) => row.estado === "ACEPTADO" || row.estado === "ACEPTADO_CON_OBS",
+    (row) =>
+      row.taxDocument?.cdrStatus === "ACCEPTED" ||
+      row.taxDocument?.cdrStatus === "ACCEPTED_WITH_OBSERVATION",
   );
+
+  const handleDownloadPdf = (row: TaxDocumentRow) => {
+    if (!row.taxDocument) {
+      return;
+    }
+
+    downloadSunatDocumentPdf(row.taxDocument.id, {
+      onSuccess: (file) => downloadFile(file),
+      onError: () => toast.error("No se pudo descargar el PDF del comprobante"),
+    });
+  };
 
   const getReporte = (key: ReporteKey): ReporteData => {
     if (key === "ventas") {
@@ -190,14 +223,14 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
 
           return [
             new Date(row.sale.createdAt).toLocaleDateString("es-PE"),
-            row.tipo === "01" ? "Factura" : "Boleta",
-            row.fullNumber || "",
+            row.taxDocument?.taxDocumentType === "01" ? "Factura" : "Boleta",
+            getFullNumber(row) || "",
             row.sale.customer.fullName,
             row.sale.customer.documentNumber || "",
             baseImponible.toFixed(2),
             igv.toFixed(2),
             total.toFixed(2),
-            row.estado,
+            getEstadoLabel(row),
           ];
         }),
       };
@@ -223,14 +256,15 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
           const total = Number(row.sale.grandTotal);
           const baseImponible = total / 1.18;
           const igv = total - baseImponible;
-          const [serie = "", numero = ""] = (row.fullNumber || "-").split("-");
+          const [serie = "", numero = ""] = (getFullNumber(row) || "-").split("-");
+          const tipo = row.taxDocument?.taxDocumentType || "03";
 
           return [
             new Date(row.sale.createdAt).toLocaleDateString("es-PE"),
-            row.tipo || "03",
+            tipo,
             serie,
             numero,
-            row.tipo === "01" ? "6" : "1",
+            tipo === "01" ? "6" : "1",
             row.sale.customer.documentNumber || "",
             row.sale.customer.fullName,
             baseImponible.toFixed(2),
@@ -400,7 +434,7 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
           <CardTitle className="text-base">Comprobantes individuales</CardTitle>
 
           <CardDescription>
-            Descarga el PDF o el XML firmado tal como fue enviado a SUNAT para cada comprobante
+            Descarga el PDF del comprobante tal como fue enviado a SUNAT para cada comprobante
             aceptado.
           </CardDescription>
         </CardHeader>
@@ -427,7 +461,9 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
                   </TableRow>
                 ) : (
                   aceptados.map((row) => {
-                    const document = row.document;
+                    const taxDocument = row.taxDocument;
+                    const isDownloading =
+                      isDownloadingPdf && downloadingDocumentId === taxDocument?.id;
 
                     return (
                       <TableRow key={row.sale.id}>
@@ -435,7 +471,7 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
                           {new Date(row.sale.createdAt).toLocaleDateString("es-PE")}
                         </TableCell>
 
-                        <TableCell className="font-medium">{row.fullNumber || "—"}</TableCell>
+                        <TableCell className="font-medium">{getFullNumber(row) || "—"}</TableCell>
 
                         <TableCell>{row.sale.customer.fullName}</TableCell>
 
@@ -444,36 +480,21 @@ export function ReportesTab({ comprobanteRows, notas, guias }: ReportesTabProps)
                         </TableCell>
 
                         <TableCell className="text-right">
-                          {document ? (
+                          {taxDocument ? (
                             <div className="flex justify-end gap-2">
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="gap-1.5"
-                                disabled={isDownloading(row.sale.id, "pdf")}
-                                onClick={() => downloadPdf(document)}
+                                disabled={isDownloading}
+                                onClick={() => handleDownloadPdf(row)}
                               >
-                                {isDownloading(row.sale.id, "pdf") ? (
+                                {isDownloading ? (
                                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 ) : (
                                   <Download className="h-3.5 w-3.5 text-red-600" />
                                 )}
                                 PDF
-                              </Button>
-
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="gap-1.5"
-                                disabled={isDownloading(row.sale.id, "xml")}
-                                onClick={() => downloadXml(document)}
-                              >
-                                {isDownloading(row.sale.id, "xml") ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Download className="h-3.5 w-3.5 text-blue-600" />
-                                )}
-                                XML
                               </Button>
                             </div>
                           ) : (

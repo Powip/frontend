@@ -18,7 +18,6 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import { useSunatProfiles } from "@/features/sunat/sunat-profile/hooks/use-sunat-profiles";
 import { getCertificateStatus } from "@/features/sunat/sunat-profile/utils/get-certificate-status";
-import { type ComprobanteRow, useComprobantesSunat } from "@/hooks/useComprobantesSunat";
 import { useFacturacionMock } from "@/hooks/useFacturacionMock";
 import { useTaxDocuments } from "@/hooks/useTaxDocuments";
 import { cn } from "@/lib/utils";
@@ -28,10 +27,10 @@ export default function FacturacionPage() {
   const { auth, loading: authLoading } = useAuth();
   const router = useRouter();
 
-  // Legacy hook used by the remaining legacy tabs.
-  const comprobantes = useComprobantesSunat();
-
-  // New tax-document hook used by TaxDocumentsTab.
+  // Single source of truth for comprobantes: real sales + SUNAT documents.
+  // The remaining legacy tabs (Guías, Notas, Reportes) reuse this same
+  // real data — only their own local, not-yet-implemented state (guías,
+  // notas) still comes from useFacturacionMock.
   const taxDocuments = useTaxDocuments();
 
   const mock = useFacturacionMock();
@@ -67,39 +66,23 @@ export default function FacturacionPage() {
     );
   }
 
-  /*
-   * Legacy tabs still consume ComprobanteRow.
-   * Keep this handler until those components are migrated to TaxDocumentRow.
-   */
-  const openNotaCredito = (row?: ComprobanteRow) => {
+  const openNotaCredito = (row?: TaxDocumentRow) => {
     setNcPreselectId(row?.sale.id);
     setNcOpen(true);
   };
 
-  /*
-   * TaxDocumentsTab now emits TaxDocumentRow.
-   * The modal only needs the sale ID for preselection, so we adapt here.
-   */
-  const openNotaCreditoFromTaxDocument = (row: TaxDocumentRow) => {
-    setNcPreselectId(row.sale.id);
-    setNcOpen(true);
-  };
-
-  const aceptados = comprobantes.rows.filter(
-    (row) => row.estado === "ACEPTADO" || row.estado === "ACEPTADO_CON_OBS",
+  const aceptados = taxDocuments.rows.filter(
+    (row) =>
+      row.taxDocument?.cdrStatus === "ACCEPTED" ||
+      row.taxDocument?.cdrStatus === "ACCEPTED_WITH_OBSERVATION",
   );
 
   const refreshAll = () => {
-    // Legacy data
-    comprobantes.refreshSales();
-    comprobantes.refreshDocuments();
-
-    // New tax-document data
     taxDocuments.refreshSales();
     taxDocuments.refreshListDocuments();
   };
 
-  const isRefreshing = comprobantes.loading || taxDocuments.loading;
+  const isRefreshing = taxDocuments.loading;
 
   return (
     <div className="facturacion-theme mx-auto max-w-7xl space-y-6 p-6">
@@ -216,15 +199,13 @@ export default function FacturacionPage() {
 
         {/* NEW Tax Documents implementation */}
         <TabsContent value="comprobantes" className="pt-4">
-          <TaxDocumentsTab
-            comprobantes={taxDocuments}
-            onGenerarNota={openNotaCreditoFromTaxDocument}
-          />
+          <TaxDocumentsTab comprobantes={taxDocuments} onGenerarNota={openNotaCredito} />
         </TabsContent>
 
-        {/* Legacy components */}
+        {/* Legacy tabs: no backend yet for guías/notas emission (mock only),
+            but they read real comprobante data from taxDocuments. */}
         <TabsContent value="guias" className="pt-4">
-          <GuiasTab mock={mock} comprobanteRows={comprobantes.rows} />
+          <GuiasTab mock={mock} comprobanteRows={taxDocuments.rows} />
         </TabsContent>
 
         <TabsContent value="nc" className="pt-4">
@@ -236,7 +217,7 @@ export default function FacturacionPage() {
         </TabsContent>
 
         <TabsContent value="reportes" className="pt-4">
-          <ReportesTab comprobanteRows={comprobantes.rows} notas={mock.notas} guias={mock.guias} />
+          <ReportesTab comprobanteRows={taxDocuments.rows} notas={mock.notas} guias={mock.guias} />
         </TabsContent>
 
         <TabsContent value="cert" className="pt-4">

@@ -15,13 +15,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import type { useFacturacionMock } from "@/hooks/useFacturacionMock";
 import { ESTADOS_GUIA, MOTIVOS_TRASLADO } from "@/types/facturacion";
 
 interface GuiasTabProps {
   mock: ReturnType<typeof useFacturacionMock>;
-  comprobanteRows: ComprobanteRow[];
+  comprobanteRows: TaxDocumentRow[];
+}
+
+function getFullNumber(row: TaxDocumentRow): string | null {
+  if (!row.taxDocument) {
+    return null;
+  }
+
+  return `${row.taxDocument.series}-${row.taxDocument.correlative}`;
 }
 
 export function GuiasTab({ mock, comprobanteRows }: GuiasTabProps) {
@@ -34,7 +42,7 @@ export function GuiasTab({ mock, comprobanteRows }: GuiasTabProps) {
         id: r.sale.id,
         orderNumber: r.sale.orderNumber,
         cliente: r.sale.customer.fullName,
-        fullNumber: r.fullNumber,
+        fullNumber: getFullNumber(r),
       })),
     [comprobanteRows],
   );

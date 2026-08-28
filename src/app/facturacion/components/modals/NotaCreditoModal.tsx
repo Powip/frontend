@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import type { ComprobanteRow } from "@/hooks/useComprobantesSunat";
+import type { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 import type { useFacturacionMock } from "@/hooks/useFacturacionMock";
 
 const MOTIVOS_NC = [
@@ -53,9 +53,17 @@ const MOTIVOS_TOTAL = new Set<string>([
 interface NotaCreditoModalProps {
   isOpen: boolean;
   onClose: () => void;
-  aceptados: ComprobanteRow[];
+  aceptados: TaxDocumentRow[];
   preselectId?: string;
   crearNota: ReturnType<typeof useFacturacionMock>["crearNota"];
+}
+
+function getFullNumber(row: TaxDocumentRow): string | null {
+  if (!row.taxDocument) {
+    return null;
+  }
+
+  return `${row.taxDocument.series}-${row.taxDocument.correlative}`;
 }
 
 export default function NotaCreditoModal({
@@ -163,8 +171,8 @@ export default function NotaCreditoModal({
     }
 
     crearNota({
-      original: original.fullNumber || original.sale.orderNumber,
-      tipoOriginal: original.tipo === "01" ? "01" : "03",
+      original: getFullNumber(original) || original.sale.orderNumber,
+      tipoOriginal: original.taxDocument?.taxDocumentType === "01" ? "01" : "03",
       cliente: original.sale.customer.fullName,
       motivo,
       monto,
@@ -214,7 +222,7 @@ export default function NotaCreditoModal({
                 <SelectContent>
                   {aceptados.map((row) => (
                     <SelectItem key={row.sale.id} value={row.sale.id}>
-                      {row.fullNumber} — {row.sale.customer.fullName} — S/{" "}
+                      {getFullNumber(row)} — {row.sale.customer.fullName} — S/{" "}
                       {Number(row.sale.grandTotal).toFixed(2)}
                     </SelectItem>
                   ))}
