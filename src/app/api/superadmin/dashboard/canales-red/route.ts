@@ -1,16 +1,18 @@
-import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabase"; // Ajusta según tu cliente
+import { createAdminClient as createClient } from '@/utils/supabase/admin';
+import { NextResponse } from 'next/server';
 
 export async function GET() {
   try {
-    // 1. Consultar la vista SQL
+    const supabase = await createClient();
+
     const { data: canales, error } = await supabase
-      .from("v_canales_red")
-      .select("*");
+      .from('v_canales_re')
+      .select('*');
 
-    if (error) throw error;
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 
-    // 2. Retornar los canales reales + oportunidad hardcodeada (temporal)
     return NextResponse.json({
       canales: canales || [],
       oportunidad: {
@@ -18,10 +20,9 @@ export async function GET() {
         motivo: "El 21% de los negocios ya vende por TikTok sin integración directa."
       }
     });
-  } catch (err) {
-    // Retornar fallback mock en caso de error
+  } catch (err: any) {
     return NextResponse.json(
-      { error: "Error consultando canales" },
+      { error: err.message || 'Error al obtener canales de red' },
       { status: 500 }
     );
   }
