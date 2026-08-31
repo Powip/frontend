@@ -9,12 +9,24 @@
  *    leads-cod tiene precedencia (se aplica después en el Map).
  * 3. Si leads-cod devuelve [], el comportamiento es el mismo que antes del
  *    cambio: solo se muestran los pedidos de order-header, sin romper nada.
- * 4. El tab "Pagos Pendientes" solo cuenta pedidos con status dentro de
- *    PAGOS_PENDIENTES_STATUSES (PREPARADO..ENTREGADO, excluye PENDIENTE y
- *    ANULADO) y, si tienen gestión de Call Center (`subEstadoCc` seteado),
- *    ese subestado debe estar en CC_CONFIRMED_SUBESTADOS ("confirmado" o
- *    "carrito_recuperado"). Pedidos sin `subEstadoCc` (sin gestión CC) pasan
- *    igual.
+ * 4. El tab "Pagos Pendientes" usa una DENYLIST de status
+ *    (PAGOS_PENDIENTES_EXCLUDED_STATUSES = INCOMPLETE / PREVENTA / ANULADO):
+ *    cualquier otra orden viva con pago por aprobar aparece — incluida
+ *    PENDIENTE (ventas recién registradas, FIX finanzas-pagos). Si la orden
+ *    tiene gestión de Call Center (`subEstadoCc` seteado), ese subestado debe
+ *    estar en CC_CONFIRMED_SUBESTADOS ("confirmado" o "reprogramado");
+ *    "carrito_recuperado" ya NO pasa. Pedidos sin `subEstadoCc` (sin gestión
+ *    CC) pasan igual.
+ * 5. `fetchOrders` usa `Promise.allSettled`, no `Promise.all`. Las guías
+ *    (`/shipping-guides/store/:id`) son solo enriquecimiento:
+ *      - Si falla `order-header/store/:id` o `.../leads-cod` (fuentes de verdad
+ *        de la tabla) → `toast.error` y la tabla queda vacía.
+ *      - Si falla SOLO la de guías → `toast.warning` ("No se pudo cargar info de
+ *        couriers...") y la tabla sigue poblada con order-header + leads-cod,
+ *        sin el enriquecimiento de courier. NO se llama `toast.error`.
+ * 6. `mapOrderToSale` tolera DTOs livianos de `/leads-cod` (sin `customer` /
+ *    sin `payments` / sin `created_at`): la fila se mapea igual, con
+ *    `clientName` cayendo a "—".
  *
  * Mocks aplicados:
  * - axios → mockeado (get), ninguna llamada HTTP real.
@@ -80,6 +92,7 @@ jest.mock('@/components/modals/PaymentVerificationModal', () => ({
 // ── Imports bajo prueba (después de los mocks) ────────────────────────────────
 
 import axios from 'axios';
+import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import FinanzasPage from '../page';
 import type { OrderHeader, SubEstadoCc } from '@/interfaces/IOrder';
@@ -90,6 +103,7 @@ const mockedAxios = axios as unknown as {
   post: jest.Mock;
 };
 const mockUseAuth = jest.mocked(useAuth);
+const mockToast = toast as jest.Mocked<typeof toast>;
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -144,10 +158,10 @@ function makeOrderHeader(overrides: Partial<OrderHeader> = {}): OrderHeader {
     shippingTotal: '0.00',
     discountTotal: '0.00',
     grandTotal: '100.00',
-    // Default 'PREPARADO': dentro del rango de PAGOS_PENDIENTES_STATUSES, para
-    // no interferir con el filtro de status introducido en el page.tsx. Los
-    // tests que necesiten probar ese filtro explícitamente pasan su propio
-    // `status` via overrides.
+    // Default 'PREPARADO': no está en la denylist
+    // (PAGOS_PENDIENTES_EXCLUDED_STATUSES), así que por defecto la orden entra
+    // en "Pagos Pendientes" y no interfiere con el resto de asserts. Los tests
+    // que prueban el filtro de status pasan su propio `status` via overrides.
     status: 'PREPARADO',
     salesRegion: 'LIMA',
     cancellationReason: null,
@@ -249,12 +263,119 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
     expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
     expect(screen.getByText('Juan Pérez')).toBeInTheDocument();
   });
+
+  it('si falla una fuente de verdad de la tabla (leads-cod), muestra toast.error y no lista pedidos', async () => {
+    const consoleErrorSpy = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    mockedAxios.get.mockImplementation((url: string) => {
+      if (url.includes('/leads-cod')) {
+        return Promise.reject(new Error('boom leads-cod'));
+      }
+      if (url.includes('/order-header/store/')) {
+        return Promise.resolve({ data: [makeOrderHeader()] });
+      }
+      if (url.includes('/shipping-guides/store/')) {
+        return Promise.resolve({ data: [] });
+      }
+      return Promise.reject(new Error(`URL no mockeada en el test: ${url}`));
+    });
+
+    render(<FinanzasPage />);
+
+    await waitFor(() =>
+      expect(mockToast.error).toHaveBeenCalledWith(
+        'No se pudieron cargar los datos de Finanzas. Reintentá.',
+      ),
+    );
+    // La tabla queda vacía: no se pudo mergear ninguna fuente.
+    expect(screen.getByText('Pagos Pendientes (0)')).toBeInTheDocument();
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('si SOLO falla la llamada de guías, NO vacía Finanzas: toast.warning y la tabla sigue poblada', async () => {
+    const consoleErrorSpy = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {});
+
+    mockedAxios.get.mockImplementation((url: string) => {
+      if (url.includes('/leads-cod')) {
+        return Promise.resolve({ data: [] });
+      }
+      if (url.includes('/order-header/store/')) {
+        return Promise.resolve({
+          data: [
+            makeOrderHeader({
+              id: 'order-1',
+              orderNumber: 'ORD-001',
+              customer: {
+                ...makeOrderHeader().customer,
+                fullName: 'Cliente Con Guia Caida',
+              },
+            }),
+          ],
+        });
+      }
+      if (url.includes('/shipping-guides/store/')) {
+        return Promise.reject(new Error('ms-courier caído'));
+      }
+      return Promise.reject(new Error(`URL no mockeada en el test: ${url}`));
+    });
+
+    render(<FinanzasPage />);
+
+    // La tabla se pobla igual con order-header + leads-cod.
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('Cliente Con Guia Caida')).toBeInTheDocument();
+
+    await waitFor(() =>
+      expect(mockToast.warning).toHaveBeenCalledWith(
+        'No se pudo cargar info de couriers; el resto de Finanzas está disponible.',
+      ),
+    );
+    // Guías caídas degradan a warning, nunca a error.
+    expect(mockToast.error).not.toHaveBeenCalled();
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('mapea un lead de /leads-cod sin customer ni created_at (DTO liviano) sin romper: fila con clientName "—"', async () => {
+    const lightLead = {
+      id: 'lead-light',
+      orderNumber: 'ORD-LIGHT',
+      grandTotal: '80.00',
+      status: 'PENDIENTE',
+      // DTO liviano: sin customer, sin created_at, sin deliveryType.
+      payments: [
+        {
+          id: 'p-light',
+          paymentMethod: 'YAPE',
+          amount: '80.00',
+          status: 'PENDING',
+          created_at: '2026-08-01T00:00:00.000Z',
+        },
+      ],
+    } as unknown as OrderHeader;
+
+    mockFetchOrdersEndpoints({ leadsCod: [lightLead] });
+
+    render(<FinanzasPage />);
+
+    // La página no crashea y la fila aparece (tiene un pago PENDING).
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('ORD-LIGHT')).toBeInTheDocument();
+    // clientName cae al fallback "—" (customer ausente).
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
+  });
 });
 
 describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () => {
   const CC_NOT_CONFIRMED: SubEstadoCc = 'por_confirmar';
   const CC_TERMINAL_NEGATIVO: SubEstadoCc = 'anulado_cc';
   const CC_CONFIRMADO: SubEstadoCc = 'confirmado';
+  const CC_REPROGRAMADO: SubEstadoCc = 'reprogramado';
   const CC_CARRITO_RECUPERADO: SubEstadoCc = 'carrito_recuperado';
 
   /** Pedido de control que siempre cuenta en "Pagos Pendientes" (usado para
@@ -268,22 +389,61 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
     });
   }
 
-  it('excluye un pedido con status PENDIENTE (fuera de rango) aunque tenga pago PENDING', async () => {
-    const control = makeControlOrder();
-    const outOfRange = makeOrderHeader({
+  it('incluye un pedido PENDIENTE con pago PENDING (denylist: PENDIENTE ya no se excluye)', async () => {
+    // FIX finanzas-pagos: una venta recién registrada nace en PENDIENTE. Con la
+    // denylist debe figurar en "Pagos Pendientes" apenas se carga su pago.
+    const recienRegistrada = makeOrderHeader({
       id: 'order-pendiente',
       orderNumber: 'ORD-PEND',
       status: 'PENDIENTE',
-      customer: { ...makeOrderHeader().customer, fullName: 'Fuera De Rango' },
+      customer: { ...makeOrderHeader().customer, fullName: 'Recien Registrada' },
     });
 
-    mockFetchOrdersEndpoints({ orders: [control, outOfRange] });
+    mockFetchOrdersEndpoints({ orders: [recienRegistrada] });
+
+    render(<FinanzasPage />);
+
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('Recien Registrada')).toBeInTheDocument();
+  });
+
+  it('excluye una venta PREVENTA con pago PENDING (borrador, no es venta real)', async () => {
+    const control = makeControlOrder();
+    const preventa = makeOrderHeader({
+      id: 'order-preventa',
+      orderNumber: 'ORD-PREV',
+      status: 'PREVENTA',
+      customer: { ...makeOrderHeader().customer, fullName: 'Borrador Preventa' },
+    });
+
+    mockFetchOrdersEndpoints({ orders: [control, preventa] });
 
     render(<FinanzasPage />);
 
     expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
     expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
-    expect(screen.queryByText('Fuera De Rango')).not.toBeInTheDocument();
+    expect(screen.queryByText('Borrador Preventa')).not.toBeInTheDocument();
+  });
+
+  it('excluye una venta INCOMPLETE con pago PENDING (borrador)', async () => {
+    const control = makeControlOrder();
+    const incomplete = makeOrderHeader({
+      id: 'order-incomplete',
+      orderNumber: 'ORD-INC',
+      status: 'INCOMPLETE',
+      customer: {
+        ...makeOrderHeader().customer,
+        fullName: 'Borrador Incomplete',
+      },
+    });
+
+    mockFetchOrdersEndpoints({ orders: [control, incomplete] });
+
+    render(<FinanzasPage />);
+
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
+    expect(screen.queryByText('Borrador Incomplete')).not.toBeInTheDocument();
   });
 
   it('excluye un pedido con status ANULADO', async () => {
@@ -376,7 +536,25 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
     expect(screen.getByText('CC Confirmado')).toBeInTheDocument();
   });
 
-  it('cuenta un pedido ENTREGADO con subEstadoCc "carrito_recuperado" (extremo superior del rango + subestado confirmado alternativo)', async () => {
+  it('cuenta un pedido con subEstadoCc "reprogramado" (nuevo valor de CC_CONFIRMED_SUBESTADOS)', async () => {
+    const reprogramado = makeOrderHeader({
+      id: 'order-reprogramado',
+      orderNumber: 'ORD-REPROG',
+      status: 'PREPARADO',
+      subEstadoCc: CC_REPROGRAMADO,
+      customer: { ...makeOrderHeader().customer, fullName: 'CC Reprogramado' },
+    });
+
+    mockFetchOrdersEndpoints({ orders: [reprogramado] });
+
+    render(<FinanzasPage />);
+
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('CC Reprogramado')).toBeInTheDocument();
+  });
+
+  it('excluye un pedido ENTREGADO con subEstadoCc "carrito_recuperado" (ya NO está en CC_CONFIRMED_SUBESTADOS)', async () => {
+    const control = makeControlOrder();
     const recovered = makeOrderHeader({
       id: 'order-carrito-recuperado',
       orderNumber: 'ORD-CARRITO',
@@ -385,11 +563,40 @@ describe('FinanzasPage — filtro pagosPendientes (status + subEstadoCc)', () =>
       customer: { ...makeOrderHeader().customer, fullName: 'Carrito Recuperado' },
     });
 
-    mockFetchOrdersEndpoints({ orders: [recovered] });
+    mockFetchOrdersEndpoints({ orders: [control, recovered] });
 
     render(<FinanzasPage />);
 
     expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
-    expect(screen.getByText('Carrito Recuperado')).toBeInTheDocument();
+    expect(screen.getByText('Control Cuenta')).toBeInTheDocument();
+    expect(screen.queryByText('Carrito Recuperado')).not.toBeInTheDocument();
+  });
+});
+
+describe('FinanzasPage — leads COD del endpoint /leads-cod', () => {
+  it('incluye lead con subEstadoCc "reprogramado" y excluye "contactado" / "por_confirmar"', async () => {
+    const makeLead = (id: string, name: string, sub: SubEstadoCc) =>
+      makeOrderHeader({
+        id,
+        orderNumber: id.toUpperCase(),
+        status: 'PENDIENTE',
+        subEstadoCc: sub,
+        customer: { ...makeOrderHeader().customer, fullName: name },
+      });
+
+    mockFetchOrdersEndpoints({
+      leadsCod: [
+        makeLead('lead-reprog', 'Lead Reprogramado', 'reprogramado'),
+        makeLead('lead-contact', 'Lead Contactado', 'contactado'),
+        makeLead('lead-porconf', 'Lead Por Confirmar', 'por_confirmar'),
+      ],
+    });
+
+    render(<FinanzasPage />);
+
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('Lead Reprogramado')).toBeInTheDocument();
+    expect(screen.queryByText('Lead Contactado')).not.toBeInTheDocument();
+    expect(screen.queryByText('Lead Por Confirmar')).not.toBeInTheDocument();
   });
 });

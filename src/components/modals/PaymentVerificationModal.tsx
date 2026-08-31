@@ -26,6 +26,7 @@ import {
   ExternalLink,
   ImagePlus,
   Loader2,
+  Pencil,
   X,
 } from "lucide-react";
 import axios from "axios";
@@ -85,6 +86,13 @@ export default function PaymentVerificationModal({
   const [processingPaymentId, setProcessingPaymentId] = useState<
     string | null
   >(null);
+  const [editingAmountForId, setEditingAmountForId] = useState<string | null>(
+    null,
+  );
+  const [editAmountValue, setEditAmountValue] = useState("");
+  const [savingAmountForId, setSavingAmountForId] = useState<string | null>(
+    null,
+  );
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const pathname = usePathname();
 
@@ -129,6 +137,9 @@ export default function PaymentVerificationModal({
       setAmount("");
       setPaymentMethod("");
       setFile(null);
+      setEditingAmountForId(null);
+      setEditAmountValue("");
+      setSavingAmountForId(null);
     }
   }, [open, orderId, fetchOrderData]);
 
@@ -227,6 +238,52 @@ export default function PaymentVerificationModal({
       toast.error("Error al rechazar el pago");
     } finally {
       setProcessingPaymentId(null);
+    }
+  };
+
+  const handleStartEditAmount = (payment: Payment) => {
+    setEditingAmountForId(payment.id);
+    setEditAmountValue(String(Number(payment.amount)));
+  };
+
+  const handleCancelEditAmount = () => {
+    setEditingAmountForId(null);
+    setEditAmountValue("");
+  };
+
+  const handleUpdatePaymentAmount = async (paymentId: string) => {
+    const numericAmount = parseFloat(editAmountValue);
+    if (isNaN(numericAmount) || numericAmount <= 0) {
+      toast.warning("El monto debe ser un número válido mayor a 0");
+      return;
+    }
+
+    setSavingAmountForId(paymentId);
+    try {
+      await axios.patch(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}`,
+        { amount: numericAmount },
+      );
+      toast.success("Monto del pago actualizado");
+      setEditingAmountForId(null);
+      setEditAmountValue("");
+      fetchOrderData();
+      onPaymentUpdated?.();
+    } catch (error) {
+      const status = axios.isAxiosError(error)
+        ? error.response?.status
+        : undefined;
+      if (status === 400) {
+        toast.error(
+          "No se puede editar el monto: el pago ya no está pendiente.",
+        );
+      } else {
+        console.error("Error actualizando el monto del pago", error);
+        toast.error("Error al actualizar el monto del pago");
+      }
+      fetchOrderData();
+    } finally {
+      setSavingAmountForId(null);
     }
   };
 
@@ -333,12 +390,67 @@ export default function PaymentVerificationModal({
                       key={payment.id}
                       className="bg-amber-50 rounded-md p-3 space-y-2"
                     >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-amber-900">
-                            {formatCurrency(Number(payment.amount))} -{" "}
-                            {payment.paymentMethod}
-                          </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          {editingAmountForId === payment.id ? (
+                            <div className="flex items-center gap-2">
+                              <Input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={editAmountValue}
+                                onChange={(e) =>
+                                  setEditAmountValue(e.target.value)
+                                }
+                                className="h-8 w-28"
+                                disabled={savingAmountForId === payment.id}
+                              />
+                              <span className="text-sm text-amber-900">
+                                {payment.paymentMethod}
+                              </span>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-8 bg-green-50 hover:bg-green-100 text-green-600"
+                                disabled={savingAmountForId === payment.id}
+                                onClick={() =>
+                                  handleUpdatePaymentAmount(payment.id)
+                                }
+                              >
+                                {savingAmountForId === payment.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  "Guardar"
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8"
+                                disabled={savingAmountForId === payment.id}
+                                onClick={handleCancelEditAmount}
+                              >
+                                Cancelar
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-medium text-amber-900">
+                                {formatCurrency(Number(payment.amount))} -{" "}
+                                {payment.paymentMethod}
+                              </p>
+                              {finalCanApprove && (
+                                <button
+                                  type="button"
+                                  className="text-xs text-amber-700 hover:underline flex items-center gap-0.5"
+                                  onClick={() => handleStartEditAmount(payment)}
+                                >
+                                  <Pencil className="h-3 w-3" />
+                                  Corregir monto
+                                </button>
+                              )}
+                            </div>
+                          )}
                           {payment.paymentProofUrl ? (
                             <a
                               href={payment.paymentProofUrl}
@@ -355,25 +467,14 @@ export default function PaymentVerificationModal({
                             </span>
                           )}
                         </div>
-                        {finalCanApprove && (
+                        {finalCanApprove && editingAmountForId !== payment.id && (
                           <div className="flex gap-1">
                             <Button
                               size="sm"
                               variant="outline"
                               className="bg-green-50 hover:bg-green-100 text-green-600"
                               disabled={processingPaymentId === payment.id}
-                              onClick={() => {
-                                if (!payment.paymentProofUrl) {
-                                  if (
-                                    !confirm(
-                                      "¿Seguro que querés aprobar este pago sin comprobante adjunto?",
-                                    )
-                                  ) {
-                                    return;
-                                  }
-                                }
-                                handleApprovePayment(payment.id);
-                              }}
+                              onClick={() => handleApprovePayment(payment.id)}
                             >
                               <Check className="h-4 w-4 mr-1" />
                               Aprobar
@@ -518,7 +619,7 @@ export default function PaymentVerificationModal({
                   </div>
 
                   <div className="space-y-1">
-                    <Label htmlFor="proof">Comprobante (imagen)</Label>
+                    <Label htmlFor="proof">Comprobante (opcional)</Label>
                     <div className="flex items-center gap-2">
                       <Input
                         id="proof"

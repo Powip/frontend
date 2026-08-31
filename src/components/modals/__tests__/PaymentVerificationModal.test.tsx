@@ -2,23 +2,34 @@
 /**
  * Tests: PaymentVerificationModal
  *
+ * FIX finanzas-pagos (§2.2.C): el comprobante de pago es OPCIONAL. Se eliminó el
+ * confirm() bloqueante al aprobar sin comprobante y se agregó "Corregir monto"
+ * para editar un pago PENDING antes de aprobarlo.
+ *
  * Comportamiento verificado:
- * 1. Pago CON comprobante adjunto: aprobar NO muestra el confirm() del navegador,
+ * 1. Pago CON comprobante adjunto: aprobar NO muestra el confirm() del navegador
  *    y llama directo al endpoint de aprobación.
- * 2. Pago SIN comprobante: aprobar SÍ muestra confirm(); si el usuario cancela
- *    (confirm devuelve false) no se llama al endpoint de aprobación.
- * 3. Pago SIN comprobante: si el usuario confirma (confirm devuelve true) sí se
- *    llama al endpoint de aprobación.
+ * 2. Pago SIN comprobante: aprobar tampoco muestra confirm() — el botón
+ *    "Aprobar" está habilitado y llama directo a
+ *    PATCH /payments/payments/:id/approve.
+ * 3. "Corregir monto" en un pago PENDING abre un input inline; "Guardar" hace
+ *    PATCH ${API_VENTAS}/payments/payments/:id con { amount } y luego refetch +
+ *    onPaymentUpdated().
+ * 4. Si ese PATCH responde 400, se muestra toast.error("No se puede editar el
+ *    monto...") y se hace refetch igual.
+ * 5. El uploader del formulario "Registrar Nuevo Pago" está rotulado
+ *    "Comprobante (opcional)".
  *
  * Work-arounds jsdom aplicados (mismo patrón que SendToAliclikModal.test.tsx):
  * - @/components/ui/dialog → mock que renderiza children directamente cuando open=true.
  * - @/components/ui/select → mock de <select> nativo (el formulario "Registrar
  *   Nuevo Pago" siempre se renderiza mientras haya saldo pendiente, y usa Select
  *   de Radix para el método de pago).
- * - axios → mockeado (get/patch/post) siguiendo el patrón dual default+top-level
- *   usado en el resto de tests de este repo para que funcione con la
- *   interop de ts-jest (esModuleInterop).
- * - window.confirm → mockeado (jsdom no lo implementa por defecto).
+ * - axios → mockeado (get/patch/post + isAxiosError) siguiendo el patrón dual
+ *   default+top-level usado en el resto de tests de este repo para que funcione
+ *   con la interop de ts-jest (esModuleInterop).
+ * - window.confirm → mockeado (jsdom no lo implementa por defecto), solo para
+ *   comprobar que YA NO se llama al aprobar.
  */
 
 import { render, screen, waitFor } from '@testing-library/react';
@@ -26,16 +37,22 @@ import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
-jest.mock('axios', () => ({
-  default: {
+jest.mock('axios', () => {
+  const isAxiosError = (e: unknown) =>
+    Boolean(e && (e as { isAxiosError?: boolean }).isAxiosError);
+  return {
+    default: {
+      get: jest.fn(),
+      patch: jest.fn(),
+      post: jest.fn(),
+      isAxiosError,
+    },
     get: jest.fn(),
     patch: jest.fn(),
     post: jest.fn(),
-  },
-  get: jest.fn(),
-  patch: jest.fn(),
-  post: jest.fn(),
-}));
+    isAxiosError,
+  };
+});
 
 jest.mock('sonner', () => ({
   toast: {
@@ -116,13 +133,17 @@ jest.mock('@/components/ui/select', () => {
 });
 
 import axios from 'axios';
+import { toast } from 'sonner';
 import PaymentVerificationModal from '../PaymentVerificationModal';
+
+process.env.NEXT_PUBLIC_API_VENTAS = 'http://ventas';
 
 const mockedAxios = axios as unknown as {
   get: jest.Mock;
   patch: jest.Mock;
   post: jest.Mock;
 };
+const mockToast = toast as jest.Mocked<typeof toast>;
 
 function makeOrderData(paymentProofUrl: string | null) {
   return {
@@ -140,7 +161,9 @@ function makeOrderData(paymentProofUrl: string | null) {
   };
 }
 
-function renderModal() {
+function renderModal(
+  props: { onPaymentUpdated?: () => void; canApprove?: boolean } = {},
+) {
   return render(
     <PaymentVerificationModal
       open={true}
@@ -148,6 +171,7 @@ function renderModal() {
       orderId="order-1"
       orderNumber="ORD-001"
       canApprove={true}
+      {...props}
     />,
   );
 }
@@ -170,39 +194,147 @@ describe('PaymentVerificationModal — aprobación de pagos', () => {
     expect(window.confirm).not.toHaveBeenCalled();
     await waitFor(() =>
       expect(mockedAxios.patch).toHaveBeenCalledWith(
-        expect.stringContaining('/payments/payments/payment-1/approve'),
+        'http://ventas/payments/payments/payment-1/approve',
       ),
     );
   });
 
-  it('pago SIN comprobante: aprobar muestra confirm(); si el usuario cancela, no se aprueba', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
-    (window.confirm as jest.Mock).mockReturnValue(false);
-
-    renderModal();
-
-    const approveButton = await screen.findByRole('button', { name: /aprobar/i });
-    await userEvent.click(approveButton);
-
-    expect(window.confirm).toHaveBeenCalledTimes(1);
-    expect(mockedAxios.patch).not.toHaveBeenCalled();
-  });
-
-  it('pago SIN comprobante: aprobar muestra confirm(); si el usuario confirma, sí se aprueba', async () => {
+  it('pago SIN comprobante: "Aprobar" está habilitado y aprueba sin confirm() (comprobante opcional)', async () => {
     mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
     mockedAxios.patch.mockResolvedValue({ data: {} });
-    (window.confirm as jest.Mock).mockReturnValue(true);
+
+    const onPaymentUpdated = jest.fn();
+    renderModal({ onPaymentUpdated });
+
+    const approveButton = await screen.findByRole('button', { name: /aprobar/i });
+    expect(approveButton).toBeEnabled();
+
+    await userEvent.click(approveButton);
+
+    expect(window.confirm).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(mockedAxios.patch).toHaveBeenCalledWith(
+        'http://ventas/payments/payments/payment-1/approve',
+      ),
+    );
+    await waitFor(() => expect(onPaymentUpdated).toHaveBeenCalled());
+  });
+});
+
+describe('PaymentVerificationModal — corregir monto de un pago PENDING', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    window.confirm = jest.fn();
+  });
+
+  it('"Corregir monto" abre el input; "Guardar" hace PATCH con { amount } y luego refetch + onPaymentUpdated', async () => {
+    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxios.patch.mockResolvedValue({ data: {} });
+
+    const onPaymentUpdated = jest.fn();
+    renderModal({ onPaymentUpdated });
+
+    const corregir = await screen.findByRole('button', { name: /corregir monto/i });
+    await userEvent.click(corregir);
+
+    // El input inline se precarga con el monto actual del pago.
+    const amountInput = screen.getByDisplayValue('100');
+    await userEvent.clear(amountInput);
+    await userEvent.type(amountInput, '150');
+
+    await userEvent.click(screen.getByRole('button', { name: /guardar/i }));
+
+    await waitFor(() =>
+      expect(mockedAxios.patch).toHaveBeenCalledWith(
+        'http://ventas/payments/payments/payment-1',
+        { amount: 150 },
+      ),
+    );
+    await waitFor(() => expect(onPaymentUpdated).toHaveBeenCalled());
+    // 1 GET al montar + 1 GET de refetch tras guardar.
+    expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    expect(mockToast.success).toHaveBeenCalled();
+  });
+
+  it('si el PATCH del monto responde 400 muestra toast.error y hace refetch igual', async () => {
+    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxios.patch.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 400 },
+    });
 
     renderModal();
 
-    const approveButton = await screen.findByRole('button', { name: /aprobar/i });
-    await userEvent.click(approveButton);
+    await userEvent.click(
+      await screen.findByRole('button', { name: /corregir monto/i }),
+    );
 
-    expect(window.confirm).toHaveBeenCalledTimes(1);
+    const amountInput = screen.getByDisplayValue('100');
+    await userEvent.clear(amountInput);
+    await userEvent.type(amountInput, '150');
+
+    await userEvent.click(screen.getByRole('button', { name: /guardar/i }));
+
     await waitFor(() =>
-      expect(mockedAxios.patch).toHaveBeenCalledWith(
-        expect.stringContaining('/payments/payments/payment-1/approve'),
+      expect(mockToast.error).toHaveBeenCalledWith(
+        'No se puede editar el monto: el pago ya no está pendiente.',
       ),
     );
+    // Refetch en el catch para reflejar el estado real del pago.
+    expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('mientras el input de "Corregir monto" está abierto se ocultan "Aprobar" y "Rechazar" de esa fila', async () => {
+    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+
+    renderModal();
+
+    // Antes de editar: los 3 controles están visibles.
+    expect(await screen.findByRole('button', { name: /aprobar/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /rechazar/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /corregir monto/i }));
+
+    // Con el editor abierto: solo quedan "Guardar" / "Cancelar".
+    expect(screen.queryByRole('button', { name: /aprobar/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /rechazar/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /guardar/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /cancelar/i })).toBeInTheDocument();
+
+    // Al cancelar, "Aprobar" / "Rechazar" vuelven.
+    await userEvent.click(screen.getByRole('button', { name: /cancelar/i }));
+    expect(screen.getByRole('button', { name: /aprobar/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /rechazar/i })).toBeInTheDocument();
+  });
+
+  it('"Corregir monto" NO se muestra si canApprove es false', async () => {
+    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+
+    renderModal({ canApprove: false });
+
+    // El resumen del pago se renderiza (esperamos a que cargue).
+    expect(await screen.findByText(/YAPE/)).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /corregir monto/i }),
+    ).not.toBeInTheDocument();
+    // Sin permiso tampoco hay acciones de aprobación.
+    expect(screen.queryByRole('button', { name: /aprobar/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('PaymentVerificationModal — formulario "Registrar Nuevo Pago"', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    window.confirm = jest.fn();
+  });
+
+  it('el uploader de comprobante está rotulado "Comprobante (opcional)"', async () => {
+    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+
+    renderModal();
+
+    expect(
+      await screen.findByText('Comprobante (opcional)'),
+    ).toBeInTheDocument();
   });
 });

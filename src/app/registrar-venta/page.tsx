@@ -298,6 +298,19 @@ function RegistrarVentaContent() {
   const [shippingTotalDisplay, setShippingTotalDisplay] = useState(""); // Para manejar input con decimales
   const [advancePayment, setAdvancePayment] = useState(0);
   const [advancePaymentDisplay, setAdvancePaymentDisplay] = useState(""); // Para manejar input con decimales
+  // Monto ya aprobado (pagos PAID) de una orden en edición: NO es editable y no
+  // se arrastra al campo "Adelanto de Pago" (que solo representa lo PENDING/nuevo).
+  const [montoYaAprobado, setMontoYaAprobado] = useState(0);
+  // Snapshot del pago precargado en modo edición, para detectar si el usuario lo
+  // modificó y evitar disparar la lógica de pagos de updateFull (§6.5) sin cambios.
+  const [prefilledPayment, setPrefilledPayment] = useState<{
+    amount: number;
+    method: string;
+  } | null>(null);
+  // Cantidad de pagos PENDING de la orden en edición. updateFull §6.5 solo aplica
+  // paymentAmount sobre UN pago PENDING (el más antiguo); con 2+ el campo
+  // "Adelanto" se bloquea y se deriva la gestión a Finanzas.
+  const [pendingPaymentsCount, setPendingPaymentsCount] = useState(0);
 
   const [taxMode, setTaxMode] = useState<"AUTOMATICO" | "INCLUIDO">("INCLUIDO");
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
@@ -461,25 +474,47 @@ function RegistrarVentaContent() {
 
     // --- Pagos ---
     if (orderData.payments?.length) {
-      // Sumar todos los pagos (PAID + PENDING)
-      const totalPaidApproved = orderData.payments
+      // Orden determinístico por fecha de creación ascendente: el backend
+      // updateFull §6.5 opera sobre el pago PENDING más antiguo, así que la
+      // precarga del método debe seguir el mismo criterio.
+      const paymentsByDate = [...orderData.payments].sort(
+        (a, b) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+      );
+
+      // Monto ya aprobado (PAID): informativo, no editable desde este form.
+      const montoAprobado = paymentsByDate
         .filter((p) => p.status === "PAID")
         .reduce((sum, p) => sum + Number(p.amount), 0);
 
-      const totalPending = orderData.payments
-        .filter((p) => p.status === "PENDING")
-        .reduce((sum, p) => sum + Number(p.amount), 0);
+      // Monto pendiente de aprobación (PENDING): es lo único que el campo
+      // editable "Adelanto de Pago" representa.
+      const pendientes = paymentsByDate.filter((p) => p.status === "PENDING");
+      const montoPendiente = pendientes.reduce(
+        (sum, p) => sum + Number(p.amount),
+        0,
+      );
 
-      // Mostrar el total de pagos (aprobados + pendientes)
-      const totalAdv = totalPaidApproved + totalPending;
-      setAdvancePayment(totalAdv);
-      setAdvancePaymentDisplay(totalAdv === 0 ? "" : String(totalAdv));
+      setMontoYaAprobado(montoAprobado);
+      setPendingPaymentsCount(pendientes.length);
+      setAdvancePayment(montoPendiente);
+      setAdvancePaymentDisplay(
+        montoPendiente === 0 ? "" : String(montoPendiente),
+      );
 
-      // Usar el método del primer pago (sea PAID o PENDING)
-      const firstPayment = orderData.payments[0];
-      if (firstPayment) {
-        setPaymentMethod(firstPayment.paymentMethod);
+      // Método de referencia: el del pago PENDING más antiguo; si no hay, el
+      // del primer pago registrado.
+      const referencePayment = pendientes[0] ?? paymentsByDate[0];
+      const prefilledMethod = referencePayment?.paymentMethod ?? "";
+      if (prefilledMethod) {
+        setPaymentMethod(prefilledMethod);
       }
+
+      setPrefilledPayment({ amount: montoPendiente, method: prefilledMethod });
+    } else {
+      setMontoYaAprobado(0);
+      setPendingPaymentsCount(0);
+      setPrefilledPayment({ amount: 0, method: "" });
     }
   }, [orderData]);
 
@@ -740,6 +775,9 @@ function RegistrarVentaContent() {
     setShippingTotalDisplay("");
     setAdvancePayment(0);
     setAdvancePaymentDisplay("");
+    setMontoYaAprobado(0);
+    setPendingPaymentsCount(0);
+    setPrefilledPayment(null);
     setPaymentProofFile(null);
     setPaymentProofPreview(null);
     setTaxMode("INCLUIDO");
@@ -960,6 +998,16 @@ function RegistrarVentaContent() {
         return;
       }
 
+      // Al crear: un comprobante solo se puede adjuntar a un pago, y no se crea
+      // ningún pago si no hay adelanto (> 0). Se bloquea el submit para evitar
+      // perder el comprobante en silencio.
+      if (!orderData && paymentProofFile && advancePayment <= 0) {
+        toast.warning(
+          "Adjuntaste un comprobante pero no ingresaste un adelanto — el comprobante no se guardará.",
+        );
+        return;
+      }
+
       const sellerDisplayName = `${auth?.user?.name || ""} ${
         auth?.user?.surname || ""
       }`.trim();
@@ -1024,23 +1072,19 @@ function RegistrarVentaContent() {
         // --- Ítems ---
         items: cart.map(buildOrderItem),
 
-        // --- Pagos (siempre incluir) ---
-        payments:
-          advancePayment > 0
-            ? [
+        // --- Pagos: solo se incluye si hay un adelanto real (> 0).
+        //     Nunca se manda un pago fantasma { amount: 0 }. ---
+        ...(advancePayment > 0
+          ? {
+              payments: [
                 {
                   paymentMethod,
                   amount: advancePayment,
                   paymentDate: new Date().toISOString(),
                 },
-              ]
-            : [
-                {
-                  paymentMethod: paymentMethod || "EFECTIVO",
-                  amount: 0,
-                  paymentDate: new Date().toISOString(),
-                },
               ],
+            }
+          : {}),
 
         // --- Usuario (para log de auditoría) ---
         userId: auth?.user?.id ?? null,
@@ -1120,6 +1164,25 @@ function RegistrarVentaContent() {
               ? "PENDIENTE"
               : orderData.status;
 
+          // Solo se mandan paymentMethod/paymentAmount si el usuario tocó el
+          // pago respecto a lo precargado. Si no cambió, se omiten para no
+          // disparar la manipulación de pagos de updateFull (§6.5).
+          // NOTA: en la UI "Adelanto de Pago" (advancePayment) y
+          // prefilledPayment.amount son pending-scoped (solo pagos PENDING).
+          // El backend updateFull §6.5 espera `paymentAmount` como el TOTAL de
+          // adelanto deseado para la orden (PAID + PENDING), así que al enviar
+          // se reescala sumando montoYaAprobado.
+          const round2 = (n: number) => Math.round(n * 100) / 100;
+          // Con 2+ pagos PENDING, §6.5 solo tocaría el más antiguo y dejaría los
+          // demás intactos → total incorrecto y silencioso. En ese caso el campo
+          // "Adelanto" está bloqueado y nunca se manda info de pago.
+          const paymentEditable = pendingPaymentsCount <= 1;
+          const paymentChanged =
+            paymentEditable &&
+            (!prefilledPayment ||
+              round2(advancePayment) !== round2(prefilledPayment.amount) ||
+              (paymentMethod || "") !== prefilledPayment.method);
+
           const updatePayload = {
             orderType: orderDetails.orderType,
             status: newStatus,
@@ -1140,9 +1203,14 @@ function RegistrarVentaContent() {
               addedAt: isPromo ? new Date().toISOString() : undefined,
             })),
             userId: auth?.user?.id ?? null,
-            // Datos de pago
-            paymentMethod: paymentMethod || null,
-            paymentAmount: advancePayment,
+            // Datos de pago — solo si el usuario los modificó (ver paymentChanged).
+            // paymentAmount se envía en la escala del backend (PAID + PENDING).
+            ...(paymentChanged
+              ? {
+                  paymentMethod: paymentMethod || null,
+                  paymentAmount: round2(montoYaAprobado + advancePayment),
+                }
+              : {}),
             sellerName: sellerDisplayName || null,
             // Solo se toca si se activó/mantuvo el toggle acá — si se
             // desactiva al editar no se limpia automáticamente, para no
@@ -1404,7 +1472,10 @@ function RegistrarVentaContent() {
 
   const grandTotal = subtotal + taxes + shippingTotal;
 
-  const pendingPayment = Math.max(grandTotal - advancePayment, 0);
+  const pendingPayment = Math.max(
+    grandTotal - montoYaAprobado - advancePayment,
+    0,
+  );
 
   /* ---------------- Validaciones ---------------- */
 
@@ -2349,6 +2420,7 @@ function RegistrarVentaContent() {
                       type="text"
                       inputMode="decimal"
                       value={advancePaymentDisplay}
+                      disabled={pendingPaymentsCount > 1}
                       onChange={(e) => {
                         const val = e.target.value;
                         if (val === "" || /^\d*\.?\d*$/.test(val)) {
@@ -2367,6 +2439,12 @@ function RegistrarVentaContent() {
                         );
                       }}
                     />
+                    {pendingPaymentsCount > 1 && (
+                      <p className="text-xs text-muted-foreground">
+                        Esta venta tiene varios pagos pendientes. Gestionalos
+                        desde Finanzas › Gestionar Pagos.
+                      </p>
+                    )}
                   </div>
 
                   {/* Comprobante de pago */}
@@ -2776,6 +2854,12 @@ function RegistrarVentaContent() {
                       S/ {shippingTotal.toFixed(2)}
                     </span>
                   </div>
+                  {montoYaAprobado > 0 && (
+                    <div className="flex justify-between py-0.5 text-emerald-600 dark:text-emerald-400">
+                      <span>Ya pagado</span>
+                      <span>S/ {montoYaAprobado.toFixed(2)}</span>
+                    </div>
+                  )}
                   {advancePayment > 0 && (
                     <div className="flex justify-between py-0.5 text-muted-foreground">
                       <span>Adelanto de pago</span>

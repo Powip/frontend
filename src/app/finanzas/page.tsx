@@ -71,16 +71,15 @@ const ALL_STATUSES: OrderStatus[] = [
   "ANULADO",
 ];
 
-const PAGOS_PENDIENTES_STATUSES: OrderStatus[] = [
-  "PREPARADO",
-  "LLAMADO",
-  "ASIGNADO_A_GUIA",
-  "EN_ENVIO",
-  "ENTREGADO",
-  "PAGADO",
+// Denylist: cualquier orden viva con pago por aprobar aparece en "Pagos Pendientes".
+// Solo se excluyen borradores (INCOMPLETE/PREVENTA) y anuladas.
+const PAGOS_PENDIENTES_EXCLUDED_STATUSES: OrderStatus[] = [
+  "INCOMPLETE",
+  "PREVENTA",
+  "ANULADO",
 ];
 
-const CC_CONFIRMED_SUBESTADOS: SubEstadoCc[] = ["confirmado", "carrito_recuperado"];
+const CC_CONFIRMED_SUBESTADOS: SubEstadoCc[] = ["confirmado", "reprogramado"];
 
 export interface Sale {
   id: string;
@@ -119,19 +118,29 @@ export interface Sale {
   subEstadoCc?: SubEstadoCc | null;
 }
 
+/** Forma mínima de una guía de ms-courier usada solo para enriquecer la tabla. */
+interface ShippingGuideLite {
+  orderIds?: string[];
+  deliveryType?: string;
+  courierName?: string;
+}
+
 /* -----------------------------------------
    Mapper
 ----------------------------------------- */
 
 function mapOrderToSale(order: OrderHeader): Sale {
   const total = Number(order.grandTotal);
-  const advancePayment = order.payments
+  // `/leads-cod` puede devolver un DTO más liviano — se protege cada acceso.
+  const payments = order.payments ?? [];
+  const customer = order.customer ?? null;
+  const advancePayment = payments
     .filter((p) => p.status === "PAID")
     .reduce((acc, p) => acc + Number(p.amount || 0), 0);
   const pendingPayment = Math.max(total - advancePayment, 0);
 
   // Calcular pagos pendientes de aprobación
-  const pendingPayments = order.payments.filter((p) => p.status === "PENDING");
+  const pendingPayments = payments.filter((p) => p.status === "PENDING");
   const pendingPaymentsAmount = pendingPayments.reduce(
     (acc, p) => acc + Number(p.amount || 0),
     0,
@@ -140,29 +149,30 @@ function mapOrderToSale(order: OrderHeader): Sale {
   return {
     id: order.id,
     orderNumber: order.orderNumber,
-    clientName: order.customer.fullName,
-    phoneNumber: order.customer.phoneNumber ?? "999",
-    documentType: order.customer.documentType ?? null,
-    documentNumber: order.customer.documentNumber ?? null,
-    date: new Date(order.created_at).toLocaleDateString("es-AR"),
+    clientName: customer?.fullName ?? "—",
+    phoneNumber: customer?.phoneNumber ?? "999",
+    documentType: customer?.documentType ?? null,
+    documentNumber: customer?.documentNumber ?? null,
+    date: order.created_at
+      ? new Date(order.created_at).toLocaleDateString("es-AR")
+      : "",
     total,
     status: order.status,
-    paymentMethod:
-      order.payments.length > 0 ? order.payments[0].paymentMethod : "—",
-    deliveryType: order.deliveryType.replace("_", " "),
+    paymentMethod: payments.length > 0 ? payments[0].paymentMethod : "—",
+    deliveryType: order.deliveryType?.replace("_", " ") ?? "—",
     salesRegion: order.salesRegion,
-    district: order.customer.district ?? "",
-    address: order.customer.address ?? "",
-    googleMapsUrl: order.customer.googleMapsUrl ?? null,
+    district: customer?.district ?? "",
+    address: customer?.address ?? "",
+    googleMapsUrl: customer?.googleMapsUrl ?? null,
     advancePayment,
     pendingPayment,
     courier: order.courier ?? null,
     hasPendingPayments: pendingPayments.length > 0,
     pendingPaymentsCount: pendingPayments.length,
     pendingPaymentsAmount,
-    city: order.customer.city ?? order.customer.district ?? "",
-    province: order.customer.province ?? "",
-    zone: order.customer.zone ?? "",
+    city: customer?.city ?? customer?.district ?? "",
+    province: customer?.province ?? "",
+    zone: customer?.zone ?? "",
     paymentCreatedAt:
       pendingPayments.length > 0
         ? (pendingPayments[0].created_at?.toString() ?? null)
@@ -214,33 +224,64 @@ export default function FinanzasPage() {
 
   const fetchOrders = useCallback(async () => {
     try {
-      const [ordersRes, leadsCodRes, guidesRes] = await Promise.all([
-        axios.get<OrderHeader[]>(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-        ),
-        axios.get<OrderHeader[]>(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}/leads-cod`,
-        ),
-        axios.get(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
-        ),
-      ]);
+      // Las guías (llamada #3) son solo enriquecimiento: si cae ms-courier, el
+      // resto de Finanzas debe seguir disponible. Por eso allSettled y no all.
+      const [ordersResult, leadsCodResult, guidesResult] =
+        await Promise.allSettled([
+          axios.get<OrderHeader[]>(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
+          ),
+          axios.get<OrderHeader[]>(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}/leads-cod`,
+          ),
+          axios.get<ShippingGuideLite[]>(
+            `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
+          ),
+        ]);
+
+      // Fuentes de verdad de la tabla: si falla cualquiera, no hay nada que mostrar.
+      if (
+        ordersResult.status === "rejected" ||
+        leadsCodResult.status === "rejected"
+      ) {
+        console.error(
+          "Error fetching orders",
+          ordersResult.status === "rejected" ? ordersResult.reason : undefined,
+          leadsCodResult.status === "rejected"
+            ? leadsCodResult.reason
+            : undefined,
+        );
+        toast.error("No se pudieron cargar los datos de Finanzas. Reintentá.");
+        setSales([]);
+        return;
+      }
 
       const ordersById = new Map<string, OrderHeader>();
-      ordersRes.data.forEach((order) => ordersById.set(order.id, order));
-      leadsCodRes.data.forEach((order) => ordersById.set(order.id, order));
+      (ordersResult.value.data ?? []).forEach((order) =>
+        ordersById.set(order.id, order),
+      );
+      (leadsCodResult.value.data ?? []).forEach((order) =>
+        ordersById.set(order.id, order),
+      );
       const allOrders = Array.from(ordersById.values());
 
       const mappedSales = allOrders.map(mapOrderToSale);
-      const allGuides = guidesRes.data || [];
 
-      // Crear un mapa de orderId -> guide para acceso O(1)
-      const guideMap = new Map();
-      allGuides.forEach((g: any) => {
-        if (g.orderIds && Array.isArray(g.orderIds)) {
-          g.orderIds.forEach((oid: string) => guideMap.set(oid, g));
-        }
-      });
+      // Enriquecimiento con guías: opcional. Si falló, se omite y se avisa.
+      const guideMap = new Map<string, ShippingGuideLite>();
+      if (guidesResult.status === "fulfilled") {
+        const allGuides: ShippingGuideLite[] = guidesResult.value.data ?? [];
+        allGuides.forEach((g) => {
+          if (Array.isArray(g.orderIds)) {
+            g.orderIds.forEach((oid) => guideMap.set(oid, g));
+          }
+        });
+      } else {
+        console.error("Error fetching shipping guides", guidesResult.reason);
+        toast.warning(
+          "No se pudo cargar info de couriers; el resto de Finanzas está disponible.",
+        );
+      }
 
       // Enriquecer ventas con info de courier
       const enrichedSales = mappedSales.map((sale) => {
@@ -263,6 +304,7 @@ export default function FinanzasPage() {
       setSales(activeSales);
     } catch (error) {
       console.error("Error fetching orders", error);
+      toast.error("No se pudieron cargar los datos de Finanzas. Reintentá.");
     }
   }, [selectedStoreId]);
 
@@ -894,7 +936,7 @@ Estado: ${sale.status}
     const filtered = sales.filter(
       (s) =>
         s.hasPendingPayments &&
-        PAGOS_PENDIENTES_STATUSES.includes(s.status) &&
+        !PAGOS_PENDIENTES_EXCLUDED_STATUSES.includes(s.status) &&
         (!s.subEstadoCc || CC_CONFIRMED_SUBESTADOS.includes(s.subEstadoCc)),
     );
     return applyFilters(filtered, filtersPagosPendientes);
