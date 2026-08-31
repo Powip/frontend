@@ -57,6 +57,11 @@ export default function YavendioConfigPage() {
   const [saveStep, setSaveStep] = useState<SaveStep | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [connectionOk, setConnectionOk] = useState<boolean | null>(null);
+  // Aviso "cuenta sin catálogo en YaVendió" (plan Free): lo devuelve el
+  // connection-test cuando la conexión es válida pero no hay catálogo. No es un
+  // error — la integración queda activa; solo el sync de productos no va a andar.
+  // No se persiste server-side: desaparece si el usuario recarga la página.
+  const [catalogWarning, setCatalogWarning] = useState<string | null>(null);
 
   // Sync de catálogo
   const [syncing, setSyncing] = useState(false);
@@ -138,6 +143,7 @@ export default function YavendioConfigPage() {
     setSaving(true);
     setSaveError(null);
     setConnectionOk(null);
+    setCatalogWarning(null);
 
     try {
       // Paso 1: guardar config
@@ -153,10 +159,12 @@ export default function YavendioConfigPage() {
       // (la config ya quedó persistida).
       setSaveStep("testing");
       try {
-        await testYavendioConnection(token, companyId);
+        const result = await testYavendioConnection(token, companyId);
         setConnectionOk(true);
+        setCatalogWarning(result.catalogWarning ?? null);
       } catch {
         setConnectionOk(false);
+        setCatalogWarning(null);
       }
 
       setSaveStep("done");
@@ -194,6 +202,7 @@ export default function YavendioConfigPage() {
     setSaveStep(null);
     setSaveError(null);
     setConnectionOk(null);
+    setCatalogWarning(null);
     setApiKey("");
     setImportStoreId("");
     setCredential(null);
@@ -464,6 +473,15 @@ export default function YavendioConfigPage() {
               </p>
             </div>
           </div>
+
+          {/* Aviso: cuenta de YaVendió sin catálogo (plan Free) — ámbar, NO error:
+              la integración está activa y el inbound de pedidos funciona; solo el
+              sync de productos no va a andar hasta que la cuenta tenga catálogo. */}
+          {credential.isActive && catalogWarning !== null && (
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-lg px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+              {catalogWarning}
+            </div>
+          )}
 
           {/* Sincronización de catálogo — solo con integración activa */}
           {credential.isActive && (

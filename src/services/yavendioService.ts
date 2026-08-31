@@ -17,6 +17,14 @@ export interface YavendioSafeConfig {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Solo lo devuelve `POST /yavendio/config/:companyId/connection-test` cuando la
+   * cuenta de YaVendió no tiene ningún catálogo disponible (plan Free): la
+   * conexión se verifica y la integración queda activa (el inbound de pedidos
+   * funciona), pero el sync de productos Powip → YaVendió no va a andar hasta
+   * que la cuenta tenga catálogo. En el GET normal de la config nunca viene.
+   */
+  catalogWarning?: string | null;
 }
 
 export interface SaveYavendioConfigPayload {
@@ -116,6 +124,10 @@ export const saveYavendioConfig = async (
  * A diferencia de Aliclik, el connection-test de Yavendio no devuelve `{ ok, message }`:
  * devuelve la config actualizada (activada si la Api-Key es válida) o rechaza
  * con 401 si es inválida — el llamador debe envolver esto en try/catch.
+ *
+ * Si la Api-Key es válida pero la cuenta de YaVendió no tiene ningún catálogo
+ * disponible (plan Free), la respuesta incluye además `catalogWarning: string`
+ * (la config igual queda activa — la recepción de pedidos no necesita catálogo).
  */
 export const testYavendioConnection = async (
   token: string,

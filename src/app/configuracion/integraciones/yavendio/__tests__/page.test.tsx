@@ -58,6 +58,20 @@
  *     - Error en list/create/patch/delete → mensaje de error dentro de la
  *       sección, sin romper el resto de la página (catálogo, config).
  *
+ * 17. Aviso "cuenta sin catálogo en YaVendió" (FEAT-13 Fase 1g Ronda 3):
+ *     nota ámbar (NO roja — la integración está activa) ubicada justo antes
+ *     de la sección "Catálogo de productos", gated en
+ *     `credential.isActive && catalogWarning !== null`. `catalogWarning` es
+ *     estado local que sale del retorno de `testYavendioConnection` (paso 2
+ *     de handleSave), no se persiste server-side.
+ *     - `testYavendioConnection` devuelve `catalogWarning` + config activa →
+ *       tras el flujo de guardado, la nota ámbar con ese texto es visible.
+ *     - `testYavendioConnection` sin `catalogWarning` (cuenta con catálogo) →
+ *       no aparece ninguna nota de catálogo.
+ *     - `handleReconfigure` ("Actualizar credenciales →") limpia la nota.
+ *     - `testYavendioConnection` rechaza (401) → `connectionOk=false` (alerta
+ *       de conexión fallida) y NO aparece la nota de catálogo.
+ *
  * Mocks aplicados:
  * - @/contexts/AuthContext → useAuth
  * - sonner → toast (success/error) — el componente llama `toast.success` al
@@ -240,6 +254,26 @@ const MOCK_CONFIG_ACTIVE: YavendioSafeConfig = {
 const MOCK_CONFIG_INACTIVE: YavendioSafeConfig = {
   ...MOCK_CONFIG_ACTIVE,
   isActive: false,
+};
+
+/**
+ * Texto del aviso "cuenta sin catálogo en YaVendió" (plan Free) que el
+ * connection-test agrega como `catalogWarning` cuando la Api-Key es válida
+ * pero la cuenta no tiene ningún catálogo disponible.
+ */
+// Texto EXACTO de `CATALOG_WARNING_MESSAGE` en ms-integrations
+// (`src/yavendio/yavendio.service.ts`) — el front lo renderiza tal cual.
+const CATALOG_WARNING_TEXT =
+  'Conexión verificada, pero la cuenta de YaVendió no tiene ningún catálogo ' +
+  'disponible. La sincronización de productos (Powip → YaVendió) no va a ' +
+  'funcionar hasta que la cuenta tenga un catálogo — normalmente requiere plan ' +
+  'Silver o superior en YaVendió y crear el catálogo desde su dashboard. La ' +
+  'recepción de pedidos sí funciona.';
+
+/** Retorno del connection-test para una cuenta válida PERO sin catálogo: config activa + `catalogWarning`. */
+const MOCK_CONFIG_ACTIVE_WITH_CATALOG_WARNING: YavendioSafeConfig = {
+  ...MOCK_CONFIG_ACTIVE,
+  catalogWarning: CATALOG_WARNING_TEXT,
 };
 
 const MOCK_SYNC_SUMMARY_OK: CatalogSyncSummary = {
@@ -592,6 +626,119 @@ describe('YavendioConfigPage', () => {
       });
 
       expect(screen.queryByText(/error al guardar la configuración/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // ── 17. Aviso "cuenta sin catálogo en YaVendió" (Fase 1g Ronda 3) ─────────
+
+  describe('aviso de cuenta de YaVendió sin catálogo (catalogWarning)', () => {
+    /**
+     * Completa el flujo de guardado en 2 pasos (saveYavendioConfig +
+     * testYavendioConnection) partiendo del formulario vacío. El resultado del
+     * connection-test lo define cada test vía `mockTestConnection`.
+     * Devuelve la instancia de `userEvent` para poder seguir interactuando.
+     */
+    async function fillAndSubmitSaveForm() {
+      const user = userEvent.setup();
+      const apiKeyInput = await screen.findByLabelText(/api-key de yavendio/i);
+      const select = screen.getByLabelText(/tienda destino/i);
+      await waitFor(() =>
+        expect(
+          screen.getByRole('option', { name: 'Tienda Principal' }),
+        ).toBeInTheDocument(),
+      );
+      await user.type(apiKeyInput, 'yv-api-key-123');
+      await user.selectOptions(select, 'store-1');
+      await user.click(
+        screen.getByRole('button', { name: /guardar y verificar conexión/i }),
+      );
+      return user;
+    }
+
+    it('muestra la nota ámbar con el texto del warning cuando el connection-test lo devuelve y la integración queda activa', async () => {
+      mockGetConfig
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(MOCK_CONFIG_ACTIVE);
+      mockSaveConfig.mockResolvedValue(MOCK_CONFIG_ACTIVE);
+      mockTestConnection.mockResolvedValue(MOCK_CONFIG_ACTIVE_WITH_CATALOG_WARNING);
+
+      renderPage();
+      await fillAndSubmitSaveForm();
+
+      // El flujo terminó: estado configurado + activo
+      expect(await screen.findByText(/cuenta conectada/i)).toBeInTheDocument();
+      expect(await screen.findByText(/integración activa/i)).toBeInTheDocument();
+
+      // La nota ámbar con el texto del warning es visible
+      expect(
+        await screen.findByText(/no tiene ningún catálogo disponible/i),
+      ).toBeInTheDocument();
+    });
+
+    it('NO muestra ninguna nota de catálogo cuando el connection-test resuelve sin catalogWarning (cuenta con catálogo)', async () => {
+      mockGetConfig
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(MOCK_CONFIG_ACTIVE);
+      mockSaveConfig.mockResolvedValue(MOCK_CONFIG_ACTIVE);
+      mockTestConnection.mockResolvedValue(MOCK_CONFIG_ACTIVE); // sin catalogWarning
+
+      renderPage();
+      await fillAndSubmitSaveForm();
+
+      // El flujo llegó al estado activo (sección "Catálogo de productos" visible)...
+      expect(
+        await screen.findByRole('button', {
+          name: /sincronizar catálogo de productos/i,
+        }),
+      ).toBeInTheDocument();
+      // ...pero sin nota de aviso de catálogo
+      expect(
+        screen.queryByText(/no tiene ningún catálogo disponible/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it('al hacer click en "Actualizar credenciales →" la nota ámbar del warning desaparece', async () => {
+      mockGetConfig
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(MOCK_CONFIG_ACTIVE);
+      mockSaveConfig.mockResolvedValue(MOCK_CONFIG_ACTIVE);
+      mockTestConnection.mockResolvedValue(MOCK_CONFIG_ACTIVE_WITH_CATALOG_WARNING);
+
+      renderPage();
+      const user = await fillAndSubmitSaveForm();
+
+      expect(
+        await screen.findByText(/no tiene ningún catálogo disponible/i),
+      ).toBeInTheDocument();
+
+      await user.click(
+        screen.getByRole('button', { name: /actualizar credenciales/i }),
+      );
+
+      expect(
+        screen.queryByText(/no tiene ningún catálogo disponible/i),
+      ).not.toBeInTheDocument();
+    });
+
+    it('cuando el connection-test falla (401) muestra el aviso de conexión fallida y NO la nota de catálogo', async () => {
+      mockGetConfig
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(MOCK_CONFIG_INACTIVE);
+      mockSaveConfig.mockResolvedValue(MOCK_CONFIG_INACTIVE);
+      mockTestConnection.mockRejectedValue({ response: { status: 401 } });
+
+      renderPage();
+      await fillAndSubmitSaveForm();
+
+      expect(
+        await screen.findByText(
+          /la conexión falló: revisá la api-key\. la integración queda inactiva\./i,
+        ),
+      ).toBeInTheDocument();
+      expect(await screen.findByText(/integración inactiva/i)).toBeInTheDocument();
+      expect(
+        screen.queryByText(/no tiene ningún catálogo disponible/i),
+      ).not.toBeInTheDocument();
     });
   });
 
