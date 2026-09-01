@@ -1,12 +1,12 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, CheckCircle2, FileText, Loader2, Search } from "lucide-react";
+import { AlertCircle, CheckCircle2, FileText, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
 import { ItemsEditTable } from "@/app/facturacion/components/ItemsEditTable";
-import { ProximamenteButton } from "@/app/facturacion/components/ProximamenteButton";
+import { VerifyIdentityButton } from "@/app/facturacion/components/VerifyIdentityButton";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -33,7 +33,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
+import { toIdentityLookupDocumentType } from "@/features/identity-lookup/adapters/to-identity-lookup-document-type.adapter";
+import type { IdentityLookupResult } from "@/features/identity-lookup/models/identity-lookup-result.model";
 import {
   IDENTITY_DOCUMENT_TYPES,
   SUNAT_DOCUMENT_TYPES,
@@ -112,6 +113,16 @@ export default function EmitirComprobanteModal({
   const totals = useWatch({
     control: form.control,
     name: "documents.0.totals",
+  });
+
+  const customerIdentityDocumentType = useWatch({
+    control: form.control,
+    name: "documents.0.customer.identityDocumentType",
+  });
+
+  const customerIdentityDocumentNumber = useWatch({
+    control: form.control,
+    name: "documents.0.customer.identityDocumentNumber",
   });
 
   const isInvoice = documentType === SUNAT_DOCUMENT_TYPES.INVOICE;
@@ -245,6 +256,23 @@ export default function EmitirComprobanteModal({
     setPipelineIndex(0);
   }
 
+  function handleIdentityVerified(result: IdentityLookupResult) {
+    form.setValue("documents.0.customer.name", result.fullName, {
+      shouldValidate: true,
+      shouldDirty: true,
+    });
+
+    // Only invoices show/require the address field, and RUC is the only
+    // lookup document type that ever returns one - so this only ever
+    // fires when it's actually relevant to fill.
+    if (result.address) {
+      form.setValue("documents.0.customer.address", result.address, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+    }
+  }
+
   const isPending = createSunatDocuments.isPending;
 
   return (
@@ -343,14 +371,10 @@ export default function EmitirComprobanteModal({
                           )}
                         </Label>
 
-                        <ProximamenteButton
-                          label={
-                            <>
-                              <Search className="mr-2 h-3.5 w-3.5" />
-                              Verificar RENIEC / SUNAT
-                            </>
-                          }
-                          tooltip="La verificación automática con RENIEC/SUNAT está en desarrollo."
+                        <VerifyIdentityButton
+                          documentType={toIdentityLookupDocumentType(customerIdentityDocumentType)}
+                          documentNumber={customerIdentityDocumentNumber}
+                          onVerified={handleIdentityVerified}
                         />
                       </div>
 

@@ -43,3 +43,6 @@ next-env.d.ts
 
 # Bun
 bun.lock
+
+*storybook.log
+storybook-static
