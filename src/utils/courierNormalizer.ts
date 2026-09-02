@@ -24,5 +24,10 @@ export function isAliclikCourier(courierName?: string | null): boolean {
 }
 
 export function isEvaCourier(courierName?: string | null): boolean {
-  return normalizeCourier(courierName) === "EVA";
+  if (!courierName) return false;
+  const c = courierName.trim().toLowerCase();
+  // "eva" sola, o "eva" como primera palabra: "eva courier", "eva courrier",
+  // "eva currier", "eva - fly express", etc. Ancla al inicio para no matchear
+  // nombres tipo "nueva agencia" o "Evaristo".
+  return /^eva\b/.test(c);
 }

@@ -25,9 +25,6 @@ import {
   getStatusPillClasses,
 } from "@/utils/domain/orders-status-flow";
 import { DELIVERY_ZONES } from "@/constants/operationsDomain";
-import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
-import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
-import SendToEvaButton from "@/components/eva/SendToEvaButton";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import type { Sale, SaleItem } from "./types";
 
@@ -329,56 +326,6 @@ export function ZoneBadge({ zone }: { zone?: string | null }) {
     <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium whitespace-nowrap">
       {z ? `${z.emoji} ${z.label}` : zone}
     </span>
-  );
-}
-
-/**
- * Integraciones de fulfillment por fila — el módulo viejo tenía esto en
- * cada pedido (badge de estado + botón de reenvío). Si todavía no se envió
- * a ninguna, ofrece el botón "Enviar a EVA"; si ya hay estado de Aliclik o
- * EVA, muestra los badges de seguimiento en su lugar.
- */
-export function IntegrationBadges({
-  sale,
-  companyId,
-  onSuccess,
-}: {
-  sale: Pick<
-    Sale,
-    "id" | "clientName" | "phoneNumber" | "district" | "address" | "total" | "aliclikDispatchStatus" | "aliclikSyncedAt" | "evaStatus" | "evaSyncedAt"
-  >;
-  companyId?: string;
-  onSuccess: () => void;
-}) {
-  const hasAliclik = !!sale.aliclikDispatchStatus;
-  const hasEva = !!sale.evaStatus;
-
-  if (!hasAliclik && !hasEva) {
-    return (
-      <SendToEvaButton
-        orderId={sale.id}
-        companyId={companyId}
-        recipientName={sale.clientName}
-        recipientPhone={sale.phoneNumber}
-        district={sale.district}
-        address={sale.address}
-        amount={sale.total}
-        onSuccess={onSuccess}
-        variant="outline"
-        size="sm"
-        className="h-6 px-2 text-[10px]"
-        label="Enviar a EVA"
-      />
-    );
-  }
-
-  return (
-    <div className="flex flex-col items-start gap-1">
-      {hasAliclik && (
-        <AliclikStatusBadge aliclikDispatchStatus={sale.aliclikDispatchStatus} aliclikSyncedAt={sale.aliclikSyncedAt} />
-      )}
-      {hasEva && <EvaStatusBadge evaStatus={sale.evaStatus} evaSyncedAt={sale.evaSyncedAt} />}
-    </div>
   );
 }
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CcPedidosTable } from '../CcPedidosTable';
@@ -18,6 +19,21 @@ jest.mock('@/contexts/AuthContext', () => ({
 jest.mock('@/services/evaService', () => ({
   getEvaCredentials: jest.fn(),
   createEvaOrder: jest.fn(),
+}));
+
+/* El botón real abre SendToEvaModal (useAuth + evaService + combobox de distrito).
+   Estos tests sólo verifican el GATE de visibilidad (courier EVA + sin evaStatus),
+   así que se reemplaza por un placeholder que expone su label y el orderId. */
+jest.mock('@/components/eva/SendToEvaButton', () => ({
+  __esModule: true,
+  default: ({ label, orderId }: { label?: string; orderId: string }) => {
+    const React = require('react');
+    return React.createElement(
+      'button',
+      { type: 'button', 'data-order-id': orderId },
+      label ?? 'Enviar a EVA',
+    );
+  },
 }));
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -167,5 +183,47 @@ describe('CcPedidosTable — botón "Recuperar venta"', () => {
     renderTable([order]);
 
     expect(screen.queryByTitle('Recuperar venta')).toBeNull();
+  });
+});
+
+describe('CcPedidosTable — gate del botón "Enviar a EVA" por fila', () => {
+  beforeEach(() => {
+    jest.mocked(useAuth).mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
+    jest.mocked(getEvaCredentials).mockReturnValue(new Promise(() => {}));
+  });
+
+  afterEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('muestra el botón cuando el courier del pedido es EVA (grafía compuesta) y no fue enviado', () => {
+    renderTable([makeOrder({ courier: 'Eva Courier', evaStatus: null })]);
+    expect(screen.getByRole('button', { name: /enviar/i })).toBeInTheDocument();
+  });
+
+  it('muestra el botón cuando el courier es "EVA" exacto y no fue enviado', () => {
+    renderTable([makeOrder({ courier: 'EVA', evaStatus: null })]);
+    expect(screen.getByRole('button', { name: /enviar/i })).toBeInTheDocument();
+  });
+
+  it('NO muestra el botón cuando el pedido no tiene courier asignado', () => {
+    renderTable([makeOrder({ courier: null })]);
+    expect(screen.queryByRole('button', { name: /enviar/i })).toBeNull();
+  });
+
+  it('NO muestra el botón cuando el courier no es EVA', () => {
+    renderTable([makeOrder({ courier: 'Shalom' })]);
+    expect(screen.queryByRole('button', { name: /enviar/i })).toBeNull();
+  });
+
+  it('NO muestra el botón cuando el pedido ya fue enviado (tiene evaStatus)', () => {
+    renderTable([makeOrder({ courier: 'EVA', evaStatus: 'REGISTRADO' })]);
+    expect(screen.queryByRole('button', { name: /enviar/i })).toBeNull();
+  });
+
+  it('mantiene el badge de estado EVA aunque el botón no se muestre', () => {
+    renderTable([makeOrder({ courier: 'EVA', evaStatus: 'ENTREGADO' })]);
+    expect(screen.getByText('Entregado')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /enviar/i })).toBeNull();
   });
 });

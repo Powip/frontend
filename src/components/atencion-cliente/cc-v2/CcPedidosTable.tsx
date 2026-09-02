@@ -14,6 +14,7 @@ import { OrderHeader, SubEstadoCc, TipoGestionCC } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 import SendToEvaButton from "@/components/eva/SendToEvaButton";
+import { isEvaCourier } from "@/utils/courierNormalizer";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
@@ -270,19 +271,21 @@ export function CcPedidosTable({
                       evaStatus={order.evaStatus}
                       evaSyncedAt={order.evaSyncedAt}
                     />
-                    <SendToEvaButton
-                      orderId={order.id}
-                      recipientName={clientName}
-                      recipientPhone={order.customer?.phoneNumber ?? ""}
-                      district={order.customer?.district ?? ""}
-                      address={order.customer?.address ?? ""}
-                      amount={grandTotal}
-                      onSuccess={() => onEvaSent?.(order)}
-                      variant="outline"
-                      size="sm"
-                      className="h-6 px-2 text-[10px]"
-                      label="Enviar"
-                    />
+                    {isEvaCourier(order.courier) && !order.evaStatus && (
+                      <SendToEvaButton
+                        orderId={order.id}
+                        recipientName={clientName}
+                        recipientPhone={order.customer?.phoneNumber ?? ""}
+                        district={order.customer?.district ?? ""}
+                        address={order.customer?.address ?? ""}
+                        amount={porCobrar}
+                        onSuccess={() => onEvaSent?.(order)}
+                        variant="outline"
+                        size="sm"
+                        className="h-6 px-2 text-[10px]"
+                        label="Enviar"
+                      />
+                    )}
                   </div>
                 </TableCell>
 

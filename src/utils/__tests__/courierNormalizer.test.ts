@@ -1,4 +1,9 @@
-import { normalizeCourier, isShalomCourier, isAliclikCourier } from '../courierNormalizer';
+import {
+  normalizeCourier,
+  isShalomCourier,
+  isAliclikCourier,
+  isEvaCourier,
+} from '../courierNormalizer';
 
 describe('normalizeCourier', () => {
   it('normaliza "aliclik" a "Aliclik"', () => {
@@ -83,5 +88,44 @@ describe('isShalomCourier', () => {
 
   it('devuelve false para null', () => {
     expect(isShalomCourier(null)).toBe(false);
+  });
+});
+
+describe('isEvaCourier', () => {
+  // Las 7 grafías reales de la tabla couriers.couriers + variantes de caso y
+  // espacios. El botón "Enviar a EVA" se muestra si y sólo si esto da true.
+  it.each([
+    'eva',
+    'EVA',
+    'Eva',
+    'eva courier',
+    'EVA COURIER',
+    'Eva Courier',
+    'EVA COURRIER',
+    'Eva Currier',
+    'EVA COURIER ',
+    '  eva  ',
+  ])('devuelve true para %p', (input) => {
+    expect(isEvaCourier(input)).toBe(true);
+  });
+
+  // Nombres genéricos o que sólo contienen "eva" como subcadena → false.
+  it.each([
+    'Shalom',
+    'Olva Courier',
+    'Nicolás',
+    'nueva agencia',
+    'Evaristo',
+    '',
+  ])('devuelve false para %p', (input) => {
+    expect(isEvaCourier(input)).toBe(false);
+  });
+
+  it('devuelve false para undefined', () => {
+    expect(isEvaCourier(undefined)).toBe(false);
+  });
+
+  it('devuelve false para null', () => {
+    expect(isEvaCourier(null)).toBe(false);
   });
 });

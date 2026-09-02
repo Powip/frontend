@@ -33,8 +33,10 @@ import EvaStatusBadge, {
   STATUS_GROUP,
   GROUP_CLS,
 } from "@/components/eva/EvaStatusBadge";
+import SendToEvaButton from "@/components/eva/SendToEvaButton";
 import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
+import { isEvaCourier } from "@/utils/courierNormalizer";
 
 const ITEMS_PER_PAGE = 15;
 
@@ -75,7 +77,7 @@ interface StatusCount {
 // ─── COMPONENTE PRINCIPAL ───────────────────────────────────────────────────
 
 export default function EvaOrderTrackingView() {
-  const { selectedStoreId } = useAuth();
+  const { auth, selectedStoreId } = useAuth();
 
   const [orders, setOrders] = useState<OrderHeader[]>([]);
   const [loading, setLoading] = useState(true);
@@ -95,8 +97,12 @@ export default function EvaOrderTrackingView() {
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
       );
 
+      // Espeja a ShalomOrderTrackingView: se listan los pedidos por courier
+      // asignado (courier/shippingOffice), no por tener `evaStatus`. Así también
+      // aparecen los que todavía no se despacharon a EVA, con el botón "Enviar
+      // a EVA" disponible en la columna Acciones.
       const evaOnly = res.data
-        .filter((o) => o.evaStatus !== null && o.evaStatus !== undefined)
+        .filter((o) => isEvaCourier(o.courier) || isEvaCourier(o.shippingOffice))
         .sort(
           (a, b) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
@@ -350,7 +356,7 @@ export default function EvaOrderTrackingView() {
                   colSpan={7}
                   className="h-32 text-center text-muted-foreground"
                 >
-                  No hay pedidos enviados a EVA Courier
+                  No hay pedidos con courier EVA
                   {(search || statusFilter || saldoFilter !== "all") && (
                     <span className="block text-xs mt-1">
                       Probá quitando los filtros activos
@@ -412,15 +418,32 @@ export default function EvaOrderTrackingView() {
 
                   {/* Acciones */}
                   <TableCell className="px-4 py-3 text-right">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      title="Ver pedido"
-                      onClick={() => setViewOrderId(order.id)}
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                    </Button>
+                    <div className="flex items-center justify-end gap-1">
+                      {!order.evaStatus && (
+                        <SendToEvaButton
+                          orderId={order.id}
+                          companyId={auth?.company?.id}
+                          recipientName={order.customer?.fullName ?? ""}
+                          recipientPhone={order.customer?.phoneNumber ?? ""}
+                          district={order.customer?.district ?? ""}
+                          address={order.customer?.address ?? ""}
+                          amount={getPendingPayment(order)}
+                          onSuccess={fetchOrders}
+                          variant="outline"
+                          size="sm"
+                          label="Enviar a EVA"
+                        />
+                      )}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-7 w-7"
+                        title="Ver pedido"
+                        onClick={() => setViewOrderId(order.id)}
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))

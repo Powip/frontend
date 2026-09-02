@@ -2,31 +2,31 @@
 /**
  * Tests: EvaOrderTrackingView
  *
- * Comportamiento verificado:
- * 1. Al montar, hace fetch al endpoint order-header/store/:storeId y muestra
- *    SOLO los pedidos con evaStatus no nulo; pedidos sin ese campo quedan
- *    excluidos de la tabla.
- * 2. El resumen de contadores muestra el label y la cantidad correcta por
- *    estado EVA (ej. "Entregado" → 1, "En ruta" → 1).
- * 3. Los contadores por estado funcionan como filtro clickeable (togglean
- *    statusFilter) y hay un botón "Limpiar filtro" cuando hay uno activo.
- * 4. El botón "Actualizar" dispara un segundo fetch al hacer click.
- * 5. El buscador filtra por número de pedido y por nombre de cliente.
- * 6. Estado vacío: si ningún pedido tiene evaStatus, se muestra el mensaje
- *    "No hay pedidos enviados a EVA Courier".
- * 7. Si selectedStoreId es null, no se realiza ningún fetch.
- * 8. Error de fetch: muestra toast.error.
- * 9. Se muestra la columna "Tracking EVA" con el evaTrackingId de cada pedido.
+ * Comportamiento verificado (tras FIX-eva-boton-enviar-gate-courier):
+ * 1. Al montar hace fetch a order-header/store/:storeId y lista los pedidos
+ *    cuyo `courier` (o `shippingOffice`) es EVA en cualquier grafía
+ *    (`isEvaCourier`). YA NO se filtra por `evaStatus`.
+ * 2. Un pedido con courier EVA y SIN `evaStatus` se lista igual, con el botón
+ *    "Enviar a EVA" en la columna Acciones.
+ * 3. Un pedido que ya tiene `evaStatus` NO muestra el botón "Enviar a EVA",
+ *    sólo el badge de estado.
+ * 4. Un pedido cuyo courier no es EVA no se lista.
+ * 5. El resumen de contadores agrupa por `evaStatus`; los pedidos sin estado
+ *    (UNKNOWN) no ensucian el resumen.
+ * 6. Los contadores funcionan como filtro clickeable + "Limpiar filtro".
+ * 7. El botón "Actualizar" dispara un segundo fetch.
+ * 8. El buscador filtra por número de pedido y por nombre de cliente.
+ * 9. Estado vacío: "No hay pedidos con courier EVA".
+ * 10. Sin `selectedStoreId` no se hace fetch.
+ * 11. Error de fetch → toast.error, sin crash.
  *
  * Work-arounds jsdom aplicados:
- * - axios         → mock completo (axios.get como jest.fn())
- * - useAuth       → mock que devuelve selectedStoreId
- * - EvaStatusBadge → real (componente puro de display); se mockea date-fns
- *   para evitar problemas con localización en jsdom.
- * - Componentes UI Shadcn (Table, Button, Input, Label, Badge) → mocks mínimos
- *   para evitar errores de ResizeObserver / Radix en jsdom.
- * - lucide-react  → iconos como spans vacíos.
- * - sonner        → mock de toast.
+ * - axios / sonner / useAuth           → mocks
+ * - SendToEvaButton                    → mock (evita SendToEvaModal + useAuth/evaService)
+ * - CustomerServiceModal / Pagination  → mocks a null
+ * - UI Shadcn (button/table/input/label/badge/select) → mocks mínimos
+ * - lucide-react / date-fns / xlsx / file-saver       → mocks
+ * - EvaStatusBadge                     → real (componente puro de display)
  */
 
 import React from 'react';
@@ -60,6 +60,48 @@ jest.mock('date-fns', () => ({
   format: (_date: Date, _fmt: string) => '01/01/25 10:00',
 }));
 jest.mock('date-fns/locale', () => ({ es: {} }));
+
+// El botón real abre SendToEvaModal (árbol pesado: useAuth, evaService, combobox…).
+// Acá sólo importa que se renderice, con su label, cuando el pedido lo habilita.
+jest.mock('@/components/eva/SendToEvaButton', () => ({
+  __esModule: true,
+  default: ({
+    label,
+    orderId,
+    amount,
+  }: {
+    label?: string;
+    orderId: string;
+    amount?: number;
+  }) => {
+    const R = require('react');
+    return R.createElement(
+      'button',
+      { type: 'button', 'data-order-id': orderId, 'data-amount': amount },
+      label ?? 'Enviar a EVA',
+    );
+  },
+}));
+
+jest.mock('@/components/modals/CustomerServiceModal', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
+jest.mock('@/components/ui/pagination', () => ({
+  Pagination: () => null,
+}));
+
+jest.mock('xlsx', () => ({
+  utils: {
+    json_to_sheet: jest.fn(() => ({})),
+    book_new: jest.fn(() => ({})),
+    book_append_sheet: jest.fn(),
+  },
+  write: jest.fn(() => new ArrayBuffer(0)),
+}));
+
+jest.mock('file-saver', () => ({ saveAs: jest.fn() }));
 
 // Mocks mínimos de componentes UI
 jest.mock('@/components/ui/button', () => {
@@ -162,10 +204,31 @@ jest.mock('@/components/ui/badge', () => {
   return { Badge };
 });
 
+// El filtro "Saldo" usa el Select de Radix (role="combobox"), que colisionaría
+// con el <select> nativo de "Estado EVA". Se neutraliza a un contenedor pasivo.
+jest.mock('@/components/ui/select', () => {
+  const ReactLib = require('react');
+  const Passthrough = ({ children }: { children?: unknown }) =>
+    ReactLib.createElement('div', null, children);
+  return {
+    Select: Passthrough,
+    SelectTrigger: Passthrough,
+    SelectValue: () => null,
+    SelectContent: () => null,
+    SelectItem: () => null,
+  };
+});
+
 jest.mock('lucide-react', () => ({
   Search: () => <span data-testid="icon-search" />,
   RefreshCw: ({ className }: { className?: string }) => (
     <span data-testid="icon-refresh" className={className} />
+  ),
+  Eye: ({ className }: { className?: string }) => (
+    <span data-testid="icon-eye" className={className} />
+  ),
+  FileSpreadsheet: ({ className }: { className?: string }) => (
+    <span data-testid="icon-excel" className={className} />
   ),
 }));
 
@@ -207,11 +270,13 @@ const MOCK_AUTH = {
   hasPermission: jest.fn().mockReturnValue(true),
 };
 
-/** Pedido con evaStatus → debe aparecer en la vista */
+/** Pedido con courier EVA y evaStatus REGISTRADO → se lista, SIN botón "Enviar a EVA" */
 const ORDER_REGISTRADO = {
   id: 'order-1',
   orderNumber: 'ORD-001',
   storeId: 'store-1',
+  courier: 'EVA',
+  shippingOffice: null,
   evaStatus: 'REGISTRADO',
   evaSyncedAt: '2025-06-01T10:00:00Z',
   evaTrackingId: 'EVA-TRK-001',
@@ -224,7 +289,6 @@ const ORDER_REGISTRADO = {
   closingChannel: 'WHATSAPP',
   deliveryType: 'DOMICILIO',
   courierId: null,
-  courier: null,
   subtotal: '100',
   taxTotal: '0',
   shippingTotal: '10',
@@ -238,7 +302,7 @@ const ORDER_REGISTRADO = {
   payments: [],
 };
 
-/** Pedido con ENTREGADO */
+/** Pedido con courier EVA y ENTREGADO */
 const ORDER_ENTREGADO = {
   ...ORDER_REGISTRADO,
   id: 'order-2',
@@ -249,7 +313,7 @@ const ORDER_ENTREGADO = {
   customer: { fullName: 'Juan Pérez', id: 'c2', companyId: 'company-1' },
 };
 
-/** Pedido con DEVUELTO */
+/** Pedido con courier EVA y DEVUELTO */
 const ORDER_DEVUELTO = {
   ...ORDER_REGISTRADO,
   id: 'order-3',
@@ -260,16 +324,30 @@ const ORDER_DEVUELTO = {
   customer: { fullName: 'Ana Torres', id: 'c3', companyId: 'company-1' },
 };
 
-/** Pedido SIN evaStatus → NO debe aparecer */
+/** Pedido cuyo courier NO es EVA → NO debe listarse */
 const ORDER_NO_EVA = {
   ...ORDER_REGISTRADO,
   id: 'order-4',
   orderNumber: 'ORD-004',
+  courier: 'Shalom',
   evaStatus: null,
   evaSyncedAt: null,
   evaTrackingId: null,
   created_at: '2025-06-04T09:00:00Z',
   customer: { fullName: 'Pedro Ruiz', id: 'c4', companyId: 'company-1' },
+};
+
+/** Pedido con courier EVA (grafía compuesta) y SIN evaStatus → se lista CON botón "Enviar a EVA" */
+const ORDER_EVA_PENDIENTE = {
+  ...ORDER_REGISTRADO,
+  id: 'order-5',
+  orderNumber: 'ORD-005',
+  courier: 'Eva Courier',
+  evaStatus: null,
+  evaSyncedAt: null,
+  evaTrackingId: null,
+  created_at: '2025-06-05T09:00:00Z',
+  customer: { fullName: 'Lucía Ramos', id: 'c5', companyId: 'company-1' },
 };
 
 // ── Setup ────────────────────────────────────────────────────────────────────
@@ -291,9 +369,9 @@ function renderView() {
 
 describe('EvaOrderTrackingView', () => {
 
-  // ── 1. Fetch al endpoint correcto y filtrado por evaStatus ─────────────────
+  // ── 1. Fetch al endpoint correcto y filtrado por courier ───────────────────
 
-  describe('fetch inicial y filtrado de pedidos', () => {
+  describe('fetch inicial y filtrado por courier EVA', () => {
     it('llama a axios.get con la URL correcta al montar', async () => {
       renderView();
       await waitFor(() => {
@@ -303,24 +381,46 @@ describe('EvaOrderTrackingView', () => {
       });
     });
 
-    it('muestra el pedido que tiene evaStatus', async () => {
+    it('lista un pedido con courier EVA', async () => {
       renderView();
       expect(await screen.findByText('ORD-001')).toBeInTheDocument();
     });
 
-    it('muestra el número de pedido ENTREGADO que también tiene evaStatus', async () => {
+    it('lista otro pedido con courier EVA', async () => {
       renderView();
       expect(await screen.findByText('ORD-002')).toBeInTheDocument();
     });
 
-    it('NO muestra el pedido sin evaStatus (evaStatus: null)', async () => {
+    it('NO lista un pedido cuyo courier no es EVA', async () => {
       renderView();
-      // Esperar a que la carga termine (el pedido con estado aparece)
       await screen.findByText('ORD-001');
       expect(screen.queryByText('ORD-004')).not.toBeInTheDocument();
     });
 
-    it('muestra el nombre del cliente del pedido con evaStatus', async () => {
+    it('lista un pedido con courier EVA aunque NO tenga evaStatus (antes se filtraba por evaStatus)', async () => {
+      mockAxiosGet.mockResolvedValue({ data: [ORDER_EVA_PENDIENTE, ORDER_NO_EVA] });
+      renderView();
+      expect(await screen.findByText('ORD-005')).toBeInTheDocument();
+      expect(screen.queryByText('ORD-004')).not.toBeInTheDocument();
+    });
+
+    it('reconoce el courier EVA en grafía exacta ("EVA")', async () => {
+      mockAxiosGet.mockResolvedValue({
+        data: [{ ...ORDER_EVA_PENDIENTE, courier: 'EVA' }],
+      });
+      renderView();
+      expect(await screen.findByText('ORD-005')).toBeInTheDocument();
+    });
+
+    it('lista por shippingOffice EVA aunque courier sea null', async () => {
+      mockAxiosGet.mockResolvedValue({
+        data: [{ ...ORDER_EVA_PENDIENTE, courier: null, shippingOffice: 'EVA COURIER' }],
+      });
+      renderView();
+      expect(await screen.findByText('ORD-005')).toBeInTheDocument();
+    });
+
+    it('muestra el nombre del cliente del pedido EVA', async () => {
       renderView();
       expect(await screen.findByText('María García')).toBeInTheDocument();
     });
@@ -331,14 +431,41 @@ describe('EvaOrderTrackingView', () => {
     });
   });
 
-  // ── 2. Resumen de contadores por estado ────────────────────────────────────
+  // ── 2. Botón "Enviar a EVA" por fila ───────────────────────────────────────
+
+  describe('botón "Enviar a EVA" en la columna Acciones', () => {
+    it('aparece en la fila de un pedido con courier EVA y sin evaStatus', async () => {
+      mockAxiosGet.mockResolvedValue({ data: [ORDER_EVA_PENDIENTE] });
+      renderView();
+      await screen.findByText('ORD-005');
+      expect(screen.getByRole('button', { name: /enviar a eva/i })).toBeInTheDocument();
+    });
+
+    it('NO aparece en la fila de un pedido que ya tiene evaStatus', async () => {
+      mockAxiosGet.mockResolvedValue({ data: [ORDER_REGISTRADO] });
+      renderView();
+      await screen.findByText('ORD-001');
+      expect(screen.queryByRole('button', { name: /enviar a eva/i })).not.toBeInTheDocument();
+    });
+
+    it('sólo aparece en las filas sin evaStatus cuando conviven ambos tipos', async () => {
+      mockAxiosGet.mockResolvedValue({ data: [ORDER_REGISTRADO, ORDER_EVA_PENDIENTE] });
+      renderView();
+      await screen.findByText('ORD-001');
+      await screen.findByText('ORD-005');
+      // Un único botón "Enviar a EVA": el de la fila ORD-005
+      const botones = screen.getAllByRole('button', { name: /enviar a eva/i });
+      expect(botones).toHaveLength(1);
+      expect(botones[0]).toHaveAttribute('data-order-id', 'order-5');
+    });
+  });
+
+  // ── 3. Resumen de contadores por estado ────────────────────────────────────
 
   describe('resumen de contadores por estado', () => {
-    // Nota: el label de cada estado aparece simultáneamente en 3 lugares del DOM
-    // (la burbuja de resumen, el <option> del selector "Estado EVA" — que lista
-    // TODOS los estados conocidos siempre — y el badge de la fila). Por eso las
-    // aserciones sobre el resumen usan getByRole('button', ...) para apuntar
-    // específicamente a la burbuja clicable y evitar coincidencias múltiples.
+    // El label de cada estado aparece en 3 lugares: burbuja de resumen (button),
+    // <option> del <select> "Estado EVA" y badge de la fila. Se apunta a la
+    // burbuja vía getByRole('button', ...).
 
     it('muestra el label "Registrado" en el resumen cuando hay un pedido REGISTRADO', async () => {
       renderView();
@@ -353,7 +480,6 @@ describe('EvaOrderTrackingView', () => {
     });
 
     it('muestra el conteo 1 para el estado REGISTRADO', async () => {
-      // Datos: 1 REGISTRADO, 1 ENTREGADO → la burbuja de conteo de REGISTRADO es "1"
       renderView();
       await screen.findByText('ORD-001');
       const registradoBtns = screen.getAllByRole('button', { name: /registrado/i });
@@ -361,21 +487,13 @@ describe('EvaOrderTrackingView', () => {
       expect(registradoBtns[0].textContent).toContain('1');
     });
 
-    it('muestra el conteo 1 para el estado ENTREGADO', async () => {
+    it('los pedidos EVA sin evaStatus no aparecen en el resumen (UNKNOWN filtrado)', async () => {
+      mockAxiosGet.mockResolvedValue({ data: [ORDER_EVA_PENDIENTE] });
       renderView();
-      await screen.findByText('ORD-002');
-      const entregadoBtns = screen.getAllByRole('button', { name: /entregado/i });
-      expect(entregadoBtns.length).toBeGreaterThan(0);
-      expect(entregadoBtns[0].textContent).toContain('1');
-    });
-
-    it('no muestra el resumen cuando no hay pedidos con evaStatus', async () => {
-      mockAxiosGet.mockResolvedValue({ data: [ORDER_NO_EVA] });
-      renderView();
-      await screen.findByText('No hay pedidos enviados a EVA Courier');
-      // El resumen de contadores (botón clicable) no aparece. Nota: "Registrado"
-      // existe igual como <option> del filtro de estado, por eso se chequea el botón del resumen.
+      await screen.findByText('ORD-005');
+      // El pedido se lista pero no hay ninguna burbuja de resumen
       expect(screen.queryByRole('button', { name: /registrado/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /entregado/i })).not.toBeInTheDocument();
     });
 
     it('muestra "Devuelto" en el resumen cuando hay un DEVUELTO', async () => {
@@ -394,12 +512,11 @@ describe('EvaOrderTrackingView', () => {
       await user.click(registradoBtns[0]);
 
       expect(screen.getByText('Limpiar filtro')).toBeInTheDocument();
-      // Solo queda el pedido REGISTRADO
       expect(screen.getByText('ORD-001')).toBeInTheDocument();
       expect(screen.queryByText('ORD-002')).not.toBeInTheDocument();
     });
 
-    it('clickear el mismo contador de estado dos veces desactiva el filtro', async () => {
+    it('clickear el mismo contador dos veces desactiva el filtro', async () => {
       const user = userEvent.setup();
       renderView();
       await screen.findByText('ORD-001');
@@ -431,7 +548,7 @@ describe('EvaOrderTrackingView', () => {
     });
   });
 
-  // ── 3. Botón "Actualizar" dispara nuevo fetch ──────────────────────────────
+  // ── 4. Botón "Actualizar" dispara nuevo fetch ──────────────────────────────
 
   describe('botón Actualizar', () => {
     it('el botón "Actualizar" está en el DOM', async () => {
@@ -445,7 +562,6 @@ describe('EvaOrderTrackingView', () => {
       renderView();
       await screen.findByText('ORD-001');
 
-      // Primer fetch ya fue llamado al montar
       expect(mockAxiosGet).toHaveBeenCalledTimes(1);
 
       await user.click(screen.getByRole('button', { name: /actualizar/i }));
@@ -471,7 +587,7 @@ describe('EvaOrderTrackingView', () => {
     });
   });
 
-  // ── 4. Buscador — filtrado por N° de pedido y cliente ──────────────────────
+  // ── 5. Buscador — filtrado por N° de pedido y cliente ──────────────────────
 
   describe('buscador', () => {
     beforeEach(() => {
@@ -515,7 +631,6 @@ describe('EvaOrderTrackingView', () => {
       renderView();
       await screen.findByText('ORD-001');
 
-      // "ORD" coincide con todos
       await user.type(screen.getByPlaceholderText(/n° pedido o cliente/i), 'ORD');
 
       expect(screen.getByText('ORD-001')).toBeInTheDocument();
@@ -533,7 +648,7 @@ describe('EvaOrderTrackingView', () => {
         'XXXXXX-INEXISTENTE',
       );
 
-      expect(screen.getByText('No hay pedidos enviados a EVA Courier')).toBeInTheDocument();
+      expect(screen.getByText('No hay pedidos con courier EVA')).toBeInTheDocument();
       expect(screen.getByText(/probá quitando los filtros activos/i)).toBeInTheDocument();
     });
 
@@ -551,7 +666,7 @@ describe('EvaOrderTrackingView', () => {
     });
   });
 
-  // ── 5. Selector de estado (filtro por <select>) ─────────────────────────────
+  // ── 6. Selector de estado (filtro por <select> nativo) ─────────────────────
 
   describe('selector de estado EVA', () => {
     it('lista las opciones de estado EVA con su label', async () => {
@@ -576,30 +691,30 @@ describe('EvaOrderTrackingView', () => {
     });
   });
 
-  // ── 6. Estado vacío ────────────────────────────────────────────────────────
+  // ── 7. Estado vacío ────────────────────────────────────────────────────────
 
   describe('estado vacío', () => {
-    it('muestra "No hay pedidos enviados a EVA Courier" cuando la API no devuelve pedidos', async () => {
+    it('muestra "No hay pedidos con courier EVA" cuando la API no devuelve pedidos', async () => {
       mockAxiosGet.mockResolvedValue({ data: [] });
       renderView();
-      expect(await screen.findByText('No hay pedidos enviados a EVA Courier')).toBeInTheDocument();
+      expect(await screen.findByText('No hay pedidos con courier EVA')).toBeInTheDocument();
     });
 
-    it('muestra "No hay pedidos enviados a EVA Courier" cuando todos los pedidos carecen de evaStatus', async () => {
+    it('muestra "No hay pedidos con courier EVA" cuando ningún pedido tiene courier EVA', async () => {
       mockAxiosGet.mockResolvedValue({ data: [ORDER_NO_EVA] });
       renderView();
-      expect(await screen.findByText('No hay pedidos enviados a EVA Courier')).toBeInTheDocument();
+      expect(await screen.findByText('No hay pedidos con courier EVA')).toBeInTheDocument();
     });
 
     it('no muestra el hint de filtros activos cuando no hay búsqueda ni filtros', async () => {
       mockAxiosGet.mockResolvedValue({ data: [] });
       renderView();
-      await screen.findByText('No hay pedidos enviados a EVA Courier');
+      await screen.findByText('No hay pedidos con courier EVA');
       expect(screen.queryByText(/probá quitando los filtros activos/i)).not.toBeInTheDocument();
     });
   });
 
-  // ── 7. No fetch si selectedStoreId es null ─────────────────────────────────
+  // ── 8. No fetch si selectedStoreId es null ─────────────────────────────────
 
   describe('sin storeId', () => {
     it('no llama a axios.get cuando selectedStoreId es null', () => {
@@ -614,7 +729,7 @@ describe('EvaOrderTrackingView', () => {
     });
   });
 
-  // ── 8. Error de fetch ──────────────────────────────────────────────────────
+  // ── 9. Error de fetch ──────────────────────────────────────────────────────
 
   describe('error de fetch', () => {
     it('llama a toast.error cuando axios.get rechaza', async () => {
@@ -633,15 +748,14 @@ describe('EvaOrderTrackingView', () => {
       await waitFor(() => {
         expect(mockToast.error).toHaveBeenCalled();
       });
-      // El componente sigue en pie — la tabla vacía se muestra
-      expect(screen.getByText('No hay pedidos enviados a EVA Courier')).toBeInTheDocument();
+      expect(screen.getByText('No hay pedidos con courier EVA')).toBeInTheDocument();
     });
   });
 
-  // ── 9. Contador de registros ──────────────────────────────────────────────
+  // ── 10. Contador de registros ─────────────────────────────────────────────
 
   describe('contador de registros visibles', () => {
-    it('muestra "2 registros" cuando hay 2 pedidos con evaStatus', async () => {
+    it('muestra "2 registros" cuando hay 2 pedidos con courier EVA', async () => {
       renderView();
       expect(await screen.findByText(/2 registros/i)).toBeInTheDocument();
     });

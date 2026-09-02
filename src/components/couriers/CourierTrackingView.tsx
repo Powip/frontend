@@ -72,6 +72,7 @@ import { fetchCouriers } from "@/services/courierService";
 import { getEvaCredentials } from "@/services/evaService";
 import { getAliclikCredentials } from "@/services/aliclikService";
 import { OrderHeader } from "@/interfaces/IOrder";
+import { isEvaCourier } from "@/utils/courierNormalizer";
 
 function money(n: number): string {
   return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -81,7 +82,7 @@ function money(n: number): string {
 // propia (ver `allOrderRows`), así que `order.courier` puede venir vacío
 // para esos casos — se completa con la integración detectada.
 function courierLabel(order: OrderHeader): string {
-  if (order.courier) return order.courier;
+  if (order.courier) return isEvaCourier(order.courier) ? "EVA Courier" : order.courier;
   if (order.evaStatus) return "EVA Courier";
   if (order.aliclikDispatchStatus) return "Aliclik";
   if (order.shalomStatus) return "Shalom";
@@ -361,10 +362,15 @@ export default function CourierTrackingView() {
   }, [auth?.company?.id, auth?.accessToken]);
 
   // Couriers registrados en la cuenta (fetchCouriers) que no tienen una
-  // integración con vista propia (Shalom sí la tiene) — cada uno de estos
-  // recibe su propia pestaña genérica con la tabla de pedidos filtrada.
+  // integración con vista propia (Shalom y EVA sí la tienen) — cada uno de
+  // estos recibe su propia pestaña genérica con la tabla de pedidos filtrada.
+  // Se excluye EVA en cualquier grafía ("Eva Courier", etc.) para no duplicar
+  // la pestaña "EVA Courier" que ya renderiza EvaOrderTrackingView.
   const otherCouriers = useMemo(
-    () => companyCouriers.filter((c) => !c.toLowerCase().includes("shalom")),
+    () =>
+      companyCouriers.filter(
+        (c) => !c.toLowerCase().includes("shalom") && !isEvaCourier(c),
+      ),
     [companyCouriers],
   );
 
@@ -419,7 +425,8 @@ export default function CourierTrackingView() {
   // couriers que realmente aparecen en los pedidos despachados, más los
   // registrados (por si alguno no tiene pedidos todavía).
   const courierFilterOptions = useMemo(() => {
-    const set = new Set<string>(companyCouriers);
+    const normEva = (c: string) => (isEvaCourier(c) ? "EVA Courier" : c);
+    const set = new Set<string>(companyCouriers.map(normEva));
     for (const o of dispatchedOrders) set.add(courierLabel(o));
     set.delete("-");
     return Array.from(set).sort();
