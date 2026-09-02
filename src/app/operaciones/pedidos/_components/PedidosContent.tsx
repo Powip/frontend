@@ -395,13 +395,20 @@ export function PedidosContent() {
           for (const orderId of guideData.orderIds) {
             const carrierCost = guideData.orderCarrierCosts?.[orderId] || 0;
             // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO —
-            // si el pedido todavía está PREPARADO, se encadena el paso
-            // intermedio acá mismo, transparente para quien despacha.
-            if (salesById.get(orderId)?.status === "PREPARADO") {
-              await axios.patch(`${API_VENTAS}/order-header/${orderId}`, {
-                status: "LLAMADO",
-                ...getUserInfo(),
-              });
+            // si el pedido viene de un estado anterior (PREPARADO, o PAGADO =
+            // PENDIENTE + pagado), se encadenan los pasos intermedios hasta
+            // LLAMADO acá mismo, transparente para quien despacha.
+            // getStatusChainSteps no retrocede ni repite estado: LLAMADO y
+            // ASIGNADO_A_GUIA devuelven `[]` y no generan PATCH.
+            const currentStatus = salesById.get(orderId)?.status;
+            if (currentStatus) {
+              const bridge = getStatusChainSteps(currentStatus, "LLAMADO");
+              for (const step of bridge) {
+                await axios.patch(`${API_VENTAS}/order-header/${orderId}`, {
+                  status: step,
+                  ...getUserInfo(),
+                });
+              }
             }
             // La guía queda CREADA hasta que se apruebe explícitamente con el
             // botón "Aprobar Guía" (GuideDetailsModal) — recién ahí el pedido
@@ -461,16 +468,29 @@ export function PedidosContent() {
         // despacha directo a EN_ENVIO, igual que hace la aprobación normal.
         const guideAlreadyDispatched = guideStatus !== "CREADA" && guideStatus !== "ASIGNADA";
         for (const sale of selected) {
-          if (!guideAlreadyDispatched && sale.status === "PREPARADO") {
+          // Puente genérico: lleva cualquier estado previo (PREPARADO, o
+          // PAGADO = PENDIENTE + pagado) hasta LLAMADO sin violar el flujo del
+          // backend, encadenando un PATCH por paso. getStatusChainSteps no
+          // retrocede ni repite estado, así que un pedido ya en LLAMADO o más
+          // adelante (ASIGNADO_A_GUIA) no genera PATCH.
+          const bridge = getStatusChainSteps(sale.status, "LLAMADO");
+          for (const step of bridge) {
             await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
-              status: "LLAMADO",
+              status: step,
               ...getUserInfo(),
             });
           }
+          // PATCH final: adjunta la guía y avanza el último salto (válido de
+          // un paso desde LLAMADO/ASIGNADO_A_GUIA). Si la guía ya está
+          // despachada, el pedido pasa directo a EN_ENVIO con el courier en el
+          // MISMO PATCH (invariante "courier antes de EN_ENVIO"). Si no, queda
+          // en ASIGNADO_A_GUIA hasta que se apruebe la guía.
           await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
             guideNumber,
             status: guideAlreadyDispatched ? "EN_ENVIO" : "ASIGNADO_A_GUIA",
-            ...(guideAlreadyDispatched ? { courier: courierName ?? undefined } : {}),
+            ...(guideAlreadyDispatched
+              ? { courier: courierName ?? undefined }
+              : {}),
             ...getUserInfo(),
           });
         }

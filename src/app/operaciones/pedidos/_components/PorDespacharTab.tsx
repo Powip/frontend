@@ -51,6 +51,7 @@ import {
 import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
 import { OrderStatus } from "@/interfaces/IOrder";
+import { toFulfillmentStatus } from "@/utils/domain/orders-status-flow";
 import {
   ITEMS_PER_PAGE,
   PedidosActions,
@@ -138,14 +139,17 @@ const DEFAULT_COLUMNS: ColumnPrefs = {
 };
 
 // ORDER_STATUS_FLOW (orders-status-flow.ts) solo permite saltar a
-// ASIGNADO_A_GUIA desde LLAMADO — un PREPARADO puede armar guía igual,
-// pero el paso intermedio a LLAMADO se hace transparente: los handlers de
-// creación de guía (PedidosContent.tsx) lo encadenan automáticamente antes
-// de asignar la guía. PENDIENTE queda afuera (ni siquiera se lista acá).
+// ASIGNADO_A_GUIA desde LLAMADO — un PREPARADO (o un PAGADO, que es
+// "PENDIENTE + pagado": venta confirmada y cobrada que almacén todavía no
+// preparó) puede armar guía igual: los handlers de creación de guía
+// (PedidosContent.tsx) encadenan el/los paso(s) intermedio(s) a
+// PREPARADO/LLAMADO de forma transparente antes de asignar la guía.
+// PENDIENTE a secas queda afuera (ni siquiera se lista acá).
 const GUIDE_ELIGIBLE_STATUSES: OrderStatus[] = [
   "PREPARADO",
   "LLAMADO",
   "ASIGNADO_A_GUIA",
+  "PAGADO",
 ];
 
 function loadColumnPrefs(): ColumnPrefs {
@@ -221,9 +225,12 @@ export function PorDespacharTab({
     });
   };
 
+  // El filtro "Estado" ofrece la etapa de fulfillment, no el pseudo-estado de
+  // cobro: PAGADO se colapsa en "Pendiente" (dedupe con el Set). El match del
+  // filtro también se evalúa sobre esa etapa — ver `filtered` más abajo.
   const statusOptions = useMemo(() => {
     const set = new Set<OrderStatus>();
-    for (const s of sales) set.add(s.status);
+    for (const s of sales) set.add(toFulfillmentStatus(s.status));
     return Array.from(set);
   }, [sales]);
 
@@ -303,7 +310,17 @@ export function PorDespacharTab({
     return list;
   }, [salesOfDay, qf, pipelineFilter, showingReprogramados, allReprogramados]);
 
-  const filtered = useMemo(() => applyFilters(byQf, filters), [byQf, filters]);
+  // `applyFilters` compara `filters.status` contra el status REAL del pedido.
+  // En esta pestaña la columna Estado (y su filtro) muestra la etapa de
+  // fulfillment — PAGADO cuenta como "Pendiente" —, así que el filtro de
+  // estado se saca de `applyFilters` y se evalúa acá con `toFulfillmentStatus`.
+  const filtered = useMemo(() => {
+    const base = applyFilters(byQf, { ...filters, status: "" });
+    if (!filters.status) return base;
+    return base.filter(
+      (s) => toFulfillmentStatus(s.status) === filters.status,
+    );
+  }, [byQf, filters]);
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paged = filtered.slice(
     (page - 1) * ITEMS_PER_PAGE,

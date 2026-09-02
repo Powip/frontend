@@ -23,6 +23,7 @@ import {
   getStatusDotClass,
   getStatusLabel,
   getStatusPillClasses,
+  toFulfillmentStatus,
 } from "@/utils/domain/orders-status-flow";
 import { DELIVERY_ZONES } from "@/constants/operationsDomain";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
@@ -98,11 +99,15 @@ export function CallStatusBadge({ sale }: { sale: Sale }) {
 }
 
 export function StatusPill({ status }: { status: OrderStatus }) {
+  // En las tablas de Pedidos la columna Estado muestra la etapa de
+  // fulfillment: un PAGADO se ve como "Pendiente" (el cobro se gestiona en el
+  // modal de pagos, no en esta píldora).
+  const displayStatus = toFulfillmentStatus(status);
   return (
     <span
-      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold ${getStatusPillClasses(status)}`}
+      className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-bold ${getStatusPillClasses(displayStatus)}`}
     >
-      {getStatusLabel(status)}
+      {getStatusLabel(displayStatus)}
     </span>
   );
 }
@@ -193,10 +198,15 @@ export function RowStatusSelect({
   /** Si se omite, no se ofrece "Reprogramar". */
   onReschedule?: () => void;
 }) {
+  // La lógica de transición usa SIEMPRE el status real (value + nextStatuses);
+  // solo la etiqueta/píldora visible del trigger muestra la etapa de
+  // fulfillment (PAGADO se ve como "Pendiente").
   const nextStatuses = getAvailableStatuses(status).filter((s) => s !== status);
   if (nextStatuses.length === 0 && !onMarkNoAnswer && !onReschedule) {
     return <StatusPill status={status} />;
   }
+
+  const displayStatus = toFulfillmentStatus(status);
 
   return (
     <Select
@@ -209,9 +219,9 @@ export function RowStatusSelect({
     >
       <SelectTrigger
         size="sm"
-        className={`h-auto w-auto gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-bold ${getStatusPillClasses(status)}`}
+        className={`h-auto w-auto gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-bold ${getStatusPillClasses(displayStatus)}`}
       >
-        <SelectValue>{getStatusLabel(status)}</SelectValue>
+        <SelectValue>{getStatusLabel(displayStatus)}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         {nextStatuses.map((s) => (

@@ -16,7 +16,14 @@ export const ORDER_STATUS_FLOW: Record<OrderStatus, OrderStatus[]> = {
   EN_ENVIO: ["ENTREGADO", "ANULADO"],
   ENTREGADO: ["ANULADO"],
   ANULADO: [],
-  PAGADO: ["ANULADO"],
+  // PAGADO no es una etapa de fulfillment: es "PENDIENTE + pagado al 100%"
+  // (el backend solo entra a PAGADO desde PENDIENTE al cobrarse el total y
+  // vuelve a PENDIENTE si se revierte el pago). Se mantiene espejado al
+  // backend, que solo permite el salto directo PAGADO→PREPARADO (+ANULADO).
+  // El armado de guía desde PAGADO NO depende de esta tabla: encadena
+  // PREPARADO→LLAMADO→ASIGNADO_A_GUIA vía getStatusChainSteps (que usa
+  // STATUS_PROGRESSION/FULFILLMENT_RANK, no ORDER_STATUS_FLOW).
+  PAGADO: ["PREPARADO", "ANULADO"],
 };
 
 /** Etiquetas legibles para mostrar en selects/badges — nunca el enum crudo. */
@@ -37,19 +44,60 @@ export function getStatusLabel(status: OrderStatus): string {
   return ORDER_STATUS_LABEL[status] ?? status;
 }
 
+/**
+ * Mapea el pseudo-estado PAGADO a su etapa de fulfillment real (PENDIENTE)
+ * para mostrarlo en vistas operativas (Operaciones › Pedidos). En esas
+ * tablas la columna "Estado" es la etapa del pedido, no el cobro — el cobro
+ * se gestiona en el modal de pagos. El resto de estados pasan sin cambio.
+ */
+export function toFulfillmentStatus(status: OrderStatus): OrderStatus {
+  return status === "PAGADO" ? "PENDIENTE" : status;
+}
+
 // Progresión lineal usada solo para calcular los saltos intermedios de los
 // atajos "En envío"/"Contactado" desde PENDIENTE o PREPARADO — no reemplaza
 // ORDER_STATUS_FLOW, es auxiliar de getStatusChainSteps.
 const STATUS_PROGRESSION: OrderStatus[] = ["PENDIENTE", "PREPARADO", "LLAMADO", "EN_ENVIO", "ENTREGADO"];
 
+// Rango del flujo de despacho — incluye ASIGNADO_A_GUIA (que no está en
+// STATUS_PROGRESSION porque no es un paso obligado de la cadena) y equipara
+// PAGADO con PENDIENTE. Se usa solo para detectar si el `target` ya quedó
+// atrás y no hay nada que encadenar: el flujo nunca retrocede de estado.
+const FULFILLMENT_RANK: Partial<Record<OrderStatus, number>> = {
+  PENDIENTE: 1,
+  PAGADO: 1,
+  PREPARADO: 2,
+  LLAMADO: 3,
+  ASIGNADO_A_GUIA: 4,
+  EN_ENVIO: 5,
+  ENTREGADO: 6,
+};
+
 /**
  * Pasos reales (uno por PATCH) para llegar de `current` a `target` sin
  * violar ORDER_STATUS_FLOW del backend. Si el salto no es un avance sobre
  * la progresión lineal (p.ej. ANULADO o ASIGNADO_A_GUIA), devuelve un único
- * paso directo — esos ya son válidos de un solo salto.
+ * paso directo — esos ya son válidos de un solo salto. Si el `target` ya se
+ * alcanzó o quedó atrás en el flujo, devuelve `[]` (no se retrocede ni se
+ * repite estado).
  */
 export function getStatusChainSteps(current: OrderStatus, target: OrderStatus): OrderStatus[] {
-  const from = STATUS_PROGRESSION.indexOf(current);
+  // PAGADO es "PENDIENTE + pagado" — misma etapa operativa. El backend valida
+  // la progresión desde PENDIENTE (PAGADO→PREPARADO es salto directo válido),
+  // así que se normaliza acá para calcular la cadena.
+  const normalizedCurrent = current === "PAGADO" ? "PENDIENTE" : current;
+
+  const currentRank = FULFILLMENT_RANK[normalizedCurrent];
+  const targetRank = FULFILLMENT_RANK[target];
+  if (
+    currentRank !== undefined &&
+    targetRank !== undefined &&
+    targetRank <= currentRank
+  ) {
+    return [];
+  }
+
+  const from = STATUS_PROGRESSION.indexOf(normalizedCurrent);
   const to = STATUS_PROGRESSION.indexOf(target);
   if (from === -1 || to === -1 || to <= from) return [target];
   return STATUS_PROGRESSION.slice(from + 1, to + 1);

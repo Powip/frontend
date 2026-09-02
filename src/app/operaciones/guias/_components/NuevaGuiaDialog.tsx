@@ -18,6 +18,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useOperationsRole, OPS_PERMISSIONS } from "@/contexts/OperationsRoleContext";
 import { OrderHeader } from "@/interfaces/IOrder";
+import { getStatusChainSteps } from "@/utils/domain/orders-status-flow";
 import { DELIVERY_ZONES } from "@/constants/operationsDomain";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import CreateGuideModal, { CreateGuideData } from "@/components/modals/CreateGuideModal";
@@ -87,17 +88,22 @@ export default function NuevaGuiaDialog({
   }, [open, selectedStoreId]);
 
   // Elegibles para armar guía: preparados o ya confirmados por llamada (o
-  // con guía previa sin courier), con entrega a domicilio y sin guía
-  // asignada todavía. PENDIENTE queda afuera (ORDER_STATUS_FLOW no permite
-  // saltar de ahí a ASIGNADO_A_GUIA); si está PREPARADO, handleCreateGuide/
-  // handleAddToExisting encadenan el paso a LLAMADO automáticamente (mismo
-  // criterio que GUIDE_ELIGIBLE_STATUSES en PorDespacharTab.tsx).
+  // con guía previa sin courier), más los PAGADO (= PENDIENTE + pagado al
+  // 100%: venta confirmada y cobrada que almacén todavía no preparó), con
+  // entrega a domicilio y sin guía asignada todavía. PENDIENTE a secas queda
+  // afuera (ORDER_STATUS_FLOW no permite saltar de ahí a ASIGNADO_A_GUIA);
+  // handleCreateGuide/handleAddToExisting encadenan los pasos intermedios
+  // hasta LLAMADO automáticamente (mismo criterio que
+  // GUIDE_ELIGIBLE_STATUSES en PorDespacharTab.tsx).
   const eligible = useMemo(() => {
     return orders.filter(
       (o) =>
         o.deliveryType === "DOMICILIO" &&
         !o.guideNumber &&
-        (o.status === "PREPARADO" || o.status === "LLAMADO" || o.status === "ASIGNADO_A_GUIA"),
+        (o.status === "PREPARADO" ||
+          o.status === "LLAMADO" ||
+          o.status === "ASIGNADO_A_GUIA" ||
+          o.status === "PAGADO"),
     );
   }, [orders]);
 
@@ -158,13 +164,20 @@ export default function NuevaGuiaDialog({
         const guideNumber = res.data.guideNumber;
         lastGuideId = res.data.id;
         for (const orderId of guideData.orderIds) {
-          // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO —
-          // si el pedido todavía está PREPARADO, se encadena el paso
-          // intermedio acá, transparente para quien arma la guía.
-          if (orders.find((o) => o.id === orderId)?.status === "PREPARADO") {
-            await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
-              status: "LLAMADO",
-            });
+          // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO — si
+          // el pedido viene de un estado anterior (PREPARADO, o PAGADO =
+          // PENDIENTE + pagado), se encadenan los pasos intermedios hasta
+          // LLAMADO acá, transparente para quien arma la guía.
+          // getStatusChainSteps no retrocede ni repite estado: LLAMADO y
+          // ASIGNADO_A_GUIA devuelven `[]` y no generan PATCH.
+          const currentStatus = orders.find((o) => o.id === orderId)?.status;
+          if (currentStatus) {
+            for (const step of getStatusChainSteps(currentStatus, "LLAMADO")) {
+              await axios.patch(
+                `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+                { status: step },
+              );
+            }
           }
           // La guía queda CREADA hasta que se apruebe explícitamente con el
           // botón "Aprobar Guía" (GuideDetailsModal, que se abre automático
@@ -222,14 +235,22 @@ export default function NuevaGuiaDialog({
       // para el resto de pedidos de la guía.
       const guideAlreadyDispatched = guideStatus !== "CREADA" && guideStatus !== "ASIGNADA";
       for (const orderId of orderIds) {
-        if (
-          !guideAlreadyDispatched &&
-          orders.find((o) => o.id === orderId)?.status === "PREPARADO"
-        ) {
-          await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
-            status: "LLAMADO",
-          });
+        // Puente genérico hasta LLAMADO (PREPARADO, o PAGADO = PENDIENTE +
+        // pagado). getStatusChainSteps no retrocede ni repite estado, así que
+        // un pedido ya en LLAMADO/ASIGNADO_A_GUIA no genera PATCH.
+        const currentStatus = orders.find((o) => o.id === orderId)?.status;
+        if (currentStatus) {
+          for (const step of getStatusChainSteps(currentStatus, "LLAMADO")) {
+            await axios.patch(
+              `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+              { status: step },
+            );
+          }
         }
+        // PATCH final: adjunta la guía y avanza el último salto (válido de un
+        // paso desde LLAMADO/ASIGNADO_A_GUIA). Si la guía ya está despachada,
+        // el pedido pasa directo a EN_ENVIO con el courier en el MISMO PATCH
+        // (invariante "courier antes de EN_ENVIO").
         await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`, {
           guideNumber,
           status: guideAlreadyDispatched ? "EN_ENVIO" : "ASIGNADO_A_GUIA",
