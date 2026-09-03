@@ -7,10 +7,17 @@
  * (`ventasPorProductoEnCanal`) salen de `OrderItem` real (sku, productName,
  * quantity, subtotal) de pedidos ENTREGADO del periodo del topbar.
  *
- * SIGUE MOCK / SIN DATO REAL:
- * - La inversión en sí (`pauta_registro`/`pauta_linea`, §20 doc) no existe
- *   en ningún servicio — se registra en estado local (`pautaState`) y se
- *   pierde al recargar, igual que "Por Liquidar" en Operaciones.
+ * SOLUCIÓN PUENTE (localStorage, sin backend): la inversión en sí
+ * (`pauta_registro`/`pauta_linea`, §20 doc) no existe en ningún servicio.
+ * Mientras tanto cada registro se guarda como una entrada fechada en
+ * `localStorage` por empresa (`_lib/pautaStorage.ts`) — sobrevive a
+ * recargar la página y permite filtrar por periodo (así Reporte rápido
+ * puede sumar solo lo invertido en el rango que corresponde), pero vive
+ * solo en este navegador/dispositivo: no se comparte entre usuarios ni
+ * equipos. Cuando exista el backend, reemplazar `usePautaEntries` por
+ * queries/mutations reales contra `pauta_registro`.
+ *
+ * SIGUE SIN DATO REAL:
  * - Atribución por categoría: no implementada — `OrderItem` no trae
  *   categoría (vive en ms-products, sin endpoint expuesto acá). Solo hay
  *   nivel producto + "General del canal".
@@ -20,11 +27,13 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { getOrdersByCompany } from "@/api/Ventas";
 import { CANALES_REALES, ventasPorProductoEnCanal, type CanalReal } from "../_lib/realData";
 import { computeCanal, confianzaLabel } from "../_lib/pauta";
+import { usePautaEntries, lineasPorCanalEnRango, type PautaEntry } from "../_lib/pautaStorage";
 import type { PautaLinea, PautaLineaTipo } from "../_mock/data";
 import { fmtMoney, fmtPct } from "../_lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,11 +77,12 @@ export default function PautaPorCanalPage() {
     staleTime: STALE,
   });
 
-  const [pautaState, setPautaState] = useState<Record<string, PautaLinea[]>>({});
+  const [entries, setEntries] = usePautaEntries(companyId);
   const [grupo, setGrupo] = useState<GrupoFiltro>("todos");
   const [canalSeleccionado, setCanalSeleccionado] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogCanalId, setDialogCanalId] = useState(CANALES_REALES[0].id);
+  const [dialogFecha, setDialogFecha] = useState(() => format(new Date(), "yyyy-MM-dd"));
   const [dialogTotal, setDialogTotal] = useState(0);
   const [dialogLineas, setDialogLineas] = useState<LineaForm[]>([]);
 
@@ -82,14 +92,20 @@ export default function PautaPorCanalPage() {
     return map;
   }, [orders]);
 
+  const lineasPorCanal = useMemo(() => {
+    const map: Record<string, PautaLinea[]> = {};
+    for (const c of CANALES_REALES) map[c.id] = lineasPorCanalEnRango(entries, c.id, fromDate, toDate);
+    return map;
+  }, [entries, fromDate, toDate]);
+
   const canalesFiltrados = CANALES_REALES.filter((c) => grupo === "todos" || c.grupo === grupo);
 
   const computos = useMemo(
     () =>
       canalesFiltrados
-        .map((c) => ({ canal: c, calc: computeCanal(c.id, pautaState[c.id] ?? [], ventasPorCanal[c.id] ?? []) }))
+        .map((c) => ({ canal: c, calc: computeCanal(c.id, lineasPorCanal[c.id] ?? [], ventasPorCanal[c.id] ?? []) }))
         .filter((o) => o.calc.total > 0 || o.calc.ventasTotales > 0),
-    [canalesFiltrados, pautaState, ventasPorCanal],
+    [canalesFiltrados, lineasPorCanal, ventasPorCanal],
   );
 
   const totales = computos.reduce(
@@ -102,16 +118,18 @@ export default function PautaPorCanalPage() {
 
   const activo = canalSeleccionado ?? (computos[0]?.canal.id ?? null);
   const drill = activo
-    ? computos.find((o) => o.canal.id === activo) ?? { canal: CANALES_REALES.find((c) => c.id === activo)!, calc: computeCanal(activo, pautaState[activo] ?? [], ventasPorCanal[activo] ?? []) }
+    ? computos.find((o) => o.canal.id === activo) ?? { canal: CANALES_REALES.find((c) => c.id === activo)!, calc: computeCanal(activo, lineasPorCanal[activo] ?? [], ventasPorCanal[activo] ?? []) }
     : null;
+  const entradasDelCanalActivo = useMemo(
+    () => (activo ? [...entries].filter((e) => e.canalId === activo).sort((a, b) => b.fecha.localeCompare(a.fecha)) : []),
+    [entries, activo],
+  );
 
   function openDialog(canalId?: string) {
-    const id = canalId ?? dialogCanalId;
-    const lineas = (pautaState[id] ?? []).filter((l) => l.tipo !== "gen");
-    const total = (pautaState[id] ?? []).reduce((a, l) => a + l.monto, 0);
-    setDialogCanalId(id);
-    setDialogTotal(total);
-    setDialogLineas(lineas.map((l) => ({ tipo: l.tipo, ref: l.ref, monto: l.monto })));
+    setDialogCanalId(canalId ?? dialogCanalId);
+    setDialogFecha(format(new Date(), "yyyy-MM-dd"));
+    setDialogTotal(0);
+    setDialogLineas([]);
     setDialogOpen(true);
   }
 
@@ -125,16 +143,26 @@ export default function PautaPorCanalPage() {
   }
 
   function handleSave() {
+    if (dialogTotal <= 0) {
+      toast.error("Ingresa un monto de inversión mayor a 0");
+      return;
+    }
     if (!dialogCuadra) {
       toast.error("Las líneas superan el total invertido");
       return;
     }
     const lineas: PautaLinea[] = dialogLineas.filter((l) => l.monto > 0).map((l) => ({ tipo: l.tipo, ref: l.ref, monto: l.monto }));
     if (dialogGeneral > 0) lineas.push({ tipo: "gen", ref: "General del canal", monto: Math.round(dialogGeneral) });
-    setPautaState((prev) => ({ ...prev, [dialogCanalId]: lineas }));
+    const entry: PautaEntry = { id: `pauta-${Date.now()}`, canalId: dialogCanalId, fecha: dialogFecha, monto: dialogTotal, lineas };
+    setEntries((prev) => [...prev, entry]);
     setCanalSeleccionado(dialogCanalId);
     setDialogOpen(false);
-    toast.success(`Inversión registrada · ${fmtMoney(dialogTotal)} (no persiste — se pierde al recargar)`);
+    toast.success(`Inversión registrada · ${fmtMoney(dialogTotal)} · guardada en este dispositivo`);
+  }
+
+  function eliminarEntrada(id: string) {
+    setEntries((prev) => prev.filter((e) => e.id !== id));
+    toast.success("Registro eliminado");
   }
 
   if (isLoading) {
@@ -146,7 +174,7 @@ export default function PautaPorCanalPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold">Pauta por canal</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Ventas por producto: reales · Inversión: registro manual, no persiste</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Ventas por producto: reales · Inversión: guardada en este dispositivo (localStorage)</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex bg-muted rounded-lg p-1 gap-1">
@@ -160,11 +188,14 @@ export default function PautaPorCanalPage() {
 
       <div className="rounded-lg border bg-amber-50/60 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-xs text-amber-800 dark:text-amber-300 flex gap-2.5">
         <span>🎯</span>
-        <p>La inversión que registres acá vive solo en esta sesión (sin backend todavía). Las ventas por producto sí son reales, del periodo elegido en el topbar.</p>
+        <p>
+          La inversión que registres queda guardada en este navegador/dispositivo (sobrevive a recargar la página, pero no se sincroniza con otros usuarios ni equipos —
+          eso llega cuando exista backend). Las ventas por producto sí son reales, del periodo elegido en el topbar. Reporte rápido usa esta misma inversión para calcular Publicidad, CPA y ROAS.
+        </p>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <KpiCard label="Inversión total" valor={fmtMoney(totales.inv)} sub="registrada en esta sesión" />
+        <KpiCard label="Inversión total" valor={fmtMoney(totales.inv)} sub="del periodo elegido en el topbar" />
         <KpiCard label="ROAS promedio" valor={totales.inv > 0 ? `${roasProm.toFixed(1)}×` : "—"} sub="ventas recon. ÷ inversión" tone={roasProm >= 4 ? "verde" : roasProm >= 3 ? "ambar" : totales.inv > 0 ? "rojo" : undefined} />
         <KpiCard label="CPV neto" valor={totales.inv > 0 ? fmtMoney(cpvProm, 2) : "—"} sub="inversión ÷ unidades" tone={totales.inv === 0 ? undefined : cpvProm <= 18 ? "verde" : cpvProm <= 22 ? "ambar" : "rojo"} />
         <KpiCard label="% inversión directa" valor={totales.inv > 0 ? fmtPct(pctDirecto, 0) : "—"} sub={totales.inv > 0 ? `${fmtPct(100 - pctDirecto, 0)} prorrateado` : "sin inversión registrada"} />
@@ -215,12 +246,12 @@ export default function PautaPorCanalPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="text-sm">Detalle de {drill.canal.nombre} — ventas por producto (real) + inversión atribuida</CardTitle>
-            <Button size="sm" variant="outline" onClick={() => openDialog(drill.canal.id)}>Editar inversión</Button>
+            <Button size="sm" variant="outline" onClick={() => openDialog(drill.canal.id)}><Plus className="h-3.5 w-3.5 mr-1" /> Agregar inversión</Button>
           </CardHeader>
           <CardContent className="space-y-4">
             {drill.calc.total > 0 && (
               <div className="rounded-lg border bg-blue-50/60 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 p-3 text-xs text-blue-800 dark:text-blue-300">
-                Inversión del canal {fmtMoney(drill.calc.total)} = <b>{fmtMoney(drill.calc.directoTotal)} directo</b> + <b>{fmtMoney(drill.calc.general)} General prorrateado</b>.
+                Inversión del canal en el periodo {fmtMoney(drill.calc.total)} = <b>{fmtMoney(drill.calc.directoTotal)} directo</b> + <b>{fmtMoney(drill.calc.general)} General prorrateado</b>.
               </div>
             )}
             {drill.calc.productos.length === 0 ? (
@@ -260,6 +291,25 @@ export default function PautaPorCanalPage() {
                 </TableBody>
               </Table>
             )}
+
+            <div>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase mb-1.5">Registros de inversión de este canal <span className="font-normal normal-case">(todos, no solo el periodo)</span></p>
+              {entradasDelCanalActivo.length === 0 ? (
+                <p className="text-xs text-muted-foreground">Sin inversión registrada todavía para {drill.canal.nombre}.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {entradasDelCanalActivo.map((e) => (
+                    <div key={e.id} className="flex items-center justify-between rounded-md border px-3 py-1.5 text-xs">
+                      <span className="text-muted-foreground">{e.fecha}</span>
+                      <span className="font-mono font-semibold">{fmtMoney(e.monto)}</span>
+                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => eliminarEntrada(e.id)}>
+                        <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -268,13 +318,13 @@ export default function PautaPorCanalPage() {
         <DialogContent className="sm:max-w-xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Registrar inversión de pauta</DialogTitle>
-            <DialogDescription>No persiste todavía — se guarda solo en esta sesión. Se reparte en líneas por producto · el resto va a &quot;General&quot;.</DialogDescription>
+            <DialogDescription>Se guarda en este dispositivo (localStorage), fechada, y se suma a los registros existentes del canal. Se reparte en líneas por producto · el resto va a &quot;General&quot;.</DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
               <Label className="text-xs">Canal de venta</Label>
-              <Select value={dialogCanalId} onValueChange={(v) => openDialog(v)}>
+              <Select value={dialogCanalId} onValueChange={(v) => setDialogCanalId(v)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {CANALES_REALES.map((c) => <SelectItem key={c.id} value={c.id}>{c.nombre} · {c.grupo === "ecommerce" ? "Ecommerce" : "Marketplace"}</SelectItem>)}
@@ -282,9 +332,14 @@ export default function PautaPorCanalPage() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Inversión total S/</Label>
-              <Input type="number" value={dialogTotal || ""} onChange={(e) => setDialogTotal(Number(e.target.value) || 0)} placeholder="0" />
+              <Label className="text-xs">Fecha</Label>
+              <Input type="date" value={dialogFecha} onChange={(e) => setDialogFecha(e.target.value)} />
             </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Inversión total S/</Label>
+            <Input type="number" value={dialogTotal || ""} onChange={(e) => setDialogTotal(Number(e.target.value) || 0)} placeholder="0" />
           </div>
 
           <div className="flex items-center justify-between">

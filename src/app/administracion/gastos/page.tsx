@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { createGasto, deleteGasto, getGastos, updateGasto } from "@/api/Admin";
+import { getOrdersByCompany } from "@/api/Ventas";
+import { soloEntregados } from "../_lib/realData";
 import { CategoriaGasto, ICreateGastoDto, IGastoOperativo } from "@/interfaces/IAdmin";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -39,6 +41,8 @@ export default function GastosPage() {
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<ICreateGastoDto>(emptyForm);
+  const [costos, setCostos] = useState({ ventas: 0, cogs: 0 });
+  const [loadingCostos, setLoadingCostos] = useState(true);
 
   const fetchGastos = useCallback(async () => {
     if (!auth?.company?.id || !auth?.accessToken) return;
@@ -53,6 +57,20 @@ export default function GastosPage() {
   }, [auth, fromDate, toDate]);
 
   useEffect(() => { fetchGastos(); }, [fetchGastos]);
+
+  useEffect(() => {
+    if (!auth?.company?.id) return;
+    setLoadingCostos(true);
+    getOrdersByCompany(auth.company.id, fromDate, toDate)
+      .then((orders: any[]) => {
+        const entregadas = soloEntregados(orders);
+        const ventas = entregadas.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
+        const cogs = entregadas.reduce((s, o) => s + Number(o.costAmount || 0), 0);
+        setCostos({ ventas, cogs });
+      })
+      .catch(() => toast.error("Error al cargar costos"))
+      .finally(() => setLoadingCostos(false));
+  }, [auth?.company?.id, fromDate, toDate]);
 
   const handleSubmit = async () => {
     if (!auth?.company?.id || !auth?.accessToken) return;
@@ -96,9 +114,36 @@ export default function GastosPage() {
   const totalGeneral = totalFijos + totalVariables;
   const pctFijos = totalGeneral > 0 ? (totalFijos / totalGeneral) * 100 : 0;
   const pctVariables = totalGeneral > 0 ? (totalVariables / totalGeneral) * 100 : 0;
+  const pctCogsSobreVentas = costos.ventas > 0 ? (costos.cogs / costos.ventas) * 100 : 0;
+  const totalCostosYGastos = costos.cogs + totalGeneral;
 
   return (
     <div className="p-8 space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Card className="text-center">
+          <CardContent className="pt-4 pb-3">
+            <p className="text-xs text-muted-foreground mb-1">Costo de mercadería vendida (COGS)</p>
+            <p className="text-lg font-bold font-mono">{loadingCostos ? "…" : fmt(costos.cogs)}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">{loadingCostos ? "" : `${pctCogsSobreVentas.toFixed(1)}% sobre ventas entregadas`}</p>
+          </CardContent>
+        </Card>
+        <Card className="text-center">
+          <CardContent className="pt-4 pb-3">
+            <p className="text-xs text-muted-foreground mb-1">Gastos operativos</p>
+            <p className="text-lg font-bold font-mono">{fmt(totalGeneral)}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">Fijos + variables, ver detalle abajo</p>
+          </CardContent>
+        </Card>
+        <Card className="text-center border-primary/40">
+          <CardContent className="pt-4 pb-3">
+            <p className="text-xs text-muted-foreground mb-1">Total costos + gastos</p>
+            <p className="text-lg font-bold font-mono">{loadingCostos ? "…" : fmt(totalCostosYGastos)}</p>
+            <p className="text-[11px] text-muted-foreground mt-0.5">COGS + gastos operativos del periodo</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Gastos operativos por categoría</p>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         {totalesPorCategoria.map((cat) => (
           <Card key={cat.value} className="text-center">

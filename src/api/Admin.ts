@@ -52,22 +52,6 @@ export const updateGasto = async (
   return data;
 };
 
-export const getMerma = async (
-  companyId: string,
-  fromDate: string,
-  toDate: string,
-  token: string,
-): Promise<{ totalUnidades: number; costoEstimado: number }> => {
-  const { data } = await axios.get(
-    `${API.inventory}/inventory-movement/company/${companyId}/shrinkage`,
-    {
-      params: { fromDate, toDate },
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
-  return data;
-};
-
 export const getCourierCost = async (
   storeIds: string[],
   fromDate: string,

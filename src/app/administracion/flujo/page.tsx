@@ -9,8 +9,16 @@
  * hoy = suma de pagos PAID en pedidos que todavía no llegan a ENTREGADO
  * (mismo criterio que `operaciones/liquidaciones`).
  *
- * SIGUE MOCK / SIN DATO REAL:
- * - Publicidad: sin fuente real (ver Pauta por canal), se muestra en 0.
+ * SOLUCIÓN PUENTE (localStorage, sin backend): la fila "Publicidad" suma la
+ * inversión registrada en Pauta por canal por mes (`usePautaEntries` +
+ * `inversionPorMes`, `_lib/pautaStorage.ts`) — guardada en este dispositivo.
+ * `gastosFijos` de `useAdminYearPnl` suma TODAS las categorías de
+ * `getGastos`, incluida "Publicidad" si alguien la carga ahí manualmente en
+ * vez de en Pauta — para no contar ese gasto dos veces (una en "Gastos fijos
+ * + operativos", otra en la fila "Publicidad"), acá se resta del total antes
+ * de sumar la fila de Pauta.
+ *
+ * SIGUE SIN DATO REAL:
  * - El concepto central del doc —`adelantos_pendientes` como pasivo que se
  *   revierte si el pedido NO_ENTREGADO/CANCELADO— no se puede modelar
  *   históricamente mes a mes: `OrderStatus` no distingue esos estados de
@@ -27,6 +35,7 @@ import { format, subDays } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { getOrdersByCompany } from "@/api/Ventas";
 import { useAdminYearPnl } from "../_lib/useMonthlyPnl";
+import { usePautaEntries, inversionPorMes } from "../_lib/pautaStorage";
 import { paidAmount } from "../_lib/realData";
 import { MESES_CORTOS } from "../_mock/data";
 import { fmtMoney } from "../_lib/format";
@@ -44,7 +53,17 @@ export default function FlujoDeCajaPage() {
   const storeIds = useMemo(() => (auth?.company?.stores ?? []).map((s) => s.id), [auth?.company?.stores]);
   const anio = new Date().getFullYear();
 
-  const { meses, isLoading: loadingPnl } = useAdminYearPnl(companyId, anio, storeIds, token);
+  const { meses, isLoading: loadingPnl, gastosRaw } = useAdminYearPnl(companyId, anio, storeIds, token);
+  const [pautaEntries] = usePautaEntries(companyId);
+  const egresosPublicidad = useMemo(() => inversionPorMes(pautaEntries, anio), [pautaEntries, anio]);
+
+  const gastosPublicidadEnGastos = useMemo(() => {
+    const out = Array(12).fill(0);
+    for (const g of gastosRaw as any[]) {
+      if (g.categoria === "PUBLICIDAD" && g.anio === anio) out[g.mes - 1] += Number(g.monto || 0);
+    }
+    return out;
+  }, [gastosRaw, anio]);
 
   const hoy = new Date();
   const desde = format(subDays(hoy, 45), "yyyy-MM-dd");
@@ -69,10 +88,10 @@ export default function FlujoDeCajaPage() {
 
   const ingresos = meses.map((m) => m.ventas);
   const totalIngresos = ingresos;
-  const egresosFijos = meses.map((m) => m.gastosFijos);
+  const egresosFijos = meses.map((m, i) => m.gastosFijos - gastosPublicidadEnGastos[i]);
   const egresosCourier = meses.map((m) => m.courierCost);
   const egresosCogs = meses.map((m) => m.cogs);
-  const totalEgresos = meses.map((m) => m.gastosFijos + m.courierCost + m.cogs);
+  const totalEgresos = meses.map((m, i) => egresosFijos[i] + m.courierCost + m.cogs + egresosPublicidad[i]);
   const flujoNeto = meses.map((m, i) => totalIngresos[i] - totalEgresos[i]);
 
   const loading = loadingPnl || loadingAdelantos;
@@ -88,7 +107,7 @@ export default function FlujoDeCajaPage() {
       </div>
 
       <div className="rounded-lg border bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-xs text-amber-800 dark:text-amber-300">
-        ⚠️ Esta tabla no incluye publicidad (sin conectar), ni IGV/comisión POWIP/merma mes a mes (sí están en Resumen y Gastos). Es un flujo simplificado.
+        ⚠️ Publicidad sale de lo registrado en Pauta por canal (guardado en este dispositivo). Esta tabla no incluye IGV/comisión POWIP/merma mes a mes (sí están en Resumen y Gastos) — es un flujo simplificado.
       </div>
 
       <Card className="bg-amber-50/40 dark:bg-amber-500/5 border-amber-200 dark:border-amber-500/20">
@@ -139,7 +158,7 @@ export default function FlujoDeCajaPage() {
                 {egresosCogs.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v > 0 && "text-destructive")}>{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
               </TableRow>
               <TableRow>
-                <TableCell className="text-muted-foreground">Gastos fijos + operativos</TableCell>
+                <TableCell className="text-muted-foreground">Gastos fijos + operativos (sin publicidad)</TableCell>
                 {egresosFijos.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v > 0 && "text-destructive")}>{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
               </TableRow>
               <TableRow>
@@ -148,7 +167,7 @@ export default function FlujoDeCajaPage() {
               </TableRow>
               <TableRow>
                 <TableCell className="text-muted-foreground">Publicidad</TableCell>
-                {MESES_CORTOS.map((_, i) => <TableCell key={i} className="text-right font-mono text-muted-foreground">sin conectar</TableCell>)}
+                {egresosPublicidad.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v > 0 && "text-destructive")}>{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
               </TableRow>
               <TableRow className="bg-muted/40 font-bold">
                 <TableCell>TOTAL EGRESOS</TableCell>

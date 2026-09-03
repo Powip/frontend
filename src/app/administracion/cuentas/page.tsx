@@ -9,16 +9,26 @@
  * - "Liquidación pendiente" por courier: pedidos ENTREGADO reales agrupados
  *   por courier (`agruparPorCourier`), igual criterio que
  *   `operaciones/liquidaciones`. "Confirmar" solo lo saca de la vista en
- *   esta sesión — no hay endpoint que registre el cobro (mismo BACKEND GAP
+ *   este dispositivo — no hay endpoint que registre el cobro (mismo BACKEND GAP
  *   documentado ahí).
  *
- * SIGUE MOCK / SIN DATO REAL:
+ * SOLUCIÓN PUENTE (localStorage, sin backend): cuentas manuales, qué "saldo
+ * en tránsito" ya confirmaste y el historial de movimientos se guardan en
+ * `localStorage` por empresa (`_lib/cuentasStorage.ts`) — sobreviven a
+ * recargar la página, pero viven solo en este navegador/dispositivo, no se
+ * comparten entre usuarios ni equipos.
+ *
+ * Qué courier ya se confirmó usa la MISMA clave que Liquidaciones
+ * (`useLiquidacionesConfirmadas`, `_lib/liquidacionesStorage.ts`) — antes
+ * cada página tenía su propio set de confirmados, así que confirmar un
+ * courier acá no lo sacaba de Liquidaciones (ni viceversa): el mismo saldo
+ * podía verse "resuelto" en una pantalla y "pendiente" en la otra.
+ *
+ * SIGUE SIN DATO REAL:
  * - "Por pagar" automático (planilla, proveedores, cuota préstamo): no
  *   existe — `IGastoOperativo` no tiene campo de estado
  *   (Pagado/Pendiente/Vencido), así que no se puede saber qué gasto está
  *   pendiente de pago. Todo lo que aparece en "Por pagar" es manual.
- * - Historial de movimientos: no existe `movimiento` persistente — sigue
- *   siendo estado local, se pierde al recargar.
  */
 
 import { useMemo, useState } from "react";
@@ -27,7 +37,9 @@ import { format, subDays } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
 import { getOrdersByCompany } from "@/api/Ventas";
 import { enTransito, agruparPorCourier, paidAmount } from "../_lib/realData";
-import { MESES_LARGOS, type MovimientoHistorial } from "../_mock/data";
+import { useCuentasManualCobrar, useCuentasManualPagar, useCuentasConfirmadas, useCuentasHistorial } from "../_lib/cuentasStorage";
+import { useLiquidacionesConfirmadas, useCutoffPorCourier } from "../_lib/liquidacionesStorage";
+import { MESES_LARGOS } from "../_mock/data";
 import { fmtMoney } from "../_lib/format";
 import { NivelPill } from "../_components/nivel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -74,39 +86,41 @@ export default function CuentasPage() {
     staleTime: STALE,
   });
 
-  const [cobrarManual, setCobrarManual] = useState<CuentaLocal[]>([]);
-  const [pagarManual, setPagarManual] = useState<CuentaLocal[]>([]);
-  const [confirmados, setConfirmados] = useState<Set<string>>(new Set());
-  const [historial, setHistorial] = useState<MovimientoHistorial[]>([]);
+  const [cobrarManual, setCobrarManual] = useCuentasManualCobrar(companyId);
+  const [pagarManual, setPagarManual] = useCuentasManualPagar(companyId);
+  const [transitoConfirmadoArr, setTransitoConfirmadoArr] = useCuentasConfirmadas(companyId);
+  const transitoConfirmado = transitoConfirmadoArr.includes("__transito__");
+  const [courierConfirmadosArr, setCourierConfirmadosArr] = useLiquidacionesConfirmadas(companyId);
+  const cutoffPorCourier = useCutoffPorCourier(courierConfirmadosArr);
+  const [historial, setHistorial] = useCuentasHistorial(companyId);
   const [tab, setTab] = useState<"abiertas" | "historial">("abiertas");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogTipo, setDialogTipo] = useState<"cobrar" | "pagar">("cobrar");
   const [form, setForm] = useState({ concepto: "", descripcion: "", monto: 0, vencimiento: "" });
 
   const cobrarAuto = useMemo((): CuentaLocal[] => {
-    if (confirmados.has("__transito__")) return [];
-    const transito = enTransito(orders as any[]);
     const items: CuentaLocal[] = [];
-    if (transito.length > 0) {
-      const monto = transito.reduce((s, o) => s + Math.max(0, Number(o.grandTotal || 0) - paidAmount(o)), 0);
-      if (monto > 0) {
-        items.push({
-          id: "__transito__",
-          icono: "🚚",
-          concepto: "Saldos COD en tránsito",
-          descripcion: `${transito.length} pedidos en camino, aún no entregados`,
-          monto,
-          vencimiento: "En tránsito",
-          urgencia: "azul",
-          auto: true,
-        });
+    if (!transitoConfirmado) {
+      const transito = enTransito(orders as any[]);
+      if (transito.length > 0) {
+        const monto = transito.reduce((s, o) => s + Math.max(0, Number(o.grandTotal || 0) - paidAmount(o)), 0);
+        if (monto > 0) {
+          items.push({
+            id: "__transito__",
+            icono: "🚚",
+            concepto: "Saldos COD en tránsito",
+            descripcion: `${transito.length} pedidos en camino, aún no entregados`,
+            monto,
+            vencimiento: "En tránsito",
+            urgencia: "azul",
+            auto: true,
+          });
+        }
       }
     }
-    for (const c of agruparPorCourier(orders as any[])) {
-      const id = `courier-${c.nombre}`;
-      if (confirmados.has(id)) continue;
+    for (const c of agruparPorCourier(orders as any[], cutoffPorCourier)) {
       items.push({
-        id,
+        id: `courier-${c.nombre}`,
         icono: "📦",
         concepto: c.nombre,
         descripcion: `${c.guias} guías entregadas · recaudado ${fmtMoney(c.recaudado)}`,
@@ -117,7 +131,7 @@ export default function CuentasPage() {
       });
     }
     return items;
-  }, [orders, confirmados]);
+  }, [orders, transitoConfirmado, cutoffPorCourier]);
 
   const cobrar = [...cobrarAuto, ...cobrarManual];
   const pagar = pagarManual;
@@ -131,7 +145,12 @@ export default function CuentasPage() {
 
   function confirmar(tipo: "cobrar" | "pagar", item: CuentaLocal) {
     if (item.auto) {
-      setConfirmados((prev) => new Set(prev).add(item.id));
+      if (item.id === "__transito__") {
+        setTransitoConfirmadoArr((prev) => (prev.includes("__transito__") ? prev : [...prev, "__transito__"]));
+      } else {
+        // item.concepto es el nombre del courier — misma clave y formato (courier + fecha) que usa Liquidaciones.
+        setCourierConfirmadosArr((prev) => [...prev, { courier: item.concepto, confirmadoEn: new Date().toISOString() }]);
+      }
     } else {
       if (tipo === "cobrar") setCobrarManual((prev) => prev.filter((c) => c.id !== item.id));
       else setPagarManual((prev) => prev.filter((c) => c.id !== item.id));
@@ -140,7 +159,7 @@ export default function CuentasPage() {
       { id: `h-${Date.now()}`, mes: format(hoy, "yyyy-MM"), tipo: tipo === "cobrar" ? "ingreso" : "egreso", concepto: item.concepto, monto: item.monto },
       ...prev,
     ]);
-    toast.success(`${tipo === "cobrar" ? "Cobrado" : "Pagado"} · ${fmtMoney(item.monto)} (no persiste — vuelve a aparecer si recargas)`);
+    toast.success(`${tipo === "cobrar" ? "Cobrado" : "Pagado"} · ${fmtMoney(item.monto)} · guardado en este dispositivo`);
   }
 
   function handleAdd() {
@@ -240,10 +259,10 @@ export default function CuentasPage() {
         </div>
       ) : (
         <Card>
-          <CardHeader><CardTitle className="text-sm">Historial de movimientos <span className="text-xs font-normal text-muted-foreground">de esta sesión — no persiste</span></CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm">Historial de movimientos <span className="text-xs font-normal text-muted-foreground">guardado en este dispositivo</span></CardTitle></CardHeader>
           <CardContent className="overflow-x-auto">
             {historialOrdenado.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">Sin movimientos confirmados en esta sesión todavía.</p>
+              <p className="text-sm text-muted-foreground text-center py-8">Sin movimientos confirmados todavía.</p>
             ) : (
               <Table>
                 <TableHeader>

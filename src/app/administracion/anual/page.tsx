@@ -9,23 +9,34 @@
  * `useAdminYearPnl` (`_lib/useMonthlyPnl.ts`) — agregando pedidos y gastos
  * reales del año, sin llamadas nuevas al backend.
  *
- * SIGUE MOCK / SIN DATO REAL:
- * - Metas (ventas/profit/margen objetivo, anual y por tienda): no existe la
- *   entidad `meta` en ningún servicio (§20 doc) — se editan y guardan solo
- *   en estado local de esta página, se pierden al recargar.
- * - CPV y ROAS: dependen de inversión en pauta, que no está conectada (ver
- *   `administracion/pauta`) — se muestran como "—" en toda la vista.
+ * SOLUCIÓN PUENTE (localStorage, sin backend):
+ * - Metas (ventas/profit/margen objetivo anual): no existe la entidad `meta`
+ *   en ningún servicio (§20 doc). Mientras tanto se guardan en
+ *   `localStorage` por empresa+año (`_lib/metasStorage.ts`) — sobreviven a
+ *   recargar la página, pero viven solo en este navegador/dispositivo, no
+ *   se comparten entre usuarios ni equipos. Reporte rápido lee esta misma
+ *   meta (÷12) para su meta mensual. Cuando exista el backend, reemplazar
+ *   `useMetasAnuales` por una query/mutation real.
+ * - CPV y ROAS (tabla KPIs+Metas y Vista mensual): la inversión mensual sale
+ *   de sumar las entradas fechadas de Pauta por canal
+ *   (`usePautaEntries` + `inversionPorMes`), guardada en este dispositivo.
+ *
+ * SIGUE SIN DATO REAL:
  * - El semáforo por mes es una versión simplificada (solo margen neto vs
  *   meta) del semáforo de 4 indicadores del doc (§7.7), que también
  *   necesita ROAS y tasa de confirmación.
- * - Ventas/profit "por tienda": si la empresa tiene una sola tienda
- *   configurada, esa sección no aporta nada nuevo — solo tiene sentido con
- *   2+ tiendas reales en `auth.company.stores`.
+ * - "Ventas por tienda" (Vista general) es real (agrupa pedidos por
+ *   `storeId`), pero no hay "profit por tienda" — `IGastoOperativo` no
+ *   trae tienda, así que los gastos no se pueden prorratear por tienda. Y
+ *   sigue sin existir meta por tienda (no hay esa entidad).
  */
 
 import { useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminYearPnl, type MesPnlReal } from "../_lib/useMonthlyPnl";
+import { useMetasAnuales, type MetasAnuales } from "../_lib/metasStorage";
+import { usePautaEntries, inversionPorMes } from "../_lib/pautaStorage";
+import { soloEntregados } from "../_lib/realData";
 import { MESES_CORTOS, MESES_LARGOS } from "../_mock/data";
 import { fmtMoney, fmtPct } from "../_lib/format";
 import { NivelDot, NivelPill, type Nivel } from "../_components/nivel";
@@ -59,8 +70,6 @@ const CATEGORIAS_GASTO: { value: string; label: string }[] = [
   { value: "OTRO", label: "Otro" },
 ];
 
-const METAS_DEFAULT = { ventasAnual: 500000, profitAnual: 85000, margenObjetivoPct: 20 };
-
 function semaforoMes(m: MesPnlReal, margenObjetivo: number): Nivel {
   if (!m.tieneDatos || m.margenNetoPct == null) return "sin-datos";
   if (m.margenNetoPct >= margenObjetivo) return "verde";
@@ -75,11 +84,14 @@ export default function ResumenAnualPage() {
   const storeIds = useMemo(() => (auth?.company?.stores ?? []).map((s) => s.id), [auth?.company?.stores]);
 
   const anioActual = new Date().getFullYear();
-  const { meses, isLoading, gastosRaw } = useAdminYearPnl(companyId, anioActual, storeIds, token);
+  const { meses, isLoading, gastosRaw, ordersRaw } = useAdminYearPnl(companyId, anioActual, storeIds, token);
   const { meses: mesesAnioAnterior, isLoading: loadingAnterior } = useAdminYearPnl(companyId, anioActual - 1, storeIds, token);
 
+  const [pautaEntries] = usePautaEntries(companyId);
+  const inversionMensual = useMemo(() => inversionPorMes(pautaEntries, anioActual), [pautaEntries, anioActual]);
+
   const [vista, setVista] = useState<SubVista>("general");
-  const [metas, setMetas] = useState(METAS_DEFAULT);
+  const [metas, setMetas] = useMetasAnuales(companyId, anioActual);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState(metas);
 
@@ -98,7 +110,7 @@ export default function ResumenAnualPage() {
   function guardarMetas() {
     setMetas(form);
     setDialogOpen(false);
-    toast.success("Metas actualizadas (no persisten — solo en esta sesión)");
+    toast.success("Metas guardadas en este dispositivo — no se sincronizan con otros usuarios todavía");
   }
 
   if (isLoading || loadingAnterior) {
@@ -110,7 +122,7 @@ export default function ResumenAnualPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold">Resumen Anual {anioActual}</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Todos los meses (reales) · Metas mensual y anual (editable, no persiste) · Proyección de cierre</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Todos los meses (reales) · Metas guardadas en este dispositivo (localStorage) · Proyección de cierre</p>
         </div>
         <Button size="sm" variant="outline" onClick={() => { setForm(metas); setDialogOpen(true); }}>
           <Target className="h-4 w-4 mr-1.5" /> Editar metas {anioActual}
@@ -124,10 +136,10 @@ export default function ResumenAnualPage() {
       </div>
 
       {vista === "general" && (
-        <VistaGeneral anioActual={anioActual} meses={meses} ventasAcum={ventasAcum} profitAcum={profitAcum} margenProm={margenProm} mesesTranscurridos={mesesTranscurridos} metas={metas} proyeccion={proyeccion} storeNames={(auth?.company?.stores ?? []).map((s: any) => s.name ?? s.id)} />
+        <VistaGeneral anioActual={anioActual} meses={meses} ventasAcum={ventasAcum} profitAcum={profitAcum} margenProm={margenProm} mesesTranscurridos={mesesTranscurridos} metas={metas} proyeccion={proyeccion} stores={auth?.company?.stores ?? []} ordersRaw={ordersRaw} />
       )}
-      {vista === "kpis" && <VistaKpis meses={meses} metas={metas} />}
-      {vista === "mensual" && <VistaMensual meses={meses} metas={metas} />}
+      {vista === "kpis" && <VistaKpis meses={meses} metas={metas} inversionMensual={inversionMensual} />}
+      {vista === "mensual" && <VistaMensual meses={meses} metas={metas} inversionMensual={inversionMensual} />}
       {vista === "gastos" && <VistaGastos gastosRaw={gastosRaw as any[]} anio={anioActual} />}
       {vista === "comp" && <VistaComparativo anioActual={anioActual} mesesActual={meses} mesesAnterior={mesesAnioAnterior} />}
 
@@ -161,12 +173,21 @@ export default function ResumenAnualPage() {
 }
 
 function VistaGeneral({
-  anioActual, meses, ventasAcum, profitAcum, margenProm, mesesTranscurridos, metas, proyeccion, storeNames,
+  anioActual, meses, ventasAcum, profitAcum, margenProm, mesesTranscurridos, metas, proyeccion, stores, ordersRaw,
 }: {
   anioActual: number; meses: MesPnlReal[]; ventasAcum: number; profitAcum: number; margenProm: number;
-  mesesTranscurridos: number; metas: typeof METAS_DEFAULT; proyeccion: { estVentas: number; estProfit: number };
-  storeNames: string[];
+  mesesTranscurridos: number; metas: MetasAnuales; proyeccion: { estVentas: number; estProfit: number };
+  stores: { id: string; name?: string }[]; ordersRaw: any[];
 }) {
+  const ventasPorTienda = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const o of soloEntregados(ordersRaw)) {
+      const sid = o.storeId || "sin-tienda";
+      map[sid] = (map[sid] ?? 0) + Number(o.grandTotal || 0);
+    }
+    return map;
+  }, [ordersRaw]);
+  const ventasTotalTiendas = Object.values(ventasPorTienda).reduce((a, b) => a + b, 0);
   const mesesConDatos = meses.filter((m) => m.tieneDatos);
   const mejorMes = mesesConDatos.length ? [...mesesConDatos].sort((a, b) => b.profit - a.profit)[0] : null;
   const peorMes = mesesConDatos.length ? [...mesesConDatos].sort((a, b) => a.profit - b.profit)[0] : null;
@@ -206,7 +227,7 @@ function VistaGeneral({
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="bg-indigo-50/40 dark:bg-indigo-500/5">
-          <CardHeader><CardTitle className="text-sm">🎯 Metas {anioActual} — Consolidado <span className="text-[10px] font-normal text-muted-foreground">editable, no persiste</span></CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm">🎯 Metas {anioActual} — Consolidado <span className="text-[10px] font-normal text-muted-foreground">guardado en este dispositivo</span></CardTitle></CardHeader>
           <CardContent className="space-y-4">
             {metasCons.map((m) => (
               <div key={m.label}>
@@ -227,12 +248,31 @@ function VistaGeneral({
         </Card>
 
         <Card>
-          <CardHeader><CardTitle className="text-sm">🏪 Tiendas <span className="text-[10px] font-normal text-muted-foreground">{storeNames.length <= 1 ? "solo hay 1 tienda configurada" : "sin meta por tienda (no hay entidad de metas)"}</span></CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-sm">🏪 Ventas por tienda <span className="text-[10px] font-normal text-muted-foreground">real · sin meta por tienda (no hay esa entidad)</span></CardTitle></CardHeader>
           <CardContent>
-            {storeNames.length <= 1 ? (
-              <p className="text-sm text-muted-foreground py-4">Esta empresa tiene {storeNames.length} tienda configurada — el desglose por tienda no aporta información adicional todavía.</p>
+            {stores.length <= 1 ? (
+              <p className="text-sm text-muted-foreground py-4">Esta empresa tiene {stores.length} tienda configurada — el desglose por tienda no aporta información adicional todavía.</p>
             ) : (
-              <p className="text-sm text-muted-foreground py-4">Hay {storeNames.length} tiendas ({storeNames.join(", ")}), pero desglosar ventas/profit por tienda requiere agrupar pedidos por `storeId` y no hay meta por tienda persistida — pendiente de una siguiente pasada.</p>
+              <div className="space-y-3">
+                {stores.map((s) => {
+                  const ventas = ventasPorTienda[s.id] ?? 0;
+                  const pct = ventasTotalTiendas > 0 ? (ventas / ventasTotalTiendas) * 100 : 0;
+                  return (
+                    <div key={s.id}>
+                      <div className="flex justify-between text-sm mb-1"><span>{s.name ?? s.id}</span><b>{fmtMoney(ventas)}</b></div>
+                      <Progress value={pct} />
+                      <p className="text-xs text-muted-foreground mt-1">{fmtPct(pct, 1)} del total</p>
+                    </div>
+                  );
+                })}
+                {(ventasPorTienda["sin-tienda"] ?? 0) > 0 && (
+                  <div>
+                    <div className="flex justify-between text-sm mb-1"><span className="text-muted-foreground">Sin tienda asignada</span><b>{fmtMoney(ventasPorTienda["sin-tienda"])}</b></div>
+                    <Progress value={(ventasPorTienda["sin-tienda"] / ventasTotalTiendas) * 100} />
+                    <p className="text-xs text-muted-foreground mt-1">{fmtPct((ventasPorTienda["sin-tienda"] / ventasTotalTiendas) * 100, 1)} del total — pedidos sin `storeId`</p>
+                  </div>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>
@@ -291,11 +331,11 @@ function MesDestacado({ mes, tono, titulo }: { mes: MesPnlReal; tono: "verde" | 
   );
 }
 
-function VistaKpis({ meses, metas }: { meses: MesPnlReal[]; metas: typeof METAS_DEFAULT }) {
+function VistaKpis({ meses, metas, inversionMensual }: { meses: MesPnlReal[]; metas: MetasAnuales; inversionMensual: number[] }) {
   return (
     <div className="space-y-4">
       <div className="rounded-lg border bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 p-3.5 text-sm text-blue-800 dark:text-blue-300">
-        💡 Ventas, COGS, margen y profit son reales. CPV y ROAS quedan en &quot;—&quot; porque la inversión en pauta no está conectada. Las metas las pones tú.
+        💡 Ventas, COGS, margen y profit son reales. CPV y ROAS salen de la inversión registrada en Pauta por canal (guardada en este dispositivo) — un mes sin inversión registrada aparece en &quot;—&quot;. Las metas las pones tú.
       </div>
       <Card>
         <CardContent className="pt-5 overflow-x-auto">
@@ -316,8 +356,9 @@ function VistaKpis({ meses, metas }: { meses: MesPnlReal[]; metas: typeof METAS_
               <FilaKpi label="Profit" valores={meses.map((m) => (m.tieneDatos ? fmtMoney(m.profit) : "—"))} />
               <FilaKpi label="🎯 Meta profit (÷12)" valores={meses.map(() => fmtMoney(metas.profitAnual / 12))} destacado />
               <FilaKpi label="Margen neto %" valores={meses.map((m) => (m.margenNetoPct != null ? fmtPct(m.margenNetoPct) : "—"))} />
-              <FilaKpi label="CPV neto" valores={meses.map(() => "—")} />
-              <FilaKpi label="ROAS" valores={meses.map(() => "—")} />
+              <FilaKpi label="Inversión ADS" valores={meses.map((_, i) => (inversionMensual[i] > 0 ? fmtMoney(inversionMensual[i]) : "—"))} />
+              <FilaKpi label="CPV neto" valores={meses.map((m, i) => (inversionMensual[i] > 0 && m.unidades > 0 ? fmtMoney(inversionMensual[i] / m.unidades, 2) : "—"))} />
+              <FilaKpi label="ROAS" valores={meses.map((m, i) => (inversionMensual[i] > 0 ? `${(m.ventas / inversionMensual[i]).toFixed(1)}×` : "—"))} />
             </TableBody>
           </Table>
         </CardContent>
@@ -335,13 +376,16 @@ function FilaKpi({ label, valores, destacado }: { label: string; valores: string
   );
 }
 
-function VistaMensual({ meses, metas }: { meses: MesPnlReal[]; metas: typeof METAS_DEFAULT }) {
+function VistaMensual({ meses, metas, inversionMensual }: { meses: MesPnlReal[]; metas: MetasAnuales; inversionMensual: number[] }) {
   const hoy = new Date();
   const [mesSeleccionado, setMesSeleccionado] = useState(hoy.getMonth() + 1);
   const mes = meses.find((m) => m.mes === mesSeleccionado) ?? meses[hoy.getMonth()];
   const metaMes = metas.ventasAnual / 12;
   const metaProfitMes = metas.profitAnual / 12;
   const semaforo = semaforoMes(mes, metas.margenObjetivoPct);
+  const invMes = inversionMensual[mes.mes - 1] ?? 0;
+  const cpvMes = invMes > 0 && mes.unidades > 0 ? invMes / mes.unidades : null;
+  const roasMes = invMes > 0 ? mes.ventas / invMes : null;
 
   const cards: { label: string; valor: string; sub?: string; tone?: "green" | "amber" | "red" | "purple" }[] = [
     { label: "VENTAS", valor: fmtMoney(mes.ventas) },
@@ -350,8 +394,8 @@ function VistaMensual({ meses, metas }: { meses: MesPnlReal[]; metas: typeof MET
     { label: `META PROFIT: ${fmtMoney(metaProfitMes)}`, valor: metaProfitMes > 0 ? fmtPct((mes.profit / metaProfitMes) * 100, 1) : "—", sub: mes.profit >= metaProfitMes ? "✓ Meta alcanzada" : "Por debajo de la meta", tone: mes.profit >= metaProfitMes ? "green" : "amber" },
     { label: "COGS", valor: fmtMoney(mes.cogs), tone: "purple" },
     { label: "GROSS PROFIT %", valor: fmtPct(mes.utilidadBrutaPct), tone: "green" },
-    { label: "CPV", valor: "—" },
-    { label: "ROAS", valor: "—" },
+    { label: "CPV", valor: cpvMes != null ? fmtMoney(cpvMes, 2) : "—" },
+    { label: "ROAS", valor: roasMes != null ? `${roasMes.toFixed(1)}×` : "—" },
   ];
   const TONE_BG: Record<string, string> = {
     amber: "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30",

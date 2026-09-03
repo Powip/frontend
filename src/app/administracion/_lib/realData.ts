@@ -112,12 +112,23 @@ export function enTransito(orders: any[]): any[] {
  * Agrupa pedidos ENTREGADO con courier asignado por courier — misma lógica
  * que `buildGuiasPorLiquidar` en `operaciones/liquidaciones/_components/utils.ts`,
  * pero a nivel courier (no por guía individual) para la card de Liquidaciones.
+ *
+ * `cutoffPorCourier` excluye pedidos entregados antes de esa fecha para el
+ * courier correspondiente — así una liquidación ya confirmada no vuelve a
+ * contar esos pedidos, pero SÍ vuelve a aparecer si el courier acumula deuda
+ * nueva después de la fecha de confirmación (ver `_lib/liquidacionesStorage.ts`).
+ * Sin este corte, "confirmar" un courier lo ocultaba para siempre, incluso
+ * cuando entregas nuevas generaban un saldo nuevo — un bug real, no solo una
+ * limitación de diseño.
  */
-export function agruparPorCourier(orders: any[]) {
+export function agruparPorCourier(orders: any[], cutoffPorCourier: Record<string, Date> = {}) {
   const map: Record<string, { nombre: string; guias: number; recaudado: number; adelantos: number; neto: number; diasMax: number }> = {};
   for (const o of soloEntregados(orders)) {
     const courier = (o.courier || "").trim();
     if (!courier) continue;
+    const fecha = fechaOrden(o);
+    const cutoff = cutoffPorCourier[courier];
+    if (cutoff && fecha <= cutoff) continue;
     if (!map[courier]) map[courier] = { nombre: courier, guias: 0, recaudado: 0, adelantos: 0, neto: 0, diasMax: 0 };
     const bruto = Number(o.grandTotal || 0);
     const adelantos = paidAmount(o);
@@ -125,7 +136,7 @@ export function agruparPorCourier(orders: any[]) {
     map[courier].recaudado += bruto;
     map[courier].adelantos += adelantos;
     map[courier].neto += Math.max(0, bruto - adelantos);
-    const dias = Math.max(0, Math.floor((Date.now() - fechaOrden(o).getTime()) / 86400000));
+    const dias = Math.max(0, Math.floor((Date.now() - fecha.getTime()) / 86400000));
     map[courier].diasMax = Math.max(map[courier].diasMax, dias);
   }
   return Object.values(map).filter((c) => c.neto > 0);

@@ -22,6 +22,7 @@ export interface MesPnlReal {
   anio: number;
   ventas: number;
   cogs: number;
+  unidades: number;
   gastosFijos: number;
   courierCost: number;
   utilidadBrutaPct: number;
@@ -79,6 +80,7 @@ export function useAdminYearPnl(companyId: string, anio: number, storeIds: strin
     });
     const ventas = entregadasMes.reduce((s, o) => s + Number(o.grandTotal || 0), 0);
     const cogs = entregadasMes.reduce((s, o) => s + Number(o.costAmount || 0), 0);
+    const unidades = entregadasMes.reduce((s, o) => s + (o.itemCount || (Array.isArray(o.items) ? o.items.length : 1)), 0);
     const gastosMes = gastos.filter((g) => g.mes === mesNum && g.anio === anio);
     const gastosFijos = gastosMes.reduce((s, g) => s + Number(g.monto || 0), 0);
     const courierCost = Number(courierQs[i]?.data ?? 0);
@@ -91,6 +93,7 @@ export function useAdminYearPnl(companyId: string, anio: number, storeIds: strin
       anio,
       ventas,
       cogs,
+      unidades,
       gastosFijos,
       courierCost,
       utilidadBrutaPct,

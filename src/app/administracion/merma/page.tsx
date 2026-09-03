@@ -57,8 +57,8 @@ export default function MermaPage() {
 
   const handleCreate = async () => {
     if (!companyId || !token) return;
-    if (form.quantity <= 0 || form.unitCost < 0) {
-      toast.error("Cantidad debe ser > 0 y costo ≥ 0");
+    if (form.quantity <= 0 || form.unitCost < 0 || form.recoveredAmount < 0) {
+      toast.error("Cantidad debe ser > 0, costo y recuperado deben ser ≥ 0");
       return;
     }
     setSaving(true);

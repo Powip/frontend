@@ -1,5 +1,25 @@
 "use client";
 
+/**
+ * Margen x Producto.
+ *
+ * `OrderItem` (ms-ventas) no trae costo por ítem — `costAmount` solo existe a
+ * nivel de pedido completo (ver `_lib/pnl.ts`), no desglosado por SKU. Por
+ * eso esta página, a diferencia de todo el resto del módulo, no puede usar
+ * el costo real al momento de la venta: en su lugar consulta el costo
+ * *actual* del catálogo (`priceBase` de ms-products) por cada variante
+ * vendida en el periodo. Si el costo del producto cambió desde que se
+ * vendió, el margen mostrado usa el costo de hoy, no el histórico — es una
+ * limitación de datos, no se puede resolver sin que ms-ventas guarde el
+ * costo por ítem al momento de la venta (ver `BACKEND_REQUERIMIENTOS.md`).
+ *
+ * Antes, si el fetch a ms-products fallaba o el variant ya no existía, el
+ * costo caía a S/ 0 silenciosamente → el producto se mostraba con 100% de
+ * margen (el peor caso posible: parece el producto más rentable cuando en
+ * realidad es un dato faltante). Ahora esos casos muestran "—" en vez de un
+ * número inventado.
+ */
+
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
@@ -22,10 +42,12 @@ const COLUMNS: { key: SortKey; label: string }[] = [
   { key: "contribucion", label: "Contribución" },
 ];
 
+type FilaMargen = IMargenProducto & { contribucion: number; sinCosto: boolean };
+
 export default function MargenProductoPage() {
   const { auth } = useAuth();
   const { fromDate, toDate } = useAdminPeriod();
-  const [productos, setProductos] = useState<(IMargenProducto & { contribucion: number })[]>([]);
+  const [productos, setProductos] = useState<FilaMargen[]>([]);
   const [enriching, setEnriching] = useState(false);
   const [sortBy, setSortBy] = useState<SortKey>("margenPct");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -46,15 +68,14 @@ export default function MargenProductoPage() {
     if (isLoading) return;
 
     const entregadas = (orders as any[]).filter((o) => o.status === "ENTREGADO");
-    const byProduct: Record<string, { nombre: string; sku: string; precioVenta: number; unidadesVendidas: number; count: number }> = {};
+    const byProduct: Record<string, { nombre: string; sku: string; ventaTotal: number; unidadesVendidas: number }> = {};
     for (const order of entregadas) {
       const items: any[] = order.items || [];
       for (const item of items) {
         const pid = item.productVariantId || item.id || "unknown";
-        if (!byProduct[pid]) byProduct[pid] = { nombre: item.productName || "Producto", sku: item.sku || pid, precioVenta: 0, unidadesVendidas: 0, count: 0 };
-        byProduct[pid].precioVenta += Number(item.unitPrice || 0);
+        if (!byProduct[pid]) byProduct[pid] = { nombre: item.productName || "Producto", sku: item.sku || pid, ventaTotal: 0, unidadesVendidas: 0 };
+        byProduct[pid].ventaTotal += Number(item.subtotal ?? Number(item.unitPrice || 0) * Number(item.quantity || 1));
         byProduct[pid].unidadesVendidas += Number(item.quantity || 1);
-        byProduct[pid].count += 1;
       }
     }
 
@@ -67,20 +88,22 @@ export default function MargenProductoPage() {
           const res = await fetch(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${variantId}`);
           if (res.ok) {
             const data = await res.json();
-            return [variantId, Number(data.priceBase ?? 0)] as [string, number];
+            if (data.priceBase != null) return [variantId, Number(data.priceBase)] as [string, number];
           }
         } catch {}
-        return [variantId, 0] as [string, number];
+        return [variantId, null] as [string, number | null];
       })
     ).then((entries) => {
       const costMap = Object.fromEntries(entries);
-      const result = Object.entries(byProduct).map(([id, p]) => {
-        const precioVenta = p.count > 0 ? p.precioVenta / p.count : 0;
-        const precioCosto = costMap[id] ?? 0;
-        const margen = precioVenta - precioCosto;
-        const margenPct = precioVenta > 0 ? 100 - (precioCosto / precioVenta) * 100 : 0;
-        const contribucion = margen * p.unidadesVendidas;
-        return { id, nombre: p.nombre, sku: p.sku, precioVenta, precioCosto, margen, margenPct, unidadesVendidas: p.unidadesVendidas, contribucion };
+      const result: FilaMargen[] = Object.entries(byProduct).map(([id, p]) => {
+        const precioVenta = p.unidadesVendidas > 0 ? p.ventaTotal / p.unidadesVendidas : 0;
+        const costoRaw = costMap[id] as number | null;
+        const sinCosto = costoRaw == null;
+        const precioCosto = costoRaw ?? 0;
+        const margen = sinCosto ? 0 : precioVenta - precioCosto;
+        const margenPct = sinCosto || precioVenta <= 0 ? 0 : 100 - (precioCosto / precioVenta) * 100;
+        const contribucion = sinCosto ? 0 : margen * p.unidadesVendidas;
+        return { id, nombre: p.nombre, sku: p.sku, precioVenta, precioCosto, margen, margenPct, unidadesVendidas: p.unidadesVendidas, contribucion, sinCosto };
       });
       setProductos(result);
     }).finally(() => setEnriching(false));
@@ -98,7 +121,10 @@ export default function MargenProductoPage() {
   };
 
   return (
-    <div className="p-8">
+    <div className="p-8 space-y-4">
+      <div className="rounded-lg border bg-amber-50/60 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-xs text-amber-800 dark:text-amber-300">
+        El precio de costo es el actual del catálogo, no el que tenía el producto al momento de cada venta — ms-ventas no guarda costo por ítem, solo un total por pedido. Si el costo cambió después de vender, el margen mostrado no es exacto.
+      </div>
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">Margen por Producto</CardTitle>
@@ -131,12 +157,16 @@ export default function MargenProductoPage() {
                       <div><p className="text-sm font-medium">{p.nombre}</p><p className="text-xs text-muted-foreground">{p.sku}</p></div>
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">{fmt(p.precioVenta)}</TableCell>
-                    <TableCell className="text-right font-mono text-sm text-muted-foreground">{fmt(p.precioCosto)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm text-muted-foreground">{p.sinCosto ? "—" : fmt(p.precioCosto)}</TableCell>
                     <TableCell className="text-right">
-                      <span className={`font-mono font-semibold text-sm ${marginColor(p.margenPct)}`}>{p.margenPct.toFixed(1)}%</span>
+                      {p.sinCosto ? (
+                        <span className="text-xs text-muted-foreground" title="No se pudo obtener el costo actual del catálogo">Sin costo</span>
+                      ) : (
+                        <span className={`font-mono font-semibold text-sm ${marginColor(p.margenPct)}`}>{p.margenPct.toFixed(1)}%</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right font-mono text-sm">{p.unidadesVendidas}</TableCell>
-                    <TableCell className="text-right font-mono text-sm">{fmt(p.contribucion)}</TableCell>
+                    <TableCell className="text-right font-mono text-sm">{p.sinCosto ? "—" : fmt(p.contribucion)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

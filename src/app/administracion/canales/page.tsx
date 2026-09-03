@@ -11,11 +11,13 @@ import {
   deleteMarketplaceConfig,
 } from "@/api/Admin";
 import { ICanalVenta, IMarketplaceConfig } from "@/interfaces/IAdmin";
+import { CANALES_REALES } from "../_lib/realData";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Pencil, Trash2, Check, X } from "lucide-react";
 import { toast } from "sonner";
@@ -51,24 +53,19 @@ export default function CanalesPage() {
       getMarketplaceConfigs(auth.company.id, auth.accessToken),
     ]).then(([orders, cfgs]) => {
       setConfigs(cfgs as IMarketplaceConfig[]);
-      const feeMap: Record<string, number> = {};
-      (cfgs as IMarketplaceConfig[]).filter((c) => c.isActive).forEach((c) => {
-        feeMap[c.channel.toUpperCase()] = Number(c.commissionPct) / 100;
-      });
 
       const entregadas = (orders as any[]).filter((o) => o.status === "ENTREGADO");
       const totalVentas = entregadas.reduce((s: number, o: any) => s + Number(o.grandTotal), 0);
-      const grouped: Record<string, { ventas: number; unidades: number }> = {};
+      const grouped: Record<string, { ventas: number; unidades: number; fee: number }> = {};
       for (const o of entregadas) {
         const canal = ((o.salesChannel || "OTRO") as string).toUpperCase();
-        if (!grouped[canal]) grouped[canal] = { ventas: 0, unidades: 0 };
+        if (!grouped[canal]) grouped[canal] = { ventas: 0, unidades: 0, fee: 0 };
         grouped[canal].ventas += Number(o.grandTotal);
         grouped[canal].unidades += o.itemCount || 1;
+        grouped[canal].fee += Number(o.channelFee) || 0;
       }
       const result: ICanalVenta[] = Object.entries(grouped).map(([nombre, vals]) => {
-        const feePct = feeMap[nombre] ?? 0;
-        const fee = vals.ventas * feePct;
-        return { nombre, ventas: vals.ventas, unidades: vals.unidades, fee, neto: vals.ventas - fee, porcentaje: totalVentas > 0 ? (vals.ventas / totalVentas) * 100 : 0 };
+        return { nombre, ventas: vals.ventas, unidades: vals.unidades, fee: vals.fee, neto: vals.ventas - vals.fee, porcentaje: totalVentas > 0 ? (vals.ventas / totalVentas) * 100 : 0 };
       }).sort((a, b) => b.ventas - a.ventas);
       setCanales(result);
     }).finally(() => setLoading(false));
@@ -110,6 +107,7 @@ export default function CanalesPage() {
       <Card>
         <CardHeader><CardTitle className="text-sm">Canales & Marketplaces — {fromDate} al {toDate}</CardTitle></CardHeader>
         <CardContent>
+          <p className="text-xs text-muted-foreground mb-3">El fee de cada canal es el que quedó registrado en cada pedido (mismo dato que usan Resumen y Utilidad & Margen), no un recálculo con la configuración actual — si cambiás una tasa abajo, no afecta pedidos ya entregados.</p>
           {loading ? <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-10" />)}</div> : (
             <Table>
               <TableHeader>
@@ -117,7 +115,7 @@ export default function CanalesPage() {
                   <TableHead>Canal</TableHead>
                   <TableHead className="text-right">Ventas</TableHead>
                   <TableHead className="text-right">Unidades</TableHead>
-                  <TableHead className="text-right">Fee canal</TableHead>
+                  <TableHead className="text-right">Fee cobrado</TableHead>
                   <TableHead className="text-right">Neto</TableHead>
                   <TableHead className="text-right">% del total</TableHead>
                 </TableRow>
@@ -163,7 +161,14 @@ export default function CanalesPage() {
             <div className="grid grid-cols-5 gap-2 p-3 border rounded-lg bg-muted/20">
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-muted-foreground font-medium">Canal</label>
-                <Input placeholder="Ej: MERCADOLIBRE" value={form.channel} onChange={(e) => setForm((f) => ({ ...f, channel: e.target.value.toUpperCase() }))} />
+                <Select value={form.channel} onValueChange={(v) => setForm((f) => ({ ...f, channel: v }))}>
+                  <SelectTrigger><SelectValue placeholder="Seleccioná un canal" /></SelectTrigger>
+                  <SelectContent>
+                    {CANALES_REALES.filter((c) => !configs.some((cfg) => cfg.channel.toUpperCase() === c.id)).map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.nombre}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-muted-foreground font-medium">Comisión %</label>
@@ -188,7 +193,7 @@ export default function CanalesPage() {
           )}
 
           {configs.length === 0 && !showNew ? (
-            <p className="text-sm text-muted-foreground text-center py-4">Sin configuración de fees. Los fees del P&L serán S/ 0.</p>
+            <p className="text-sm text-muted-foreground text-center py-4">Sin canales configurados todavía. Esto no afecta pedidos ya entregados (el fee de la tabla de arriba viene de cada pedido).</p>
           ) : (
             <Table>
               <TableHeader>
