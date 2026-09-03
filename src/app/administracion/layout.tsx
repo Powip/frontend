@@ -9,13 +9,21 @@ import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 
 const TABS = [
+  { label: "Reporte rápido", href: "/administracion/reporte", isNew: true },
   { label: "Resumen", href: "/administracion/resumen" },
+  { label: "Control diario", href: "/administracion/diario", isNew: true },
   { label: "Gastos & Costos", href: "/administracion/gastos" },
   { label: "Utilidad & Margen", href: "/administracion/utilidad" },
   { label: "Canales & Marketplaces", href: "/administracion/canales" },
+  { label: "Pauta por canal", href: "/administracion/pauta", isNew: true },
   { label: "Punto de Equilibrio", href: "/administracion/equilibrio" },
   { label: "Margen x Producto", href: "/administracion/margen-producto" },
   { label: "Merma", href: "/administracion/merma" },
+  { label: "Cuentas x Cobrar/Pagar", href: "/administracion/cuentas", isNew: true },
+  { label: "Flujo de Caja", href: "/administracion/flujo", isNew: true },
+  { label: "Liquidaciones", href: "/administracion/liquidaciones", isNew: true },
+  { label: "Capital & ROI", href: "/administracion/capital", isNew: true },
+  { label: "Resumen Anual", href: "/administracion/anual", isNew: true },
 ];
 
 function AdminShell({ children }: { children: React.ReactNode }) {
@@ -55,13 +63,18 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             key={tab.href}
             onClick={() => router.push(tab.href)}
             className={cn(
-              "px-4 py-3 text-sm whitespace-nowrap border-b-2 transition-colors",
+              "px-4 py-3 text-sm whitespace-nowrap border-b-2 transition-colors flex items-center gap-1.5",
               pathname === tab.href
                 ? "border-primary text-primary font-semibold"
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             {tab.label}
+            {tab.isNew && (
+              <span className="text-[9px] font-bold bg-primary text-primary-foreground px-1.5 py-0.5 rounded-full tracking-wide">
+                NUEVO
+              </span>
+            )}
           </button>
         ))}
       </div>

@@ -33,6 +33,13 @@ import {
   Activity,
   FileSpreadsheet,
   Wallet,
+  Zap,
+  CalendarClock,
+  Megaphone,
+  PackageX,
+  Landmark,
+  PiggyBank,
+  CalendarRange,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -238,7 +245,9 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Administración",
         icon: BarChart2,
         children: [
+          { name: "Reporte rápido", href: "/administracion/reporte", icon: Zap },
           { name: "Resumen", href: "/administracion/resumen", icon: BarChart },
+          { name: "Control diario", href: "/administracion/diario", icon: CalendarClock },
           {
             name: "Gastos & Costos",
             href: "/administracion/gastos",
@@ -254,6 +263,7 @@ export function Sidebar({ className }: SidebarProps) {
             href: "/administracion/canales",
             icon: Building2,
           },
+          { name: "Pauta por canal", href: "/administracion/pauta", icon: Megaphone },
           {
             name: "Punto de Equilibrio",
             href: "/administracion/equilibrio",
@@ -264,6 +274,12 @@ export function Sidebar({ className }: SidebarProps) {
             href: "/administracion/margen-producto",
             icon: Tags,
           },
+          { name: "Merma", href: "/administracion/merma", icon: PackageX },
+          { name: "Cuentas x Cobrar/Pagar", href: "/administracion/cuentas", icon: Wallet },
+          { name: "Flujo de Caja", href: "/administracion/flujo", icon: Landmark },
+          { name: "Liquidaciones", href: "/administracion/liquidaciones", icon: Truck },
+          { name: "Capital & ROI", href: "/administracion/capital", icon: PiggyBank },
+          { name: "Resumen Anual", href: "/administracion/anual", icon: CalendarRange },
         ],
       },
       {
