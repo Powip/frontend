@@ -1113,26 +1113,86 @@ function RegistrarVentaContent() {
 
           const createdOrderId = response.data.id;
 
-          // Si hay comprobante de pago, subirlo al pago recién creado
-          if (paymentProofFile && response.data.payments?.length > 0) {
-            const firstPaymentId = response.data.payments[0].id;
-            try {
-              const formData = new FormData();
-              formData.append("file", paymentProofFile);
+          // Si hay comprobante de pago, adjuntarlo al pago del adelanto y
+          // confirmarlo. La subida y el approve van DIRECTO a ms-ventas
+          // (NEXT_PUBLIC_API_VENTAS): el gateway daba errores al proxear el
+          // multipart del comprobante.
+          let proofFailed = false;
+          if (paymentProofFile && advancePayment > 0) {
+            // El POST de order-header no siempre devuelve payments hidratado.
+            // Se relee la orden (el GET sí trae relations: ['payments']) para
+            // obtener el id del pago del adelanto.
+            let firstPaymentId: string | undefined =
+              response.data?.payments?.[0]?.id;
+            if (!firstPaymentId) {
+              try {
+                const fresh = await axiosAuth.get<{
+                  payments?: { id: string }[];
+                }>(
+                  `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${createdOrderId}`,
+                );
+                firstPaymentId = fresh.data?.payments?.[0]?.id;
+              } catch (err) {
+                console.error(
+                  "Error releyendo la orden para adjuntar el comprobante",
+                  err,
+                );
+              }
+            }
 
-              await axiosAuth.patch(
-                `${GATEWAY.ventas}/payments/payments/${firstPaymentId}/upload-proof`,
-                formData,
-                {
-                  headers: {
-                    "Content-Type": "multipart/form-data",
+            if (!firstPaymentId) {
+              proofFailed = true;
+              console.error(
+                "No se encontró el pago de la orden recién creada; comprobante no adjuntado",
+              );
+              toast.error(
+                "La venta se creó, pero el comprobante no se pudo adjuntar. Cargalo desde Finanzas › Gestionar Pagos.",
+              );
+            } else {
+              let proofUploaded = false;
+              try {
+                const formData = new FormData();
+                formData.append("file", paymentProofFile);
+
+                await axiosAuth.patch(
+                  `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${firstPaymentId}/upload-proof`,
+                  formData,
+                  {
+                    headers: {
+                      "Content-Type": "multipart/form-data",
+                    },
                   },
-                },
-              );
-            } catch {
-              toast.warning(
-                "Venta creada pero hubo un error al subir el comprobante",
-              );
+                );
+                proofUploaded = true;
+              } catch (err) {
+                console.error("Error subiendo comprobante", err);
+                proofFailed = true;
+                toast.error(
+                  "La venta se creó, pero el comprobante no se pudo adjuntar. Cargalo desde Finanzas › Gestionar Pagos.",
+                );
+              }
+
+              // Solo se confirma el adelanto si el comprobante quedó adjunto.
+              // El backend resuelve el estado de la orden (parcial → PENDIENTE,
+              // adelanto = total → PAGADO); el front no calcula ni fuerza nada.
+              if (proofUploaded) {
+                try {
+                  await axiosAuth.patch(
+                    `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${firstPaymentId}/approve`,
+                    {
+                      userId: auth?.user?.id ?? undefined,
+                      userName: sellerDisplayName || undefined,
+                      notes:
+                        "Adelanto confirmado con comprobante al registrar venta",
+                    },
+                  );
+                } catch (err) {
+                  console.error("Error confirmando el adelanto", err);
+                  toast.warning(
+                    "La venta y el comprobante se guardaron, pero el adelanto quedó pendiente de confirmar en Finanzas.",
+                  );
+                }
+              }
             }
           }
 
@@ -1150,7 +1210,7 @@ function RegistrarVentaContent() {
                 "Venta registrada, pero no se pudo programar la fecha de envío",
               );
             }
-          } else {
+          } else if (!proofFailed) {
             toast.success("Venta registrada");
           }
           setReceiptOrderId(createdOrderId);
