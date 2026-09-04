@@ -681,6 +681,23 @@ export default function YavendioConfigPage() {
         </div>
       )}
 
+      {/* Estado NO CONFIGURADO — sin cuenta de Yavendio todavía */}
+      {!saving && !credential && (
+        <div className="bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-teal-800 dark:text-teal-300">
+            ¿Todavía no tenés cuenta en Yavendio? Creala con nuestro link de referidos.
+          </p>
+          <a
+            href="https://ya.onl/sign-up?plan_id=365&frequency=QUARTERLY&ref=62939&utm_source=partner&utm_medium=partner_program_v1"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 transition whitespace-nowrap"
+          >
+            Crear cuenta en Yavendio ↗
+          </a>
+        </div>
+      )}
+
       {/* Estado NO CONFIGURADO — formulario */}
       {!saving && !credential && (
         <div className="bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-xl p-5 space-y-4">
