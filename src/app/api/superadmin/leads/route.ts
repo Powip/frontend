@@ -10,94 +10,50 @@ export async function GET(request: Request) {
     const source = searchParams.get('source');
     const assignedTo = searchParams.get('assigned_to');
     const search = searchParams.get('search');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '500'); // Larger limit for merging
+    const page = parseInt(searchParams.get('page') || '1', 10);
+    const limit = parseInt(searchParams.get('limit') || '20', 10); // Límite normal paginado
     const offset = (page - 1) * limit;
 
-    // 1. Fetch from 'leads' table
-    let leadsQuery = supabase.from('leads').select('*');
-    if (stage) leadsQuery = leadsQuery.eq('pipeline_stage', stage);
-    if (source) leadsQuery = leadsQuery.eq('source', source);
-    if (assignedTo) leadsQuery = leadsQuery.eq('assigned_to', assignedTo);
+    // 1. Consulta directo a la vista unificada
+    let query = supabase
+      .from('v_all_leads')
+      .select('*', { count: 'exact' });
+
+    // 2. Aplicar filtros dinámicos en Postgres
+    if (stage) query = query.eq('pipeline_stage', stage);
+    if (source) query = query.eq('source', source);
+    if (assignedTo) query = query.eq('assigned_to', assignedTo);
     if (search) {
-      leadsQuery = leadsQuery.or(`contact_name.ilike.%${search}%,business_name.ilike.%${search}%,email.ilike.%${search}%`);
+      query = query.or(
+        `contact_name.ilike.%${search}%,business_name.ilike.%${search}%,email.ilike.%${search}%,phone_whatsapp.ilike.%${search}%`
+      );
     }
 
-    const { data: leadsData, error: leadsError } = await leadsQuery.order('created_at', { ascending: false });
+    // 3. Paginación nativa en Base de Datos (O(1) en memoria serverless)
+    const { data: leads, count, error } = await query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    if (leadsError) {
-      console.error('[Leads API] Leads DB Error:', leadsError);
-      return NextResponse.json({ data: [], error: leadsError.message }, { status: 200 }); // Return empty for stability
+    if (error) {
+      console.error('[Leads API] DB Error:', error);
+      return NextResponse.json({ data: [], error: error.message }, { status: 500 });
     }
 
-    // 2. Fetch from 'landing_leads' table
-    // Only fetch from landing_leads if filters are compatible (source=landing or no source, and stage=nuevo or no stage)
-    let landingData: any[] = [];
-    const isSourceCompatible = !source || source.toLowerCase() === 'landing';
-    const isStageCompatible = !stage || stage.toLowerCase() === 'nuevo';
-    const isAssignedCompatible = !assignedTo; // landing leads usually don't have assigned_to yet
-
-    if (isSourceCompatible && isStageCompatible && isAssignedCompatible) {
-      let landingQuery = supabase.from('landing_leads').select('*');
-      if (search) {
-        landingQuery = landingQuery.or(`full_name.ilike.%${search}%,company.ilike.%${search}%,email.ilike.%${search}%`);
-      }
-      const { data: lData, error: lError } = await landingQuery.order('created_at', { ascending: false });
-      if (!lError) landingData = lData || [];
-    }
-
-    // 3. Normalize landing leads
-    const normalizedLanding = landingData.map(l => ({
-      ...l,
-      contact_name: l.full_name,
-      business_name: l.company,
-      phone_whatsapp: l.phone,
-      source: 'landing',
-      pipeline_stage: 'nuevo',
-      is_landing: true
-    }));
-
-    // 4. Merge and Deduplicate by Phone
-    const combinedLeads = [...(leadsData || []), ...normalizedLanding];
-    const uniqueLeadsMap = new Map();
-
-    combinedLeads.forEach(lead => {
-      const phone = lead.phone_whatsapp || lead.phone;
-      if (!phone) {
-        uniqueLeadsMap.set(lead.id, lead); // Use ID if no phone
-        return;
-      }
-
-      const existing = uniqueLeadsMap.get(phone);
-      if (!existing) {
-        uniqueLeadsMap.set(phone, lead);
-      } else {
-        // Preference: keep the one from the 'leads' table (usually richer data) or the most recent
-        const isFromLeadsTable = !lead.is_landing;
-        if (isFromLeadsTable || new Date(lead.created_at) > new Date(existing.created_at)) {
-          uniqueLeadsMap.set(phone, lead);
-        }
-      }
-    });
-
-    const finalLeads = Array.from(uniqueLeadsMap.values())
-      .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-    // 5. Apply Pagination in-memory
-    const paginatedLeads = finalLeads.slice(offset, offset + limit);
+    const totalRecords = count || 0;
 
     return NextResponse.json({
-      data: paginatedLeads,
+      data: leads || [],
       pagination: {
         page,
         limit,
-        total: finalLeads.length,
-        total_pages: Math.ceil(finalLeads.length / limit)
+        total: totalRecords,
+        total_pages: Math.ceil(totalRecords / limit)
       }
     });
+
   } catch (error: any) {
     console.error('[Leads API] Crash:', error);
-    return NextResponse.json({ data: [], error: 'Internal Server Error' }, { status: 200 }); // Graceful recovery
+    return NextResponse.json({ data: [], error: 'Internal Server Error' }, { status: 500 });
   }
 }
 
@@ -114,7 +70,6 @@ export async function POST(request: Request) {
       source
     } = body;
 
-
     if (!contact_name || !phone_whatsapp) {
       return NextResponse.json(
         { error: 'Name and Phone are required' },
@@ -122,6 +77,27 @@ export async function POST(request: Request) {
       );
     }
 
+    // 1. Verificación de duplicado por Teléfono o Email en la tabla 'leads'
+    let checkQuery = `phone_whatsapp.eq.${phone_whatsapp}`;
+    if (email) checkQuery += `,email.eq.${email}`;
+
+    const { data: existingLead } = await supabase
+      .from('leads')
+      .select('id, contact_name, phone_whatsapp')
+      .or(checkQuery)
+      .maybeSingle();
+
+    if (existingLead) {
+      return NextResponse.json(
+        { 
+          error: 'Ya existe un lead registrado con este número de teléfono o correo.',
+          existingLead 
+        },
+        { status: 409 } // HTTP 409 Conflict
+      );
+    }
+
+    // 2. Creación del Lead si no hay duplicados
     const { data: lead, error } = await supabase
       .from('leads')
       .insert({
@@ -141,7 +117,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Log Activity
+    // 3. Registrar actividad inicial
     await supabase.from('lead_activities').insert({
       lead_id: lead.id,
       activity_type: 'other',
