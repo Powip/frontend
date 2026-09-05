@@ -1,9 +1,7 @@
-import { Customer } from "@/models/sales/customer";
-import { CustomerResponseDto } from "../dto/order.dto";
+import type { Customer } from "@/features/sales/models/customer";
+import type { CustomerResponseDto } from "../dto/order.dto";
 
-export function toCustomer(
-  dto: CustomerResponseDto
-): Customer {
+export function toCustomer(dto: CustomerResponseDto): Customer {
   return {
     id: dto.id,
     companyId: dto.companyId,

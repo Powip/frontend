@@ -1,8 +1,15 @@
-import { DeliveryType, OrderStatus, OrderType, ReceiptType, SalesChannel, TaxMode } from "@/api/sales/types/order.types";
-import { Customer } from "./customer";
-import { OrderItem } from "./order-item";
-import { Payment } from "./payment";
-import { OrderLog } from "./order-log";
+import type {
+  DeliveryType,
+  OrderStatus,
+  OrderType,
+  ReceiptType,
+  SalesChannel,
+  TaxMode,
+} from "@/features/sales/types/order.types";
+import type { Customer } from "./customer";
+import type { OrderItem } from "./order-item";
+import type { OrderLog } from "./order-log";
+import type { Payment } from "./payment";
 
 export interface Order {
   id: string;

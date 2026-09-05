@@ -1,9 +1,7 @@
-import { OrderLog } from "@/models/sales/order-log";
-import { OrderLogResponseDto } from "../dto/order.dto";
+import type { OrderLog } from "@/features/sales/models/order-log";
+import type { OrderLogResponseDto } from "../dto/order.dto";
 
-export function toOrderLog(
-  dto: OrderLogResponseDto
-): OrderLog {
+export function toOrderLog(dto: OrderLogResponseDto): OrderLog {
   return {
     id: dto.id,
 

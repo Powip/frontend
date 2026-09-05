@@ -1,4 +1,4 @@
-import { PaymentMethod, PaymentStatus } from "@/api/sales/types/order.types";
+import type { PaymentMethod, PaymentStatus } from "@/features/sales/types/order.types";
 
 export interface Payment {
   id: string;

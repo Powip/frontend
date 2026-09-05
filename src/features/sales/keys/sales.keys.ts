@@ -3,11 +3,9 @@ export const salesKeys = {
 
   lists: () => [...salesKeys.all, "list"] as const,
 
-  byStore: (storeId: string) =>
-    [...salesKeys.lists(), "store", storeId] as const,
+  byStore: (storeId: string) => [...salesKeys.lists(), "store", storeId] as const,
 
   details: () => [...salesKeys.all, "detail"] as const,
 
-  detail: (id: string) =>
-    [...salesKeys.details(), id] as const,
+  detail: (id: string) => [...salesKeys.details(), id] as const,
 };

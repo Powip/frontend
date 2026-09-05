@@ -1,5 +1,4 @@
-import { DocumentType } from "@/api/sales/types/order.types";
-import { ClientType } from "@/api/sales/types/order.types";
+import type { ClientType, DocumentType } from "@/features/sales/types/order.types";
 
 export interface Customer {
   id: string;

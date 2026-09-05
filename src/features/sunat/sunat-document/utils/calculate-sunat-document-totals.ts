@@ -5,6 +5,8 @@ export interface SunatTotalsInputItem {
   subtotal: number;
   discountAmount: number;
   taxType: string;
+  quantity?: number;
+  unitPrice?: number;
 }
 
 export interface SunatCalculatedTotals {
@@ -19,34 +21,82 @@ export function roundCurrency(value: number): number {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
+/**
+ * Items contain NET (IGV-excluded) prices.
+ *
+ * Important rounding rule:
+ *
+ * We must calculate IGV from the FULL-PRECISION net amount and only round
+ * the resulting tax afterwards.
+ *
+ * Example:
+ *
+ *   gross = 100
+ *   net = 100 / 1.18 = 84.745762...
+ *   rounded net = 84.75
+ *   IGV from full precision = 15.254237...
+ *   rounded IGV = 15.25
+ *
+ * Therefore:
+ *
+ *   84.75 + 15.25 = 100.00
+ *
+ * If IGV were calculated from the already-rounded 84.75, it would become
+ * 15.26 and the final amount would incorrectly become 100.01.
+ */
 export function calculateSunatDocumentTotals<T extends SunatTotalsInputItem>(
   items: T[],
 ): SunatCalculatedTotals {
-  const grossTotal = items.reduce((sum, item) => {
-    const itemSubtotal = Number(item.subtotal) || 0;
-    const itemDiscount = Number(item.discountAmount) || 0;
-    return sum + Math.max(0, itemSubtotal - itemDiscount);
-  }, 0);
+  let netTotalRaw = 0;
+  let gravadoNetTotalRaw = 0;
+  let discountTotalRaw = 0;
 
-  const discountTotal = roundCurrency(
-    items.reduce((sum, item) => sum + (Number(item.discountAmount) || 0), 0),
-  );
+  for (const item of items) {
+    const quantity = Number(item.quantity);
+    const unitPrice = Number(item.unitPrice);
 
-  const gravadoGrossTotal = items
-    .filter((item) => item.taxType === SUNAT_TAX_AFFECTATION_TYPES.GRAVADO)
-    .reduce((sum, item) => {
-      const itemSubtotal = Number(item.subtotal) || 0;
-      const itemDiscount = Number(item.discountAmount) || 0;
-      return sum + Math.max(0, itemSubtotal - itemDiscount);
-    }, 0);
+    /*
+     * Prefer quantity × unitPrice because unitPrice intentionally retains
+     * full precision when the original sale price included IGV.
+     *
+     * This lets us reconstruct the exact unrounded net line amount before
+     * calculating IGV.
+     */
+    const rawSubtotal =
+      Number.isFinite(quantity) &&
+      Number.isFinite(unitPrice) &&
+      item.quantity !== undefined &&
+      item.unitPrice !== undefined
+        ? Math.max(0, quantity * unitPrice)
+        : Number(item.subtotal) || 0;
 
-  const baseTaxable = roundCurrency(gravadoGrossTotal / (1 + IGV_RATE));
-  const taxTotal = roundCurrency(gravadoGrossTotal - baseTaxable);
-  const grandTotal = roundCurrency(grossTotal);
-  const netSubtotal = roundCurrency(grandTotal - taxTotal);
+    const discount = Math.max(0, Number(item.discountAmount) || 0);
+
+    const taxableBaseRaw = Math.max(0, rawSubtotal - discount);
+
+    netTotalRaw += taxableBaseRaw;
+    discountTotalRaw += discount;
+
+    if (item.taxType === SUNAT_TAX_AFFECTATION_TYPES.GRAVADO) {
+      gravadoNetTotalRaw += taxableBaseRaw;
+    }
+  }
+
+  const subtotal = roundCurrency(netTotalRaw);
+
+  /*
+   * IMPORTANT:
+   * Calculate IGV from the unrounded net total.
+   * Do NOT use `subtotal * IGV_RATE`.
+   */
+  const taxTotal = roundCurrency(gravadoNetTotalRaw * IGV_RATE);
+
+  const discountTotal = roundCurrency(discountTotalRaw);
+
+  const grandTotal = roundCurrency(subtotal + taxTotal);
 
   return {
-    subtotal: netSubtotal,
+    subtotal,
     discountTotal,
     shippingTotal: 0,
     taxTotal,

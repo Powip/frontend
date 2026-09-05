@@ -1,4 +1,4 @@
-import { LogOperation } from "@/api/sales/types/order.types";
+import type { LogOperation } from "@/features/sales/types/order.types";
 
 export interface OrderLog {
   id: number;

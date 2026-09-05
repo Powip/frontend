@@ -1,14 +1,12 @@
-import { Order } from "@/models/sales/order";
-import { OrderResponseDto } from "../dto/order.dto";
-import { toCustomer } from "./to-customer.mapper";
+import type { Order } from "@/features/sales/models/order";
 import { toDate } from "@/utils/to-date";
+import type { OrderResponseDto } from "../dto/order.dto";
+import { toCustomer } from "./to-customer.mapper";
 import { toOrderItem } from "./to-order-item.mapper";
-import { toPayment } from "./to-payment.mapper";
 import { toOrderLog } from "./to-order-log.mapper";
+import { toPayment } from "./to-payment.mapper";
 
-export function toOrder(
-  dto: OrderResponseDto
-): Order {
+export function toOrder(dto: OrderResponseDto): Order {
   return {
     id: dto.id,
 

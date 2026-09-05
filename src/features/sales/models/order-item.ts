@@ -1,4 +1,4 @@
-import { DiscountType } from "@/api/sales/types/order.types";
+import type { DiscountType } from "@/features/sales/types/order.types";
 
 export interface OrderItem {
   id: string;

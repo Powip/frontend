@@ -1,4 +1,17 @@
-import { ClientType, DeliveryType, DiscountType, DocumentType, LogOperation, OrderStatus, OrderType, PaymentMethod, PaymentStatus, ReceiptType, SalesChannel, TaxMode } from '../types/order.types';
+import type {
+  ClientType,
+  DeliveryType,
+  DiscountType,
+  DocumentType,
+  LogOperation,
+  OrderStatus,
+  OrderType,
+  PaymentMethod,
+  PaymentStatus,
+  ReceiptType,
+  SalesChannel,
+  TaxMode,
+} from "../types/order.types";
 
 export interface CustomerResponseDto {
   id: string;

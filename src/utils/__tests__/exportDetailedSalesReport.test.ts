@@ -6,7 +6,7 @@ import {
 import type {
   OrderResponseDto,
   OrderItemResponseDto,
-} from '@/api/sales/dto/order.dto';
+} from '@/features/sales/dto/order.dto';
 import { exportSalesToExcel } from '../exportSalesExcel';
 
 function makeItem(overrides: Partial<OrderItemResponseDto> = {}): OrderItemResponseDto {

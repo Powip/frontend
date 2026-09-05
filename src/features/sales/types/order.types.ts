@@ -1,18 +1,8 @@
-export type DocumentType =
-  | "DNI"
-  | "CARNET"
-  | "PASAPORTE"
-  | "RUC"
+export type DocumentType = "DNI" | "CARNET" | "PASAPORTE" | "RUC";
 
-export type ClientType =
-  | "TRADICIONAL"
-  | "MAYORISTA"
+export type ClientType = "TRADICIONAL" | "MAYORISTA";
 
-export type DiscountType =
-  | "NONE"
-  | "FIXED"
-  | "PERCENTAGE"
-  | "COUPON"
+export type DiscountType = "NONE" | "FIXED" | "PERCENTAGE" | "COUPON";
 
 export type PaymentMethod =
   | "YAPE"
@@ -24,12 +14,12 @@ export type PaymentMethod =
   | "MERCADO_PAGO"
   | "POS"
   | "TRANSFERENCIA"
-  | "EFECTIVO"
+  | "EFECTIVO";
 
 export type PaymentStatus =
   | "PENDING" // Por recaudar (promesa / contra entrega / transferencia pendiente)
   | "PAID" // Recaudado
-  | "LOST" // Perdido (no se cobró / error / fraude)
+  | "LOST"; // Perdido (no se cobró / error / fraude)
 
 export type LogOperation =
   | "CREATE"
@@ -44,17 +34,11 @@ export type LogOperation =
   | "INACTIVATE"
   | "COURIER_ASSIGNED"
   | "COMMENT"
-  | "SCHEDULE_CALLBACK"
+  | "SCHEDULE_CALLBACK";
 
-export type ReceiptType =
-  | "BOLETA"
-  | "FACTURA"
+export type ReceiptType = "BOLETA" | "FACTURA";
 
-export type OrderType =
-  | "VENTA"
-  | "RESERVA"
-  | "PREVENTA"
-  | "CAMBIO"
+export type OrderType = "VENTA" | "RESERVA" | "PREVENTA" | "CAMBIO";
 
 export type OrderStatus =
   | "INCOMPLETE"
@@ -66,7 +50,7 @@ export type OrderStatus =
   | "EN_ENVIO"
   | "ENTREGADO"
   | "ANULADO"
-  | "PAGADO"
+  | "PAGADO";
 
 export type SalesChannel =
   | "TIENDA_FISICA"
@@ -77,13 +61,8 @@ export type SalesChannel =
   | "MERCADOLIBRE"
   | "WEB"
   | "SHEETS"
-  | "OTRO"
+  | "OTRO";
 
-export type DeliveryType =
-  | "RETIRO_TIENDA"
-  | "DOMICILIO"
-  | "PUNTO_EXTERNO"
+export type DeliveryType = "RETIRO_TIENDA" | "DOMICILIO" | "PUNTO_EXTERNO";
 
-export type TaxMode = 
-  | "AUTOMATICO"
-  | "INCLUIDO"
+export type TaxMode = "AUTOMATICO" | "INCLUIDO";

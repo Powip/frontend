@@ -1,9 +1,7 @@
-import { Payment } from "@/models/sales/payment";
-import { PaymentResponseDto } from "../dto/order.dto";
+import type { Payment } from "@/features/sales/models/payment";
+import type { PaymentResponseDto } from "../dto/order.dto";
 
-export function toPayment(
-  dto: PaymentResponseDto
-): Payment {
+export function toPayment(dto: PaymentResponseDto): Payment {
   return {
     id: dto.id,
 

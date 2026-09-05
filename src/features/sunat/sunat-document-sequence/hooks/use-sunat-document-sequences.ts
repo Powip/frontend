@@ -5,7 +5,7 @@ import { getSunatDocumentSequences } from "../services/sunat-document-sequence.s
 
 export function useSunatDocumentSequences() {
   return useQuery<SunatDocumentSequence[], Error>({
-    queryKey: sunatDocumentSequenceKeys.all,
+    queryKey: sunatDocumentSequenceKeys.lists(),
     queryFn: getSunatDocumentSequences,
   });
 }

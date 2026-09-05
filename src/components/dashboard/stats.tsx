@@ -12,7 +12,7 @@ import {
   buildDetailedSalesExportRows,
   exportDetailedSalesToExcel,
 } from "@/utils/exportDetailedSalesReport";
-import { OrderResponseDto } from "@/api/sales/dto/order.dto";
+import { OrderResponseDto } from "@/features/sales/dto/order.dto";
 import { toast } from "sonner";
 import {
   ComposedChart,

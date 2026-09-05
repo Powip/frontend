@@ -1,10 +1,8 @@
+import type { OrderItem } from "@/features/sales/models/order-item";
 import { toDate } from "@/utils/to-date";
-import { OrderItemResponseDto } from "../dto/order.dto";
-import { OrderItem } from "@/models/sales/order-item";
+import type { OrderItemResponseDto } from "../dto/order.dto";
 
-export function toOrderItem(
-  dto: OrderItemResponseDto
-): OrderItem {
+export function toOrderItem(dto: OrderItemResponseDto): OrderItem {
   return {
     id: dto.id,
 
