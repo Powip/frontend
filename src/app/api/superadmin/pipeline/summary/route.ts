@@ -10,10 +10,10 @@ export async function GET(request: Request) {
     const startOfPreviousMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
     const endOfPreviousMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59).toISOString();
 
-    // 1. All leads
+    // 1. All leads desde la vista unificada (incluyendo la columna source)
     const { data: allLeads, error } = await supabase
-      .from("leads")
-      .select("id, pipeline_stage, assigned_to, created_at");
+      .from("v_all_leads")
+      .select("id, pipeline_stage, assigned_to, source, created_at");
 
     if (error) {
       console.error("[Pipeline Summary] DB Error:", error);
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
         leads_this_month: 0, leads_previous_month: 0,
         closed_this_month: 0, closed_previous_month: 0,
         effectiveness: 0, states_count: {}, salesperson_breakdown: [],
-        contact_count: 0, close_rate: 0, closed_count: 0,
+        source_breakdown: [], contact_count: 0, close_rate: 0, closed_count: 0,
       });
     }
 
@@ -74,6 +74,25 @@ export async function GET(request: Request) {
 
     const salespersonBreakdown = Object.values(salespersonMap).sort((a, b) => b.closed_leads - a.closed_leads);
 
+    // 5. Source Breakdown (Agrupamiento por Canal de Origen para el Dashboard Origen & CAC)
+    const sourceMap: Record<string, { canal: string, leads: number, cierres: number, conversionPct: number }> = {};
+
+    leads.forEach(lead => {
+      const canal = lead.source || "Sin origen";
+      if (!sourceMap[canal]) {
+        sourceMap[canal] = { canal, leads: 0, cierres: 0, conversionPct: 0 };
+      }
+      sourceMap[canal].leads++;
+      if (lead.pipeline_stage === "cerrado" || lead.pipeline_stage === "pago_recibido") {
+        sourceMap[canal].cierres++;
+      }
+    });
+
+    const sourceBreakdown = Object.values(sourceMap).map(item => ({
+      ...item,
+      conversionPct: item.leads > 0 ? parseFloat(((item.cierres / item.leads) * 100).toFixed(1)) : 0,
+    })).sort((a, b) => b.leads - a.leads);
+
     return NextResponse.json({
       leads_this_month: currentMonthLeads.length,
       leads_previous_month: previousMonthLeads.length,
@@ -82,6 +101,7 @@ export async function GET(request: Request) {
       effectiveness: parseFloat(effectiveness.toFixed(1)),
       states_count: statesCount,
       salesperson_breakdown: salespersonBreakdown,
+      source_breakdown: sourceBreakdown,
       contact_count: contactedLeads,
       close_rate: effectiveness,
       closed_count: closedLeads,
@@ -92,7 +112,7 @@ export async function GET(request: Request) {
       leads_this_month: 0, leads_previous_month: 0,
       closed_this_month: 0, closed_previous_month: 0,
       effectiveness: 0, states_count: {}, salesperson_breakdown: [],
-      contact_count: 0, close_rate: 0, closed_count: 0,
+      source_breakdown: [], contact_count: 0, close_rate: 0, closed_count: 0,
     });
   }
 }
