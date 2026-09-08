@@ -28,6 +28,22 @@
  *   - `handleSave` rama BUNDLE valida: mínimo 2 productos con valor, distintos,
  *     máximo 10, todos resueltos y precio del pack < suma de PVP.
  *
+ * FIX 3 — `GiftSearchPicker` (tab GIFT) migrado a react-query vía el hook interno
+ *   `useGiftInventorySearch({ inventoryId, companyId })`. Antes hacía fetching
+ *   manual (`useEffect` + `setTimeout` + `.then/.catch`) y tragaba el error en
+ *   silencio. Ahora:
+ *   - `useQuery({ queryKey: ["gift-inventory", inventoryId, companyId ?? null,
+ *     debouncedQuery], enabled: !!inventoryId, staleTime: 30_000, placeholderData
+ *     prev })`, con debounce de 350ms sobre el término.
+ *   - `queryFn` llama a `searchInventoryItems({ inventoryId, companyId, q:
+ *     debounced || undefined, page: 1, limit: 20 })`.
+ *   - `enabled: !!inventoryId` → mientras `inventories[0]?.id` no resuelve
+ *     (`inventoryId === ""`) la query no se dispara.
+ *   - ante `isError`: `toast.error("No se pudo cargar el inventario para
+ *     regalos.", { id: "gift-inventory-load-error" })`.
+ *   `inventoryId` baja de `useAuth().inventories[0]?.id` (derivado en la página a
+ *   `selectedInventory`).
+ *
  * Comportamiento verificado:
  * 1. (FIX 1) Modal "Nuevo pack" con `auth.company = null` → pestaña Volumen → el
  *    Combobox de "Producto" ofrece las opciones de `getProducts` mockeado
@@ -62,6 +78,21 @@
  *    `<select>` de producto. `getProducts` no se llama ni siquiera después de
  *    dejar correr la ventana del debounce de 350ms: la instancia del buscador
  *    de Volumen nace con `enabled: false` y react-query nunca invoca su queryFn.
+ * 11. (FIX 3 — happy path) Editar un GiftPack con `inventories: [{ id: "inv-1" }]`
+ *    → el modal abre en el tab Regalo con `GiftSearchPicker`. Al enfocar el
+ *    buscador y tipear un término, tras la ventana de debounce (350ms) se llama
+ *    a `searchInventoryItems` con `{ inventoryId: "inv-1", q: "<término>", page:
+ *    1, limit: 20 }`, el dropdown lista los `productName` devueltos y al hacer
+ *    click en uno aparece su chip "🎁 …" entre las opciones seleccionadas.
+ * 12. (FIX 3 — enabled gating) Con `inventories: []` (`inventoryId === ""`),
+ *    editar un GiftPack, enfocar y tipear en el buscador y dejar correr >350ms
+ *    reales → `searchInventoryItems` no se llama nunca: `enabled: !!inventoryId`
+ *    mantiene la query deshabilitada.
+ * 13. (FIX 3 — rama de error) Si `searchInventoryItems` rechaza (con
+ *    `inventories: [{ id: "inv-1" }]`), `useGiftInventorySearch` dispara
+ *    `toast.error("No se pudo cargar el inventario para regalos.",
+ *    { id: "gift-inventory-load-error" })` (id estable). El QueryClient de
+ *    `renderPage()` ya trae `retry: false`.
  *
  * NOTA — `handleSave` rama BUNDLE llama a `crypto.randomUUID()` para el `id` de
  * un pack nuevo, y ese método no existe en el jsdom de jest-environment-jsdom 29.
@@ -188,6 +219,7 @@ import { listVolumePromos, createVolumePromo } from '@/services/promos.service';
 import { searchInventoryItems } from '@/services/inventoryItems.service';
 import type { IGetProducts } from '@/api/Interfaces';
 import type { BundlePack, GiftPack } from '@/interfaces/IPack';
+import type { InventoryItemForSale } from '@/interfaces/IProduct';
 import PacksPromosPage from '../page';
 
 // ── Casts ───────────────────────────────────────────────────────────────────
@@ -205,7 +237,18 @@ const COMPANY_ID = 'company-1';
 /** Está en SUPERADMIN_EMAILS (config/permissions.config) → habilita "Nuevo pack". */
 const SUPERADMIN_EMAIL = 'octatoledo7@gmail.com';
 
-function authValue(company: { id: string; name: string } | null) {
+/**
+ * `inventories` es opcional y por defecto `[]` (comportamiento previo intacto para
+ * todos los tests de Volumen/Bundle). Los tests del buscador de regalos (tab
+ * GIFT) pasan `[{ id: "inv-1", name: "Almacén 1" }]`: la página deriva
+ * `selectedInventory = inventories[0]?.id` y lo baja al `PackFormModal` como
+ * `inventoryId`, que es lo que habilita `useGiftInventorySearch`
+ * (`enabled: !!inventoryId`).
+ */
+function authValue(
+  company: { id: string; name: string } | null,
+  inventories: { id: string; name: string }[] = [],
+) {
   return {
     auth: {
       user: { id: 'u1', email: SUPERADMIN_EMAIL, role: 'ADMIN', permissions: [] },
@@ -220,7 +263,7 @@ function authValue(company: { id: string; name: string } | null) {
     updateCompany: jest.fn(),
     selectedStoreId: null,
     setSelectedStore: jest.fn(),
-    inventories: [],
+    inventories,
     refreshInventories: jest.fn(),
     hasPermission: jest.fn().mockReturnValue(true),
   };
@@ -228,6 +271,58 @@ function authValue(company: { id: string; name: string } | null) {
 
 const mkProduct = (id: string, name: string, priceVta: number) =>
   ({ id, name, priceVta } as unknown as IGetProducts);
+
+/** GiftPack mínimo válido para `isValidLocalPack` (PacksContext): type "GIFT",
+ *  id/active/channels/triggerBy presentes, `minAmount` numérico (trigger
+ *  "amount") y `gifts` con >= 1 `GiftOption` (variantId + productName + value).
+ *  Los dos gifts pre-cargados sólo existen para que el pack cargue; los tests son
+ *  sobre el buscador de inventario, no sobre esas opciones. */
+const mkGiftPack = (): GiftPack => ({
+  id: 'gift-por-monto',
+  type: 'GIFT',
+  name: 'Regalo por Monto',
+  active: true,
+  channels: ['WHATSAPP'],
+  triggerBy: 'amount',
+  minAmount: 300,
+  minQty: null,
+  gifts: [
+    {
+      variantId: 'v1',
+      inventoryItemId: 'ii1',
+      sku: 'SKU-1',
+      productName: 'Llavero Cuero',
+      value: 15,
+    },
+    {
+      variantId: 'v2',
+      inventoryItemId: 'ii2',
+      sku: 'SKU-2',
+      productName: 'Medias Pack',
+      value: 12,
+    },
+  ],
+});
+
+/** Item de inventario tal como lo devuelve `searchInventoryItems().data` — sólo
+ *  los campos que consume `GiftSearchPicker` (`variantId`, `inventoryItemId`,
+ *  `sku`, `productName`, `price`; `attributes` opcional). */
+const mkInventoryItem = (
+  variantId: string,
+  productName: string,
+  price: number,
+): InventoryItemForSale =>
+  ({
+    variantId,
+    inventoryItemId: `ii-${variantId}`,
+    sku: `SKU-${variantId}`,
+    productName,
+    price,
+    availableStock: 10,
+    physicalStock: 10,
+  } as InventoryItemForSale);
+
+const inventoryMeta = { page: 1, limit: 20, total: 0, totalPages: 0 };
 
 function seedLocalPacks(companyId: string, packs: unknown) {
   window.localStorage.setItem(
@@ -772,5 +867,127 @@ describe('PacksPromosPage — dedupe del catálogo por queryKey compartida (FIX 
 
     // react-query colapsa la request compartida en una sola.
     await waitFor(() => expect(mockGetProducts).toHaveBeenCalledTimes(1));
+  });
+});
+
+// ── FIX 3 — buscador de inventario para regalos (tab GIFT) ──────────────────
+
+describe('PacksPromosPage — buscador de inventario para regalos (tab GIFT)', () => {
+  // Timing: la suite corre con timers reales (no hay `jest.useFakeTimers()`), así
+  // que el debounce de 350ms de `useGiftInventorySearch` transcurre en tiempo de
+  // pared. Para las aserciones "felices" envolvemos en `waitFor` con timeout
+  // holgado (350ms de debounce + resolución async de react-query + ticks de
+  // userEvent). Para la aserción negativa (`not.toHaveBeenCalled`) no se puede
+  // esperar a que "nunca" pase algo: dejamos correr ~400ms reales dentro de
+  // `act()` (> ventana del debounce) para vaciar cualquier timer/efecto pendiente
+  // y recién ahí afirmamos — mismo criterio que el test de `getProducts` +
+  // enabled gating de arriba.
+
+  const SEARCH_PLACEHOLDER = /buscar producto del almacén por nombre o sku/i;
+
+  it('editar un GiftPack con inventario resuelto: la búsqueda con debounce pega a searchInventoryItems, lista resultados y agrega el chip 🎁', async () => {
+    mockUseAuth.mockReturnValue(
+      authValue({ id: COMPANY_ID, name: 'ACME' }, [
+        { id: 'inv-1', name: 'Almacén 1' },
+      ]) as unknown as ReturnType<typeof useAuth>,
+    );
+    seedLocalPacks(COMPANY_ID, [mkGiftPack()]);
+    mockSearchInventoryItems.mockResolvedValue({
+      data: [
+        mkInventoryItem('run', 'Zapatilla Run', 120),
+        mkInventoryItem('sol', 'Sandalia Sol', 80),
+      ],
+      meta: { ...inventoryMeta, total: 2, totalPages: 1 },
+    });
+
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await openEditModal(user, 'Regalo por Monto');
+
+    // El modal abre en el tab Regalo: se ve el buscador propio del GIFT.
+    const searchInput = await modal.findByPlaceholderText(SEARCH_PLACEHOLDER);
+
+    // Enfocar abre el dropdown (`onFocus` → `setOpen(true)`); tipear un término
+    // dispara el debounce interno de 350ms.
+    await user.click(searchInput);
+    await user.type(searchInput, 'zapa');
+
+    // Tras la ventana del debounce, react-query refetchea con la queryKey nueva
+    // → `searchInventoryItems` recibe el término y el inventario resuelto.
+    await waitFor(
+      () =>
+        expect(mockSearchInventoryItems).toHaveBeenCalledWith(
+          expect.objectContaining({
+            inventoryId: 'inv-1',
+            q: 'zapa',
+            page: 1,
+            limit: 20,
+          }),
+        ),
+      { timeout: 2000 },
+    );
+
+    // El dropdown lista los productName devueltos por el service.
+    expect(await modal.findByText('Zapatilla Run')).toBeInTheDocument();
+    expect(modal.getByText('Sandalia Sol')).toBeInTheDocument();
+
+    // Click en un resultado → se agrega como opción de regalo (chip "🎁 ...").
+    await user.click(modal.getByText('Zapatilla Run'));
+    expect(
+      await modal.findByText(/🎁\s+Zapatilla Run/),
+    ).toBeInTheDocument();
+  });
+
+  it('sin inventario resuelto (inventories: []) la query queda deshabilitada y searchInventoryItems no se llama', async () => {
+    // `beforeEach` ya deja `authValue` con `inventories: []` →
+    // `selectedInventory === ""` → `inventoryId === ""` en el modal.
+    seedLocalPacks(COMPANY_ID, [mkGiftPack()]);
+
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await openEditModal(user, 'Regalo por Monto');
+
+    const searchInput = await modal.findByPlaceholderText(SEARCH_PLACEHOLDER);
+    await user.click(searchInput);
+    await user.type(searchInput, 'zapa');
+
+    // Dejamos correr la ventana del debounce (350ms) y algo más: con timers
+    // reales `jest.advanceTimersByTime` no aplica.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+
+    // `enabled: !!inventoryId` con `inventoryId === ""` → react-query nunca
+    // invoca la queryFn.
+    expect(mockSearchInventoryItems).not.toHaveBeenCalled();
+  });
+
+  it('si searchInventoryItems rechaza, dispara toast.error con id estable', async () => {
+    mockUseAuth.mockReturnValue(
+      authValue({ id: COMPANY_ID, name: 'ACME' }, [
+        { id: 'inv-1', name: 'Almacén 1' },
+      ]) as unknown as ReturnType<typeof useAuth>,
+    );
+    seedLocalPacks(COMPANY_ID, [mkGiftPack()]);
+    mockSearchInventoryItems.mockRejectedValue(new Error('boom'));
+
+    const user = userEvent.setup();
+    renderPage(); // el QueryClient de renderPage ya tiene retry: false
+    const modal = await openEditModal(user, 'Regalo por Monto');
+
+    // Con `inventoryId` resuelto la query arranca en el primer render (término
+    // vacío); enfocar/tipear sólo agrega búsquedas que también fallan.
+    const searchInput = await modal.findByPlaceholderText(SEARCH_PLACEHOLDER);
+    await user.click(searchInput);
+    await user.type(searchInput, 'zapa');
+
+    await waitFor(
+      () =>
+        expect(mockToast.error).toHaveBeenCalledWith(
+          'No se pudo cargar el inventario para regalos.',
+          expect.objectContaining({ id: 'gift-inventory-load-error' }),
+        ),
+      { timeout: 2000 },
+    );
   });
 });

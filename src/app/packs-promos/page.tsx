@@ -876,6 +876,69 @@ function PackFormModal({
   );
 }
 
+/** Busca en el inventario real (ms-logistics `GET /inventory-item/search`) los
+ *  items que pueden ofrecerse como regalo en un pack GIFT. Espejo de
+ *  `useProductCatalog`, pero contra el service de inventario: necesita
+ *  `inventoryId` (y opcionalmente `companyId`) porque el regalo sale de un
+ *  almacén concreto, no del catálogo global de ms-products.
+ *
+ *  Mismo patrón react-query que `useProductCatalog` / `useCatalogoProductos.tsx`:
+ *  debounce del término a 350ms para alinear con el otro buscador, `staleTime`
+ *  de 30s y `placeholderData` para no parpadear a lista vacía entre búsquedas.
+ *  `enabled: !!inventoryId` gatea la request hasta que el modal resuelve el
+ *  inventario seleccionado; mientras tanto `results` cae al default `[]`,
+ *  `loading` queda `false` e `isError` queda `false`.
+ *
+ *  Ante error mostramos `toast.error` con id estable (igual que el hermano
+ *  `useProductCatalog`): antes este buscador tragaba el error en silencio
+ *  (`.catch(() => setResults([]))`), ahora lo avisamos como el otro. */
+function useGiftInventorySearch({
+  inventoryId,
+  companyId,
+}: {
+  inventoryId: string;
+  companyId?: string;
+}) {
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 350);
+    return () => clearTimeout(timer);
+  }, [query]);
+
+  const { data, isFetching, isError } = useQuery({
+    queryKey: ["gift-inventory", inventoryId, companyId ?? null, debouncedQuery],
+    queryFn: () =>
+      searchInventoryItems({
+        inventoryId,
+        companyId,
+        q: debouncedQuery || undefined,
+        page: 1,
+        limit: 20,
+      }),
+    enabled: !!inventoryId,
+    staleTime: 30_000,
+    placeholderData: (prev) => prev, // evita el flicker a lista vacía entre búsquedas
+  });
+
+  useEffect(() => {
+    if (isError) {
+      toast.error("No se pudo cargar el inventario para regalos.", {
+        id: "gift-inventory-load-error",
+      });
+    }
+  }, [isError]);
+
+  return {
+    query,
+    setQuery,
+    results: data?.data ?? [],
+    loading: isFetching,
+    isError,
+  };
+}
+
 function GiftSearchPicker({
   inventoryId,
   companyId,
@@ -887,22 +950,11 @@ function GiftSearchPicker({
   selected: GiftOption[];
   onChange: (opts: GiftOption[]) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<InventoryItemForSale[]>([]);
+  const { query, setQuery, results, loading } = useGiftInventorySearch({
+    inventoryId,
+    companyId,
+  });
   const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (!inventoryId) return;
-    setLoading(true);
-    const timer = setTimeout(() => {
-      searchInventoryItems({ inventoryId, companyId, q: query || undefined, page: 1, limit: 20 })
-        .then((res) => setResults(res.data))
-        .catch(() => setResults([]))
-        .finally(() => setLoading(false));
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [inventoryId, companyId, query]);
 
   const selectedIds = new Set(selected.map((s) => s.variantId));
   const filtered = results.filter((r) => !selectedIds.has(r.variantId));
