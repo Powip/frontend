@@ -65,4 +65,5 @@ NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY
 
 ## Normas aplicables
 
-`docs/normas/nextjs-normas.md`
+- **Lógica** (App Router, Server/Client Components, hooks, services HTTP, react-query): skill `nextjs-server-components`
+- **Tests** (React Testing Library, renderHook): skill `nextjs-testing-rtl`
