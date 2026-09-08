@@ -13,6 +13,14 @@
  *   `<Combobox>` de "Producto" carga el catálogo aunque no haya empresa en el
  *   contexto de auth.
  *
+ * FIX 1b — `useProductCatalog` acepta `options.enabled` para gatear la request.
+ *   En `PackFormModal` la instancia del buscador de Volumen se crea con
+ *   `useProductCatalog({ enabled: type === "VOLUME" })`. Como `type` inicializa
+ *   en `editingPack?.type ?? "VOLUME"`, al editar un pack GIFT (o BUNDLE) el
+ *   modal arranca con esa query `enabled: false` desde el primer render: no
+ *   dispara el `GET /products/report` que ese tab no consume (GIFT usa
+ *   `GiftSearchPicker`, otro service; el bundle monta su instancia por fila).
+ *
  * FIX 2 — Tab "Bundle": lista dinámica de 2 a 10 productos (antes 2 fijos).
  *   - Botón "＋ Agregar producto" visible mientras hay < 10 filas.
  *   - Botón "×" (aria-label "Quitar producto N") por fila, visible mientras hay
@@ -48,6 +56,12 @@
  *    distintas, todas las instancias del hook comparten
  *    `queryKey: ["packs-catalog", ""]` y react-query colapsa la carga del
  *    catálogo en una única llamada a `getProducts`.
+ * 10. (FIX 1b — enabled gating) Editar un pack GIFT: el modal abre en el tab
+ *    Regalo (`type === "GIFT"` desde el primer render), muestra sus controles
+ *    propios ("Opciones de regalo", "Monto mínimo de compra") y no monta ningún
+ *    `<select>` de producto. `getProducts` no se llama ni siquiera después de
+ *    dejar correr la ventana del debounce de 350ms: la instancia del buscador
+ *    de Volumen nace con `enabled: false` y react-query nunca invoca su queryFn.
  *
  * NOTA — `handleSave` rama BUNDLE llama a `crypto.randomUUID()` para el `id` de
  * un pack nuevo, y ese método no existe en el jsdom de jest-environment-jsdom 29.
@@ -67,7 +81,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render, screen, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -173,7 +187,7 @@ import { getProducts } from '@/api/Productos';
 import { listVolumePromos, createVolumePromo } from '@/services/promos.service';
 import { searchInventoryItems } from '@/services/inventoryItems.service';
 import type { IGetProducts } from '@/api/Interfaces';
-import type { BundlePack } from '@/interfaces/IPack';
+import type { BundlePack, GiftPack } from '@/interfaces/IPack';
 import PacksPromosPage from '../page';
 
 // ── Casts ───────────────────────────────────────────────────────────────────
@@ -295,6 +309,69 @@ describe('PacksPromosPage — catálogo de productos del modal (FIX 1)', () => {
     expect(mockGetProducts).toHaveBeenCalledWith(
       expect.objectContaining({ status: true }),
     );
+  });
+
+  it('abrir el modal de edición de un pack GIFT no dispara getProducts (enabled gating)', async () => {
+    // GiftPack mínimo válido para `isValidLocalPack` (PacksContext): type "GIFT",
+    // id/active/channels/triggerBy presentes, `minAmount` numérico (trigger
+    // "amount") y `gifts` no vacío con shape `GiftOption` (variantId +
+    // productName + value).
+    const giftPack: GiftPack = {
+      id: 'gift-por-monto',
+      type: 'GIFT',
+      name: 'Regalo por Monto',
+      active: true,
+      channels: ['WHATSAPP'],
+      triggerBy: 'amount',
+      minAmount: 300,
+      minQty: null,
+      gifts: [
+        {
+          variantId: 'v1',
+          inventoryItemId: 'ii1',
+          sku: 'SKU-1',
+          productName: 'Llavero Cuero',
+          value: 15,
+        },
+        {
+          variantId: 'v2',
+          inventoryItemId: 'ii2',
+          sku: 'SKU-2',
+          productName: 'Medias Pack',
+          value: 12,
+        },
+      ],
+    };
+    seedLocalPacks(COMPANY_ID, [giftPack]);
+    // Si por error se disparara el catálogo, esta respuesta lo dejaría en
+    // evidencia (opciones que no deberían llegar a montarse).
+    mockGetProducts.mockResolvedValue([mkProduct('prod-x', 'Producto X', 50)]);
+
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await openEditModal(user, 'Regalo por Monto');
+
+    // El modal abre en el tab Regalo (`type` = editingPack.type = "GIFT"): se
+    // ven sus controles propios y no hay ningún `<select>` de producto (ni tab
+    // Volumen ni filas de bundle montadas → ninguna otra instancia del hook).
+    await modal.findByText(/opciones de regalo/i);
+    expect(modal.getByText(/monto mínimo de compra/i)).toBeInTheDocument();
+    expect(modal.queryByRole('combobox')).not.toBeInTheDocument();
+
+    // Dejamos correr la ventana del debounce interno de useProductCatalog
+    // (setTimeout real de 350ms; esta suite no usa fake timers, así que
+    // `jest.advanceTimersByTime` no aplica) para descartar que un efecto
+    // pendiente dispare la query después del primer render.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    });
+
+    // Aserción central: la instancia del buscador de Volumen se crea con
+    // `enabled: type === "VOLUME"` → `false` desde el primer render (type
+    // arranca en "GIFT" y los botones de tipo están deshabilitados al editar),
+    // por lo que react-query nunca invoca queryFn y `GET /products/report` no
+    // se pide.
+    expect(mockGetProducts).not.toHaveBeenCalled();
   });
 });
 

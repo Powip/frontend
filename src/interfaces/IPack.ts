@@ -64,7 +64,7 @@ export interface BundlePack {
   /** string[] a propósito: el motor de evaluación del carrito solo compara texto,
    *  no necesita saber si el canal viene del enum de Promos o del de Órdenes. */
   channels: string[];
-  items: PackProductRef[]; // mínimo 2, máximo 10
+  items: PackProductRef[]; // la UI (handleSave) exige 2–10; el validador de localStorage (isValidLocalPack) solo exige ≥1
   packPrice: number;
   synced?: boolean;
 }

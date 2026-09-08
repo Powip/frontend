@@ -314,8 +314,15 @@ function PackCard({
  *  request cacheada, sin dedupe manual ni race entre respuestas.
  *
  *  El backend deriva companyId del JWT validado en `GET /products/report`; el
- *  frontend no necesita mandarlo ni gatear por empresa. */
-function useProductCatalog() {
+ *  frontend no necesita mandarlo ni gatear por empresa.
+ *
+ *  `options.enabled` (default `true`) gatea la request. El buscador de Volumen
+ *  lo pasa en `false` cuando el pack es GIFT o BUNDLE: GIFT usa `GiftSearchPicker`
+ *  (otro service) y cada fila del bundle monta su propia instancia, así que ese
+ *  `GET /products/report` no lo consume nadie. Con `enabled: false` react-query
+ *  no dispara la query, por lo que `products` cae al default `[]`, `loading`
+ *  queda `false` y `isError` queda `false`. */
+function useProductCatalog(options?: { enabled?: boolean }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -334,6 +341,7 @@ function useProductCatalog() {
       getProducts({ status: true, name: debouncedQuery || undefined }),
     staleTime: 30_000,
     placeholderData: (prev) => prev, // evita el flicker a lista vacía entre búsquedas
+    enabled: options?.enabled ?? true,
   });
 
   useEffect(() => {
@@ -523,7 +531,9 @@ function PackFormModal({
 
   // Instancia propia para el buscador de Volumen. Los selectores del bundle
   // montan su propia instancia dentro de cada BundleProductRow.
-  const productSearchVolume = useProductCatalog();
+  // Gateado por tipo: GIFT/BUNDLE no consumen este catálogo, así que no
+  // disparamos `GET /products/report` mientras el modal esté en esos tipos.
+  const productSearchVolume = useProductCatalog({ enabled: type === "VOLUME" });
 
   const productOptionsVolume = useMemo(
     () => toOptions(productSearchVolume.products),
