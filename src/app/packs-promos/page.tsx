@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Plus, Pencil, Trash2, PlayCircle, PauseCircle, PackageCheck, Sparkles, Gift, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -26,6 +27,7 @@ import {
   BundlePack,
   GiftOption,
   GiftPack,
+  PackProductRef,
   PROMO_CHANNELS,
   VolumePack,
 } from "@/interfaces/IPack";
@@ -304,33 +306,126 @@ function PackCard({
 ----------------------------------------- */
 
 /** Busca en el catálogo real de productos (ms-products) — de ahí sale el productId
- *  que la Promos API necesita para packs de Volumen/Bundle. */
-function useProductCatalog(companyId?: string) {
+ *  que la Promos API necesita para packs de Volumen/Bundle.
+ *
+ *  Usa react-query (mismo patrón que useCatalogoProductos.tsx): la queryKey
+ *  compartida `["packs-catalog", debouncedQuery]` hace que el buscador de Volumen
+ *  y todas las filas del bundle con la misma búsqueda colapsen en una única
+ *  request cacheada, sin dedupe manual ni race entre respuestas.
+ *
+ *  El backend deriva companyId del JWT validado en `GET /products/report`; el
+ *  frontend no necesita mandarlo ni gatear por empresa. */
+function useProductCatalog() {
   const [query, setQuery] = useState("");
-  const [products, setProducts] = useState<IGetProducts[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [debouncedQuery, setDebouncedQuery] = useState("");
 
   useEffect(() => {
-    if (!companyId) {
-      setProducts([]);
-      return;
-    }
-    setLoading(true);
-    const timer = setTimeout(() => {
-      // No se manda companyId: el backend lo infiere del JWT (mismo patrón
-      // que useCatalogoProductos.tsx, que es el caller que sabemos que funciona).
-      getProducts({ status: true, name: query || undefined })
-        .then(setProducts)
-        .catch((err) => {
-          console.error("[packs-promos] getProducts falló:", err);
-          setProducts([]);
-        })
-        .finally(() => setLoading(false));
-    }, 350);
+    const timer = setTimeout(() => setDebouncedQuery(query), 350);
     return () => clearTimeout(timer);
-  }, [companyId, query]);
+  }, [query]);
 
-  return { query, setQuery, products, loading };
+  const {
+    data: products = [],
+    isFetching,
+    isError,
+  } = useQuery({
+    queryKey: ["packs-catalog", debouncedQuery],
+    queryFn: () =>
+      getProducts({ status: true, name: debouncedQuery || undefined }),
+    staleTime: 30_000,
+    placeholderData: (prev) => prev, // evita el flicker a lista vacía entre búsquedas
+  });
+
+  useEffect(() => {
+    if (isError) {
+      // toast con id estable: aunque se monten ~11 instancias del hook (Volumen +
+      // filas del bundle), el usuario ve un solo aviso.
+      toast.error("No se pudo cargar el catálogo de productos.", {
+        id: "packs-catalog-load-error",
+      });
+    }
+  }, [isError]);
+
+  return { query, setQuery, products, loading: isFetching, isError };
+}
+
+const toOptions = (list: IGetProducts[]) =>
+  list.map((p) => ({
+    value: p.id,
+    label: `${p.name} — ${fmt(p.priceVta)}`,
+  }));
+
+/** Una fila del selector de productos del bundle. Cada fila monta su propia
+ *  instancia de useProductCatalog para que el buscador de una no pise los
+ *  resultados de otra. Reporta hacia arriba el PackProductRef completo del
+ *  producto elegido via onResolve para que el padre pueda armar el BundlePack. */
+function BundleProductRow({
+  value,
+  onChange,
+  onResolve,
+  onRemove,
+  index,
+  resolvedRef,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  onResolve: (id: string, ref: PackProductRef) => void;
+  onRemove?: () => void;
+  index: number;
+  resolvedRef?: PackProductRef;
+}) {
+  const search = useProductCatalog();
+
+  const options = useMemo(() => {
+    const opts = toOptions(search.products);
+    // Al editar, el producto ya elegido puede no estar en la primera página de
+    // resultados: lo inyectamos para que el Combobox muestre su nombre.
+    if (value && resolvedRef && !opts.some((o) => o.value === value)) {
+      opts.unshift({
+        value,
+        label: `${resolvedRef.productName} — ${fmt(resolvedRef.price)}`,
+      });
+    }
+    return opts;
+  }, [search.products, value, resolvedRef]);
+
+  const handleSelect = (id: string) => {
+    onChange(id);
+    const product = search.products.find((p) => p.id === id);
+    if (product) {
+      onResolve(id, {
+        productId: product.id,
+        productKey: product.name,
+        productName: product.name,
+        price: product.priceVta,
+      });
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-2">
+      <Combobox
+        className="flex-1"
+        options={options}
+        value={value}
+        onValueChange={handleSelect}
+        onSearchChange={search.setQuery}
+        isLoading={search.loading}
+        placeholder={`Producto ${index + 1}...`}
+        searchPlaceholder="Buscar producto..."
+      />
+      {onRemove && (
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={`Quitar producto ${index + 1}`}
+          className="shrink-0 px-2 text-lg font-bold leading-none text-muted-foreground hover:text-destructive"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
 }
 
 function PackFormModal({
@@ -371,13 +466,43 @@ function PackFormModal({
     editingPack?.type === "VOLUME" ? String(editingPack.packPrice) : "",
   );
 
-  // BUNDLE
-  const [bunProductId1, setBunProductId1] = useState(
-    editingPack?.type === "BUNDLE" ? editingPack.items[0]?.productId ?? "" : "",
+  // BUNDLE — lista dinámica de 2 a 10 productos.
+  // Bundles legacy pueden no tener `items[].productId` (ver IPack.ts): en ese
+  // caso usamos `productKey` como identificador de la fila, así "Editar" muestra
+  // los nombres y no obliga a re-elegir todo. El ref guardado conserva su
+  // productId original (o undefined) sin regresión.
+  const [bunProductIds, setBunProductIds] = useState<string[]>(() => {
+    if (editingPack?.type === "BUNDLE") {
+      const ids = editingPack.items.map((i) => i.productId || i.productKey || "");
+      while (ids.length < 2) ids.push("");
+      return ids;
+    }
+    return ["", ""];
+  });
+  const [bunItems, setBunItems] = useState<Record<string, PackProductRef>>(() => {
+    if (editingPack?.type !== "BUNDLE") return {};
+    const map: Record<string, PackProductRef> = {};
+    for (const item of editingPack.items) {
+      const key = item.productId || item.productKey;
+      if (key) map[key] = item;
+    }
+    return map;
+  });
+  // Keys estables por fila del bundle: desacopla el estado de búsqueda efímero
+  // de cada BundleProductRow del índice del slot (borrar una fila del medio no
+  // debe hacer que las de abajo hereden el contexto de otra).
+  const bunKeySeqRef = useRef(bunProductIds.length);
+  const [bunRowKeys, setBunRowKeys] = useState<number[]>(() =>
+    bunProductIds.map((_, i) => i),
   );
-  const [bunProductId2, setBunProductId2] = useState(
-    editingPack?.type === "BUNDLE" ? editingPack.items[1]?.productId ?? "" : "",
-  );
+  const addBundleRow = () => {
+    setBunProductIds((prev) => [...prev, ""]);
+    setBunRowKeys((prev) => [...prev, bunKeySeqRef.current++]);
+  };
+  const removeBundleRow = (i: number) => {
+    setBunProductIds((prev) => prev.filter((_, idx) => idx !== i));
+    setBunRowKeys((prev) => prev.filter((_, idx) => idx !== i));
+  };
   const [bunPrice, setBunPrice] = useState(
     editingPack?.type === "BUNDLE" ? String(editingPack.packPrice) : "",
   );
@@ -396,30 +521,13 @@ function PackFormModal({
     editingPack?.type === "GIFT" ? editingPack.gifts : [],
   );
 
-  // Instancias independientes: cada Combobox necesita su propio estado de
-  // búsqueda (query/products) — compartir una sola instancia entre selectores
-  // hace que buscar en uno pise los resultados que tenía el otro.
-  const productSearchVolume = useProductCatalog(companyId);
-  const productSearchBundle1 = useProductCatalog(companyId);
-  const productSearchBundle2 = useProductCatalog(companyId);
-
-  const toOptions = (list: IGetProducts[]) =>
-    list.map((p) => ({
-      value: p.id,
-      label: `${p.name} — ${fmt(p.priceVta)}`,
-    }));
+  // Instancia propia para el buscador de Volumen. Los selectores del bundle
+  // montan su propia instancia dentro de cada BundleProductRow.
+  const productSearchVolume = useProductCatalog();
 
   const productOptionsVolume = useMemo(
     () => toOptions(productSearchVolume.products),
     [productSearchVolume.products],
-  );
-  const productOptionsBundle1 = useMemo(
-    () => toOptions(productSearchBundle1.products),
-    [productSearchBundle1.products],
-  );
-  const productOptionsBundle2 = useMemo(
-    () => toOptions(productSearchBundle2.products),
-    [productSearchBundle2.products],
   );
 
   const findInList = (list: IGetProducts[], id: string) => list.find((p) => p.id === id);
@@ -477,18 +585,27 @@ function PackFormModal({
     }
 
     if (type === "BUNDLE") {
-      if (!bunProductId1 || !bunProductId2 || bunProductId1 === bunProductId2) {
-        setError("Un bundle requiere 2 productos distintos.");
+      const ids = bunProductIds.map((s) => s.trim()).filter(Boolean);
+      if (ids.length < 2) {
+        setError("Un bundle requiere al menos 2 productos.");
         return;
       }
-      const p1 = findInList(productSearchBundle1.products, bunProductId1);
-      const p2 = findInList(productSearchBundle2.products, bunProductId2);
+      if (new Set(ids).size !== ids.length) {
+        setError("Los productos del bundle deben ser distintos.");
+        return;
+      }
+      if (ids.length > 10) {
+        setError("Un bundle admite máximo 10 productos.");
+        return;
+      }
+      const items = ids.map((id) => bunItems[id]).filter(Boolean);
+      if (items.length !== ids.length) {
+        setError("Selecciona todos los productos.");
+        return;
+      }
       const price = Number(bunPrice);
-      if (!p1 || !p2) {
-        setError("Selecciona ambos productos.");
-        return;
-      }
-      if (!price || price >= p1.priceVta + p2.priceVta) {
+      const pvpSum = items.reduce((s, it) => s + it.price, 0);
+      if (!price || price >= pvpSum) {
         setError("El precio del bundle debe ser menor a la suma de PVP.");
         return;
       }
@@ -498,10 +615,7 @@ function PackFormModal({
         name: name.trim(),
         active: editingPack?.active ?? true,
         channels,
-        items: [
-          { productId: p1.id, productKey: p1.name, productName: p1.name, price: p1.priceVta },
-          { productId: p2.id, productKey: p2.name, productName: p2.name, price: p2.priceVta },
-        ],
+        items,
         packPrice: price,
       };
       setSaving(true);
@@ -637,26 +751,38 @@ function PackFormModal({
 
           {type === "BUNDLE" && (
             <div className="space-y-3">
-              <div className="space-y-1">
-                <Label>Productos del bundle (mínimo 2)</Label>
-                <Combobox
-                  options={productOptionsBundle1}
-                  value={bunProductId1}
-                  onValueChange={setBunProductId1}
-                  onSearchChange={productSearchBundle1.setQuery}
-                  isLoading={productSearchBundle1.loading}
-                  placeholder="Producto 1..."
-                  searchPlaceholder="Buscar producto..."
-                />
-                <Combobox
-                  options={productOptionsBundle2}
-                  value={bunProductId2}
-                  onValueChange={setBunProductId2}
-                  onSearchChange={productSearchBundle2.setQuery}
-                  isLoading={productSearchBundle2.loading}
-                  placeholder="Producto 2..."
-                  searchPlaceholder="Buscar producto..."
-                />
+              <div className="space-y-2">
+                <Label>Productos del bundle (mínimo 2, máximo 10)</Label>
+                {bunProductIds.map((id, i) => (
+                  <BundleProductRow
+                    key={bunRowKeys[i]}
+                    index={i}
+                    value={id}
+                    resolvedRef={id ? bunItems[id] : undefined}
+                    onChange={(newId) =>
+                      setBunProductIds((prev) =>
+                        prev.map((v, idx) => (idx === i ? newId : v)),
+                      )
+                    }
+                    onResolve={(resolvedId, ref) =>
+                      setBunItems((prev) => ({ ...prev, [resolvedId]: ref }))
+                    }
+                    onRemove={
+                      bunProductIds.length > 2
+                        ? () => removeBundleRow(i)
+                        : undefined
+                    }
+                  />
+                ))}
+                {bunProductIds.length < 10 && (
+                  <button
+                    type="button"
+                    onClick={addBundleRow}
+                    className="text-sm font-medium text-primary hover:underline"
+                  >
+                    ＋ Agregar producto
+                  </button>
+                )}
               </div>
               <div className="space-y-1">
                 <Label>Precio bundle total (S/)</Label>
