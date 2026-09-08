@@ -15,6 +15,7 @@ import { Pagination } from "@/components/ui/pagination";
 import {
   Eye,
   Clock3,
+  Copy,
   MessageCircle,
   PackageCheck,
   TrendingDown,
@@ -261,6 +262,15 @@ export function AtencionTab({
           >
             <MessageCircle className="h-3.5 w-3.5" />
             WhatsApp masivo
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1 text-xs"
+            onClick={() => actions.onCopySelected(selectedSales)}
+          >
+            <Copy className="h-3.5 w-3.5" />
+            Copiar
           </Button>
         </div>
       )}

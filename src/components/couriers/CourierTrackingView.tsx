@@ -56,8 +56,9 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
-import { 
-  getShalomLabelPdfUrl, 
+import {
+  getShalomConfig,
+  getShalomLabelPdfUrl,
   getShalomTicketPdfUrl,
   quoteShalom,
   trackShalomGuide,
@@ -72,7 +73,9 @@ import { fetchCouriers } from "@/services/courierService";
 import { getEvaCredentials } from "@/services/evaService";
 import { getAliclikCredentials } from "@/services/aliclikService";
 import { OrderHeader } from "@/interfaces/IOrder";
-import { isEvaCourier } from "@/utils/courierNormalizer";
+import { isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
+import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
+import { useShalomLiveStatuses, SHALOM_STEP_STYLES, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
 
 function money(n: number): string {
   return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -344,7 +347,6 @@ export default function CourierTrackingView() {
       .then((data) => {
         const names = data.map((c) => c.name);
         setCompanyCouriers(names);
-        setHasShalom(names.some((n) => n.toLowerCase().includes("shalom")));
       })
       .catch(() => setCompanyCouriers([]));
   }, [auth?.company?.id]);
@@ -353,6 +355,15 @@ export default function CourierTrackingView() {
     if (!auth?.company?.id || !auth?.accessToken) return;
     const companyId = auth.company.id;
     const token = auth.accessToken;
+    // Mismo criterio que EVA/Aliclik: la pestaña se muestra si la
+    // integración está activa (`isActive` de la config real), no si el
+    // nombre de algún courier "manual" de la empresa contiene "shalom" —
+    // ese heurístico dejaba la pestaña oculta para empresas con la
+    // integración configurada y funcionando, solo porque su lista de
+    // couriers no tenía ninguno llamado literalmente "Shalom".
+    getShalomConfig(token, companyId)
+      .then((cfg) => setHasShalom(!!cfg?.isActive))
+      .catch(() => setHasShalom(false));
     getEvaCredentials(token, companyId)
       .then((cred) => setHasEva(!!cred?.isActive))
       .catch(() => setHasEva(false));
@@ -481,10 +492,26 @@ export default function CourierTrackingView() {
     1,
     Math.ceil(allOrderRows.length / ITEMS_PER_PAGE),
   );
-  const pagedOrderRows = allOrderRows.slice(
-    (page - 1) * ITEMS_PER_PAGE,
-    page * ITEMS_PER_PAGE,
+  // Memoizado (antes era un `.slice()` plano) para que `shalomPagedOrders` de
+  // abajo no reciba una referencia nueva en cada render — si no, el fetch en
+  // vivo de Shalom se dispararía de nuevo con cualquier estado no
+  // relacionado (hover, edición de un input, etc.), no solo al cambiar de
+  // página o filtro.
+  const pagedOrderRows = useMemo(
+    () => allOrderRows.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE),
+    [allOrderRows, page],
   );
+
+  // Estado en vivo de Shalom solo para la página visible — antes consultaba
+  // TODOS los pedidos despachados de Shalom del historial completo en cada
+  // carga, disparando cientos de llamadas en paralelo en cuentas con mucho
+  // volumen. Acotado a `pagedOrderRows` (15 filas) el costo queda fijo sin
+  // importar cuántos pedidos históricos haya.
+  const shalomPagedOrders = useMemo(
+    () => pagedOrderRows.filter((o) => isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice)),
+    [pagedOrderRows],
+  );
+  const { liveStatuses: shalomLiveStatuses } = useShalomLiveStatuses(shalomPagedOrders);
 
   const handleTrackShalom = async (guide: TrackingGuide) => {
     if (!auth?.accessToken || !auth?.company?.id) return;
@@ -806,6 +833,7 @@ export default function CourierTrackingView() {
                       <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Distrito</TableHead>
                       <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Saldo de deuda</TableHead>
                       <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Courier</TableHead>
+                      <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Estado</TableHead>
                       <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Costo de envío</TableHead>
                       {TRACKING_FIELDS.map((f) => (
                         <TableHead key={f.key} className="font-semibold px-2 h-10 text-xs whitespace-nowrap">
@@ -819,12 +847,12 @@ export default function CourierTrackingView() {
                     {ordersLoading ? (
                       Array.from({ length: 3 }).map((_, i) => (
                         <TableRow key={i}>
-                          <TableCell colSpan={15} className="h-16 animate-pulse bg-muted/10 px-4" />
+                          <TableCell colSpan={16} className="h-16 animate-pulse bg-muted/10 px-4" />
                         </TableRow>
                       ))
                     ) : allOrderRows.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={15} className="h-32 text-center text-muted-foreground text-sm">
+                        <TableCell colSpan={16} className="h-32 text-center text-muted-foreground text-sm">
                           No hay pedidos despachados para mostrar.
                         </TableCell>
                       </TableRow>
@@ -861,6 +889,25 @@ export default function CourierTrackingView() {
                               <Badge variant="outline" className="text-[10px]">
                                 {courierLabel(order)}
                               </Badge>
+                            </TableCell>
+                            <TableCell className="px-4 py-3 text-center">
+                              {isShalomCourier(order.courier) || isShalomCourier(order.shippingOffice) ? (
+                                (() => {
+                                  const liveLabel = shalomLiveStatuses[order.id];
+                                  if (liveLabel) {
+                                    const style = SHALOM_STEP_STYLES[liveLabel] ?? "bg-amber-50 text-amber-700 border-amber-200";
+                                    const icon = SHALOM_STEP_ICONS[liveLabel] ?? "•";
+                                    return (
+                                      <Badge variant="outline" className={`text-[10px] ${style}`}>
+                                        {icon} {liveLabel}
+                                      </Badge>
+                                    );
+                                  }
+                                  return <ShalomStatusBadge status={order.shalomStatus} error={order.shalomError} />;
+                                })()
+                              ) : (
+                                <span className="text-xs text-muted-foreground">—</span>
+                              )}
                             </TableCell>
                             <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
                               {order.carrierShippingCost

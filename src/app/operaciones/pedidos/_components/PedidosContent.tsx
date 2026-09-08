@@ -42,7 +42,7 @@ import { EnCaminoTab } from "./EnCaminoTab";
 import { AtencionTab } from "./AtencionTab";
 import { HistorialTab } from "./HistorialTab";
 import { AnuladosTab } from "./AnuladosTab";
-import { PedidosActions, Sale, mapOrderToSale, openWhatsApp } from "./types";
+import { PedidosActions, Sale, mapOrderToSale, openWhatsApp, formatSalesForClipboard } from "./types";
 
 const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS;
 const API_COURIER = process.env.NEXT_PUBLIC_API_COURIER;
@@ -535,12 +535,7 @@ export function PedidosContent() {
       toast.warning("No hay pedidos seleccionados");
       return;
     }
-    const text = selected
-      .map((sale) =>
-        `Venta ${sale.orderNumber}\nCliente: ${sale.clientName}\nTeléfono: ${sale.phoneNumber}\nDistrito: ${sale.district}\nDirección: ${sale.address}\nFecha: ${sale.date}\nTotal: S/ ${sale.total.toFixed(2)}\nAdelanto: S/ ${sale.advancePayment.toFixed(2)}\nPor Cobrar: S/ ${sale.pendingPayment.toFixed(2)}\nEstado: ${getStatusLabel(sale.status)}`.trim(),
-      )
-      .join("\n\n--------------------\n\n");
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(formatSalesForClipboard(selected));
     toast.success(`${selected.length} pedido(s) copiados`);
   }, []);
 
