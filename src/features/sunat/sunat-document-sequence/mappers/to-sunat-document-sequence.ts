@@ -10,5 +10,6 @@ export function toSunatDocumentSequence(
     taxDocumentType: dto.taxDocumentType,
     series: dto.series,
     nextCorrelative: dto.nextCorrelative,
+    isDefault: dto.isDefault,
   };
 }

@@ -37,6 +37,7 @@ import {
   Eye,
   EyeOff,
   Trash2,
+  Copy,
 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -641,6 +642,29 @@ export default function GuideDetailsModal({
         );
       }, index * 600);
     });
+  };
+
+  const handleCopySelected = () => {
+    const selectedOrders = ordersDetails.filter((o) =>
+      selectedOrderIds.has(o.id),
+    );
+    if (selectedOrders.length === 0) {
+      toast.warning("No hay pedidos seleccionados para copiar");
+      return;
+    }
+    const text = selectedOrders
+      .map((order) => {
+        const paid =
+          order.payments
+            ?.filter((p) => p.status === "PAID")
+            .reduce((s, p) => s + Number(p.amount), 0) || 0;
+        const total = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0);
+        const pending = Math.max(total - paid, 0);
+        return `Venta ${order.orderNumber}\nCliente: ${order.customer.fullName}\nTeléfono: ${order.customer.phoneNumber}\nDistrito: ${order.customer.district || "-"}\nDirección: ${order.customer.address || "-"}\nTotal: S/ ${total.toFixed(2)}\nAdelanto: S/ ${paid.toFixed(2)}\nPor Cobrar: S/ ${pending.toFixed(2)}\nEstado: ${order.status.replace("_", " ")}`;
+      })
+      .join("\n\n--------------------\n\n");
+    navigator.clipboard.writeText(text);
+    toast.success(`${selectedOrders.length} pedido(s) copiados`);
   };
 
   // Calcular totales
@@ -1398,6 +1422,15 @@ export default function GuideDetailsModal({
                     >
                       <MessageCircle className="h-4 w-4 mr-2" />
                       WhatsApp Masivo ({selectedOrderIds.size})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={selectedOrderIds.size === 0}
+                      onClick={handleCopySelected}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copiar
                     </Button>
                   </div>
                 </div>

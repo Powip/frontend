@@ -7,6 +7,7 @@ import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { AdminPeriodProvider, useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
+import { QuickPeriodButtons } from "./_components/quick-period-buttons";
 
 const TABS = [
   { label: "Reporte rápido", href: "/administracion/reporte", isNew: true },
@@ -29,7 +30,7 @@ const TABS = [
 function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { setPeriod } = useAdminPeriod();
+  const { fromDate, toDate, setPeriod } = useAdminPeriod();
   const { auth, loading, hasPermission } = useAuth();
 
   useEffect(() => {
@@ -54,7 +55,13 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             Gestión Financiera
           </p>
         </div>
-        <PeriodSelector onPeriodChange={setPeriod} />
+        <div className="flex items-center gap-3">
+          <QuickPeriodButtons />
+          <PeriodSelector
+            value={{ from: fromDate, to: toDate }}
+            onPeriodChange={setPeriod}
+          />
+        </div>
       </div>
 
       <div className="flex border-b border-border px-8 overflow-x-auto bg-background">

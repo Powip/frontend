@@ -1,4 +1,4 @@
-import { IOrder } from "@/interfaces/IOrder";
+import type { IOrder } from "@/interfaces/IOrder";
 
 const pedidos: IOrder[] = [
   {

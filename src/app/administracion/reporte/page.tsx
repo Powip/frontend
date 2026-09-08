@@ -37,6 +37,7 @@ import {
   getDaysInMonth,
 } from "date-fns";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { getOrdersByCompany } from "@/api/Ventas";
 import { getGastos, getCourierCost } from "@/api/Admin";
 import {
@@ -48,7 +49,6 @@ import {
 } from "../_lib/realData";
 import { usePautaEntries, totalInvertidoEnRango } from "../_lib/pautaStorage";
 import { useMetasAnuales } from "../_lib/metasStorage";
-import type { ReportePeriodo } from "../_mock/data";
 import { fmtMoney, fmtNum, fmtPct } from "../_lib/format";
 import { NivelDot, type Nivel } from "../_components/nivel";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,34 +68,23 @@ import { Progress } from "@/components/ui/progress";
 import { Share2, Copy } from "lucide-react";
 import { toast } from "sonner";
 
-const PERIODOS: { value: ReportePeriodo; label: string }[] = [
-  { value: "hoy", label: "Hoy" },
-  { value: "semana", label: "Semana" },
-  { value: "quincena", label: "Quincena" },
-  { value: "mes", label: "Mes" },
-];
-
 const STALE = 5 * 60 * 1000;
 
-function rangoPeriodo(periodo: ReportePeriodo, hoy: Date) {
-  const to = hoy;
-  if (periodo === "hoy")
-    return {
-      from: hoy,
-      to,
-      label: `Hoy · ${format(hoy, "d MMM").toUpperCase()}`,
-    };
-  if (periodo === "semana")
-    return { from: subDays(hoy, 6), to, label: `Semana · últimos 7 días` };
-  if (periodo === "quincena")
-    return { from: subDays(hoy, 14), to, label: `Quincena · últimos 15 días` };
-  const from = startOfMonth(hoy);
-  return { from, to, label: `Mes · ${format(hoy, "MMMM yyyy").toUpperCase()}` };
+// El rango viene del periodo general del módulo (`AdminPeriodContext`),
+// fijado desde el topbar (atajos rápidos o el selector de fecha).
+function rangoDesde(fromStr: string, toStr: string) {
+  const from = new Date(`${fromStr}T00:00:00`);
+  const to = new Date(`${toStr}T23:59:59.999`);
+  const label =
+    fromStr === toStr
+      ? format(from, "d MMM").toUpperCase()
+      : `${format(from, "d MMM").toUpperCase()} – ${format(to, "d MMM yyyy").toUpperCase()}`;
+  return { from, to, label };
 }
 
 export default function ReporteRapidoPage() {
   const { auth } = useAuth();
-  const [periodo, setPeriodo] = useState<ReportePeriodo>("hoy");
+  const { fromDate, toDate } = useAdminPeriod();
   const [shareOpen, setShareOpen] = useState(false);
 
   const [deltaPrecio, setDeltaPrecio] = useState(0);
@@ -113,13 +102,17 @@ export default function ReporteRapidoPage() {
   const [pautaEntries] = usePautaEntries(companyId);
   const [metas] = useMetasAnuales(companyId, hoy.getFullYear());
   // 60 días para que las alertas de courier vencido alcancen a ver
-  // liquidaciones viejas, no solo el periodo corto que se muestra en pantalla.
+  // liquidaciones viejas, no solo el periodo elegido en el selector general.
+  // El periodo elegido puede ser más amplio (año, trimestre) que esos 60
+  // días, así que la ventana de la consulta cubre lo que sea más ancho.
   const ventana60d = format(subDays(hoy, 60), "yyyy-MM-dd");
   const hoyStr = format(hoy, "yyyy-MM-dd");
+  const ordersFrom = fromDate < ventana60d ? fromDate : ventana60d;
+  const ordersTo = toDate > hoyStr ? toDate : hoyStr;
 
   const { data: orders = [], isLoading: loadingOrders } = useQuery({
-    queryKey: ["admin-reporte-orders", companyId],
-    queryFn: () => getOrdersByCompany(companyId, ventana60d, hoyStr),
+    queryKey: ["admin-reporte-orders", companyId, ordersFrom, ordersTo],
+    queryFn: () => getOrdersByCompany(companyId, ordersFrom, ordersTo),
     enabled: !!companyId,
     staleTime: STALE,
   });
@@ -137,18 +130,16 @@ export default function ReporteRapidoPage() {
     staleTime: STALE,
   });
 
-  const { from, to, label } = rangoPeriodo(periodo, hoy);
-  const fromStr = format(from, "yyyy-MM-dd");
+  const { from, to, label } = rangoDesde(fromDate, toDate);
 
   const { data: envios = 0, isLoading: loadingCourier } = useQuery({
     queryKey: [
       "admin-reporte-courier",
       storeIds.join(","),
-      periodo,
-      fromStr,
-      hoyStr,
+      fromDate,
+      toDate,
     ],
-    queryFn: () => getCourierCost(storeIds, fromStr, hoyStr, token),
+    queryFn: () => getCourierCost(storeIds, fromDate, toDate, token),
     enabled: storeIds.length > 0 && !!token,
     staleTime: STALE,
   });
@@ -164,8 +155,8 @@ export default function ReporteRapidoPage() {
   );
 
   const publicidad = useMemo(
-    () => totalInvertidoEnRango(pautaEntries, fromStr, hoyStr),
-    [pautaEntries, fromStr, hoyStr],
+    () => totalInvertidoEnRango(pautaEntries, fromDate, toDate),
+    [pautaEntries, fromDate, toDate],
   );
 
   const data = useMemo(() => {
@@ -205,10 +196,6 @@ export default function ReporteRapidoPage() {
       ),
     [orders, hoy],
   );
-  const diasTranscurridos = Math.max(
-    1,
-    differenceInCalendarDays(hoy, startOfMonth(hoy)) + 1,
-  );
   const diasDelMes = getDaysInMonth(hoy);
   const ventaMes = entregadosMes.reduce(
     (s, o) => s + Number(o.grandTotal || 0),
@@ -238,30 +225,49 @@ export default function ReporteRapidoPage() {
   );
 
   const metaMensual = metas.ventasAnual / 12;
+  // Proyección de cierre del periodo elegido en el selector general (no
+  // siempre "el mes en curso" — antes esta card ignoraba el filtro de
+  // arriba y siempre proyectaba el mes actual, lo que la hacía no coincidir
+  // con "VENTA TOTAL" cuando el periodo elegido era otro). Si el periodo ya
+  // terminó (to <= hoy), el factor de proyección es 1 y el estimado queda
+  // igual al real.
   const proyeccion = useMemo(() => {
-    const estVentas = Math.round((ventaMes / diasTranscurridos) * diasDelMes);
+    const diasDelPeriodo = Math.max(
+      1,
+      differenceInCalendarDays(to, from) + 1,
+    );
+    const hoyAcotado = hoy < to ? hoy : to;
+    const diasTranscurridosPeriodo = Math.max(
+      1,
+      differenceInCalendarDays(hoyAcotado, from) + 1,
+    );
+    const estVentas = Math.round(
+      (data.ventaTotal / diasTranscurridosPeriodo) * diasDelPeriodo,
+    );
     const estGanancia = Math.round(
-      ((ventaMes - productoMes - publicidadMes) / diasTranscurridos) *
-        diasDelMes,
+      ((data.ventaTotal - data.producto - data.publicidad) /
+        diasTranscurridosPeriodo) *
+        diasDelPeriodo,
     );
     const estUnidades = Math.round(
-      (unidadesMes / diasTranscurridos) * diasDelMes,
+      (data.unidades / diasTranscurridosPeriodo) * diasDelPeriodo,
     );
+    // Meta mensual prorateada a la duración del periodo elegido, para que
+    // el % de avance tenga sentido incluso si el periodo no es "el mes".
+    const metaPeriodo =
+      metaMensual > 0
+        ? (metaMensual / diasDelMes) * diasDelPeriodo
+        : 0;
     return {
+      diasTranscurridos: diasTranscurridosPeriodo,
+      diasDelPeriodo,
       estVentas,
       estGanancia,
       estUnidades,
-      pctMeta: metaMensual > 0 ? (estVentas / metaMensual) * 100 : 0,
+      metaPeriodo,
+      pctMeta: metaPeriodo > 0 ? (estVentas / metaPeriodo) * 100 : 0,
     };
-  }, [
-    ventaMes,
-    productoMes,
-    publicidadMes,
-    unidadesMes,
-    diasTranscurridos,
-    diasDelMes,
-    metaMensual,
-  ]);
+  }, [data, from, to, hoy, diasDelMes, metaMensual]);
 
   const precioNetoProm = unidadesMes > 0 ? ventaMes / unidadesMes : 0;
   const cogsProm = unidadesMes > 0 ? productoMes / unidadesMes : 0;
@@ -327,10 +333,10 @@ export default function ReporteRapidoPage() {
           "No has registrado inversión de pauta este mes — Publicidad, CPA y ROAS de este reporte están en S/ 0.",
       });
     }
-    if (metaMensual > 0 && proyeccion.estVentas >= metaMensual) {
+    if (proyeccion.metaPeriodo > 0 && proyeccion.estVentas >= proyeccion.metaPeriodo) {
       list.push({
         nivel: "verde",
-        texto: `Al ritmo actual superas tu meta mensual (${fmtMoney(metaMensual)}) — puedes escalar con confianza.`,
+        texto: `Al ritmo actual superas tu meta para este periodo (${fmtMoney(proyeccion.metaPeriodo)}) — puedes escalar con confianza.`,
       });
     }
     if (list.length === 0) {
@@ -341,7 +347,7 @@ export default function ReporteRapidoPage() {
       });
     }
     return list;
-  }, [orders, publicidadMes, metaMensual, proyeccion.estVentas]);
+  }, [orders, publicidadMes, proyeccion.metaPeriodo, proyeccion.estVentas]);
 
   const shareText = `📊 REPORTE ${label.toUpperCase()}\n\nVenta total: ${fmtMoney(data.ventaTotal)}\nProducto: ${fmtMoney(data.producto)}\nPublicidad: ${fmtMoney(data.publicidad)}\nEnvíos: ${fmtMoney(data.envios)}\nCPA por pedido: ${fmtMoney(cpa, 2)}\nGANANCIA: ${fmtMoney(ganancia)}\n\nUnidades: ${data.unidades} · Pedidos: ${data.pedidos} · ROAS: ${data.publicidad > 0 ? roas.toFixed(1) + "×" : "—"}\n— vía POWIP`;
 
@@ -378,21 +384,6 @@ export default function ReporteRapidoPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex bg-muted rounded-lg p-1 gap-1">
-            {PERIODOS.map((p) => (
-              <button
-                key={p.value}
-                onClick={() => setPeriodo(p.value)}
-                className={`px-3 py-1.5 rounded-md text-xs font-semibold transition-colors ${
-                  periodo === p.value
-                    ? "bg-background shadow-sm text-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
           <Button size="sm" onClick={() => setShareOpen(true)}>
             <Share2 className="h-4 w-4 mr-1.5" /> Compartir
           </Button>
@@ -450,7 +441,7 @@ export default function ReporteRapidoPage() {
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">
-                📈 Proyección a cerrar el mes
+                📈 Proyección de cierre — {label}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -474,8 +465,17 @@ export default function ReporteRapidoPage() {
               </div>
               <Progress value={Math.min(100, proyeccion.pctMeta)} />
               <p className="text-xs text-muted-foreground">
-                Al ritmo actual ({diasTranscurridos}/{diasDelMes} días) cierras
-                en{" "}
+                {proyeccion.diasTranscurridos >= proyeccion.diasDelPeriodo ? (
+                  <>
+                    Este periodo ({proyeccion.diasDelPeriodo} días) cerró en{" "}
+                  </>
+                ) : (
+                  <>
+                    Al ritmo actual ({proyeccion.diasTranscurridos}/
+                    {proyeccion.diasDelPeriodo} días de este periodo) cierras
+                    en{" "}
+                  </>
+                )}
                 <b className="text-foreground">
                   {fmtMoney(proyeccion.estVentas)}
                 </b>{" "}
@@ -483,8 +483,9 @@ export default function ReporteRapidoPage() {
                 <b className="text-foreground">
                   {fmtPct(proyeccion.pctMeta, 0)}
                 </b>{" "}
-                de tu meta mensual ({fmtMoney(metaMensual)}, editable en Resumen
-                Anual) · ganancia proyectada{" "}
+                de tu meta para este periodo (
+                {fmtMoney(proyeccion.metaPeriodo)}, prorateada de la meta
+                mensual — editable en Resumen Anual) · ganancia proyectada{" "}
                 <b className="text-emerald-600">
                   {fmtMoney(proyeccion.estGanancia)}
                 </b>

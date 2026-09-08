@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useListSunatDocuments } from "@/features/sunat/sunat-document/hooks/use-list-sunat-documents";
 import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
-import { useSalesByStore } from "./sales/use-stales-by-store";
+import { useSalesByStore } from "../features/sales/hooks/use-sales-by-store";
 import { EMPTY_DOCUMENTS, EMPTY_SALES } from "@/features/sunat/shared/constants/sunat.constants";
 import { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 

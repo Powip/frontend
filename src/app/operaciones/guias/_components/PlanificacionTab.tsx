@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import {
   ArrowRight,
   Clock,
+  Copy,
   Loader2,
   Package,
   FileSpreadsheet,
@@ -37,6 +38,7 @@ import {
   Sale,
   mapOrderToSale,
   formatProductsShort,
+  formatSalesForClipboard,
   openWhatsApp,
 } from "@/app/operaciones/pedidos/_components/types";
 import {
@@ -313,6 +315,16 @@ export default function PlanificacionTab() {
     }
   };
 
+  const handleCopySelected = () => {
+    if (selectedItems.length === 0) {
+      toast.warning("No hay agendados seleccionados");
+      return;
+    }
+    const sales = selectedItems.map((it) => mapOrderToSale(it.order));
+    navigator.clipboard.writeText(formatSalesForClipboard(sales));
+    toast.success(`${sales.length} agendado(s) copiados`);
+  };
+
   const handleExport = () => {
     if (agendados.length === 0) {
       toast.warning("No hay agendados para exportar");
@@ -462,6 +474,15 @@ export default function PlanificacionTab() {
                   </Button>
                 </PopoverContent>
               </Popover>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1 border-white/40 bg-white/10 text-xs text-white hover:bg-white/20"
+                onClick={handleCopySelected}
+              >
+                <Copy className="h-3.5 w-3.5" />
+                Copiar
+              </Button>
               <button
                 className="ml-auto text-white/80 hover:text-white"
                 onClick={() => setSelectedIds(new Set())}

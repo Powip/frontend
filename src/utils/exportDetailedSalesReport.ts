@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
-import { OrderResponseDto, OrderItemResponseDto } from "@/api/sales/dto/order.dto";
+import { OrderResponseDto, OrderItemResponseDto } from "@/features/sales/dto/order.dto";
 
 /**
  * Detailed sale export row — 1 row per product/variant of an order

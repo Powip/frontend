@@ -6,6 +6,8 @@ import type { LookupIdentityQueryDto } from "../dto/lookup-identity-query.dto";
 export async function lookupIdentityApi(
   query: LookupIdentityQueryDto,
 ): Promise<IdentityLookupResponseDto> {
+  console.log("IDENTITY LOOKUP QUERY:", query);
+
   const { data } = await axiosAuth.get<IdentityLookupResponseDto>(
     `${API.sunat}/api/v1/identity-lookup`,
     { params: query },

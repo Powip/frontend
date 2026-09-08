@@ -1,4 +1,4 @@
-import type { Order } from "@/models/sales/order";
+import type { Order } from "@/features/sales/models/order";
 import type { SunatDocument } from "../../sunat-document/models/sunat-document.model";
 
 export const IGV_RATE = 0.18;

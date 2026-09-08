@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-
+import type { Order } from "@/features/sales/models/order";
 import { SUNAT_DOCUMENT_TYPES } from "@/features/sunat/sunat-document/enums/sunat-document.enums";
 import { useCreateSunatDocuments } from "@/features/sunat/sunat-document/hooks/use-create-sunat-documents";
 import { toCreateSunatDocumentsRequestDto } from "@/features/sunat/sunat-document/mappers/to-create-sunat-documents-request-dto.mapper";
@@ -22,8 +22,6 @@ import {
   createSunatDocumentsSchema,
 } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
-
-import type { Order } from "@/models/sales/order";
 
 const PIPELINE_STEPS = [
   "Generando XML UBL 2.1",

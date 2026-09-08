@@ -12,7 +12,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-import { CheckCircle2, Eye, Loader2, MessageCircle, RefreshCw, Search as SearchIcon } from "lucide-react";
+import { CheckCircle2, Copy, Eye, Loader2, MessageCircle, RefreshCw, Search as SearchIcon } from "lucide-react";
 import {
   SalesTableFilters,
   SalesFilters,
@@ -283,6 +283,10 @@ export function EnCaminoTab({
               <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onBulkWhatsApp(selectedSales)}>
                 <MessageCircle className="h-3.5 w-3.5" />
                 WhatsApp masivo
+              </Button>
+              <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onCopySelected(selectedSales)}>
+                <Copy className="h-3.5 w-3.5" />
+                Copiar
               </Button>
               {actions.can(OPS_PERMISSIONS.EXPORT) && (
                 <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onExportExcel(selectedSales, "en_camino")}>

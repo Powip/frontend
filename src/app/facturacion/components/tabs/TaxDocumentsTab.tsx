@@ -15,7 +15,7 @@ import {
   Search,
   Zap,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import DetalleComprobanteModal from "@/app/facturacion/components/modals/DetalleComprobanteModal";
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
@@ -33,6 +33,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import {
   Select,
   SelectContent,
@@ -72,6 +73,8 @@ const PIPELINE_ORDER: TaxDocumentStatus[] = [
   "RETRY_EXCEEDED",
 ];
 
+const ITEMS_PER_PAGE = 10;
+
 interface TaxDocumentsTabProps {
   comprobantes: ReturnType<typeof useTaxDocuments>;
   onGenerarNota: (row: TaxDocumentRow) => void;
@@ -83,6 +86,10 @@ function getRowStatus(row: TaxDocumentRow): TaxDocumentStatus {
 
 function isAcceptedStatus(status: TaxDocumentStatus): boolean {
   return status === "ACCEPTED" || status === "ACCEPTED_WITH_OBSERVATION";
+}
+
+function isRejectedStatus(status: TaxDocumentStatus): boolean {
+  return status === "REJECTED" || status === "RETRY_EXCEEDED";
 }
 
 function getDocumentNumber(row: TaxDocumentRow): string | null {
@@ -189,6 +196,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
   const [filterEstado, setFilterEstado] = useState<TaxDocumentStatus | "">("");
   const [filterTipo, setFilterTipo] = useState("");
   const [showPipeline, setShowPipeline] = useState(false);
+  const [page, setPage] = useState(1);
 
   const [sentMap, setSentMap] = useState<SentMap>({});
   const [emitirRow, setEmitirRow] = useState<TaxDocumentRow | null>(null);
@@ -232,6 +240,20 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
       return true;
     });
   }, [rows, search, filterEstado, filterTipo]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / ITEMS_PER_PAGE));
+
+  // If the result set shrinks (e.g. a background refresh resolves some
+  // pending documents and the status filter narrows), don't strand the user
+  // on a now out-of-range page.
+  useEffect(() => {
+    setPage((current) => Math.min(current, totalPages));
+  }, [totalPages]);
+
+  const pagedRows = useMemo(
+    () => filteredRows.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE),
+    [filteredRows, page],
+  );
 
   const selectedPendientes = useMemo(
     () => selectedRows.filter((r) => !r.taxDocument),
@@ -339,8 +361,10 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
 
   const getDistributionIcons = (row: TaxDocumentRow) => {
     const status = getRowStatus(row);
+    const accepted = isAcceptedStatus(status);
+    const rejected = isRejectedStatus(status);
 
-    if (!isAcceptedStatus(status)) {
+    if (!accepted && !rejected) {
       return <span className="text-xs text-muted-foreground">—</span>;
     }
 
@@ -350,32 +374,36 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
 
     return (
       <div className="flex items-center justify-center gap-1">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8"
-          title={hasValidPhone ? "Enviar por WhatsApp" : "Teléfono no válido"}
-          onClick={() => handleWhatsApp(row)}
-        >
-          <MessageCircle
-            className={cn(
-              "h-4 w-4",
-              sent.wa
-                ? "text-green-600"
-                : hasValidPhone
-                  ? "text-muted-foreground/50"
-                  : "text-muted-foreground/20",
-            )}
-          />
-        </Button>
+        {accepted && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            title={hasValidPhone ? "Enviar por WhatsApp" : "Teléfono no válido"}
+            onClick={() => handleWhatsApp(row)}
+          >
+            <MessageCircle
+              className={cn(
+                "h-4 w-4",
+                sent.wa
+                  ? "text-green-600"
+                  : hasValidPhone
+                    ? "text-muted-foreground/50"
+                    : "text-muted-foreground/20",
+              )}
+            />
+          </Button>
+        )}
 
         <Button
           type="button"
           variant="ghost"
           size="icon"
           className="h-8 w-8"
-          title="Ver / Imprimir PDF"
+          title={
+            rejected ? "Ver / Imprimir PDF (rechazado, no válido ante SUNAT)" : "Ver / Imprimir PDF"
+          }
           disabled={isThisRowLoadingPdf}
           onClick={() => handlePrint(row)}
         >
@@ -383,7 +411,14 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           ) : (
             <Printer
-              className={cn("h-4 w-4", sent.print ? "text-blue-600" : "text-muted-foreground/50")}
+              className={cn(
+                "h-4 w-4",
+                rejected
+                  ? "text-red-500"
+                  : sent.print
+                    ? "text-blue-600"
+                    : "text-muted-foreground/50",
+              )}
             />
           )}
         </Button>
@@ -620,15 +655,19 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
                 placeholder="Buscar cliente, correlativo, N° venta..."
                 className="pl-9"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(1);
+                }}
               />
             </div>
 
             <Select
               value={filterEstado || "all"}
-              onValueChange={(value) =>
-                setFilterEstado(value === "all" ? "" : (value as TaxDocumentStatus))
-              }
+              onValueChange={(value) => {
+                setFilterEstado(value === "all" ? "" : (value as TaxDocumentStatus));
+                setPage(1);
+              }}
             >
               <SelectTrigger className="w-full md:w-52">
                 <SelectValue placeholder="Todos los estados" />
@@ -645,7 +684,10 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
 
             <Select
               value={filterTipo || "all"}
-              onValueChange={(value) => setFilterTipo(value === "all" ? "" : value)}
+              onValueChange={(value) => {
+                setFilterTipo(value === "all" ? "" : value);
+                setPage(1);
+              }}
             >
               <SelectTrigger className="w-full md:w-44">
                 <SelectValue placeholder="Todos los tipos" />
@@ -693,7 +735,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredRows.map((row) => {
+                  pagedRows.map((row) => {
                     const taxDocument = row.taxDocument;
                     const status = getRowStatus(row);
 
@@ -749,9 +791,14 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
             </Table>
           </div>
 
-          <div className="mt-3 text-xs text-muted-foreground">
-            Mostrando {filteredRows.length} de {rows.length} comprobantes
-          </div>
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={filteredRows.length}
+            itemsPerPage={ITEMS_PER_PAGE}
+            onPageChange={setPage}
+            itemName="comprobantes"
+          />
         </CardContent>
       </Card>
 

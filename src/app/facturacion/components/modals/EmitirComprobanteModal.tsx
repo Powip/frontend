@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { AlertCircle, CheckCircle2, FileText, Loader2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, FileText, Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import { EmisionPipeline } from "@/app/facturacion/components/EmisionPipeline";
@@ -35,15 +35,21 @@ import {
 } from "@/components/ui/select";
 import { toIdentityLookupDocumentType } from "@/features/identity-lookup/adapters/to-identity-lookup-document-type.adapter";
 import type { IdentityLookupResult } from "@/features/identity-lookup/models/identity-lookup-result.model";
+import type { Order } from "@/features/sales/models/order";
+import type { SunatDocumentType } from "@/features/sunat/sunat-document/enums/sunat-document.enums";
 import {
+  DEFAULT_SUNAT_DOCUMENT_SEQUENCES,
   IDENTITY_DOCUMENT_TYPES,
+  SUNAT_DOCUMENT_TYPE_LABELS,
   SUNAT_DOCUMENT_TYPES,
 } from "@/features/sunat/sunat-document/enums/sunat-document.enums";
 import { useCreateSunatDocuments } from "@/features/sunat/sunat-document/hooks/use-create-sunat-documents";
+import { toCreateSunatDocumentsRequestDto } from "@/features/sunat/sunat-document/mappers/to-create-sunat-documents-request-dto.mapper";
 import type { CreateSunatDocumentsFormValues } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { createSunatDocumentsSchema } from "@/features/sunat/sunat-document/schemas/create-sunat-documents.schema";
 import { buildSunatDocumentFromSale } from "@/features/sunat/sunat-document/utils/build-sunat-document-from-sale";
-import type { Order } from "@/models/sales/order";
+import { useSunatDocumentSequences } from "@/features/sunat/sunat-document-sequence/hooks/use-sunat-document-sequences";
+import type { SunatDocumentSequence } from "@/features/sunat/sunat-document-sequence/models/sunat-document-sequence";
 
 const PIPELINE_STEPS = [
   "Generando XML UBL 2.1",
@@ -60,6 +66,40 @@ interface EmitirComprobanteModalProps {
 }
 
 type Step = "form" | "pipeline" | "ok" | "bad";
+
+/**
+ * Resolves which series to stamp on the document for `taxDocumentType`:
+ * the company's configured default sequence (set from the Series tab) when
+ * one exists, falling back to Powip's canonical series (F001/B001/...) for
+ * document types the company hasn't configured a default for yet - e.g.
+ * right after signup, before `useSunatDocumentSequences` has any rows for
+ * that type.
+ */
+function getDefaultSequence(
+  taxDocumentType: SunatDocumentType,
+  sequences: SunatDocumentSequence[],
+): SunatDocumentSequence | undefined {
+  return sequences.find(
+    (sequence) => sequence.taxDocumentType === taxDocumentType && sequence.isDefault,
+  );
+}
+
+function getDefaultSeries(
+  taxDocumentType: SunatDocumentType,
+  sequences: SunatDocumentSequence[],
+): string {
+  const defaultSequence = getDefaultSequence(taxDocumentType, sequences);
+
+  if (defaultSequence) {
+    return defaultSequence.series;
+  }
+
+  const fallback = DEFAULT_SUNAT_DOCUMENT_SEQUENCES.find(
+    (definition) => definition.taxDocumentType === taxDocumentType,
+  );
+
+  return fallback?.series ?? "";
+}
 
 function getCustomerFormValues(
   sale: Order,
@@ -91,6 +131,14 @@ export default function EmitirComprobanteModal({
   onEmissionFinished,
 }: EmitirComprobanteModalProps) {
   const createSunatDocuments = useCreateSunatDocuments();
+
+  // Powers the series auto-fill and the missing-correlativo warning below:
+  // whichever sequence is marked `isDefault` for the selected tax document
+  // type (configured from the Series tab) is what gets stamped on the
+  // document, instead of the hardcoded F001/B001 canonical series. Applies
+  // the same way to both selectable types here (Boleta and Factura) — the
+  // modal doesn't special-case either one.
+  const { data: sequences = [], isLoading: isLoadingSequences } = useSunatDocumentSequences();
 
   const form = useForm<CreateSunatDocumentsFormValues>({
     resolver: zodResolver(createSunatDocumentsSchema),
@@ -129,6 +177,13 @@ export default function EmitirComprobanteModal({
   const grandTotal = Number(totals?.grandTotal ?? 0);
   const isCustomerRequired = isInvoice || grandTotal >= 700;
 
+  // Boleta and Factura are the only two types selectable in this modal
+  // (see the Select below), and both require a default sequence with an
+  // actual correlativo configured in the Series tab — without one, SUNAT
+  // emission will fail, so submission is blocked until it's resolved.
+  const isMissingDefaultSequence =
+    !isLoadingSequences && Boolean(documentType) && !getDefaultSequence(documentType, sequences);
+
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -157,13 +212,9 @@ export default function EmitirComprobanteModal({
       return;
     }
 
-    form.setValue(
-      "documents.0.series",
-      documentType === SUNAT_DOCUMENT_TYPES.INVOICE ? "F001" : "B001",
-      {
-        shouldValidate: true,
-      },
-    );
+    form.setValue("documents.0.series", getDefaultSeries(documentType, sequences), {
+      shouldValidate: true,
+    });
 
     const customer = form.getValues("documents.0.customer");
     if (
@@ -174,7 +225,7 @@ export default function EmitirComprobanteModal({
         shouldValidate: true,
       });
     }
-  }, [documentType, form, sale]);
+  }, [documentType, form, sale, sequences]);
 
   function runPipelineAnimation() {
     setPipelineIndex(0);
@@ -199,22 +250,12 @@ export default function EmitirComprobanteModal({
     runPipelineAnimation();
 
     try {
-      // Map null -> undefined for payload compatibility
-      const payload = {
-        ...values,
-        documents: values.documents.map((doc) => ({
-          ...doc,
-          customer: doc.customer
-            ? {
-                name: doc.customer.name ?? undefined,
-                identityDocumentType: doc.customer.identityDocumentType ?? undefined,
-                identityDocumentNumber: doc.customer.identityDocumentNumber ?? undefined,
-                countryCode: doc.customer.countryCode ?? undefined,
-                address: doc.customer.address ?? undefined,
-              }
-            : undefined,
-        })),
-      };
+      // Route through the shared mapper (same one LoteEmisionModal uses) so
+      // both single- and bulk-emission flows apply identical sanitization —
+      // trimming blanks and falling back to the "-" SUNAT placeholder for an
+      // anonymous boleta customer, instead of duplicating (and drifting from)
+      // that logic here.
+      const payload = toCreateSunatDocumentsRequestDto(values);
 
       const response = await createSunatDocuments.mutateAsync(payload);
 
@@ -226,7 +267,8 @@ export default function EmitirComprobanteModal({
       setStep("ok");
 
       onEmissionFinished?.(response);
-    } catch {
+    } catch (error) {
+      console.error("Emission failed:", error);
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
@@ -359,6 +401,21 @@ export default function EmitirComprobanteModal({
                         <Input value={sale.orderNumber} readOnly />
                       </div>
                     </div>
+
+                    {isMissingDefaultSequence && documentType && (
+                      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+
+                        <div>
+                          <span className="font-semibold">
+                            No hay un correlativo configurado para{" "}
+                            {SUNAT_DOCUMENT_TYPE_LABELS[documentType]}.{" "}
+                          </span>
+                          Configura una serie predeterminada en la pestaña &quot;Series y
+                          Correlativos&quot; antes de emitir este comprobante.
+                        </div>
+                      </div>
+                    )}
 
                     <div className="space-y-4 rounded-md border p-4">
                       <div className="flex items-center justify-between gap-4">
@@ -555,7 +612,7 @@ export default function EmitirComprobanteModal({
                     Cancelar
                   </Button>
 
-                  <Button type="submit" disabled={isPending}>
+                  <Button type="submit" disabled={isPending || isMissingDefaultSequence}>
                     {isPending ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />

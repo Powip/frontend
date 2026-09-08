@@ -1,6 +1,6 @@
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import type { OpsPermission } from "@/config/operationsPermissions";
-import { ORDER_STATUS_FLOW } from "@/utils/domain/orders-status-flow";
+import { ORDER_STATUS_FLOW, getStatusLabel } from "@/utils/domain/orders-status-flow";
 
 /* -----------------------------------------------------------------------
    Modelo de fila para las tablas de Pedidos.
@@ -137,6 +137,19 @@ export function mapOrderToSale(order: OrderHeader): Sale {
       subtotal: Number(it.subtotal || 0),
     })),
   };
+}
+
+/**
+ * Texto para copiar al portapapeles (botón "Copiar" de las tablas de
+ * Pedidos/Guías) — un formato único para que se vea igual sin importar
+ * desde qué pestaña se copió.
+ */
+export function formatSalesForClipboard(sales: Sale[]): string {
+  return sales
+    .map((sale) =>
+      `Venta ${sale.orderNumber}\nCliente: ${sale.clientName}\nTeléfono: ${sale.phoneNumber}\nDistrito: ${sale.district}\nDirección: ${sale.address}\nFecha: ${sale.date}\nTotal: S/ ${sale.total.toFixed(2)}\nAdelanto: S/ ${sale.advancePayment.toFixed(2)}\nPor Cobrar: S/ ${sale.pendingPayment.toFixed(2)}\nEstado: ${getStatusLabel(sale.status)}`.trim(),
+    )
+    .join("\n\n--------------------\n\n");
 }
 
 /** "Crema x2, Serum x1" — resumen corto para columnas de tabla. */
