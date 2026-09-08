@@ -145,7 +145,10 @@ export default function ResumenAdminPage() {
   );
 
   const [pautaEntries] = usePautaEntries(companyId);
-  const anioPeriodo = new Date(fromDate).getFullYear();
+  // Parseo por partes (no `new Date(fromDate)`) para evitar corrimientos de
+  // huso horario — con `new Date("yyyy-01-01").getFullYear()` un usuario en
+  // UTC-5 (Perú) recibía el año anterior.
+  const anioPeriodo = Number(fromDate.split("-")[0]);
   const [metas] = useMetasAnuales(companyId, anioPeriodo);
 
   // Período actual
@@ -244,22 +247,23 @@ export default function ResumenAdminPage() {
       .filter((o) => o.status !== "ENTREGADO" && o.status !== "ANULADO")
       .reduce((s, o) => s + paidAmount(o), 0);
 
-    const totalCogs = entregadas.reduce(
-      (s, o) => s + Number(o.costAmount || 0),
-      0,
-    );
     const precioProm =
       unidadesEntregadas > 0
         ? entregadas.reduce((s, o) => s + Number(o.grandTotal || 0), 0) /
           unidadesEntregadas
         : 0;
+    // Mismo criterio que la pestaña Punto de Equilibrio (`equilibrio/page.tsx`):
+    // costos fijos = TODOS los gastos operativos (`pnl.totalGastosOperativos`,
+    // incluye fees marketplace y courier integrado, no solo `gastos`
+    // manuales) y costo variable = COGS + merma. Antes esta card recalculaba
+    // su propia versión incompleta y mostraba un punto de equilibrio más
+    // optimista (y distinto) que el de la pestaña dedicada.
     const costoVarUnit =
-      unidadesEntregadas > 0 ? totalCogs / unidadesEntregadas : 0;
+      unidadesEntregadas > 0 && pnl
+        ? (pnl.cogs + pnl.mermaCosto) / unidadesEntregadas
+        : 0;
     const margenContribucion = precioProm - costoVarUnit;
-    const costosFijos = (gastos as any[]).reduce(
-      (s, g) => s + Number(g.monto || 0),
-      0,
-    );
+    const costosFijos = pnl?.totalGastosOperativos ?? 0;
     const puntoEquilibrioUds =
       margenContribucion > 0 ? Math.ceil(costosFijos / margenContribucion) : 0;
 
@@ -273,7 +277,7 @@ export default function ResumenAdminPage() {
       adelantosEnCaja,
       puntoEquilibrioUds,
     };
-  }, [orders, gastos, pautaEntries, fromDate, toDate, pnl]);
+  }, [orders, pautaEntries, fromDate, toDate, pnl]);
 
   const metaVentasMes = metas.ventasAnual / 12;
   const metaProfitMes = metas.profitAnual / 12;

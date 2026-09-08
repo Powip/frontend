@@ -56,12 +56,17 @@ const STALE = 5 * 60 * 1000;
 export default function ControlDiarioPage() {
   const { auth } = useAuth();
   const { fromDate, toDate } = useAdminPeriod();
-  const [vista, setVista] = useState<Vista>("canal");
+  const [vista, setVista] = useState<Vista>("todos");
   const [canalId, setCanalId] = useState(CANALES_REALES[0].id);
 
   const companyId = auth?.company?.id ?? "";
   const [pautaEntries] = usePautaEntries(companyId);
-  const [anio, mesNum] = fromDate.split("-").map(Number);
+  const [anio, mesNum, diaDesde] = fromDate.split("-").map(Number);
+  const [anioHasta, mesHasta, diaHastaRaw] = toDate.split("-").map(Number);
+  // Esta grilla es de un solo mes calendario (día 1-31) — si el periodo
+  // elegido en el selector general cruza de un mes a otro (ej. Quincena a
+  // fin de mes, o Este Año), no se puede representar exacto acá.
+  const mismoMes = anioHasta === anio && mesHasta === mesNum;
 
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ["admin-diario-orders", companyId, fromDate, toDate],
@@ -71,6 +76,19 @@ export default function ControlDiarioPage() {
   });
 
   const diasEnMes = new Date(anio, mesNum, 0).getDate();
+  const hoy = new Date();
+  const esMesActual = anio === hoy.getFullYear() && mesNum === hoy.getMonth() + 1;
+  // Acota al día elegido en "toDate" — antes esto ignoraba toDate y siempre
+  // mostraba desde el día 1 hasta hoy, sin importar qué periodo eligieras
+  // arriba (por eso Órdenes del mes no coincidía con Resumen salvo que el
+  // periodo fuera justo "mes en curso completo").
+  const diaHastaEfectivo = mismoMes
+    ? esMesActual
+      ? Math.min(diaHastaRaw, hoy.getDate())
+      : diaHastaRaw
+    : esMesActual
+      ? Math.min(diasEnMes, hoy.getDate())
+      : diasEnMes;
   const inversionDiaCanal = useMemo(() => inversionPorDia(pautaEntries, canalId, mesNum, anio), [pautaEntries, canalId, mesNum, anio]);
 
   const diasDelCanal = useMemo(() => {
@@ -80,8 +98,8 @@ export default function ControlDiarioPage() {
       const base = map[dia] ?? { ordenes: 0, unidades: 0, venta: 0 };
       const inversion = inversionDiaCanal[dia] ?? 0;
       return { dia, ...base, inversion };
-    }).filter((d) => d.ordenes > 0 || d.inversion > 0 || d.dia <= new Date().getDate());
-  }, [orders, canalId, mesNum, anio, diasEnMes, inversionDiaCanal]);
+    }).filter((d) => d.dia >= diaDesde && d.dia <= diaHastaEfectivo);
+  }, [orders, canalId, mesNum, anio, diasEnMes, inversionDiaCanal, diaDesde, diaHastaEfectivo]);
 
   const totales = diasDelCanal.reduce(
     (a, d) => ({ ordenes: a.ordenes + d.ordenes, unidades: a.unidades + d.unidades, venta: a.venta + d.venta, inversion: a.inversion + d.inversion }),
@@ -143,6 +161,15 @@ export default function ControlDiarioPage() {
       <div className="rounded-lg border bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 p-3.5 text-xs text-blue-800 dark:text-blue-300">
         ℹ️ Órdenes/Unidades/Venta son reales. Inversión/CPO/CPV/ROAS salen de lo que registres en Pauta por canal, guardado en este dispositivo — si un día no tiene inversión registrada, aparece en S/ 0.
       </div>
+
+      {!mismoMes && (
+        <div className="rounded-lg border bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-xs text-amber-800 dark:text-amber-300">
+          ⚠️ El periodo elegido arriba cruza más de un mes calendario. Esta
+          pantalla solo puede mostrar un mes completo a la vez, así que acá
+          ves el mes de {fromDate.slice(0, 7)} — para el total exacto del
+          periodo elegido, revisá Resumen o Reporte rápido.
+        </div>
+      )}
 
       {vista === "canal" ? (
         <>

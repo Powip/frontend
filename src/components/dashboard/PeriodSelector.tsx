@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   format,
+  parseISO,
   subDays,
   startOfMonth,
   endOfMonth,
@@ -36,6 +37,13 @@ import {
 interface PeriodSelectorProps {
   onPeriodChange: (fromDate: string, toDate: string) => void;
   className?: string;
+  /**
+   * Rango controlado externamente (ej. `AdminPeriodContext`). Cuando se
+   * pasa, el selector refleja ese valor en vez de manejar su propio estado
+   * inicial — así queda sincronizado con otros controles que escriben al
+   * mismo estado compartido (ver `QuickPeriodButtons`).
+   */
+  value?: { from: string; to: string };
 }
 
 type Preset = {
@@ -110,19 +118,35 @@ const PRESETS: Preset[] = [
 export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
   onPeriodChange,
   className,
+  value,
 }) => {
-  const [date, setDate] = useState<DateRange | undefined>({
-    from: startOfMonth(new Date()),
-    to: endOfMonth(new Date()),
-  });
-  const [activePreset, setActivePreset] = useState<string>("Mes Actual");
+  const [date, setDate] = useState<DateRange | undefined>(() =>
+    value
+      ? { from: parseISO(value.from), to: parseISO(value.to) }
+      : { from: startOfMonth(new Date()), to: endOfMonth(new Date()) },
+  );
+
+  // Cuando el rango viene controlado (`value`), cualquier cambio externo
+  // (ej. los atajos de `QuickPeriodButtons`) debe reflejarse acá también.
+  useEffect(() => {
+    if (!value) return;
+    setDate({ from: parseISO(value.from), to: parseISO(value.to) });
+  }, [value?.from, value?.to]);
+
+  const activePreset = useMemo(() => {
+    if (!date?.from || !date?.to) return "Personalizado";
+    const matched = PRESETS.find((p) => {
+      const r = p.getValue();
+      return r.from && r.to && isSameDay(r.from, date.from!) && isSameDay(r.to, date.to!);
+    });
+    return matched ? matched.label : "Personalizado";
+  }, [date]);
 
   const handlePresetChange = (presetLabel: string) => {
     const preset = PRESETS.find((p) => p.label === presetLabel);
     if (preset) {
       const range = preset.getValue();
       setDate(range);
-      setActivePreset(presetLabel);
       if (range.from && range.to) {
         onPeriodChange(
           format(range.from, "yyyy-MM-dd"),
@@ -134,7 +158,6 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
 
   const handleCustomDateChange = (newDate: DateRange | undefined) => {
     setDate(newDate);
-    setActivePreset("Personalizado");
     if (newDate?.from && newDate?.to) {
       onPeriodChange(
         format(newDate.from, "yyyy-MM-dd"),
@@ -143,8 +166,9 @@ export const PeriodSelector: React.FC<PeriodSelectorProps> = ({
     }
   };
 
-  // Emit initial period on mount
+  // Emit initial period on mount (solo si nadie más controla el rango)
   useEffect(() => {
+    if (value) return;
     if (date?.from && date?.to) {
       onPeriodChange(
         format(date.from, "yyyy-MM-dd"),
