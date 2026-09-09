@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
@@ -14,6 +14,10 @@ import {
   Send,
   MessageCircle,
   Search,
+  Calculator,
+  Ship,
+  Megaphone,
+  Check,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -26,20 +30,33 @@ const API_INTEGRATIONS = (
   process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3004"
 ).replace(/\/$/, "");
 
-type Category = "courier" | "canal";
+type Category = "courier" | "canal" | "servicio";
 type CategoryFilter = "all" | Category;
 
 interface IntegrationDef {
   id: string;
   title: string;
   description: string;
+  /** Ícono de respaldo — se usa mientras no haya `logo` (ver Jook, todavía sin logo). */
   icon: LucideIcon;
-  href: string;
   color: string;
   bgColor: string;
   category: Category;
   categoryLabel: string;
   methodTag: string;
+  /** Ruta interna con la integración real (login/API/OAuth). */
+  href?: string;
+  /** Logo real del partner, en `public/integrations/`. Si está, reemplaza al ícono. */
+  logo?: string;
+  /** Fondo del chip de logo — solo necesario si el logo es claro/transparente (ver Aliclik). */
+  logoBg?: string;
+  /**
+   * Partner de servicio sin integración vía API: no hay forma de detectar el
+   * estado automáticamente, así que el "Conectado" lo marca el usuario a mano
+   * (ver `manualStorageKey` más abajo).
+   */
+  externalLink?: string;
+  ctaLabel?: string;
 }
 
 const INTEGRATIONS: IntegrationDef[] = [
@@ -49,8 +66,9 @@ const INTEGRATIONS: IntegrationDef[] = [
     description: "Genera y despacha guías directamente desde el Centro de Envíos, con tracking en cada pedido.",
     icon: Truck,
     href: "/configuracion/integraciones/shalom",
-    color: "text-orange-600 dark:text-orange-400",
-    bgColor: "bg-orange-50 dark:bg-orange-950/40",
+    color: "text-amber-600 dark:text-amber-400",
+    bgColor: "bg-amber-50 dark:bg-amber-950/40",
+    logo: "/integrations/shalom.jpg",
     category: "courier",
     categoryLabel: "Courier",
     methodTag: "Cuenta",
@@ -63,6 +81,10 @@ const INTEGRATIONS: IntegrationDef[] = [
     href: "/configuracion/integraciones/aliclik",
     color: "text-purple-600 dark:text-purple-400",
     bgColor: "bg-purple-50 dark:bg-purple-950/40",
+    logo: "/integrations/aliclik.png",
+    // El logo es blanco sobre transparente (pensado para fondo oscuro) — con el
+    // chip claro por defecto se vuelve invisible, así que necesita este fondo.
+    logoBg: "bg-cyan-600",
     category: "courier",
     categoryLabel: "Courier",
     methodTag: "API Key",
@@ -73,8 +95,9 @@ const INTEGRATIONS: IntegrationDef[] = [
     description: "Conectá tu cuenta de EVA Courier (Fly Express) para despachar y recibir estados por webhook.",
     icon: Send,
     href: "/configuracion/integraciones/eva",
-    color: "text-blue-600 dark:text-blue-400",
-    bgColor: "bg-blue-50 dark:bg-blue-950/40",
+    color: "text-orange-600 dark:text-orange-400",
+    bgColor: "bg-orange-50 dark:bg-orange-950/40",
+    logo: "/integrations/eva.png",
     category: "courier",
     categoryLabel: "Courier · Fly Express",
     methodTag: "API Key",
@@ -87,6 +110,7 @@ const INTEGRATIONS: IntegrationDef[] = [
     href: "/configuracion/integraciones/yavendio",
     color: "text-teal-600 dark:text-teal-400",
     bgColor: "bg-teal-50 dark:bg-teal-950/40",
+    logo: "/integrations/yavendio.png",
     category: "canal",
     categoryLabel: "Canal de venta · WhatsApp IA",
     methodTag: "API Key",
@@ -99,17 +123,80 @@ const INTEGRATIONS: IntegrationDef[] = [
     href: "/configuracion/tiendas",
     color: "text-green-600 dark:text-emerald-400",
     bgColor: "bg-green-50 dark:bg-emerald-950/40",
+    logo: "/integrations/shopify.png",
     category: "canal",
     categoryLabel: "Canal de venta · Ecommerce",
     methodTag: "OAuth",
   },
+  {
+    id: "grint",
+    title: "Grint Solutions",
+    description: "GRINT te ayuda con contabilidad, SUNAT y formalización para que puedas enfocarte en hacer crecer tu negocio.",
+    icon: Calculator,
+    color: "text-blue-600 dark:text-blue-400",
+    bgColor: "bg-blue-50 dark:bg-blue-950/40",
+    logo: "/integrations/grint.png",
+    category: "servicio",
+    categoryLabel: "Servicio · Contabilidad",
+    methodTag: "Referido",
+    externalLink: "https://tally.so/r/rj4WB2",
+    ctaLabel: "Solicita asesoría",
+  },
+  {
+    id: "nihao",
+    title: "Nihao Importaciones",
+    description: "Encuentra proveedores, cotiza tus productos y recibí asesoría para importar a Perú con nuestro partner NIHAO.",
+    icon: Ship,
+    color: "text-red-600 dark:text-red-400",
+    bgColor: "bg-red-50 dark:bg-red-950/40",
+    logo: "/integrations/nihao.jpeg",
+    category: "servicio",
+    categoryLabel: "Servicio · Importación China",
+    methodTag: "Referido",
+    externalLink: "https://tally.so/r/3yzZLW",
+    ctaLabel: "Solicita tu cotización",
+  },
+  {
+    id: "jook",
+    title: "Jook Agency",
+    description: "JOOK combina tráfico + creativos + ángulos de venta para ayudarte a encontrar qué funciona y escalar tus ventas.",
+    icon: Megaphone,
+    color: "text-violet-600 dark:text-violet-400",
+    bgColor: "bg-violet-50 dark:bg-violet-950/40",
+    logo: "/integrations/jook.jpeg",
+    category: "servicio",
+    categoryLabel: "Servicio · Tráfico + Creativos",
+    methodTag: "Referido",
+    externalLink: "https://tally.so/r/1Ae5vW",
+    ctaLabel: "Quiero vender más",
+  },
 ];
+
+/** Estado manual (sin backend) de los partners de servicio — ver `IntegrationDef.externalLink`. */
+const MANUAL_PARTNER_IDS = INTEGRATIONS.filter((i) => !i.href).map((i) => i.id);
+const manualStorageKey = (companyId: string) => `powip:integraciones-manuales:${companyId}`;
+
+/** Un color por método de conexión — misma señal visual que el mockup (login/apikey/oauth/service). */
+const METHOD_TAG_STYLES: Record<string, string> = {
+  Cuenta: "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400",
+  "API Key": "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400",
+  OAuth: "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400",
+  Referido: "bg-purple-50 dark:bg-purple-950/40 text-purple-600 dark:text-purple-400",
+};
 
 const CATEGORY_CHIPS: { value: CategoryFilter; label: string }[] = [
   { value: "all", label: "Todas" },
   { value: "courier", label: "Couriers" },
   { value: "canal", label: "Canales de venta" },
+  { value: "servicio", label: "Servicios" },
 ];
+
+const CATEGORY_ORDER: Category[] = ["courier", "canal", "servicio"];
+const SECTION_LABELS: Record<Category, string> = {
+  courier: "🚚 Couriers",
+  canal: "🛍️ Canales de venta",
+  servicio: "🤝 Partners de servicio",
+};
 
 export default function IntegracionesHubPage() {
   const { auth } = useAuth();
@@ -118,8 +205,36 @@ export default function IntegracionesHubPage() {
 
   const [statusMap, setStatusMap] = useState<Record<string, boolean>>({});
   const [statusLoaded, setStatusLoaded] = useState(false);
+  const [manualStatus, setManualStatus] = useState<Record<string, boolean>>({});
   const [category, setCategory] = useState<CategoryFilter>("all");
   const [query, setQuery] = useState("");
+
+  // Estado manual de partners de servicio (sin API): persiste en localStorage,
+  // igual que otros datos "puente" del proyecto mientras no hay backend
+  // (ver `src/app/administracion/_lib/useLocalStorage.ts`).
+  useEffect(() => {
+    if (!companyId) return;
+    try {
+      const raw = window.localStorage.getItem(manualStorageKey(companyId));
+      setManualStatus(raw ? (JSON.parse(raw) as Record<string, boolean>) : {});
+    } catch {
+      setManualStatus({});
+    }
+  }, [companyId]);
+
+  const toggleManualStatus = (id: string) => {
+    if (!companyId) return;
+    setManualStatus((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        window.localStorage.setItem(manualStorageKey(companyId), JSON.stringify(next));
+      } catch {
+        // localStorage lleno, bloqueado (modo privado) o inaccesible — el
+        // toggle sigue funcionando en memoria para esta sesión.
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!companyId || !token) {
@@ -169,7 +284,18 @@ export default function IntegracionesHubPage() {
     });
   }, [category, query]);
 
-  const connectedCount = Object.values(statusMap).filter(Boolean).length;
+  const sections = useMemo(
+    () =>
+      CATEGORY_ORDER.map((cat) => ({
+        cat,
+        items: filtered.filter((i) => i.category === cat),
+      })).filter((section) => section.items.length > 0),
+    [filtered],
+  );
+
+  const connectedCount =
+    Object.values(statusMap).filter(Boolean).length +
+    MANUAL_PARTNER_IDS.filter((id) => manualStatus[id]).length;
   const totalCount = INTEGRATIONS.length;
 
   return (
@@ -244,28 +370,74 @@ export default function IntegracionesHubPage() {
         </div>
 
         <div className="grid gap-6 md:grid-cols-2">
-          {filtered.map((integration) => {
-            const Icon = integration.icon;
-            const connected = statusMap[integration.id];
-            return (
-              <Link key={integration.id} href={integration.href}>
-                <Card className="h-full cursor-pointer transition-all hover:shadow-lg hover:border-teal-300 dark:hover:border-teal-700 relative group">
+          {sections.map((section) => (
+            <Fragment key={section.cat}>
+              <div className="col-span-full flex items-center gap-3 text-xs font-bold uppercase tracking-wide text-gray-400 dark:text-slate-500 mt-2 first:mt-0">
+                {SECTION_LABELS[section.cat]}
+                <span className="flex-1 h-px bg-gray-200 dark:bg-slate-700" />
+              </div>
+              {section.items.map((integration) => {
+                const Icon = integration.icon;
+                const isManual = !integration.href;
+                const connected = isManual ? !!manualStatus[integration.id] : statusMap[integration.id];
+
+                const statusBadge = isManual ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      toggleManualStatus(integration.id);
+                    }}
+                    title="Marcar manualmente — no hay integración automática con este partner"
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                      connected
+                        ? "bg-green-100 dark:bg-emerald-900/40 text-green-700 dark:text-emerald-400 hover:bg-green-200 dark:hover:bg-emerald-900/70"
+                        : "bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 hover:bg-gray-200 dark:hover:bg-slate-600"
+                    }`}
+                  >
+                    {connected ? (
+                      <Check className="h-3 w-3" />
+                    ) : (
+                      <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+                    )}
+                    {connected ? "Activado" : "Disponible"}
+                  </button>
+                ) : connected ? (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-emerald-900/40 px-3 py-1 text-xs font-semibold text-green-700 dark:text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                    Conectado
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-slate-700 px-3 py-1 text-xs font-semibold text-gray-500 dark:text-slate-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
+                    Disponible
+                  </span>
+                );
+
+                const cardBody = (
                   <CardContent className="p-6 flex flex-col h-full">
                     <div className="flex justify-between items-start mb-4">
-                      <div className={`${integration.bgColor} w-fit rounded-lg p-3`}>
-                        <Icon className={`h-6 w-6 ${integration.color}`} />
-                      </div>
-                      {connected ? (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-emerald-900/40 px-3 py-1 text-xs font-semibold text-green-700 dark:text-emerald-400">
-                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-                          Conectado
-                        </span>
+                      {integration.logo ? (
+                        <div
+                          className={`h-12 max-w-[130px] rounded-lg px-2.5 flex items-center justify-center ${
+                            integration.logoBg ??
+                            "bg-white dark:bg-slate-100 border border-gray-100 dark:border-slate-300"
+                          }`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element -- ancho variable por logo, next/image exige dimensiones fijas */}
+                          <img
+                            src={integration.logo}
+                            alt={integration.title}
+                            className="h-8 w-auto max-w-full object-contain"
+                          />
+                        </div>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-slate-700 px-3 py-1 text-xs font-semibold text-gray-500 dark:text-slate-400">
-                          <span className="h-1.5 w-1.5 rounded-full bg-gray-400" />
-                          Disponible
-                        </span>
+                        <div className={`${integration.bgColor} w-fit rounded-lg p-3`}>
+                          <Icon className={`h-6 w-6 ${integration.color}`} />
+                        </div>
                       )}
+                      {statusBadge}
                     </div>
 
                     <div className="text-[11px] font-bold uppercase tracking-wide text-gray-400 dark:text-slate-500">
@@ -279,25 +451,56 @@ export default function IntegracionesHubPage() {
                     </p>
 
                     <div className="mt-4 pt-4 border-t border-gray-200 dark:border-slate-700 flex items-center justify-between text-sm font-medium">
+                      {isManual ? (
+                        <a
+                          href={integration.externalLink}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1.5 text-teal-600 dark:text-teal-400 hover:underline"
+                        >
+                          {integration.ctaLabel}
+                          <ArrowRight className="h-4 w-4 transform group-hover:translate-x-1 transition-transform" />
+                        </a>
+                      ) : (
+                        <span
+                          className={`inline-flex items-center gap-1.5 ${
+                            connected
+                              ? "text-green-700 dark:text-emerald-400"
+                              : "text-teal-600 dark:text-teal-400"
+                          }`}
+                        >
+                          {connected ? "Gestionar" : "Conectar"}
+                          <ArrowRight className="h-4 w-4 transform group-hover:translate-x-1 transition-transform" />
+                        </span>
+                      )}
                       <span
-                        className={`inline-flex items-center gap-1.5 ${
-                          connected
-                            ? "text-green-700 dark:text-emerald-400"
-                            : "text-teal-600 dark:text-teal-400"
+                        className={`text-[10.5px] font-bold uppercase tracking-wide px-2 py-0.5 rounded ${
+                          METHOD_TAG_STYLES[integration.methodTag] ??
+                          "bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-500"
                         }`}
                       >
-                        {connected ? "Gestionar" : "Conectar"}
-                        <ArrowRight className="h-4 w-4 transform group-hover:translate-x-1 transition-transform" />
-                      </span>
-                      <span className="text-[10.5px] font-bold uppercase tracking-wide text-gray-400 dark:text-slate-500 bg-gray-100 dark:bg-slate-700 px-2 py-0.5 rounded">
                         {integration.methodTag}
                       </span>
                     </div>
                   </CardContent>
-                </Card>
-              </Link>
-            );
-          })}
+                );
+
+                const cardClass =
+                  "h-full transition-all hover:shadow-lg hover:border-teal-300 dark:hover:border-teal-700 relative group";
+
+                return isManual ? (
+                  <Card key={integration.id} className={cardClass}>
+                    {cardBody}
+                  </Card>
+                ) : (
+                  <Link key={integration.id} href={integration.href!}>
+                    <Card className={`${cardClass} cursor-pointer`}>{cardBody}</Card>
+                  </Link>
+                );
+              })}
+            </Fragment>
+          ))}
         </div>
 
         {filtered.length === 0 && (

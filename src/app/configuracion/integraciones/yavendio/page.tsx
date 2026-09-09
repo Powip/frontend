@@ -683,15 +683,24 @@ export default function YavendioConfigPage() {
 
       {/* Estado NO CONFIGURADO — sin cuenta de Yavendio todavía */}
       {!saving && !credential && (
-        <div className="bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-900 rounded-xl px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-xs text-teal-800 dark:text-teal-300">
-            ¿Todavía no tenés cuenta en Yavendio? Creala con nuestro link de referidos.
-          </p>
+        <div className="bg-gradient-to-br from-teal-500 to-emerald-600 rounded-xl p-5 shadow-sm">
+          <div className="flex items-start gap-3">
+            <span className="text-3xl leading-none">🚀</span>
+            <div className="flex-1 space-y-1">
+              <h2 className="text-base font-bold text-white">
+                ¿Todavía no tenés cuenta en Yavendio?
+              </h2>
+              <p className="text-sm text-teal-50">
+                Creala gratis con nuestro link de partner y empezá a vender por
+                WhatsApp con IA.
+              </p>
+            </div>
+          </div>
           <a
             href="https://ya.onl/sign-up?plan_id=365&frequency=QUARTERLY&ref=62939&utm_source=partner&utm_medium=partner_program_v1"
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 bg-teal-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium hover:bg-teal-700 transition whitespace-nowrap"
+            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-teal-700 shadow-sm transition hover:bg-teal-50"
           >
             Crear cuenta en Yavendio ↗
           </a>
