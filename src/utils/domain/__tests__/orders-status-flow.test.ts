@@ -83,8 +83,8 @@ describe("getStatusChainSteps", () => {
 });
 
 describe("toFulfillmentStatus", () => {
-  it("mapea PAGADO a PENDIENTE (el cobro no es una etapa de fulfillment)", () => {
-    expect(toFulfillmentStatus("PAGADO")).toBe("PENDIENTE");
+  it("mapea PAGADO a PREPARADO (ya está listo para el mismo trabajo que un PREPARADO, el cobro se gestiona aparte)", () => {
+    expect(toFulfillmentStatus("PAGADO")).toBe("PREPARADO");
   });
 
   it.each<OrderStatus>([

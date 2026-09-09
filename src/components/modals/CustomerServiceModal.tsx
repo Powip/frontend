@@ -77,7 +77,7 @@ import { DatosIncompletosBlock } from "@/components/atencion-cliente/cc-v2/Datos
 import { CcGestionPanel } from "@/components/atencion-cliente/cc-v2/CcGestionPanel";
 import { CcScriptPanel } from "@/components/atencion-cliente/cc-v2/CcScriptPanel";
 import { OrderHeader, OrderStatus, SubEstadoCc } from "@/interfaces/IOrder";
-import { getAvailableStatuses, getStatusLabel } from "@/utils/domain/orders-status-flow";
+import { getAvailableStatuses, getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { isJunkDni } from "@/utils/junk-document.util";
 import { printOrderLabel, type OrderReceipt } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
@@ -351,19 +351,37 @@ export default function CustomerServiceModal({
     callStatus: "CONFIRMED" | "NO_ANSWER",
   ) => {
     try {
-      const payload: { callStatus: string; status?: string } = { callStatus };
-
       if (callStatus === "CONFIRMED") {
-        payload.status = "LLAMADO";
         if (isOperaciones && isJunkDni(receipt?.customer?.dni)) {
           toast.warning("DNI vacío o inválido, pero la entrega fue confirmada");
         }
+        // El backend solo valida saltos de un paso (ver ORDER_STATUS_FLOW):
+        // un pedido en PAGADO (o cualquier estado no adyacente a LLAMADO)
+        // rechazaba el PATCH directo a status: "LLAMADO" — se encadenan acá
+        // los pasos intermedios, igual que handleChangeStatus en Pedidos.
+        const steps = receipt
+          ? getStatusChainSteps(receipt.status as OrderStatus, "LLAMADO")
+          : ["LLAMADO" as OrderStatus];
+        if (steps.length > 0) {
+          for (const step of steps) {
+            await axios.patch(
+              `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+              { status: step, ...(step === "LLAMADO" && { callStatus }) },
+            );
+          }
+        } else {
+          // Ya está en LLAMADO o más adelante — solo confirmar la llamada.
+          await axios.patch(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+            { callStatus },
+          );
+        }
+      } else {
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+          { callStatus },
+        );
       }
-
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        payload,
-      );
 
       toast.success(
         callStatus === "CONFIRMED"
@@ -534,8 +552,11 @@ export default function CustomerServiceModal({
     if (!receipt) return;
     await printOrderLabel(receipt, orderHeader, auth?.company);
 
-    // Si el pedido está en PENDIENTE, mostrar confirmación para pasar a PREPARADO
-    if (receipt.status === "PENDIENTE") {
+    // Si el pedido todavía no está preparado, mostrar confirmación para
+    // pasarlo a PREPARADO. PAGADO cuenta igual que PENDIENTE acá — es
+    // "PENDIENTE + cobrado al 100%" (ver toFulfillmentStatus), tampoco fue
+    // preparado por almacén todavía.
+    if (receipt.status === "PENDIENTE" || receipt.status === "PAGADO") {
       setPrintConfirmOpen(true);
     }
   };
@@ -1639,6 +1660,7 @@ export default function CustomerServiceModal({
                     ) : isScheduledDelivery ? (
                       <ScheduledDeliverySection
                         orderId={orderId}
+                        status={receipt.status as OrderStatus}
                         callbackAt={receipt.callbackAt}
                         callStatus={receipt.callStatus}
                         onUpdated={() => {

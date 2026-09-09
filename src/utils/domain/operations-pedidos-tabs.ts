@@ -84,11 +84,16 @@ export function getPedidosTab(order: OrderHeader): PedidosTabKey {
     return "camino";
   }
 
-  // PREPARADO, LLAMADO, ASIGNADO_A_GUIA — y cualquier otro estado previo
-  // (PENDIENTE/PAGADO/INCOMPLETE/PREVENTA) como fallback, para no
-  // desaparecer un pedido silenciosamente — todos van a "Por Despachar",
-  // igual que en el mockup. La gestión de llamada de confirmación se hace
-  // desde el modal de pedido, no filtra la pestaña.
+  // PREPARADO, LLAMADO, ASIGNADO_A_GUIA — pipeline activo de despacho, van
+  // a "Por Despachar" igual que en el mockup. La gestión de llamada de
+  // confirmación se hace desde el modal de pedido, no filtra la pestaña.
+  // PAGADO también cae acá a propósito ("PENDIENTE + cobrado al 100%": se
+  // puede armar guía directo, ver GUIDE_ELIGIBLE_STATUSES en
+  // PorDespacharTab.tsx). PENDIENTE/INCOMPLETE/PREVENTA sí son etapas
+  // previas a la preparación (Ventas, no Operaciones) y no deberían llegar
+  // hasta acá — PedidosContent.tsx los filtra antes de agrupar por
+  // pestaña; el fallback sigue existiendo para no desaparecer
+  // silenciosamente un estado nuevo o no contemplado.
   return "despachar";
 }
 

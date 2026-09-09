@@ -100,7 +100,7 @@ export function CallStatusBadge({ sale }: { sale: Sale }) {
 
 export function StatusPill({ status }: { status: OrderStatus }) {
   // En las tablas de Pedidos la columna Estado muestra la etapa de
-  // fulfillment: un PAGADO se ve como "Pendiente" (el cobro se gestiona en el
+  // fulfillment: un PAGADO se ve como "Preparado" (el cobro se gestiona en el
   // modal de pagos, no en esta píldora).
   const displayStatus = toFulfillmentStatus(status);
   return (
@@ -200,7 +200,7 @@ export function RowStatusSelect({
 }) {
   // La lógica de transición usa SIEMPRE el status real (value + nextStatuses);
   // solo la etiqueta/píldora visible del trigger muestra la etapa de
-  // fulfillment (PAGADO se ve como "Pendiente").
+  // fulfillment (PAGADO se ve como "Preparado").
   const nextStatuses = getAvailableStatuses(status).filter((s) => s !== status);
   if (nextStatuses.length === 0 && !onMarkNoAnswer && !onReschedule) {
     return <StatusPill status={status} />;

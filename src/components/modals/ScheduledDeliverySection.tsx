@@ -10,9 +10,12 @@ import { Calendar } from "../ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/popover";
 import { cn } from "@/lib/utils";
 import { Check, Clock, Package, Loader2 } from "lucide-react";
+import { OrderStatus } from "@/interfaces/IOrder";
+import { getStatusChainSteps } from "@/utils/domain/orders-status-flow";
 
 interface Props {
   orderId: string;
+  status: OrderStatus;
   callbackAt: string | null | undefined;
   callStatus: string | null | undefined;
   onUpdated: () => void;
@@ -20,6 +23,7 @@ interface Props {
 
 export default function ScheduledDeliverySection({
   orderId,
+  status,
   callbackAt,
   callStatus,
   onUpdated,
@@ -47,10 +51,24 @@ export default function ScheduledDeliverySection({
     if (isConfirming) return;
     setIsConfirming(true);
     try {
-      await axios.patch(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
-        { callStatus: "CONFIRMED", status: "LLAMADO" },
-      );
+      // El backend solo valida saltos de un paso (ver ORDER_STATUS_FLOW): un
+      // pedido en PAGADO (o cualquier estado no adyacente a LLAMADO)
+      // rechazaba el PATCH directo a status: "LLAMADO" — se encadenan acá
+      // los pasos intermedios, igual que handleChangeStatus en Pedidos.
+      const steps = getStatusChainSteps(status, "LLAMADO");
+      if (steps.length > 0) {
+        for (const step of steps) {
+          await axios.patch(
+            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+            { status: step, ...(step === "LLAMADO" && { callStatus: "CONFIRMED" }) },
+          );
+        }
+      } else {
+        await axios.patch(
+          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+          { callStatus: "CONFIRMED" },
+        );
+      }
       toast.success("Entrega confirmada");
       onUpdated();
     } catch {

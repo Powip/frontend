@@ -132,10 +132,22 @@ export function PedidosContent() {
   // de Ventas, no de Operaciones, hasta que se prepare). INCOMPLETE tampoco
   // — es un carrito/checkout que nunca se terminó (con errores de sync, se
   // gestiona aparte en Atención al Cliente › Pedidos con errores), no un
-  // pedido real; sin este filtro caía por el fallback de getPedidosTab
-  // directo a "Por Despachar", mezclado con pedidos listos para despachar.
+  // pedido real. PREVENTA tampoco — es un carrito pre-venta, ni siquiera
+  // llegó a PENDIENTE. PAGADO SÍ se mantiene visible a propósito (no se
+  // filtra): es "PENDIENTE + cobrado al 100%" y GUIDE_ELIGIBLE_STATUSES
+  // (PorDespacharTab.tsx) permite armar guía directo desde ahí — ver
+  // PorDespacharTab.test.tsx, "habilitación de Generar guía para PAGADO".
+  // Sin este filtro, PENDIENTE/INCOMPLETE/PREVENTA caían por el fallback de
+  // getPedidosTab directo a "Por Despachar", mezclado con pedidos
+  // realmente listos para despachar.
   const visibleOrders = useMemo(
-    () => orders.filter((o) => o.status !== "PENDIENTE" && o.status !== "INCOMPLETE"),
+    () =>
+      orders.filter(
+        (o) =>
+          o.status !== "PENDIENTE" &&
+          o.status !== "INCOMPLETE" &&
+          o.status !== "PREVENTA",
+      ),
     [orders],
   );
 
@@ -594,10 +606,12 @@ export function PedidosContent() {
       );
 
       const receipts: ReceiptData[] = [];
+      const printedSales: Sale[] = [];
       const failed: string[] = [];
       results.forEach((result, i) => {
         if (result.status === "fulfilled") {
           receipts.push(result.value.data);
+          printedSales.push(selected[i]);
         } else {
           failed.push(selected[i].orderNumber);
           console.error(`Error al obtener el comprobante de ${selected[i].orderNumber}`, result.reason);
@@ -615,6 +629,33 @@ export function PedidosContent() {
       if (failed.length > 0) {
         toast.warning(`Se imprimieron ${receipts.length} etiqueta(s). No se pudo generar la de: ${failed.join(", ")}`);
       }
+
+      // Imprimir la etiqueta de picking es la señal de que el pedido queda
+      // preparado para despacho — mismo criterio que "Imprimir" en
+      // CustomerServiceModal (handlePrint/handleConfirmPrintStatus), pero
+      // acá no hace falta el diálogo de confirmación: seleccionar e imprimir
+      // en lote ya es la confirmación explícita. Solo avanza los que todavía
+      // no llegaron a PREPARADO (p.ej. PAGADO); un PREPARADO/LLAMADO/
+      // ASIGNADO_A_GUIA no genera PATCH (getStatusChainSteps no retrocede).
+      const toPrepare = printedSales.filter(
+        (sale) => getStatusChainSteps(sale.status, "PREPARADO").length > 0,
+      );
+      if (toPrepare.length > 0) {
+        const uInfo = getUserInfo();
+        const patchResults = await Promise.allSettled(
+          toPrepare.map((sale) =>
+            axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
+              status: "PREPARADO",
+              ...uInfo,
+            }),
+          ),
+        );
+        const patchFailed = patchResults.filter((r) => r.status === "rejected").length;
+        if (patchFailed > 0) {
+          console.error(`${patchFailed} pedido(s) no se pudieron pasar a PREPARADO tras imprimir`);
+        }
+        fetchOrders();
+      }
     } catch (error) {
       printWindow.close();
       console.error("Error al generar etiquetas en lote", error);
@@ -622,7 +663,7 @@ export function PedidosContent() {
     } finally {
       setIsBulkLoading(false);
     }
-  }, [auth?.company]);
+  }, [auth?.company, getUserInfo, fetchOrders]);
 
   const handleBulkWhatsApp = useCallback((selected: Sale[]) => {
     if (selected.length === 0) {

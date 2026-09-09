@@ -226,7 +226,7 @@ export function PorDespacharTab({
   };
 
   // El filtro "Estado" ofrece la etapa de fulfillment, no el pseudo-estado de
-  // cobro: PAGADO se colapsa en "Pendiente" (dedupe con el Set). El match del
+  // cobro: PAGADO se colapsa en "Preparado" (dedupe con el Set). El match del
   // filtro también se evalúa sobre esa etapa — ver `filtered` más abajo.
   const statusOptions = useMemo(() => {
     const set = new Set<OrderStatus>();
