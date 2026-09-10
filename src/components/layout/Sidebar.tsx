@@ -40,6 +40,11 @@ import {
   Landmark,
   PiggyBank,
   CalendarRange,
+  CreditCard,
+  MapPinned,
+  KeyRound,
+  Smartphone,
+  Bell,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -195,6 +200,19 @@ export function Sidebar({ className }: SidebarProps) {
             href: "/operaciones/liquidaciones",
             icon: Wallet,
           },
+        ],
+      },
+      {
+        name: "Cobranza",
+        icon: CreditCard,
+        children: [
+          { name: "Guías & Courier", href: "/cobranza/guias", icon: PackagePlus },
+          { name: "Mapa de flota", href: "/cobranza/flota", icon: MapPinned },
+          { name: "Códigos de entrega", href: "/cobranza/codigos", icon: KeyRound },
+          { name: "Validar Yapes", href: "/cobranza/yapes", icon: Smartphone },
+          { name: "Finanzas", href: "/cobranza/finanzas", icon: Wallet },
+          { name: "Notificaciones", href: "/cobranza/notificaciones", icon: Bell },
+          { name: "Mercado Pago", href: "/cobranza/mercado-pago", icon: CreditCard },
         ],
       },
       {
