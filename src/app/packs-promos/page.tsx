@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import axios from "axios";
 import { Plus, Pencil, Trash2, PlayCircle, PauseCircle, PackageCheck, Sparkles, Gift, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -316,12 +317,14 @@ function PackCard({
  *  El backend deriva companyId del JWT validado en `GET /products/report`; el
  *  frontend no necesita mandarlo ni gatear por empresa.
  *
- *  `options.enabled` (default `true`) gatea la request. El buscador de Volumen
- *  lo pasa en `false` cuando el pack es GIFT o BUNDLE: GIFT usa `GiftSearchPicker`
- *  (otro service) y cada fila del bundle monta su propia instancia, así que ese
- *  `GET /products/report` no lo consume nadie. Con `enabled: false` react-query
- *  no dispara la query, por lo que `products` cae al default `[]`, `loading`
- *  queda `false` y `isError` queda `false`. */
+ *  `options.enabled` (default `true`) gatea la request. El modal monta dos
+ *  instancias a este nivel: el buscador de Volumen (`enabled: type === "VOLUME"`)
+ *  y una instancia mínima sin término (`enabled: VOLUME || BUNDLE`) que sólo
+ *  deriva `errorReason` para la nota inline; ambas comparten queryKey con las
+ *  filas del bundle, así que no agregan requests. GIFT no consume este catálogo
+ *  (usa `GiftSearchPicker`, otro service). Con `enabled: false` react-query no
+ *  dispara la query, por lo que `products` cae al default `[]`, `loading` queda
+ *  `false`, `isError` queda `false` y `errorReason` queda `null`. */
 function useProductCatalog(options?: { enabled?: boolean }) {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
@@ -335,6 +338,7 @@ function useProductCatalog(options?: { enabled?: boolean }) {
     data: products = [],
     isFetching,
     isError,
+    error,
   } = useQuery({
     queryKey: ["packs-catalog", debouncedQuery],
     queryFn: () =>
@@ -342,19 +346,45 @@ function useProductCatalog(options?: { enabled?: boolean }) {
     staleTime: 30_000,
     placeholderData: (prev) => prev, // evita el flicker a lista vacía entre búsquedas
     enabled: options?.enabled ?? true,
+    // No reintentar 4xx de axios (incl. el 403 "sin empresa"): reintento inútil
+    // que sólo demora el feedback. 1 reintento para el resto (5xx, errores JS).
+    retry: (n, e) =>
+      axios.isAxiosError(e) && (e.response?.status ?? 0) < 500 ? false : n < 1,
   });
 
-  useEffect(() => {
-    if (isError) {
-      // toast con id estable: aunque se monten ~11 instancias del hook (Volumen +
-      // filas del bundle), el usuario ve un solo aviso.
-      toast.error("No se pudo cargar el catálogo de productos.", {
-        id: "packs-catalog-load-error",
-      });
-    }
-  }, [isError]);
+  // `GET /products/report` responde 403 cuando la cuenta autenticada no tiene
+  // empresa asignada en el JWT (en ms-products el único 403 de ese endpoint es
+  // ForbiddenException por `!companyId`; token inválido/expirado da 401).
+  // Distinguimos ese caso del error genérico para explicarlo en vez de mostrar
+  // el confuso "no se pudo cargar". `errorReason` queda `null` si no hay error.
+  const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+  const errorReason: "no-company" | "generic" | null = !isError
+    ? null
+    : status === 403
+      ? "no-company"
+      : "generic";
 
-  return { query, setQuery, products, loading: isFetching, isError };
+  useEffect(() => {
+    if (!errorReason) return;
+    // id por `errorReason` para que el aviso "sin empresa" y el genérico no se
+    // pisen en sonner. Con id estable, aunque se monten ~11 instancias del hook
+    // (Volumen + filas del bundle) el usuario ve un solo aviso por caso.
+    toast.error(
+      errorReason === "no-company"
+        ? "No se pudo cargar el catálogo con esta cuenta. Suele pasar cuando la cuenta no tiene una empresa asignada — verificá con un administrador."
+        : "No se pudo cargar el catálogo de productos.",
+      { id: `packs-catalog-load-error-${errorReason}` },
+    );
+  }, [errorReason]);
+
+  return {
+    query,
+    setQuery,
+    products,
+    loading: isFetching,
+    isError,
+    errorReason,
+  };
 }
 
 const toOptions = (list: IGetProducts[]) =>
@@ -539,6 +569,25 @@ function PackFormModal({
     () => toOptions(productSearchVolume.products),
     [productSearchVolume.products],
   );
+
+  // Instancia mínima sin término de búsqueda, sólo para derivar `errorReason` de
+  // la nota inline en VOLUME y BUNDLE. Su queryKey es siempre
+  // `["packs-catalog", ""]`, la misma que usan las filas del bundle vacías y el
+  // buscador de Volumen antes de tipear: react-query dedupe y no agrega requests.
+  const catalogError = useProductCatalog({
+    enabled: type === "VOLUME" || type === "BUNDLE",
+  });
+
+  // Nota ámbar cuando el catálogo falla por cuenta sin empresa (403). Misma
+  // paleta que el aviso de "Vendedor" de la página. Se reusa en VOLUME y BUNDLE;
+  // no bloquea el resto del modal.
+  const catalogNoCompanyNote =
+    catalogError.errorReason === "no-company" ? (
+      <p className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
+        No se pudo cargar el catálogo con esta cuenta. Suele pasar cuando la
+        cuenta no tiene una empresa asignada — verificá con un administrador.
+      </p>
+    ) : null;
 
   const findInList = (list: IGetProducts[], id: string) => list.find((p) => p.id === id);
 
@@ -737,6 +786,7 @@ function PackFormModal({
                   placeholder="Buscar producto..."
                   searchPlaceholder="Nombre del producto..."
                 />
+                {catalogNoCompanyNote}
               </div>
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox checked={volVariantFree} onCheckedChange={(v) => setVolVariantFree(!!v)} />
@@ -763,6 +813,7 @@ function PackFormModal({
             <div className="space-y-3">
               <div className="space-y-2">
                 <Label>Productos del bundle (mínimo 2, máximo 10)</Label>
+                {catalogNoCompanyNote}
                 {bunProductIds.map((id, i) => (
                   <BundleProductRow
                     key={bunRowKeys[i]}

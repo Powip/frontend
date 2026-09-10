@@ -65,9 +65,11 @@
  *    `items` con los `productId`/`price` de cada fila (en orden) y el `packPrice`
  *    elegido. Los BUNDLE van solo a localStorage, no tocan `promos.service`
  *    (ver `PacksContext.addPack`, rama `pack.type !== "VOLUME"`).
- * 8. (FIX 1 — rama de error) Si `getProducts` rechaza, `useProductCatalog`
- *    dispara `toast.error("No se pudo cargar el catálogo de productos.",
- *    { id: "packs-catalog-load-error" })`.
+ * 8. (FIX 1 — rama de error) Si `getProducts` rechaza con un error genérico,
+ *    `useProductCatalog` dispara `toast.error("No se pudo cargar el catálogo de
+ *    productos.", { id: "packs-catalog-load-error-generic" })`. El id de sonner
+ *    ahora lleva sufijo por caso (`-no-company` | `-generic`) para que el aviso
+ *    "sin empresa" y el genérico no se pisen entre sí.
  * 9. (FIX 1 — dedupe) Con varias filas de bundle montadas y sin búsquedas
  *    distintas, todas las instancias del hook comparten
  *    `queryKey: ["packs-catalog", ""]` y react-query colapsa la carga del
@@ -212,6 +214,7 @@ jest.mock('@/components/ui/checkbox', () => {
 
 // ── Imports bajo prueba (después de los mocks) ───────────────────────────────
 
+import { AxiosError } from 'axios';
 import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { getProducts } from '@/api/Productos';
@@ -333,7 +336,11 @@ function seedLocalPacks(companyId: string, packs: unknown) {
 
 function renderPage() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
+    // `retry: false` por defecto. `useProductCatalog` sobreescribe `retry` con
+    // una fn que SÍ reintenta una vez ante 5xx / errores JS (corta sólo 4xx):
+    // `retryDelay: 0` hace ese reintento inmediato para no esperar el backoff
+    // real de react-query (~1s) en los tests de la rama de error.
+    defaultOptions: { queries: { retry: false, retryDelay: 0 } },
   });
   return render(
     <QueryClientProvider client={queryClient}>
@@ -828,19 +835,154 @@ describe('PacksPromosPage — guardar un bundle válido (FIX 2, happy path)', ()
 // ── FIX 1 — rama de error: falla la carga del catálogo ─────────────────────
 
 describe('PacksPromosPage — error al cargar el catálogo de productos (FIX 1)', () => {
-  it('dispara toast.error con id estable cuando getProducts rechaza', async () => {
+  it('dispara toast.error genérico (id "...-generic") cuando getProducts rechaza', async () => {
     mockGetProducts.mockRejectedValue(new Error('boom'));
 
     const user = userEvent.setup();
-    renderPage(); // el QueryClient de renderPage ya tiene retry: false
+    renderPage(); // QueryClient de renderPage: retry: false + retryDelay: 0
     await openNewPackModal(user); // abre en el tab Volumen
+
+    await waitFor(
+      () =>
+        expect(mockToast.error).toHaveBeenCalledWith(
+          'No se pudo cargar el catálogo de productos.',
+          expect.objectContaining({ id: 'packs-catalog-load-error-generic' }),
+        ),
+      { timeout: 3000 },
+    );
+  });
+});
+
+// ── Hardening (2da ronda) — 403 "sin empresa" vs error genérico del catálogo ─
+
+/**
+ * `useProductCatalog` deriva `errorReason: "no-company" | "generic" | null`:
+ *
+ * - Un 403 de `GET /products/report` (en ms-products el único 403 de ese
+ *   endpoint es la cuenta autenticada sin empresa en el JWT — aislamiento
+ *   multi-tenant intencional) → `errorReason: "no-company"`: nota inline ámbar
+ *   dentro del modal + `toast.error` con copy propio e id
+ *   `"packs-catalog-load-error-no-company"`.
+ * - Cualquier otro error (5xx, AxiosError de red sin `response`, error JS
+ *   plano) → `errorReason: "generic"`: `toast.error("No se pudo cargar el
+ *   catálogo de productos.", { id: "packs-catalog-load-error-generic" })`, sin
+ *   nota inline. El sufijo por caso en el id evita que sonner pise un aviso con
+ *   el otro.
+ * - La nota inline la deriva una instancia del hook a nivel de modal
+ *   (`catalogError`, `enabled: type === "VOLUME" || type === "BUNDLE"`), así que
+ *   aparece en AMBOS tabs, no sólo Volumen.
+ * - `retry` del hook corta 4xx (reintento inútil); 5xx y errores JS reintentan
+ *   una vez. Una AxiosError de red sin `response` cuenta como `status 0 < 500`
+ *   → tampoco reintenta.
+ *
+ * `sonner` está mockeado (jest.fn): el texto de los toasts NO llega al DOM, así
+ * que `findByText`/`queryByText` sobre la nota sólo pueden matchear la nota
+ * inline real que renderiza `PackFormModal`.
+ */
+describe('PacksPromosPage — catálogo: 403 "sin empresa" vs error genérico (hardening 2da ronda)', () => {
+  const NO_COMPANY_NOTE = /no tiene una empresa asignada/i;
+
+  /** AxiosError con `response.status`. `axios.isAxiosError` sólo mira
+   *  `isAxiosError === true` (lo setea el constructor); el `status` lo lee el
+   *  hook vía `error.response?.status`. */
+  const axiosErrorWithStatus = (status: number): Error => {
+    const err = new AxiosError(`Request failed with status code ${status}`);
+    (err as unknown as { response: { status: number } }).response = { status };
+    return err;
+  };
+
+  const expectGenericToast = () =>
+    waitFor(
+      () =>
+        expect(mockToast.error).toHaveBeenCalledWith(
+          'No se pudo cargar el catálogo de productos.',
+          expect.objectContaining({ id: 'packs-catalog-load-error-generic' }),
+        ),
+      { timeout: 3000 },
+    );
+
+  it('403 en el tab Volumen: nota inline visible + toast específico con id "...-no-company"', async () => {
+    mockGetProducts.mockRejectedValue(axiosErrorWithStatus(403));
+
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await openNewPackModal(user); // abre en el tab Volumen
+
+    expect(await modal.findByText(NO_COMPANY_NOTE)).toBeInTheDocument();
 
     await waitFor(() =>
       expect(mockToast.error).toHaveBeenCalledWith(
-        'No se pudo cargar el catálogo de productos.',
-        expect.objectContaining({ id: 'packs-catalog-load-error' }),
+        expect.stringContaining('no tiene una empresa asignada'),
+        expect.objectContaining({
+          id: 'packs-catalog-load-error-no-company',
+        }),
       ),
     );
+  });
+
+  it('403 con el modal en el tab Bundle: la misma nota inline aparece arriba de las filas de producto', async () => {
+    mockGetProducts.mockRejectedValue(axiosErrorWithStatus(403));
+
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await openNewPackModal(user);
+    await user.click(modal.getByRole('button', { name: /bundle/i }));
+
+    // Las filas del bundle montan (2 comboboxes) y la nota convive con ellas.
+    await waitFor(() =>
+      expect(modal.getAllByRole('combobox')).toHaveLength(2),
+    );
+    const note = await modal.findByText(NO_COMPANY_NOTE);
+
+    // "arriba de": la nota precede en el DOM al primer selector de producto.
+    const firstRow = modal.getAllByRole('combobox')[0];
+    expect(
+      note.compareDocumentPosition(firstRow) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('500: toast genérico exacto (id "...-generic") y sin nota inline', async () => {
+    mockGetProducts.mockRejectedValue(axiosErrorWithStatus(500));
+
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await openNewPackModal(user);
+
+    await expectGenericToast();
+
+    expect(modal.queryByText(NO_COMPANY_NOTE)).not.toBeInTheDocument();
+    expect(mockToast.error).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        id: 'packs-catalog-load-error-no-company',
+      }),
+    );
+  });
+
+  it('AxiosError de red sin response (Network Error): cae en genérico, sin nota inline', async () => {
+    mockGetProducts.mockRejectedValue(new AxiosError('Network Error'));
+
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await openNewPackModal(user);
+
+    await expectGenericToast();
+    expect(modal.queryByText(NO_COMPANY_NOTE)).not.toBeInTheDocument();
+  });
+
+  it('queryFn lanza un Error plano no-Axios: cae en genérico sin romper el modal', async () => {
+    mockGetProducts.mockRejectedValue(new Error('kaboom no-axios'));
+
+    const user = userEvent.setup();
+    renderPage();
+    const modal = await openNewPackModal(user);
+
+    await expectGenericToast();
+    expect(modal.queryByText(NO_COMPANY_NOTE)).not.toBeInTheDocument();
+    // El modal sigue usable: el tab Volumen y su selector de producto siguen
+    // montados (el error del catálogo no desmonta nada).
+    expect(modal.getByRole('combobox')).toBeInTheDocument();
   });
 });
 
