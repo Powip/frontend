@@ -7,3 +7,4 @@ export * from "./plataforma";
 export * from "./config";
 export * from "./operacion";
 export * from "./dashboard";
+export * from "./comisionesMp";

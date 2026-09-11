@@ -4,8 +4,7 @@ import { PERSONAS, SDRS, COURIERS, daysAgoISO, daysFromNowISO, money, nextId } f
 /* -----------------------------------------------------------------------
    La lista de leads en sí YA ES REAL (ver src/hooks/superadmin/useAdquisicion.ts,
    que pega contra /api/superadmin/leads). Este archivo solo sirve hoy para:
-   - alimentar la búsqueda global (GlobalSearchDialog) y el mock de Seguimiento
-     con datos de ejemplo con la forma correcta.
+   - alimentar el mock de Seguimiento con datos de ejemplo con la forma correcta.
    - dar de fallback a lo que sigue 100% simulado: Origen & CAC (inversión no
      existe en ningún lado todavía — ver docs/superadmin/adquisicion-endpoints.md).
 ----------------------------------------------------------------------- */

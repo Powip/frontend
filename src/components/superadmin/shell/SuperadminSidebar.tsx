@@ -2,27 +2,34 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { navForRole } from "@/config/superadminNav.config";
-import { useSuperadminRole } from "./SuperadminRoleContext";
-import { ROL_LABEL } from "@/interfaces/superadmin";
+import { useAuth } from "@/contexts/AuthContext";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/layout/avatar";
+import PowipLogo from "@/components/layout/logo";
+import { SUPERADMIN_NAV } from "@/config/superadminNav.config";
+
+function accountInitials(name?: string, surname?: string): string {
+  const n = name?.trim()?.[0] ?? "";
+  const s = surname?.trim()?.[0] ?? "";
+  return (n + s).toUpperCase() || "SA";
+}
 
 export function SuperadminSidebar() {
   const pathname = usePathname();
-  const { viewingAs } = useSuperadminRole();
-  const items = navForRole(viewingAs);
+  const { auth } = useAuth();
+  const items = SUPERADMIN_NAV;
+
+  const fullName = auth?.user.name ? `${auth.user.name} ${auth.user.surname || ""}`.trim() : "Super Admin";
 
   return (
     <aside className="hidden lg:flex w-64 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground h-screen sticky top-0">
       <div className="flex items-center gap-2.5 px-5 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground font-extrabold text-sm shadow-sm">
-          P
-        </div>
-        <div>
-          <div className="text-base font-extrabold tracking-tight">POWIP</div>
-          <div className="text-[11px] text-muted-foreground -mt-0.5">Super Admin</div>
-        </div>
+        <Link href="/dashboard" className="flex items-center">
+          <PowipLogo className="w-[92px] h-auto text-primary" />
+        </Link>
+        <span className="rounded-md bg-sidebar-primary/10 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-sidebar-primary">
+          Admin
+        </span>
       </div>
 
       <div className="px-5 pb-2 pt-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -62,11 +69,15 @@ export function SuperadminSidebar() {
       </nav>
 
       <div className="border-t border-sidebar-border p-3">
-        <div className="flex items-center gap-2 rounded-lg bg-sidebar-accent px-3 py-2.5 text-xs text-sidebar-accent-foreground">
-          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-sidebar-primary" />
-          <span>
-            Estás viendo como <b>{ROL_LABEL[viewingAs]}</b>
-          </span>
+        <div className="flex items-center gap-2.5 px-1">
+          <Avatar className="h-8 w-8">
+            <AvatarImage src="https://www.svgrepo.com/show/17068/user.svg" alt={fullName} />
+            <AvatarFallback className="text-[11px] font-bold">{accountInitials(auth?.user.name, auth?.user.surname)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-xs font-semibold">{fullName}</div>
+            <div className="truncate text-[10.5px] text-muted-foreground">{auth?.user.email}</div>
+          </div>
         </div>
       </div>
     </aside>

@@ -20,6 +20,7 @@ import {
   ScrollText,
   Settings,
   History,
+  CreditCard,
   type LucideIcon,
 } from "lucide-react";
 import { RolInterno } from "@/interfaces/superadmin";
@@ -42,6 +43,7 @@ export const SUPERADMIN_NAV: SuperadminNavItem[] = [
   { key: "operacion", href: "/superadmin/operacion", label: "Operación de Red", icon: PackageSearch },
   { key: "partners", href: "/superadmin/partners", label: "Partners", icon: Link2, badge: "Canal" },
   { key: "finanzas", href: "/superadmin/finanzas", label: "Finanzas POWIP", icon: Landmark },
+  { key: "cobranza-mp", href: "/superadmin/cobranza-mp", label: "Cobranza MP", icon: CreditCard, badge: "Nuevo" },
   { key: "usuarios", href: "/superadmin/usuarios", label: "Usuarios", icon: Users },
   { key: "suscripciones", href: "/superadmin/suscripciones", label: "Suscripciones", icon: RefreshCw },
   { key: "facturacion", href: "/superadmin/facturacion", label: "Facturación", icon: FileText },
@@ -57,18 +59,15 @@ export const SUPERADMIN_NAV: SuperadminNavItem[] = [
   { key: "auditoria", href: "/superadmin/auditoria", label: "Auditoría", icon: History },
 ];
 
-/** 3.1 Roles y acceso a módulos. "*" = ve todo. */
+/** 3.1 Roles y acceso a módulos ("*" = ve todo). Ya no filtra el sidebar (el
+ * selector "Ver como rol" se quitó del Topbar) — sigue siendo la fuente de
+ * verdad de la Matriz de permisos en /superadmin/equipo (ver MATRIZ_PERMISOS
+ * en useEquipo.ts, que la reexpone tal cual). */
 export const ROL_VISTAS: Record<RolInterno, string[] | "*"> = {
   super: "*",
   ventas: ["dashboard", "adquisicion", "seguimiento", "partners"],
   soporte: ["dashboard", "soporte", "empresas"],
   onboarding: ["dashboard", "empresas", "seguimiento", "integraciones"],
-  finanzas: ["dashboard", "finanzas", "facturacion", "suscripciones"],
+  finanzas: ["dashboard", "finanzas", "cobranza-mp", "facturacion", "suscripciones"],
   csm: ["dashboard", "seguimiento", "empresas", "oportunidades"],
 };
-
-export function navForRole(rol: RolInterno): SuperadminNavItem[] {
-  const vistas = ROL_VISTAS[rol];
-  if (vistas === "*") return SUPERADMIN_NAV;
-  return SUPERADMIN_NAV.filter((item) => vistas.includes(item.key));
-}

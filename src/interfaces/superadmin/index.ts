@@ -6,3 +6,4 @@ export * from "./IPlataforma";
 export * from "./IConfig";
 export * from "./IDashboard";
 export * from "./IOperacion";
+export * from "./IComisionesMp";
