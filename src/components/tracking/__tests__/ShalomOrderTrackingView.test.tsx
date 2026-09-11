@@ -11,6 +11,17 @@
  *    click en "Ver fallidos" filtra la tabla dejando solo las fallidas.
  * 3. Banner ausente: sin órdenes FALLIDO el banner no se renderiza.
  * 4. shalomError visible: una orden FALLIDO con shalomError muestra ese texto en su fila.
+ * 5. Rastreo en vivo acotado a la página: con >15 pedidos Shalom elegibles,
+ *    `trackShalomMassive` se invoca con como máximo ITEMS_PER_PAGE (15) órdenes
+ *    (solo la página visible), nunca con todas.
+ *
+ * Nota infra: se mockea `@/components/ui/pagination` como `() => null` (mismo
+ * patrón que `EvaOrderTrackingView.test.tsx`). El `Pagination` real importa
+ * ChevronLeft/ChevronRight de `lucide-react`; como la factory del mock de
+ * `lucide-react` de este archivo no los exporta, resolvían a `undefined` y el
+ * render entero tiraba "Element type is invalid ... Check the render method of
+ * `Pagination`", lo que hacía fallar las 19 specs. El slicing por `ITEMS_PER_PAGE`
+ * ocurre en el componente igual (no depende de que Pagination renderice).
  */
 
 import React from 'react';
@@ -47,6 +58,9 @@ jest.mock('@/contexts/AuthContext', () => ({
 
 jest.mock('@/services/shalomService', () => ({
   trackShalomShipment: jest.fn().mockResolvedValue({}),
+  // Usado por `useShalomLiveStatuses` (rastreo en vivo en lote). Por defecto
+  // devuelve un array vacío: los tests que no lo verifican no necesitan datos.
+  trackShalomMassive: jest.fn().mockResolvedValue([]),
 }));
 
 // Mock de variables de entorno
@@ -108,10 +122,19 @@ jest.mock('@/components/dashboard/PeriodSelector', () => ({
   ),
 }));
 
+// El `Pagination` real importa ChevronLeft/ChevronRight de lucide-react, que no
+// están en la factory del mock de arriba -> resolvían a undefined y tiraban
+// "Element type is invalid ... Check the render method of `Pagination`",
+// haciendo fallar todas las specs. Mismo patrón que EvaOrderTrackingView.test.
+jest.mock('@/components/ui/pagination', () => ({
+  Pagination: () => null,
+}));
+
 // ── Imports bajo prueba (después de los mocks) ────────────────────────────────
 
 import axios from 'axios';
 import { useAuth } from '@/contexts/AuthContext';
+import { trackShalomMassive } from '@/services/shalomService';
 import ShalomOrderTrackingView from '../ShalomOrderTrackingView';
 
 // ── Casts ─────────────────────────────────────────────────────────────────────
@@ -121,6 +144,7 @@ import ShalomOrderTrackingView from '../ShalomOrderTrackingView';
 // `import axios from 'axios'`. axios.get en el test = lo que el componente llama.
 const mockAxiosGet = axios.get as jest.Mock;
 const mockUseAuth = jest.mocked(useAuth);
+const mockTrackShalomMassive = trackShalomMassive as jest.Mock;
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -153,6 +177,8 @@ function makeOrder(overrides: {
   shalomStatus?: string | null;
   shalomError?: string | null;
   guideNumber?: string | null;
+  externalTrackingNumber?: string | null;
+  shippingCode?: string | null;
 } = {}) {
   // Para shalomStatus usamos 'in' para distinguir entre ausente (default PENDIENTE) y null explícito
   const shalomStatus = 'shalomStatus' in overrides ? overrides.shalomStatus : 'PENDIENTE';
@@ -201,8 +227,8 @@ function makeOrder(overrides: {
     notes: null,
     items: [],
     payments: [],
-    externalTrackingNumber: null,
-    shippingCode: null,
+    externalTrackingNumber: overrides.externalTrackingNumber ?? null,
+    shippingCode: overrides.shippingCode ?? null,
     shippingKey: null,
     trackingUrl: null,
     shalomOriginAgency: null,
@@ -468,6 +494,78 @@ describe('ShalomOrderTrackingView', () => {
       expect(await screen.findByText('ORD-NO-ERR')).toBeInTheDocument();
       // El badge FALLIDO aparece pero no hay texto de error adicional
       expect(screen.queryByTitle(/agencia/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // ── 5. Rastreo en vivo Shalom acotado a la página visible ───────────────────
+
+  describe('rastreo en vivo Shalom (solo la página visible)', () => {
+    /**
+     * Órdenes Shalom elegibles para rastreo en vivo: traen `externalTrackingNumber`
+     * (guía) + `shippingCode` (código), que es lo que `useShalomLiveStatuses`
+     * exige para incluirlas en el lote.
+     */
+    function makeEligibleShalomOrders(count: number) {
+      return Array.from({ length: count }, (_, i) =>
+        makeOrder({
+          id: `live-${i}`,
+          orderNumber: `ORD-LIVE-${String(i).padStart(2, '0')}`,
+          courier: 'Shalom',
+          shalomStatus: 'PENDIENTE',
+          externalTrackingNumber: `1000${String(i).padStart(4, '0')}`,
+          shippingCode: `C${i}`,
+        }),
+      );
+    }
+
+    it('con más de 15 pedidos Shalom, trackShalomMassive recibe como máximo ITEMS_PER_PAGE (15), no todos', async () => {
+      mockOrdersResponse(makeEligibleShalomOrders(20));
+
+      render(<ShalomOrderTrackingView />);
+
+      // Primera página cargada (pedidos 0..14)
+      expect(await screen.findByText('ORD-LIVE-00')).toBeInTheDocument();
+
+      await waitFor(() => expect(mockTrackShalomMassive).toHaveBeenCalled());
+      // Dejar terminar el rastreo en vivo para no dejar updates de estado colgando
+      await waitFor(() =>
+        expect(screen.queryAllByText(/Cargando/i)).toHaveLength(0),
+      );
+
+      const calls = mockTrackShalomMassive.mock.calls;
+      // Ningún lote supera la página visible…
+      for (const call of calls) {
+        const batch = call[1];
+        expect(Array.isArray(batch)).toBe(true);
+        expect(batch.length).toBeLessThanOrEqual(15);
+      }
+      // …y el lote más grande es exactamente la página llena (15), nunca las 20
+      const maxBatch = Math.max(...calls.map((call) => call[1].length));
+      expect(maxBatch).toBe(15);
+
+      // El lote lleva el token del auth y pares { orderNumber, orderCode }
+      expect(calls[0][0]).toBe('fake-token');
+      expect(calls[0][1][0]).toEqual({
+        orderNumber: expect.any(String),
+        orderCode: expect.any(String),
+      });
+    });
+
+    it('con 15 o menos pedidos Shalom, trackShalomMassive recibe todos los de la página en una sola llamada', async () => {
+      mockOrdersResponse(makeEligibleShalomOrders(8));
+
+      render(<ShalomOrderTrackingView />);
+      expect(await screen.findByText('ORD-LIVE-00')).toBeInTheDocument();
+
+      await waitFor(() => expect(mockTrackShalomMassive).toHaveBeenCalled());
+      await waitFor(() =>
+        expect(screen.queryAllByText(/Cargando/i)).toHaveLength(0),
+      );
+
+      const batchSizes = mockTrackShalomMassive.mock.calls.map(
+        (call) => call[1].length,
+      );
+      expect(Math.max(...batchSizes)).toBe(8);
     });
   });
 });

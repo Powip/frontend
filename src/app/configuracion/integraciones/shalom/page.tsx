@@ -41,6 +41,14 @@ export default function ShalomConfigPage() {
         const st = await getShalomStatus(auth!.accessToken, companyId!);
         setIsConnected(st.isLoggedIn);
       }
+    } catch (err: any) {
+      // `getShalomStatus` puede lanzar (red/5xx): sin catch quedaba unhandled y
+      // `isConnected` en false en silencio. Mostramos el motivo.
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "No se pudo cargar el estado de la integración Shalom"
+      );
     } finally {
       setLoading(false);
     }
@@ -54,7 +62,7 @@ export default function ShalomConfigPage() {
   /**
    * Flujo completo en un solo click:
    * 1. Guardar credenciales
-   * 2. Crear instancia (o reusar si ya existe)
+   * 2. Crear instancia SOLO si la empresa todavía no tiene una
    * 3. Login
    */
   const handleConnect = async (e: React.FormEvent) => {
@@ -63,6 +71,25 @@ export default function ShalomConfigPage() {
 
     setConnecting(true);
     setError(null);
+
+    // `loginShalom` puede lanzar (red/5xx) o devolver `{ success: false }`. Lo
+    // normalizamos a un objeto para poder decidir el reintento sin cortar el flujo.
+    const attemptLogin = async (): Promise<{
+      success: boolean;
+      message: string;
+    }> => {
+      try {
+        return await loginShalom(auth!.accessToken, companyId!);
+      } catch (err: any) {
+        return {
+          success: false,
+          message:
+            err?.response?.data?.message ||
+            err?.message ||
+            "No se pudo iniciar sesión en Shalom Pro",
+        };
+      }
+    };
 
     try {
       // Paso 1: guardar credenciales
@@ -74,13 +101,40 @@ export default function ShalomConfigPage() {
       });
       setConfig(savedConfig);
 
-      // Paso 2: crear instancia (siempre recrea para estar seguro)
-      setConnectStep("creating_instance");
-      await createShalomInstance(auth!.accessToken, companyId!);
+      // Paso 2: crear instancia SOLO si la empresa todavía no tiene una.
+      // Antes se llamaba a `createShalomInstance` en cada "Conectar" ("siempre
+      // recrea para estar seguro"), lo que dejaba instancias huérfanas en el
+      // panel del proveedor. El backend ya lo protege, pero no hay que
+      // dispararlo al pedo: si ya hay `instanceId`, saltamos directo al login.
+      let hadInstance = Boolean(savedConfig?.instanceId || config?.instanceId);
+      if (!hadInstance) {
+        try {
+          const status = await getShalomStatus(auth!.accessToken, companyId!);
+          hadInstance = status.hasInstance;
+        } catch {
+          hadInstance = false;
+        }
+      }
 
-      // Paso 3: login
+      if (!hadInstance) {
+        setConnectStep("creating_instance");
+        await createShalomInstance(auth!.accessToken, companyId!);
+      }
+
+      // Paso 3: login. Si YA había una instancia y el login falla, puede estar
+      // muerta en el proveedor (las ~22 empresas arrastran un instanceId de la
+      // API vieja que hay que recrear). Reintentamos UNA vez: recreamos la
+      // instancia (el backend reusa si está viva / recrea si está muerta) y
+      // volvemos a loguear. Recién si ese segundo login falla mostramos el error.
       setConnectStep("logging_in");
-      const result = await loginShalom(auth!.accessToken, companyId!);
+      let result = await attemptLogin();
+
+      if (!result.success && hadInstance) {
+        setConnectStep("creating_instance");
+        await createShalomInstance(auth!.accessToken, companyId!);
+        setConnectStep("logging_in");
+        result = await attemptLogin();
+      }
 
       if (result.success) {
         setConnectStep("done");

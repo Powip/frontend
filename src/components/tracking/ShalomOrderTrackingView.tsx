@@ -172,12 +172,6 @@ export default function ShalomOrderTrackingView() {
     fetchShalomOrders();
   }, [fetchShalomOrders]);
 
-  const shalomOrderHeaders = useMemo(
-    () => shalomOrders.map(({ order }) => order),
-    [shalomOrders],
-  );
-  const { liveStatuses, loadingLiveStatuses } = useShalomLiveStatuses(shalomOrderHeaders);
-
   const filteredOrders = useMemo(() => {
     return shalomOrders.filter(({ order, guide }) => {
       if (guideSearch) {
@@ -224,10 +218,37 @@ export default function ShalomOrderTrackingView() {
     1,
     Math.ceil(filteredOrders.length / ITEMS_PER_PAGE),
   );
-  const pagedOrders = filteredOrders.slice(
-    (page - 1) * ITEMS_PER_PAGE,
-    page * ITEMS_PER_PAGE,
+
+  // Memoizado (antes era un `.slice()` plano) para que `pagedShalomHeaders` de
+  // abajo no reciba una referencia nueva en cada render — si no, el rastreo en
+  // vivo de Shalom se dispararía otra vez con cualquier estado no relacionado
+  // (hover, edición de clave, etc.), no solo al cambiar de página o filtro.
+  const pagedOrders = useMemo(
+    () =>
+      filteredOrders.slice(
+        (page - 1) * ITEMS_PER_PAGE,
+        page * ITEMS_PER_PAGE,
+      ),
+    [filteredOrders, page],
   );
+
+  // Estado en vivo de Shalom SOLO sobre la página visible (máx. ITEMS_PER_PAGE
+  // filas). Antes se consultaban TODOS los pedidos Shalom de la tienda de una,
+  // disparando una cantidad ilimitada de requests en paralelo al proveedor
+  // (429 que también rompían cotización y agencias por compartir la API key
+  // global). Mismo patrón que `CourierTrackingView`.
+  const pagedShalomHeaders = useMemo(
+    () =>
+      pagedOrders
+        .map(({ order }) => order)
+        .filter(
+          (o) =>
+            isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice),
+        ),
+    [pagedOrders],
+  );
+  const { liveStatuses, loadingLiveStatuses } =
+    useShalomLiveStatuses(pagedShalomHeaders);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {

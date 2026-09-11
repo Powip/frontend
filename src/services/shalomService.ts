@@ -177,6 +177,39 @@ export const trackShalomShipment = async (
   return res.data;
 };
 
+/** Orden a rastrear en el lote (8 dígitos + 4 caracteres de Shalom). */
+export interface ShalomMassiveTrackOrder {
+  orderNumber: string;
+  orderCode: string;
+}
+
+/** Ítem del array plano que devuelve `POST /shalom/track-massive`. */
+export interface ShalomMassiveTrackResult {
+  orderNumber: string;
+  orderCode: string;
+  search?: { success: boolean; message: string };
+  statuses?: unknown;
+}
+
+/**
+ * Rastreo masivo de envíos Shalom — hasta 50 órdenes por request.
+ * NO requiere companyId (usa la Admin Key global del servidor Shalom).
+ * La respuesta es un array plano; cada ítem trae `statuses.data` con los pasos.
+ * Evita disparar N `POST /shalom/track` sueltos en paralelo (429 del proveedor
+ * que también tira abajo cotización y agencias por compartir la API key global).
+ */
+export const trackShalomMassive = async (
+  token: string,
+  orders: ShalomMassiveTrackOrder[],
+): Promise<ShalomMassiveTrackResult[]> => {
+  const res = await axios.post(
+    `${API_INTEGRATIONS}/shalom/track-massive`,
+    { orders },
+    { headers: headers(token) },
+  );
+  return Array.isArray(res.data) ? res.data : [];
+};
+
 /** Rastrear usando el proxy de ms-courier que conoce la guía */
 export const trackShalomGuide = async (
   token: string,
