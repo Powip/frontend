@@ -588,68 +588,86 @@ export default function SendToShalomModal({
         payload,
       );
 
-      if (res.data.success) {
-        const summary = res.data.summary || {};
-        const rawErrors: ShalomShipmentError[] = res.data.errors || [];
+      // No usar res.data.success como gate: ms-courier lo calcula como
+      // `successCount > 0`, así que en un fallo total (0 envíos exitosos)
+      // viene en false aunque la petición haya resuelto 200 OK con
+      // `errors` poblado. El feedback (toasts + resumen) debe mostrarse
+      // siempre que la request HTTP haya resuelto, haya éxitos o no.
+      const summary = res.data.summary || {};
+      const rawErrors: ShalomShipmentError[] = res.data.errors || [];
 
-        // Enriquecer errores con el nro de orden cruzando por recipientDoc (dni) o por index
-        const enrichedErrors: ShalomShipmentError[] = rawErrors.map((e) => {
-          const byDoc = orders.find(
-            (o) => o.customer?.dni && o.customer.dni === e.shipmentInfo?.recipientDoc,
-          );
-          const byIndex = typeof e.index === "number" ? orders[e.index] : undefined;
-          const matchedOrder = byDoc || byIndex;
-          return { ...e, orderNumber: matchedOrder?.orderNumber || null };
-        });
-
-        setSuccessSummary({
-          total: summary.total || orders.length,
-          successful: summary.successful || 0,
-          failed: summary.failed || 0,
-          errors: enrichedErrors,
-        });
-
-        const rawResults: ShalomRegisteredShipment[] = res.data.data || [];
-        setRegisteredShipments(rawResults);
-
-        const changedToAereo = rawResults.filter(
-          (r) => r.shalomChangedToAereo === true,
+      // Enriquecer errores con el nro de orden cruzando por recipientDoc (dni) o por index
+      const enrichedErrors: ShalomShipmentError[] = rawErrors.map((e) => {
+        const byDoc = orders.find(
+          (o) => o.customer?.dni && o.customer.dni === e.shipmentInfo?.recipientDoc,
         );
-        setAereoChangedShipments(changedToAereo);
-        if (changedToAereo.length > 0) {
-          toast.warning(
-            "Algunos envíos fueron cambiados a aéreo por Shalom, no por Powip.",
-          );
-        }
+        const byIndex = typeof e.index === "number" ? orders[e.index] : undefined;
+        const matchedOrder = byDoc || byIndex;
+        return { ...e, orderNumber: matchedOrder?.orderNumber || null };
+      });
 
-        const unverified = rawResults.filter(
-          (r) => r.aereoVerificado === false && r.shalomChangedToAereo !== true,
+      const successfulCount = summary.successful || 0;
+
+      setSuccessSummary({
+        total: summary.total || orders.length,
+        successful: successfulCount,
+        failed: summary.failed || 0,
+        errors: enrichedErrors,
+      });
+
+      const rawResults: ShalomRegisteredShipment[] = res.data.data || [];
+      setRegisteredShipments(rawResults);
+
+      const changedToAereo = rawResults.filter(
+        (r) => r.shalomChangedToAereo === true,
+      );
+      setAereoChangedShipments(changedToAereo);
+      if (changedToAereo.length > 0) {
+        toast.warning(
+          "Algunos envíos fueron cambiados a aéreo por Shalom, no por Powip.",
         );
-        setAereoUnverifiedShipments(unverified);
-        if (unverified.length > 0) {
-          toast.warning(
-            "No se pudo verificar la modalidad de algunos envíos. Revisá en Shalom Pro.",
-          );
-        }
+      }
 
-        if (enrichedErrors.length > 0) {
-          const firstError = enrichedErrors[0];
-          const orderLabel = firstError.orderNumber ? `[${firstError.orderNumber}] ` : "";
-          const errorMsg = extractShalomErrorMessage(firstError?.error || "");
-          const extraCount = enrichedErrors.length > 1 ? ` (+${enrichedErrors.length - 1} más)` : "";
-          toast.warning(
-            `${summary.successful} de ${summary.total} procesados correctamente`,
-            {
-              duration: 10000,
-              description: `❌ ${orderLabel}${errorMsg}${extraCount}`,
-            },
-          );
-        } else {
-          toast.success(
-            `¡Todas las guías (${summary.total}) han sido generadas en Shalom Pro!`,
-          );
-        }
+      const unverified = rawResults.filter(
+        (r) => r.aereoVerificado === false && r.shalomChangedToAereo !== true,
+      );
+      setAereoUnverifiedShipments(unverified);
+      if (unverified.length > 0) {
+        toast.warning(
+          "No se pudo verificar la modalidad de algunos envíos. Revisá en Shalom Pro.",
+        );
+      }
 
+      // Éxito total = hubo al menos un envío exitoso Y no vino ningún error.
+      // No alcanza con "no vinieron errores": si el backend rompiera su
+      // contrato y devolviera errors=[] junto con successful=0, esto caería
+      // en un falso éxito (justo el bug que ya se corrigió para res.data.success).
+      if (successfulCount > 0 && enrichedErrors.length === 0) {
+        toast.success(
+          `¡Todas las guías (${summary.total}) han sido generadas en Shalom Pro!`,
+        );
+      } else if (enrichedErrors.length > 0) {
+        const firstError = enrichedErrors[0];
+        const orderLabel = firstError.orderNumber ? `[${firstError.orderNumber}] ` : "";
+        const errorMsg = extractShalomErrorMessage(firstError?.error || "");
+        const extraCount = enrichedErrors.length > 1 ? ` (+${enrichedErrors.length - 1} más)` : "";
+        toast.warning(
+          `${successfulCount} de ${summary.total} procesados correctamente`,
+          {
+            duration: 10000,
+            description: `❌ ${orderLabel}${errorMsg}${extraCount}`,
+          },
+        );
+      } else {
+        toast.error("No se pudo registrar ningún envío en Shalom.");
+      }
+
+      // Sólo tratamos el envío como "exitoso" (pantalla de check + cierre)
+      // si al menos una guía se generó. Con 0 éxitos ya se mostró el toast
+      // de error/warning con el detalle — el modal permanece en la vista de
+      // configuración para que el usuario pueda corregir y reintentar, en
+      // vez de simular un cierre exitoso sin guías generadas.
+      if (successfulCount > 0) {
         setIsSuccess(true);
         onSuccess?.();
       }

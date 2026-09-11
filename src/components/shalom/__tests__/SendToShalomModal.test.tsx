@@ -19,6 +19,12 @@
  *    debe hacer desaparecer la pantalla de éxito. Reproduce fielmente el bug
  *    real ya corregido (deps del useEffect de inicialización limitadas a
  *    `[open]`).
+ * 7. Fallo total (ms-courier responde 200 OK con `success: false` porque
+ *    `successCount === 0`): el componente ya no usa `res.data.success` como
+ *    gate, así que igual procesa la respuesta y avisa con toast.warning con
+ *    el detalle del error — pero NO dispara el flujo de éxito (onSuccess /
+ *    pantalla de check); el modal se queda en la vista de configuración para
+ *    que el usuario pueda corregir y reintentar.
  *
  * Work-arounds jsdom aplicados:
  * - @/components/ui/select → mock de <select> nativo para evitar problemas de
@@ -923,6 +929,109 @@ describe('SendToShalomModal', () => {
       expect(
         screen.queryByText('Agencia de origen (tu tienda)'),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  // ── 8. Fallo total: success=false y successful=0 ───────────────────────────
+  //
+  // ms-courier calcula `success = successCount > 0`, así que un fallo total
+  // (todos los envíos del lote fallan) resuelve la request HTTP con 200 OK
+  // pero `res.data.success === false` y `summary.successful === 0`. Antes del
+  // fix, el componente usaba `res.data.success` como gate para procesar la
+  // respuesta, así que en este escenario no se ejecutaba ninguna rama de
+  // feedback — silencio total para el usuario (bug). Ahora el procesamiento
+  // de la respuesta (summary/enrichedErrors, toasts) corre siempre que la
+  // request resuelva, y con successful=0 se debe:
+  //   - avisar con toast.warning (no toast.success) con el detalle del error
+  //   - NO disparar el flujo de éxito (onSuccess / pantalla de check): el
+  //     modal permanece en la vista de configuración para reintentar.
+
+  describe('fallo total: success=false y successful=0 (todos los envíos fallaron)', () => {
+    const FAILED_ALL_RESPONSE = {
+      data: {
+        success: false,
+        summary: { total: 1, successful: 0, failed: 1 },
+        errors: [
+          {
+            index: 0,
+            error: 'Error en Shalom API: No se pudo generar la guía',
+            shipmentInfo: {
+              recipientDoc: MOCK_ORDER.customer.dni,
+              recipientName: MOCK_ORDER.customer.fullName,
+            },
+          },
+        ],
+        data: [],
+      },
+    };
+
+    it('llama a toast.warning con el detalle del error (mensaje + descripción) cuando todos los envíos fallan', async () => {
+      mockAxiosPost.mockResolvedValue(FAILED_ALL_RESPONSE);
+
+      const { user } = await setupValidForm();
+
+      const sendBtn = screen.getByRole('button', { name: /confirmar y enviar a shalom/i });
+      expect(sendBtn).not.toBeDisabled();
+
+      await user.click(sendBtn);
+
+      await waitFor(() => {
+        expect(mockToast.warning).toHaveBeenCalledWith(
+          expect.stringContaining('0 de 1 procesados correctamente'),
+          expect.objectContaining({
+            description: expect.stringContaining('No se pudo generar la guía'),
+          }),
+        );
+      });
+
+      // El número de orden se cruza por DNI (recipientDoc) y se antepone
+      // entre corchetes en la descripción del toast.
+      expect(mockToast.warning).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          description: expect.stringContaining(`[${MOCK_ORDER.orderNumber}]`),
+        }),
+      );
+    });
+
+    it('NO llama a toast.success cuando falla el 100% de los envíos', async () => {
+      mockAxiosPost.mockResolvedValue(FAILED_ALL_RESPONSE);
+
+      const { user } = await setupValidForm();
+
+      await user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+
+      await waitFor(() => {
+        expect(mockToast.warning).toHaveBeenCalled();
+      });
+
+      expect(mockToast.success).not.toHaveBeenCalled();
+    });
+
+    it('NO dispara el flujo de éxito (onSuccess ni pantalla de check) cuando falla el 100% de los envíos', async () => {
+      mockAxiosPost.mockResolvedValue(FAILED_ALL_RESPONSE);
+
+      const { user } = await setupValidForm();
+
+      await user.click(screen.getByRole('button', { name: /confirmar y enviar a shalom/i }));
+
+      // Esperamos la señal de que la respuesta ya fue procesada.
+      await waitFor(() => {
+        expect(mockToast.warning).toHaveBeenCalled();
+      });
+
+      expect(BASE_PROPS.onSuccess).not.toHaveBeenCalled();
+      expect(screen.queryByText('¡Registro Exitoso!')).not.toBeInTheDocument();
+      expect(screen.queryByText('¡Registro Parcial!')).not.toBeInTheDocument();
+
+      // El modal se queda en la vista de configuración (no la de éxito) para
+      // que el usuario pueda corregir y reintentar.
+      expect(
+        screen.getByRole('button', { name: /confirmar y enviar a shalom/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Agencia de origen (tu tienda)'),
+      ).toBeInTheDocument();
     });
   });
 });
