@@ -33,7 +33,7 @@ import { useOperationsRole, OPS_PERMISSIONS } from "@/contexts/OperationsRoleCon
 import { useUserAuditInfo } from "@/hooks/useUserAuditInfo";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { DELIVERY_ZONES } from "@/constants/operationsDomain";
-import { getPedidosTab } from "@/utils/domain/operations-pedidos-tabs";
+import { getPedidosTab, PRE_FULFILLMENT_STATUSES } from "@/utils/domain/operations-pedidos-tabs";
 import {
   Sale,
   mapOrderToSale,
@@ -183,6 +183,10 @@ export default function PlanificacionTab() {
     for (const o of orders) {
       if (o.deliveryType !== "DOMICILIO") continue;
       if (o.status === "ENTREGADO" || o.status === "ANULADO") continue;
+      // PAGADO/PENDIENTE/INCOMPLETE/PREVENTA todavía no pasaron por
+      // preparación real de almacén — no son responsabilidad de Operaciones
+      // todavía, así que no deben planificarse acá (ver PRE_FULFILLMENT_STATUSES).
+      if (PRE_FULFILLMENT_STATUSES.includes(o.status)) continue;
       if (getPedidosTab(o) !== "despachar") continue;
 
       // Con fecha comprometida (reprogramado o vendido con fecha): es un

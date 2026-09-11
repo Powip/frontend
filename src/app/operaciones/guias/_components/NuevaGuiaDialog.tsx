@@ -88,13 +88,13 @@ export default function NuevaGuiaDialog({
   }, [open, selectedStoreId]);
 
   // Elegibles para armar guía: preparados o ya confirmados por llamada (o
-  // con guía previa sin courier), más los PAGADO (= PENDIENTE + pagado al
-  // 100%: venta confirmada y cobrada que almacén todavía no preparó), con
-  // entrega a domicilio y sin guía asignada todavía. PENDIENTE a secas queda
-  // afuera (ORDER_STATUS_FLOW no permite saltar de ahí a ASIGNADO_A_GUIA);
+  // con guía previa sin courier), con entrega a domicilio y sin guía
+  // asignada todavía. PAGADO queda afuera a propósito — cobrar el 100% no
+  // es lo mismo que empacar, así que un pedido PAGADO todavía no está listo
+  // para armar guía hasta que almacén lo marque PREPARADO explícitamente
+  // (mismo criterio que GUIDE_ELIGIBLE_STATUSES en PorDespacharTab.tsx).
   // handleCreateGuide/handleAddToExisting encadenan los pasos intermedios
-  // hasta LLAMADO automáticamente (mismo criterio que
-  // GUIDE_ELIGIBLE_STATUSES en PorDespacharTab.tsx).
+  // hasta LLAMADO automáticamente para los que sí son elegibles.
   const eligible = useMemo(() => {
     return orders.filter(
       (o) =>
@@ -102,8 +102,7 @@ export default function NuevaGuiaDialog({
         !o.guideNumber &&
         (o.status === "PREPARADO" ||
           o.status === "LLAMADO" ||
-          o.status === "ASIGNADO_A_GUIA" ||
-          o.status === "PAGADO"),
+          o.status === "ASIGNADO_A_GUIA"),
     );
   }, [orders]);
 
@@ -165,11 +164,11 @@ export default function NuevaGuiaDialog({
         lastGuideId = res.data.id;
         for (const orderId of guideData.orderIds) {
           // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO — si
-          // el pedido viene de un estado anterior (PREPARADO, o PAGADO =
-          // PENDIENTE + pagado), se encadenan los pasos intermedios hasta
-          // LLAMADO acá, transparente para quien arma la guía.
-          // getStatusChainSteps no retrocede ni repite estado: LLAMADO y
-          // ASIGNADO_A_GUIA devuelven `[]` y no generan PATCH.
+          // el pedido viene de PREPARADO se encadenan los pasos intermedios
+          // hasta LLAMADO acá, transparente para quien arma la guía (PAGADO
+          // ya no es elegible, ver `eligible` arriba). getStatusChainSteps no
+          // retrocede ni repite estado: LLAMADO y ASIGNADO_A_GUIA devuelven
+          // `[]` y no generan PATCH.
           const currentStatus = orders.find((o) => o.id === orderId)?.status;
           if (currentStatus) {
             for (const step of getStatusChainSteps(currentStatus, "LLAMADO")) {
@@ -235,9 +234,9 @@ export default function NuevaGuiaDialog({
       // para el resto de pedidos de la guía.
       const guideAlreadyDispatched = guideStatus !== "CREADA" && guideStatus !== "ASIGNADA";
       for (const orderId of orderIds) {
-        // Puente genérico hasta LLAMADO (PREPARADO, o PAGADO = PENDIENTE +
-        // pagado). getStatusChainSteps no retrocede ni repite estado, así que
-        // un pedido ya en LLAMADO/ASIGNADO_A_GUIA no genera PATCH.
+        // Puente genérico desde PREPARADO hasta LLAMADO. getStatusChainSteps
+        // no retrocede ni repite estado, así que un pedido ya en
+        // LLAMADO/ASIGNADO_A_GUIA no genera PATCH.
         const currentStatus = orders.find((o) => o.id === orderId)?.status;
         if (currentStatus) {
           for (const step of getStatusChainSteps(currentStatus, "LLAMADO")) {

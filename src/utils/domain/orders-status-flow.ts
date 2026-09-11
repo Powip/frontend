@@ -44,20 +44,6 @@ export function getStatusLabel(status: OrderStatus): string {
   return ORDER_STATUS_LABEL[status] ?? status;
 }
 
-/**
- * Mapea el pseudo-estado PAGADO a su etapa de fulfillment visible
- * (PREPARADO) para mostrarlo en vistas operativas (Operaciones › Pedidos).
- * Un PAGADO ya está listo para el mismo trabajo que un PREPARADO —
- * GUIDE_ELIGIBLE_STATUSES (PorDespacharTab.tsx) permite armar guía directo
- * desde ahí —, así que mostrarlo como "Pendiente" confundía a almacén
- * haciéndoles creer que no había nada que hacer todavía. El cobro en sí se
- * gestiona en el modal de pagos, no en esta píldora. El resto de estados
- * pasan sin cambio.
- */
-export function toFulfillmentStatus(status: OrderStatus): OrderStatus {
-  return status === "PAGADO" ? "PREPARADO" : status;
-}
-
 // Progresión lineal usada solo para calcular los saltos intermedios de los
 // atajos "En envío"/"Contactado" desde PENDIENTE o PREPARADO — no reemplaza
 // ORDER_STATUS_FLOW, es auxiliar de getStatusChainSteps.

@@ -1,9 +1,7 @@
-import type { OrderStatus } from "@/interfaces/IOrder";
 import {
   ORDER_STATUS_FLOW,
   getAvailableStatuses,
   getStatusChainSteps,
-  toFulfillmentStatus,
 } from "../orders-status-flow";
 
 /**
@@ -79,26 +77,6 @@ describe("getStatusChainSteps", () => {
 
   it("LLAMADO → ANULADO devuelve ['ANULADO'] (ANULADO no tiene rank, la guarda de retroceso no aplica)", () => {
     expect(getStatusChainSteps("LLAMADO", "ANULADO")).toEqual(["ANULADO"]);
-  });
-});
-
-describe("toFulfillmentStatus", () => {
-  it("mapea PAGADO a PREPARADO (ya está listo para el mismo trabajo que un PREPARADO, el cobro se gestiona aparte)", () => {
-    expect(toFulfillmentStatus("PAGADO")).toBe("PREPARADO");
-  });
-
-  it.each<OrderStatus>([
-    "PENDIENTE",
-    "PREPARADO",
-    "LLAMADO",
-    "ASIGNADO_A_GUIA",
-    "EN_ENVIO",
-    "ENTREGADO",
-    "ANULADO",
-    "PREVENTA",
-    "INCOMPLETE",
-  ])("deja %s sin cambios", (status) => {
-    expect(toFulfillmentStatus(status)).toBe(status);
   });
 });
 

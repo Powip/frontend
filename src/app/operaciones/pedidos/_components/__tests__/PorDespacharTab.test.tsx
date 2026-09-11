@@ -1,19 +1,19 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Tests: PorDespacharTab — habilitación de "Generar guía" para pedidos PAGADO.
+ * Tests: PorDespacharTab — habilitación de "Generar guía".
  *
- * Bug corregido: un pedido en `status: "PAGADO"` ("PENDIENTE + cobrado al
- * 100%"), a domicilio y sin guía, no se podía asignar a guía desde
- * /operaciones/pedidos. La corrección agrega `"PAGADO"` a
- * `GUIDE_ELIGIBLE_STATUSES`; los handlers de creación de guía encadenan los
- * PATCH intermedios (PREPARADO → LLAMADO → ASIGNADO_A_GUIA) de forma
- * transparente.
+ * Bug corregido: un pedido PAGADO ("PENDIENTE + cobrado al 100%", todavía no
+ * empacado por almacén) se trataba como si ya estuviera PREPARADO y podía
+ * armarse guía directo desde /operaciones/pedidos — cobrar el 100% no es lo
+ * mismo que preparar el pedido. Ahora PAGADO queda fuera de
+ * `GUIDE_ELIGIBLE_STATUSES` (igual que PENDIENTE) y ni siquiera llega a esta
+ * pestaña (se filtra en PedidosContent.tsx, ver PRE_FULFILLMENT_STATUSES).
  *
  * Estos tests verifican el comportamiento observable de la pestaña:
- *  - al seleccionar un pedido PAGADO elegible, "Generar guía (1)" queda
+ *  - al seleccionar un pedido PREPARADO elegible, "Generar guía (1)" queda
  *    habilitado y al confirmarlo se pasa ese pedido a `onOpenCreateGuide`.
- *  - un pedido PENDIENTE (no elegible) deja el botón en "(0)" y muestra el
- *    aviso de "no se pueden incluir en una guía".
+ *  - un pedido PENDIENTE o PAGADO (no elegibles) dejan el botón en "(0)" y
+ *    muestran el aviso de "no se pueden incluir en una guía".
  *  - la elegibilidad sigue exigiendo entrega a DOMICILIO y ausencia de guía.
  *
  * Work-arounds jsdom / mocks: se reemplazan las primitivas de UI (button,
@@ -206,7 +206,7 @@ function makeSale(overrides: Partial<Sale> = {}): Sale {
     phoneNumber: "999111222",
     date: "01/01/2026",
     total: 150,
-    status: "PAGADO" as OrderStatus,
+    status: "PREPARADO" as OrderStatus,
     paymentMethod: "EFECTIVO",
     deliveryType: "DOMICILIO",
     salesRegion: "LIMA",
@@ -269,20 +269,20 @@ async function selectLastRow(user: ReturnType<typeof userEvent.setup>) {
 
 // ── Tests ──────────────────────────────────────────────────────────────────
 
-describe("PorDespacharTab — armado de guía desde PAGADO", () => {
-  it("un pedido PAGADO a domicilio y sin guía, al seleccionarlo, habilita 'Generar guía (1)'", async () => {
+describe("PorDespacharTab — armado de guía", () => {
+  it("un pedido PREPARADO a domicilio y sin guía, al seleccionarlo, habilita 'Generar guía (1)'", async () => {
     const user = userEvent.setup();
     const sale = makeSale({
-      id: "sale-pagado-1",
-      orderNumber: "ORD-PAGADO-1",
-      status: "PAGADO",
+      id: "sale-preparado-1",
+      orderNumber: "ORD-PREPARADO-1",
+      status: "PREPARADO",
       deliveryType: "DOMICILIO",
       guideNumber: null,
     });
 
     render(<PorDespacharTab sales={[sale]} actions={makeActions()} />);
 
-    expect(screen.getByText("ORD-PAGADO-1")).toBeInTheDocument();
+    expect(screen.getByText("ORD-PREPARADO-1")).toBeInTheDocument();
 
     await selectLastRow(user);
 
@@ -296,10 +296,10 @@ describe("PorDespacharTab — armado de guía desde PAGADO", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("al confirmar 'Generar guía' pasa el pedido PAGADO a onOpenCreateGuide", async () => {
+  it("al confirmar 'Generar guía' pasa el pedido PREPARADO a onOpenCreateGuide", async () => {
     const user = userEvent.setup();
     const actions = makeActions();
-    const sale = makeSale({ id: "sale-pagado-1", status: "PAGADO" });
+    const sale = makeSale({ id: "sale-preparado-1", status: "PREPARADO" });
 
     render(<PorDespacharTab sales={[sale]} actions={actions} />);
     await selectLastRow(user);
@@ -310,7 +310,7 @@ describe("PorDespacharTab — armado de guía desde PAGADO", () => {
 
     expect(actions.onOpenCreateGuide).toHaveBeenCalledTimes(1);
     expect(actions.onOpenCreateGuide).toHaveBeenCalledWith([
-      expect.objectContaining({ id: "sale-pagado-1", status: "PAGADO" }),
+      expect.objectContaining({ id: "sale-preparado-1", status: "PREPARADO" }),
     ]);
   });
 
@@ -344,12 +344,34 @@ describe("PorDespacharTab — armado de guía desde PAGADO", () => {
     ).toBeInTheDocument();
   });
 
-  it("un pedido PAGADO con entrega en tienda no es elegible (sin aviso: el estado sí es válido, falla el tipo de entrega)", async () => {
+  it("un pedido PAGADO seleccionado deja 'Generar guía (0)' y muestra el aviso de estado no elegible (cobrado no es preparado)", async () => {
     const user = userEvent.setup();
     const sale = makeSale({
-      id: "sale-pagado-retiro",
-      orderNumber: "ORD-RETIRO-1",
+      id: "sale-pagado-1",
+      orderNumber: "ORD-PAGADO-1",
       status: "PAGADO",
+      deliveryType: "DOMICILIO",
+    });
+
+    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />);
+    await selectLastRow(user);
+
+    expect(
+      screen.getByRole("button", { name: /generar guía \(0\)/i }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(
+        /pedido\(s\) seleccionados no se pueden incluir en una guía/i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("un pedido PREPARADO con entrega en tienda no es elegible (sin aviso: el estado sí es válido, falla el tipo de entrega)", async () => {
+    const user = userEvent.setup();
+    const sale = makeSale({
+      id: "sale-preparado-retiro",
+      orderNumber: "ORD-RETIRO-1",
+      status: "PREPARADO",
       deliveryType: "RETIRO TIENDA",
     });
 
@@ -366,12 +388,12 @@ describe("PorDespacharTab — armado de guía desde PAGADO", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("un pedido PAGADO que ya tiene guía no vuelve a ser elegible para generar guía", async () => {
+  it("un pedido PREPARADO que ya tiene guía no vuelve a ser elegible para generar guía", async () => {
     const user = userEvent.setup();
     const sale = makeSale({
-      id: "sale-pagado-conguia",
+      id: "sale-preparado-conguia",
       orderNumber: "ORD-CONGUIA-1",
-      status: "PAGADO",
+      status: "PREPARADO",
       deliveryType: "DOMICILIO",
       guideNumber: "GUIA-123",
     });

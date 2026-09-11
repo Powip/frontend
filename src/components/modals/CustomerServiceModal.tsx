@@ -553,9 +553,9 @@ export default function CustomerServiceModal({
     await printOrderLabel(receipt, orderHeader, auth?.company);
 
     // Si el pedido todavía no está preparado, mostrar confirmación para
-    // pasarlo a PREPARADO. PAGADO cuenta igual que PENDIENTE acá — es
-    // "PENDIENTE + cobrado al 100%" (ver toFulfillmentStatus), tampoco fue
-    // preparado por almacén todavía.
+    // pasarlo a PREPARADO. PAGADO cuenta igual que PENDIENTE acá — cobrar el
+    // 100% no es lo mismo que empacar, tampoco fue preparado por almacén
+    // todavía.
     if (receipt.status === "PENDIENTE" || receipt.status === "PAGADO") {
       setPrintConfirmOpen(true);
     }

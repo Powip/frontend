@@ -17,6 +17,7 @@ import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import {
   PEDIDOS_TABS,
   PedidosTabKey,
+  PRE_FULFILLMENT_STATUSES,
   countByTab,
   getPedidosTab,
 } from "@/utils/domain/operations-pedidos-tabs";
@@ -133,21 +134,16 @@ export function PedidosContent() {
   // — es un carrito/checkout que nunca se terminó (con errores de sync, se
   // gestiona aparte en Atención al Cliente › Pedidos con errores), no un
   // pedido real. PREVENTA tampoco — es un carrito pre-venta, ni siquiera
-  // llegó a PENDIENTE. PAGADO SÍ se mantiene visible a propósito (no se
-  // filtra): es "PENDIENTE + cobrado al 100%" y GUIDE_ELIGIBLE_STATUSES
-  // (PorDespacharTab.tsx) permite armar guía directo desde ahí — ver
-  // PorDespacharTab.test.tsx, "habilitación de Generar guía para PAGADO".
-  // Sin este filtro, PENDIENTE/INCOMPLETE/PREVENTA caían por el fallback de
+  // llegó a PENDIENTE. PAGADO TAMPOCO se lista acá: cobrar el 100% no es lo
+  // mismo que empacar — es "PENDIENTE + cobrado", sigue siendo un pedido de
+  // Ventas hasta que almacén lo marque PREPARADO explícitamente (imprimir
+  // etiqueta o cambio de estado manual desde el modal de pedido).
+  // Sin este filtro, PRE_FULFILLMENT_STATUSES caía por el fallback de
   // getPedidosTab directo a "Por Despachar", mezclado con pedidos
   // realmente listos para despachar.
   const visibleOrders = useMemo(
     () =>
-      orders.filter(
-        (o) =>
-          o.status !== "PENDIENTE" &&
-          o.status !== "INCOMPLETE" &&
-          o.status !== "PREVENTA",
-      ),
+      orders.filter((o) => !PRE_FULFILLMENT_STATUSES.includes(o.status)),
     [orders],
   );
 
@@ -407,11 +403,13 @@ export function PedidosContent() {
           for (const orderId of guideData.orderIds) {
             const carrierCost = guideData.orderCarrierCosts?.[orderId] || 0;
             // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO —
-            // si el pedido viene de un estado anterior (PREPARADO, o PAGADO =
-            // PENDIENTE + pagado), se encadenan los pasos intermedios hasta
-            // LLAMADO acá mismo, transparente para quien despacha.
-            // getStatusChainSteps no retrocede ni repite estado: LLAMADO y
-            // ASIGNADO_A_GUIA devuelven `[]` y no generan PATCH.
+            // si el pedido viene de PREPARADO se encadenan los pasos
+            // intermedios hasta LLAMADO acá mismo, transparente para quien
+            // despacha. PAGADO ya no llega hasta acá (PRE_FULFILLMENT_STATUSES
+            // se filtra en `visibleOrders`, arriba): un pedido cobrado pero no
+            // preparado no es elegible para armar guía. getStatusChainSteps no
+            // retrocede ni repite estado: LLAMADO y ASIGNADO_A_GUIA devuelven
+            // `[]` y no generan PATCH.
             const currentStatus = salesById.get(orderId)?.status;
             if (currentStatus) {
               const bridge = getStatusChainSteps(currentStatus, "LLAMADO");
@@ -480,11 +478,12 @@ export function PedidosContent() {
         // despacha directo a EN_ENVIO, igual que hace la aprobación normal.
         const guideAlreadyDispatched = guideStatus !== "CREADA" && guideStatus !== "ASIGNADA";
         for (const sale of selected) {
-          // Puente genérico: lleva cualquier estado previo (PREPARADO, o
-          // PAGADO = PENDIENTE + pagado) hasta LLAMADO sin violar el flujo del
-          // backend, encadenando un PATCH por paso. getStatusChainSteps no
-          // retrocede ni repite estado, así que un pedido ya en LLAMADO o más
-          // adelante (ASIGNADO_A_GUIA) no genera PATCH.
+          // Puente genérico: lleva un pedido PREPARADO hasta LLAMADO sin
+          // violar el flujo del backend, encadenando un PATCH por paso
+          // (PAGADO ya no llega hasta acá, ver `visibleOrders`).
+          // getStatusChainSteps no retrocede ni repite estado, así que un
+          // pedido ya en LLAMADO o más adelante (ASIGNADO_A_GUIA) no genera
+          // PATCH.
           const bridge = getStatusChainSteps(sale.status, "LLAMADO");
           for (const step of bridge) {
             await axios.patch(`${API_VENTAS}/order-header/${sale.id}`, {
@@ -634,9 +633,10 @@ export function PedidosContent() {
       // preparado para despacho — mismo criterio que "Imprimir" en
       // CustomerServiceModal (handlePrint/handleConfirmPrintStatus), pero
       // acá no hace falta el diálogo de confirmación: seleccionar e imprimir
-      // en lote ya es la confirmación explícita. Solo avanza los que todavía
-      // no llegaron a PREPARADO (p.ej. PAGADO); un PREPARADO/LLAMADO/
-      // ASIGNADO_A_GUIA no genera PATCH (getStatusChainSteps no retrocede).
+      // en lote ya es la confirmación explícita. En la práctica todo lo que
+      // llega hasta acá ya es PREPARADO o posterior (PAGADO quedó afuera de
+      // Operaciones, ver `visibleOrders`), así que esto no genera PATCH hoy
+      // — se deja como red de seguridad (getStatusChainSteps no retrocede).
       const toPrepare = printedSales.filter(
         (sale) => getStatusChainSteps(sale.status, "PREPARADO").length > 0,
       );

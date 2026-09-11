@@ -24,6 +24,24 @@ export const SHIPPING_STATUSES: OrderStatus[] = [
 
 export type PedidosTabKey = "despachar" | "camino" | "atencion" | "historial" | "anulados";
 
+/**
+ * Estados anteriores a la preparación real por almacén: siguen siendo
+ * responsabilidad de Ventas/Atención al Cliente, no de Operaciones.
+ * PAGADO ("PENDIENTE + cobrado al 100%") NO cuenta como preparado — cobrar
+ * no es lo mismo que empacar, así que no debe listarse ni contarse en
+ * ningún tablero/origen de este módulo hasta que almacén lo marque
+ * PREPARADO explícitamente (imprimir etiqueta o cambio de estado manual).
+ * Toda pantalla de Operaciones que reciba pedidos sin filtrar (Pedidos,
+ * Planificación de guías) debe excluir estos estados antes de agrupar por
+ * pestaña con `getPedidosTab`.
+ */
+export const PRE_FULFILLMENT_STATUSES: OrderStatus[] = [
+  "INCOMPLETE",
+  "PREVENTA",
+  "PENDIENTE",
+  "PAGADO",
+];
+
 export interface PedidosTabDef {
   key: PedidosTabKey;
   label: string;
@@ -87,13 +105,12 @@ export function getPedidosTab(order: OrderHeader): PedidosTabKey {
   // PREPARADO, LLAMADO, ASIGNADO_A_GUIA — pipeline activo de despacho, van
   // a "Por Despachar" igual que en el mockup. La gestión de llamada de
   // confirmación se hace desde el modal de pedido, no filtra la pestaña.
-  // PAGADO también cae acá a propósito ("PENDIENTE + cobrado al 100%": se
-  // puede armar guía directo, ver GUIDE_ELIGIBLE_STATUSES en
-  // PorDespacharTab.tsx). PENDIENTE/INCOMPLETE/PREVENTA sí son etapas
-  // previas a la preparación (Ventas, no Operaciones) y no deberían llegar
-  // hasta acá — PedidosContent.tsx los filtra antes de agrupar por
-  // pestaña; el fallback sigue existiendo para no desaparecer
-  // silenciosamente un estado nuevo o no contemplado.
+  // PRE_FULFILLMENT_STATUSES (PENDIENTE/PAGADO/INCOMPLETE/PREVENTA) no
+  // debería llegar hasta acá — son etapas previas a la preparación real
+  // (Ventas, no Operaciones) y cada caller (PedidosContent.tsx,
+  // PlanificacionTab.tsx) los filtra antes de agrupar por pestaña; el
+  // fallback sigue existiendo para no desaparecer silenciosamente un
+  // estado nuevo o no contemplado.
   return "despachar";
 }
 
