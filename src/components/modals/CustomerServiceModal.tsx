@@ -36,6 +36,8 @@ import {
   ArrowRightLeft,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
+import { isShalomCourier } from "@/utils/courierNormalizer";
 import { Textarea } from "../ui/textarea";
 import {
   DropdownMenu,
@@ -2264,6 +2266,100 @@ export default function CustomerServiceModal({
                             </span>
                             <span className="font-medium">
                               {shippingGuide.deliveryAddress}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Estado Shalom — lo que el webhook de Shalom guardó en el pedido
+                      (sin fetch en vivo, mismo dato que ShalomOrderTrackingView).
+                      Se muestra solo si el courier/oficina es Shalom; courier se
+                      setea en el mismo PATCH que guideNumber al crear la guía, así
+                      que puede existir aunque shalomStatus todavía no se haya
+                      sincronizado (badge "Sin registrar" para ese caso). */}
+                  {(isShalomCourier(orderHeader?.courier) ||
+                    isShalomCourier(orderHeader?.shippingOffice)) && (
+                    <div className="border border-teal-200 dark:border-teal-800 rounded-lg p-4 bg-teal-50/50 dark:bg-teal-950/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-teal-700 dark:text-teal-400 flex items-center gap-2">
+                          <Package className="h-4 w-4" />
+                          Estado Shalom
+                        </h3>
+                        <ShalomStatusBadge
+                          status={orderHeader?.shalomStatus}
+                          error={orderHeader?.shalomError}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                        {orderHeader?.shalomSerie && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              N° Serie:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {orderHeader.shalomSerie}
+                            </span>
+                          </div>
+                        )}
+                        {orderHeader?.shalomOriginAgency && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Agencia Origen:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {orderHeader.shalomOriginAgency}
+                            </span>
+                          </div>
+                        )}
+                        {orderHeader?.shalomDestinationAgency && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Agencia Destino:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {orderHeader.shalomDestinationAgency}
+                            </span>
+                          </div>
+                        )}
+                        {orderHeader?.shalomRecipientDoc && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Doc. Destinatario:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {orderHeader.shalomRecipientDoc}
+                            </span>
+                          </div>
+                        )}
+                        {orderHeader?.shalomRecipientPhone && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Tel. Destinatario:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {orderHeader.shalomRecipientPhone}
+                            </span>
+                          </div>
+                        )}
+                        {orderHeader?.shalomContent && (
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">
+                              Contenido declarado:{" "}
+                            </span>
+                            <span className="font-medium">
+                              {orderHeader.shalomContent}
+                            </span>
+                          </div>
+                        )}
+                        {orderHeader?.shalomError && (
+                          <div className="col-span-2">
+                            <span className="text-muted-foreground">
+                              Error Shalom:{" "}
+                            </span>
+                            <span className="font-medium text-red-600">
+                              {orderHeader.shalomError}
                             </span>
                           </div>
                         )}
