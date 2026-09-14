@@ -1,6 +1,6 @@
 ﻿"use client";
 import axios from "axios";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -37,6 +37,8 @@ import {
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
+import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
+import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 import { isShalomCourier } from "@/utils/courierNormalizer";
 import { Textarea } from "../ui/textarea";
 import {
@@ -848,23 +850,56 @@ export default function CustomerServiceModal({
     }
   };
 
-  const handleForceSyncTracking = async () => {
-    if (!auth?.accessToken || !orderHeader) return;
-    setSyncingTracking(true);
-    try {
-      const guideRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderHeader.id}`,
-      );
-      await trackShalomGuide(auth.accessToken, guideRes.data.id);
-      toast.success("Sincronizado con Shalom");
-      fetchReceipt();
-      onOrderUpdated?.();
-    } catch {
-      toast.error("No se pudo sincronizar con Shalom");
-    } finally {
-      setSyncingTracking(false);
+  const syncShalomTracking = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!auth?.accessToken || !orderHeader) return;
+      if (!silent) setSyncingTracking(true);
+      try {
+        const guideRes = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderHeader.id}`,
+        );
+        await trackShalomGuide(auth.accessToken, guideRes.data.id);
+        if (!silent) toast.success("Sincronizado con Shalom");
+        fetchReceipt();
+        onOrderUpdated?.();
+      } catch {
+        if (!silent) toast.error("No se pudo sincronizar con Shalom");
+      } finally {
+        if (!silent) setSyncingTracking(false);
+      }
+    },
+    [auth?.accessToken, orderHeader, fetchReceipt, onOrderUpdated],
+  );
+
+  const handleForceSyncTracking = () => syncShalomTracking();
+
+  // Auto-sync silencioso al abrir el modal: el estado de orderHeader.shalomStatus
+  // solo se actualiza vía webhook, así que al abrir "Seguimiento" puede mostrar
+  // un estado viejo. Se consulta 1 sola guía (no lote) para no floodear a Shalom
+  // (ver 2a51d6e). autoSyncedOrderIdRef evita repetir la consulta en cada
+  // refetch de orderHeader dentro del mismo "open".
+  const autoSyncedOrderIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      autoSyncedOrderIdRef.current = null;
     }
-  };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !orderHeader?.id || !auth?.accessToken) return;
+    if (autoSyncedOrderIdRef.current === orderHeader.id) return;
+    if (
+      !orderHeader.guideNumber ||
+      (!isShalomCourier(orderHeader.courier) &&
+        !isShalomCourier(orderHeader.shippingOffice))
+    ) {
+      return;
+    }
+    autoSyncedOrderIdRef.current = orderHeader.id;
+    syncShalomTracking({ silent: true });
+  }, [open, orderHeader, auth?.accessToken, syncShalomTracking]);
 
   // Desvincula el pedido de su guía actual en ms-courier y lo devuelve a
   // PREPARADO en ms-ventas (mismo patrón que usaba ShipmentDetailModal).
@@ -1919,34 +1954,60 @@ export default function CustomerServiceModal({
                   {/* Estado Aliclik */}
                   {(aliclikDispatchStatus || aliclikSyncedAt) && (
                     <div className="border border-purple-200 dark:border-purple-800 rounded-lg p-4 bg-purple-50/50 dark:bg-purple-950/30">
-                      <h3 className="font-semibold text-purple-700 dark:text-purple-400 text-sm mb-3">
-                        Aliclik — Estado de despacho
-                      </h3>
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <span className="text-muted-foreground block underline mb-1">
-                            Estado
-                          </span>
-                          <span className="font-semibold">
-                            {aliclikDispatchStatus || "—"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block underline mb-1">
-                            Última sincronización
-                          </span>
-                          <span className="font-semibold">
-                            {aliclikSyncedAt
-                              ? new Date(aliclikSyncedAt).toLocaleString("es-PE", {
-                                  day: "2-digit",
-                                  month: "short",
-                                  year: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              : "—"}
-                          </span>
-                        </div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-purple-700 dark:text-purple-400 text-sm">
+                          Aliclik — Estado de despacho
+                        </h3>
+                        <AliclikStatusBadge
+                          aliclikDispatchStatus={aliclikDispatchStatus}
+                          aliclikSyncedAt={aliclikSyncedAt}
+                        />
+                      </div>
+                      <div className="text-xs">
+                        <span className="text-muted-foreground block underline mb-1">
+                          Última sincronización
+                        </span>
+                        <span className="font-semibold">
+                          {aliclikSyncedAt
+                            ? new Date(aliclikSyncedAt).toLocaleString("es-PE", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Estado EVA Courier — antes no existía ninguna tarjeta acá
+                      (a diferencia de Shalom/Aliclik), pese a cargarse evaStatus
+                      y evaSyncedAt del pedido. */}
+                  {(evaStatus || evaSyncedAt) && (
+                    <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50/50 dark:bg-blue-950/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-blue-700 dark:text-blue-400 text-sm">
+                          EVA Courier — Estado de envío
+                        </h3>
+                        <EvaStatusBadge evaStatus={evaStatus} evaSyncedAt={evaSyncedAt} />
+                      </div>
+                      <div className="text-xs">
+                        <span className="text-muted-foreground block underline mb-1">
+                          Última sincronización
+                        </span>
+                        <span className="font-semibold">
+                          {evaSyncedAt
+                            ? new Date(evaSyncedAt).toLocaleString("es-PE", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "—"}
+                        </span>
                       </div>
                     </div>
                   )}
