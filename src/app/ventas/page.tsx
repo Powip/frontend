@@ -109,12 +109,21 @@ import { UserPen } from "lucide-react";
 
 const ORDER_STATUS = {
   PENDIENTE: "PENDIENTE",
+  PAGADO: "PAGADO",
   PREPARADO: "PREPARADO",
   LLAMADO: "LLAMADO",
   EN_ENVIO: "EN_ENVIO",
   ENTREGADO: "ENTREGADO",
   ANULADO: "ANULADO",
 };
+
+// PAGADO es "PENDIENTE ya cobrado al 100%", no una etapa de fulfillment
+// distinta (ver ORDER_STATUS_FLOW/FULFILLMENT_RANK en orders-status-flow.ts,
+// donde PAGADO comparte rango con PENDIENTE) — debe listarse junto con
+// PENDIENTE en "Ventas Pendientes", si no la tab queda en 0 apenas se cobra
+// un pedido y solo se lo ve en "Todas las Ventas".
+const isPendienteStatus = (status: OrderStatus) =>
+  status === ORDER_STATUS.PENDIENTE || status === ORDER_STATUS.PAGADO;
 
 const ALL_STATUSES: OrderStatus[] = [
   "PENDIENTE",
@@ -1604,9 +1613,7 @@ Estado: ${sale.status}
   ----------------------------------------- */
 
   const pendientes = useMemo(() => {
-    const statusFiltered = sales.filter(
-      (s) => s.status === ORDER_STATUS.PENDIENTE,
-    );
+    const statusFiltered = sales.filter((s) => isPendienteStatus(s.status));
     return applyFilters(statusFiltered, filtersPendiente);
   }, [sales, filtersPendiente]);
 
@@ -1632,8 +1639,8 @@ Estado: ${sale.status}
           })
         : sales;
 
-    const pendientesInRange = salesInRange.filter(
-      (s) => s.status === ORDER_STATUS.PENDIENTE,
+    const pendientesInRange = salesInRange.filter((s) =>
+      isPendienteStatus(s.status),
     );
     const anuladosInRange = salesInRange.filter(
       (s) => s.status === ORDER_STATUS.ANULADO,
