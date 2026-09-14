@@ -22,6 +22,7 @@ import {
   Eye,
   FileSpreadsheet,
   CalendarIcon,
+  ChevronDown,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -74,8 +76,12 @@ import { getEvaCredentials } from "@/services/evaService";
 import { getAliclikCredentials } from "@/services/aliclikService";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
-import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
 import { useShalomLiveStatuses, SHALOM_STEP_STYLES, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
+import {
+  CourierStatusBadge,
+  courierStatusFilterKey,
+  getOrderCourierStatus,
+} from "@/components/tracking/CourierStatusBadge";
 
 function money(n: number): string {
   return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -281,6 +287,7 @@ export default function CourierTrackingView() {
   // viejos/importados) — mismo servicio que usa el resto de Operaciones.
   const [companyCouriers, setCompanyCouriers] = useState<string[]>([]);
   const [courierFilter, setCourierFilter] = useState("ALL");
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [saldoFilter, setSaldoFilter] = useState<"ALL" | "PENDING" | "PAID">("ALL");
   const [fechaRange, setFechaRange] = useState<DateRange | undefined>(undefined);
   const [fechaCalendarOpen, setFechaCalendarOpen] = useState(false);
@@ -443,6 +450,24 @@ export default function CourierTrackingView() {
     return Array.from(set).sort();
   }, [companyCouriers, dispatchedOrders]);
 
+  // Opciones del filtro de estado — combina Shalom/Aliclik/EVA (únicos
+  // couriers con estado de envío propio) a partir de lo que realmente
+  // aparece en los pedidos despachados, no una lista fija hardcodeada.
+  const statusFilterOptions = useMemo(() => {
+    const map = new Map<string, { key: string; sourceLabel: string; label: string }>();
+    for (const o of dispatchedOrders) {
+      const info = getOrderCourierStatus(o);
+      if (!info) continue;
+      const key = courierStatusFilterKey(info);
+      if (!map.has(key)) {
+        map.set(key, { key, sourceLabel: info.sourceLabel, label: info.label });
+      }
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => a.sourceLabel.localeCompare(b.sourceLabel) || a.label.localeCompare(b.label),
+    );
+  }, [dispatchedOrders]);
+
   // Mismo criterio date-only que Por Liquidar/Pedidos — compara contra la
   // fecha de venta (`created_at`).
   const fechaDesde = fechaRange?.from ? dateKey(fechaRange.from) : "";
@@ -458,6 +483,11 @@ export default function CourierTrackingView() {
       .filter(
         (o) => courierFilter === "ALL" || courierLabel(o) === courierFilter,
       )
+      .filter((o) => {
+        if (statusFilters.length === 0) return true;
+        const info = getOrderCourierStatus(o);
+        return !!info && statusFilters.includes(courierStatusFilterKey(info));
+      })
       .filter((o) => {
         if (saldoFilter === "ALL") return true;
         const pending = getPendingPayment(o);
@@ -482,11 +512,11 @@ export default function CourierTrackingView() {
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
-  }, [dispatchedOrders, search, courierFilter, saldoFilter, fechaDesde, fechaHasta]);
+  }, [dispatchedOrders, search, courierFilter, statusFilters, saldoFilter, fechaDesde, fechaHasta]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, courierFilter, saldoFilter, fechaDesde, fechaHasta]);
+  }, [search, courierFilter, statusFilters, saldoFilter, fechaDesde, fechaHasta]);
 
   const totalPages = Math.max(
     1,
@@ -745,6 +775,70 @@ export default function CourierTrackingView() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 w-[190px] shrink-0 justify-between font-normal bg-background"
+                    >
+                      <span className="truncate">
+                        {statusFilters.length === 0
+                          ? "Todos los estados"
+                          : statusFilters.length === 1
+                            ? statusFilterOptions.find((o) => o.key === statusFilters[0])
+                                ?.label
+                            : `${statusFilters.length} estados seleccionados`}
+                      </span>
+                      <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        Filtrar por estado
+                      </span>
+                      {statusFilters.length > 0 && (
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline"
+                          onClick={() => setStatusFilters([])}
+                        >
+                          Limpiar
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1 max-h-72 overflow-y-auto">
+                      {statusFilterOptions.length === 0 ? (
+                        <p className="text-xs text-muted-foreground px-1 py-1">
+                          Sin estados disponibles
+                        </p>
+                      ) : (
+                        statusFilterOptions.map((opt) => (
+                          <label
+                            key={opt.key}
+                            className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                          >
+                            <Checkbox
+                              checked={statusFilters.includes(opt.key)}
+                              onCheckedChange={(checked) => {
+                                setStatusFilters((prev) =>
+                                  checked
+                                    ? [...prev, opt.key]
+                                    : prev.filter((v) => v !== opt.key),
+                                );
+                              }}
+                            />
+                            <span className="text-muted-foreground text-xs">
+                              {opt.sourceLabel}:
+                            </span>{" "}
+                            {opt.label}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
                   <SelectTrigger className="w-[170px] shrink-0 bg-background">
                     <SelectValue placeholder="Saldo" />
@@ -891,23 +985,19 @@ export default function CourierTrackingView() {
                               </Badge>
                             </TableCell>
                             <TableCell className="px-4 py-3 text-center">
-                              {isShalomCourier(order.courier) || isShalomCourier(order.shippingOffice) ? (
-                                (() => {
-                                  const liveLabel = shalomLiveStatuses[order.id];
-                                  if (liveLabel) {
-                                    const style = SHALOM_STEP_STYLES[liveLabel] ?? "bg-amber-50 text-amber-700 border-amber-200";
-                                    const icon = SHALOM_STEP_ICONS[liveLabel] ?? "•";
-                                    return (
-                                      <Badge variant="outline" className={`text-[10px] ${style}`}>
-                                        {icon} {liveLabel}
-                                      </Badge>
-                                    );
-                                  }
-                                  return <ShalomStatusBadge status={order.shalomStatus} error={order.shalomError} />;
-                                })()
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
+                              {(() => {
+                                const liveLabel = shalomLiveStatuses[order.id];
+                                const live = liveLabel
+                                  ? {
+                                      label: liveLabel,
+                                      style:
+                                        SHALOM_STEP_STYLES[liveLabel] ??
+                                        "bg-amber-50 text-amber-700 border-amber-200",
+                                      icon: SHALOM_STEP_ICONS[liveLabel] ?? "•",
+                                    }
+                                  : undefined;
+                                return <CourierStatusBadge order={order} live={live} />;
+                              })()}
                             </TableCell>
                             <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
                               {order.carrierShippingCost
