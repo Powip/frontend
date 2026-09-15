@@ -1765,20 +1765,21 @@ export default function GuideDetailsModal({
                                   </label>
                                   <div className="relative">
                                     <input
-                                      type={
-                                        pending > 0 && !revealedKeys[order.id]
-                                          ? "password"
-                                          : "text"
-                                      }
                                       className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 disabled:cursor-not-allowed disabled:opacity-60 ${
                                         pending > 0
                                           ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
                                           : "focus:border-orange-500"
                                       }`}
-                                      placeholder="Ej: ABC123"
+                                      placeholder={
+                                        pending > 0 && !revealedKeys[order.id]
+                                          ? "Bloqueada"
+                                          : "Ej: ABC123"
+                                      }
                                       value={
-                                        orderTrackingFields[order.id]
-                                          ?.shippingKey || ""
+                                        pending > 0 && !revealedKeys[order.id]
+                                          ? ""
+                                          : orderTrackingFields[order.id]
+                                              ?.shippingKey || ""
                                       }
                                       disabled={!orderHasProof[order.id]}
                                       title={

@@ -1564,19 +1564,23 @@ export default function CustomerServiceModal({
                               </span>
                               <div className="relative">
                                 <Input
-                                  type={
-                                    receipt.totals.pendingAmount > 0 &&
-                                    !revealKey
-                                      ? "password"
-                                      : "text"
-                                  }
                                   className={`h-8 text-xs pr-8 disabled:cursor-not-allowed disabled:opacity-60 ${
                                     receipt.totals.pendingAmount > 0
                                       ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
                                       : "focus:border-orange-500"
                                   }`}
-                                  placeholder="Clave..."
-                                  value={receipt.shippingKey || ""}
+                                  placeholder={
+                                    receipt.totals.pendingAmount > 0 &&
+                                    !revealKey
+                                      ? "Bloqueada"
+                                      : "Clave..."
+                                  }
+                                  value={
+                                    receipt.totals.pendingAmount > 0 &&
+                                    !revealKey
+                                      ? ""
+                                      : receipt.shippingKey || ""
+                                  }
                                   disabled={!canEditCourierFields}
                                   title={
                                     canEditCourierFields
