@@ -43,7 +43,7 @@ import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import CancelAliclikButton from "@/components/aliclik/CancelAliclikButton";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import OrderTrackingModal from "@/components/modals/OrderTrackingModal";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 
 const ITEMS_PER_PAGE = 15;
@@ -587,14 +587,11 @@ export default function AliclikOrderTrackingView() {
         />
       </div>
 
-      <CustomerServiceModal
+      <OrderTrackingModal
         open={!!viewOrderId}
         orderId={viewOrderId || ""}
         onClose={() => setViewOrderId(null)}
         onOrderUpdated={fetchOrders}
-        isOperaciones
-        showTracking
-        initialTab="seguimiento"
       />
     </div>
   );

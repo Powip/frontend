@@ -67,7 +67,7 @@ import {
   trackShalomGuide,
   updateGuideQuote
 } from "@/services/shalomService";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import OrderTrackingModal from "@/components/modals/OrderTrackingModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
 import EvaOrderTrackingView from "@/components/tracking/EvaOrderTrackingView";
@@ -1254,15 +1254,14 @@ export default function CourierTrackingView() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE VER PEDIDO (pestaña "Todos") — abre directo en Seguimiento */}
-      <CustomerServiceModal
+      {/* MODAL "Ver seguimiento" — calca el mockup pixel a pixel a pedido
+          del cliente (pedido usado también por la pestaña genérica por
+          courier, vía onView={setViewOrderId}). */}
+      <OrderTrackingModal
         open={!!viewOrderId}
         orderId={viewOrderId || ""}
         onClose={() => setViewOrderId(null)}
         onOrderUpdated={fetchOrders}
-        isOperaciones
-        showTracking
-        initialTab="seguimiento"
       />
     </div>
   );
