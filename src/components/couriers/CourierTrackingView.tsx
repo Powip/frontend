@@ -237,6 +237,7 @@ function TrackingInputCells({
             )}
             <div className="flex items-center gap-1">
               <Input
+                type={key === "shippingKey" && !canEdit ? "password" : "text"}
                 placeholder={placeholder}
                 value={values[key]}
                 onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
