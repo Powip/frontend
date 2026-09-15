@@ -22,6 +22,7 @@ const CatalogoMarcas = () => {
   const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [brands, setBrands] = useState<Brand[]>([]);
   const [loading, setLoading] = useState(false);
+  const [brandsLoading, setBrandsLoading] = useState(false);
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
 
@@ -41,12 +42,14 @@ const CatalogoMarcas = () => {
   // Cargar marcas cuando cambia el proveedor seleccionado
   useEffect(() => {
     if (!selectedProvider) return;
+    setBrandsLoading(true);
     getBrandsBySupplier(selectedProvider)
       .then((data) => setBrands(data))
       .catch((err) => {
         toast.error("Error al cargar marcas");
         console.error(err);
-      });
+      })
+      .finally(() => setBrandsLoading(false));
   }, [selectedProvider]);
 
   if (!companyId) return null;
@@ -99,6 +102,7 @@ const CatalogoMarcas = () => {
           <div className="p-6">
             <BrandsTable
               brands={brands}
+              isLoading={brandsLoading}
               supplierId={selectedProvider}
               onUpdated={() => {
                 getBrandsBySupplier(selectedProvider).then(setBrands);

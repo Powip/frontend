@@ -40,6 +40,7 @@ import { UserDetailModal } from "./UserDetailModal";
 
 interface UsersViewProps {
   allUsers: any[];
+  isLoading?: boolean;
   auth: any;
   roles: any[];
   companies: any[];
@@ -51,6 +52,7 @@ const ITEMS_PER_PAGE = 8;
 
 export function UsersView({
   allUsers,
+  isLoading = false,
   auth,
   roles,
   companies,
@@ -200,7 +202,13 @@ export function UsersView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedUsers.map((user) => (
+              {isLoading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i} className="border-white/5 hover:bg-transparent">
+                    <TableCell colSpan={5} className="h-14 animate-pulse bg-white/[0.03]" />
+                  </TableRow>
+                ))
+              ) : paginatedUsers.map((user) => (
                 <TableRow key={user.id} className="border-white/5 hover:bg-white/[0.02] transition-colors group">
                   <TableCell className="pl-6 py-4">
                     <div className="flex items-center gap-3">
@@ -266,7 +274,7 @@ export function UsersView({
             </TableBody>
           </Table>
 
-          {filteredUsers.length === 0 && (
+          {!isLoading && filteredUsers.length === 0 && (
             <div className="py-20 text-center">
               <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-white/5 mb-4">
                 <Users className="h-8 w-8 text-gray-600" />
