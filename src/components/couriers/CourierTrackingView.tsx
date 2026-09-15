@@ -70,7 +70,7 @@ import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
 import EvaOrderTrackingView from "@/components/tracking/EvaOrderTrackingView";
-import { getPendingPayment, trackingUrlFor } from "@/app/centro-envios/components/shipmentUtils";
+import { getPendingPayment, hasPaymentProof, trackingUrlFor } from "@/app/centro-envios/components/shipmentUtils";
 import { fetchCouriers } from "@/services/courierService";
 import { getEvaCredentials } from "@/services/evaService";
 import { getAliclikCredentials } from "@/services/aliclikService";
@@ -183,6 +183,7 @@ function TrackingInputCells({
   const original = trackingValuesOf(order);
   const [values, setValues] = useState<Record<TrackingFieldKey, string>>(original);
   const [saving, setSaving] = useState(false);
+  const canEdit = hasPaymentProof(order);
 
   useEffect(() => {
     setValues(trackingValuesOf(order));
@@ -196,6 +197,9 @@ function TrackingInputCells({
   ]);
 
   const handleAutoSave = async () => {
+    // Defensa en profundidad: aunque el input ya está disabled sin
+    // comprobante, no se dispara el PATCH si de algún modo se llama igual.
+    if (!canEdit) return;
     const dirty = TRACKING_FIELDS.some(({ key }) => values[key] !== original[key]);
     if (!dirty || saving) return;
     setSaving(true);
@@ -222,17 +226,30 @@ function TrackingInputCells({
     <>
       {TRACKING_FIELDS.map(({ key, placeholder }, i) => (
         <TableCell key={key} className="px-2 py-2">
-          <div className="flex items-center gap-1">
-            <Input
-              placeholder={placeholder}
-              value={values[key]}
-              onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
-              onBlur={handleAutoSave}
-              className="h-7 w-24 text-[11px]"
-            />
-            {i === TRACKING_FIELDS.length - 1 && saving && (
-              <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+          <div className="flex flex-col gap-0.5">
+            {i === 0 && !canEdit && (
+              <span className="text-[9px] font-medium text-amber-600 flex items-center gap-0.5 whitespace-nowrap">
+                🔒 Sin comprobante
+              </span>
             )}
+            <div className="flex items-center gap-1">
+              <Input
+                placeholder={placeholder}
+                value={values[key]}
+                onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                onBlur={handleAutoSave}
+                disabled={!canEdit}
+                title={
+                  canEdit
+                    ? undefined
+                    : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
+                }
+                className="h-7 w-24 text-[11px] disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              {i === TRACKING_FIELDS.length - 1 && saving && (
+                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+              )}
+            </div>
           </div>
         </TableCell>
       ))}
