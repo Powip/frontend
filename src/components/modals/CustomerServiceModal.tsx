@@ -518,7 +518,9 @@ export default function CustomerServiceModal({
 
   const handleSaveTracking = async () => {
     if (!receipt || !orderId || !originalTracking) return;
-    if (!canEditCourierFields) return;
+    // La clave sigue protegida por su propio `disabled` mientras no haya
+    // comprobante — acá no se bloquea el guardado entero, para no impedir
+    // guardar tracking/código/oficina (que ya no dependen del comprobante).
 
     // Detect if there are actual changes
     const hasChanges =
@@ -1480,40 +1482,15 @@ export default function CustomerServiceModal({
                           <label className="text-xs font-bold text-muted-foreground mb-3 block uppercase tracking-wider">
                             Información de Seguimiento
                           </label>
-                          {!canEditCourierFields ? (
-                            <div className="rounded-xl border border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30 p-[13px]">
-                              <div className="flex items-center gap-[11px]">
-                                <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0 bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300">
-                                  <Lock className="h-4 w-4" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-extrabold text-[13.5px] text-[#92400E] dark:text-amber-400">
-                                    Datos de la guía bloqueados
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {`Pendiente de cobro${
-                                      receipt?.totals.pendingAmount
-                                        ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
-                                        : ""
-                                    }`}
-                                  </div>
-                                </div>
-                              </div>
-                              <Button
-                                size="sm"
-                                className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
-                                onClick={() => setPaymentModalOpen(true)}
-                              >
-                                <DollarSign className="h-4 w-4 mr-1.5" />
-                                Registrar cobranza
-                              </Button>
-                              <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
-                                El tracking, código, oficina y clave se
-                                habilitan al validar el comprobante de pago
-                                cargado para este pedido.
-                              </p>
+                          {!canEditCourierFields && (
+                            <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                              <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                Falta el comprobante de pago — la clave de
+                                recojo permanece bloqueada hasta validarlo.
+                              </span>
                             </div>
-                          ) : (
+                          )}
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <span className="text-muted-foreground block text-[10px] uppercase mb-1">
@@ -1522,23 +1499,9 @@ export default function CustomerServiceModal({
                               <div className="flex items-center gap-1">
                                 <Input
                                   size={1}
-                                  className="h-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                                  placeholder={
-                                    canEditCourierFields
-                                      ? "Nro Tracking..."
-                                      : "Bloqueada"
-                                  }
-                                  value={
-                                    canEditCourierFields
-                                      ? receipt.externalTrackingNumber || ""
-                                      : ""
-                                  }
-                                  disabled={!canEditCourierFields}
-                                  title={
-                                    canEditCourierFields
-                                      ? undefined
-                                      : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
-                                  }
+                                  className="h-8 text-xs"
+                                  placeholder="Nro Tracking..."
+                                  value={receipt.externalTrackingNumber || ""}
                                   onChange={(
                                     e: React.ChangeEvent<HTMLInputElement>,
                                   ) =>
@@ -1549,7 +1512,7 @@ export default function CustomerServiceModal({
                                   }
                                   onBlur={handleSaveTracking}
                                 />
-                                {canEditCourierFields && receipt.externalTrackingNumber && (
+                                {receipt.externalTrackingNumber && (
                                   <Button
                                     size="icon"
                                     variant="ghost"
@@ -1572,21 +1535,9 @@ export default function CustomerServiceModal({
                                 Oficina
                               </span>
                               <Input
-                                className="h-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                                placeholder={
-                                  canEditCourierFields ? "Oficina..." : "Bloqueada"
-                                }
-                                value={
-                                  canEditCourierFields
-                                    ? receipt.shippingOffice || ""
-                                    : ""
-                                }
-                                disabled={!canEditCourierFields}
-                                title={
-                                  canEditCourierFields
-                                    ? undefined
-                                    : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
-                                }
+                                className="h-8 text-xs"
+                                placeholder="Oficina..."
+                                value={receipt.shippingOffice || ""}
                                 onChange={(
                                   e: React.ChangeEvent<HTMLInputElement>,
                                 ) =>
@@ -1603,21 +1554,9 @@ export default function CustomerServiceModal({
                                 Código
                               </span>
                               <Input
-                                className="h-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                                placeholder={
-                                  canEditCourierFields ? "Código..." : "Bloqueada"
-                                }
-                                value={
-                                  canEditCourierFields
-                                    ? receipt.shippingCode || ""
-                                    : ""
-                                }
-                                disabled={!canEditCourierFields}
-                                title={
-                                  canEditCourierFields
-                                    ? undefined
-                                    : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
-                                }
+                                className="h-8 text-xs"
+                                placeholder="Código..."
+                                value={receipt.shippingCode || ""}
                                 onChange={(
                                   e: React.ChangeEvent<HTMLInputElement>,
                                 ) =>
@@ -1656,7 +1595,7 @@ export default function CustomerServiceModal({
                                   title={
                                     canEditCourierFields
                                       ? undefined
-                                      : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
+                                      : "Debes cargar el comprobante de pago antes de ingresar la clave"
                                   }
                                   onChange={(
                                     e: React.ChangeEvent<HTMLInputElement>,
@@ -1689,7 +1628,6 @@ export default function CustomerServiceModal({
                               </div>
                             </div>
                           </div>
-                          )}
                           {savingTracking && (
                             <div className="mt-2 flex items-center gap-2 text-[10px] text-orange-500 animate-pulse">
                               <Loader2 className="h-3 w-3 animate-spin" />

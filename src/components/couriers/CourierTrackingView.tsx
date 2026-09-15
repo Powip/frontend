@@ -201,17 +201,19 @@ function TrackingInputCells({
   ]);
 
   const handleAutoSave = async () => {
-    // Defensa en profundidad: aunque el input ya está disabled sin
-    // comprobante, no se dispara el PATCH si de algún modo se llama igual.
-    if (!canEdit) return;
     const dirty = TRACKING_FIELDS.some(({ key }) => values[key] !== original[key]);
     if (!dirty || saving) return;
     setSaving(true);
     try {
       const payload: Partial<Record<TrackingFieldKey, string | null>> = {};
       TRACKING_FIELDS.forEach(({ key }) => {
+        // La clave no tiene input mientras está bloqueada (no hay forma de
+        // que el usuario la haya tocado), pero por las dudas se excluye
+        // explícitamente del payload sin comprobante.
+        if (key === "shippingKey" && !canEdit) return;
         if (values[key] !== original[key]) payload[key] = values[key] || null;
       });
+      if (Object.keys(payload).length === 0) return;
       await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${order.id}`, payload);
       toast.success("Tracking guardado");
       // Actualiza el estado local en vez de refetchear todo — un refetch acá
@@ -226,37 +228,35 @@ function TrackingInputCells({
     }
   };
 
-  if (!canEdit) {
-    return (
-      <TableCell colSpan={TRACKING_FIELDS.length} className="px-2 py-2">
-        <span
-          className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700"
-          title="Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
-        >
-          🔒 Sin comprobante — datos de la guía bloqueados
-        </span>
-      </TableCell>
-    );
-  }
-
   return (
     <>
-      {TRACKING_FIELDS.map(({ key, placeholder }, i) => (
-        <TableCell key={key} className="px-2 py-2">
-          <div className="flex items-center gap-1">
-            <Input
-              placeholder={placeholder}
-              value={values[key]}
-              onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
-              onBlur={handleAutoSave}
-              className="h-7 w-24 text-[11px]"
-            />
-            {i === TRACKING_FIELDS.length - 1 && saving && (
-              <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
-            )}
-          </div>
-        </TableCell>
-      ))}
+      {TRACKING_FIELDS.map(({ key, placeholder }, i) => {
+        // Solo la clave se bloquea sin comprobante de pago — tracking,
+        // código y oficina siempre se pueden ingresar.
+        const locked = key === "shippingKey" && !canEdit;
+        return (
+          <TableCell key={key} className="px-2 py-2">
+            <div className="flex items-center gap-1">
+              <Input
+                placeholder={locked ? "Bloqueada" : placeholder}
+                value={locked ? "" : values[key]}
+                onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                onBlur={handleAutoSave}
+                disabled={locked}
+                title={
+                  locked
+                    ? "Debes cargar el comprobante de pago antes de ingresar la clave"
+                    : undefined
+                }
+                className="h-7 w-24 text-[11px] disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              {i === TRACKING_FIELDS.length - 1 && saving && (
+                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+              )}
+            </div>
+          </TableCell>
+        );
+      })}
     </>
   );
 }
