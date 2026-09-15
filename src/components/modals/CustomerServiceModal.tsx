@@ -489,6 +489,12 @@ export default function CustomerServiceModal({
   // pago adjunto — antes se podían editar libremente y se generaban claves
   // de recojo sin respaldo de pago.
   const canEditCourierFields = orderHeader ? hasPaymentProof(orderHeader) : false;
+  // Método del pago que aportó el comprobante que habilita la clave — mismo
+  // criterio que hasPaymentProof, para mostrar "Cobrado (Yape) · validado"
+  // sin inventar un dato que no exista.
+  const proofPaymentMethod = orderHeader?.payments?.find(
+    (p) => !!p.paymentProofUrl,
+  )?.paymentMethod;
 
   const handleSaveTracking = async () => {
     if (!receipt || !orderId || !originalTracking) return;
@@ -2431,7 +2437,7 @@ export default function CustomerServiceModal({
                       ya montado más abajo vía paymentModalOpen). */}
                   {shippingGuide?.shippingKey && (
                     <div
-                      className={`rounded-lg border p-4 ${
+                      className={`rounded-xl border p-4 ${
                         canEditCourierFields
                           ? "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/30"
                           : "border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/30"
@@ -2460,21 +2466,23 @@ export default function CustomerServiceModal({
                             }`}
                           >
                             {canEditCourierFields
-                              ? "Clave de recojo habilitada"
+                              ? "Clave habilitada"
                               : "Clave de recojo bloqueada"}
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {canEditCourierFields
-                              ? "Comprobante de pago cargado"
+                              ? proofPaymentMethod
+                                ? `Cobrado (${proofPaymentMethod}) · validado`
+                                : "Comprobante de pago cargado"
                               : `Pendiente de cobro${
                                   receipt?.totals.pendingAmount
-                                    ? ` · S/${receipt.totals.pendingAmount.toFixed(2)}`
+                                    ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
                                     : ""
                                 }`}
                           </div>
                         </div>
                         <div
-                          className={`font-mono font-black tracking-widest text-lg ${
+                          className={`font-mono font-black tracking-[0.12em] text-xl ${
                             canEditCourierFields
                               ? "text-green-700 dark:text-green-400"
                               : "text-amber-700 dark:text-amber-400"
@@ -2496,8 +2504,8 @@ export default function CustomerServiceModal({
                             Registrar cobranza
                           </Button>
                           <p className="text-[11px] text-muted-foreground mt-2">
-                            La clave se habilita al cargar un comprobante de
-                            pago para este pedido.
+                            La clave se habilita al validar el comprobante de
+                            pago cargado para este pedido.
                           </p>
                         </>
                       )}
