@@ -1472,8 +1472,16 @@ export default function CustomerServiceModal({
                                 <Input
                                   size={1}
                                   className="h-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                                  placeholder="Nro Tracking..."
-                                  value={receipt.externalTrackingNumber || ""}
+                                  placeholder={
+                                    canEditCourierFields
+                                      ? "Nro Tracking..."
+                                      : "Bloqueada"
+                                  }
+                                  value={
+                                    canEditCourierFields
+                                      ? receipt.externalTrackingNumber || ""
+                                      : ""
+                                  }
                                   disabled={!canEditCourierFields}
                                   title={
                                     canEditCourierFields
@@ -1490,7 +1498,7 @@ export default function CustomerServiceModal({
                                   }
                                   onBlur={handleSaveTracking}
                                 />
-                                {receipt.externalTrackingNumber && (
+                                {canEditCourierFields && receipt.externalTrackingNumber && (
                                   <Button
                                     size="icon"
                                     variant="ghost"
@@ -1514,8 +1522,14 @@ export default function CustomerServiceModal({
                               </span>
                               <Input
                                 className="h-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                                placeholder="Oficina..."
-                                value={receipt.shippingOffice || ""}
+                                placeholder={
+                                  canEditCourierFields ? "Oficina..." : "Bloqueada"
+                                }
+                                value={
+                                  canEditCourierFields
+                                    ? receipt.shippingOffice || ""
+                                    : ""
+                                }
                                 disabled={!canEditCourierFields}
                                 title={
                                   canEditCourierFields
@@ -1539,8 +1553,14 @@ export default function CustomerServiceModal({
                               </span>
                               <Input
                                 className="h-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-                                placeholder="Código..."
-                                value={receipt.shippingCode || ""}
+                                placeholder={
+                                  canEditCourierFields ? "Código..." : "Bloqueada"
+                                }
+                                value={
+                                  canEditCourierFields
+                                    ? receipt.shippingCode || ""
+                                    : ""
+                                }
                                 disabled={!canEditCourierFields}
                                 title={
                                   canEditCourierFields

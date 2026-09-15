@@ -237,8 +237,8 @@ function TrackingInputCells({
             )}
             <div className="flex items-center gap-1">
               <Input
-                placeholder={key === "shippingKey" && !canEdit ? "Bloqueada" : placeholder}
-                value={key === "shippingKey" && !canEdit ? "" : values[key]}
+                placeholder={!canEdit ? "Bloqueada" : placeholder}
+                value={!canEdit ? "" : values[key]}
                 onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
                 onBlur={handleAutoSave}
                 disabled={!canEdit}

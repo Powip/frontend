@@ -1738,10 +1738,16 @@ export default function GuideDetailsModal({
                                   <input
                                     type="text"
                                     className="w-full border rounded px-2 py-1 text-xs bg-background disabled:cursor-not-allowed disabled:opacity-60"
-                                    placeholder="Ej: OLV-123456"
+                                    placeholder={
+                                      orderHasProof[order.id]
+                                        ? "Ej: OLV-123456"
+                                        : "Bloqueada"
+                                    }
                                     value={
-                                      orderTrackingFields[order.id]
-                                        ?.externalTrackingNumber || ""
+                                      orderHasProof[order.id]
+                                        ? orderTrackingFields[order.id]
+                                            ?.externalTrackingNumber || ""
+                                        : ""
                                     }
                                     disabled={!orderHasProof[order.id]}
                                     title={
@@ -1854,10 +1860,16 @@ export default function GuideDetailsModal({
                                   <input
                                     type="text"
                                     className="w-full border rounded px-2 py-1 text-xs bg-background disabled:cursor-not-allowed disabled:opacity-60"
-                                    placeholder="Ej: Olva Lima Centro"
+                                    placeholder={
+                                      orderHasProof[order.id]
+                                        ? "Ej: Olva Lima Centro"
+                                        : "Bloqueada"
+                                    }
                                     value={
-                                      orderTrackingFields[order.id]
-                                        ?.shippingOffice || ""
+                                      orderHasProof[order.id]
+                                        ? orderTrackingFields[order.id]
+                                            ?.shippingOffice || ""
+                                        : ""
                                     }
                                     disabled={!orderHasProof[order.id]}
                                     title={
@@ -1882,10 +1894,16 @@ export default function GuideDetailsModal({
                                   <input
                                     type="text"
                                     className="w-full border rounded px-2 py-1 text-xs bg-background disabled:cursor-not-allowed disabled:opacity-60"
-                                    placeholder="Ej: COD-001"
+                                    placeholder={
+                                      orderHasProof[order.id]
+                                        ? "Ej: COD-001"
+                                        : "Bloqueada"
+                                    }
                                     value={
-                                      orderTrackingFields[order.id]
-                                        ?.shippingCode || ""
+                                      orderHasProof[order.id]
+                                        ? orderTrackingFields[order.id]
+                                            ?.shippingCode || ""
+                                        : ""
                                     }
                                     disabled={!orderHasProof[order.id]}
                                     title={
