@@ -75,13 +75,16 @@ import { fetchCouriers } from "@/services/courierService";
 import { getEvaCredentials } from "@/services/evaService";
 import { getAliclikCredentials } from "@/services/aliclikService";
 import { OrderHeader } from "@/interfaces/IOrder";
-import { isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
+import { isAliclikCourier, isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
 import { useShalomLiveStatuses, SHALOM_STEP_STYLES, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
 import {
   CourierStatusBadge,
   courierStatusFilterKey,
   getOrderCourierStatus,
+  SHALOM_STATUS_LABELS,
+  ALICLIK_STATUS_LABELS,
 } from "@/components/tracking/CourierStatusBadge";
+import { STATUS_LABEL as EVA_STATUS_LABEL } from "@/components/eva/EvaStatusBadge";
 
 function money(n: number): string {
   return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -468,18 +471,36 @@ export default function CourierTrackingView() {
   }, [companyCouriers, dispatchedOrders]);
 
   // Opciones del filtro de estado — combina Shalom/Aliclik/EVA (únicos
-  // couriers con estado de envío propio) a partir de lo que realmente
-  // aparece en los pedidos despachados, no una lista fija hardcodeada.
+  // couriers con estado de envío propio). Se listan TODOS los estados
+  // posibles de cada integración presente en los pedidos despachados (no
+  // solo los que ya tiene algún pedido hoy), para que no "desaparezcan" del
+  // filtro estados poco frecuentes como Cancelado/Devuelto/Fallido.
   const statusFilterOptions = useMemo(() => {
+    const hasShalom = dispatchedOrders.some(
+      (o) => isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice),
+    );
+    const hasAliclik = dispatchedOrders.some((o) => isAliclikCourier(o.courier));
+    const hasEva = dispatchedOrders.some(
+      (o) => isEvaCourier(o.courier) || isEvaCourier(o.shippingOffice),
+    );
+
     const map = new Map<string, { key: string; sourceLabel: string; label: string }>();
-    for (const o of dispatchedOrders) {
-      const info = getOrderCourierStatus(o);
-      if (!info) continue;
-      const key = courierStatusFilterKey(info);
-      if (!map.has(key)) {
-        map.set(key, { key, sourceLabel: info.sourceLabel, label: info.label });
+    const addAll = (
+      active: boolean,
+      source: "shalom" | "aliclik" | "eva",
+      sourceLabel: string,
+      labels: Record<string, string>,
+    ) => {
+      if (!active) return;
+      for (const label of Object.values(labels)) {
+        const key = `${source}:${label}`;
+        if (!map.has(key)) map.set(key, { key, sourceLabel, label });
       }
-    }
+    };
+    addAll(hasShalom, "shalom", "Shalom", SHALOM_STATUS_LABELS);
+    addAll(hasAliclik, "aliclik", "Aliclik", ALICLIK_STATUS_LABELS);
+    addAll(hasEva, "eva", "EVA", EVA_STATUS_LABEL);
+
     return Array.from(map.values()).sort(
       (a, b) => a.sourceLabel.localeCompare(b.sourceLabel) || a.label.localeCompare(b.label),
     );

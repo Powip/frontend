@@ -77,8 +77,11 @@ export function getOrderCourierStatus(order: OrderHeader): CourierStatusInfo | n
   return null;
 }
 
+// Se agrupa por label (no por value crudo) para no listar dos veces el mismo
+// estado visible en la tabla cuando dos valores crudos comparten label (p.ej.
+// Shalom PENDIENTE/EXITOSO → ambos se ven como "Registrado").
 export function courierStatusFilterKey(info: CourierStatusInfo): string {
-  return `${info.source}:${info.value}`;
+  return `${info.source}:${info.label}`;
 }
 
 /**
