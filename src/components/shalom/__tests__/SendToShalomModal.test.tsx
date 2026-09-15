@@ -171,6 +171,7 @@ jest.mock('lucide-react', () => ({
   CheckCircle2: () => null,
   Plus: () => null,
   Printer: () => null,
+  FileText: () => null,
 }));
 
 // ── Imports bajo prueba (después de los mocks) ────────────────────────────────

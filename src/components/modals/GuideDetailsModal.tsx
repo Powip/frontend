@@ -43,6 +43,10 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import axios from "axios";
 import { toast } from "sonner";
+import { paymentsHaveProof } from "@/app/centro-envios/components/shipmentUtils";
+import { generateQR, generateBarcode } from "@/utils/printOrderLabel";
+import { ZONE_LABELS } from "@/constants/operationsDomain";
+import { printShippingGuide } from "@/utils/printShippingGuide";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import SendToShalomModal from "@/components/shalom/SendToShalomModal";
 import SendToAliclikGuideModal from "@/components/aliclik/SendToAliclikGuideModal";
@@ -99,7 +103,7 @@ export interface ShippingGuide {
   updated_at: string;
 }
 
-interface OrderDetail {
+export interface OrderDetail {
   id: string;
   orderId?: string;
   orderNumber: string;
@@ -195,15 +199,6 @@ const STATUS_COLORS: Record<string, string> = {
   CANCELADA: "bg-red-100 text-red-800",
 };
 
-const ZONE_LABELS: Record<string, string> = {
-  LIMA_NORTE: "Lima Norte",
-  CALLAO: "Callao",
-  LIMA_CENTRO: "Lima Centro",
-  LIMA_SUR: "Lima Sur",
-  LIMA_ESTE: "Lima Este",
-  ZONAS_ALEDANAS: "Zonas Aledañas",
-  PROVINCIAS: "Provincias",
-};
 
 const ORDER_STATUS_COLORS: Record<string, string> = {
   PENDIENTE: "bg-gray-100 text-gray-800",
@@ -290,6 +285,10 @@ export default function GuideDetailsModal({
   // Upload de foto de entrega
   const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
   const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
+  // El endpoint /receipt (usado para ordersDetails) no trae paymentProofUrl,
+  // así que se consulta aparte order-header/:id (mismo endpoint que ya usa
+  // PaymentVerificationModal) solo para saber si hay comprobante cargado.
+  const [orderHasProof, setOrderHasProof] = useState<Record<string, boolean>>({});
 
   const toggleKeyReveal = (orderId: string) => {
     setRevealedKeys((prev) => ({
@@ -345,6 +344,23 @@ export default function GuideDetailsModal({
           };
         });
         setOrderTrackingFields(trackingByOrder);
+
+        // /receipt no trae paymentProofUrl — se consulta order-header/:id
+        // (completo) en paralelo solo para eso, igual que hace
+        // PaymentVerificationModal. Un fallo puntual no bloquea el resto.
+        const proofResults = await Promise.all(
+          res.data.orderIds.map((id) =>
+            axios
+              .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`)
+              .then((r) => paymentsHaveProof(r.data?.payments))
+              .catch(() => false),
+          ),
+        );
+        const proofByOrder: Record<string, boolean> = {};
+        res.data.orderIds.forEach((id, i) => {
+          proofByOrder[id] = proofResults[i];
+        });
+        setOrderHasProof(proofByOrder);
       }
     } catch (error) {
       console.error("Error fetching guide:", error);
@@ -364,6 +380,9 @@ export default function GuideDetailsModal({
   const handleSaveOrderTracking = async (orderId: string) => {
     const trackingData = orderTrackingFields[orderId];
     if (!trackingData) return;
+    // Defensa en profundidad: aunque los inputs ya están disabled sin
+    // comprobante, no se dispara el PATCH si de algún modo se llama igual.
+    if (!orderHasProof[orderId]) return;
 
     setSavingOrderId(orderId);
     try {
@@ -861,165 +880,161 @@ export default function GuideDetailsModal({
     toast.success("Excel exportado correctamente");
   };
 
-  // Imprimir guía
+  // Imprimir guía de salida — documento de despacho A4 para el courier,
+  // distinto de "Imprimir etiqueta de envío" (rótulo por paquete). Plantilla
+  // extraída a printShippingGuide() para poder invocarla también desde el
+  // modal de éxito de "Enviar a Shalom" (SendToShalomModal.tsx) sin duplicar
+  // la plantilla HTML/CSS.
   const handlePrintGuide = () => {
     if (!guide) return;
-    const content = `
-      <html>
-      <head>
-        <title>Guía ${guide.guideNumber}</title>
-        <style>
-          body { font-family: Arial, sans-serif; padding: 20px; font-size: 12px; }
-          .header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
-          .header h1 { margin: 0; font-size: 18px; }
-          .header p { margin: 5px 0 0; color: #666; }
-          .info-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px; padding: 10px; background: #f5f5f5; }
-          .info-item { }
-          .info-item .label { font-size: 10px; color: #666; }
-          .info-item .value { font-weight: bold; }
-          .orders { margin-top: 15px; }
-          .orders h3 { font-size: 14px; margin-bottom: 10px; }
-          .order { border: 1px solid #ddd; margin-bottom: 10px; padding: 10px; }
-          .order-header { display: flex; justify-content: space-between; margin-bottom: 8px; }
-          .order-header .number { font-weight: bold; }
-          .order-header .status { padding: 2px 8px; background: #eee; border-radius: 4px; font-size: 10px; }
-          .customer { color: #666; font-size: 11px; margin-bottom: 8px; }
-          .items { border-top: 1px dashed #ddd; padding-top: 8px; }
-          .item { display: flex; justify-content: space-between; padding: 3px 0; }
-          .item-name { flex: 1; }
-          .total { text-align: right; font-weight: bold; margin-top: 8px; }
-          .pending { color: red; }
-          @media print { body { padding: 10px; } }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>${guide.guideNumber}</h1>
-          <p>Fecha: ${new Date(guide.created_at).toLocaleDateString("es-PE")} | Estado: ${guide.status}</p>
-        </div>
-        <div class="info-grid">
-          <div class="info-item">
-            <div class="label">Zona</div>
-            <div class="value">${guide.deliveryZones?.join(", ") || "-"}</div>
-          </div>
-          <div class="info-item">
-            <div class="label">Courier</div>
-            <div class="value">${guide.courierName || "-"}</div>
-          </div>
-          <div class="info-item">
-            <div class="label">Total Pedidos</div>
-            <div class="value">${guide.orderIds.length}</div>
-          </div>
-          <div class="info-item">
-            <div class="label">Cobranza Total</div>
-            <div class="value pending">S/${totalCobranza.toFixed(2)}</div>
-          </div>
-        </div>
-        <div class="orders">
-          <h3>Pedidos</h3>
-          ${ordersDetails
-            .map((order) => {
-              const paid =
-                order.payments
-                  ?.filter((p) => p.status === "PAID")
-                  .reduce((s, p) => s + Number(p.amount), 0) || 0;
-              const pending = Math.max(
-                Number(order.totals?.grandTotal ?? order.grandTotal ?? 0) -
-                  paid,
-                0,
-              );
-              return `
-              <div class="order">
-                <div class="order-header">
-                  <span class="number">${order.orderNumber}</span>
-                  <span class="status">${order.status}</span>
-                </div>
-                <div class="customer">
-                  ${order.customer.fullName} | ${order.customer.phoneNumber}<br/>
-                  ${order.customer.district || ""} - ${order.customer.address || ""}
-                </div>
-                <div class="items">
-                  ${
-                    order.items
-                      ?.map(
-                        (item) => `
-                    <div class="item">
-                      <span class="item-name">${item.productName} (x${item.quantity})</span>
-                      <span>S/${(Number(item.unitPrice) * item.quantity).toFixed(2)}</span>
-                    </div>
-                  `,
-                      )
-                      .join("") || ""
-                  }
-                </div>
-                <div class="total">
-                  Total: S/${Number(order.totals?.grandTotal ?? order.grandTotal ?? 0).toFixed(2)}
-                  ${pending > 0 ? `<span class="pending"> | Cobrar: S/${pending.toFixed(2)}</span>` : ""}
-                </div>
-              </div>
-            `;
-            })
-            .join("")}
-        </div>
-      </body>
-      </html>
-    `;
-
-    const printWindow = window.open("", "_blank");
-    if (printWindow) {
-      printWindow.document.write(content);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
-    }
+    printShippingGuide(guide, ordersDetails, auth?.company);
   };
 
-  // Imprimir etiquetas de envío (una ventana, múltiples páginas)
-  const handlePrintShippingLabels = () => {
+  // Imprimir etiquetas de envío (una ventana, múltiples páginas) — mismo QR
+  // (link público de rastreo) y código de barras Code128 que ya usa la
+  // etiqueta de Ventas/Atención al Cliente, reutilizando esas dos funciones
+  // en vez de reimplementar la generación (ver printOrderLabel.ts).
+  const handlePrintShippingLabels = async () => {
     if (ordersDetails.length === 0) {
       toast.warning("No hay pedidos para imprimir");
       return;
     }
+
+    // Abrir la ventana ANTES de cualquier `await`: la mayoría de navegadores
+    // solo permite `window.open` como respuesta directa y síncrona al click
+    // del usuario — si se abre después de esperar el QR (asíncrono), el
+    // bloqueador de pop-ups lo descarta en silencio y devuelve null. Se
+    // completa el contenido de esta misma ventana ya abierta más abajo.
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      toast.error(
+        "No se pudo abrir la ventana de impresión — revisa el bloqueador de pop-ups del navegador",
+      );
+      return;
+    }
+    printWindow.document.write(
+      "<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Generando etiquetas…</title></head><body>Generando etiquetas…</body></html>",
+    );
 
     const company = auth?.company;
     const companyName = company?.name || "MI EMPRESA";
     const companyCuit = company?.cuit || "";
     const companyAddress = company?.billingAddress || "";
     const companyPhone = company?.phone || "";
+    const companyInitial = companyName.trim().charAt(0).toUpperCase() || "?";
     const courierName = guide?.courierName || "COURIER";
 
+    // Subtítulo del courier derivado de las zonas reales de la guía
+    // (deliveryZones) — no hay un campo de "tipo de entrega" por pedido, así
+    // que se omite si la guía no tiene zonas cargadas en vez de inventarlo.
+    const zones = guide?.deliveryZones ?? [];
+    const courierSubtitle = zones.includes("PROVINCIAS")
+      ? "Entrega a provincia"
+      : zones.length > 0
+        ? "Entrega en Lima"
+        : "";
+    const zonaLabel =
+      zones.length > 0 ? (ZONE_LABELS[zones[0]] ?? zones[0]) : "-";
+
+    const labelsData = await Promise.all(
+      ordersDetails.map(async (order) => {
+        const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${order.orderNumber}`;
+        // Fuente en mayor resolución (200px) que el tamaño mostrado en la
+        // etiqueta (~92px): al imprimir, un QR generado más grande y luego
+        // achicado por CSS escanea mejor que uno nativo pequeño. El código
+        // de barras suma zona de silencio (margin) y más alto/ancho — sin
+        // esa zona en blanco alrededor, un lector puede no reconocerlo.
+        const [qrDataUrl, barcodeDataUrl] = await Promise.all([
+          generateQR(trackingUrl, 200),
+          Promise.resolve(
+            generateBarcode(order.orderNumber, {
+              width: 2.4,
+              height: 55,
+              fontSize: 13,
+              margin: 10,
+            }),
+          ),
+        ]);
+        return { order, qrDataUrl, barcodeDataUrl };
+      }),
+    );
+
     // Generar HTML de todas las etiquetas
-    const labelsHtml = ordersDetails
-      .map((order, index) => {
-        const isLast = index === ordersDetails.length - 1;
+    const labelsHtml = labelsData
+      .map(({ order, qrDataUrl, barcodeDataUrl }, index) => {
+        const isLast = index === labelsData.length - 1;
         const customerAddress = order.shippingOffice
           ? `${courierName} ${order.shippingOffice}`
           : order.customer.address || "-";
+        const itemsCount = order.items?.length ?? 0;
 
         return `
           <div class="label-page" style="${isLast ? "" : "page-break-after: always;"}">
-            <div class="label-container">
-              <div class="label-header">
-                <div class="company-info">
-                  <strong>${companyName}</strong>
-                  ${companyCuit ? `<br/>${companyCuit}` : ""}
-                  ${companyAddress ? `<br/>${companyAddress}` : ""}
-                  ${companyPhone ? `<br/>${companyPhone}` : ""}
+            <div class="label-card">
+              <div class="lc-header">
+                <div class="lc-brand">
+                  <div class="lc-logo">${
+                    company?.logoUrl
+                      ? `<img src="${company.logoUrl}" alt="Logo">`
+                      : companyInitial
+                  }</div>
+                  <div>
+                    <div class="lc-company-name">${companyName}</div>
+                    <div class="lc-company-meta">${[
+                      companyCuit ? `RUC ${companyCuit}` : "",
+                      companyAddress,
+                      companyPhone,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}</div>
+                  </div>
+                </div>
+                <div class="lc-remite">REMITE</div>
+              </div>
+
+              <div class="lc-row lc-two-col">
+                <div class="lc-col">
+                  <div class="lc-label">Courier</div>
+                  <div class="lc-value">${courierName}</div>
+                  ${courierSubtitle ? `<div class="lc-sub">${courierSubtitle}</div>` : ""}
+                </div>
+                <div class="lc-col lc-col-border">
+                  <div class="lc-label">Zona</div>
+                  <div class="lc-value">${zonaLabel}</div>
+                  ${order.customer.district ? `<div class="lc-sub">${order.customer.district}</div>` : ""}
                 </div>
               </div>
 
-              <div class="label-consignado">
-                <div class="consignado-title">CONSIGNADO</div>
-                <strong>${order.customer.fullName}</strong><br/>
-                DNI: ${order.customer.dni || "-"}<br/>
-                Tel: ${order.customer.phoneNumber || "-"}<br/>
-                ${order.customer.province || "-"} - ${order.customer.city || "-"} - ${order.customer.district || "-"}<br/>
-                ${customerAddress}
+              <div class="lc-row">
+                <div class="lc-label">Destinatario</div>
+                <div class="lc-dest-name">${order.customer.fullName}</div>
+                <div class="lc-dest-fields">
+                  <div><span class="lc-label">DNI</span><span class="lc-label" style="margin-left:32px">Teléfono</span></div>
+                  <div class="lc-dest-values"><span>${order.customer.dni || "—"}</span><span>${order.customer.phoneNumber || "—"}</span></div>
+                </div>
+                <div class="lc-dest-location">${
+                  [order.customer.province, order.customer.city, order.customer.district]
+                    .filter(Boolean)
+                    .join(" · ") || "-"
+                }</div>
+                <div class="lc-dest-address">${customerAddress}</div>
               </div>
 
-              <div class="label-courier">
-                <strong>${courierName}</strong><br/>
-                ${order.orderNumber}
+              <div class="lc-row lc-order">
+                ${qrDataUrl ? `<img src="${qrDataUrl}" alt="QR" class="lc-qr">` : ""}
+                <div class="lc-order-info">
+                  <div class="lc-label">Pedido</div>
+                  <div class="lc-order-number">${order.orderNumber}</div>
+                  ${guide?.guideNumber ? `<div class="lc-guide">Guía ${guide.guideNumber}</div>` : ""}
+                  <div class="lc-items">${itemsCount} ítem${itemsCount === 1 ? "" : "s"}</div>
+                </div>
+              </div>
+
+              ${barcodeDataUrl ? `<div class="lc-barcode"><img src="${barcodeDataUrl}" alt="Código de barras"></div>` : ""}
+
+              <div class="lc-footer">
+                <span>◆ Generado por POWIP</span>
+                <span>powip.lat/seguimiento</span>
               </div>
             </div>
           </div>
@@ -1035,50 +1050,49 @@ export default function GuideDetailsModal({
         <title>Etiquetas de Envío — ${guide?.guideNumber || ""}</title>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body {
-            font-family: Arial, sans-serif;
+          body { font-family: Arial, sans-serif; padding: 20px; color: #000; font-weight: 600; }
+          .label-page { display: flex; justify-content: center; margin-bottom: 20px; }
+          .label-card {
+            width: 380px;
+            border: 3px solid #000;
+            border-radius: 22px;
             padding: 20px;
-            max-width: 400px;
-            margin: 0 auto;
+            background: #fff;
           }
-          .label-page {
-            margin-bottom: 20px;
+          .lc-row { border-top: 1.5px solid #000; padding-top: 12px; margin-top: 12px; }
+          .lc-header { display: flex; align-items: flex-start; justify-content: space-between; }
+          .lc-brand { display: flex; align-items: center; gap: 12px; }
+          .lc-logo {
+            width: 40px; height: 40px; border: 2px solid #000; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 16px; flex-shrink: 0; overflow: hidden;
           }
-          .label-container {
-            border: 2px solid #000;
-            padding: 15px;
-            font-size: 11px;
-            min-height: 200px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-          }
-          .label-header {
-            text-align: left;
-            margin-bottom: 15px;
-            font-weight: bold;
-          }
-          .company-info {
-            font-size: 9px;
-            line-height: 1.3;
-          }
-          .label-consignado {
-            text-align: right;
-            margin-bottom: 15px;
-            line-height: 1.4;
-          }
-          .consignado-title {
-            font-weight: bold;
-            font-size: 10px;
-            margin-bottom: 3px;
-          }
-          .label-courier {
-            text-align: center;
-            font-size: 12px;
-            font-weight: bold;
-            border-top: 1px dashed #000;
-            padding-top: 10px;
-          }
+          .lc-logo img { width: 100%; height: 100%; object-fit: contain; }
+          .lc-company-name { font-weight: 800; font-size: 15px; }
+          .lc-company-meta { font-size: 10px; font-weight: 700; color: #222; margin-top: 3px; max-width: 240px; }
+          .lc-remite { font-size: 10px; font-weight: 800; color: #333; letter-spacing: 0.04em; white-space: nowrap; }
+          .lc-two-col { display: flex; }
+          .lc-col { flex: 1; }
+          .lc-col-border { border-left: 1.5px solid #000; padding-left: 16px; margin-left: 16px; }
+          .lc-label { font-size: 10px; font-weight: 800; color: #333; text-transform: uppercase; letter-spacing: 0.04em; }
+          .lc-value { font-size: 19px; font-weight: 800; margin-top: 2px; }
+          .lc-sub { font-size: 11px; font-weight: 700; color: #222; margin-top: 2px; }
+          .lc-dest-name { font-size: 25px; font-weight: 800; margin-top: 4px; }
+          .lc-dest-fields { margin-top: 8px; }
+          .lc-dest-fields > div { display: flex; }
+          .lc-dest-fields > div > span:first-child { flex: 1; }
+          .lc-dest-values { font-size: 15px; font-weight: 800; margin-top: 2px; }
+          .lc-dest-location { font-size: 12px; font-weight: 700; margin-top: 8px; }
+          .lc-dest-address { font-size: 12px; font-weight: 700; margin-top: 2px; }
+          .lc-order { display: flex; align-items: center; gap: 16px; }
+          .lc-qr { width: 92px; height: 92px; flex-shrink: 0; }
+          .lc-order-info { flex: 1; min-width: 0; }
+          .lc-order-number { font-size: 22px; font-weight: 800; letter-spacing: 0.02em; }
+          .lc-guide { font-size: 12px; font-weight: 700; color: #222; margin-top: 2px; }
+          .lc-items { font-size: 12px; font-weight: 800; margin-top: 2px; }
+          .lc-barcode { border-top: 1.5px dashed #000; margin-top: 12px; padding-top: 10px; text-align: center; }
+          .lc-barcode img { max-width: 100%; height: 58px; }
+          .lc-footer { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; padding-top: 10px; border-top: 1.5px solid #000; font-size: 10px; font-weight: 800; color: #222; }
           @media print {
             body { padding: 0; }
             .label-page { margin-bottom: 0; }
@@ -1091,16 +1105,16 @@ export default function GuideDetailsModal({
       </html>
     `;
 
-    const printWindow = window.open("", "_blank");
-    if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
-      toast.success(
-        `${ordersDetails.length} etiqueta(s) enviada(s) a imprimir`,
-      );
+    if (printWindow.closed) {
+      toast.error("Se cerró la ventana de impresión antes de terminar");
+      return;
     }
+    printWindow.document.open();
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    toast.success(`${ordersDetails.length} etiqueta(s) enviada(s) a imprimir`);
   };
 
   return (
@@ -1707,6 +1721,15 @@ export default function GuideDetailsModal({
                               <p className="text-xs font-medium text-orange-700 mb-2 flex items-center gap-1">
                                 📦 Datos de Tracking
                               </p>
+                              {!orderHasProof[order.id] && (
+                                <div className="mb-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+                                  <Lock className="h-3 w-3 mt-0.5 shrink-0" />
+                                  <span>
+                                    Debes cargar el comprobante de pago antes
+                                    de ingresar los datos de la guía.
+                                  </span>
+                                </div>
+                              )}
                               <div className="grid grid-cols-2 gap-2">
                                 <div className="space-y-1">
                                   <label className="text-xs text-muted-foreground">
@@ -1714,11 +1737,17 @@ export default function GuideDetailsModal({
                                   </label>
                                   <input
                                     type="text"
-                                    className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                    className="w-full border rounded px-2 py-1 text-xs bg-background disabled:cursor-not-allowed disabled:opacity-60"
                                     placeholder="Ej: OLV-123456"
                                     value={
                                       orderTrackingFields[order.id]
                                         ?.externalTrackingNumber || ""
+                                    }
+                                    disabled={!orderHasProof[order.id]}
+                                    title={
+                                      orderHasProof[order.id]
+                                        ? undefined
+                                        : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
                                     }
                                     onChange={(e) =>
                                       updateOrderTrackingField(
@@ -1741,7 +1770,7 @@ export default function GuideDetailsModal({
                                           ? "password"
                                           : "text"
                                       }
-                                      className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 ${
+                                      className={`w-full border rounded px-2 py-1 text-xs bg-background h-[34px] pr-8 disabled:cursor-not-allowed disabled:opacity-60 ${
                                         pending > 0
                                           ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
                                           : "focus:border-orange-500"
@@ -1750,6 +1779,12 @@ export default function GuideDetailsModal({
                                       value={
                                         orderTrackingFields[order.id]
                                           ?.shippingKey || ""
+                                      }
+                                      disabled={!orderHasProof[order.id]}
+                                      title={
+                                        orderHasProof[order.id]
+                                          ? undefined
+                                          : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
                                       }
                                       onChange={(e) =>
                                         updateOrderTrackingField(
@@ -1789,11 +1824,17 @@ export default function GuideDetailsModal({
                                   </label>
                                   <input
                                     type="text"
-                                    className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                    className="w-full border rounded px-2 py-1 text-xs bg-background disabled:cursor-not-allowed disabled:opacity-60"
                                     placeholder="https://..."
                                     value={
                                       orderTrackingFields[order.id]
                                         ?.trackingUrl || ""
+                                    }
+                                    disabled={!orderHasProof[order.id]}
+                                    title={
+                                      orderHasProof[order.id]
+                                        ? undefined
+                                        : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
                                     }
                                     onChange={(e) =>
                                       updateOrderTrackingField(
@@ -1811,11 +1852,17 @@ export default function GuideDetailsModal({
                                   </label>
                                   <input
                                     type="text"
-                                    className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                    className="w-full border rounded px-2 py-1 text-xs bg-background disabled:cursor-not-allowed disabled:opacity-60"
                                     placeholder="Ej: Olva Lima Centro"
                                     value={
                                       orderTrackingFields[order.id]
                                         ?.shippingOffice || ""
+                                    }
+                                    disabled={!orderHasProof[order.id]}
+                                    title={
+                                      orderHasProof[order.id]
+                                        ? undefined
+                                        : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
                                     }
                                     onChange={(e) =>
                                       updateOrderTrackingField(
@@ -1833,11 +1880,17 @@ export default function GuideDetailsModal({
                                   </label>
                                   <input
                                     type="text"
-                                    className="w-full border rounded px-2 py-1 text-xs bg-background"
+                                    className="w-full border rounded px-2 py-1 text-xs bg-background disabled:cursor-not-allowed disabled:opacity-60"
                                     placeholder="Ej: COD-001"
                                     value={
                                       orderTrackingFields[order.id]
                                         ?.shippingCode || ""
+                                    }
+                                    disabled={!orderHasProof[order.id]}
+                                    title={
+                                      orderHasProof[order.id]
+                                        ? undefined
+                                        : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
                                     }
                                     onChange={(e) =>
                                       updateOrderTrackingField(
@@ -1858,7 +1911,10 @@ export default function GuideDetailsModal({
                                   e.stopPropagation();
                                   handleSaveOrderTracking(order.id);
                                 }}
-                                disabled={savingOrderId === order.id}
+                                disabled={
+                                  savingOrderId === order.id ||
+                                  !orderHasProof[order.id]
+                                }
                               >
                                 {savingOrderId === order.id ? (
                                   <Loader2 className="h-3 w-3 animate-spin mr-1" />
@@ -2203,6 +2259,7 @@ export default function GuideDetailsModal({
         open={shalomModalOpen}
         guideId={guideId || guide?.id || ""}
         companyId={companyId || ""}
+        guide={guide}
         onClose={() => setShalomModalOpen(false)}
         orders={
           selectedOrderIds.size > 0

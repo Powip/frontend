@@ -90,25 +90,42 @@ export const PRINT_DELIVERY_TYPE_LABEL: Record<string, string> = {
   RETIRO_TIENDA: "Retiro en tienda",
 };
 
-async function generateQR(text: string): Promise<string> {
+export async function generateQR(text: string, size = 120): Promise<string> {
   try {
-    return await QRCode.toDataURL(text, { width: 120 });
+    return await QRCode.toDataURL(text, { width: size });
   } catch (err) {
     console.error("Error generating QR", err);
     return "";
   }
 }
 
-function generateBarcode(text: string): string {
+export interface GenerateBarcodeOptions {
+  width?: number;
+  height?: number;
+  fontSize?: number;
+  /** Zona de silencio (quiet zone) en px a cada lado — 0 mantiene el
+   * comportamiento previo; subirlo ayuda a que el lector escanee cuando el
+   * código va a imprimirse muy pegado a otros elementos. */
+  margin?: number;
+  /** true (default) mantiene el comportamiento previo — texto legible debajo
+   * de las barras. Desactivarlo ahorra una línea por código cuando ese mismo
+   * número ya se muestra aparte (ej. una fila de tabla con 50+ códigos). */
+  displayValue?: boolean;
+}
+
+export function generateBarcode(
+  text: string,
+  options?: GenerateBarcodeOptions,
+): string {
   try {
     const canvas = document.createElement("canvas");
     JsBarcode(canvas, text, {
       format: "CODE128",
-      width: 2,
-      height: 40,
-      displayValue: true,
-      fontSize: 12,
-      margin: 0,
+      width: options?.width ?? 2,
+      height: options?.height ?? 40,
+      displayValue: options?.displayValue ?? true,
+      fontSize: options?.fontSize ?? 12,
+      margin: options?.margin ?? 0,
     });
     return canvas.toDataURL();
   } catch (err) {

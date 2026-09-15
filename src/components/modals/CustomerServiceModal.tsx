@@ -37,6 +37,7 @@ import {
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
+import { SHALOM_STEPS, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 import { isShalomCourier } from "@/utils/courierNormalizer";
@@ -73,6 +74,7 @@ import AddProductsModal from "./AddProductsModal";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import GuideDetailsModal from "./GuideDetailsModal";
 import ReassignDeliveryModal from "@/app/centro-envios/components/ReassignDeliveryModal";
+import { hasPaymentProof } from "@/app/centro-envios/components/shipmentUtils";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import ScheduledDeliverySection from "./ScheduledDeliverySection";
@@ -343,6 +345,7 @@ export default function CustomerServiceModal({
   useEffect(() => {
     if (!open || !orderId) return;
     setOriginalTracking(null);
+    setShalomTrackResult(null);
     fetchReceipt();
     fetchLogs();
     if (shippingGuideProp === undefined) {
@@ -476,8 +479,15 @@ export default function CustomerServiceModal({
     }
   }, [receipt, originalTracking]);
 
+  // Los 4 campos de tracking manual (N° tracking, código, oficina, clave)
+  // solo deben poder cargarse una vez que el pedido tiene un comprobante de
+  // pago adjunto — antes se podían editar libremente y se generaban claves
+  // de recojo sin respaldo de pago.
+  const canEditCourierFields = orderHeader ? hasPaymentProof(orderHeader) : false;
+
   const handleSaveTracking = async () => {
     if (!receipt || !orderId || !originalTracking) return;
+    if (!canEditCourierFields) return;
 
     // Detect if there are actual changes
     const hasChanges =
@@ -850,6 +860,16 @@ export default function CustomerServiceModal({
     }
   };
 
+  // Respuesta cruda de trackShalomGuide — trae statuses.data con fecha por
+  // paso (registrado/origen/transito/destino/reparto/entregado), la misma
+  // forma que ya renderiza el modal "Tracking en Tiempo Real" de
+  // CourierTrackingView.tsx. Se usa para pintar una línea de tiempo real
+  // (no inventada) en la tab Seguimiento.
+  const [shalomTrackResult, setShalomTrackResult] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+
   const syncShalomTracking = useCallback(
     async (options?: { silent?: boolean }) => {
       const silent = options?.silent ?? false;
@@ -859,7 +879,8 @@ export default function CustomerServiceModal({
         const guideRes = await axios.get(
           `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderHeader.id}`,
         );
-        await trackShalomGuide(auth.accessToken, guideRes.data.id);
+        const result = await trackShalomGuide(auth.accessToken, guideRes.data.id);
+        setShalomTrackResult(result);
         if (!silent) toast.success("Sincronizado con Shalom");
         fetchReceipt();
         onOrderUpdated?.();
@@ -1428,6 +1449,15 @@ export default function CustomerServiceModal({
                           <label className="text-xs font-bold text-muted-foreground mb-3 block uppercase tracking-wider">
                             Información de Seguimiento
                           </label>
+                          {!canEditCourierFields && (
+                            <div className="mb-3 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40 px-3 py-2 text-xs text-amber-800 dark:text-amber-300">
+                              <Lock className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                Debes cargar el comprobante de pago antes de
+                                ingresar los datos de la guía.
+                              </span>
+                            </div>
+                          )}
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <span className="text-muted-foreground block text-[10px] uppercase mb-1">
@@ -1436,9 +1466,15 @@ export default function CustomerServiceModal({
                               <div className="flex items-center gap-1">
                                 <Input
                                   size={1}
-                                  className="h-8 text-xs"
+                                  className="h-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                                   placeholder="Nro Tracking..."
                                   value={receipt.externalTrackingNumber || ""}
+                                  disabled={!canEditCourierFields}
+                                  title={
+                                    canEditCourierFields
+                                      ? undefined
+                                      : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
+                                  }
                                   onChange={(
                                     e: React.ChangeEvent<HTMLInputElement>,
                                   ) =>
@@ -1472,9 +1508,15 @@ export default function CustomerServiceModal({
                                 Oficina
                               </span>
                               <Input
-                                className="h-8 text-xs"
+                                className="h-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                                 placeholder="Oficina..."
                                 value={receipt.shippingOffice || ""}
+                                disabled={!canEditCourierFields}
+                                title={
+                                  canEditCourierFields
+                                    ? undefined
+                                    : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
+                                }
                                 onChange={(
                                   e: React.ChangeEvent<HTMLInputElement>,
                                 ) =>
@@ -1491,9 +1533,15 @@ export default function CustomerServiceModal({
                                 Código
                               </span>
                               <Input
-                                className="h-8 text-xs"
+                                className="h-8 text-xs disabled:cursor-not-allowed disabled:opacity-60"
                                 placeholder="Código..."
                                 value={receipt.shippingCode || ""}
+                                disabled={!canEditCourierFields}
+                                title={
+                                  canEditCourierFields
+                                    ? undefined
+                                    : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
+                                }
                                 onChange={(
                                   e: React.ChangeEvent<HTMLInputElement>,
                                 ) =>
@@ -1517,13 +1565,19 @@ export default function CustomerServiceModal({
                                       ? "password"
                                       : "text"
                                   }
-                                  className={`h-8 text-xs pr-8 ${
+                                  className={`h-8 text-xs pr-8 disabled:cursor-not-allowed disabled:opacity-60 ${
                                     receipt.totals.pendingAmount > 0
                                       ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
                                       : "focus:border-orange-500"
                                   }`}
                                   placeholder="Clave..."
                                   value={receipt.shippingKey || ""}
+                                  disabled={!canEditCourierFields}
+                                  title={
+                                    canEditCourierFields
+                                      ? undefined
+                                      : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
+                                  }
                                   onChange={(
                                     e: React.ChangeEvent<HTMLInputElement>,
                                   ) =>
@@ -2048,8 +2102,12 @@ export default function CustomerServiceModal({
                       </DropdownMenu>
                     </div>
 
-                    {/* Historial — más reciente arriba; scrollea de a un comentario por vez */}
-                    <div className="h-[92px] overflow-y-auto mb-3 pr-1 snap-y snap-mandatory">
+                    {/* Historial — más reciente arriba; scrollea de a un comentario por vez.
+                        Altura fija más alta que antes (92px alcanzaba para ~1 comentario y
+                        obligaba a scrollear constantemente) — el modal completo ya scrollea
+                        (DialogContent max-h-[90vh] overflow-y-auto), así que este alto extra
+                        no lo desborda. */}
+                    <div className="h-[280px] overflow-y-auto mb-3 pr-1 snap-y snap-mandatory">
                       {logsLoading ? (
                         <div className="text-center text-muted-foreground py-4">
                           Cargando historial...
@@ -2253,8 +2311,10 @@ export default function CustomerServiceModal({
                             <span className="text-muted-foreground">
                               Clave Envío:{" "}
                             </span>
-                            <span className="font-medium">
-                              {shippingGuide.shippingKey}
+                            <span className="font-medium font-mono">
+                              {canEditCourierFields || revealKey
+                                ? shippingGuide.shippingKey
+                                : "••••"}
                             </span>
                           </div>
                         )}
@@ -2331,6 +2391,87 @@ export default function CustomerServiceModal({
                           </div>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Clave de recojo — gateada al comprobante de pago (mismo
+                      criterio que bloquea los inputs de tracking/código/
+                      oficina/clave en la tab Resumen): sin comprobante
+                      cargado se oculta el valor real y se ofrece un acceso
+                      directo a "Registrar cobranza" (reusa PaymentVerificationModal,
+                      ya montado más abajo vía paymentModalOpen). */}
+                  {shippingGuide?.shippingKey && (
+                    <div
+                      className={`rounded-lg border p-4 ${
+                        canEditCourierFields
+                          ? "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/30"
+                          : "border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/30"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`h-9 w-9 rounded-lg grid place-items-center shrink-0 ${
+                            canEditCourierFields
+                              ? "bg-green-600 text-white"
+                              : "bg-white dark:bg-amber-900 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
+                          }`}
+                        >
+                          {canEditCourierFields ? (
+                            <Check className="h-4 w-4" />
+                          ) : (
+                            <Lock className="h-4 w-4" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div
+                            className={`font-semibold text-sm ${
+                              canEditCourierFields
+                                ? "text-green-700 dark:text-green-400"
+                                : "text-amber-800 dark:text-amber-400"
+                            }`}
+                          >
+                            {canEditCourierFields
+                              ? "Clave de recojo habilitada"
+                              : "Clave de recojo bloqueada"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {canEditCourierFields
+                              ? "Comprobante de pago cargado"
+                              : `Pendiente de cobro${
+                                  receipt?.totals.pendingAmount
+                                    ? ` · S/${receipt.totals.pendingAmount.toFixed(2)}`
+                                    : ""
+                                }`}
+                          </div>
+                        </div>
+                        <div
+                          className={`font-mono font-black tracking-widest text-lg ${
+                            canEditCourierFields
+                              ? "text-green-700 dark:text-green-400"
+                              : "text-amber-700 dark:text-amber-400"
+                          }`}
+                        >
+                          {canEditCourierFields || revealKey
+                            ? shippingGuide.shippingKey
+                            : "••••"}
+                        </div>
+                      </div>
+                      {!canEditCourierFields && (
+                        <>
+                          <Button
+                            size="sm"
+                            className="w-full mt-3 bg-amber-600 hover:bg-amber-700 text-white"
+                            onClick={() => setPaymentModalOpen(true)}
+                          >
+                            <DollarSign className="h-4 w-4 mr-1.5" />
+                            Registrar cobranza
+                          </Button>
+                          <p className="text-[11px] text-muted-foreground mt-2">
+                            La clave se habilita al cargar un comprobante de
+                            pago para este pedido.
+                          </p>
+                        </>
+                      )}
                     </div>
                   )}
 
@@ -2427,6 +2568,82 @@ export default function CustomerServiceModal({
                       </div>
                     </div>
                   )}
+
+                  {/* Línea de tiempo Shalom — datos reales de trackShalomGuide
+                      (mismo response que ya usa el modal "Tracking en Tiempo
+                      Real" de CourierTrackingView.tsx), no un historial
+                      inventado. Solo hay datos después de sincronizar (auto al
+                      abrir el modal, o "Forzar sync de tracking" más abajo). */}
+                  {(isShalomCourier(orderHeader?.courier) ||
+                    isShalomCourier(orderHeader?.shippingOffice)) &&
+                    (() => {
+                      const statusesData = (
+                        shalomTrackResult?.statuses as
+                          | { data?: Record<string, { fecha?: string }> }
+                          | undefined
+                      )?.data;
+                      if (!statusesData) return null;
+                      const reachedIdx = SHALOM_STEPS.reduce(
+                        (acc, step, idx) =>
+                          statusesData[step.key]?.fecha ? idx : acc,
+                        -1,
+                      );
+                      if (reachedIdx === -1) return null;
+                      return (
+                        <div className="border rounded-lg p-4">
+                          <div className="text-sm font-bold mb-3">
+                            🕑 Línea de tiempo · estados de Shalom
+                          </div>
+                          <div className="space-y-0">
+                            {SHALOM_STEPS.map((step, idx) => {
+                              const stepData = statusesData[step.key];
+                              const done = !!stepData?.fecha;
+                              const isLast = idx === SHALOM_STEPS.length - 1;
+                              return (
+                                <div
+                                  key={step.key}
+                                  className="relative pl-7 pb-4 last:pb-0"
+                                >
+                                  {!isLast && (
+                                    <div
+                                      className={`absolute left-[9px] top-4 bottom-0 w-0.5 ${
+                                        done ? "bg-teal-500" : "bg-muted"
+                                      }`}
+                                    />
+                                  )}
+                                  <div
+                                    className={`absolute left-0 top-0.5 h-[18px] w-[18px] rounded-full border-2 flex items-center justify-center text-[9px] ${
+                                      done
+                                        ? "bg-teal-500 border-teal-500 text-white"
+                                        : "bg-background border-muted-foreground/30"
+                                    }`}
+                                  >
+                                    {done ? "✓" : ""}
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span
+                                      className={`text-sm font-semibold ${
+                                        done
+                                          ? "text-foreground"
+                                          : "text-muted-foreground/50"
+                                      }`}
+                                    >
+                                      {SHALOM_STEP_ICONS[step.label] ?? ""}{" "}
+                                      {step.label}
+                                    </span>
+                                    {stepData?.fecha && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {stepData.fecha}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                   {orderHeader?.guideNumber && (
                     <div className="border rounded-lg p-4">
