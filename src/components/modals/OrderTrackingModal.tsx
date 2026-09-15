@@ -205,8 +205,12 @@ export default function OrderTrackingModal({
       });
     }
     if (isShalom && statusesData) {
+      // "registrado" ya está cubierto por el paso "Registrado en {courier}"
+      // de arriba, y "entregado" se cubre con el paso final más abajo (que
+      // usa el estado real del pedido, no solo la fecha de Shalom) — se
+      // excluyen acá para no duplicar la key ni el paso.
       for (const step of SHALOM_STEPS) {
-        if (step.key === "registrado") continue;
+        if (step.key === "registrado" || step.key === "entregado") continue;
         const data = statusesData[step.key];
         steps.push({
           key: step.key,
