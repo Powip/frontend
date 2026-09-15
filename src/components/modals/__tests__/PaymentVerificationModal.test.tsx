@@ -63,7 +63,10 @@ jest.mock('sonner', () => ({
 }));
 
 jest.mock('next/navigation', () => ({
-  usePathname: () => '/finanzas',
+  // FIX aprobacion-pagos-solo-finanzas: mockeado como jest.fn() (no un valor
+  // fijo) para poder simular distintas rutas por test — el modal solo debe
+  // habilitar Aprobar/Rechazar cuando pathname incluye "/finanzas".
+  usePathname: jest.fn(() => '/finanzas'),
 }));
 
 jest.mock('@/components/ui/dialog', () => {
@@ -134,6 +137,7 @@ jest.mock('@/components/ui/select', () => {
 
 import axios from 'axios';
 import { toast } from 'sonner';
+import { usePathname } from 'next/navigation';
 import PaymentVerificationModal from '../PaymentVerificationModal';
 
 process.env.NEXT_PUBLIC_API_VENTAS = 'http://ventas';
@@ -144,6 +148,13 @@ const mockedAxios = axios as unknown as {
   post: jest.Mock;
 };
 const mockToast = toast as jest.Mocked<typeof toast>;
+const mockUsePathname = usePathname as jest.Mock;
+
+// Default global: casi todos los tests existentes asumen /finanzas. Los tests
+// de ruta lo sobreescriben puntualmente con mockReturnValue.
+beforeEach(() => {
+  mockUsePathname.mockReturnValue('/finanzas');
+});
 
 function makeOrderData(paymentProofUrl: string | null) {
   return {
@@ -336,5 +347,124 @@ describe('PaymentVerificationModal — formulario "Registrar Nuevo Pago"', () =>
     expect(
       await screen.findByText('Comprobante (opcional)'),
     ).toBeInTheDocument();
+  });
+});
+
+// ── FIX aprobacion-pagos-solo-finanzas ──────────────────────────────────────
+// Aprobar/rechazar pagos ya solo puede pasar desde /finanzas — ver
+// docs/features/FIX-aprobacion-pagos-solo-finanzas/spec.md. Antes del fix,
+// isAllowedRoute también incluía /operaciones, /ventas, /atencion-cliente,
+// /seguimiento y /couriers.
+
+describe('PaymentVerificationModal — restricción de Aprobar/Rechazar a /finanzas', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    window.confirm = jest.fn();
+    mockUsePathname.mockReturnValue('/finanzas');
+  });
+
+  it('en /finanzas con canApprove=true SÍ muestra los botones Aprobar/Rechazar', async () => {
+    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+
+    renderModal({ canApprove: true });
+
+    expect(
+      await screen.findByRole('button', { name: /aprobar/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: /rechazar/i }),
+    ).toBeInTheDocument();
+  });
+
+  it.each(['/operaciones', '/ventas', '/atencion-cliente', '/seguimiento', '/couriers'])(
+    'en %s con canApprove=true YA NO muestra Aprobar/Rechazar/Corregir monto (antes sí lo permitía)',
+    async (route) => {
+      mockUsePathname.mockReturnValue(route);
+      mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+
+      renderModal({ canApprove: true });
+
+      // El resto del modal (crear pago, subir comprobante) sigue disponible
+      // fuera de Finanzas — el resumen del pago carga igual.
+      expect(await screen.findByText(/YAPE/)).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /aprobar/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /rechazar/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /corregir monto/i }),
+      ).not.toBeInTheDocument();
+    },
+  );
+});
+
+describe('PaymentVerificationModal — 403 al aprobar/rechazar (guard VIEW_FINANCES del backend)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    window.confirm = jest.fn();
+    mockUsePathname.mockReturnValue('/finanzas');
+  });
+
+  it('si el PATCH de aprobar responde 403, muestra "No tenés permiso para aprobar pagos" (no el error genérico)', async () => {
+    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxios.patch.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 403 },
+    });
+
+    renderModal({ canApprove: true });
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /aprobar/i }),
+    );
+
+    await waitFor(() =>
+      expect(mockToast.error).toHaveBeenCalledWith(
+        'No tenés permiso para aprobar pagos',
+      ),
+    );
+    expect(mockToast.error).not.toHaveBeenCalledWith('Error al aprobar el pago');
+  });
+
+  it('si el PATCH de rechazar responde 403, muestra "No tenés permiso para rechazar pagos" (no el error genérico)', async () => {
+    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxios.patch.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 403 },
+    });
+    (window.confirm as jest.Mock).mockReturnValue(true);
+
+    renderModal({ canApprove: true });
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /rechazar/i }),
+    );
+
+    await waitFor(() =>
+      expect(mockToast.error).toHaveBeenCalledWith(
+        'No tenés permiso para rechazar pagos',
+      ),
+    );
+    expect(mockToast.error).not.toHaveBeenCalledWith('Error al rechazar el pago');
+  });
+
+  it('si el PATCH de aprobar falla con otro status (no 403), mantiene el mensaje de error genérico', async () => {
+    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxios.patch.mockRejectedValue({
+      isAxiosError: true,
+      response: { status: 500 },
+    });
+
+    renderModal({ canApprove: true });
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /aprobar/i }),
+    );
+
+    await waitFor(() =>
+      expect(mockToast.error).toHaveBeenCalledWith('Error al aprobar el pago'),
+    );
   });
 });

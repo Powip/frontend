@@ -53,7 +53,7 @@ interface PaymentVerificationModalProps {
   orderId: string;
   orderNumber: string;
   onPaymentUpdated?: () => void;
-  /** Solo permitir aprobar pagos desde /finanzas y /atencion-cliente */
+  /** Solo permitir aprobar pagos desde /finanzas */
   canApprove?: boolean;
 }
 
@@ -96,14 +96,11 @@ export default function PaymentVerificationModal({
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const pathname = usePathname();
 
-  // Determinar si la ruta actual permite aprobar/rechazar pagos
+  // Aprobar/rechazar pagos solo puede pasar desde /finanzas (directiva de
+  // negocio, ver FIX-aprobacion-pagos-solo-finanzas). El resto de pantallas
+  // que usan este modal siguen pudiendo crear pagos y subir comprobantes.
   const isAllowedRoute =
-    pathname.includes("/operaciones") ||
-    pathname.includes("/ventas") ||
-    pathname.includes("/finanzas") ||
-    pathname.includes("/atencion-cliente") ||
-    pathname.includes("/seguimiento") ||
-    pathname.includes("/couriers");
+    pathname === "/finanzas" || pathname.startsWith("/finanzas/");
   const finalCanApprove = canApprove && isAllowedRoute;
 
   // Form states
@@ -209,8 +206,15 @@ export default function PaymentVerificationModal({
       fetchOrderData();
       onPaymentUpdated?.();
     } catch (error) {
-      console.error("Error aprobando pago", error);
-      toast.error("Error al aprobar el pago");
+      const status = axios.isAxiosError(error)
+        ? error.response?.status
+        : undefined;
+      if (status === 403) {
+        toast.error("No tenés permiso para aprobar pagos");
+      } else {
+        console.error("Error aprobando pago", error);
+        toast.error("Error al aprobar el pago");
+      }
     } finally {
       setProcessingPaymentId(null);
     }
@@ -234,8 +238,15 @@ export default function PaymentVerificationModal({
       fetchOrderData();
       onPaymentUpdated?.();
     } catch (error) {
-      console.error("Error rechazando pago", error);
-      toast.error("Error al rechazar el pago");
+      const status = axios.isAxiosError(error)
+        ? error.response?.status
+        : undefined;
+      if (status === 403) {
+        toast.error("No tenés permiso para rechazar pagos");
+      } else {
+        console.error("Error rechazando pago", error);
+        toast.error("Error al rechazar el pago");
+      }
     } finally {
       setProcessingPaymentId(null);
     }

@@ -190,6 +190,31 @@ const emptyClientForm = {
   googleMapsUrl: "",
 };
 
+/**
+ * Normaliza un `Client` (backend) a la forma del `clientForm` del formulario,
+ * aplicando los mismos fallbacks en todos los usos (carga de orden, cliente
+ * encontrado por teléfono y snapshot de comparación en `hasClientChanges`).
+ * Mantener esta función como única fuente evita que los distintos `useEffect`
+ * y la comparación de cambios diverjan entre sí.
+ */
+function clientToFormFields(client: Client) {
+  return {
+    fullName: client.fullName ?? "",
+    phoneNumber: client.phoneNumber ?? "",
+    documentType: client.documentType,
+    documentNumber: client.documentNumber ?? "",
+    clientType: client.clientType,
+    department: client.city ?? "",
+    province: client.province ?? "",
+    district: client.district ?? "",
+    address: client.address ?? "",
+    reference: client.reference ?? "",
+    latitude: client.latitude != null ? String(client.latitude) : "",
+    longitude: client.longitude != null ? String(client.longitude) : "",
+    googleMapsUrl: client.googleMapsUrl ?? "",
+  };
+}
+
 function RegistrarVentaContent() {
   /* ---------------- Params ---------------- */
   const searchParams = useSearchParams();
@@ -392,21 +417,7 @@ function RegistrarVentaContent() {
     const cust = orderData.customer;
     setClientFound(cust);
     setOriginalClient(cust);
-    setClientForm({
-      fullName: cust.fullName ?? "",
-      phoneNumber: cust.phoneNumber ?? "",
-      documentType: cust.documentType,
-      documentNumber: cust.documentNumber ?? "",
-      clientType: cust.clientType,
-      department: cust.city ?? "",
-      province: cust.province ?? "",
-      district: cust.district ?? "",
-      address: cust.address ?? "",
-      reference: cust.reference ?? "",
-      latitude: cust.latitude != null ? String(cust.latitude) : "",
-      longitude: cust.longitude != null ? String(cust.longitude) : "",
-      googleMapsUrl: cust.googleMapsUrl ?? "",
-    });
+    setClientForm(clientToFormFields(cust));
     setSearchState("found");
 
     // --- Detalles de la venta ---
@@ -520,23 +531,7 @@ function RegistrarVentaContent() {
 
   useEffect(() => {
     if (searchState === "found" && clientFound) {
-      setClientForm({
-        fullName: clientFound.fullName ?? "",
-        phoneNumber: clientFound.phoneNumber ?? "",
-        documentType: clientFound.documentType,
-        documentNumber: clientFound.documentNumber ?? "",
-        clientType: clientFound.clientType,
-        department: clientFound.city ?? "",
-        province: clientFound.province ?? "",
-        district: clientFound.district ?? "",
-        address: clientFound.address ?? "",
-        reference: clientFound.reference ?? "",
-        latitude:
-          clientFound.latitude != null ? String(clientFound.latitude) : "",
-        longitude:
-          clientFound.longitude != null ? String(clientFound.longitude) : "",
-        googleMapsUrl: clientFound.googleMapsUrl ?? "",
-      });
+      setClientForm(clientToFormFields(clientFound));
     }
   }, [searchState, clientFound]);
 
@@ -1113,11 +1108,12 @@ function RegistrarVentaContent() {
 
           const createdOrderId = response.data.id;
 
-          // Si hay comprobante de pago, adjuntarlo al pago del adelanto y
-          // confirmarlo. La subida y el approve van DIRECTO a ms-ventas
-          // (NEXT_PUBLIC_API_VENTAS): el gateway daba errores al proxear el
-          // multipart del comprobante.
+          // Si hay comprobante de pago, adjuntarlo al pago del adelanto (queda
+          // PENDING, la aprobación es manual desde /finanzas). La subida va
+          // DIRECTO a ms-ventas (NEXT_PUBLIC_API_VENTAS): el gateway daba
+          // errores al proxear el multipart del comprobante.
           let proofFailed = false;
+          let proofUploaded = false;
           if (paymentProofFile && advancePayment > 0) {
             // El POST de order-header no siempre devuelve payments hidratado.
             // Se relee la orden (el GET sí trae relations: ['payments']) para
@@ -1149,7 +1145,6 @@ function RegistrarVentaContent() {
                 "La venta se creó, pero el comprobante no se pudo adjuntar. Cargalo desde Finanzas › Gestionar Pagos.",
               );
             } else {
-              let proofUploaded = false;
               try {
                 const formData = new FormData();
                 formData.append("file", paymentProofFile);
@@ -1171,28 +1166,9 @@ function RegistrarVentaContent() {
                   "La venta se creó, pero el comprobante no se pudo adjuntar. Cargalo desde Finanzas › Gestionar Pagos.",
                 );
               }
-
-              // Solo se confirma el adelanto si el comprobante quedó adjunto.
-              // El backend resuelve el estado de la orden (parcial → PENDIENTE,
-              // adelanto = total → PAGADO); el front no calcula ni fuerza nada.
-              if (proofUploaded) {
-                try {
-                  await axiosAuth.patch(
-                    `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${firstPaymentId}/approve`,
-                    {
-                      userId: auth?.user?.id ?? undefined,
-                      userName: sellerDisplayName || undefined,
-                      notes:
-                        "Adelanto confirmado con comprobante al registrar venta",
-                    },
-                  );
-                } catch (err) {
-                  console.error("Error confirmando el adelanto", err);
-                  toast.warning(
-                    "La venta y el comprobante se guardaron, pero el adelanto quedó pendiente de confirmar en Finanzas.",
-                  );
-                }
-              }
+              // El pago del adelanto queda PENDING con el comprobante ya
+              // adjunto. La aprobación/rechazo es exclusivamente manual desde
+              // /finanzas — no se auto-confirma acá (ver FIX-aprobacion-pagos-solo-finanzas).
             }
           }
 
@@ -1211,7 +1187,11 @@ function RegistrarVentaContent() {
               );
             }
           } else if (!proofFailed) {
-            toast.success("Venta registrada");
+            toast.success(
+              proofUploaded
+                ? "Venta registrada. El adelanto quedó pendiente de aprobación en Finanzas."
+                : "Venta registrada",
+            );
           }
           setReceiptOrderId(createdOrderId);
           setReceiptOpen(true);
@@ -1599,27 +1579,7 @@ function RegistrarVentaContent() {
   const hasClientChanges =
     originalClient &&
     JSON.stringify(clientForm) !==
-      JSON.stringify({
-        fullName: originalClient.fullName,
-        phoneNumber: originalClient.phoneNumber,
-        documentType: originalClient.documentType,
-        documentNumber: originalClient.documentNumber,
-        clientType: originalClient.clientType,
-        province: originalClient.province,
-        department: originalClient.city,
-        district: originalClient.district,
-        address: originalClient.address,
-        reference: originalClient.reference,
-        latitude:
-          originalClient.latitude != null
-            ? String(originalClient.latitude)
-            : "",
-        longitude:
-          originalClient.longitude != null
-            ? String(originalClient.longitude)
-            : "",
-        googleMapsUrl: originalClient.googleMapsUrl ?? "",
-      });
+      JSON.stringify(clientToFormFields(originalClient));
 
   if (!auth) return null;
 
