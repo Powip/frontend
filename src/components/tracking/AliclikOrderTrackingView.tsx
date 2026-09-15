@@ -554,7 +554,8 @@ export default function AliclikOrderTrackingView() {
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7"
-                        title="Ver pedido"
+                        title="Ver seguimiento"
+                        aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
                         onClick={() => setViewOrderId(order.id)}
                       >
                         <Eye className="h-3.5 w-3.5" />
@@ -593,6 +594,7 @@ export default function AliclikOrderTrackingView() {
         onOrderUpdated={fetchOrders}
         isOperaciones
         showTracking
+        initialTab="seguimiento"
       />
     </div>
   );

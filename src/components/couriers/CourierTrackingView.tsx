@@ -1029,6 +1029,7 @@ export default function CourierTrackingView() {
                                   variant="ghost"
                                   className="h-7 w-7 p-0"
                                   title="Ver comprobante de entrega"
+                                  aria-label={`Ver comprobante de entrega del pedido ${order.orderNumber}`}
                                   disabled={!order.shippingProofUrl}
                                   onClick={() => openDocument(order.shippingProofUrl!)}
                                 >
@@ -1038,7 +1039,8 @@ export default function CourierTrackingView() {
                                   size="sm"
                                   variant="ghost"
                                   className="h-7 w-7 p-0"
-                                  title="Ver pedido"
+                                  title="Ver seguimiento"
+                                  aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
                                   onClick={() => setViewOrderId(order.id)}
                                 >
                                   <Eye className="h-3.5 w-3.5" />
@@ -1217,7 +1219,7 @@ export default function CourierTrackingView() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE VER PEDIDO (pestaña "Todos") */}
+      {/* MODAL DE VER PEDIDO (pestaña "Todos") — abre directo en Seguimiento */}
       <CustomerServiceModal
         open={!!viewOrderId}
         orderId={viewOrderId || ""}
@@ -1225,6 +1227,7 @@ export default function CourierTrackingView() {
         onOrderUpdated={fetchOrders}
         isOperaciones
         showTracking
+        initialTab="seguimiento"
       />
     </div>
   );
@@ -1503,6 +1506,7 @@ function CourierOrdersTab({
                             variant="ghost"
                             className="h-7 w-7 p-0"
                             title="Ver comprobante de entrega"
+                            aria-label={`Ver comprobante de entrega del pedido ${order.orderNumber}`}
                             disabled={!order.shippingProofUrl}
                             onClick={() => openDocument(order.shippingProofUrl!)}
                           >
@@ -1512,7 +1516,8 @@ function CourierOrdersTab({
                             size="sm"
                             variant="ghost"
                             className="h-7 w-7 p-0"
-                            title="Ver pedido"
+                            title="Ver seguimiento"
+                            aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
                             onClick={() => onView(order.id)}
                           >
                             <Eye className="h-3.5 w-3.5" />

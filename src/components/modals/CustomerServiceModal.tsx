@@ -152,6 +152,9 @@ interface Props {
   /** Si se pasa, habilita "Cambiar courier" en la pestaña Seguimiento (libera de la guía
    *  actual y delega la creación de una nueva al caller — hoy solo lo usa Ventas). */
   onOpenCreateGuide?: (order: OrderHeader) => void;
+  /** Pestaña con la que abre el modal (por defecto "resumen"). Úsalo para abrir
+   *  directo en "seguimiento" desde vistas centradas en tracking/courier. */
+  initialTab?: "resumen" | "seguimiento" | "pagos" | "reasignacion";
 }
 
 export default function CustomerServiceModal({
@@ -164,6 +167,7 @@ export default function CustomerServiceModal({
   showTracking = false,
   isOperaciones = false,
   onOpenCreateGuide,
+  initialTab,
 }: Props) {
   const router = useRouter();
   const { auth } = useAuth();
@@ -344,6 +348,7 @@ export default function CustomerServiceModal({
 
   useEffect(() => {
     if (!open || !orderId) return;
+    setTab(initialTab ?? "resumen");
     setOriginalTracking(null);
     setShalomTrackResult(null);
     fetchReceipt();
@@ -352,7 +357,7 @@ export default function CustomerServiceModal({
       setShippingGuideData(null);
       fetchShippingGuide();
     }
-  }, [open, orderId, fetchReceipt, fetchLogs, fetchShippingGuide, shippingGuideProp]);
+  }, [open, orderId, fetchReceipt, fetchLogs, fetchShippingGuide, shippingGuideProp, initialTab]);
 
   const handleUpdateCallStatus = async (
     callStatus: "CONFIRMED" | "NO_ANSWER",
