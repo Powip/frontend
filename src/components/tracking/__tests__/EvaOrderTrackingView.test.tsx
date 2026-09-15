@@ -30,7 +30,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
@@ -230,6 +230,8 @@ jest.mock('lucide-react', () => ({
   FileSpreadsheet: ({ className }: { className?: string }) => (
     <span data-testid="icon-excel" className={className} />
   ),
+  ChevronDown: () => <span data-testid="icon-chevron-down" />,
+  CheckIcon: () => <span data-testid="icon-check" />,
 }));
 
 jest.mock('@/lib/utils', () => ({
@@ -666,14 +668,18 @@ describe('EvaOrderTrackingView', () => {
     });
   });
 
-  // ── 6. Selector de estado (filtro por <select> nativo) ─────────────────────
+  // ── 6. Selector de estado (popover con checkboxes multi-selección) ─────────
 
   describe('selector de estado EVA', () => {
     it('lista las opciones de estado EVA con su label', async () => {
+      const user = userEvent.setup();
       renderView();
       await screen.findByText('ORD-001');
-      expect(screen.getByRole('option', { name: 'Registrado' })).toBeInTheDocument();
-      expect(screen.getByRole('option', { name: 'Entregado' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /todos los estados/i }));
+      const hasOptionLabel = (text: string) =>
+        screen.getAllByText(text).some((el) => el.closest('label') !== null);
+      expect(hasOptionLabel('Registrado')).toBe(true);
+      expect(hasOptionLabel('Entregado')).toBe(true);
     });
 
     it('seleccionar un estado filtra la tabla a solo ese estado', async () => {
@@ -684,7 +690,13 @@ describe('EvaOrderTrackingView', () => {
       renderView();
       await screen.findByText('ORD-001');
 
-      await user.selectOptions(screen.getByRole('combobox'), 'ENTREGADO');
+      await user.click(screen.getByRole('button', { name: /todos los estados/i }));
+      const entregadoLabel = screen
+        .getAllByText('Entregado')
+        .map((el) => el.closest('label'))
+        .find((el): el is HTMLLabelElement => el !== null);
+      expect(entregadoLabel).toBeDefined();
+      await user.click(within(entregadoLabel as HTMLElement).getByRole('checkbox'));
 
       expect(screen.getByText('ORD-002')).toBeInTheDocument();
       expect(screen.queryByText('ORD-001')).not.toBeInTheDocument();
