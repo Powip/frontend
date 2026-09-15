@@ -1721,15 +1721,20 @@ export default function GuideDetailsModal({
                               <p className="text-xs font-medium text-orange-700 mb-2 flex items-center gap-1">
                                 📦 Datos de Tracking
                               </p>
-                              {!orderHasProof[order.id] && (
-                                <div className="mb-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
-                                  <Lock className="h-3 w-3 mt-0.5 shrink-0" />
-                                  <span>
-                                    Debes cargar el comprobante de pago antes
-                                    de ingresar los datos de la guía.
-                                  </span>
+                              {!orderHasProof[order.id] ? (
+                                <div className="rounded border border-[#F3D9A8] bg-[#FEF3E2] px-2.5 py-2 text-[11px] text-[#92400E]">
+                                  <div className="flex items-start gap-1.5 font-semibold">
+                                    <Lock className="h-3 w-3 mt-0.5 shrink-0" />
+                                    Datos de la guía bloqueados
+                                  </div>
+                                  <p className="mt-1 text-muted-foreground">
+                                    El tracking, código, oficina y clave se
+                                    habilitan al validar el comprobante de
+                                    pago cargado para este pedido.
+                                  </p>
                                 </div>
-                              )}
+                              ) : (
+                              <>
                               <div className="grid grid-cols-2 gap-2">
                                 <div className="space-y-1">
                                   <label className="text-xs text-muted-foreground">
@@ -1940,6 +1945,8 @@ export default function GuideDetailsModal({
                                 ) : null}
                                 Guardar Tracking
                               </Button>
+                              </>
+                              )}
                             </div>
 
                             {/* Prueba de Entrega por Pedido */}

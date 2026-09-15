@@ -226,34 +226,34 @@ function TrackingInputCells({
     }
   };
 
+  if (!canEdit) {
+    return (
+      <TableCell colSpan={TRACKING_FIELDS.length} className="px-2 py-2">
+        <span
+          className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700"
+          title="Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
+        >
+          🔒 Sin comprobante — datos de la guía bloqueados
+        </span>
+      </TableCell>
+    );
+  }
+
   return (
     <>
       {TRACKING_FIELDS.map(({ key, placeholder }, i) => (
         <TableCell key={key} className="px-2 py-2">
-          <div className="flex flex-col gap-0.5">
-            {i === 0 && !canEdit && (
-              <span className="text-[9px] font-medium text-amber-600 flex items-center gap-0.5 whitespace-nowrap">
-                🔒 Sin comprobante
-              </span>
+          <div className="flex items-center gap-1">
+            <Input
+              placeholder={placeholder}
+              value={values[key]}
+              onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+              onBlur={handleAutoSave}
+              className="h-7 w-24 text-[11px]"
+            />
+            {i === TRACKING_FIELDS.length - 1 && saving && (
+              <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
             )}
-            <div className="flex items-center gap-1">
-              <Input
-                placeholder={!canEdit ? "Bloqueada" : placeholder}
-                value={!canEdit ? "" : values[key]}
-                onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
-                onBlur={handleAutoSave}
-                disabled={!canEdit}
-                title={
-                  canEdit
-                    ? undefined
-                    : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
-                }
-                className="h-7 w-24 text-[11px] disabled:cursor-not-allowed disabled:opacity-60"
-              />
-              {i === TRACKING_FIELDS.length - 1 && saving && (
-                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
-              )}
-            </div>
           </div>
         </TableCell>
       ))}
