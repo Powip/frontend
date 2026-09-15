@@ -34,6 +34,9 @@ import {
   RefreshCw,
   Unlink,
   ArrowRightLeft,
+  FileText,
+  Zap,
+  ArrowRight,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
@@ -87,6 +90,7 @@ import { getAvailableStatuses, getStatusChainSteps, getStatusLabel } from "@/uti
 import { isJunkDni } from "@/utils/junk-document.util";
 import { printOrderLabel, type OrderReceipt } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
+import { useQRCode } from "@/hooks/useQrCode";
 
 interface LogEntry {
   id: number;
@@ -98,6 +102,19 @@ interface LogEntry {
   userName?: string | null;
   isSystemGenerated?: boolean;
 }
+
+// Labels legibles para shippingGuide.status — mismos valores que ya
+// coloreaba el badge de "Guía de Envío", solo para el chip compacto del
+// header (courier + modalidad · estado).
+const STATUS_LABEL: Record<string, string> = {
+  GENERADA: "Generada",
+  ASIGNADA: "Asignada",
+  APROBADA: "Aprobada",
+  EN_RUTA: "En ruta",
+  ENTREGADA: "Entregada",
+  FALLIDA: "Fallida",
+  CANCELADA: "Cancelada",
+};
 
 const OPERACION_LABELS: Record<string, string> = {
   CREATE: "Creación",
@@ -471,6 +488,9 @@ export default function CustomerServiceModal({
 
   const [savingTracking, setSavingTracking] = useState(false);
   const [revealKey, setRevealKey] = useState(false);
+  // QR real del link de seguimiento (no un QR fabricado apuntando a nada) —
+  // se muestra en la card "Comprobante del courier" de la tab Seguimiento.
+  const trackingQrUrl = useQRCode(shippingGuide?.trackingUrl || "");
   const [originalTracking, setOriginalTracking] = useState<any>(null);
 
   useEffect(() => {
@@ -2253,6 +2273,9 @@ export default function CustomerServiceModal({
                               SHALOM
                             </span>
                           )}
+                          <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                            {shippingGuide.deliveryType} · {STATUS_LABEL[shippingGuide.status] || shippingGuide.status}
+                          </span>
                         </h3>
                         <div className="flex gap-1 items-center">
                           <Button
@@ -2318,6 +2341,63 @@ export default function CustomerServiceModal({
                             )}
                         </div>
                       </div>
+
+                      {/* Resumen tipo "dl" — calca el layout del mockup de
+                          seguimiento (label a la izq., valor en negrita a la
+                          der.). N° de orden usa shalomSerie (equivalente real
+                          a la "N° de orden" de Shalom); Código y Clave se
+                          bloquean sin comprobante, igual que en Resumen. */}
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px] mb-3">
+                        {orderHeader?.shalomSerie && (
+                          <>
+                            <dt className="text-muted-foreground font-medium">
+                              N° de orden
+                            </dt>
+                            <dd className="text-right font-bold font-mono">
+                              {orderHeader.shalomSerie}
+                            </dd>
+                          </>
+                        )}
+                        {shippingGuide.shippingCode && (
+                          <>
+                            <dt className="text-muted-foreground font-medium">
+                              Código
+                            </dt>
+                            <dd className="text-right font-bold font-mono">
+                              {canEditCourierFields ? (
+                                shippingGuide.shippingCode
+                              ) : (
+                                <span className="text-amber-700 dark:text-amber-400">
+                                  🔒 bloqueada
+                                </span>
+                              )}
+                            </dd>
+                          </>
+                        )}
+                        {shippingGuide.shippingOffice && (
+                          <>
+                            <dt className="text-muted-foreground font-medium">
+                              Agencia destino
+                            </dt>
+                            <dd className="text-right font-bold">
+                              {shippingGuide.shippingOffice}
+                            </dd>
+                          </>
+                        )}
+                        {shippingGuide.shippingKey && (
+                          <>
+                            <dt className="text-muted-foreground font-medium">
+                              Clave
+                            </dt>
+                            <dd className="text-right font-bold font-mono tracking-widest">
+                              {canEditCourierFields || revealKey
+                                ? shippingGuide.shippingKey
+                                : "••••"}
+                            </dd>
+                          </>
+                        )}
+                      </dl>
+
                       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                         <div>
                           <span className="text-muted-foreground">
@@ -2349,44 +2429,6 @@ export default function CustomerServiceModal({
                             {shippingGuide.deliveryType}
                           </span>
                         </div>
-                        {shippingGuide.shippingCode && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Código:{" "}
-                            </span>
-                            <span className="font-medium font-mono">
-                              {canEditCourierFields ? (
-                                shippingGuide.shippingCode
-                              ) : (
-                                <span className="text-amber-700 dark:text-amber-400">
-                                  🔒 bloqueada
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        )}
-                        {shippingGuide.shippingKey && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Clave Envío:{" "}
-                            </span>
-                            <span className="font-medium font-mono">
-                              {canEditCourierFields || revealKey
-                                ? shippingGuide.shippingKey
-                                : "••••"}
-                            </span>
-                          </div>
-                        )}
-                        {shippingGuide.shippingOffice && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Oficina:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {shippingGuide.shippingOffice}
-                            </span>
-                          </div>
-                        )}
                         {shippingGuide.chargeType && (
                           <div>
                             <span className="text-muted-foreground">
@@ -2461,18 +2503,18 @@ export default function CustomerServiceModal({
                       ya montado más abajo vía paymentModalOpen). */}
                   {shippingGuide?.shippingKey && (
                     <div
-                      className={`rounded-xl border p-4 ${
+                      className={`rounded-xl border p-[13px] ${
                         canEditCourierFields
-                          ? "border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/30"
-                          : "border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/30"
+                          ? "border-[#A7E3CE] bg-[#E7F8F1] dark:border-green-800 dark:bg-green-950/30"
+                          : "border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30"
                       }`}
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-[11px]">
                         <div
-                          className={`h-9 w-9 rounded-lg grid place-items-center shrink-0 ${
+                          className={`h-9 w-9 rounded-lg grid place-items-center shrink-0 text-base ${
                             canEditCourierFields
-                              ? "bg-green-600 text-white"
-                              : "bg-white dark:bg-amber-900 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700"
+                              ? "bg-[#047857] text-white"
+                              : "bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300"
                           }`}
                         >
                           {canEditCourierFields ? (
@@ -2483,10 +2525,10 @@ export default function CustomerServiceModal({
                         </div>
                         <div className="flex-1 min-w-0">
                           <div
-                            className={`font-semibold text-sm ${
+                            className={`font-extrabold text-[13.5px] ${
                               canEditCourierFields
-                                ? "text-green-700 dark:text-green-400"
-                                : "text-amber-800 dark:text-amber-400"
+                                ? "text-[#047857] dark:text-green-400"
+                                : "text-[#92400E] dark:text-amber-400"
                             }`}
                           >
                             {canEditCourierFields
@@ -2506,10 +2548,10 @@ export default function CustomerServiceModal({
                           </div>
                         </div>
                         <div
-                          className={`font-mono font-black tracking-[0.12em] text-xl ${
+                          className={`font-mono font-black tracking-[0.24em] text-xl ${
                             canEditCourierFields
-                              ? "text-green-700 dark:text-green-400"
-                              : "text-amber-700 dark:text-amber-400"
+                              ? "text-[#047857] dark:text-green-400"
+                              : "text-[#C29B54] dark:text-amber-400"
                           }`}
                         >
                           {canEditCourierFields || revealKey
@@ -2521,18 +2563,77 @@ export default function CustomerServiceModal({
                         <>
                           <Button
                             size="sm"
-                            className="w-full mt-3 bg-amber-600 hover:bg-amber-700 text-white"
+                            className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
                             onClick={() => setPaymentModalOpen(true)}
                           >
                             <DollarSign className="h-4 w-4 mr-1.5" />
                             Registrar cobranza
                           </Button>
-                          <p className="text-[11px] text-muted-foreground mt-2">
+                          <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
                             La clave se habilita al validar el comprobante de
                             pago cargado para este pedido.
                           </p>
                         </>
                       )}
+                    </div>
+                  )}
+
+                  {/* Comprobante del courier — reusa handlePrintShippingReceipt
+                      (el mismo comprobante que ya imprime el botón de la
+                      impresora arriba); el QR es real (apunta al
+                      shippingGuide.trackingUrl real), no uno fabricado. */}
+                  {shippingGuide?.guideNumber && (
+                    <button
+                      type="button"
+                      onClick={handlePrintShippingReceipt}
+                      className="w-full text-left rounded-xl border border-border overflow-hidden hover:border-primary/40 hover:shadow-sm transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 px-[13px] py-[11px] bg-muted/30 border-b border-border">
+                        <div className="h-[30px] w-[30px] rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 grid place-items-center shrink-0">
+                          <FileText className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-bold leading-tight">
+                            Comprobante del courier
+                          </div>
+                          <span className="text-[11.5px] text-muted-foreground">
+                            Comprobante de envío · generado por POWIP
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 px-[13px] py-[13px]">
+                        {trackingQrUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={trackingQrUrl}
+                            alt="QR de seguimiento"
+                            className="h-11 w-11 shrink-0 rounded"
+                          />
+                        )}
+                        <div className="text-[11.5px] text-muted-foreground leading-tight min-w-0">
+                          <b className="text-foreground font-bold">
+                            {shippingGuide.guideNumber}
+                          </b>{" "}
+                          · {shippingGuide.courierName || "Courier"}
+                          <br />
+                          Emitido por POWIP
+                        </div>
+                        <span className="ml-auto shrink-0 text-primary font-bold text-[12.5px] flex items-center gap-1">
+                          Ver <ArrowRight className="h-3 w-3" />
+                        </span>
+                      </div>
+                    </button>
+                  )}
+
+                  {isShalomCourier(orderHeader?.courier) && (
+                    <div className="flex items-start gap-2.5 rounded-[11px] bg-[#EEF0FF] dark:bg-indigo-950/30 px-[13px] py-[11px] text-[12.5px] leading-[1.45] text-[#3730A3] dark:text-indigo-300">
+                      <Zap className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>
+                        <b>Tiempo real:</b> POWIP sincroniza el estado por
+                        webhook de Shalom. Cuando el cliente recoge en
+                        agencia, el estado pasa a <b>Entregado</b>{" "}
+                        automáticamente.
+                      </span>
                     </div>
                   )}
 
@@ -2706,17 +2807,30 @@ export default function CustomerServiceModal({
                       );
                     })()}
 
-                  {orderHeader?.guideNumber && (
-                    <div className="border rounded-lg p-4">
-                      <div className="text-sm font-bold mb-2.5">
-                        ⚡ Acciones logísticas
+                  {/* Acciones — calca la lista de botones full-width del
+                      mockup (icono + label, alineados a la izquierda). Cada
+                      una reusa una acción real que ya existe en el modal;
+                      ninguna es nueva funcionalidad inventada. */}
+                  {shippingGuide && (
+                    <div className="rounded-xl border border-border bg-card p-4">
+                      <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground mb-3">
+                        Acciones
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                        {shippingGuide?.shippingKey && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-sm justify-start"
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setGuideDetailsModalOpen(true)}
+                          className="flex items-center gap-2.5 rounded-lg border border-border px-[15px] py-[9px] text-[13px] font-semibold hover:bg-accent transition-colors"
+                        >
+                          <FileText className="h-4 w-4" />
+                          Ver comprobante / rótulo{" "}
+                          {isShalomCourier(shippingGuide.courierName)
+                            ? "Shalom"
+                            : ""}
+                        </button>
+                        {shippingGuide.shippingKey && (
+                          <button
+                            type="button"
                             disabled={!canEditCourierFields}
                             title={
                               canEditCourierFields
@@ -2724,40 +2838,49 @@ export default function CustomerServiceModal({
                                 : "Debes cargar el comprobante de pago antes de copiar la clave"
                             }
                             onClick={() => {
-                              if (!shippingGuide?.shippingKey) return;
+                              if (!shippingGuide.shippingKey) return;
                               navigator.clipboard.writeText(shippingGuide.shippingKey);
                               toast.success("Código de recojo copiado");
                             }}
+                            className="flex items-center gap-2.5 rounded-lg border border-border px-[15px] py-[9px] text-[13px] font-semibold hover:bg-accent transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
                           >
-                            <Copy className="h-4 w-4 mr-1.5" />
+                            <Pencil className="h-4 w-4" />
                             Copiar código de recojo
-                          </Button>
+                          </button>
                         )}
                         {receipt && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-sm justify-start"
+                          <button
+                            type="button"
                             onClick={handleWhatsApp}
+                            className="flex items-center gap-2.5 rounded-lg border border-border px-[15px] py-[9px] text-[13px] font-semibold hover:bg-accent transition-colors"
                           >
-                            <WhatsAppIcon className="h-4 w-4 mr-1.5" />
+                            <WhatsAppIcon className="h-4 w-4" />
                             Enviar seguimiento por WhatsApp
-                          </Button>
+                          </button>
                         )}
-                        {orderHeader.courier === "Shalom" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-sm justify-start"
+                        {isShalomCourier(orderHeader?.courier) && (
+                          <button
+                            type="button"
                             disabled={syncingTracking}
                             onClick={handleForceSyncTracking}
+                            className="flex items-center gap-2.5 rounded-lg border border-border px-[15px] py-[9px] text-[13px] font-semibold hover:bg-accent transition-colors disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <RefreshCw
-                              className={`h-4 w-4 mr-1.5 ${syncingTracking ? "animate-spin" : ""}`}
+                              className={`h-4 w-4 ${syncingTracking ? "animate-spin" : ""}`}
                             />
                             Forzar sincronización con Shalom
-                          </Button>
+                          </button>
                         )}
+                      </div>
+                    </div>
+                  )}
+
+                  {orderHeader?.guideNumber && (
+                    <div className="border rounded-lg p-4">
+                      <div className="text-sm font-bold mb-2.5">
+                        ⚡ Acciones logísticas
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         <Button
                           size="sm"
                           variant="outline"
