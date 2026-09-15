@@ -17,6 +17,13 @@ import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ChevronDown } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -34,7 +41,7 @@ import EvaStatusBadge, {
   GROUP_CLS,
 } from "@/components/eva/EvaStatusBadge";
 import SendToEvaButton from "@/components/eva/SendToEvaButton";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import OrderTrackingModal from "@/components/modals/OrderTrackingModal";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import { isEvaCourier } from "@/utils/courierNormalizer";
 
@@ -82,7 +89,7 @@ export default function EvaOrderTrackingView() {
   const [orders, setOrders] = useState<OrderHeader[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [saldoFilter, setSaldoFilter] = useState<"all" | "pending" | "paid">("all");
   const [page, setPage] = useState(1);
   const [viewOrderId, setViewOrderId] = useState<string | null>(null);
@@ -133,7 +140,11 @@ export default function EvaOrderTrackingView() {
       }
 
       // Filtro por estado EVA (selector)
-      if (statusFilter && order.evaStatus !== statusFilter) return false;
+      if (
+        statusFilters.length > 0 &&
+        !statusFilters.includes(order.evaStatus ?? "")
+      )
+        return false;
 
       if (saldoFilter !== "all") {
         const pending = getPendingPayment(order);
@@ -143,11 +154,11 @@ export default function EvaOrderTrackingView() {
 
       return true;
     });
-  }, [orders, search, statusFilter, saldoFilter]);
+  }, [orders, search, statusFilters, saldoFilter]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, saldoFilter]);
+  }, [search, statusFilters, saldoFilter]);
 
   const totalPages = Math.max(
     1,
@@ -222,11 +233,15 @@ export default function EvaOrderTrackingView() {
               key={status}
               type="button"
               onClick={() =>
-                setStatusFilter((prev) => (prev === status ? "" : status))
+                setStatusFilters((prev) =>
+                  prev.includes(status)
+                    ? prev.filter((v) => v !== status)
+                    : [...prev, status],
+                )
               }
               className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all
                 ${colorClass}
-                ${statusFilter === status ? "ring-2 ring-offset-1 ring-current" : "opacity-90 hover:opacity-100"}
+                ${statusFilters.includes(status) ? "ring-2 ring-offset-1 ring-current" : "opacity-90 hover:opacity-100"}
               `}
             >
               <span>{label}</span>
@@ -235,10 +250,10 @@ export default function EvaOrderTrackingView() {
               </span>
             </button>
           ))}
-          {statusFilter && (
+          {statusFilters.length > 0 && (
             <button
               type="button"
-              onClick={() => setStatusFilter("")}
+              onClick={() => setStatusFilters([])}
               className="text-xs text-muted-foreground underline self-center ml-1"
             >
               Limpiar filtro
@@ -263,18 +278,57 @@ export default function EvaOrderTrackingView() {
         </div>
         <div className="space-y-1">
           <Label className="text-xs font-semibold">Estado EVA</Label>
-          <select
-            className="w-full h-9 text-sm border rounded-md px-3 bg-background"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">Todos los estados</option>
-            {Object.entries(STATUS_LABEL).map(([status, label]) => (
-              <option key={status} value={status}>
-                {label}
-              </option>
-            ))}
-          </select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full h-9 text-sm justify-between font-normal"
+              >
+                {statusFilters.length === 0
+                  ? "Todos los estados"
+                  : statusFilters.length === 1
+                    ? (STATUS_LABEL[statusFilters[0]] ?? statusFilters[0])
+                    : `${statusFilters.length} estados seleccionados`}
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-2" align="start">
+              <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
+                <span className="text-xs font-semibold text-muted-foreground">
+                  Filtrar por estado
+                </span>
+                {statusFilters.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => setStatusFilters([])}
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1 max-h-64 overflow-y-auto">
+                {Object.entries(STATUS_LABEL).map(([status, label]) => (
+                  <label
+                    key={status}
+                    className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                  >
+                    <Checkbox
+                      checked={statusFilters.includes(status)}
+                      onCheckedChange={(checked) => {
+                        setStatusFilters((prev) =>
+                          checked
+                            ? [...prev, status]
+                            : prev.filter((v) => v !== status),
+                        );
+                      }}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
         <div className="space-y-1">
           <Label className="text-xs font-semibold">Saldo</Label>
@@ -357,7 +411,7 @@ export default function EvaOrderTrackingView() {
                   className="h-32 text-center text-muted-foreground"
                 >
                   No hay pedidos con courier EVA
-                  {(search || statusFilter || saldoFilter !== "all") && (
+                  {(search || statusFilters.length > 0 || saldoFilter !== "all") && (
                     <span className="block text-xs mt-1">
                       Probá quitando los filtros activos
                     </span>
@@ -438,7 +492,8 @@ export default function EvaOrderTrackingView() {
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7"
-                        title="Ver pedido"
+                        title="Ver seguimiento"
+                        aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
                         onClick={() => setViewOrderId(order.id)}
                       >
                         <Eye className="h-3.5 w-3.5" />
@@ -460,13 +515,11 @@ export default function EvaOrderTrackingView() {
         />
       </div>
 
-      <CustomerServiceModal
+      <OrderTrackingModal
         open={!!viewOrderId}
         orderId={viewOrderId || ""}
         onClose={() => setViewOrderId(null)}
         onOrderUpdated={fetchOrders}
-        isOperaciones
-        showTracking
       />
     </div>
   );

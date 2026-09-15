@@ -22,6 +22,8 @@ import {
   Eye,
   FileSpreadsheet,
   CalendarIcon,
+  ChevronDown,
+  Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -46,6 +48,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -64,18 +67,25 @@ import {
   trackShalomGuide,
   updateGuideQuote
 } from "@/services/shalomService";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import OrderTrackingModal from "@/components/modals/OrderTrackingModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
 import EvaOrderTrackingView from "@/components/tracking/EvaOrderTrackingView";
-import { getPendingPayment, trackingUrlFor } from "@/app/centro-envios/components/shipmentUtils";
+import { getPendingPayment, hasPaymentProof, trackingUrlFor } from "@/app/centro-envios/components/shipmentUtils";
 import { fetchCouriers } from "@/services/courierService";
 import { getEvaCredentials } from "@/services/evaService";
 import { getAliclikCredentials } from "@/services/aliclikService";
 import { OrderHeader } from "@/interfaces/IOrder";
-import { isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
-import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
+import { isAliclikCourier, isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
 import { useShalomLiveStatuses, SHALOM_STEP_STYLES, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
+import {
+  CourierStatusBadge,
+  courierStatusFilterKey,
+  getOrderCourierStatus,
+  SHALOM_STATUS_LABELS,
+  ALICLIK_STATUS_LABELS,
+} from "@/components/tracking/CourierStatusBadge";
+import { STATUS_LABEL as EVA_STATUS_LABEL } from "@/components/eva/EvaStatusBadge";
 
 function money(n: number): string {
   return `S/ ${n.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -177,6 +187,7 @@ function TrackingInputCells({
   const original = trackingValuesOf(order);
   const [values, setValues] = useState<Record<TrackingFieldKey, string>>(original);
   const [saving, setSaving] = useState(false);
+  const canEdit = hasPaymentProof(order);
 
   useEffect(() => {
     setValues(trackingValuesOf(order));
@@ -196,8 +207,13 @@ function TrackingInputCells({
     try {
       const payload: Partial<Record<TrackingFieldKey, string | null>> = {};
       TRACKING_FIELDS.forEach(({ key }) => {
+        // La clave no tiene input mientras está bloqueada (no hay forma de
+        // que el usuario la haya tocado), pero por las dudas se excluye
+        // explícitamente del payload sin comprobante.
+        if (key === "shippingKey" && !canEdit) return;
         if (values[key] !== original[key]) payload[key] = values[key] || null;
       });
+      if (Object.keys(payload).length === 0) return;
       await axios.patch(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${order.id}`, payload);
       toast.success("Tracking guardado");
       // Actualiza el estado local en vez de refetchear todo — un refetch acá
@@ -214,22 +230,33 @@ function TrackingInputCells({
 
   return (
     <>
-      {TRACKING_FIELDS.map(({ key, placeholder }, i) => (
-        <TableCell key={key} className="px-2 py-2">
-          <div className="flex items-center gap-1">
-            <Input
-              placeholder={placeholder}
-              value={values[key]}
-              onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
-              onBlur={handleAutoSave}
-              className="h-7 w-24 text-[11px]"
-            />
-            {i === TRACKING_FIELDS.length - 1 && saving && (
-              <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
-            )}
-          </div>
-        </TableCell>
-      ))}
+      {TRACKING_FIELDS.map(({ key, placeholder }, i) => {
+        // Solo la clave se bloquea sin comprobante de pago — tracking,
+        // código y oficina siempre se pueden ingresar.
+        const locked = key === "shippingKey" && !canEdit;
+        return (
+          <TableCell key={key} className="px-2 py-2">
+            <div className="flex items-center gap-1">
+              <Input
+                placeholder={locked ? "Bloqueada" : placeholder}
+                value={locked ? "" : values[key]}
+                onChange={(e) => setValues((prev) => ({ ...prev, [key]: e.target.value }))}
+                onBlur={handleAutoSave}
+                disabled={locked}
+                title={
+                  locked
+                    ? "Debes cargar el comprobante de pago antes de ingresar la clave"
+                    : undefined
+                }
+                className="h-7 w-24 text-[11px] disabled:cursor-not-allowed disabled:opacity-60"
+              />
+              {i === TRACKING_FIELDS.length - 1 && saving && (
+                <RefreshCw className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" />
+              )}
+            </div>
+          </TableCell>
+        );
+      })}
     </>
   );
 }
@@ -281,6 +308,7 @@ export default function CourierTrackingView() {
   // viejos/importados) — mismo servicio que usa el resto de Operaciones.
   const [companyCouriers, setCompanyCouriers] = useState<string[]>([]);
   const [courierFilter, setCourierFilter] = useState("ALL");
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [saldoFilter, setSaldoFilter] = useState<"ALL" | "PENDING" | "PAID">("ALL");
   const [fechaRange, setFechaRange] = useState<DateRange | undefined>(undefined);
   const [fechaCalendarOpen, setFechaCalendarOpen] = useState(false);
@@ -443,6 +471,42 @@ export default function CourierTrackingView() {
     return Array.from(set).sort();
   }, [companyCouriers, dispatchedOrders]);
 
+  // Opciones del filtro de estado — combina Shalom/Aliclik/EVA (únicos
+  // couriers con estado de envío propio). Se listan TODOS los estados
+  // posibles de cada integración presente en los pedidos despachados (no
+  // solo los que ya tiene algún pedido hoy), para que no "desaparezcan" del
+  // filtro estados poco frecuentes como Cancelado/Devuelto/Fallido.
+  const statusFilterOptions = useMemo(() => {
+    const hasShalom = dispatchedOrders.some(
+      (o) => isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice),
+    );
+    const hasAliclik = dispatchedOrders.some((o) => isAliclikCourier(o.courier));
+    const hasEva = dispatchedOrders.some(
+      (o) => isEvaCourier(o.courier) || isEvaCourier(o.shippingOffice),
+    );
+
+    const map = new Map<string, { key: string; sourceLabel: string; label: string }>();
+    const addAll = (
+      active: boolean,
+      source: "shalom" | "aliclik" | "eva",
+      sourceLabel: string,
+      labels: Record<string, string>,
+    ) => {
+      if (!active) return;
+      for (const label of Object.values(labels)) {
+        const key = `${source}:${label}`;
+        if (!map.has(key)) map.set(key, { key, sourceLabel, label });
+      }
+    };
+    addAll(hasShalom, "shalom", "Shalom", SHALOM_STATUS_LABELS);
+    addAll(hasAliclik, "aliclik", "Aliclik", ALICLIK_STATUS_LABELS);
+    addAll(hasEva, "eva", "EVA", EVA_STATUS_LABEL);
+
+    return Array.from(map.values()).sort(
+      (a, b) => a.sourceLabel.localeCompare(b.sourceLabel) || a.label.localeCompare(b.label),
+    );
+  }, [dispatchedOrders]);
+
   // Mismo criterio date-only que Por Liquidar/Pedidos — compara contra la
   // fecha de venta (`created_at`).
   const fechaDesde = fechaRange?.from ? dateKey(fechaRange.from) : "";
@@ -458,6 +522,11 @@ export default function CourierTrackingView() {
       .filter(
         (o) => courierFilter === "ALL" || courierLabel(o) === courierFilter,
       )
+      .filter((o) => {
+        if (statusFilters.length === 0) return true;
+        const info = getOrderCourierStatus(o);
+        return !!info && statusFilters.includes(courierStatusFilterKey(info));
+      })
       .filter((o) => {
         if (saldoFilter === "ALL") return true;
         const pending = getPendingPayment(o);
@@ -482,11 +551,11 @@ export default function CourierTrackingView() {
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
       );
-  }, [dispatchedOrders, search, courierFilter, saldoFilter, fechaDesde, fechaHasta]);
+  }, [dispatchedOrders, search, courierFilter, statusFilters, saldoFilter, fechaDesde, fechaHasta]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, courierFilter, saldoFilter, fechaDesde, fechaHasta]);
+  }, [search, courierFilter, statusFilters, saldoFilter, fechaDesde, fechaHasta]);
 
   const totalPages = Math.max(
     1,
@@ -745,6 +814,70 @@ export default function CourierTrackingView() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 w-[190px] shrink-0 justify-between font-normal bg-background"
+                    >
+                      <span className="truncate">
+                        {statusFilters.length === 0
+                          ? "Todos los estados"
+                          : statusFilters.length === 1
+                            ? statusFilterOptions.find((o) => o.key === statusFilters[0])
+                                ?.label
+                            : `${statusFilters.length} estados seleccionados`}
+                      </span>
+                      <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2" align="start">
+                    <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        Filtrar por estado
+                      </span>
+                      {statusFilters.length > 0 && (
+                        <button
+                          type="button"
+                          className="text-xs text-primary hover:underline"
+                          onClick={() => setStatusFilters([])}
+                        >
+                          Limpiar
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1 max-h-72 overflow-y-auto">
+                      {statusFilterOptions.length === 0 ? (
+                        <p className="text-xs text-muted-foreground px-1 py-1">
+                          Sin estados disponibles
+                        </p>
+                      ) : (
+                        statusFilterOptions.map((opt) => (
+                          <label
+                            key={opt.key}
+                            className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                          >
+                            <Checkbox
+                              checked={statusFilters.includes(opt.key)}
+                              onCheckedChange={(checked) => {
+                                setStatusFilters((prev) =>
+                                  checked
+                                    ? [...prev, opt.key]
+                                    : prev.filter((v) => v !== opt.key),
+                                );
+                              }}
+                            />
+                            <span className="text-muted-foreground text-xs">
+                              {opt.sourceLabel}:
+                            </span>{" "}
+                            {opt.label}
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
                   <SelectTrigger className="w-[170px] shrink-0 bg-background">
                     <SelectValue placeholder="Saldo" />
@@ -845,11 +978,24 @@ export default function CourierTrackingView() {
                   </TableHeader>
                   <TableBody>
                     {ordersLoading ? (
-                      Array.from({ length: 3 }).map((_, i) => (
-                        <TableRow key={i}>
-                          <TableCell colSpan={16} className="h-16 animate-pulse bg-muted/10 px-4" />
+                      <>
+                        <TableRow>
+                          <TableCell
+                            colSpan={16}
+                            className="h-12 px-4 text-center text-sm text-muted-foreground"
+                          >
+                            <div className="flex items-center justify-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                              Cargando pedidos despachados...
+                            </div>
+                          </TableCell>
                         </TableRow>
-                      ))
+                        {Array.from({ length: 3 }).map((_, i) => (
+                          <TableRow key={i}>
+                            <TableCell colSpan={16} className="h-16 animate-pulse bg-muted/10 px-4" />
+                          </TableRow>
+                        ))}
+                      </>
                     ) : allOrderRows.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={16} className="h-32 text-center text-muted-foreground text-sm">
@@ -891,23 +1037,19 @@ export default function CourierTrackingView() {
                               </Badge>
                             </TableCell>
                             <TableCell className="px-4 py-3 text-center">
-                              {isShalomCourier(order.courier) || isShalomCourier(order.shippingOffice) ? (
-                                (() => {
-                                  const liveLabel = shalomLiveStatuses[order.id];
-                                  if (liveLabel) {
-                                    const style = SHALOM_STEP_STYLES[liveLabel] ?? "bg-amber-50 text-amber-700 border-amber-200";
-                                    const icon = SHALOM_STEP_ICONS[liveLabel] ?? "•";
-                                    return (
-                                      <Badge variant="outline" className={`text-[10px] ${style}`}>
-                                        {icon} {liveLabel}
-                                      </Badge>
-                                    );
-                                  }
-                                  return <ShalomStatusBadge status={order.shalomStatus} error={order.shalomError} />;
-                                })()
-                              ) : (
-                                <span className="text-xs text-muted-foreground">—</span>
-                              )}
+                              {(() => {
+                                const liveLabel = shalomLiveStatuses[order.id];
+                                const live = liveLabel
+                                  ? {
+                                      label: liveLabel,
+                                      style:
+                                        SHALOM_STEP_STYLES[liveLabel] ??
+                                        "bg-amber-50 text-amber-700 border-amber-200",
+                                      icon: SHALOM_STEP_ICONS[liveLabel] ?? "•",
+                                    }
+                                  : undefined;
+                                return <CourierStatusBadge order={order} live={live} />;
+                              })()}
                             </TableCell>
                             <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
                               {order.carrierShippingCost
@@ -922,6 +1064,7 @@ export default function CourierTrackingView() {
                                   variant="ghost"
                                   className="h-7 w-7 p-0"
                                   title="Ver comprobante de entrega"
+                                  aria-label={`Ver comprobante de entrega del pedido ${order.orderNumber}`}
                                   disabled={!order.shippingProofUrl}
                                   onClick={() => openDocument(order.shippingProofUrl!)}
                                 >
@@ -931,7 +1074,8 @@ export default function CourierTrackingView() {
                                   size="sm"
                                   variant="ghost"
                                   className="h-7 w-7 p-0"
-                                  title="Ver pedido"
+                                  title="Ver seguimiento"
+                                  aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
                                   onClick={() => setViewOrderId(order.id)}
                                 >
                                   <Eye className="h-3.5 w-3.5" />
@@ -1110,14 +1254,14 @@ export default function CourierTrackingView() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL DE VER PEDIDO (pestaña "Todos") */}
-      <CustomerServiceModal
+      {/* MODAL "Ver seguimiento" — calca el mockup pixel a pixel a pedido
+          del cliente (pedido usado también por la pestaña genérica por
+          courier, vía onView={setViewOrderId}). */}
+      <OrderTrackingModal
         open={!!viewOrderId}
         orderId={viewOrderId || ""}
         onClose={() => setViewOrderId(null)}
         onOrderUpdated={fetchOrders}
-        isOperaciones
-        showTracking
       />
     </div>
   );
@@ -1396,6 +1540,7 @@ function CourierOrdersTab({
                             variant="ghost"
                             className="h-7 w-7 p-0"
                             title="Ver comprobante de entrega"
+                            aria-label={`Ver comprobante de entrega del pedido ${order.orderNumber}`}
                             disabled={!order.shippingProofUrl}
                             onClick={() => openDocument(order.shippingProofUrl!)}
                           >
@@ -1405,7 +1550,8 @@ function CourierOrdersTab({
                             size="sm"
                             variant="ghost"
                             className="h-7 w-7 p-0"
-                            title="Ver pedido"
+                            title="Ver seguimiento"
+                            aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
                             onClick={() => onView(order.id)}
                           >
                             <Eye className="h-3.5 w-3.5" />

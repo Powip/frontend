@@ -87,6 +87,8 @@ jest.mock('lucide-react', () => ({
   AlertTriangle: ({ className }: { className?: string }) => (
     <span data-testid="alert-triangle" className={className} />
   ),
+  ChevronDown: () => null,
+  CheckIcon: () => null,
 }));
 
 // Mock de componentes pesados que abren portales o hacen fetch propio

@@ -16,11 +16,12 @@ import { Button } from "../ui/button";
 
 interface Props {
   brands: Brand[];
+  isLoading?: boolean;
   supplierId: string;
   onUpdated: () => void;
 }
 
-export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
+export default function BrandsTable({ brands, isLoading = false, supplierId, onUpdated }: Props) {
   const [openModal, setOpenModal] = useState(false);
   const [openDelete, setOpenDelete] = useState(false);
   const [selectedBrand, setSelectedBrand] = useState<Brand | undefined>();
@@ -57,7 +58,13 @@ export default function BrandsTable({ brands, supplierId, onUpdated }: Props) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {brands.map((brand) => (
+          {isLoading ? (
+            Array.from({ length: 3 }).map((_, i) => (
+              <TableRow key={i}>
+                <TableCell colSpan={3} className="h-11 animate-pulse bg-muted/40" />
+              </TableRow>
+            ))
+          ) : brands.map((brand) => (
             <TableRow key={brand.id}>
               <TableCell>{brand.name}</TableCell>
               <TableCell>{brand.description || "-"}</TableCell>

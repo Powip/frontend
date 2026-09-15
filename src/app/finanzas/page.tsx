@@ -38,6 +38,7 @@ import {
   applyFilters,
 } from "@/components/ventas/SalesTableFilters";
 import { LiquidacionesCourierTab } from "@/components/finanzas/LiquidacionesCourierTab";
+import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
 import { Copy, Printer, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import CancellationModal, {
@@ -190,6 +191,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
 export default function FinanzasPage() {
   const [sales, setSales] = useState<Sale[]>([]);
+  const [loading, setLoading] = useState(true);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
@@ -305,6 +307,8 @@ export default function FinanzasPage() {
     } catch (error) {
       console.error("Error fetching orders", error);
       toast.error("No se pudieron cargar los datos de Finanzas. Reintentá.");
+    } finally {
+      setLoading(false);
     }
   }, [selectedStoreId]);
 
@@ -400,6 +404,7 @@ export default function FinanzasPage() {
 
   useEffect(() => {
     if (!selectedStoreId) return;
+    setLoading(true);
     fetchOrders();
   }, [selectedStoreId, fetchOrders]);
 
@@ -968,6 +973,9 @@ Estado: ${sale.status}
         </div>
 
         {/* Tabs para Finanzas */}
+        {loading ? (
+          <PowipPulseLoader label="Cargando finanzas..." />
+        ) : (
         <Tabs defaultValue="pagosPendientes" className="w-full">
           <TabsList className="mb-4">
             <TabsTrigger value="pagosPendientes">
@@ -1288,6 +1296,7 @@ Estado: ${sale.status}
             <LiquidacionesCourierTab />
           </TabsContent>
         </Tabs>
+        )}
       </main>
 
       <CustomerServiceModal

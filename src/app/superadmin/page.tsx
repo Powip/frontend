@@ -165,6 +165,7 @@ export default function SuperadminPage() {
     SubscriptionDetail[]
   >([]);
   const [allUsers, setAllUsers] = useState<any[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
   const [globalBilling, setGlobalBilling] = useState<any[]>([]);
 
   const [companies, setCompanies] = useState<any[]>([]);
@@ -250,6 +251,7 @@ export default function SuperadminPage() {
       });
 
       setAllUsers(users);
+      setUsersLoading(false);
       // Build cumulative (running total) billing data for the global sales chart
       const now = new Date();
       const currentMonth = now.getMonth() + 1; // 1-12
@@ -319,6 +321,7 @@ export default function SuperadminPage() {
       setCompanies(enrichedCompanies);
     } catch (error) {
       console.error("Error refreshing superadmin data:", error);
+      setUsersLoading(false);
     }
   }, [auth?.accessToken, dateRange.from, dateRange.to]);
 
@@ -484,6 +487,7 @@ export default function SuperadminPage() {
         <TabsContent value="users" className="space-y-4">
           <UsersView
             allUsers={allUsers}
+            isLoading={usersLoading}
             auth={auth}
             roles={roles}
             companies={companies}

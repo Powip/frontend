@@ -21,6 +21,24 @@ export function getPaidAmount(order: OrderHeader): number {
     .reduce((acc, p) => acc + Number(p.amount || 0), 0);
 }
 
+/**
+ * "Comprobante de pago cargado" = al menos un pago del pedido tiene un
+ * comprobante adjunto (payments[].paymentProofUrl), sin importar si ese pago
+ * ya fue aprobado por finanzas (status PENDING o PAID) — mismo criterio que
+ * usa PaymentVerificationModal para distinguir "sin comprobante adjunto" de
+ * "aprobado" como ejes independientes. Se usa para bloquear la edición de
+ * tracking/código/oficina/clave hasta que exista ese comprobante.
+ */
+export function paymentsHaveProof(
+  payments?: Array<{ paymentProofUrl?: string | null }> | null,
+): boolean {
+  return !!payments?.some((p) => !!p.paymentProofUrl);
+}
+
+export function hasPaymentProof(order: OrderHeader): boolean {
+  return paymentsHaveProof(order.payments);
+}
+
 export function isReassigned(order: OrderHeader): boolean {
   return !!order.notes?.includes("[REASIGNADO]");
 }

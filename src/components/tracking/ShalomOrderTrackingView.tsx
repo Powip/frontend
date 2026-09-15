@@ -18,6 +18,7 @@ import {
   Link2,
   FileSpreadsheet,
   AlertTriangle,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +33,12 @@ import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
@@ -72,12 +79,21 @@ const calculatePendingPayment = (order: OrderHeader): number => {
 
 const ITEMS_PER_PAGE = 15;
 
+const SHALOM_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "PENDIENTE", label: "✅ Registrado" },
+  { value: "FALLIDO", label: "❌ Fallido" },
+  { value: "EN_TRANSITO", label: "🚚 En tránsito" },
+  { value: "EN_DESTINO", label: "📍 En destino" },
+  { value: "EN_REPARTO", label: "🛵 En reparto" },
+  { value: "ENTREGADO", label: "📦 Entregado" },
+];
+
 export default function ShalomOrderTrackingView() {
   const { auth, selectedStoreId } = useAuth();
   const [shalomOrders, setShalomOrders] = useState<EnvioItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [guideSearch, setGuideSearch] = useState("");
-  const [guideStatusFilter, setGuideStatusFilter] = useState("");
+  const [guideStatusFilters, setGuideStatusFilters] = useState<string[]>([]);
   const [pendingFilter, setPendingFilter] = useState<"all" | "pending" | "paid">("all");
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
@@ -184,7 +200,10 @@ export default function ShalomOrderTrackingView() {
         if (!matchesName && !matchesNum && !matchesGuide) return false;
       }
 
-      if (guideStatusFilter && order.shalomStatus !== guideStatusFilter)
+      if (
+        guideStatusFilters.length > 0 &&
+        !guideStatusFilters.includes(order.shalomStatus ?? "")
+      )
         return false;
 
       if (pendingFilter !== "all") {
@@ -208,11 +227,11 @@ export default function ShalomOrderTrackingView() {
 
       return true;
     });
-  }, [shalomOrders, guideSearch, guideStatusFilter, pendingFilter, dateFrom, dateTo]);
+  }, [shalomOrders, guideSearch, guideStatusFilters, pendingFilter, dateFrom, dateTo]);
 
   useEffect(() => {
     setPage(1);
-  }, [guideSearch, guideStatusFilter, pendingFilter, dateFrom, dateTo]);
+  }, [guideSearch, guideStatusFilters, pendingFilter, dateFrom, dateTo]);
 
   const totalPages = Math.max(
     1,
@@ -454,19 +473,59 @@ export default function ShalomOrderTrackingView() {
         </div>
         <div className="space-y-1">
           <Label className="text-xs font-semibold">Estado Shalom</Label>
-          <select
-            className="w-full h-9 text-sm border rounded-md px-3 bg-background"
-            value={guideStatusFilter}
-            onChange={(e) => setGuideStatusFilter(e.target.value)}
-          >
-            <option value="">Todos los estados</option>
-            <option value="PENDIENTE">✅ Registrado</option>
-            <option value="FALLIDO">❌ Fallido</option>
-            <option value="EN_TRANSITO">🚚 En tránsito</option>
-            <option value="EN_DESTINO">📍 En destino</option>
-            <option value="EN_REPARTO">🛵 En reparto</option>
-            <option value="ENTREGADO">📦 Entregado</option>
-          </select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full h-9 text-sm justify-between font-normal"
+              >
+                {guideStatusFilters.length === 0
+                  ? "Todos los estados"
+                  : guideStatusFilters.length === 1
+                    ? SHALOM_STATUS_FILTER_OPTIONS.find(
+                        (opt) => opt.value === guideStatusFilters[0],
+                      )?.label
+                    : `${guideStatusFilters.length} estados seleccionados`}
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-2" align="start">
+              <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
+                <span className="text-xs font-semibold text-muted-foreground">
+                  Filtrar por estado
+                </span>
+                {guideStatusFilters.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => setGuideStatusFilters([])}
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {SHALOM_STATUS_FILTER_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.value}
+                    className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                  >
+                    <Checkbox
+                      checked={guideStatusFilters.includes(opt.value)}
+                      onCheckedChange={(checked) => {
+                        setGuideStatusFilters((prev) =>
+                          checked
+                            ? [...prev, opt.value]
+                            : prev.filter((v) => v !== opt.value),
+                        );
+                      }}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
         <div className="space-y-1">
           <Label className="text-xs font-semibold">Saldo</Label>
@@ -540,7 +599,8 @@ export default function ShalomOrderTrackingView() {
         const failedCount = shalomOrders.filter(
           ({ order }) => order.shalomStatus === "FALLIDO",
         ).length;
-        if (failedCount === 0 || guideStatusFilter === "FALLIDO") return null;
+        if (failedCount === 0 || guideStatusFilters.includes("FALLIDO"))
+          return null;
         return (
           <div role="alert" className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
             <span className="flex items-center gap-2 text-sm font-medium text-red-800">
@@ -551,7 +611,7 @@ export default function ShalomOrderTrackingView() {
               size="sm"
               variant="outline"
               className="border-red-300 text-red-700 hover:bg-red-100"
-              onClick={() => setGuideStatusFilter("FALLIDO")}
+              onClick={() => setGuideStatusFilters(["FALLIDO"])}
             >
               Ver fallidos
             </Button>

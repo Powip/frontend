@@ -1,6 +1,6 @@
 ﻿"use client";
 import axios from "axios";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
@@ -28,15 +28,20 @@ import {
   AlertCircle,
   AlertTriangle,
   Eye,
-  EyeOff,
   Repeat,
   Download,
   RefreshCw,
   Unlink,
   ArrowRightLeft,
+  FileText,
+  Zap,
+  ArrowRight,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
+import { SHALOM_STEPS, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
+import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
+import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
 import { isShalomCourier } from "@/utils/courierNormalizer";
 import { Textarea } from "../ui/textarea";
 import {
@@ -71,6 +76,7 @@ import AddProductsModal from "./AddProductsModal";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import GuideDetailsModal from "./GuideDetailsModal";
 import ReassignDeliveryModal from "@/app/centro-envios/components/ReassignDeliveryModal";
+import { hasPaymentProof } from "@/app/centro-envios/components/shipmentUtils";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import ScheduledDeliverySection from "./ScheduledDeliverySection";
@@ -83,6 +89,7 @@ import { getAvailableStatuses, getStatusChainSteps, getStatusLabel } from "@/uti
 import { isJunkDni } from "@/utils/junk-document.util";
 import { printOrderLabel, type OrderReceipt } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
+import { useQRCode } from "@/hooks/useQrCode";
 
 interface LogEntry {
   id: number;
@@ -94,6 +101,19 @@ interface LogEntry {
   userName?: string | null;
   isSystemGenerated?: boolean;
 }
+
+// Labels legibles para shippingGuide.status — mismos valores que ya
+// coloreaba el badge de "Guía de Envío", solo para el chip compacto del
+// header (courier + modalidad · estado).
+const STATUS_LABEL: Record<string, string> = {
+  GENERADA: "Generada",
+  ASIGNADA: "Asignada",
+  APROBADA: "Aprobada",
+  EN_RUTA: "En ruta",
+  ENTREGADA: "Entregada",
+  FALLIDA: "Fallida",
+  CANCELADA: "Cancelada",
+};
 
 const OPERACION_LABELS: Record<string, string> = {
   CREATE: "Creación",
@@ -148,6 +168,9 @@ interface Props {
   /** Si se pasa, habilita "Cambiar courier" en la pestaña Seguimiento (libera de la guía
    *  actual y delega la creación de una nueva al caller — hoy solo lo usa Ventas). */
   onOpenCreateGuide?: (order: OrderHeader) => void;
+  /** Pestaña con la que abre el modal (por defecto "resumen"). Úsalo para abrir
+   *  directo en "seguimiento" desde vistas centradas en tracking/courier. */
+  initialTab?: "resumen" | "seguimiento" | "pagos" | "reasignacion";
 }
 
 export default function CustomerServiceModal({
@@ -160,6 +183,7 @@ export default function CustomerServiceModal({
   showTracking = false,
   isOperaciones = false,
   onOpenCreateGuide,
+  initialTab,
 }: Props) {
   const router = useRouter();
   const { auth } = useAuth();
@@ -340,14 +364,16 @@ export default function CustomerServiceModal({
 
   useEffect(() => {
     if (!open || !orderId) return;
+    setTab(initialTab ?? "resumen");
     setOriginalTracking(null);
+    setShalomTrackResult(null);
     fetchReceipt();
     fetchLogs();
     if (shippingGuideProp === undefined) {
       setShippingGuideData(null);
       fetchShippingGuide();
     }
-  }, [open, orderId, fetchReceipt, fetchLogs, fetchShippingGuide, shippingGuideProp]);
+  }, [open, orderId, fetchReceipt, fetchLogs, fetchShippingGuide, shippingGuideProp, initialTab]);
 
   const handleUpdateCallStatus = async (
     callStatus: "CONFIRMED" | "NO_ANSWER",
@@ -460,7 +486,9 @@ export default function CustomerServiceModal({
   };
 
   const [savingTracking, setSavingTracking] = useState(false);
-  const [revealKey, setRevealKey] = useState(false);
+  // QR real del link de seguimiento (no un QR fabricado apuntando a nada) —
+  // se muestra en la card "Comprobante del courier" de la tab Seguimiento.
+  const trackingQrUrl = useQRCode(shippingGuide?.trackingUrl || "");
   const [originalTracking, setOriginalTracking] = useState<any>(null);
 
   useEffect(() => {
@@ -474,8 +502,23 @@ export default function CustomerServiceModal({
     }
   }, [receipt, originalTracking]);
 
+  // Los 4 campos de tracking manual (N° tracking, código, oficina, clave)
+  // solo deben poder cargarse una vez que el pedido tiene un comprobante de
+  // pago adjunto — antes se podían editar libremente y se generaban claves
+  // de recojo sin respaldo de pago.
+  const canEditCourierFields = orderHeader ? hasPaymentProof(orderHeader) : false;
+  // Método del pago que aportó el comprobante que habilita la clave — mismo
+  // criterio que hasPaymentProof, para mostrar "Cobrado (Yape) · validado"
+  // sin inventar un dato que no exista.
+  const proofPaymentMethod = orderHeader?.payments?.find(
+    (p) => !!p.paymentProofUrl,
+  )?.paymentMethod;
+
   const handleSaveTracking = async () => {
     if (!receipt || !orderId || !originalTracking) return;
+    // La clave sigue protegida por su propio `disabled` mientras no haya
+    // comprobante — acá no se bloquea el guardado entero, para no impedir
+    // guardar tracking/código/oficina (que ya no dependen del comprobante).
 
     // Detect if there are actual changes
     const hasChanges =
@@ -848,23 +891,67 @@ export default function CustomerServiceModal({
     }
   };
 
-  const handleForceSyncTracking = async () => {
-    if (!auth?.accessToken || !orderHeader) return;
-    setSyncingTracking(true);
-    try {
-      const guideRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderHeader.id}`,
-      );
-      await trackShalomGuide(auth.accessToken, guideRes.data.id);
-      toast.success("Sincronizado con Shalom");
-      fetchReceipt();
-      onOrderUpdated?.();
-    } catch {
-      toast.error("No se pudo sincronizar con Shalom");
-    } finally {
-      setSyncingTracking(false);
+  // Respuesta cruda de trackShalomGuide — trae statuses.data con fecha por
+  // paso (registrado/origen/transito/destino/reparto/entregado), la misma
+  // forma que ya renderiza el modal "Tracking en Tiempo Real" de
+  // CourierTrackingView.tsx. Se usa para pintar una línea de tiempo real
+  // (no inventada) en la tab Seguimiento.
+  const [shalomTrackResult, setShalomTrackResult] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
+
+  const syncShalomTracking = useCallback(
+    async (options?: { silent?: boolean }) => {
+      const silent = options?.silent ?? false;
+      if (!auth?.accessToken || !orderHeader) return;
+      if (!silent) setSyncingTracking(true);
+      try {
+        const guideRes = await axios.get(
+          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${orderHeader.id}`,
+        );
+        const result = await trackShalomGuide(auth.accessToken, guideRes.data.id);
+        setShalomTrackResult(result);
+        if (!silent) toast.success("Sincronizado con Shalom");
+        fetchReceipt();
+        onOrderUpdated?.();
+      } catch {
+        if (!silent) toast.error("No se pudo sincronizar con Shalom");
+      } finally {
+        if (!silent) setSyncingTracking(false);
+      }
+    },
+    [auth?.accessToken, orderHeader, fetchReceipt, onOrderUpdated],
+  );
+
+  const handleForceSyncTracking = () => syncShalomTracking();
+
+  // Auto-sync silencioso al abrir el modal: el estado de orderHeader.shalomStatus
+  // solo se actualiza vía webhook, así que al abrir "Seguimiento" puede mostrar
+  // un estado viejo. Se consulta 1 sola guía (no lote) para no floodear a Shalom
+  // (ver 2a51d6e). autoSyncedOrderIdRef evita repetir la consulta en cada
+  // refetch de orderHeader dentro del mismo "open".
+  const autoSyncedOrderIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!open) {
+      autoSyncedOrderIdRef.current = null;
     }
-  };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !orderHeader?.id || !auth?.accessToken) return;
+    if (autoSyncedOrderIdRef.current === orderHeader.id) return;
+    if (
+      !orderHeader.guideNumber ||
+      (!isShalomCourier(orderHeader.courier) &&
+        !isShalomCourier(orderHeader.shippingOffice))
+    ) {
+      return;
+    }
+    autoSyncedOrderIdRef.current = orderHeader.id;
+    syncShalomTracking({ silent: true });
+  }, [open, orderHeader, auth?.accessToken, syncShalomTracking]);
 
   // Desvincula el pedido de su guía actual en ms-courier y lo devuelve a
   // PREPARADO en ms-ventas (mismo patrón que usaba ShipmentDetailModal).
@@ -1470,23 +1557,57 @@ export default function CustomerServiceModal({
                                 onBlur={handleSaveTracking}
                               />
                             </div>
-                            <div>
+                          </div>
+
+                          {/* Clave — único campo que se bloquea sin
+                              comprobante. Bloqueada: mismo bloque visual
+                              (icono, título, CTA) que la card "Clave de
+                              recojo" de la tab Seguimiento, sin exponer el
+                              valor real en ningún texto. */}
+                          {!canEditCourierFields ? (
+                            <div className="mt-3 rounded-xl border border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30 p-[13px]">
+                              <div className="flex items-center gap-[11px]">
+                                <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0 bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300">
+                                  <Lock className="h-4 w-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-extrabold text-[13.5px] text-[#92400E] dark:text-amber-400">
+                                    Clave de recojo bloqueada
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {`Pendiente de cobro${
+                                      receipt.totals.pendingAmount
+                                        ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
+                                        : ""
+                                    }`}
+                                  </div>
+                                </div>
+                                <div className="font-mono font-black tracking-[0.24em] text-xl text-[#C29B54] dark:text-amber-400">
+                                  ••••
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
+                                onClick={() => setPaymentModalOpen(true)}
+                              >
+                                <DollarSign className="h-4 w-4 mr-1.5" />
+                                Registrar cobranza
+                              </Button>
+                              <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
+                                La clave se habilita al validar el
+                                comprobante de pago cargado para este
+                                pedido.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="mt-3">
                               <span className="text-muted-foreground block text-[10px] uppercase mb-1">
                                 Clave
                               </span>
-                              <div className="relative">
+                              <div className="relative max-w-[calc(50%-8px)]">
                                 <Input
-                                  type={
-                                    receipt.totals.pendingAmount > 0 &&
-                                    !revealKey
-                                      ? "password"
-                                      : "text"
-                                  }
-                                  className={`h-8 text-xs pr-8 ${
-                                    receipt.totals.pendingAmount > 0
-                                      ? "border-red-300 focus:border-red-500 bg-red-50/30 font-mono"
-                                      : "focus:border-orange-500"
-                                  }`}
+                                  className="h-8 text-xs pr-8 font-mono"
                                   placeholder="Clave..."
                                   value={receipt.shippingKey || ""}
                                   onChange={(
@@ -1499,27 +1620,9 @@ export default function CustomerServiceModal({
                                   }
                                   onBlur={handleSaveTracking}
                                 />
-                                {receipt.totals.pendingAmount > 0 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setRevealKey(!revealKey)}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 text-red-400 hover:text-red-600 focus:outline-none"
-                                    title={
-                                      revealKey
-                                        ? "Ocultar clave"
-                                        : "Revelar clave"
-                                    }
-                                  >
-                                    {revealKey ? (
-                                      <EyeOff className="h-3.5 w-3.5" />
-                                    ) : (
-                                      <Eye className="h-3.5 w-3.5" />
-                                    )}
-                                  </button>
-                                )}
                               </div>
                             </div>
-                          </div>
+                          )}
                           {savingTracking && (
                             <div className="mt-2 flex items-center gap-2 text-[10px] text-orange-500 animate-pulse">
                               <Loader2 className="h-3 w-3 animate-spin" />
@@ -1919,34 +2022,60 @@ export default function CustomerServiceModal({
                   {/* Estado Aliclik */}
                   {(aliclikDispatchStatus || aliclikSyncedAt) && (
                     <div className="border border-purple-200 dark:border-purple-800 rounded-lg p-4 bg-purple-50/50 dark:bg-purple-950/30">
-                      <h3 className="font-semibold text-purple-700 dark:text-purple-400 text-sm mb-3">
-                        Aliclik — Estado de despacho
-                      </h3>
-                      <div className="grid grid-cols-2 gap-3 text-xs">
-                        <div>
-                          <span className="text-muted-foreground block underline mb-1">
-                            Estado
-                          </span>
-                          <span className="font-semibold">
-                            {aliclikDispatchStatus || "—"}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block underline mb-1">
-                            Última sincronización
-                          </span>
-                          <span className="font-semibold">
-                            {aliclikSyncedAt
-                              ? new Date(aliclikSyncedAt).toLocaleString("es-PE", {
-                                  day: "2-digit",
-                                  month: "short",
-                                  year: "numeric",
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                })
-                              : "—"}
-                          </span>
-                        </div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-purple-700 dark:text-purple-400 text-sm">
+                          Aliclik — Estado de despacho
+                        </h3>
+                        <AliclikStatusBadge
+                          aliclikDispatchStatus={aliclikDispatchStatus}
+                          aliclikSyncedAt={aliclikSyncedAt}
+                        />
+                      </div>
+                      <div className="text-xs">
+                        <span className="text-muted-foreground block underline mb-1">
+                          Última sincronización
+                        </span>
+                        <span className="font-semibold">
+                          {aliclikSyncedAt
+                            ? new Date(aliclikSyncedAt).toLocaleString("es-PE", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Estado EVA Courier — antes no existía ninguna tarjeta acá
+                      (a diferencia de Shalom/Aliclik), pese a cargarse evaStatus
+                      y evaSyncedAt del pedido. */}
+                  {(evaStatus || evaSyncedAt) && (
+                    <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50/50 dark:bg-blue-950/30">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-blue-700 dark:text-blue-400 text-sm">
+                          EVA Courier — Estado de envío
+                        </h3>
+                        <EvaStatusBadge evaStatus={evaStatus} evaSyncedAt={evaSyncedAt} />
+                      </div>
+                      <div className="text-xs">
+                        <span className="text-muted-foreground block underline mb-1">
+                          Última sincronización
+                        </span>
+                        <span className="font-semibold">
+                          {evaSyncedAt
+                            ? new Date(evaSyncedAt).toLocaleString("es-PE", {
+                                day: "2-digit",
+                                month: "short",
+                                year: "numeric",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })
+                            : "—"}
+                        </span>
                       </div>
                     </div>
                   )}
@@ -1987,8 +2116,12 @@ export default function CustomerServiceModal({
                       </DropdownMenu>
                     </div>
 
-                    {/* Historial — más reciente arriba; scrollea de a un comentario por vez */}
-                    <div className="h-[92px] overflow-y-auto mb-3 pr-1 snap-y snap-mandatory">
+                    {/* Historial — más reciente arriba; scrollea de a un comentario por vez.
+                        Altura fija más alta que antes (92px alcanzaba para ~1 comentario y
+                        obligaba a scrollear constantemente) — el modal completo ya scrollea
+                        (DialogContent max-h-[90vh] overflow-y-auto), así que este alto extra
+                        no lo desborda. */}
+                    <div className="h-[280px] overflow-y-auto mb-3 pr-1 snap-y snap-mandatory">
                       {logsLoading ? (
                         <div className="text-center text-muted-foreground py-4">
                           Cargando historial...
@@ -2091,6 +2224,17 @@ export default function CustomerServiceModal({
                         <h3 className="font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2">
                           <Truck className="h-4 w-4" />
                           Guía de Envío
+                          {isShalomCourier(shippingGuide.courierName) && (
+                            <span className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-black tracking-wide text-white">
+                              <span className="grid h-3.5 w-3.5 place-items-center rounded-[3px] bg-white text-[9px] font-black text-red-600">
+                                S
+                              </span>
+                              SHALOM
+                            </span>
+                          )}
+                          <span className="rounded-md bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+                            {shippingGuide.deliveryType} · {STATUS_LABEL[shippingGuide.status] || shippingGuide.status}
+                          </span>
                         </h3>
                         <div className="flex gap-1 items-center">
                           <Button
@@ -2156,6 +2300,63 @@ export default function CustomerServiceModal({
                             )}
                         </div>
                       </div>
+
+                      {/* Resumen tipo "dl" — calca el layout del mockup de
+                          seguimiento (label a la izq., valor en negrita a la
+                          der.). N° de orden usa shalomSerie (equivalente real
+                          a la "N° de orden" de Shalom); Código y Clave se
+                          bloquean sin comprobante, igual que en Resumen. */}
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px] mb-3">
+                        {orderHeader?.shalomSerie && (
+                          <>
+                            <dt className="text-muted-foreground font-medium">
+                              N° de orden
+                            </dt>
+                            <dd className="text-right font-bold font-mono">
+                              {orderHeader.shalomSerie}
+                            </dd>
+                          </>
+                        )}
+                        {shippingGuide.shippingCode && (
+                          <>
+                            <dt className="text-muted-foreground font-medium">
+                              Código
+                            </dt>
+                            <dd className="text-right font-bold font-mono">
+                              {canEditCourierFields ? (
+                                shippingGuide.shippingCode
+                              ) : (
+                                <span className="text-amber-700 dark:text-amber-400">
+                                  🔒 bloqueada
+                                </span>
+                              )}
+                            </dd>
+                          </>
+                        )}
+                        {shippingGuide.shippingOffice && (
+                          <>
+                            <dt className="text-muted-foreground font-medium">
+                              Agencia destino
+                            </dt>
+                            <dd className="text-right font-bold">
+                              {shippingGuide.shippingOffice}
+                            </dd>
+                          </>
+                        )}
+                        {shippingGuide.shippingKey && (
+                          <>
+                            <dt className="text-muted-foreground font-medium">
+                              Clave
+                            </dt>
+                            <dd className="text-right font-bold font-mono tracking-widest">
+                              {canEditCourierFields
+                                ? shippingGuide.shippingKey
+                                : "••••"}
+                            </dd>
+                          </>
+                        )}
+                      </dl>
+
                       <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                         <div>
                           <span className="text-muted-foreground">
@@ -2187,26 +2388,6 @@ export default function CustomerServiceModal({
                             {shippingGuide.deliveryType}
                           </span>
                         </div>
-                        {shippingGuide.shippingKey && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Clave Envío:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {shippingGuide.shippingKey}
-                            </span>
-                          </div>
-                        )}
-                        {shippingGuide.shippingOffice && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Oficina:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {shippingGuide.shippingOffice}
-                            </span>
-                          </div>
-                        )}
                         {shippingGuide.chargeType && (
                           <div>
                             <span className="text-muted-foreground">
@@ -2270,6 +2451,148 @@ export default function CustomerServiceModal({
                           </div>
                         )}
                       </div>
+                    </div>
+                  )}
+
+                  {/* Clave de recojo — gateada al comprobante de pago (mismo
+                      criterio que bloquea los inputs de tracking/código/
+                      oficina/clave en la tab Resumen): sin comprobante
+                      cargado se oculta el valor real y se ofrece un acceso
+                      directo a "Registrar cobranza" (reusa PaymentVerificationModal,
+                      ya montado más abajo vía paymentModalOpen). */}
+                  {shippingGuide?.shippingKey && (
+                    <div
+                      className={`rounded-xl border p-[13px] ${
+                        canEditCourierFields
+                          ? "border-[#A7E3CE] bg-[#E7F8F1] dark:border-green-800 dark:bg-green-950/30"
+                          : "border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30"
+                      }`}
+                    >
+                      <div className="flex items-center gap-[11px]">
+                        <div
+                          className={`h-9 w-9 rounded-lg grid place-items-center shrink-0 text-base ${
+                            canEditCourierFields
+                              ? "bg-[#047857] text-white"
+                              : "bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300"
+                          }`}
+                        >
+                          {canEditCourierFields ? (
+                            <Check className="h-4 w-4" />
+                          ) : (
+                            <Lock className="h-4 w-4" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div
+                            className={`font-extrabold text-[13.5px] ${
+                              canEditCourierFields
+                                ? "text-[#047857] dark:text-green-400"
+                                : "text-[#92400E] dark:text-amber-400"
+                            }`}
+                          >
+                            {canEditCourierFields
+                              ? "Clave habilitada"
+                              : "Clave de recojo bloqueada"}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {canEditCourierFields
+                              ? proofPaymentMethod
+                                ? `Cobrado (${proofPaymentMethod}) · validado`
+                                : "Comprobante de pago cargado"
+                              : `Pendiente de cobro${
+                                  receipt?.totals.pendingAmount
+                                    ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
+                                    : ""
+                                }`}
+                          </div>
+                        </div>
+                        <div
+                          className={`font-mono font-black tracking-[0.24em] text-xl ${
+                            canEditCourierFields
+                              ? "text-[#047857] dark:text-green-400"
+                              : "text-[#C29B54] dark:text-amber-400"
+                          }`}
+                        >
+                          {canEditCourierFields
+                            ? shippingGuide.shippingKey
+                            : "••••"}
+                        </div>
+                      </div>
+                      {!canEditCourierFields && (
+                        <>
+                          <Button
+                            size="sm"
+                            className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
+                            onClick={() => setPaymentModalOpen(true)}
+                          >
+                            <DollarSign className="h-4 w-4 mr-1.5" />
+                            Registrar cobranza
+                          </Button>
+                          <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
+                            La clave se habilita al validar el comprobante de
+                            pago cargado para este pedido.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Comprobante del courier — reusa handlePrintShippingReceipt
+                      (el mismo comprobante que ya imprime el botón de la
+                      impresora arriba); el QR es real (apunta al
+                      shippingGuide.trackingUrl real), no uno fabricado. */}
+                  {shippingGuide?.guideNumber && (
+                    <button
+                      type="button"
+                      onClick={handlePrintShippingReceipt}
+                      className="w-full text-left rounded-xl border border-border overflow-hidden hover:border-primary/40 hover:shadow-sm transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 px-[13px] py-[11px] bg-muted/30 border-b border-border">
+                        <div className="h-[30px] w-[30px] rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 grid place-items-center shrink-0">
+                          <FileText className="h-3.5 w-3.5" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-[13px] font-bold leading-tight">
+                            Comprobante del courier
+                          </div>
+                          <span className="text-[11.5px] text-muted-foreground">
+                            Comprobante de envío · generado por POWIP
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 px-[13px] py-[13px]">
+                        {trackingQrUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={trackingQrUrl}
+                            alt="QR de seguimiento"
+                            className="h-11 w-11 shrink-0 rounded"
+                          />
+                        )}
+                        <div className="text-[11.5px] text-muted-foreground leading-tight min-w-0">
+                          <b className="text-foreground font-bold">
+                            {shippingGuide.guideNumber}
+                          </b>{" "}
+                          · {shippingGuide.courierName || "Courier"}
+                          <br />
+                          Emitido por POWIP
+                        </div>
+                        <span className="ml-auto shrink-0 text-primary font-bold text-[12.5px] flex items-center gap-1">
+                          Ver <ArrowRight className="h-3 w-3" />
+                        </span>
+                      </div>
+                    </button>
+                  )}
+
+                  {isShalomCourier(orderHeader?.courier) && (
+                    <div className="flex items-start gap-2.5 rounded-[11px] bg-[#EEF0FF] dark:bg-indigo-950/30 px-[13px] py-[11px] text-[12.5px] leading-[1.45] text-[#3730A3] dark:text-indigo-300">
+                      <Zap className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>
+                        <b>Tiempo real:</b> POWIP sincroniza el estado por
+                        webhook de Shalom. Cuando el cliente recoge en
+                        agencia, el estado pasa a <b>Entregado</b>{" "}
+                        automáticamente.
+                      </span>
                     </div>
                   )}
 
@@ -2367,26 +2690,156 @@ export default function CustomerServiceModal({
                     </div>
                   )}
 
+                  {/* Línea de tiempo Shalom — datos reales de trackShalomGuide
+                      (mismo response que ya usa el modal "Tracking en Tiempo
+                      Real" de CourierTrackingView.tsx), no un historial
+                      inventado. Solo hay datos después de sincronizar (auto al
+                      abrir el modal, o "Forzar sync de tracking" más abajo). */}
+                  {(isShalomCourier(orderHeader?.courier) ||
+                    isShalomCourier(orderHeader?.shippingOffice)) &&
+                    (() => {
+                      const statusesData = (
+                        shalomTrackResult?.statuses as
+                          | { data?: Record<string, { fecha?: string }> }
+                          | undefined
+                      )?.data;
+                      if (!statusesData) return null;
+                      const reachedIdx = SHALOM_STEPS.reduce(
+                        (acc, step, idx) =>
+                          statusesData[step.key]?.fecha ? idx : acc,
+                        -1,
+                      );
+                      if (reachedIdx === -1) return null;
+                      return (
+                        <div className="border rounded-lg p-4">
+                          <div className="text-sm font-bold mb-3">
+                            🕑 Línea de tiempo · estados de Shalom
+                          </div>
+                          <div className="space-y-0">
+                            {SHALOM_STEPS.map((step, idx) => {
+                              const stepData = statusesData[step.key];
+                              const done = !!stepData?.fecha;
+                              const isLast = idx === SHALOM_STEPS.length - 1;
+                              return (
+                                <div
+                                  key={step.key}
+                                  className="relative pl-7 pb-4 last:pb-0"
+                                >
+                                  {!isLast && (
+                                    <div
+                                      className={`absolute left-[9px] top-4 bottom-0 w-0.5 ${
+                                        done ? "bg-teal-500" : "bg-muted"
+                                      }`}
+                                    />
+                                  )}
+                                  <div
+                                    className={`absolute left-0 top-0.5 h-[18px] w-[18px] rounded-full border-2 flex items-center justify-center text-[9px] ${
+                                      done
+                                        ? "bg-teal-500 border-teal-500 text-white"
+                                        : "bg-background border-muted-foreground/30"
+                                    }`}
+                                  >
+                                    {done ? "✓" : ""}
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span
+                                      className={`text-sm font-semibold ${
+                                        done
+                                          ? "text-foreground"
+                                          : "text-muted-foreground/50"
+                                      }`}
+                                    >
+                                      {SHALOM_STEP_ICONS[step.label] ?? ""}{" "}
+                                      {step.label}
+                                    </span>
+                                    {stepData?.fecha && (
+                                      <span className="text-xs text-muted-foreground">
+                                        {stepData.fecha}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                  {/* Acciones — calca la lista de botones full-width del
+                      mockup (icono + label, alineados a la izquierda). Cada
+                      una reusa una acción real que ya existe en el modal;
+                      ninguna es nueva funcionalidad inventada. */}
+                  {shippingGuide && (
+                    <div className="rounded-xl border border-border bg-card p-4">
+                      <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground mb-3">
+                        Acciones
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setGuideDetailsModalOpen(true)}
+                          className="flex items-center gap-2.5 rounded-lg border border-border px-[15px] py-[9px] text-[13px] font-semibold hover:bg-accent transition-colors"
+                        >
+                          <FileText className="h-4 w-4" />
+                          Ver comprobante / rótulo{" "}
+                          {isShalomCourier(shippingGuide.courierName)
+                            ? "Shalom"
+                            : ""}
+                        </button>
+                        {shippingGuide.shippingKey && (
+                          <button
+                            type="button"
+                            disabled={!canEditCourierFields}
+                            title={
+                              canEditCourierFields
+                                ? undefined
+                                : "Debes cargar el comprobante de pago antes de copiar la clave"
+                            }
+                            onClick={() => {
+                              if (!shippingGuide.shippingKey) return;
+                              navigator.clipboard.writeText(shippingGuide.shippingKey);
+                              toast.success("Código de recojo copiado");
+                            }}
+                            className="flex items-center gap-2.5 rounded-lg border border-border px-[15px] py-[9px] text-[13px] font-semibold hover:bg-accent transition-colors disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
+                          >
+                            <Pencil className="h-4 w-4" />
+                            Copiar código de recojo
+                          </button>
+                        )}
+                        {receipt && (
+                          <button
+                            type="button"
+                            onClick={handleWhatsApp}
+                            className="flex items-center gap-2.5 rounded-lg border border-border px-[15px] py-[9px] text-[13px] font-semibold hover:bg-accent transition-colors"
+                          >
+                            <WhatsAppIcon className="h-4 w-4" />
+                            Enviar seguimiento por WhatsApp
+                          </button>
+                        )}
+                        {isShalomCourier(orderHeader?.courier) && (
+                          <button
+                            type="button"
+                            disabled={syncingTracking}
+                            onClick={handleForceSyncTracking}
+                            className="flex items-center gap-2.5 rounded-lg border border-border px-[15px] py-[9px] text-[13px] font-semibold hover:bg-accent transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <RefreshCw
+                              className={`h-4 w-4 ${syncingTracking ? "animate-spin" : ""}`}
+                            />
+                            Forzar sincronización con Shalom
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {orderHeader?.guideNumber && (
                     <div className="border rounded-lg p-4">
                       <div className="text-sm font-bold mb-2.5">
                         ⚡ Acciones logísticas
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                        {orderHeader.courier === "Shalom" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-sm justify-start"
-                            disabled={syncingTracking}
-                            onClick={handleForceSyncTracking}
-                          >
-                            <RefreshCw
-                              className={`h-4 w-4 mr-1.5 ${syncingTracking ? "animate-spin" : ""}`}
-                            />
-                            Forzar sync de tracking
-                          </Button>
-                        )}
                         <Button
                           size="sm"
                           variant="outline"

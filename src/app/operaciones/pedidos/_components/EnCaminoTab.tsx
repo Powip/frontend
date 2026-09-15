@@ -300,12 +300,12 @@ export function EnCaminoTab({
             <Table>
               <TableHeader className="bg-muted/60">
                 <TableRow>
-                  <TableHead className="w-8">
+                  <TableHead className="sticky left-0 z-20 w-8 min-w-8 bg-muted">
                     <Checkbox checked={paged.length > 0 && paged.every((s) => selectedIds.has(s.id))} onCheckedChange={toggleAllPage} />
                   </TableHead>
-                  <TableHead>N° Orden</TableHead>
-                  <TableHead>Fecha de Venta</TableHead>
-                  <TableHead>Fecha de Procesado</TableHead>
+                  <TableHead className="sticky left-8 z-20 w-32 min-w-32 bg-muted">N° Orden</TableHead>
+                  <TableHead className="sticky left-40 z-20 w-28 min-w-28 bg-muted">Fecha de Venta</TableHead>
+                  <TableHead className="sticky left-[272px] z-20 w-28 min-w-28 border-r bg-muted">Fecha de Procesado</TableHead>
                   <TableHead>Cliente</TableHead>
                   <TableHead>Distrito</TableHead>
                   <TableHead>Guía</TableHead>
@@ -328,12 +328,12 @@ export function EnCaminoTab({
                   const state = shipmentState(sale);
                   return (
                     <TableRow key={sale.id}>
-                      <TableCell>
+                      <TableCell className="sticky left-0 z-10 w-8 min-w-8 bg-gray-100 dark:bg-gray-900">
                         <Checkbox checked={selectedIds.has(sale.id)} onCheckedChange={() => toggle(sale.id)} />
                       </TableCell>
-                      <TableCell className="font-medium">{sale.orderNumber}</TableCell>
-                      <TableCell className="text-sm">{formatDateTime(sale.createdAt)}</TableCell>
-                      <TableCell className="text-sm">{formatDateTime(sale.updatedAt)}</TableCell>
+                      <TableCell className="sticky left-8 z-10 w-32 min-w-32 bg-gray-100 font-medium dark:bg-gray-900">{sale.orderNumber}</TableCell>
+                      <TableCell className="sticky left-40 z-10 w-28 min-w-28 bg-gray-100 text-sm dark:bg-gray-900">{formatDateTime(sale.createdAt)}</TableCell>
+                      <TableCell className="sticky left-[272px] z-10 w-28 min-w-28 border-r bg-gray-100 text-sm dark:bg-gray-900">{formatDateTime(sale.updatedAt)}</TableCell>
                       <TableCell>
                         <div className="font-medium">{sale.clientName}</div>
                         <div className="text-xs text-muted-foreground">{sale.phoneNumber}</div>

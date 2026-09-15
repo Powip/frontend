@@ -23,6 +23,13 @@ import { Pagination } from "@/components/ui/pagination";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ChevronDown } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -36,7 +43,7 @@ import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import CancelAliclikButton from "@/components/aliclik/CancelAliclikButton";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import OrderTrackingModal from "@/components/modals/OrderTrackingModal";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 
 const ITEMS_PER_PAGE = 15;
@@ -99,6 +106,16 @@ const STATUS_COLORS: Record<string, string> = {
   PICKED_UP:  "bg-indigo-100 text-indigo-700",
 };
 
+const ALICLIK_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: "TO_PREPARE", label: "Por preparar" },
+  { value: "PENDING", label: "Pendiente" },
+  { value: "PICKED_UP", label: "Recogido" },
+  { value: "IN_TRANSIT", label: "En tránsito" },
+  { value: "DELIVERED", label: "Entregado" },
+  { value: "RETURNED", label: "Devuelto" },
+  { value: "CANCELED", label: "Cancelado" },
+];
+
 // ─── COMPONENTE PRINCIPAL ───────────────────────────────────────────────────
 
 export default function AliclikOrderTrackingView() {
@@ -107,7 +124,7 @@ export default function AliclikOrderTrackingView() {
   const [orders, setOrders] = useState<OrderHeader[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [activeFilter, setActiveFilter] = useState<AliclikFilter>("all");
   const [saldoFilter, setSaldoFilter] = useState<"all" | "pending" | "paid">("all");
   const [page, setPage] = useState(1);
@@ -154,8 +171,12 @@ export default function AliclikOrderTrackingView() {
         if (!matchesNum && !matchesName) return false;
       }
 
-      // Filtro por estado Aliclik (selector)
-      if (statusFilter && order.aliclikDispatchStatus !== statusFilter) return false;
+      // Filtro por estado Aliclik (multi-selección)
+      if (
+        statusFilters.length > 0 &&
+        !statusFilters.includes(order.aliclikDispatchStatus ?? "")
+      )
+        return false;
 
       // Filtro de tabs internas
       if (activeFilter === "problem" && order.aliclikDispatchStatus !== "RETURNED") return false;
@@ -169,11 +190,11 @@ export default function AliclikOrderTrackingView() {
 
       return true;
     });
-  }, [orders, search, statusFilter, activeFilter, saldoFilter]);
+  }, [orders, search, statusFilters, activeFilter, saldoFilter]);
 
   useEffect(() => {
     setPage(1);
-  }, [search, statusFilter, activeFilter, saldoFilter]);
+  }, [search, statusFilters, activeFilter, saldoFilter]);
 
   const totalPages = Math.max(
     1,
@@ -254,11 +275,15 @@ export default function AliclikOrderTrackingView() {
               key={status}
               type="button"
               onClick={() =>
-                setStatusFilter((prev) => (prev === status ? "" : status))
+                setStatusFilters((prev) =>
+                  prev.includes(status)
+                    ? prev.filter((v) => v !== status)
+                    : [...prev, status],
+                )
               }
               className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all
                 ${colorClass}
-                ${statusFilter === status ? "ring-2 ring-offset-1 ring-current" : "opacity-90 hover:opacity-100"}
+                ${statusFilters.includes(status) ? "ring-2 ring-offset-1 ring-current" : "opacity-90 hover:opacity-100"}
               `}
             >
               <span>{label}</span>
@@ -267,10 +292,10 @@ export default function AliclikOrderTrackingView() {
               </span>
             </button>
           ))}
-          {statusFilter && (
+          {statusFilters.length > 0 && (
             <button
               type="button"
-              onClick={() => setStatusFilter("")}
+              onClick={() => setStatusFilters([])}
               className="text-xs text-muted-foreground underline self-center ml-1"
             >
               Limpiar filtro
@@ -295,20 +320,59 @@ export default function AliclikOrderTrackingView() {
         </div>
         <div className="space-y-1">
           <Label className="text-xs font-semibold">Estado Aliclik</Label>
-          <select
-            className="w-full h-9 text-sm border rounded-md px-3 bg-background"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="">Todos los estados</option>
-            <option value="TO_PREPARE">Por preparar</option>
-            <option value="PENDING">Pendiente</option>
-            <option value="PICKED_UP">Recogido</option>
-            <option value="IN_TRANSIT">En tránsito</option>
-            <option value="DELIVERED">Entregado</option>
-            <option value="RETURNED">Devuelto</option>
-            <option value="CANCELED">Cancelado</option>
-          </select>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full h-9 text-sm justify-between font-normal"
+              >
+                {statusFilters.length === 0
+                  ? "Todos los estados"
+                  : statusFilters.length === 1
+                    ? ALICLIK_STATUS_FILTER_OPTIONS.find(
+                        (opt) => opt.value === statusFilters[0],
+                      )?.label
+                    : `${statusFilters.length} estados seleccionados`}
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-56 p-2" align="start">
+              <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
+                <span className="text-xs font-semibold text-muted-foreground">
+                  Filtrar por estado
+                </span>
+                {statusFilters.length > 0 && (
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => setStatusFilters([])}
+                  >
+                    Limpiar
+                  </button>
+                )}
+              </div>
+              <div className="space-y-1">
+                {ALICLIK_STATUS_FILTER_OPTIONS.map((opt) => (
+                  <label
+                    key={opt.value}
+                    className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                  >
+                    <Checkbox
+                      checked={statusFilters.includes(opt.value)}
+                      onCheckedChange={(checked) => {
+                        setStatusFilters((prev) =>
+                          checked
+                            ? [...prev, opt.value]
+                            : prev.filter((v) => v !== opt.value),
+                        );
+                      }}
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
         <div className="space-y-1">
           <Label className="text-xs font-semibold">Saldo</Label>
@@ -431,7 +495,7 @@ export default function AliclikOrderTrackingView() {
                   className="h-32 text-center text-muted-foreground"
                 >
                   No hay pedidos enviados a Aliclik
-                  {(search || statusFilter || activeFilter !== "all" || saldoFilter !== "all") && (
+                  {(search || statusFilters.length > 0 || activeFilter !== "all" || saldoFilter !== "all") && (
                     <span className="block text-xs mt-1">
                       Probá quitando los filtros activos
                     </span>
@@ -490,7 +554,8 @@ export default function AliclikOrderTrackingView() {
                         size="icon"
                         variant="ghost"
                         className="h-7 w-7"
-                        title="Ver pedido"
+                        title="Ver seguimiento"
+                        aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
                         onClick={() => setViewOrderId(order.id)}
                       >
                         <Eye className="h-3.5 w-3.5" />
@@ -522,13 +587,11 @@ export default function AliclikOrderTrackingView() {
         />
       </div>
 
-      <CustomerServiceModal
+      <OrderTrackingModal
         open={!!viewOrderId}
         orderId={viewOrderId || ""}
         onClose={() => setViewOrderId(null)}
         onOrderUpdated={fetchOrders}
-        isOperaciones
-        showTracking
       />
     </div>
   );

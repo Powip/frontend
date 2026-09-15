@@ -18,6 +18,7 @@ import {
   CheckCircle2,
   Plus,
   Printer,
+  FileText,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -33,6 +34,8 @@ import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
 import { API } from "@/lib/api";
 import { getUserProfile } from "@/services/userService";
+import { printShippingGuide } from "@/utils/printShippingGuide";
+import type { ShippingGuide } from "@/components/modals/GuideDetailsModal";
 
 // Sentinel para representar el valor vacío "" que exige la API de Shalom.
 // Radix Select no admite value="" en SelectItem — usar este sentinel y mapear al enviar.
@@ -247,6 +250,9 @@ interface SendToShalomModalProps {
   onSuccess?: () => void;
   guideId?: string;
   companyId?: string;
+  /** Guía completa (ya cargada por el padre) para poder imprimir la "Guía de
+   * salida" desde el modal de éxito sin tener que volver a pedirla. */
+  guide?: ShippingGuide | null;
 }
 
 const extractShalomErrorMessage = (rawError: string): string => {
@@ -291,6 +297,7 @@ export default function SendToShalomModal({
   onSuccess,
   guideId,
   companyId: providedCompanyId,
+  guide,
 }: SendToShalomModalProps) {
   const { auth } = useAuth();
   const companyId = providedCompanyId || auth?.company?.id;
@@ -723,16 +730,36 @@ export default function SendToShalomModal({
     return issues;
   }, [originAgency, globalSecurityCode, orders, shipmentsData]);
 
-  const handlePrintLabels = () => {
-    const successfulOrders = successSummary?.failed === 0
+  // Compartido entre "Imprimir etiquetas" y "Imprimir guía": excluye los
+  // pedidos que fallaron el envío a Shalom (identificados por nombre, único
+  // dato que trae el resumen de errores) del documento impreso.
+  const getSuccessfulOrders = () =>
+    successSummary?.failed === 0
       ? orders
       : orders.filter((o) => {
-          // Excluir las que fallaron si podemos identificarlas por nombre
           const failedNames = (successSummary?.errors || []).map(
             (e) => e.shipmentInfo?.recipientName,
           );
           return !failedNames.includes(o.customer?.fullName);
         });
+
+  const handlePrintGuideDeSalida = () => {
+    const successfulOrders = getSuccessfulOrders();
+    if (successfulOrders.length === 0) {
+      toast.warning("No hay pedidos exitosos para imprimir");
+      return;
+    }
+    if (!guide) {
+      toast.error(
+        "No se pudo cargar la información de la guía para imprimir",
+      );
+      return;
+    }
+    printShippingGuide(guide, successfulOrders, auth?.company);
+  };
+
+  const handlePrintLabels = () => {
+    const successfulOrders = getSuccessfulOrders();
 
     if (successfulOrders.length === 0) {
       toast.warning("No hay pedidos exitosos para imprimir");
@@ -1010,6 +1037,14 @@ export default function SendToShalomModal({
                           ({successSummary.successful})
                         </span>
                       )}
+                    </Button>
+                    <Button
+                      onClick={handlePrintGuideDeSalida}
+                      variant="outline"
+                      className="gap-2 h-12 px-8 font-bold border-slate-300 dark:border-slate-600 dark:text-slate-200"
+                    >
+                      <FileText className="h-4 w-4" />
+                      Imprimir guía
                     </Button>
                     <Button
                       onClick={onClose}

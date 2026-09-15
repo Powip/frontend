@@ -23,6 +23,12 @@ export const DELIVERY_ZONES: ZoneOption[] = [
   { value: "PROVINCIAS", label: "Provincias", emoji: "🧭" },
 ];
 
+/** Derivado de DELIVERY_ZONES para no duplicar el mapeo value→label (antes
+ * repetido a mano en GuideDetailsModal.tsx y CreateGuideModal.tsx). */
+export const ZONE_LABELS: Record<string, string> = Object.fromEntries(
+  DELIVERY_ZONES.map((z) => [z.value, z.label]),
+);
+
 export const PAYMENT_METHODS = [
   "Yape",
   "Plin",
