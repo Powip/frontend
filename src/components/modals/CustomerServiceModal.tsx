@@ -2245,6 +2245,14 @@ export default function CustomerServiceModal({
                         <h3 className="font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-2">
                           <Truck className="h-4 w-4" />
                           Guía de Envío
+                          {isShalomCourier(shippingGuide.courierName) && (
+                            <span className="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-2 py-0.5 text-[11px] font-black tracking-wide text-white">
+                              <span className="grid h-3.5 w-3.5 place-items-center rounded-[3px] bg-white text-[9px] font-black text-red-600">
+                                S
+                              </span>
+                              SHALOM
+                            </span>
+                          )}
                         </h3>
                         <div className="flex gap-1 items-center">
                           <Button
@@ -2341,6 +2349,22 @@ export default function CustomerServiceModal({
                             {shippingGuide.deliveryType}
                           </span>
                         </div>
+                        {shippingGuide.shippingCode && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              Código:{" "}
+                            </span>
+                            <span className="font-medium font-mono">
+                              {canEditCourierFields ? (
+                                shippingGuide.shippingCode
+                              ) : (
+                                <span className="text-amber-700 dark:text-amber-400">
+                                  🔒 bloqueada
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        )}
                         {shippingGuide.shippingKey && (
                           <div>
                             <span className="text-muted-foreground">
@@ -2688,6 +2712,38 @@ export default function CustomerServiceModal({
                         ⚡ Acciones logísticas
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        {shippingGuide?.shippingKey && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-sm justify-start"
+                            disabled={!canEditCourierFields}
+                            title={
+                              canEditCourierFields
+                                ? undefined
+                                : "Debes cargar el comprobante de pago antes de copiar la clave"
+                            }
+                            onClick={() => {
+                              if (!shippingGuide?.shippingKey) return;
+                              navigator.clipboard.writeText(shippingGuide.shippingKey);
+                              toast.success("Código de recojo copiado");
+                            }}
+                          >
+                            <Copy className="h-4 w-4 mr-1.5" />
+                            Copiar código de recojo
+                          </Button>
+                        )}
+                        {receipt && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-sm justify-start"
+                            onClick={handleWhatsApp}
+                          >
+                            <WhatsAppIcon className="h-4 w-4 mr-1.5" />
+                            Enviar seguimiento por WhatsApp
+                          </Button>
+                        )}
                         {orderHeader.courier === "Shalom" && (
                           <Button
                             size="sm"
@@ -2699,7 +2755,7 @@ export default function CustomerServiceModal({
                             <RefreshCw
                               className={`h-4 w-4 mr-1.5 ${syncingTracking ? "animate-spin" : ""}`}
                             />
-                            Forzar sync de tracking
+                            Forzar sincronización con Shalom
                           </Button>
                         )}
                         <Button
