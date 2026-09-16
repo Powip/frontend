@@ -28,6 +28,9 @@
  * - axios → mockeado (get/patch/post + isAxiosError) siguiendo el patrón dual
  *   default+top-level usado en el resto de tests de este repo para que funcione
  *   con la interop de ts-jest (esModuleInterop).
+ * - @/lib/axiosAuth → mockeado (get/post/patch/put) porque aprobar/rechazar
+ *   pagos ahora usan la instancia con Bearer token (fix 401 en /finanzas),
+ *   mientras el resto de las acciones del modal siguen en axios plano.
  * - window.confirm → mockeado (jsdom no lo implementa por defecto), solo para
  *   comprobar que YA NO se llama al aprobar.
  */
@@ -53,6 +56,16 @@ jest.mock('axios', () => {
     isAxiosError,
   };
 });
+
+jest.mock('@/lib/axiosAuth', () => ({
+  __esModule: true,
+  default: {
+    get: jest.fn(),
+    post: jest.fn(),
+    patch: jest.fn(),
+    put: jest.fn(),
+  },
+}));
 
 jest.mock('sonner', () => ({
   toast: {
@@ -136,6 +149,7 @@ jest.mock('@/components/ui/select', () => {
 });
 
 import axios from 'axios';
+import axiosAuth from '@/lib/axiosAuth';
 import { toast } from 'sonner';
 import { usePathname } from 'next/navigation';
 import PaymentVerificationModal from '../PaymentVerificationModal';
@@ -146,6 +160,12 @@ const mockedAxios = axios as unknown as {
   get: jest.Mock;
   patch: jest.Mock;
   post: jest.Mock;
+};
+const mockedAxiosAuth = axiosAuth as unknown as {
+  get: jest.Mock;
+  post: jest.Mock;
+  patch: jest.Mock;
+  put: jest.Mock;
 };
 const mockToast = toast as jest.Mocked<typeof toast>;
 const mockUsePathname = usePathname as jest.Mock;
@@ -195,7 +215,7 @@ describe('PaymentVerificationModal — aprobación de pagos', () => {
 
   it('pago CON comprobante: aprobar NO muestra confirm() y llama al endpoint de aprobación', async () => {
     mockedAxios.get.mockResolvedValue({ data: makeOrderData('https://proof.example.com/1.jpg') });
-    mockedAxios.patch.mockResolvedValue({ data: {} });
+    mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
 
     renderModal();
 
@@ -204,7 +224,7 @@ describe('PaymentVerificationModal — aprobación de pagos', () => {
 
     expect(window.confirm).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(mockedAxios.patch).toHaveBeenCalledWith(
+      expect(mockedAxiosAuth.patch).toHaveBeenCalledWith(
         'http://ventas/payments/payments/payment-1/approve',
       ),
     );
@@ -212,7 +232,7 @@ describe('PaymentVerificationModal — aprobación de pagos', () => {
 
   it('pago SIN comprobante: "Aprobar" está habilitado y aprueba sin confirm() (comprobante opcional)', async () => {
     mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
-    mockedAxios.patch.mockResolvedValue({ data: {} });
+    mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
 
     const onPaymentUpdated = jest.fn();
     renderModal({ onPaymentUpdated });
@@ -224,7 +244,7 @@ describe('PaymentVerificationModal — aprobación de pagos', () => {
 
     expect(window.confirm).not.toHaveBeenCalled();
     await waitFor(() =>
-      expect(mockedAxios.patch).toHaveBeenCalledWith(
+      expect(mockedAxiosAuth.patch).toHaveBeenCalledWith(
         'http://ventas/payments/payments/payment-1/approve',
       ),
     );
@@ -409,7 +429,7 @@ describe('PaymentVerificationModal — 403 al aprobar/rechazar (guard VIEW_FINAN
 
   it('si el PATCH de aprobar responde 403, muestra "No tenés permiso para aprobar pagos" (no el error genérico)', async () => {
     mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
-    mockedAxios.patch.mockRejectedValue({
+    mockedAxiosAuth.patch.mockRejectedValue({
       isAxiosError: true,
       response: { status: 403 },
     });
@@ -430,7 +450,7 @@ describe('PaymentVerificationModal — 403 al aprobar/rechazar (guard VIEW_FINAN
 
   it('si el PATCH de rechazar responde 403, muestra "No tenés permiso para rechazar pagos" (no el error genérico)', async () => {
     mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
-    mockedAxios.patch.mockRejectedValue({
+    mockedAxiosAuth.patch.mockRejectedValue({
       isAxiosError: true,
       response: { status: 403 },
     });
@@ -452,7 +472,7 @@ describe('PaymentVerificationModal — 403 al aprobar/rechazar (guard VIEW_FINAN
 
   it('si el PATCH de aprobar falla con otro status (no 403), mantiene el mensaje de error genérico', async () => {
     mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
-    mockedAxios.patch.mockRejectedValue({
+    mockedAxiosAuth.patch.mockRejectedValue({
       isAxiosError: true,
       response: { status: 500 },
     });

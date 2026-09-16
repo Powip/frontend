@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { toast } from "sonner";
 
 interface Payment {
@@ -199,7 +200,7 @@ export default function PaymentVerificationModal({
   const handleApprovePayment = async (paymentId: string) => {
     setProcessingPaymentId(paymentId);
     try {
-      await axios.patch(
+      await axiosAuth.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/approve`,
       );
       toast.success("Pago aprobado");
@@ -230,7 +231,7 @@ export default function PaymentVerificationModal({
     }
     setProcessingPaymentId(paymentId);
     try {
-      await axios.patch(
+      await axiosAuth.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/reject`,
         { notes: "Pago rechazado" },
       );
