@@ -75,6 +75,7 @@ import CancellationModal, { CancellationReason } from "./CancellationModal";
 import AddProductsModal from "./AddProductsModal";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import GuideDetailsModal from "./GuideDetailsModal";
+import ShalomDocumentModal from "./ShalomDocumentModal";
 import ReassignDeliveryModal from "@/app/centro-envios/components/ReassignDeliveryModal";
 import { hasPaymentProof } from "@/app/centro-envios/components/shipmentUtils";
 import { useRouter } from "next/navigation";
@@ -194,6 +195,7 @@ export default function CustomerServiceModal({
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [addProductsModalOpen, setAddProductsModalOpen] = useState(false);
   const [guideDetailsModalOpen, setGuideDetailsModalOpen] = useState(false);
+  const [shalomDocModalOpen, setShalomDocModalOpen] = useState(false);
 
   // Comments timeline states
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -1474,164 +1476,6 @@ export default function CustomerServiceModal({
                         )}
                       </div>
 
-                      {/* New Tracking Info Section in Modal */}
-                      {showTracking && receipt && (
-                        <div className="col-span-2 mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
-                          <label className="text-xs font-bold text-muted-foreground mb-3 block uppercase tracking-wider">
-                            Información de Seguimiento
-                          </label>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
-                                Nro Tracking
-                              </span>
-                              <div className="flex items-center gap-1">
-                                <Input
-                                  size={1}
-                                  className="h-8 text-xs"
-                                  placeholder="Nro Tracking..."
-                                  value={receipt.externalTrackingNumber || ""}
-                                  onChange={(
-                                    e: React.ChangeEvent<HTMLInputElement>,
-                                  ) =>
-                                    updateTrackingField(
-                                      "externalTrackingNumber",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onBlur={handleSaveTracking}
-                                />
-                                {receipt.externalTrackingNumber && (
-                                  <Button
-                                    size="icon"
-                                    variant="ghost"
-                                    className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-                                    onClick={() =>
-                                      copyField(
-                                        receipt.externalTrackingNumber || "",
-                                        "Tracking",
-                                      )
-                                    }
-                                    title="Copiar Tracking"
-                                  >
-                                    <Copy className="h-3 w-3" />
-                                  </Button>
-                                )}
-                              </div>
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
-                                Oficina
-                              </span>
-                              <Input
-                                className="h-8 text-xs"
-                                placeholder="Oficina..."
-                                value={receipt.shippingOffice || ""}
-                                onChange={(
-                                  e: React.ChangeEvent<HTMLInputElement>,
-                                ) =>
-                                  updateTrackingField(
-                                    "shippingOffice",
-                                    e.target.value,
-                                  )
-                                }
-                                onBlur={handleSaveTracking}
-                              />
-                            </div>
-                            <div>
-                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
-                                Código
-                              </span>
-                              <Input
-                                className="h-8 text-xs"
-                                placeholder="Código..."
-                                value={receipt.shippingCode || ""}
-                                onChange={(
-                                  e: React.ChangeEvent<HTMLInputElement>,
-                                ) =>
-                                  updateTrackingField(
-                                    "shippingCode",
-                                    e.target.value,
-                                  )
-                                }
-                                onBlur={handleSaveTracking}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Clave — único campo que se bloquea sin
-                              comprobante. Bloqueada: mismo bloque visual
-                              (icono, título, CTA) que la card "Clave de
-                              recojo" de la tab Seguimiento, sin exponer el
-                              valor real en ningún texto. */}
-                          {!canEditCourierFields ? (
-                            <div className="mt-3 rounded-xl border border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30 p-[13px]">
-                              <div className="flex items-center gap-[11px]">
-                                <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0 bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300">
-                                  <Lock className="h-4 w-4" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-extrabold text-[13.5px] text-[#92400E] dark:text-amber-400">
-                                    Clave de recojo bloqueada
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {`Pendiente de cobro${
-                                      receipt.totals.pendingAmount
-                                        ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
-                                        : ""
-                                    }`}
-                                  </div>
-                                </div>
-                                <div className="font-mono font-black tracking-[0.24em] text-xl text-[#C29B54] dark:text-amber-400">
-                                  ••••
-                                </div>
-                              </div>
-                              <Button
-                                size="sm"
-                                className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
-                                onClick={() => setPaymentModalOpen(true)}
-                              >
-                                <DollarSign className="h-4 w-4 mr-1.5" />
-                                Registrar cobranza
-                              </Button>
-                              <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
-                                La clave se habilita al validar el
-                                comprobante de pago cargado para este
-                                pedido.
-                              </p>
-                            </div>
-                          ) : (
-                            <div className="mt-3">
-                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
-                                Clave
-                              </span>
-                              <div className="relative max-w-[calc(50%-8px)]">
-                                <Input
-                                  className="h-8 text-xs pr-8 font-mono"
-                                  placeholder="Clave..."
-                                  value={receipt.shippingKey || ""}
-                                  onChange={(
-                                    e: React.ChangeEvent<HTMLInputElement>,
-                                  ) =>
-                                    updateTrackingField(
-                                      "shippingKey",
-                                      e.target.value,
-                                    )
-                                  }
-                                  onBlur={handleSaveTracking}
-                                />
-                              </div>
-                            </div>
-                          )}
-                          {savingTracking && (
-                            <div className="mt-2 flex items-center gap-2 text-[10px] text-orange-500 animate-pulse">
-                              <Loader2 className="h-3 w-3 animate-spin" />
-                              Guardando cambios...
-                            </div>
-                          )}
-                        </div>
-                      )}
-
                       {!showTracking &&
                         (receipt.externalTrackingNumber ||
                           receipt.shippingCode ||
@@ -2212,6 +2056,145 @@ export default function CustomerServiceModal({
                   </TabsContent>
 
                   <TabsContent value="seguimiento" className="pt-3 space-y-4">
+                  {/* Datos de tracking manual — antes vivía en la tab
+                      Resumen; se movió acá porque es información de
+                      seguimiento, no del resumen del pedido. Siempre visible
+                      (no depende de shippingGuide): para couriers sin
+                      integración por API, el tracking/código/oficina se
+                      tipean a mano. Mismo estilo que el resto de esta tab
+                      (card redondeada, labels chicos en mayúscula). */}
+                  {showTracking && receipt && (
+                    <div className="rounded-2xl border border-border p-4">
+                      <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground mb-3">
+                        Datos de tracking
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                            Nro Tracking
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <Input
+                              size={1}
+                              className="h-8 text-xs"
+                              placeholder="Nro Tracking..."
+                              value={receipt.externalTrackingNumber || ""}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                updateTrackingField("externalTrackingNumber", e.target.value)
+                              }
+                              onBlur={handleSaveTracking}
+                            />
+                            {receipt.externalTrackingNumber && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                                onClick={() =>
+                                  copyField(receipt.externalTrackingNumber || "", "Tracking")
+                                }
+                                title="Copiar Tracking"
+                              >
+                                <Copy className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                            Oficina
+                          </span>
+                          <Input
+                            className="h-8 text-xs"
+                            placeholder="Oficina..."
+                            value={receipt.shippingOffice || ""}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              updateTrackingField("shippingOffice", e.target.value)
+                            }
+                            onBlur={handleSaveTracking}
+                          />
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                            Código
+                          </span>
+                          <Input
+                            className="h-8 text-xs"
+                            placeholder="Código..."
+                            value={receipt.shippingCode || ""}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                              updateTrackingField("shippingCode", e.target.value)
+                            }
+                            onBlur={handleSaveTracking}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Clave — único campo que se bloquea sin comprobante.
+                          Bloqueada: mismo bloque visual (icono, título, CTA)
+                          que la card "Clave de recojo" más abajo, sin
+                          exponer el valor real en ningún texto. */}
+                      {!canEditCourierFields ? (
+                        <div className="mt-3 rounded-xl border border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30 p-[13px]">
+                          <div className="flex items-center gap-[11px]">
+                            <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0 bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300">
+                              <Lock className="h-4 w-4" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-extrabold text-[13.5px] text-[#92400E] dark:text-amber-400">
+                                Clave de recojo bloqueada
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {`Pendiente de cobro${
+                                  receipt.totals.pendingAmount
+                                    ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
+                                    : ""
+                                }`}
+                              </div>
+                            </div>
+                            <div className="font-mono font-black tracking-[0.24em] text-xl text-[#C29B54] dark:text-amber-400">
+                              ••••
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
+                            onClick={() => setPaymentModalOpen(true)}
+                          >
+                            <DollarSign className="h-4 w-4 mr-1.5" />
+                            Registrar cobranza
+                          </Button>
+                          <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
+                            La clave se habilita al validar el comprobante de
+                            pago cargado para este pedido.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="mt-3">
+                          <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                            Clave
+                          </span>
+                          <div className="relative max-w-[calc(50%-8px)]">
+                            <Input
+                              className="h-8 text-xs pr-8 font-mono"
+                              placeholder="Clave..."
+                              value={receipt.shippingKey || ""}
+                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                updateTrackingField("shippingKey", e.target.value)
+                              }
+                              onBlur={handleSaveTracking}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {savingTracking && (
+                        <div className="mt-2 flex items-center gap-2 text-[10px] text-orange-500 animate-pulse">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          Guardando cambios...
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Shipping Guide Section - only shown when shippingGuide data is provided */}
                   {!shippingGuide && (
                     <p className="text-sm text-muted-foreground border border-border rounded-lg p-4">
@@ -2537,52 +2520,59 @@ export default function CustomerServiceModal({
                     </div>
                   )}
 
-                  {/* Comprobante del courier — reusa handlePrintShippingReceipt
-                      (el mismo comprobante que ya imprime el botón de la
-                      impresora arriba); el QR es real (apunta al
-                      shippingGuide.trackingUrl real), no uno fabricado. */}
-                  {shippingGuide?.guideNumber && (
-                    <button
-                      type="button"
-                      onClick={handlePrintShippingReceipt}
-                      className="w-full text-left rounded-xl border border-border overflow-hidden hover:border-primary/40 hover:shadow-sm transition-colors"
-                    >
-                      <div className="flex items-center gap-2.5 px-[13px] py-[11px] bg-muted/30 border-b border-border">
-                        <div className="h-[30px] w-[30px] rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 grid place-items-center shrink-0">
-                          <FileText className="h-3.5 w-3.5" />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-[13px] font-bold leading-tight">
-                            Comprobante del courier
+                  {/* Comprobante del courier — documento REAL traído de
+                      Shalom (no un comprobante generado por POWIP como
+                      antes). Abre ShalomDocumentModal (comprobante + rótulo,
+                      pixel-perfect al mockup), que trae los PDF autenticados
+                      vía generateShalomTicketPdf/generateShalomLabelPdf con
+                      externalTrackingNumber + shippingCode. Solo se muestra
+                      si esos dos datos existen y el courier es Shalom — no
+                      hay integración equivalente para otros couriers todavía. */}
+                  {shippingGuide?.guideNumber &&
+                    isShalomCourier(orderHeader?.courier) &&
+                    orderHeader?.externalTrackingNumber &&
+                    orderHeader?.shippingCode && (
+                      <button
+                        type="button"
+                        onClick={() => setShalomDocModalOpen(true)}
+                        className="w-full text-left rounded-xl border border-border overflow-hidden hover:border-primary/40 hover:shadow-sm transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 px-[13px] py-[11px] bg-muted/30 border-b border-border">
+                          <div className="h-[30px] w-[30px] rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 grid place-items-center shrink-0">
+                            <FileText className="h-3.5 w-3.5" />
                           </div>
-                          <span className="text-[11.5px] text-muted-foreground">
-                            Comprobante de envío · generado por POWIP
+                          <div className="min-w-0">
+                            <div className="text-[13px] font-bold leading-tight">
+                              Comprobante del courier
+                            </div>
+                            <span className="text-[11.5px] text-muted-foreground">
+                              Boleta electrónica · traída de {shippingGuide.courierName || "Shalom"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 px-[13px] py-[13px]">
+                          {trackingQrUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={trackingQrUrl}
+                              alt="QR de seguimiento"
+                              className="h-11 w-11 shrink-0 rounded"
+                            />
+                          )}
+                          <div className="text-[11.5px] text-muted-foreground leading-tight min-w-0">
+                            <b className="text-foreground font-bold">
+                              {shippingGuide.guideNumber}
+                            </b>{" "}
+                            · {shippingGuide.courierName || "Courier"}
+                            <br />
+                            Emitido por {shippingGuide.courierName || "el courier"}
+                          </div>
+                          <span className="ml-auto shrink-0 text-primary font-bold text-[12.5px] flex items-center gap-1">
+                            Ver <ArrowRight className="h-3 w-3" />
                           </span>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-3 px-[13px] py-[13px]">
-                        {trackingQrUrl && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={trackingQrUrl}
-                            alt="QR de seguimiento"
-                            className="h-11 w-11 shrink-0 rounded"
-                          />
-                        )}
-                        <div className="text-[11.5px] text-muted-foreground leading-tight min-w-0">
-                          <b className="text-foreground font-bold">
-                            {shippingGuide.guideNumber}
-                          </b>{" "}
-                          · {shippingGuide.courierName || "Courier"}
-                          <br />
-                          Emitido por POWIP
-                        </div>
-                        <span className="ml-auto shrink-0 text-primary font-bold text-[12.5px] flex items-center gap-1">
-                          Ver <ArrowRight className="h-3 w-3" />
-                        </span>
-                      </div>
-                    </button>
-                  )}
+                      </button>
+                    )}
 
                   {isShalomCourier(orderHeader?.courier) && (
                     <div className="flex items-start gap-2.5 rounded-[11px] bg-[#EEF0FF] dark:bg-indigo-950/30 px-[13px] py-[11px] text-[12.5px] leading-[1.45] text-[#3730A3] dark:text-indigo-300">
@@ -2869,26 +2859,59 @@ export default function CustomerServiceModal({
 
                   <TabsContent value="pagos" className="pt-3 space-y-4">
                     <div className="grid grid-cols-3 gap-3.5">
-                      <div className="border rounded-lg p-4 text-center">
-                        <div className="text-base sm:text-xl font-black">
-                          S/{receipt.totals.grandTotal.toFixed(2)}
+                      <div className="rounded-2xl border border-border p-5 text-center">
+                        <div className="text-xl sm:text-2xl font-extrabold">
+                          S/ {receipt.totals.grandTotal.toFixed(2)}
                         </div>
-                        <div className="text-xs text-muted-foreground">Total</div>
+                        <div className="text-sm text-muted-foreground mt-1">Total</div>
                       </div>
-                      <div className="border rounded-lg p-4 text-center">
-                        <div className="text-base sm:text-xl font-black text-green-600">
-                          S/{receipt.totals.totalPaid.toFixed(2)}
+                      <div className="rounded-2xl border border-border p-5 text-center">
+                        <div className="text-xl sm:text-2xl font-extrabold text-emerald-600">
+                          S/ {receipt.totals.totalPaid.toFixed(2)}
                         </div>
-                        <div className="text-xs text-muted-foreground">Pagado</div>
+                        <div className="text-sm text-muted-foreground mt-1">Pagado</div>
                       </div>
-                      <div className="border rounded-lg p-4 text-center">
-                        <div className="text-base sm:text-xl font-black text-amber-600">
-                          S/{receipt.totals.pendingAmount.toFixed(2)}
+                      <div className="rounded-2xl border border-border p-5 text-center">
+                        <div className="text-xl sm:text-2xl font-extrabold text-orange-600">
+                          S/ {receipt.totals.pendingAmount.toFixed(2)}
                         </div>
-                        <div className="text-xs text-muted-foreground">Saldo</div>
+                        <div className="text-sm text-muted-foreground mt-1">Saldo</div>
                       </div>
                     </div>
-                    <div className="border rounded-lg p-4">
+
+                    {/* Gate de cobranza — mismo bloque visual que la card
+                        "Clave de recojo" de la tab Seguimiento, para que el
+                        saldo pendiente bloquee la clave desde Pagos también
+                        sin exponer el valor real en ningún texto. */}
+                    {shippingGuide?.shippingKey && !canEditCourierFields && (
+                      <div className="rounded-xl border border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30 p-[13px]">
+                        <div className="flex items-center gap-[11px]">
+                          <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0 bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300">
+                            <Lock className="h-4 w-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-extrabold text-[13.5px] text-[#92400E] dark:text-amber-400">
+                              Clave de recojo bloqueada — hay saldo por cobrar
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              El cliente paga el saldo (S/
+                              {receipt.totals.pendingAmount.toFixed(2)}) y recién se libera la
+                              clave.
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
+                          onClick={() => setPaymentModalOpen(true)}
+                        >
+                          <DollarSign className="h-4 w-4 mr-1.5" />
+                          Registrar cobranza
+                        </Button>
+                      </div>
+                    )}
+
+                    <div className="rounded-2xl border border-border p-4">
                       <div className="text-sm font-bold mb-2.5">💳 Pagos registrados</div>
                       {receipt.payments.length === 0 && (
                         <div className="text-sm text-muted-foreground">
@@ -2898,7 +2921,7 @@ export default function CustomerServiceModal({
                       {receipt.payments.map((p) => (
                         <div
                           key={p.id}
-                          className="flex items-center justify-between text-sm py-2 border-b last:border-0 border-dashed"
+                          className="flex items-center justify-between text-sm py-2 border-b last:border-0 border-dashed border-border"
                         >
                           <div>
                             <div className="font-medium">{p.paymentMethod}</div>
@@ -2913,7 +2936,7 @@ export default function CustomerServiceModal({
                             <div
                               className={
                                 p.status === "PAID"
-                                  ? "text-green-600 text-xs"
+                                  ? "text-emerald-600 text-xs"
                                   : p.status === "PENDING"
                                     ? "text-amber-600 text-xs"
                                     : "text-red-600 text-xs"
@@ -2927,7 +2950,7 @@ export default function CustomerServiceModal({
                     </div>
                     <Button
                       variant="outline"
-                      className="w-full text-sm"
+                      className="w-full text-sm h-11 rounded-xl"
                       onClick={() => setPaymentModalOpen(true)}
                     >
                       Gestionar pagos
@@ -3064,6 +3087,14 @@ export default function CustomerServiceModal({
           guideId={shippingGuide.id}
         />
       )}
+
+      {/* Comprobante real del courier (Shalom) — ver comentario en la card
+          "Comprobante del courier" de la tab Seguimiento. */}
+      <ShalomDocumentModal
+        open={shalomDocModalOpen}
+        onClose={() => setShalomDocModalOpen(false)}
+        order={orderHeader}
+      />
     </>
   );
 }

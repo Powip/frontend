@@ -41,7 +41,7 @@ import EvaStatusBadge, {
   GROUP_CLS,
 } from "@/components/eva/EvaStatusBadge";
 import SendToEvaButton from "@/components/eva/SendToEvaButton";
-import OrderTrackingModal from "@/components/modals/OrderTrackingModal";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import { isEvaCourier } from "@/utils/courierNormalizer";
 
@@ -515,11 +515,14 @@ export default function EvaOrderTrackingView() {
         />
       </div>
 
-      <OrderTrackingModal
+      <CustomerServiceModal
         open={!!viewOrderId}
         orderId={viewOrderId || ""}
         onClose={() => setViewOrderId(null)}
         onOrderUpdated={fetchOrders}
+        isOperaciones
+        showTracking
+        initialTab="seguimiento"
       />
     </div>
   );

@@ -251,6 +251,21 @@ export const getShalomLabelPdfUrl = (
   orderCode: string,
 ): string => `${API_INTEGRATIONS}/shalom/label/${orderNumber}/${orderCode}`;
 
+export const generateShalomLabelPdf = async (
+  token: string,
+  externalTrackingNumber: string, // ⬅️ 8 dígitos de Shalom
+  shippingCode: string, // ⬅️ 4 caracteres de Shalom
+): Promise<Blob> => {
+  const res = await axios.get(
+    `${API_INTEGRATIONS}/shalom/label/${externalTrackingNumber}/${shippingCode}`,
+    {
+      headers: headers(token),
+      responseType: "blob",
+    },
+  );
+  return res.data;
+};
+
 /** Cotizar un envío individual */
 export const quoteShalom = async (
   token: string,

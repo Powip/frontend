@@ -67,7 +67,8 @@ import {
   trackShalomGuide,
   updateGuideQuote
 } from "@/services/shalomService";
-import OrderTrackingModal from "@/components/modals/OrderTrackingModal";
+import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import ShalomDocumentModal from "@/components/modals/ShalomDocumentModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
 import EvaOrderTrackingView from "@/components/tracking/EvaOrderTrackingView";
@@ -129,10 +130,6 @@ function productsSummary(order: OrderHeader): string {
 
 function courierTabValue(courierName: string): string {
   return `courier-${courierName.toLowerCase().replace(/\s+/g, "-")}`;
-}
-
-function openDocument(url: string) {
-  window.open(url, "_blank");
 }
 
 // "YYYY-MM-DD" en horario LOCAL — a propósito no usa toISOString(), que
@@ -303,6 +300,11 @@ export default function CourierTrackingView() {
   const [orders, setOrders] = useState<OrderHeader[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [viewOrderId, setViewOrderId] = useState<string | null>(null);
+  // Comprobante REAL del courier (boleta de Shalom, traída por API) —
+  // distinto de shippingProofUrl (foto de prueba de entrega, que casi nunca
+  // existe todavía cuando el pedido recién se despacha). Se guarda la orden
+  // completa porque ShalomDocumentModal la necesita para el PDF.
+  const [docOrder, setDocOrder] = useState<OrderHeader | null>(null);
 
   // Couriers reales de la empresa (no los que aparecen sueltos en pedidos
   // viejos/importados) — mismo servicio que usa el resto de Operaciones.
@@ -775,6 +777,7 @@ export default function CourierTrackingView() {
               onRefresh={fetchOrders}
               onTrackingSaved={applyTrackingPatch}
               onView={setViewOrderId}
+              onViewDoc={setDocOrder}
             />
           </TabsContent>
         ))}
@@ -1063,10 +1066,14 @@ export default function CourierTrackingView() {
                                   size="sm"
                                   variant="ghost"
                                   className="h-7 w-7 p-0"
-                                  title="Ver comprobante de entrega"
-                                  aria-label={`Ver comprobante de entrega del pedido ${order.orderNumber}`}
-                                  disabled={!order.shippingProofUrl}
-                                  onClick={() => openDocument(order.shippingProofUrl!)}
+                                  title="Ver comprobante del courier"
+                                  aria-label={`Ver comprobante del courier del pedido ${order.orderNumber}`}
+                                  disabled={
+                                    !isShalomCourier(order.courier) ||
+                                    !order.externalTrackingNumber ||
+                                    !order.shippingCode
+                                  }
+                                  onClick={() => setDocOrder(order)}
                                 >
                                   <FileText className="h-3.5 w-3.5" />
                                 </Button>
@@ -1254,14 +1261,26 @@ export default function CourierTrackingView() {
         </DialogContent>
       </Dialog>
 
-      {/* MODAL "Ver seguimiento" — calca el mockup pixel a pixel a pedido
-          del cliente (pedido usado también por la pestaña genérica por
-          courier, vía onView={setViewOrderId}). */}
-      <OrderTrackingModal
+      {/* MODAL "Ver seguimiento" (pestaña "Todos" y tabs genéricos por
+          courier, vía onView={setViewOrderId}) — abre directo en Seguimiento. */}
+      <CustomerServiceModal
         open={!!viewOrderId}
         orderId={viewOrderId || ""}
         onClose={() => setViewOrderId(null)}
         onOrderUpdated={fetchOrders}
+        isOperaciones
+        showTracking
+        initialTab="seguimiento"
+      />
+
+      {/* MODAL "Ver comprobante del courier" — boleta + rótulo reales de
+          Shalom, traídos vía API (onViewDoc={setDocOrder}), pixel-perfect
+          al mockup. Distinto de shippingProofUrl (foto de prueba de
+          entrega). */}
+      <ShalomDocumentModal
+        open={!!docOrder}
+        onClose={() => setDocOrder(null)}
+        order={docOrder}
       />
     </div>
   );
@@ -1281,6 +1300,7 @@ function CourierOrdersTab({
   onRefresh,
   onTrackingSaved,
   onView,
+  onViewDoc,
 }: {
   courierName: string;
   dispatchedOrders: OrderHeader[];
@@ -1289,6 +1309,7 @@ function CourierOrdersTab({
   onRefresh: () => void;
   onTrackingSaved: (orderId: string, patch: Partial<Record<TrackingFieldKey, string | null>>) => void;
   onView: (orderId: string) => void;
+  onViewDoc: (order: OrderHeader) => void;
 }) {
   const [search, setSearch] = useState("");
   const [saldoFilter, setSaldoFilter] = useState<"ALL" | "PENDING" | "PAID">("ALL");
@@ -1539,10 +1560,14 @@ function CourierOrdersTab({
                             size="sm"
                             variant="ghost"
                             className="h-7 w-7 p-0"
-                            title="Ver comprobante de entrega"
-                            aria-label={`Ver comprobante de entrega del pedido ${order.orderNumber}`}
-                            disabled={!order.shippingProofUrl}
-                            onClick={() => openDocument(order.shippingProofUrl!)}
+                            title="Ver comprobante del courier"
+                            aria-label={`Ver comprobante del courier del pedido ${order.orderNumber}`}
+                            disabled={
+                              !isShalomCourier(order.courier) ||
+                              !order.externalTrackingNumber ||
+                              !order.shippingCode
+                            }
+                            onClick={() => onViewDoc(order)}
                           >
                             <FileText className="h-3.5 w-3.5" />
                           </Button>
