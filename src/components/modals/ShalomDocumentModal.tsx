@@ -11,38 +11,39 @@ import { generateShalomTicketPdf, generateShalomLabelPdf } from "@/services/shal
 import { useAuth } from "@/contexts/AuthContext";
 import { buildWhatsAppUrl } from "@/utils/whatsapp/build-whatsapp-url";
 
-type DocTab = "comprobante" | "rotulo";
+export type ShalomDocTab = "comprobante" | "rotulo";
 
-interface DocState {
+interface ShalomDocState {
   url: string | null;
   loading: boolean;
   error: boolean;
   fetched: boolean;
 }
 
-const EMPTY_DOCS: Record<DocTab, DocState> = {
+const EMPTY_DOCS: Record<ShalomDocTab, ShalomDocState> = {
   comprobante: { url: null, loading: false, error: false, fetched: false },
   rotulo: { url: null, loading: false, error: false, fetched: false },
 };
 
-interface ShalomDocumentModalProps {
-  open: boolean;
-  onClose: () => void;
-  order: OrderHeader | null;
-}
-
-export default function ShalomDocumentModal({
-  open,
-  onClose,
-  order,
-}: ShalomDocumentModalProps) {
+/**
+ * Estado + fetch de los PDF reales de Shalom (comprobante/rótulo), separado
+ * de la presentación para poder reusarlo tanto en el Dialog (ShalomDocumentModal,
+ * usado desde CourierTrackingView.tsx) como embebido inline en la tab
+ * Seguimiento de CustomerServiceModal.tsx, sin duplicar la lógica de fetch.
+ * `active` reemplaza al `open` del Dialog: en uso inline siempre es true
+ * (el componente se monta/desmonta con la tab de Radix).
+ */
+export function useShalomDocumentViewer(
+  order: OrderHeader | null,
+  active: boolean = true,
+) {
   const { auth } = useAuth();
-  const [activeTab, setActiveTab] = useState<DocTab>("comprobante");
-  const [docs, setDocs] = useState<Record<DocTab, DocState>>(EMPTY_DOCS);
+  const [activeTab, setActiveTab] = useState<ShalomDocTab>("comprobante");
+  const [docs, setDocs] = useState<Record<ShalomDocTab, ShalomDocState>>(EMPTY_DOCS);
   const urlsRef = useRef<string[]>([]);
 
   const fetchDoc = useCallback(
-    async (tab: DocTab) => {
+    async (tab: ShalomDocTab) => {
       if (!auth?.accessToken || !order?.externalTrackingNumber || !order?.shippingCode) {
         setDocs((prev) => ({ ...prev, [tab]: { url: null, loading: false, error: true, fetched: true } }));
         return;
@@ -65,14 +66,14 @@ export default function ShalomDocumentModal({
   );
 
   useEffect(() => {
-    if (!open) return;
+    if (!active) return;
     urlsRef.current.forEach((u) => URL.revokeObjectURL(u));
     urlsRef.current = [];
     setActiveTab("comprobante");
     setDocs(EMPTY_DOCS);
     fetchDoc("comprobante");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, order?.id]);
+  }, [active, order?.id]);
 
   useEffect(() => {
     return () => {
@@ -81,16 +82,14 @@ export default function ShalomDocumentModal({
     };
   }, []);
 
-  function selectTab(tab: DocTab) {
+  function selectTab(tab: ShalomDocTab) {
     setActiveTab(tab);
     if (!docs[tab].fetched && !docs[tab].loading) {
       fetchDoc(tab);
     }
   }
 
-  if (!order) return null;
-
-  const courierName = order.courier || "Shalom";
+  const courierName = order?.courier || "Shalom";
   const current = docs[activeTab];
 
   function handleDownload() {
@@ -121,6 +120,152 @@ export default function ShalomDocumentModal({
     }
     window.open(whatsappUrl, "_blank", "noopener,noreferrer");
   }
+
+  return {
+    activeTab,
+    docs,
+    current,
+    courierName,
+    selectTab,
+    handleDownload,
+    handlePrint,
+    handleShareWhatsApp,
+  };
+}
+
+/**
+ * Versión inline (sin Dialog) del documento del courier — misma lógica que
+ * ShalomDocumentModal (tabs Comprobante/Rótulo, PDF real embebido, acciones),
+ * pero como card para embeber directo en una columna en vez de requerir un
+ * botón "Ver" que abra un modal aparte.
+ */
+export function ShalomDocumentCard({ order }: { order: OrderHeader | null }) {
+  const {
+    activeTab,
+    current,
+    courierName,
+    selectTab,
+    handleDownload,
+    handlePrint,
+    handleShareWhatsApp,
+  } = useShalomDocumentViewer(order);
+
+  return (
+    <div className="rounded-xl border border-border overflow-hidden h-full flex flex-col">
+      <div className="flex items-center gap-2.5 px-[13px] py-[11px] bg-muted/30 border-b border-border">
+        <div className="h-[30px] w-[30px] rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 grid place-items-center shrink-0">
+          <FileText className="h-3.5 w-3.5" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-bold leading-tight">Documento del courier</div>
+          <span className="text-[11.5px] text-muted-foreground">
+            Traído de {courierName} por API
+          </span>
+        </div>
+      </div>
+
+      <div className="flex gap-1 px-3 pt-2.5">
+        <button
+          type="button"
+          onClick={() => selectTab("comprobante")}
+          className={`text-xs font-bold px-3 py-1.5 rounded-t-lg transition-colors ${
+            activeTab === "comprobante"
+              ? "text-primary bg-primary/10"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Comprobante
+        </button>
+        <button
+          type="button"
+          onClick={() => selectTab("rotulo")}
+          className={`text-xs font-bold px-3 py-1.5 rounded-t-lg transition-colors ${
+            activeTab === "rotulo"
+              ? "text-primary bg-primary/10"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Rótulo de envío
+        </button>
+      </div>
+
+      <div className="flex-1 min-h-[360px] bg-muted/40 overflow-hidden">
+        {current.loading ? (
+          <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span className="text-xs font-medium">Cargando documento…</span>
+          </div>
+        ) : current.error || !current.url ? (
+          <div className="h-full flex flex-col items-center justify-center gap-2 text-muted-foreground px-6 text-center">
+            <FileText className="h-8 w-8 opacity-30" />
+            <span className="text-xs font-medium">
+              {activeTab === "comprobante" ? "Comprobante" : "Rótulo"} no disponible desde {courierName}.
+            </span>
+          </div>
+        ) : (
+          <embed src={current.url} type="application/pdf" className="w-full h-full border-none" />
+        )}
+      </div>
+
+      <div className="flex gap-2 p-2.5 border-t border-border">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="flex-1 justify-center"
+          disabled={!current.url}
+          onClick={handleDownload}
+        >
+          <Download className="h-3.5 w-3.5 mr-1.5" />
+          Descargar
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="flex-1 justify-center"
+          disabled={!current.url}
+          onClick={handlePrint}
+        >
+          <Printer className="h-3.5 w-3.5 mr-1.5" />
+          Imprimir
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          className="flex-1 justify-center bg-[#25D366] hover:bg-[#1EBE5A] text-white"
+          onClick={handleShareWhatsApp}
+        >
+          <WhatsAppIcon className="h-3.5 w-3.5 mr-1.5" />
+          WhatsApp
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+interface ShalomDocumentModalProps {
+  open: boolean;
+  onClose: () => void;
+  order: OrderHeader | null;
+}
+
+export default function ShalomDocumentModal({
+  open,
+  onClose,
+  order,
+}: ShalomDocumentModalProps) {
+  const {
+    activeTab,
+    current,
+    courierName,
+    selectTab,
+    handleDownload,
+    handlePrint,
+    handleShareWhatsApp,
+  } = useShalomDocumentViewer(order, open);
+
+  if (!order) return null;
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>

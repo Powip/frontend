@@ -550,12 +550,22 @@ export default function ProvinciaShipmentModal({
                       <Key className="h-3 w-3" /> Clave de envío
                     </Label>
                     {isEditing ? (
-                      <Input
-                        value={shippingKey}
-                        onChange={(e) => setShippingKey(e.target.value)}
-                        placeholder="Ej: 1612"
-                        className="h-8"
-                      />
+                      isPaid ? (
+                        <Input
+                          value={shippingKey}
+                          onChange={(e) => setShippingKey(e.target.value)}
+                          placeholder="Ej: 1612"
+                          className="h-8"
+                        />
+                      ) : (
+                        <Input
+                          value=""
+                          disabled
+                          placeholder="Bloqueada"
+                          title="El pedido debe quedar libre de deuda antes de ingresar la clave"
+                          className="h-8 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
+                      )
                     ) : (
                       <div className="flex items-center gap-2">
                         {isPaid ? (

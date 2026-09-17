@@ -35,7 +35,10 @@ import { useAuth } from "@/contexts/AuthContext";
 import { API } from "@/lib/api";
 import { getUserProfile } from "@/services/userService";
 import { printShippingGuide } from "@/utils/printShippingGuide";
+import { printOrderLabelsBatch, type OrderReceipt } from "@/utils/printOrderLabel";
 import type { ShippingGuide } from "@/components/modals/GuideDetailsModal";
+import { buildWhatsAppUrl } from "@/utils/whatsapp/build-whatsapp-url";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 
 // Sentinel para representar el valor vacío "" que exige la API de Shalom.
 // Radix Select no admite value="" en SelectItem — usar este sentinel y mapear al enviar.
@@ -508,9 +511,15 @@ export default function SendToShalomModal({
     }));
   };
 
-  const handleQuote = async () => {
+  // `silent` se usa cuando `handleSend` cotiza automáticamente porque el
+  // usuario no apretó "Cotizar Envío" a mano — sin toast ni spinner propio
+  // (handleSend ya muestra "Enviando..."), y devuelve el monto para no
+  // depender de leer el estado `totalQuoted` (podría no haberse
+  // re-renderizado todavía dentro del mismo handleSend).
+  const handleQuote = async (options?: { silent?: boolean }): Promise<number | null> => {
+    const silent = options?.silent ?? false;
     try {
-      setQuoting(true);
+      if (!silent) setQuoting(true);
       const payload = {
         companyId: auth?.company?.id,
         shipments: orders.map((order) => {
@@ -530,19 +539,33 @@ export default function SendToShalomModal({
 
       const res = await axios.post(`${API.integrations}/shalom/quote`, payload);
       if (res.data.success) {
-        setTotalQuoted(res.data.data.total_amount);
-        toast.success(`Total: S/ ${res.data.data.total_amount}`);
+        const amount = res.data.data.total_amount;
+        setTotalQuoted(amount);
+        if (!silent) toast.success(`Total: S/ ${amount}`);
+        return amount;
       }
+      return null;
     } catch (error: any) {
-      toast.error(error.response?.data?.message || "Algo salió mal");
+      if (!silent) toast.error(error.response?.data?.message || "Algo salió mal");
+      return null;
     } finally {
-      setQuoting(false);
+      if (!silent) setQuoting(false);
     }
   };
 
   const handleSend = async () => {
     try {
       setSending(true);
+
+      // "Cotizar Envío" es un botón separado y opcional — si el usuario
+      // fue directo a "Confirmar y enviar" sin cotizar, `totalQuoted` queda
+      // null y nunca se guarda el costo real de Shalom (Costo de envío
+      // quedaba siempre en 0). Se cotiza acá mismo, en silencio, para que
+      // el costo real siempre quede registrado sin depender de ese paso
+      // manual. Se usa el valor devuelto (no el estado `totalQuoted`) por
+      // si React no re-renderizó todavía dentro de este mismo handler.
+      const quotedTotal =
+        totalQuoted ?? (await handleQuote({ silent: true }));
 
       const originAgencyObj = originAgencies.find(
         (a) => a.api_name === originAgency,
@@ -585,7 +608,7 @@ export default function SendToShalomModal({
         orderDestinationNames,
         packageDetails,
         securityCode: orders[0] ? shipmentsData[orders[0].id]?.securityCode : "",
-        quotedAmount: totalQuoted || undefined,
+        quotedAmount: quotedTotal || undefined,
         quotedCurrency: "PEN",
         declaracionJurada: declaracionJurada === DECLARACION_JURADA_NINGUNA ? "" : declaracionJurada,
       };
@@ -677,6 +700,34 @@ export default function SendToShalomModal({
       if (successfulCount > 0) {
         setIsSuccess(true);
         onSuccess?.();
+
+        // Shalom cotiza el lote completo (quotedTotal, "Total Cotizado" más
+        // abajo), no desglosado por pedido — sin eso, "Costo de envío"
+        // (Rastreo Courier, KPIs de Guías) queda en blanco/0 para todo
+        // pedido despachado por este flujo. Se reparte en partes iguales
+        // entre los pedidos que sí se registraron (el total agregado sigue
+        // siendo exacto; el desglose por pedido es una aproximación al no
+        // tener el costo individual de la API).
+        if (quotedTotal) {
+          const failedOrderNumbers = new Set(
+            enrichedErrors.map((e) => e.orderNumber).filter(Boolean),
+          );
+          const successfulOrders = orders.filter(
+            (o) => !failedOrderNumbers.has(o.orderNumber),
+          );
+          if (successfulOrders.length > 0) {
+            const costPerOrder = quotedTotal / successfulOrders.length;
+            await Promise.all(
+              successfulOrders.map((o) =>
+                axios
+                  .patch(`${API.ventas}/order-header/${o.id}`, {
+                    carrierShippingCost: costPerOrder,
+                  })
+                  .catch(() => {}),
+              ),
+            );
+          }
+        }
       }
     } catch (error: any) {
       const errorMessage =
@@ -758,7 +809,26 @@ export default function SendToShalomModal({
     printShippingGuide(guide, successfulOrders, auth?.company);
   };
 
-  const handlePrintLabels = () => {
+  const handleShareTrackingWhatsApp = (order: any) => {
+    const trackingUrl = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${order.orderNumber}`;
+    const whatsappUrl = buildWhatsAppUrl(
+      order.customer?.phoneNumber,
+      `Hola ${order.customer?.fullName || ""}, tu pedido ${order.orderNumber} ya fue registrado con Shalom. Puedes seguir tu envío aquí: ${trackingUrl}`,
+    );
+    if (!whatsappUrl) {
+      toast.error("El cliente no tiene un teléfono celular válido para WhatsApp");
+      return;
+    }
+    window.open(whatsappUrl, "_blank", "noopener,noreferrer");
+  };
+
+  // Misma etiqueta pixel-perfect (QR + código de barras reales) que ya usa
+  // el modal de gestión del pedido (CustomerServiceModal → printOrderLabel) —
+  // antes esta pantalla armaba su propio HTML de etiqueta, más simple y sin
+  // los datos reales del pedido (totales, picking, tracking). El endpoint
+  // /receipt no viene precargado acá (solo se tiene `OrderHeader`), así que
+  // se busca por pedido antes de imprimir.
+  const handlePrintLabels = async () => {
     const successfulOrders = getSuccessfulOrders();
 
     if (successfulOrders.length === 0) {
@@ -766,118 +836,24 @@ export default function SendToShalomModal({
       return;
     }
 
-    const company = auth?.company;
-    const companyName = company?.name || "MI EMPRESA";
-    const companyCuit = company?.cuit || "";
-    const companyAddress = company?.billingAddress || "";
-    const companyPhone = company?.phone || "";
-    const courierName = "Shalom";
-
-    const labelsHtml = successfulOrders
-      .map((order, index) => {
-        const isLast = index === successfulOrders.length - 1;
-        const data = shipmentsData[order.id] || {};
-        // Usar los datos del formulario (lo que se envió a Shalom), no los del pedido original
-        const recipientDoc = data.recipientDoc || order.customer?.dni || "-";
-        const recipientPhone = data.recipientPhone || order.customer?.phoneNumber || order.recipientPhone || "-";
-        const destinationAgency = data.destinationAgencyId || "";
-        const customerAddress = destinationAgency
-          ? `${courierName} ${destinationAgency}`
-          : order.customer?.address || order.address || "-";
-        const province =
-          order.customer?.province || order.province || "-";
-        const city =
-          order.customer?.city || order.city || "-";
-        const district =
-          order.customer?.district || order.district || "-";
-
-        return `
-          <div class="label-page" style="${isLast ? "" : "page-break-after: always;"}">
-            <div class="label-container">
-              <div class="label-header">
-                <div class="company-info">
-                  <strong>${companyName}</strong>
-                  ${companyCuit ? `<br/>${companyCuit}` : ""}
-                  ${companyAddress ? `<br/>${companyAddress}` : ""}
-                  ${companyPhone ? `<br/>${companyPhone}` : ""}
-                </div>
-              </div>
-
-              <div class="label-consignado">
-                <div class="consignado-title">CONSIGNADO</div>
-                <strong>${order.customer?.fullName || "-"}</strong><br/>
-                DNI: ${recipientDoc}<br/>
-                Tel: ${recipientPhone}<br/>
-                ${province} - ${city} - ${district}<br/>
-                ${customerAddress}
-              </div>
-
-              <div class="label-courier">
-                <strong>${courierName}</strong><br/>
-                ${order.orderNumber}
-              </div>
-            </div>
-          </div>
-        `;
-      })
-      .join("");
-
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta charset="utf-8">
-        <title>Etiquetas Shalom</title>
-        <style>
-          * { margin: 0; padding: 0; box-sizing: border-box; }
-          body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-            max-width: 400px;
-            margin: 0 auto;
-          }
-          .label-page { margin-bottom: 20px; }
-          .label-container {
-            border: 2px solid #000;
-            padding: 15px;
-            font-size: 11px;
-            min-height: 200px;
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-          }
-          .label-header { text-align: left; margin-bottom: 15px; font-weight: bold; }
-          .company-info { font-size: 9px; line-height: 1.3; }
-          .label-consignado {
-            text-align: right;
-            margin-bottom: 15px;
-            line-height: 1.4;
-          }
-          .consignado-title { font-weight: bold; font-size: 10px; margin-bottom: 3px; }
-          .label-courier {
-            text-align: center;
-            font-size: 12px;
-            font-weight: bold;
-            border-top: 1px dashed #000;
-            padding-top: 10px;
-          }
-          @media print {
-            body { padding: 0; }
-            .label-page { margin-bottom: 0; }
-          }
-        </style>
-      </head>
-      <body>${labelsHtml}</body>
-      </html>
-    `;
-
-    const printWindow = window.open("", "_blank");
-    if (printWindow) {
-      printWindow.document.write(printContent);
-      printWindow.document.close();
-      printWindow.focus();
-      printWindow.print();
+    try {
+      const receipts = await Promise.all(
+        successfulOrders.map((order) =>
+          axios.get<OrderReceipt>(
+            `${API.ventas}/order-header/${order.id}/receipt`,
+          ),
+        ),
+      );
+      await printOrderLabelsBatch(
+        successfulOrders.map((order, i) => ({
+          receipt: receipts[i].data,
+          orderHeader: order,
+        })),
+        auth?.company,
+      );
       toast.success(`${successfulOrders.length} etiqueta(s) enviadas a imprimir`);
+    } catch {
+      toast.error("No se pudieron cargar los datos de los pedidos para imprimir");
     }
   };
 
@@ -1002,13 +978,25 @@ export default function SendToShalomModal({
                         </p>
                         <div className="space-y-1 max-h-32 overflow-y-auto">
                           {registeredShipments.map((s, i: number) => (
-                            <div key={i} className="flex justify-between items-center text-xs py-0.5 border-b border-green-100 dark:border-green-900 last:border-0">
+                            <div key={i} className="flex justify-between items-center gap-2 text-xs py-0.5 border-b border-green-100 dark:border-green-900 last:border-0">
                               <span className="text-green-800 dark:text-green-300 truncate pr-2">
                                 {s.recipientName || orders[i]?.customer?.fullName || `Pedido ${i + 1}`}
                               </span>
-                              <span className="font-mono font-bold text-green-700 dark:text-green-400 shrink-0">
-                                {s.trackingNumber || s.guideNumber || s.numero_guia || "—"}
-                              </span>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="font-mono font-bold text-green-700 dark:text-green-400">
+                                  {s.trackingNumber || s.guideNumber || s.numero_guia || "—"}
+                                </span>
+                                {orders[i] && (
+                                  <button
+                                    type="button"
+                                    title="Enviar seguimiento por WhatsApp"
+                                    onClick={() => handleShareTrackingWhatsApp(orders[i])}
+                                    className="text-[#25D366] hover:text-[#1EBE5A] shrink-0"
+                                  >
+                                    <WhatsAppIcon className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1538,7 +1526,7 @@ export default function SendToShalomModal({
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <Button
                         variant="outline"
-                        onClick={handleQuote}
+                        onClick={() => handleQuote()}
                         disabled={!allDestinationsSet || quoting || sending}
                         className="h-12 text-blue-600 border-blue-200 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950/30"
                       >

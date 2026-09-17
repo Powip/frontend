@@ -35,14 +35,13 @@ import {
   ArrowRightLeft,
   FileText,
   Zap,
-  ArrowRight,
 } from "lucide-react";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { ShalomStatusBadge } from "@/components/tracking/ShalomStatusBadge";
 import { SHALOM_STEPS, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import EvaStatusBadge from "@/components/eva/EvaStatusBadge";
-import { isShalomCourier } from "@/utils/courierNormalizer";
+import { isShalomCourier, isAliclikCourier, isEvaCourier } from "@/utils/courierNormalizer";
 import { Textarea } from "../ui/textarea";
 import {
   DropdownMenu,
@@ -75,9 +74,10 @@ import CancellationModal, { CancellationReason } from "./CancellationModal";
 import AddProductsModal from "./AddProductsModal";
 import PaymentVerificationModal from "./PaymentVerificationModal";
 import GuideDetailsModal from "./GuideDetailsModal";
-import ShalomDocumentModal from "./ShalomDocumentModal";
+import { ShalomDocumentCard } from "./ShalomDocumentModal";
+import { useQRCode } from "@/hooks/useQrCode";
 import ReassignDeliveryModal from "@/app/centro-envios/components/ReassignDeliveryModal";
-import { hasPaymentProof } from "@/app/centro-envios/components/shipmentUtils";
+import { hasPaymentProof, trackingUrlFor } from "@/app/centro-envios/components/shipmentUtils";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import ScheduledDeliverySection from "./ScheduledDeliverySection";
@@ -90,7 +90,6 @@ import { getAvailableStatuses, getStatusChainSteps, getStatusLabel } from "@/uti
 import { isJunkDni } from "@/utils/junk-document.util";
 import { printOrderLabel, type OrderReceipt } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
-import { useQRCode } from "@/hooks/useQrCode";
 
 interface LogEntry {
   id: number;
@@ -195,7 +194,6 @@ export default function CustomerServiceModal({
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [addProductsModalOpen, setAddProductsModalOpen] = useState(false);
   const [guideDetailsModalOpen, setGuideDetailsModalOpen] = useState(false);
-  const [shalomDocModalOpen, setShalomDocModalOpen] = useState(false);
 
   // Comments timeline states
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -488,9 +486,12 @@ export default function CustomerServiceModal({
   };
 
   const [savingTracking, setSavingTracking] = useState(false);
-  // QR real del link de seguimiento (no un QR fabricado apuntando a nada) —
-  // se muestra en la card "Comprobante del courier" de la tab Seguimiento.
-  const trackingQrUrl = useQRCode(shippingGuide?.trackingUrl || "");
+  // QR del link público de rastreo — fallback genérico para couriers sin
+  // documento propio descargable por API (Aliclik/EVA hoy); Shalom usa
+  // ShalomDocumentCard (PDF real) en vez de esto.
+  const trackingQrUrl = useQRCode(
+    orderHeader ? trackingUrlFor(orderHeader) : "",
+  );
   const [originalTracking, setOriginalTracking] = useState<any>(null);
 
   useEffect(() => {
@@ -515,6 +516,11 @@ export default function CustomerServiceModal({
   const proofPaymentMethod = orderHeader?.payments?.find(
     (p) => !!p.paymentProofUrl,
   )?.paymentMethod;
+  // La Clave de recojo (a diferencia del resto de campos de courier) se
+  // revela solo cuando el pedido queda libre de deuda, no con solo tener un
+  // comprobante cargado — puede haber comprobante de un pago parcial y
+  // seguir habiendo saldo pendiente.
+  const isDebtFree = (receipt?.totals.pendingAmount ?? 0) <= 0;
 
   const handleSaveTracking = async () => {
     if (!receipt || !orderId || !originalTracking) return;
@@ -1476,6 +1482,142 @@ export default function CustomerServiceModal({
                         )}
                       </div>
 
+                      {/* Datos de tracking manual — para couriers sin
+                          integración por API, el tracking/código/oficina/
+                          clave se tipean a mano. */}
+                      {showTracking && receipt && (
+                        <div className="col-span-2 mt-4 pt-4 border-t border-dashed border-muted-foreground/30">
+                          <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground mb-3">
+                            Datos de tracking
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                                Nro Tracking
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <Input
+                                  size={1}
+                                  className="h-8 text-xs"
+                                  placeholder="Nro Tracking..."
+                                  value={receipt.externalTrackingNumber || ""}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                    updateTrackingField("externalTrackingNumber", e.target.value)
+                                  }
+                                  onBlur={handleSaveTracking}
+                                />
+                                {receipt.externalTrackingNumber && (
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
+                                    onClick={() =>
+                                      copyField(receipt.externalTrackingNumber || "", "Tracking")
+                                    }
+                                    title="Copiar Tracking"
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                                Oficina
+                              </span>
+                              <Input
+                                className="h-8 text-xs"
+                                placeholder="Oficina..."
+                                value={receipt.shippingOffice || ""}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                  updateTrackingField("shippingOffice", e.target.value)
+                                }
+                                onBlur={handleSaveTracking}
+                              />
+                            </div>
+                            <div>
+                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                                Código
+                              </span>
+                              <Input
+                                className="h-8 text-xs"
+                                placeholder="Código..."
+                                value={receipt.shippingCode || ""}
+                                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                  updateTrackingField("shippingCode", e.target.value)
+                                }
+                                onBlur={handleSaveTracking}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Clave — único campo que se bloquea mientras haya
+                              deuda. Bloqueada: mismo bloque visual (icono,
+                              título, CTA) que la card "Clave de recojo" de la
+                              tab Seguimiento, sin exponer el valor real en
+                              ningún texto. */}
+                          {!isDebtFree ? (
+                            <div className="mt-3 rounded-xl border border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30 p-[13px]">
+                              <div className="flex items-center gap-[11px]">
+                                <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0 bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300">
+                                  <Lock className="h-4 w-4" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-extrabold text-[13.5px] text-[#92400E] dark:text-amber-400">
+                                    Clave de recojo bloqueada
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {`Pendiente de cobro${
+                                      receipt.totals.pendingAmount
+                                        ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
+                                        : ""
+                                    }`}
+                                  </div>
+                                </div>
+                                <div className="font-mono font-black tracking-[0.24em] text-xl text-[#C29B54] dark:text-amber-400">
+                                  ••••
+                                </div>
+                              </div>
+                              <Button
+                                size="sm"
+                                className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
+                                onClick={() => setPaymentModalOpen(true)}
+                              >
+                                <DollarSign className="h-4 w-4 mr-1.5" />
+                                Registrar cobranza
+                              </Button>
+                              <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
+                                La clave se habilita al validar el comprobante
+                                de pago cargado para este pedido.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="mt-3">
+                              <span className="text-muted-foreground block text-[10px] uppercase mb-1">
+                                Clave
+                              </span>
+                              <div className="relative max-w-[calc(50%-8px)]">
+                                <Input
+                                  className="h-8 text-xs pr-8 font-mono"
+                                  placeholder="Clave..."
+                                  value={receipt.shippingKey || ""}
+                                  onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                                    updateTrackingField("shippingKey", e.target.value)
+                                  }
+                                  onBlur={handleSaveTracking}
+                                />
+                              </div>
+                            </div>
+                          )}
+                          {savingTracking && (
+                            <div className="mt-2 flex items-center gap-2 text-[10px] text-orange-500 animate-pulse">
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              Guardando cambios...
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {!showTracking &&
                         (receipt.externalTrackingNumber ||
                           receipt.shippingCode ||
@@ -2056,145 +2198,6 @@ export default function CustomerServiceModal({
                   </TabsContent>
 
                   <TabsContent value="seguimiento" className="pt-3 space-y-4">
-                  {/* Datos de tracking manual — antes vivía en la tab
-                      Resumen; se movió acá porque es información de
-                      seguimiento, no del resumen del pedido. Siempre visible
-                      (no depende de shippingGuide): para couriers sin
-                      integración por API, el tracking/código/oficina se
-                      tipean a mano. Mismo estilo que el resto de esta tab
-                      (card redondeada, labels chicos en mayúscula). */}
-                  {showTracking && receipt && (
-                    <div className="rounded-2xl border border-border p-4">
-                      <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground mb-3">
-                        Datos de tracking
-                      </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <span className="text-muted-foreground block text-[10px] uppercase mb-1">
-                            Nro Tracking
-                          </span>
-                          <div className="flex items-center gap-1">
-                            <Input
-                              size={1}
-                              className="h-8 text-xs"
-                              placeholder="Nro Tracking..."
-                              value={receipt.externalTrackingNumber || ""}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                updateTrackingField("externalTrackingNumber", e.target.value)
-                              }
-                              onBlur={handleSaveTracking}
-                            />
-                            {receipt.externalTrackingNumber && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground shrink-0"
-                                onClick={() =>
-                                  copyField(receipt.externalTrackingNumber || "", "Tracking")
-                                }
-                                title="Copiar Tracking"
-                              >
-                                <Copy className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block text-[10px] uppercase mb-1">
-                            Oficina
-                          </span>
-                          <Input
-                            className="h-8 text-xs"
-                            placeholder="Oficina..."
-                            value={receipt.shippingOffice || ""}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                              updateTrackingField("shippingOffice", e.target.value)
-                            }
-                            onBlur={handleSaveTracking}
-                          />
-                        </div>
-                        <div>
-                          <span className="text-muted-foreground block text-[10px] uppercase mb-1">
-                            Código
-                          </span>
-                          <Input
-                            className="h-8 text-xs"
-                            placeholder="Código..."
-                            value={receipt.shippingCode || ""}
-                            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                              updateTrackingField("shippingCode", e.target.value)
-                            }
-                            onBlur={handleSaveTracking}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Clave — único campo que se bloquea sin comprobante.
-                          Bloqueada: mismo bloque visual (icono, título, CTA)
-                          que la card "Clave de recojo" más abajo, sin
-                          exponer el valor real en ningún texto. */}
-                      {!canEditCourierFields ? (
-                        <div className="mt-3 rounded-xl border border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30 p-[13px]">
-                          <div className="flex items-center gap-[11px]">
-                            <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0 bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300">
-                              <Lock className="h-4 w-4" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <div className="font-extrabold text-[13.5px] text-[#92400E] dark:text-amber-400">
-                                Clave de recojo bloqueada
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {`Pendiente de cobro${
-                                  receipt.totals.pendingAmount
-                                    ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
-                                    : ""
-                                }`}
-                              </div>
-                            </div>
-                            <div className="font-mono font-black tracking-[0.24em] text-xl text-[#C29B54] dark:text-amber-400">
-                              ••••
-                            </div>
-                          </div>
-                          <Button
-                            size="sm"
-                            className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
-                            onClick={() => setPaymentModalOpen(true)}
-                          >
-                            <DollarSign className="h-4 w-4 mr-1.5" />
-                            Registrar cobranza
-                          </Button>
-                          <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
-                            La clave se habilita al validar el comprobante de
-                            pago cargado para este pedido.
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="mt-3">
-                          <span className="text-muted-foreground block text-[10px] uppercase mb-1">
-                            Clave
-                          </span>
-                          <div className="relative max-w-[calc(50%-8px)]">
-                            <Input
-                              className="h-8 text-xs pr-8 font-mono"
-                              placeholder="Clave..."
-                              value={receipt.shippingKey || ""}
-                              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                                updateTrackingField("shippingKey", e.target.value)
-                              }
-                              onBlur={handleSaveTracking}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {savingTracking && (
-                        <div className="mt-2 flex items-center gap-2 text-[10px] text-orange-500 animate-pulse">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          Guardando cambios...
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   {/* Shipping Guide Section - only shown when shippingGuide data is provided */}
                   {!shippingGuide && (
                     <p className="text-sm text-muted-foreground border border-border rounded-lg p-4">
@@ -2287,8 +2290,9 @@ export default function CustomerServiceModal({
                       {/* Resumen tipo "dl" — calca el layout del mockup de
                           seguimiento (label a la izq., valor en negrita a la
                           der.). N° de orden usa shalomSerie (equivalente real
-                          a la "N° de orden" de Shalom); Código y Clave se
-                          bloquean sin comprobante, igual que en Resumen. */}
+                          a la "N° de orden" de Shalom); Código se bloquea sin
+                          comprobante, Clave se bloquea mientras haya deuda
+                          (ver isDebtFree). */}
                       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px] mb-3">
                         {orderHeader?.shalomSerie && (
                           <>
@@ -2332,7 +2336,7 @@ export default function CustomerServiceModal({
                               Clave
                             </dt>
                             <dd className="text-right font-bold font-mono tracking-widest">
-                              {canEditCourierFields
+                              {isDebtFree
                                 ? shippingGuide.shippingKey
                                 : "••••"}
                             </dd>
@@ -2437,16 +2441,17 @@ export default function CustomerServiceModal({
                     </div>
                   )}
 
-                  {/* Clave de recojo — gateada al comprobante de pago (mismo
-                      criterio que bloquea los inputs de tracking/código/
-                      oficina/clave en la tab Resumen): sin comprobante
-                      cargado se oculta el valor real y se ofrece un acceso
-                      directo a "Registrar cobranza" (reusa PaymentVerificationModal,
-                      ya montado más abajo vía paymentModalOpen). */}
+                  {/* Clave de recojo — gateada al saldo pendiente: la clave
+                      real solo se muestra cuando el pedido queda libre de
+                      deuda (no alcanza con tener un comprobante cargado, si
+                      fue de un pago parcial sigue habiendo saldo). Mientras
+                      haya deuda se ofrece un acceso directo a "Registrar
+                      cobranza" (reusa PaymentVerificationModal, ya montado
+                      más abajo vía paymentModalOpen). */}
                   {shippingGuide?.shippingKey && (
                     <div
                       className={`rounded-xl border p-[13px] ${
-                        canEditCourierFields
+                        isDebtFree
                           ? "border-[#A7E3CE] bg-[#E7F8F1] dark:border-green-800 dark:bg-green-950/30"
                           : "border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30"
                       }`}
@@ -2454,12 +2459,12 @@ export default function CustomerServiceModal({
                       <div className="flex items-center gap-[11px]">
                         <div
                           className={`h-9 w-9 rounded-lg grid place-items-center shrink-0 text-base ${
-                            canEditCourierFields
+                            isDebtFree
                               ? "bg-[#047857] text-white"
                               : "bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300"
                           }`}
                         >
-                          {canEditCourierFields ? (
+                          {isDebtFree ? (
                             <Check className="h-4 w-4" />
                           ) : (
                             <Lock className="h-4 w-4" />
@@ -2468,20 +2473,20 @@ export default function CustomerServiceModal({
                         <div className="flex-1 min-w-0">
                           <div
                             className={`font-extrabold text-[13.5px] ${
-                              canEditCourierFields
+                              isDebtFree
                                 ? "text-[#047857] dark:text-green-400"
                                 : "text-[#92400E] dark:text-amber-400"
                             }`}
                           >
-                            {canEditCourierFields
+                            {isDebtFree
                               ? "Clave habilitada"
                               : "Clave de recojo bloqueada"}
                           </div>
                           <div className="text-xs text-muted-foreground">
-                            {canEditCourierFields
+                            {isDebtFree
                               ? proofPaymentMethod
                                 ? `Cobrado (${proofPaymentMethod}) · validado`
-                                : "Comprobante de pago cargado"
+                                : "Pedido libre de deuda"
                               : `Pendiente de cobro${
                                   receipt?.totals.pendingAmount
                                     ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
@@ -2491,17 +2496,17 @@ export default function CustomerServiceModal({
                         </div>
                         <div
                           className={`font-mono font-black tracking-[0.24em] text-xl ${
-                            canEditCourierFields
+                            isDebtFree
                               ? "text-[#047857] dark:text-green-400"
                               : "text-[#C29B54] dark:text-amber-400"
                           }`}
                         >
-                          {canEditCourierFields
+                          {isDebtFree
                             ? shippingGuide.shippingKey
                             : "••••"}
                         </div>
                       </div>
-                      {!canEditCourierFields && (
+                      {!isDebtFree && (
                         <>
                           <Button
                             size="sm"
@@ -2512,67 +2517,13 @@ export default function CustomerServiceModal({
                             Registrar cobranza
                           </Button>
                           <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
-                            La clave se habilita al validar el comprobante de
-                            pago cargado para este pedido.
+                            La clave se habilita cuando el pedido queda libre
+                            de deuda.
                           </p>
                         </>
                       )}
                     </div>
                   )}
-
-                  {/* Comprobante del courier — documento REAL traído de
-                      Shalom (no un comprobante generado por POWIP como
-                      antes). Abre ShalomDocumentModal (comprobante + rótulo,
-                      pixel-perfect al mockup), que trae los PDF autenticados
-                      vía generateShalomTicketPdf/generateShalomLabelPdf con
-                      externalTrackingNumber + shippingCode. Solo se muestra
-                      si esos dos datos existen y el courier es Shalom — no
-                      hay integración equivalente para otros couriers todavía. */}
-                  {shippingGuide?.guideNumber &&
-                    isShalomCourier(orderHeader?.courier) &&
-                    orderHeader?.externalTrackingNumber &&
-                    orderHeader?.shippingCode && (
-                      <button
-                        type="button"
-                        onClick={() => setShalomDocModalOpen(true)}
-                        className="w-full text-left rounded-xl border border-border overflow-hidden hover:border-primary/40 hover:shadow-sm transition-colors"
-                      >
-                        <div className="flex items-center gap-2.5 px-[13px] py-[11px] bg-muted/30 border-b border-border">
-                          <div className="h-[30px] w-[30px] rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 grid place-items-center shrink-0">
-                            <FileText className="h-3.5 w-3.5" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="text-[13px] font-bold leading-tight">
-                              Comprobante del courier
-                            </div>
-                            <span className="text-[11.5px] text-muted-foreground">
-                              Boleta electrónica · traída de {shippingGuide.courierName || "Shalom"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 px-[13px] py-[13px]">
-                          {trackingQrUrl && (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={trackingQrUrl}
-                              alt="QR de seguimiento"
-                              className="h-11 w-11 shrink-0 rounded"
-                            />
-                          )}
-                          <div className="text-[11.5px] text-muted-foreground leading-tight min-w-0">
-                            <b className="text-foreground font-bold">
-                              {shippingGuide.guideNumber}
-                            </b>{" "}
-                            · {shippingGuide.courierName || "Courier"}
-                            <br />
-                            Emitido por {shippingGuide.courierName || "el courier"}
-                          </div>
-                          <span className="ml-auto shrink-0 text-primary font-bold text-[12.5px] flex items-center gap-1">
-                            Ver <ArrowRight className="h-3 w-3" />
-                          </span>
-                        </div>
-                      </button>
-                    )}
 
                   {isShalomCourier(orderHeader?.courier) && (
                     <div className="flex items-start gap-2.5 rounded-[11px] bg-[#EEF0FF] dark:bg-indigo-950/30 px-[13px] py-[11px] text-[12.5px] leading-[1.45] text-[#3730A3] dark:text-indigo-300">
@@ -2586,175 +2537,330 @@ export default function CustomerServiceModal({
                     </div>
                   )}
 
-                  {/* Estado Shalom — lo que el webhook de Shalom guardó en el pedido
-                      (sin fetch en vivo, mismo dato que ShalomOrderTrackingView).
-                      Se muestra solo si el courier/oficina es Shalom; courier se
-                      setea en el mismo PATCH que guideNumber al crear la guía, así
-                      que puede existir aunque shalomStatus todavía no se haya
-                      sincronizado (badge "Sin registrar" para ese caso). */}
-                  {(isShalomCourier(orderHeader?.courier) ||
-                    isShalomCourier(orderHeader?.shippingOffice)) && (
-                    <div className="border border-teal-200 dark:border-teal-800 rounded-lg p-4 bg-teal-50/50 dark:bg-teal-950/30">
-                      <div className="flex items-center justify-between mb-3">
-                        <h3 className="font-semibold text-teal-700 dark:text-teal-400 flex items-center gap-2">
-                          <Package className="h-4 w-4" />
-                          Estado Shalom
-                        </h3>
-                        <ShalomStatusBadge
-                          status={orderHeader?.shalomStatus}
-                          error={orderHeader?.shalomError}
-                        />
-                      </div>
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                        {orderHeader?.shalomSerie && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              N° Serie:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {orderHeader.shalomSerie}
-                            </span>
-                          </div>
-                        )}
-                        {orderHeader?.shalomOriginAgency && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Agencia Origen:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {orderHeader.shalomOriginAgency}
-                            </span>
-                          </div>
-                        )}
-                        {orderHeader?.shalomDestinationAgency && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Agencia Destino:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {orderHeader.shalomDestinationAgency}
-                            </span>
-                          </div>
-                        )}
-                        {orderHeader?.shalomRecipientDoc && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Doc. Destinatario:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {orderHeader.shalomRecipientDoc}
-                            </span>
-                          </div>
-                        )}
-                        {orderHeader?.shalomRecipientPhone && (
-                          <div>
-                            <span className="text-muted-foreground">
-                              Tel. Destinatario:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {orderHeader.shalomRecipientPhone}
-                            </span>
-                          </div>
-                        )}
-                        {orderHeader?.shalomContent && (
-                          <div className="col-span-2">
-                            <span className="text-muted-foreground">
-                              Contenido declarado:{" "}
-                            </span>
-                            <span className="font-medium">
-                              {orderHeader.shalomContent}
-                            </span>
-                          </div>
-                        )}
-                        {orderHeader?.shalomError && (
-                          <div className="col-span-2">
-                            <span className="text-muted-foreground">
-                              Error Shalom:{" "}
-                            </span>
-                            <span className="font-medium text-red-600">
-                              {orderHeader.shalomError}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  {/* Columna izquierda: estado del courier (Shalom/Aliclik/EVA
+                      según cuál tenga el pedido) + línea de tiempo (solo
+                      Shalom, único con ese detalle granular). Columna
+                      derecha: documento real del courier si existe API para
+                      traerlo (hoy solo Shalom vía ShalomDocumentCard,
+                      embebido directo en vez de requerir un botón "Ver" que
+                      abra un modal aparte) — para Aliclik/EVA, que no
+                      exponen un comprobante descargable, se muestra el link
+                      público de rastreo (el mismo que ya recibe el cliente). */}
+                  {(() => {
+                    const isShalom =
+                      isShalomCourier(orderHeader?.courier) ||
+                      isShalomCourier(orderHeader?.shippingOffice);
+                    const isAliclik = isAliclikCourier(orderHeader?.courier);
+                    const isEva =
+                      isEvaCourier(orderHeader?.courier) ||
+                      isEvaCourier(orderHeader?.shippingOffice);
+                    if (!isShalom && !isAliclik && !isEva) return null;
 
-                  {/* Línea de tiempo Shalom — datos reales de trackShalomGuide
-                      (mismo response que ya usa el modal "Tracking en Tiempo
-                      Real" de CourierTrackingView.tsx), no un historial
-                      inventado. Solo hay datos después de sincronizar (auto al
-                      abrir el modal, o "Forzar sync de tracking" más abajo). */}
-                  {(isShalomCourier(orderHeader?.courier) ||
-                    isShalomCourier(orderHeader?.shippingOffice)) &&
-                    (() => {
-                      const statusesData = (
-                        shalomTrackResult?.statuses as
-                          | { data?: Record<string, { fecha?: string }> }
-                          | undefined
-                      )?.data;
-                      if (!statusesData) return null;
-                      const reachedIdx = SHALOM_STEPS.reduce(
-                        (acc, step, idx) =>
-                          statusesData[step.key]?.fecha ? idx : acc,
-                        -1,
-                      );
-                      if (reachedIdx === -1) return null;
-                      return (
-                        <div className="border rounded-lg p-4">
-                          <div className="text-sm font-bold mb-3">
-                            🕑 Línea de tiempo · estados de Shalom
-                          </div>
-                          <div className="space-y-0">
-                            {SHALOM_STEPS.map((step, idx) => {
-                              const stepData = statusesData[step.key];
-                              const done = !!stepData?.fecha;
-                              const isLast = idx === SHALOM_STEPS.length - 1;
-                              return (
-                                <div
-                                  key={step.key}
-                                  className="relative pl-7 pb-4 last:pb-0"
-                                >
-                                  {!isLast && (
-                                    <div
-                                      className={`absolute left-[9px] top-4 bottom-0 w-0.5 ${
-                                        done ? "bg-teal-500" : "bg-muted"
-                                      }`}
-                                    />
-                                  )}
-                                  <div
-                                    className={`absolute left-0 top-0.5 h-[18px] w-[18px] rounded-full border-2 flex items-center justify-center text-[9px] ${
-                                      done
-                                        ? "bg-teal-500 border-teal-500 text-white"
-                                        : "bg-background border-muted-foreground/30"
-                                    }`}
-                                  >
-                                    {done ? "✓" : ""}
-                                  </div>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span
-                                      className={`text-sm font-semibold ${
-                                        done
-                                          ? "text-foreground"
-                                          : "text-muted-foreground/50"
-                                      }`}
-                                    >
-                                      {SHALOM_STEP_ICONS[step.label] ?? ""}{" "}
-                                      {step.label}
-                                    </span>
-                                    {stepData?.fecha && (
-                                      <span className="text-xs text-muted-foreground">
-                                        {stepData.fecha}
-                                      </span>
-                                    )}
-                                  </div>
+                    return (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-stretch">
+                        <div className="flex flex-col gap-4 [&>*:last-child]:flex-1">
+                          {isShalom ? (
+                            <>
+                              {/* Estado Shalom — lo que el webhook de Shalom guardó en
+                                  el pedido (sin fetch en vivo, mismo dato que
+                                  ShalomOrderTrackingView). courier se setea en el
+                                  mismo PATCH que guideNumber al crear la guía, así
+                                  que puede existir aunque shalomStatus todavía no se
+                                  haya sincronizado (badge "Sin registrar" para ese
+                                  caso). Remitente sale del tracking en vivo de
+                                  Shalom (shalomTrackResult.search.data.remitente) —
+                                  no hay campo persistido para quién envía, solo para
+                                  el destinatario (shalomRecipientDoc/Phone). */}
+                              <div className="border border-teal-200 dark:border-teal-800 rounded-lg p-4 bg-teal-50/50 dark:bg-teal-950/30">
+                                <div className="flex items-center justify-between mb-3">
+                                  <h3 className="font-semibold text-teal-700 dark:text-teal-400 flex items-center gap-2">
+                                    <Package className="h-4 w-4" />
+                                    Estado Shalom
+                                  </h3>
+                                  <ShalomStatusBadge
+                                    status={orderHeader?.shalomStatus}
+                                    error={orderHeader?.shalomError}
+                                  />
                                 </div>
-                              );
-                            })}
-                          </div>
+                                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                                  {(() => {
+                                    const remitente = (
+                                      shalomTrackResult?.search as
+                                        | { data?: { remitente?: { nombre?: string; documento?: string } } }
+                                        | undefined
+                                    )?.data?.remitente;
+                                    if (!remitente?.nombre) return null;
+                                    return (
+                                      <div className="col-span-2">
+                                        <span className="text-muted-foreground">
+                                          Remitente:{" "}
+                                        </span>
+                                        <span className="font-medium">
+                                          {remitente.nombre}
+                                          {remitente.documento
+                                            ? ` · ${remitente.documento}`
+                                            : ""}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
+                                  {orderHeader?.shalomSerie && (
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        N° Serie:{" "}
+                                      </span>
+                                      <span className="font-medium">
+                                        {orderHeader.shalomSerie}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {orderHeader?.shalomOriginAgency && (
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Agencia Origen:{" "}
+                                      </span>
+                                      <span className="font-medium">
+                                        {orderHeader.shalomOriginAgency}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {orderHeader?.shalomDestinationAgency && (
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Agencia Destino:{" "}
+                                      </span>
+                                      <span className="font-medium">
+                                        {orderHeader.shalomDestinationAgency}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {orderHeader?.shalomRecipientDoc && (
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Doc. Destinatario:{" "}
+                                      </span>
+                                      <span className="font-medium">
+                                        {orderHeader.shalomRecipientDoc}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {orderHeader?.shalomRecipientPhone && (
+                                    <div>
+                                      <span className="text-muted-foreground">
+                                        Tel. Destinatario:{" "}
+                                      </span>
+                                      <span className="font-medium">
+                                        {orderHeader.shalomRecipientPhone}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {orderHeader?.shalomContent && (
+                                    <div className="col-span-2">
+                                      <span className="text-muted-foreground">
+                                        Contenido declarado:{" "}
+                                      </span>
+                                      <span className="font-medium">
+                                        {orderHeader.shalomContent}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {orderHeader?.shalomError && (
+                                    <div className="col-span-2">
+                                      <span className="text-muted-foreground">
+                                        Error Shalom:{" "}
+                                      </span>
+                                      <span className="font-medium text-red-600">
+                                        {orderHeader.shalomError}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Línea de tiempo Shalom — datos reales de
+                                  trackShalomGuide (mismo response que ya usa el
+                                  modal "Tracking en Tiempo Real" de
+                                  CourierTrackingView.tsx), no un historial
+                                  inventado. Solo hay datos después de sincronizar
+                                  (auto al abrir el modal, o "Forzar sync de
+                                  tracking" más abajo). Aliclik/EVA no tienen un
+                                  endpoint de tracking en vivo equivalente, así que
+                                  no hay línea de tiempo para ellos todavía. */}
+                              {(() => {
+                                const statusesData = (
+                                  shalomTrackResult?.statuses as
+                                    | { data?: Record<string, { fecha?: string }> }
+                                    | undefined
+                                )?.data;
+                                if (!statusesData) return null;
+                                const reachedIdx = SHALOM_STEPS.reduce(
+                                  (acc, step, idx) =>
+                                    statusesData[step.key]?.fecha ? idx : acc,
+                                  -1,
+                                );
+                                if (reachedIdx === -1) return null;
+                                return (
+                                  <div className="border rounded-lg p-4">
+                                    <div className="text-sm font-bold mb-3">
+                                      🕑 Línea de tiempo · estados de Shalom
+                                    </div>
+                                    <div className="space-y-0">
+                                      {SHALOM_STEPS.map((step, idx) => {
+                                        const stepData = statusesData[step.key];
+                                        const done = !!stepData?.fecha;
+                                        const isLast = idx === SHALOM_STEPS.length - 1;
+                                        return (
+                                          <div
+                                            key={step.key}
+                                            className="relative pl-7 pb-4 last:pb-0"
+                                          >
+                                            {!isLast && (
+                                              <div
+                                                className={`absolute left-[9px] top-4 bottom-0 w-0.5 ${
+                                                  done ? "bg-teal-500" : "bg-muted"
+                                                }`}
+                                              />
+                                            )}
+                                            <div
+                                              className={`absolute left-0 top-0.5 h-[18px] w-[18px] rounded-full border-2 flex items-center justify-center text-[9px] ${
+                                                done
+                                                  ? "bg-teal-500 border-teal-500 text-white"
+                                                  : "bg-background border-muted-foreground/30"
+                                              }`}
+                                            >
+                                              {done ? "✓" : ""}
+                                            </div>
+                                            <div className="flex items-center gap-2 flex-wrap">
+                                              <span
+                                                className={`text-sm font-semibold ${
+                                                  done
+                                                    ? "text-foreground"
+                                                    : "text-muted-foreground/50"
+                                                }`}
+                                              >
+                                                {SHALOM_STEP_ICONS[step.label] ?? ""}{" "}
+                                                {step.label}
+                                              </span>
+                                              {stepData?.fecha && (
+                                                <span className="text-xs text-muted-foreground">
+                                                  {stepData.fecha}
+                                                </span>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                            </>
+                          ) : isAliclik ? (
+                            <div className="border border-purple-200 dark:border-purple-800 rounded-lg p-4 bg-purple-50/50 dark:bg-purple-950/30">
+                              <div className="flex items-center justify-between mb-3">
+                                <h3 className="font-semibold text-purple-700 dark:text-purple-400 text-sm">
+                                  Aliclik — Estado de despacho
+                                </h3>
+                                <AliclikStatusBadge
+                                  aliclikDispatchStatus={aliclikDispatchStatus}
+                                  aliclikSyncedAt={aliclikSyncedAt}
+                                />
+                              </div>
+                              <div className="text-xs">
+                                <span className="text-muted-foreground block underline mb-1">
+                                  Última sincronización
+                                </span>
+                                <span className="font-semibold">
+                                  {aliclikSyncedAt
+                                    ? new Date(aliclikSyncedAt).toLocaleString("es-PE", {
+                                        day: "2-digit",
+                                        month: "short",
+                                        year: "numeric",
+                                        hour: "2-digit",
+                                        minute: "2-digit",
+                                      })
+                                    : "—"}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="border border-blue-200 dark:border-blue-800 rounded-lg p-4 bg-blue-50/50 dark:bg-blue-950/30">
+                              <div className="flex items-center justify-between mb-3">
+                                <h3 className="font-semibold text-blue-700 dark:text-blue-400 text-sm">
+                                  EVA Courier — Estado de envío
+                                </h3>
+                                <EvaStatusBadge evaStatus={evaStatus} evaSyncedAt={evaSyncedAt} />
+                              </div>
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                {orderHeader?.evaTrackingId && (
+                                  <div className="col-span-2">
+                                    <span className="text-muted-foreground block underline mb-1">
+                                      ID de seguimiento EVA
+                                    </span>
+                                    <span className="font-semibold">
+                                      {orderHeader.evaTrackingId}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="col-span-2">
+                                  <span className="text-muted-foreground block underline mb-1">
+                                    Última sincronización
+                                  </span>
+                                  <span className="font-semibold">
+                                    {evaSyncedAt
+                                      ? new Date(evaSyncedAt).toLocaleString("es-PE", {
+                                          day: "2-digit",
+                                          month: "short",
+                                          year: "numeric",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })
+                                      : "—"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      );
-                    })()}
+
+                        <div>
+                          {isShalom &&
+                          shippingGuide?.guideNumber &&
+                          orderHeader?.externalTrackingNumber &&
+                          orderHeader?.shippingCode ? (
+                            <ShalomDocumentCard order={orderHeader} />
+                          ) : orderHeader ? (
+                            <div className="h-full rounded-xl border border-border p-4 flex flex-col items-center justify-center gap-3 text-center">
+                              <div className="text-[11px] font-extrabold uppercase tracking-[0.06em] text-muted-foreground">
+                                Enlace de seguimiento
+                              </div>
+                              {trackingQrUrl && (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={trackingQrUrl}
+                                  alt="QR de seguimiento"
+                                  className="h-24 w-24"
+                                />
+                              )}
+                              <a
+                                href={trackingUrlFor(orderHeader)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm font-semibold text-primary underline underline-offset-2"
+                              >
+                                Ver seguimiento público →
+                              </a>
+                              <p className="text-[11px] text-muted-foreground leading-[1.45]">
+                                {isShalom
+                                  ? "Faltan tracking/código para traer el comprobante real de Shalom."
+                                  : "Este courier no expone un comprobante descargable por API todavía — este es el mismo link público que ya recibe el cliente."}
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })()}
 
                   {/* Acciones — calca la lista de botones full-width del
                       mockup (icono + label, alineados a la izquierda). Cada
@@ -2780,11 +2886,11 @@ export default function CustomerServiceModal({
                         {shippingGuide.shippingKey && (
                           <button
                             type="button"
-                            disabled={!canEditCourierFields}
+                            disabled={!isDebtFree}
                             title={
-                              canEditCourierFields
+                              isDebtFree
                                 ? undefined
-                                : "Debes cargar el comprobante de pago antes de copiar la clave"
+                                : "El pedido debe quedar libre de deuda antes de copiar la clave"
                             }
                             onClick={() => {
                               if (!shippingGuide.shippingKey) return;
@@ -2883,7 +2989,7 @@ export default function CustomerServiceModal({
                         "Clave de recojo" de la tab Seguimiento, para que el
                         saldo pendiente bloquee la clave desde Pagos también
                         sin exponer el valor real en ningún texto. */}
-                    {shippingGuide?.shippingKey && !canEditCourierFields && (
+                    {shippingGuide?.shippingKey && !isDebtFree && (
                       <div className="rounded-xl border border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30 p-[13px]">
                         <div className="flex items-center gap-[11px]">
                           <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0 bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300">
@@ -3088,13 +3194,6 @@ export default function CustomerServiceModal({
         />
       )}
 
-      {/* Comprobante real del courier (Shalom) — ver comentario en la card
-          "Comprobante del courier" de la tab Seguimiento. */}
-      <ShalomDocumentModal
-        open={shalomDocModalOpen}
-        onClose={() => setShalomDocModalOpen(false)}
-        order={orderHeader}
-      />
     </>
   );
 }

@@ -79,13 +79,27 @@ const calculatePendingPayment = (order: OrderHeader): number => {
 
 const ITEMS_PER_PAGE = 15;
 
-const SHALOM_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
-  { value: "PENDIENTE", label: "✅ Registrado" },
-  { value: "FALLIDO", label: "❌ Fallido" },
-  { value: "EN_TRANSITO", label: "🚚 En tránsito" },
-  { value: "EN_DESTINO", label: "📍 En destino" },
-  { value: "EN_REPARTO", label: "🛵 En reparto" },
-  { value: "ENTREGADO", label: "📦 Entregado" },
+// `matches` agrupa los códigos crudos de `order.shalomStatus` que un mismo
+// filtro visual representa — antes "✅ Registrado" solo comparaba contra
+// "PENDIENTE" y dejaba afuera los pedidos en "EXITOSO" (mismo significado,
+// otro código), mostrando la tabla vacía al filtrar por un estado que sí
+// tenía pedidos visibles. `liveLabel` es el label que pinta el badge en
+// vivo (SHALOM_STEPS) para ese mismo estado — se usa para preferir el
+// estado en vivo sobre el persistido cuando ya se rastreó ese pedido.
+const SHALOM_STATUS_FILTER_OPTIONS: {
+  value: string;
+  label: string;
+  matches: string[];
+  liveLabel?: string;
+}[] = [
+  { value: "REGISTRADO", label: "✅ Registrado", matches: ["PENDIENTE", "EXITOSO"], liveLabel: "Registrado" },
+  { value: "FALLIDO", label: "❌ Fallido", matches: ["FALLIDO"] },
+  { value: "EN_TRANSITO", label: "🚚 En tránsito", matches: ["EN_TRANSITO"], liveLabel: "En tránsito" },
+  { value: "EN_DESTINO", label: "📍 En destino", matches: ["EN_DESTINO"], liveLabel: "En destino" },
+  { value: "EN_REPARTO", label: "🛵 En reparto", matches: ["EN_REPARTO"], liveLabel: "En reparto" },
+  { value: "ENTREGADO", label: "📦 Entregado", matches: ["ENTREGADO"], liveLabel: "Entregado" },
+  { value: "DEVUELTO", label: "🔄 Devuelto", matches: ["DEVUELTO"] },
+  { value: "CANCELADO", label: "✖ Cancelado", matches: ["CANCELADO"] },
 ];
 
 export default function ShalomOrderTrackingView() {
@@ -188,6 +202,27 @@ export default function ShalomOrderTrackingView() {
     fetchShalomOrders();
   }, [fetchShalomOrders]);
 
+  // Pedidos Shalom con tracking+código, sobre TODA la lista (no solo la
+  // página visible) — para que el filtro de estados pueda preferir el
+  // estado en vivo (el mismo que ve el usuario en el badge) sobre
+  // `order.shalomStatus` (que solo se actualiza por webhook y puede haber
+  // quedado atrás). Solo se dispara cuando hay un filtro de estado activo.
+  const shalomEligibleForFilter = useMemo(
+    () =>
+      shalomOrders
+        .map(({ order }) => order)
+        .filter((o) => o.externalTrackingNumber && o.shippingCode),
+    [shalomOrders],
+  );
+  const shalomFilterTrackScope = useMemo(
+    () => (guideStatusFilters.length > 0 ? shalomEligibleForFilter : []),
+    [guideStatusFilters, shalomEligibleForFilter],
+  );
+  const {
+    liveStatuses: filterLiveStatuses,
+    loadingLiveStatuses: loadingFilterLiveStatuses,
+  } = useShalomLiveStatuses(shalomFilterTrackScope);
+
   const filteredOrders = useMemo(() => {
     return shalomOrders.filter(({ order, guide }) => {
       if (guideSearch) {
@@ -200,11 +235,20 @@ export default function ShalomOrderTrackingView() {
         if (!matchesName && !matchesNum && !matchesGuide) return false;
       }
 
-      if (
-        guideStatusFilters.length > 0 &&
-        !guideStatusFilters.includes(order.shalomStatus ?? "")
-      )
-        return false;
+      if (guideStatusFilters.length > 0) {
+        const liveLabel = filterLiveStatuses[order.id];
+        const matchesLive = liveLabel
+          ? SHALOM_STATUS_FILTER_OPTIONS.some(
+              (o) => o.liveLabel === liveLabel && guideStatusFilters.includes(o.value),
+            )
+          : false;
+        const matchesPersisted = SHALOM_STATUS_FILTER_OPTIONS.some(
+          (o) =>
+            guideStatusFilters.includes(o.value) &&
+            o.matches.includes(order.shalomStatus ?? ""),
+        );
+        if (!matchesLive && !matchesPersisted) return false;
+      }
 
       if (pendingFilter !== "all") {
         const pending = calculatePendingPayment(order);
@@ -227,7 +271,15 @@ export default function ShalomOrderTrackingView() {
 
       return true;
     });
-  }, [shalomOrders, guideSearch, guideStatusFilters, pendingFilter, dateFrom, dateTo]);
+  }, [
+    shalomOrders,
+    guideSearch,
+    guideStatusFilters,
+    filterLiveStatuses,
+    pendingFilter,
+    dateFrom,
+    dateTo,
+  ]);
 
   useEffect(() => {
     setPage(1);
@@ -414,7 +466,7 @@ export default function ShalomOrderTrackingView() {
         days,
         saldoText,
         estadoText,
-        order.shippingKey || "-",
+        pending <= 0 ? order.shippingKey || "-" : "Bloqueada",
         order.orderNumber,
         order.customer?.fullName || "-",
         order.externalTrackingNumber || "-",
@@ -687,6 +739,18 @@ export default function ShalomOrderTrackingView() {
                   />
                 </TableRow>
               ))
+            ) : filteredOrders.length === 0 && loadingFilterLiveStatuses ? (
+              <TableRow>
+                <TableCell
+                  colSpan={15}
+                  className="h-12 text-center text-sm text-muted-foreground"
+                >
+                  <div className="flex items-center justify-center gap-2">
+                    <RefreshCw className="h-4 w-4 animate-spin" />
+                    Verificando estado en vivo con Shalom...
+                  </div>
+                </TableCell>
+              </TableRow>
             ) : filteredOrders.length === 0 ? (
               <TableRow>
                 <TableCell
@@ -770,7 +834,16 @@ export default function ShalomOrderTrackingView() {
                     </TableCell>
                     <TableCell className="text-center min-w-[120px]">
                       <div className="flex items-center justify-center gap-1">
-                        {editingKeyId === order.id ? (
+                        {pending > 0 ? (
+                          <Badge
+                            variant="outline"
+                            className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 gap-1"
+                            title="La clave solo es visible cuando no hay saldo pendiente"
+                          >
+                            <Lock className="h-3 w-3" />
+                            Bloqueada
+                          </Badge>
+                        ) : editingKeyId === order.id ? (
                           <div className="flex items-center gap-1">
                             <Input
                               className="h-7 w-20 text-[10px] px-1"

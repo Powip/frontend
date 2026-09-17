@@ -87,9 +87,13 @@ function GuiasPageInner() {
       <GuiasKpiRow />
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="h-auto w-full gap-1 bg-muted/60 p-1">
+        <TabsList className="h-auto w-full gap-1.5 rounded-xl bg-muted p-1.5">
           {TABS.map((t) => (
-            <TabsTrigger key={t.key} value={t.key} className="flex-1 gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium sm:text-sm">
+            <TabsTrigger
+              key={t.key}
+              value={t.key}
+              className="flex-1 gap-1.5 rounded-lg px-3 py-2.5 text-sm font-semibold text-muted-foreground transition-colors data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+            >
               {t.icon}
               {t.label}
             </TabsTrigger>

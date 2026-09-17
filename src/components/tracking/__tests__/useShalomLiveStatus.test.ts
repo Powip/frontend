@@ -6,7 +6,7 @@
  *    todos los pares { orderNumber, orderCode } (no N requests sueltos).
  * 2. Con >50 pedidos -> se parte en chunks de 50 (120 -> 3 llamadas).
  * 3. La respuesta del lote se mapea a `liveStatuses[orderId]` derivando el ultimo
- *    paso desde `statuses.data` ({ transito: {...} } -> "En Tránsito"). La clave
+ *    paso desde `statuses.data` ({ transito: {...} } -> "En tránsito"). La clave
  *    de reasociacion se normaliza (trim + upper) en ambos lados del Map, asi que
  *    un `orderCode` con espacio/case distinto igual matchea.
  * 4. Si un chunk rechaza, los demas chunks igual resuelven y `loadingLiveStatuses`
@@ -130,7 +130,7 @@ describe('useShalomLiveStatuses', () => {
     const { result } = renderHook(() => useShalomLiveStatuses(orders));
 
     await waitFor(() =>
-      expect(result.current.liveStatuses['ord-0']).toBe('En Tránsito'),
+      expect(result.current.liveStatuses['ord-0']).toBe('En tránsito'),
     );
   });
 
@@ -161,7 +161,7 @@ describe('useShalomLiveStatuses', () => {
     const { result } = renderHook(() => useShalomLiveStatuses(orders));
 
     await waitFor(() =>
-      expect(result.current.liveStatuses['ord-space']).toBe('En Tránsito'),
+      expect(result.current.liveStatuses['ord-space']).toBe('En tránsito'),
     );
   });
 

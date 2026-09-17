@@ -34,8 +34,6 @@ import {
   CheckCircle2,
   XCircle,
   Lock,
-  Eye,
-  EyeOff,
   Trash2,
   Copy,
 } from "lucide-react";
@@ -43,7 +41,6 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import axios from "axios";
 import { toast } from "sonner";
-import { paymentsHaveProof } from "@/app/centro-envios/components/shipmentUtils";
 import { generateQR, generateBarcode } from "@/utils/printOrderLabel";
 import { ZONE_LABELS } from "@/constants/operationsDomain";
 import { printShippingGuide } from "@/utils/printShippingGuide";
@@ -284,19 +281,6 @@ export default function GuideDetailsModal({
   const [savingOrderId, setSavingOrderId] = useState<string | null>(null);
   // Upload de foto de entrega
   const [uploadingOrderId, setUploadingOrderId] = useState<string | null>(null);
-  const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({});
-  // El endpoint /receipt (usado para ordersDetails) no trae paymentProofUrl,
-  // así que se consulta aparte order-header/:id (mismo endpoint que ya usa
-  // PaymentVerificationModal) solo para saber si hay comprobante cargado.
-  const [orderHasProof, setOrderHasProof] = useState<Record<string, boolean>>({});
-
-  const toggleKeyReveal = (orderId: string) => {
-    setRevealedKeys((prev) => ({
-      ...prev,
-      [orderId]: !prev[orderId],
-    }));
-  };
-
   const fetchGuide = useCallback(async () => {
     setLoading(true);
     try {
@@ -344,23 +328,6 @@ export default function GuideDetailsModal({
           };
         });
         setOrderTrackingFields(trackingByOrder);
-
-        // /receipt no trae paymentProofUrl — se consulta order-header/:id
-        // (completo) en paralelo solo para eso, igual que hace
-        // PaymentVerificationModal. Un fallo puntual no bloquea el resto.
-        const proofResults = await Promise.all(
-          res.data.orderIds.map((id) =>
-            axios
-              .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`)
-              .then((r) => paymentsHaveProof(r.data?.payments))
-              .catch(() => false),
-          ),
-        );
-        const proofByOrder: Record<string, boolean> = {};
-        res.data.orderIds.forEach((id, i) => {
-          proofByOrder[id] = proofResults[i];
-        });
-        setOrderHasProof(proofByOrder);
       }
     } catch (error) {
       console.error("Error fetching guide:", error);
@@ -1721,13 +1688,12 @@ export default function GuideDetailsModal({
                               <p className="text-xs font-medium text-orange-700 mb-2 flex items-center gap-1">
                                 📦 Datos de Tracking
                               </p>
-                              {!orderHasProof[order.id] && (
+                              {pending > 0 && (
                                 <div className="mb-2 flex items-start gap-1.5 rounded border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
                                   <Lock className="h-3 w-3 mt-0.5 shrink-0" />
                                   <span>
-                                    Falta el comprobante de pago — la clave
-                                    de envío permanece bloqueada hasta
-                                    validarlo.
+                                    Hay saldo pendiente — la clave de envío
+                                    permanece bloqueada hasta cancelarlo.
                                   </span>
                                 </div>
                               )}
@@ -1766,21 +1732,19 @@ export default function GuideDetailsModal({
                                           : "focus:border-orange-500"
                                       }`}
                                       placeholder={
-                                        pending > 0 && !revealedKeys[order.id]
-                                          ? "Bloqueada"
-                                          : "Ej: ABC123"
+                                        pending > 0 ? "Bloqueada" : "Ej: ABC123"
                                       }
                                       value={
-                                        pending > 0 && !revealedKeys[order.id]
+                                        pending > 0
                                           ? ""
                                           : orderTrackingFields[order.id]
                                               ?.shippingKey || ""
                                       }
-                                      disabled={!orderHasProof[order.id]}
+                                      disabled={pending > 0}
                                       title={
-                                        orderHasProof[order.id]
-                                          ? undefined
-                                          : "Debes cargar el comprobante de pago antes de ingresar los datos de la guía"
+                                        pending > 0
+                                          ? "El pedido debe quedar libre de deuda antes de ingresar los datos de la guía"
+                                          : undefined
                                       }
                                       onChange={(e) =>
                                         updateOrderTrackingField(
@@ -1791,27 +1755,6 @@ export default function GuideDetailsModal({
                                       }
                                       onClick={(e) => e.stopPropagation()}
                                     />
-                                    {pending > 0 && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          toggleKeyReveal(order.id);
-                                        }}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 text-red-400 hover:text-red-600 focus:outline-none"
-                                        title={
-                                          revealedKeys[order.id]
-                                            ? "Ocultar clave"
-                                            : "Revelar clave"
-                                        }
-                                      >
-                                        {revealedKeys[order.id] ? (
-                                          <EyeOff className="h-3.5 w-3.5" />
-                                        ) : (
-                                          <Eye className="h-3.5 w-3.5" />
-                                        )}
-                                      </button>
-                                    )}
                                   </div>
                                 </div>
                                 <div className="space-y-1">

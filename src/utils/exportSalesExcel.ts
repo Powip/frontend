@@ -130,7 +130,7 @@ export function exportSeguimientoToExcel(
       : s.address || "-",
     "N° DE ORDEN": s.externalTrackingNumber || "-",
     CODIGO: s.shippingCode || "-",
-    CLAVE: s.shippingKey ? s.shippingKey : "-",
+    CLAVE: s.pendingPayment <= 0 ? s.shippingKey || "-" : "Bloqueada",
     "VENDEDOR/A": s.sellerName || "-",
     ESTADO: s.status,
     "METODO PAGO": s.paymentMethod || "-",

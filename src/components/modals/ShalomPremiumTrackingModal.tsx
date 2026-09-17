@@ -33,6 +33,7 @@ import {
   generateShalomTicketPdf,
 } from "@/services/shalomService";
 import { useAuth } from "@/contexts/AuthContext";
+import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 
 interface ShippingGuide {
   id: string;
@@ -288,10 +289,10 @@ export default function ShalomPremiumTrackingModal({
                   ) : (() => {
                     const steps = [
                       { key: "registrado", label: "Registrado" },
-                      { key: "origen",     label: "En Origen" },
-                      { key: "transito",   label: "En Tránsito" },
-                      { key: "destino",    label: "En Destino" },
-                      { key: "reparto",    label: "En Reparto" },
+                      { key: "origen",     label: "En origen" },
+                      { key: "transito",   label: "En tránsito" },
+                      { key: "destino",    label: "En destino" },
+                      { key: "reparto",    label: "En reparto" },
                       { key: "entregado",  label: "Entregado" },
                     ];
                     const statuses = trackingData?.statuses?.data || {};
@@ -463,20 +464,26 @@ export default function ShalomPremiumTrackingModal({
                     </span>
                     <div className="flex items-center gap-2 mt-0.5">
                       <span className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-widest font-mono">
-                        {showKey ? order.shippingKey || "SIN CLAVE" : "****"}
+                        {getPendingPayment(order) > 0
+                          ? "Bloqueada"
+                          : showKey
+                            ? order.shippingKey || "SIN CLAVE"
+                            : "****"}
                       </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
-                        onClick={() => setShowKey(!showKey)}
-                      >
-                        {showKey ? (
-                          <EyeOff className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-                        ) : (
-                          <Eye className="h-3.5 w-3.5 text-blue-500" />
-                        )}
-                      </Button>
+                      {getPendingPayment(order) <= 0 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full"
+                          onClick={() => setShowKey(!showKey)}
+                        >
+                          {showKey ? (
+                            <EyeOff className="h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
+                          ) : (
+                            <Eye className="h-3.5 w-3.5 text-blue-500" />
+                          )}
+                        </Button>
+                      )}
                     </div>
                   </div>
                   <div className="flex flex-col items-end gap-1">

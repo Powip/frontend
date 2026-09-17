@@ -570,7 +570,13 @@ describe('SendToShalomModal', () => {
       await user.click(sendBtn);
 
       await waitFor(() => {
-        const [, payload] = mockAxiosPost.mock.calls[0] as [unknown, { declaracionJurada?: string; packageDetails?: Record<string, { aereo?: boolean }> }];
+        // handleSend cotiza automáticamente antes de enviar si no se cotizó
+        // a mano (ver SendToShalomModal), así que el POST a send-to-shalom
+        // ya no es necesariamente calls[0] — se busca por URL.
+        const sendCall = mockAxiosPost.mock.calls.find(([url]) =>
+          String(url).includes('send-to-shalom'),
+        )!;
+        const [, payload] = sendCall as [unknown, { declaracionJurada?: string; packageDetails?: Record<string, { aereo?: boolean }> }];
         expect(payload).toHaveProperty('declaracionJurada', '');
       });
     });
@@ -600,7 +606,13 @@ describe('SendToShalomModal', () => {
       await user.click(sendBtn);
 
       await waitFor(() => {
-        const [, payload] = mockAxiosPost.mock.calls[0] as [unknown, { declaracionJurada?: string; packageDetails?: Record<string, { aereo?: boolean }> }];
+        // handleSend cotiza automáticamente antes de enviar si no se cotizó
+        // a mano (ver SendToShalomModal), así que el POST a send-to-shalom
+        // ya no es necesariamente calls[0] — se busca por URL.
+        const sendCall = mockAxiosPost.mock.calls.find(([url]) =>
+          String(url).includes('send-to-shalom'),
+        )!;
+        const [, payload] = sendCall as [unknown, { declaracionJurada?: string; packageDetails?: Record<string, { aereo?: boolean }> }];
         expect(payload).toHaveProperty('declaracionJurada', 'Documentos');
       });
     });
@@ -623,7 +635,13 @@ describe('SendToShalomModal', () => {
       await user.click(sendBtn);
 
       await waitFor(() => {
-        const [, payload] = mockAxiosPost.mock.calls[0] as [unknown, { declaracionJurada?: string; packageDetails?: Record<string, { aereo?: boolean }> }];
+        // handleSend cotiza automáticamente antes de enviar si no se cotizó
+        // a mano (ver SendToShalomModal), así que el POST a send-to-shalom
+        // ya no es necesariamente calls[0] — se busca por URL.
+        const sendCall = mockAxiosPost.mock.calls.find(([url]) =>
+          String(url).includes('send-to-shalom'),
+        )!;
+        const [, payload] = sendCall as [unknown, { declaracionJurada?: string; packageDetails?: Record<string, { aereo?: boolean }> }];
         expect(payload.packageDetails![MOCK_ORDER.id].aereo).toBe(false);
       });
     });
@@ -650,7 +668,13 @@ describe('SendToShalomModal', () => {
       await user.click(sendBtn);
 
       await waitFor(() => {
-        const [, payload] = mockAxiosPost.mock.calls[0] as [unknown, { declaracionJurada?: string; packageDetails?: Record<string, { aereo?: boolean }> }];
+        // handleSend cotiza automáticamente antes de enviar si no se cotizó
+        // a mano (ver SendToShalomModal), así que el POST a send-to-shalom
+        // ya no es necesariamente calls[0] — se busca por URL.
+        const sendCall = mockAxiosPost.mock.calls.find(([url]) =>
+          String(url).includes('send-to-shalom'),
+        )!;
+        const [, payload] = sendCall as [unknown, { declaracionJurada?: string; packageDetails?: Record<string, { aereo?: boolean }> }];
         expect(payload.packageDetails![MOCK_ORDER.id].aereo).toBe(true);
       });
     });

@@ -206,7 +206,7 @@ export default function EvaOrderTrackingView() {
       "Número de tracking": o.externalTrackingNumber || "-",
       "Código de envío": o.shippingCode || "-",
       Oficina: o.shippingOffice || "-",
-      "Clave de envío": o.shippingKey || "-",
+      "Clave de envío": getPendingPayment(o) <= 0 ? o.shippingKey || "-" : "Bloqueada",
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();

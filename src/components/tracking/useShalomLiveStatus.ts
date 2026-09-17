@@ -15,30 +15,36 @@ import {
  * vivo en cualquier tabla de pedidos despachados por Shalom, no solo en su
  * pestaña dedicada.
  */
+// Labels en el mismo case que SHALOM_STATUS_LABELS (CourierStatusBadge.tsx) y
+// ShalomStatusBadge.tsx — antes este mapa usaba Title Case ("En Tránsito") y
+// esos dos usaban minúscula en la segunda palabra ("En tránsito"), mismo
+// estado con dos textos distintos según si había tracking en vivo o no, lo
+// que hacía parecer que el filtro de estados no matcheaba lo que se veía en
+// pantalla.
 export const SHALOM_STEPS = [
   { key: "registrado", label: "Registrado" },
-  { key: "origen", label: "En Origen" },
-  { key: "transito", label: "En Tránsito" },
-  { key: "destino", label: "En Destino" },
-  { key: "reparto", label: "En Reparto" },
+  { key: "origen", label: "En origen" },
+  { key: "transito", label: "En tránsito" },
+  { key: "destino", label: "En destino" },
+  { key: "reparto", label: "En reparto" },
   { key: "entregado", label: "Entregado" },
 ] as const;
 
 export const SHALOM_STEP_STYLES: Record<string, string> = {
   "Registrado": "bg-green-50 text-green-700 border-green-200",
-  "En Origen": "bg-teal-50 text-teal-700 border-teal-200",
-  "En Tránsito": "bg-blue-50 text-blue-700 border-blue-200",
-  "En Destino": "bg-indigo-50 text-indigo-700 border-indigo-200",
-  "En Reparto": "bg-violet-50 text-violet-700 border-violet-200",
+  "En origen": "bg-teal-50 text-teal-700 border-teal-200",
+  "En tránsito": "bg-blue-50 text-blue-700 border-blue-200",
+  "En destino": "bg-indigo-50 text-indigo-700 border-indigo-200",
+  "En reparto": "bg-violet-50 text-violet-700 border-violet-200",
   "Entregado": "bg-emerald-50 text-emerald-700 border-emerald-200",
 };
 
 export const SHALOM_STEP_ICONS: Record<string, string> = {
   "Registrado": "✅",
-  "En Origen": "📦",
-  "En Tránsito": "🚚",
-  "En Destino": "📍",
-  "En Reparto": "🛵",
+  "En origen": "📦",
+  "En tránsito": "🚚",
+  "En destino": "📍",
+  "En reparto": "🛵",
   "Entregado": "🎉",
 };
 

@@ -19,6 +19,7 @@ interface SaleSecondaryDetailsProps {
     city: string;
     province: string;
     salesRegion: "LIMA" | "PROVINCIA";
+    pendingPayment: number;
   };
   colSpan: number;
   showTracking: boolean;
@@ -53,6 +54,7 @@ export function SaleSecondaryDetails({
   handleSaveTracking,
 }: SaleSecondaryDetailsProps) {
   const isSaving = savingOrderId === sale.id;
+  const isDebtFree = sale.pendingPayment <= 0;
 
   return (
     <TableRow className="bg-muted/30 hover:bg-muted/30">
@@ -130,16 +132,21 @@ export function SaleSecondaryDetails({
                 </label>
                 <input
                   type="text"
-                  className={`w-full h-8 px-2 text-xs border rounded bg-background transition-all ${
+                  className={`w-full h-8 px-2 text-xs border rounded bg-background transition-all disabled:cursor-not-allowed disabled:opacity-60 ${
                     isSaving ? "opacity-50 border-orange-400" : "focus:border-orange-500"
                   }`}
-                  placeholder="Clave"
-                  value={trackingEdits[sale.id]?.shippingKey || ""}
+                  placeholder={isDebtFree ? "Clave" : "Bloqueada"}
+                  value={isDebtFree ? trackingEdits[sale.id]?.shippingKey || "" : ""}
                   onChange={(e) =>
                     updateTrackingField(sale.id, "shippingKey", e.target.value)
                   }
                   onBlur={() => handleSaveTracking(sale.id)}
-                  disabled={isSaving}
+                  disabled={isSaving || !isDebtFree}
+                  title={
+                    isDebtFree
+                      ? undefined
+                      : "El pedido debe quedar libre de deuda antes de ingresar la clave"
+                  }
                 />
               </div>
               <div className="space-y-1">
