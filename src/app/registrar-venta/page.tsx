@@ -1113,7 +1113,6 @@ function RegistrarVentaContent() {
           // DIRECTO a ms-ventas (NEXT_PUBLIC_API_VENTAS): el gateway daba
           // errores al proxear el multipart del comprobante.
           let proofFailed = false;
-          let proofUploaded = false;
           if (paymentProofFile && advancePayment > 0) {
             // El POST de order-header no siempre devuelve payments hidratado.
             // Se relee la orden (el GET sí trae relations: ['payments']) para
@@ -1158,7 +1157,6 @@ function RegistrarVentaContent() {
                     },
                   },
                 );
-                proofUploaded = true;
               } catch (err) {
                 console.error("Error subiendo comprobante", err);
                 proofFailed = true;
@@ -1188,7 +1186,7 @@ function RegistrarVentaContent() {
             }
           } else if (!proofFailed) {
             toast.success(
-              proofUploaded
+              advancePayment > 0
                 ? "Venta registrada. El adelanto quedó pendiente de aprobación en Finanzas."
                 : "Venta registrada",
             );

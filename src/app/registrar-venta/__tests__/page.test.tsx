@@ -11,12 +11,18 @@
  * automáticamente.
  *
  * Comportamiento verificado:
- * 1. Con adelanto > 0 y comprobante adjunto: se sube el comprobante
- *    (`PATCH .../upload-proof`) pero NUNCA se llama a
- *    `PATCH .../approve`, y el toast de éxito avisa que el adelanto quedó
- *    pendiente de aprobación en Finanzas.
- * 2. Sin comprobante (con o sin adelanto): el toast de éxito es el genérico
+ * 1. Sin adelanto (advancePayment = 0): el toast de éxito es el genérico
  *    "Venta registrada" y no se hace ningún PATCH de pagos.
+ * 2. Con adelanto > 0 y SIN comprobante adjunto: no hay archivo que subir
+ *    (no se hace ningún PATCH de pagos), pero el toast de éxito YA avisa
+ *    que el adelanto quedó pendiente de aprobación en Finanzas — antes del
+ *    fix este caso mostraba el toast genérico "Venta registrada" sin avisar
+ *    nada, lo que confundía al vendedor (creía que el pago no había quedado
+ *    registrado).
+ * 3. Con adelanto > 0 y CON comprobante adjunto: se sube el comprobante
+ *    (`PATCH .../upload-proof`) pero NUNCA se llama a `PATCH .../approve`,
+ *    y el toast de éxito avisa igualmente que el adelanto quedó pendiente
+ *    de aprobación en Finanzas.
  *
  * Esta página es enorme (cliente, catálogo, packs, pagos, envío) y monta
  * varios subsistemas reales. Para mantener el test enfocado en el flujo de
@@ -491,7 +497,7 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
     expect(mockToast.error).not.toHaveBeenCalled();
   });
 
-  it("con adelanto > 0 pero sin comprobante adjunto: toast simple \"Venta registrada\" y ningún PATCH de pagos (ni upload-proof ni approve)", async () => {
+  it("con adelanto > 0 pero sin comprobante adjunto: toast avisa que el adelanto queda pendiente de aprobación en Finanzas, y ningún PATCH de pagos (ni upload-proof ni approve)", async () => {
     mockedAxiosAuth.post.mockResolvedValue({
       data: { id: "order-789", payments: [{ id: "payment-789" }] },
     });
@@ -516,7 +522,9 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
     await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalled());
 
     await waitFor(() =>
-      expect(mockToast.success).toHaveBeenCalledWith("Venta registrada"),
+      expect(mockToast.success).toHaveBeenCalledWith(
+        "Venta registrada. El adelanto quedó pendiente de aprobación en Finanzas.",
+      ),
     );
     expect(mockedAxiosAuth.patch).not.toHaveBeenCalled();
     expect(mockToast.error).not.toHaveBeenCalled();
