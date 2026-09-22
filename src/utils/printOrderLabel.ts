@@ -144,8 +144,7 @@ const LABEL_STYLES = `
   body {
     font-family: Arial, sans-serif;
     font-size: 13.5px;
-    font-weight: 900;
-    -webkit-text-stroke: 0.3px currentColor;
+    font-weight: 700;
     padding: 14px;
     max-width: 380px;
     margin: 0 auto;
@@ -170,13 +169,13 @@ const LABEL_STYLES = `
     align-items: center;
     justify-content: center;
     font-size: 10px;
-    font-weight: 900;
+    font-weight: 700;
     flex-shrink: 0;
     overflow: hidden;
   }
   .logo-box img { width: 100%; height: 100%; object-fit: contain; }
-  .company-name { font-size: 18px; font-weight: 900; }
-  .company-meta { font-size: 11.5px; color: #000; font-weight: 900; margin-top: 2px; }
+  .company-name { font-size: 18px; font-weight: 700; }
+  .company-meta { font-size: 11.5px; color: #000; font-weight: 700; margin-top: 2px; }
 
   .order-block {
     display: flex;
@@ -185,8 +184,8 @@ const LABEL_STYLES = `
     margin-bottom: 8px;
   }
   .order-qr { width: 72px; height: 72px; flex-shrink: 0; }
-  .order-number { font-size: 23px; font-weight: 900; letter-spacing: 0.5px; }
-  .order-dates { font-size: 11.5px; color: #000; font-weight: 900; margin-top: 3px; display: flex; gap: 10px; }
+  .order-number { font-size: 23px; font-weight: 700; letter-spacing: 0.5px; }
+  .order-dates { font-size: 11.5px; color: #000; font-weight: 700; margin-top: 3px; display: flex; gap: 10px; }
   .order-dates b { color: #000; }
   /* Los rellenos de color (pastel o solidos) no imprimen bien en impresoras
      térmicas monocromas — el dithering vuelve el texto ilegible (fondo negro
@@ -200,7 +199,7 @@ const LABEL_STYLES = `
     border: 1.5px solid #000;
     border-radius: 4px;
     font-size: 11px;
-    font-weight: 900;
+    font-weight: 700;
     color: #000;
   }
 
@@ -218,8 +217,8 @@ const LABEL_STYLES = `
     border-radius: 6px;
     margin-bottom: 10px;
   }
-  .cod-banner .cod-label { font-size: 11.5px; font-weight: 900; text-transform: uppercase; line-height: 1.4; }
-  .cod-banner .cod-amount { font-size: 23px; font-weight: 900; white-space: nowrap; }
+  .cod-banner .cod-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; line-height: 1.4; }
+  .cod-banner .cod-amount { font-size: 23px; font-weight: 700; white-space: nowrap; }
   .paid-banner {
     display: flex;
     justify-content: space-between;
@@ -231,25 +230,25 @@ const LABEL_STYLES = `
     border-radius: 6px;
     margin-bottom: 10px;
     font-size: 13px;
-    font-weight: 900;
+    font-weight: 700;
   }
 
   .info-row { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #999; }
   .customer-info { font-size: 12px; line-height: 1.6; }
-  .customer-info b { font-weight: 900; }
+  .customer-info b { font-weight: 700; }
   .location-info { text-align: right; font-size: 11.5px; flex-shrink: 0; }
   .district-pill {
     display: inline-block;
     background: #fff;
     color: #000;
-    font-weight: 900;
+    font-weight: 700;
     padding: 3px 9px;
     border: 1.5px solid #000;
     border-radius: 4px;
     font-size: 12px;
     margin-bottom: 3px;
   }
-  .location-info div { color: #000; font-weight: 900; }
+  .location-info div { color: #000; font-weight: 700; }
 
   .courier-row {
     display: flex;
@@ -260,7 +259,7 @@ const LABEL_STYLES = `
     margin-bottom: 8px;
     color: #000;
   }
-  .courier-row b { font-weight: 900; }
+  .courier-row b { font-weight: 700; }
 
   .picking-header {
     display: flex;
@@ -268,26 +267,26 @@ const LABEL_STYLES = `
     align-items: baseline;
     margin-bottom: 6px;
   }
-  .picking-title { font-size: 12.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; }
-  .picking-almacen { font-size: 11px; color: #000; font-weight: 900; text-align: right; }
+  .picking-title { font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+  .picking-almacen { font-size: 11px; color: #000; font-weight: 700; text-align: right; }
 
   .pick-item { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; border-bottom: 1px dotted #999; }
   .pick-checkbox { width: 15px; height: 15px; border: 1.5px solid #000; border-radius: 2px; margin-top: 2px; flex-shrink: 0; }
   .pick-qty { text-align: center; width: 28px; flex-shrink: 0; }
-  .pick-qty .num { font-size: 17px; font-weight: 900; line-height: 1; }
-  .pick-qty .unit { font-size: 9.5px; color: #000; font-weight: 900; }
+  .pick-qty .num { font-size: 17px; font-weight: 700; line-height: 1; }
+  .pick-qty .unit { font-size: 9.5px; color: #000; font-weight: 700; }
   .pick-body { flex: 1; min-width: 0; }
-  .pick-name { font-weight: 900; font-size: 12.5px; }
-  .pick-meta { font-size: 11px; color: #000; font-weight: 900; margin-top: 1px; }
-  .pick-price { font-size: 12.5px; font-weight: 900; white-space: nowrap; }
-  .pick-summary { font-size: 11px; color: #000; font-weight: 900; margin-top: 6px; }
+  .pick-name { font-weight: 700; font-size: 12.5px; }
+  .pick-meta { font-size: 11px; color: #000; font-weight: 700; margin-top: 1px; }
+  .pick-price { font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+  .pick-summary { font-size: 11px; color: #000; font-weight: 700; margin-top: 6px; }
 
   .totals { margin-top: 10px; padding-top: 8px; border-top: 1px solid #000; font-size: 12px; }
-  .totals-line { color: #000; font-weight: 900; margin-bottom: 4px; }
+  .totals-line { color: #000; font-weight: 700; margin-bottom: 4px; }
   .total-main { display: flex; justify-content: space-between; align-items: baseline; }
-  .total-main .label { font-size: 16px; font-weight: 900; }
-  .total-main .value { font-size: 20px; font-weight: 900; }
-  .advance-line { display: flex; justify-content: space-between; font-size: 11.5px; color: #000; font-weight: 900; margin-top: 3px; }
+  .total-main .label { font-size: 16px; font-weight: 700; }
+  .total-main .value { font-size: 20px; font-weight: 700; }
+  .advance-line { display: flex; justify-content: space-between; font-size: 11.5px; color: #000; font-weight: 700; margin-top: 3px; }
 
   .tracking-section {
     margin-top: 10px;
@@ -297,8 +296,8 @@ const LABEL_STYLES = `
   }
   .tracking-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
   .tracking-item { line-height: 1.25; }
-  .tracking-label { color: #000; font-weight: 900; font-size: 10px; text-decoration: underline; }
-  .tracking-value { font-weight: 900; display: block; color: #000; font-size: 12.5px; }
+  .tracking-label { color: #000; font-weight: 700; font-size: 10px; text-decoration: underline; }
+  .tracking-value { font-weight: 700; display: block; color: #000; font-size: 12.5px; }
 
   @media print {
     body { padding: 8px; }
