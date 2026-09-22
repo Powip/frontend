@@ -5,7 +5,6 @@ import { format } from "date-fns";
 import { toast } from "sonner";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import { getStatusLabel } from "@/utils/domain/orders-status-flow";
-import { getCustomerReceiptBalance } from "@/utils/customerReceiptBalance";
 import {
   OrderReceipt,
   PrintLabelCompany,
@@ -56,11 +55,17 @@ export async function downloadNotaVentaPdf(
   const trackingUrlForQr = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
   const qrDataUrl = await generateQR(trackingUrlForQr);
 
-  const {
-    confirmedAdvance,
-    pendingAdvance,
-    amountToCollect,
-  } = getCustomerReceiptBalance(receipt.totals, receipt.payments);
+  // `receipt.totals.totalPaid` solo suma pagos APROBADOS (status PAID) — un
+  // adelanto recién registrado que todavía está PENDING de aprobación por
+  // finanzas queda en 0 ahí, y el documento mostraba "Por cobrar" el total
+  // completo como si el adelanto nunca se hubiera aplicado. Se recalcula
+  // sumando `receipt.payments` sin filtrar por status (mismo criterio que ya
+  // usa la vista en pantalla del modal de éxito, OrderReceiptView).
+  const totalPaid = receipt.payments.reduce(
+    (acc, p) => acc + Number(p.amount || 0),
+    0,
+  );
+  const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
 
   const rawStatus = orderHeader?.status ?? receipt.status;
   const statusColor = PDF_STATUS_COLOR[rawStatus] ?? { bg: "#f1f5f9", color: "#334155" };
@@ -139,7 +144,6 @@ export async function downloadNotaVentaPdf(
           padding: 12px 16px; border-radius: 8px; background: #fef3c7; color: #92400e;
         }
         #pdf-comprobante-root .due-box.paid { background: #dcfce7; color: #166534; }
-        #pdf-comprobante-root .due-box.pending { background: #fef3c7; color: #92400e; }
         #pdf-comprobante-root .due-box .label { font-size: 12px; font-weight: bold; letter-spacing: 0.5px; }
         #pdf-comprobante-root .due-box .value { font-size: 20px; font-weight: bold; }
         #pdf-comprobante-root .footer { text-align: center; font-size: 10px; color: #888; margin-top: 30px; line-height: 1.6; }
@@ -258,21 +262,14 @@ export async function downloadNotaVentaPdf(
         <div class="totals-line"><span>Descuentos</span><b>S/ ${receipt.totals.discountTotal.toFixed(2)}</b></div>
         <div class="total-main"><span class="label">Total</span><span class="value">S/ ${receipt.totals.grandTotal.toFixed(2)}</span></div>
         ${
-          confirmedAdvance > 0
-            ? `<div class="advance-line"><span>Adelanto confirmado</span><span>– S/ ${confirmedAdvance.toFixed(2)}</span></div>`
+          totalPaid > 0
+            ? `<div class="advance-line"><span>Adelanto pagado</span><span>– S/ ${totalPaid.toFixed(2)}</span></div>`
             : ""
         }
         ${
-          pendingAdvance > 0
-            ? `<div class="advance-line"><span>Adelanto registrado (pendiente de validación)</span><span>– S/ ${pendingAdvance.toFixed(2)}</span></div>`
-            : ""
-        }
-        ${
-          amountToCollect > 0
-            ? `<div class="due-box"><span class="label">MONTO POR COBRAR</span><span class="value">S/ ${amountToCollect.toFixed(2)}</span></div>`
-            : pendingAdvance > 0
-              ? `<div class="due-box pending"><span class="label">PAGO EN VALIDACIÓN</span><span class="value">S/ 0.00 por cobrar</span></div>`
-              : `<div class="due-box paid"><span class="label">PAGADO</span><span class="value">S/ ${receipt.totals.grandTotal.toFixed(2)}</span></div>`
+          pendingAmount > 0
+            ? `<div class="due-box"><span class="label">POR COBRAR</span><span class="value">S/ ${pendingAmount.toFixed(2)}</span></div>`
+            : `<div class="due-box paid"><span class="label">PAGADO</span><span class="value">S/ ${receipt.totals.grandTotal.toFixed(2)}</span></div>`
         }
       </div>
 
