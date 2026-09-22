@@ -1,4 +1,5 @@
 import { OrderStatus } from "@/interfaces/IOrder";
+import { getCustomerReceiptBalance } from "@/utils/customerReceiptBalance";
 
 interface Props {
   data: any;
@@ -81,14 +82,12 @@ export default function OrderReceiptView({ data }: Props) {
     }))
   );
 
-  const totalPaid = Array.isArray(payments)
-    ? payments.reduce(
-        (acc: number, payment: any) => acc + Number(payment.amount || 0),
-        0
-      )
-    : 0;
-
-  const pendingAmount = Math.max(totals.grandTotal - totalPaid, 0);
+  const {
+    confirmedAdvance,
+    pendingAdvance,
+    amountToCollect,
+  } = getCustomerReceiptBalance(totals, payments);
+  const financialPendingAmount = Math.max(Number(totals.pendingAmount) || 0, 0);
 
   return (
     <div id="receipt-content" className="p-6 text-sm">
@@ -135,6 +134,9 @@ export default function OrderReceiptView({ data }: Props) {
                   <p className="text-sm text-yellow-700">
                     {pendingPaymentsCount} pago(s) en revisión por S/ {totalPendingApproval.toFixed(2)}
                   </p>
+                  <p className="text-sm font-semibold text-yellow-800 mt-1">
+                    Monto restante por cobrar: S/ {amountToCollect.toFixed(2)}
+                  </p>
                   {approvedPaymentsCount > 0 && (
                     <p className="text-sm text-green-700 mt-1">
                       ✓ {approvedPaymentsCount} pago(s) aprobado(s) por S/ {totalPaidApproved.toFixed(2)}
@@ -147,7 +149,7 @@ export default function OrderReceiptView({ data }: Props) {
         }
         
         // Caso 3: Falta monto (sin pagos pendientes de revisión)
-        if (pendingAmount > 0) {
+        if (amountToCollect > 0) {
           return (
             <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-md">
               <div className="flex items-center gap-3">
@@ -155,7 +157,7 @@ export default function OrderReceiptView({ data }: Props) {
                 <div>
                   <p className="font-semibold text-red-800">Pago Pendiente</p>
                   <p className="text-sm text-red-700">
-                    Falta por pagar: S/ {pendingAmount.toFixed(2)}
+                    Falta por pagar: S/ {amountToCollect.toFixed(2)}
                   </p>
                   {approvedPaymentsCount > 0 && (
                     <p className="text-sm text-green-700 mt-1">
@@ -172,7 +174,7 @@ export default function OrderReceiptView({ data }: Props) {
       })()}
 
       {/* Payment Warning Alert - Only shown when there's pending balance and not ANULADO */}
-      {pendingAmount > 0 && status !== 'ANULADO' && (
+      {financialPendingAmount > 0 && status !== 'ANULADO' && (
         <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 rounded-r-md">
           <div className="flex items-start gap-3">
             <span className="text-amber-500 text-xl">⚠️</span>
@@ -202,7 +204,12 @@ export default function OrderReceiptView({ data }: Props) {
       {/* Order Header */}
       <div className="mb-6">
         <h2 className="text-xl font-bold">No de Orden # {orderNumber}</h2>
-        <p className="text-lg font-semibold">Total: S/{Number(totals.grandTotal).toFixed(2)}</p>
+        <p className="text-base text-muted-foreground">
+          Total de la venta: S/{Number(totals.grandTotal).toFixed(2)}
+        </p>
+        <p className="text-lg font-bold text-red-600">
+          Monto por cobrar: S/{amountToCollect.toFixed(2)}
+        </p>
       </div>
 
       {/* Customer & Order Info Grid */}
@@ -345,13 +352,21 @@ export default function OrderReceiptView({ data }: Props) {
           <span>Descuentos:</span>
           <span>S/ {Number(totals.discountTotal).toFixed(2)}</span>
         </div>
-        <div className="flex justify-between text-muted-foreground">
-          <span>Adelanto:</span>
-          <span>S/ {totalPaid.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-muted-foreground">
-          <span>Por Cobrar:</span>
-          <span>S/ {pendingAmount.toFixed(2)}</span>
+        {confirmedAdvance > 0 && (
+          <div className="flex justify-between text-green-700">
+            <span>Adelanto confirmado:</span>
+            <span>− S/ {confirmedAdvance.toFixed(2)}</span>
+          </div>
+        )}
+        {pendingAdvance > 0 && (
+          <div className="flex justify-between text-amber-700">
+            <span>Adelanto registrado (pendiente de validación):</span>
+            <span>− S/ {pendingAdvance.toFixed(2)}</span>
+          </div>
+        )}
+        <div className="flex justify-between font-bold text-red-600 text-base">
+          <span>Monto por cobrar:</span>
+          <span>S/ {amountToCollect.toFixed(2)}</span>
         </div>
       </div>
     </div>

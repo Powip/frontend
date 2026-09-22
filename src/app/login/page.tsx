@@ -90,18 +90,10 @@ export default function LoginPage() {
         />
       </div>
 
-      <div className="flex flex-col items-center justify-center px-5 py-12 bg-transparent">
-        <div className="w-full max-w-3xl">
-          <div className="mb-8 text-center lg:text-left">
-            <h1 className="text-2xl font-black text-gray-900">
-              Bienvenido a Powip
-            </h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Inicia sesión o crea una cuenta nueva para continuar.
-            </p>
-          </div>
+      <div className="flex flex-col items-center justify-center px-5 bg-transparent">
+        <div className="w-full max-w-3xl sm:mt-0 mt-24">
 
-          <Tabs defaultValue="login" className="w-full">
+          <Tabs defaultValue="login" className="w-full max-w-xl m-auto">
             <TabsList className="grid w-full grid-cols-2 h-11 mb-8">
               <TabsTrigger
                 value="login"

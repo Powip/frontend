@@ -141,7 +141,7 @@ export default function LoginForm() {
             />
             <button
               type="button"
-              className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
+              className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600 cursor-pointer"
               onClick={() => setShowPassword(!showPassword)}
               tabIndex={-1}
             >
@@ -160,7 +160,7 @@ export default function LoginForm() {
           type="submit"
           onClick={(e) => handleOnLogin(e)}
           disabled={isLoading}
-          className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-70 mt-1"
+          className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-70 mt-1 cursor-pointer"
           style={{ background: "#4F3A96" }}
         >
           {isLoading ? (

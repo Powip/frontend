@@ -426,8 +426,8 @@ export function Sidebar({ className }: SidebarProps) {
             const isActive = item.href
               ? pathname === item.href
               : item.children?.some(
-                  (c: { href: string }) => pathname === c.href,
-                );
+                (c: { href: string }) => pathname === c.href,
+              );
             const hasNewBadgeChild = item.children?.some((c) =>
               isBadgeActive(c.badgeUntil),
             );
@@ -522,7 +522,7 @@ export function Sidebar({ className }: SidebarProps) {
                       variant="ghost"
                       onClick={() => toggleSubmenu(item.name)}
                       className={cn(
-                        "flex items-center justify-between h-10 w-full gap-2 px-3 rounded-lg transition-all duration-200",
+                        "flex items-center justify-between h-10 w-full gap-2 px-3 rounded-lg transition-all duration-200 cursor-pointer",
                         isActive
                           ? "bg-primary/5 text-primary font-semibold shadow-sm"
                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100",
@@ -558,7 +558,7 @@ export function Sidebar({ className }: SidebarProps) {
                               <Button
                                 variant="ghost"
                                 className={cn(
-                                  "flex items-center gap-2.5 h-9 w-full justify-start text-[13px] rounded-md transition-all",
+                                  "flex items-center gap-2.5 h-9 w-full justify-start text-[13px] rounded-md transition-all cursor-pointer",
                                   pathname === child.href
                                     ? "text-primary font-semibold bg-primary/5 shadow-sm"
                                     : "text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-transparent",
@@ -705,9 +705,9 @@ export function Sidebar({ className }: SidebarProps) {
                   <AvatarFallback>
                     {auth?.user.name
                       ? auth.user.name.substring(0, 1).toUpperCase() +
-                        (auth.user.surname
-                          ? auth.user.surname.substring(0, 1).toUpperCase()
-                          : "")
+                      (auth.user.surname
+                        ? auth.user.surname.substring(0, 1).toUpperCase()
+                        : "")
                       : "US"}
                   </AvatarFallback>
                 </Avatar>

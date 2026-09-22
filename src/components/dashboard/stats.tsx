@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Loader2,
   ChevronDown,
-  Download,
+  Share
 } from "lucide-react";
 import {
   buildDetailedSalesExportRows,
@@ -142,9 +142,8 @@ const StatCard: React.FC<StatCardProps> = ({
             {title}
           </span>
           {trend && (
-            <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${
-              trend.isPositive ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600"
-            }`}>
+            <div className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${trend.isPositive ? "bg-emerald-500/10 text-emerald-600" : "bg-red-500/10 text-red-600"
+              }`}>
               {trend.isPositive ? "+" : "-"}{trend.value}
             </div>
           )}
@@ -177,18 +176,17 @@ interface FunnelStageProps {
   isBottomJoined?: boolean;
 }
 
-const FunnelStage: React.FC<FunnelStageProps> = ({ 
-  label, value, percentage, color, index, isBottomJoined 
+const FunnelStage: React.FC<FunnelStageProps> = ({
+  label, value, percentage, color, index, isBottomJoined
 }) => (
   <div className="relative">
-    <div 
-      className={`grid grid-cols-[auto_1fr_auto] items-center gap-4 py-3 bg-background/50 hover:bg-background transition-colors group px-4 ${
-        isBottomJoined ? "rounded-t-lg" : "rounded-lg"
-      }`}
+    <div
+      className={`grid grid-cols-[auto_1fr_auto] items-center gap-4 py-3 bg-background/50 hover:bg-background transition-colors group px-4 ${isBottomJoined ? "rounded-t-lg" : "rounded-lg"
+        }`}
       style={{ borderLeft: `4px solid ${color}`, boxShadow: 'inset 0 0 20px -10px rgba(0,0,0,0.05)' }}
     >
       <div className="flex items-center gap-4">
-        <div 
+        <div
           className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black text-white"
           style={{ backgroundColor: color }}
         >
@@ -198,12 +196,12 @@ const FunnelStage: React.FC<FunnelStageProps> = ({
           {label}
         </span>
       </div>
-      
+
       <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden mx-4">
-        <div 
+        <div
           className="h-full rounded-full transition-all duration-1000 ease-out"
-          style={{ 
-            width: `${percentage}%`, 
+          style={{
+            width: `${percentage}%`,
             backgroundColor: color,
             opacity: 0.9
           }}
@@ -231,7 +229,7 @@ const GapIndicator: React.FC<{ count?: number }> = ({ count }) => (
   </div>
 );
 
-const FunnelCOD: React.FC<{ 
+const FunnelCOD: React.FC<{
   selectedStoreId: string;
   fromDate: string;
   toDate: string;
@@ -247,13 +245,13 @@ const FunnelCOD: React.FC<{
       const isAdmin = hasAdminAccess(auth?.user?.role);
       const res = await axios.get<DashboardData>(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/summary`,
-        { 
-          params: { 
-            storeId: selectedStoreId, 
-            fromDate, 
+        {
+          params: {
+            storeId: selectedStoreId,
+            fromDate,
             toDate,
             ...(!isAdmin && { sellerId: auth?.user?.id })
-          } 
+          }
         }
       );
       setFunnelData(res.data);
@@ -331,335 +329,335 @@ const FunnelCOD: React.FC<{
 
   return (
     <>
-    <Card className="bg-card border border-border shadow-xl flex flex-col">
-      <CardHeader className="flex flex-row items-center justify-between pb-6 border-b border-border bg-card px-6">
-        <div>
-          <CardTitle className="text-xl font-black text-foreground tracking-tight">
-            Funnel Efectividad COD
-          </CardTitle>
-        </div>
-        <button
-          onClick={handleExport}
-          disabled={downloading}
-          className="flex items-center gap-2 px-4 py-2 bg-[#00f2ad] text-slate-900 rounded-md text-xs font-bold hover:bg-[#00d89a] transition-colors shadow-none disabled:opacity-50 tracking-tight"
-        >
-          {downloading ? (
-             <>
-               <Loader2 className="w-4 h-4 animate-spin text-slate-800" /> Procesando...
-             </>
-          ) : (
-             <>
-               <Download className="w-4 h-4 text-slate-800 stroke-[3px]" /> Exportar a Excel
-             </>
-          )}
-        </button>
-      </CardHeader>
-      
-      <CardContent className="p-6 bg-muted/10 flex flex-col gap-8">
-        {/* Metric Boxes */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-card rounded-2xl p-6 shadow-sm border border-border relative overflow-hidden group hover:shadow-md transition-shadow">
-
-            <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest block mb-1">
-              DUEÑO DEL NEGOCIO
-            </span>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-black text-foreground">Efectividad Real</span>
-              <span className="text-[10px] text-muted-foreground font-bold italic">Entregados / Ingresados</span>
-            </div>
-            <div className="mt-4 text-5xl font-black text-[#00f2ad] tracking-tighter">
-              {realEffectiveness}%
-            </div>
+      <Card className="bg-card border border-border shadow-xl flex flex-col">
+        <CardHeader className="flex flex-row items-center justify-between pb-6 border-b border-border bg-card px-6">
+          <div>
+            <CardTitle className="text-xl font-black text-foreground tracking-tight">
+              Funnel Efectividad COD
+            </CardTitle>
           </div>
+          <button
+            onClick={handleExport}
+            disabled={downloading}
+            className="flex items-center gap-2 px-4 py-2 bg-[#00f2ad] text-slate-900 rounded-md text-xs font-bold hover:bg-[#00d89a] transition-colors shadow-none disabled:opacity-50 tracking-tight"
+          >
+            {downloading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-slate-800" /> Procesando...
+              </>
+            ) : (
+              <>
+                <Share className="w-4 h-4 text-slate-800 stroke-[3px]" /> Exportar a Excel
+              </>
+            )}
+          </button>
+        </CardHeader>
 
-          <div className="bg-card rounded-2xl p-6 shadow-sm border border-border relative overflow-hidden group hover:shadow-md transition-shadow">
+        <CardContent className="p-6 bg-muted/10 flex flex-col gap-8">
+          {/* Metric Boxes */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-card rounded-2xl p-6 shadow-sm border border-border relative overflow-hidden group hover:shadow-md transition-shadow">
 
-            <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest block mb-1">
-              SUPERVISOR DE OPERACIONES
-            </span>
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-black text-foreground">Efectividad Operativa</span>
-              <span className="text-[10px] text-muted-foreground font-bold italic">Entregados / Confirmados</span>
-            </div>
-            <div className="mt-4 text-5xl font-black text-[#0ea5e9] tracking-tighter">
-              {operationalEffectiveness}%
-            </div>
-          </div>
-        </div>
-
-        {/* Funnel List */}
-        <div className="flex flex-col">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center p-12 gap-3">
-              <Loader2 className="w-8 h-8 text-[#00f2ad] animate-spin" />
-              <span className="text-xs text-slate-500 font-medium font-black uppercase tracking-widest">
-                Sincronizando Métricas...
+              <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest block mb-1">
+                DUEÑO DEL NEGOCIO
               </span>
-            </div>
-          ) : (
-            <>
-              <FunnelStage 
-                index={1} 
-                label="Ingresados (Pendientes)" 
-                value={ingresados} 
-                percentage={baseTotal > 0 ? Math.round((ingresados / baseTotal) * 100) : 0} 
-                color={STATUS_COLORS.INGRESADO} 
-              />
-              <GapIndicator />
-              
-              <FunnelStage 
-                index={2} 
-                label="Confirmados (Llamado)" 
-                value={confirmed} 
-                percentage={baseTotal > 0 ? Math.round((confirmed / baseTotal) * 100) : 0} 
-                color={STATUS_COLORS.CONFIRMADO} 
-              />
-              <GapIndicator />
-
-              <FunnelStage 
-                index={3} 
-                label="En envío" 
-                value={inEnvio} 
-                percentage={baseTotal > 0 ? Math.round((inEnvio / baseTotal) * 100) : 0} 
-                color={STATUS_COLORS.EN_ENVIO} 
-              />
-              <GapIndicator />
-
-              {/* Joined Stages Group */}
-              <div className="bg-muted/30 rounded-xl p-0.5 border border-border shadow-inner">
-                <FunnelStage 
-                  index={4} 
-                  label="Entregados" 
-                  value={delivered} 
-                  percentage={baseTotal > 0 ? Math.round((delivered / baseTotal) * 100) : 0} 
-                  color={STATUS_COLORS.ENTREGADO}
-                  isBottomJoined
-                />
-                <div className="h-px bg-border mx-4" />
-                <FunnelStage 
-                  index={5} 
-                  label="Pagados" 
-                  value={paid} 
-                  percentage={baseTotal > 0 ? Math.round((paid / baseTotal) * 100) : 0} 
-                  color={STATUS_COLORS.PAGADO} 
-                />
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-black text-foreground">Efectividad Real</span>
+                <span className="text-[10px] text-muted-foreground font-bold italic">Entregados / Ingresados</span>
               </div>
-
-              <div className="flex items-center justify-center py-2 h-8">
-                <div className="w-px h-full bg-border" />
-              </div>
-
-              <FunnelStage 
-                index="X" 
-                label="Rechazados / devueltos" 
-                value={rejected} 
-                percentage={baseTotal > 0 ? Math.round((rejected / baseTotal) * 100) : 0} 
-                color={STATUS_COLORS.RECHAZADO} 
-              />
-            </>
-          )}
-        </div>
-
-      </CardContent>
-    </Card>
-
-    {/* Charts Section — separate cards */}
-    {!loading && funnelData && (
-      <div className="grid grid-cols-1 gap-6">
-        {/* Ventas Diarias */}
-        <Card className="bg-card border border-border shadow-sm">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-sm font-black text-foreground tracking-tight">Ventas Diarias</h3>
-              <div className="flex items-center gap-4 text-[10px] font-bold">
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-sm bg-[#3b82f6]" />
-                  <span className="text-muted-foreground">Ventas</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#a78bfa]" />
-                  <span className="text-muted-foreground">Órdenes</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-2.5 h-2.5 rounded-full bg-[#00f2ad]" />
-                  <span className="text-muted-foreground">Unidades</span>
-                </div>
+              <div className="mt-4 text-5xl font-black text-[#00f2ad] tracking-tighter">
+                {realEffectiveness}%
               </div>
             </div>
-            <div className="h-[300px]">
-              {(() => {
-                const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
-                const to   = toDate   ? new Date(`${toDate}T23:59:59`)   : null;
 
-                const filteredDailySales = (funnelData.dailySales || []).filter((d) => {
-                  if (!from || !to) return true;
-                  const itemDate = new Date(`${d.date}T12:00:00`);
-                  return itemDate >= from && itemDate <= to;
-                });
+            <div className="bg-card rounded-2xl p-6 shadow-sm border border-border relative overflow-hidden group hover:shadow-md transition-shadow">
 
-                return filteredDailySales.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center gap-2">
-                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
-                      Sin datos para el período seleccionado
-                    </p>
+              <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest block mb-1">
+                SUPERVISOR DE OPERACIONES
+              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-black text-foreground">Efectividad Operativa</span>
+                <span className="text-[10px] text-muted-foreground font-bold italic">Entregados / Confirmados</span>
+              </div>
+              <div className="mt-4 text-5xl font-black text-[#0ea5e9] tracking-tighter">
+                {operationalEffectiveness}%
+              </div>
+            </div>
+          </div>
+
+          {/* Funnel List */}
+          <div className="flex flex-col">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center p-12 gap-3">
+                <Loader2 className="w-8 h-8 text-[#00f2ad] animate-spin" />
+                <span className="text-xs text-slate-500 font-medium font-black uppercase tracking-widest">
+                  Sincronizando Métricas...
+                </span>
+              </div>
+            ) : (
+              <>
+                <FunnelStage
+                  index={1}
+                  label="Ingresados (Pendientes)"
+                  value={ingresados}
+                  percentage={baseTotal > 0 ? Math.round((ingresados / baseTotal) * 100) : 0}
+                  color={STATUS_COLORS.INGRESADO}
+                />
+                <GapIndicator />
+
+                <FunnelStage
+                  index={2}
+                  label="Confirmados (Llamado)"
+                  value={confirmed}
+                  percentage={baseTotal > 0 ? Math.round((confirmed / baseTotal) * 100) : 0}
+                  color={STATUS_COLORS.CONFIRMADO}
+                />
+                <GapIndicator />
+
+                <FunnelStage
+                  index={3}
+                  label="En envío"
+                  value={inEnvio}
+                  percentage={baseTotal > 0 ? Math.round((inEnvio / baseTotal) * 100) : 0}
+                  color={STATUS_COLORS.EN_ENVIO}
+                />
+                <GapIndicator />
+
+                {/* Joined Stages Group */}
+                <div className="bg-muted/30 rounded-xl p-0.5 border border-border shadow-inner">
+                  <FunnelStage
+                    index={4}
+                    label="Entregados"
+                    value={delivered}
+                    percentage={baseTotal > 0 ? Math.round((delivered / baseTotal) * 100) : 0}
+                    color={STATUS_COLORS.ENTREGADO}
+                    isBottomJoined
+                  />
+                  <div className="h-px bg-border mx-4" />
+                  <FunnelStage
+                    index={5}
+                    label="Pagados"
+                    value={paid}
+                    percentage={baseTotal > 0 ? Math.round((paid / baseTotal) * 100) : 0}
+                    color={STATUS_COLORS.PAGADO}
+                  />
+                </div>
+
+                <div className="flex items-center justify-center py-2 h-8">
+                  <div className="w-px h-full bg-border" />
+                </div>
+
+                <FunnelStage
+                  index="X"
+                  label="Rechazados / devueltos"
+                  value={rejected}
+                  percentage={baseTotal > 0 ? Math.round((rejected / baseTotal) * 100) : 0}
+                  color={STATUS_COLORS.RECHAZADO}
+                />
+              </>
+            )}
+          </div>
+
+        </CardContent>
+      </Card>
+
+      {/* Charts Section — separate cards */}
+      {!loading && funnelData && (
+        <div className="grid grid-cols-1 gap-6">
+          {/* Ventas Diarias */}
+          <Card className="bg-card border border-border shadow-sm">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-sm font-black text-foreground tracking-tight">Ventas Diarias</h3>
+                <div className="flex items-center gap-4 text-[10px] font-bold">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-sm bg-[#3b82f6]" />
+                    <span className="text-muted-foreground">Ventas</span>
                   </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <ComposedChart
-                      data={filteredDailySales.map((d) => {
-                        const dateStr = typeof d.date === "string" && d.date.length === 10 ? `${d.date}T12:00:00` : d.date;
-                        const dateObj = new Date(dateStr);
-                        const formattedDate = dateObj.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#a78bfa]" />
+                    <span className="text-muted-foreground">Órdenes</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-[#00f2ad]" />
+                    <span className="text-muted-foreground">Unidades</span>
+                  </div>
+                </div>
+              </div>
+              <div className="h-[300px]">
+                {(() => {
+                  const from = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
+                  const to = toDate ? new Date(`${toDate}T23:59:59`) : null;
 
-                        return {
-                          dayLabel: formattedDate,
-                          amount: d.amount,
-                          orders: d.orders,
-                          units: d.products,
-                        };
-                      })}
-                  margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                  <XAxis
-                    dataKey="dayLabel"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
-                    interval="preserveStartEnd"
-                    minTickGap={40}
-                  />
-                  <YAxis
-                    yAxisId="left"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
-                    tickFormatter={(v) => `S/${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
-                  />
-                  <YAxis
-                    yAxisId="right"
-                    orientation="right"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
-                    itemStyle={{ color: "var(--foreground)" }}
-                    contentStyle={{
-                      background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "12px",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "var(--foreground)",
-                    }}
-                    formatter={(value: number, name: string) => {
-                      if (name === "amount") return [`S/ ${value.toLocaleString("es-PE")}`, "Ventas"];
-                      if (name === "orders") return [value, "Órdenes"];
-                      if (name === "units") return [value, "Unidades"];
-                      return [value, name];
-                    }}
-                    labelFormatter={(label) => `${label}`}
-                  />
-                  <Bar
-                    yAxisId="left"
-                    dataKey="amount"
-                    fill="#3b82f6"
-                    radius={[3, 3, 0, 0]}
-                    barSize={12}
-                    opacity={0.85}
-                  />
-                  <Line
-                    yAxisId="right"
-                    dataKey="orders"
-                    type="monotone"
-                    stroke="#a78bfa"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 3, fill: "#a78bfa" }}
-                  />
-                  <Line
-                    yAxisId="right"
-                    dataKey="units"
-                    type="monotone"
-                    stroke="#00f2ad"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 3, fill: "#00f2ad" }}
-                    strokeDasharray="4 2"
-                  />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                );
-              })()}
-            </div>
-          </CardContent>
-        </Card>
+                  const filteredDailySales = (funnelData.dailySales || []).filter((d) => {
+                    if (!from || !to) return true;
+                    const itemDate = new Date(`${d.date}T12:00:00`);
+                    return itemDate >= from && itemDate <= to;
+                  });
 
-        {/* Distribución por Estado */}
-        <Card className="bg-card border border-border shadow-sm">
-          <CardContent className="p-6">
-            <h3 className="text-sm font-black text-foreground tracking-tight mb-6">Distribución por Estado</h3>
-            <div className="h-[220px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <RechartsBarChart
-                  layout="vertical"
-                  data={DISTRIBUTION_STATUS_ORDER.map((key) => ({
-                    name: DISTRIBUTION_STATUS_LABELS[key] || key,
-                    count: funnelData.byStatus[key]?.count || 0,
-                    color: DISTRIBUTION_STATUS_COLORS[key] || "#94a3b8",
-                  }))}
-                  margin={{ top: 0, right: 20, left: 0, bottom: 0 }}
-                >
-                  <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
-                  <XAxis
-                    type="number"
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
-                  />
-                  <YAxis
-                    dataKey="name"
-                    type="category"
-                    width={70}
-                    axisLine={false}
-                    tickLine={false}
-                    tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
-                    itemStyle={{ color: "var(--foreground)" }}
-                    contentStyle={{
-                      background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "12px",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "var(--foreground)",
-                    }}
-                    formatter={(value: number) => [value, "Órdenes"]}
-                  />
-                  <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={16}>
-                    {DISTRIBUTION_STATUS_ORDER.map((key) => (
-                      <Cell
-                        key={key}
-                        fill={DISTRIBUTION_STATUS_COLORS[key] || "#94a3b8"}
-                      />
-                    ))}
-                  </Bar>
-                </RechartsBarChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )}
-    
-    {/* HardSpacer para garantizar margen al llegar al fondo del scroll container */}
-    <div className="h-16 w-full flex-shrink-0" />
+                  return filteredDailySales.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center gap-2">
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">
+                        Sin datos para el período seleccionado
+                      </p>
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart
+                        data={filteredDailySales.map((d) => {
+                          const dateStr = typeof d.date === "string" && d.date.length === 10 ? `${d.date}T12:00:00` : d.date;
+                          const dateObj = new Date(dateStr);
+                          const formattedDate = dateObj.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
+
+                          return {
+                            dayLabel: formattedDate,
+                            amount: d.amount,
+                            orders: d.orders,
+                            units: d.products,
+                          };
+                        })}
+                        margin={{ top: 5, right: 10, left: 0, bottom: 5 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis
+                          dataKey="dayLabel"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
+                          interval="preserveStartEnd"
+                          minTickGap={40}
+                        />
+                        <YAxis
+                          yAxisId="left"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
+                          tickFormatter={(v) => `S/${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`}
+                        />
+                        <YAxis
+                          yAxisId="right"
+                          orientation="right"
+                          axisLine={false}
+                          tickLine={false}
+                          tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
+                          itemStyle={{ color: "var(--foreground)" }}
+                          contentStyle={{
+                            background: "var(--card)",
+                            border: "1px solid var(--border)",
+                            borderRadius: "12px",
+                            boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            color: "var(--foreground)",
+                          }}
+                          formatter={(value: number, name: string) => {
+                            if (name === "amount") return [`S/ ${value.toLocaleString("es-PE")}`, "Ventas"];
+                            if (name === "orders") return [value, "Órdenes"];
+                            if (name === "units") return [value, "Unidades"];
+                            return [value, name];
+                          }}
+                          labelFormatter={(label) => `${label}`}
+                        />
+                        <Bar
+                          yAxisId="left"
+                          dataKey="amount"
+                          fill="#3b82f6"
+                          radius={[3, 3, 0, 0]}
+                          barSize={12}
+                          opacity={0.85}
+                        />
+                        <Line
+                          yAxisId="right"
+                          dataKey="orders"
+                          type="monotone"
+                          stroke="#a78bfa"
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={{ r: 3, fill: "#a78bfa" }}
+                        />
+                        <Line
+                          yAxisId="right"
+                          dataKey="units"
+                          type="monotone"
+                          stroke="#00f2ad"
+                          strokeWidth={2}
+                          dot={false}
+                          activeDot={{ r: 3, fill: "#00f2ad" }}
+                          strokeDasharray="4 2"
+                        />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  );
+                })()}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Distribución por Estado */}
+          <Card className="bg-card border border-border shadow-sm">
+            <CardContent className="p-6">
+              <h3 className="text-sm font-black text-foreground tracking-tight mb-6">Distribución por Estado</h3>
+              <div className="h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsBarChart
+                    layout="vertical"
+                    data={DISTRIBUTION_STATUS_ORDER.map((key) => ({
+                      name: DISTRIBUTION_STATUS_LABELS[key] || key,
+                      count: funnelData.byStatus[key]?.count || 0,
+                      color: DISTRIBUTION_STATUS_COLORS[key] || "#94a3b8",
+                    }))}
+                    margin={{ top: 0, right: 20, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+                    <XAxis
+                      type="number"
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fill: "#94a3b8", fontWeight: 700 }}
+                    />
+                    <YAxis
+                      dataKey="name"
+                      type="category"
+                      width={70}
+                      axisLine={false}
+                      tickLine={false}
+                      tick={{ fontSize: 10, fill: "#64748b", fontWeight: 700 }}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "var(--foreground)", opacity: 0.05 }}
+                      itemStyle={{ color: "var(--foreground)" }}
+                      contentStyle={{
+                        background: "var(--card)",
+                        border: "1px solid var(--border)",
+                        borderRadius: "12px",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        color: "var(--foreground)",
+                      }}
+                      formatter={(value: number) => [value, "Órdenes"]}
+                    />
+                    <Bar dataKey="count" radius={[0, 6, 6, 0]} barSize={16}>
+                      {DISTRIBUTION_STATUS_ORDER.map((key) => (
+                        <Cell
+                          key={key}
+                          fill={DISTRIBUTION_STATUS_COLORS[key] || "#94a3b8"}
+                        />
+                      ))}
+                    </Bar>
+                  </RechartsBarChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* HardSpacer para garantizar margen al llegar al fondo del scroll container */}
+      <div className="h-16 w-full flex-shrink-0" />
     </>
   );
 };
