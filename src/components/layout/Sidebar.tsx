@@ -40,6 +40,7 @@ import {
   Landmark,
   PiggyBank,
   CalendarRange,
+  Handshake,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -281,6 +282,11 @@ export function Sidebar({ className }: SidebarProps) {
           { name: "Capital & ROI", href: "/administracion/capital", icon: PiggyBank },
           { name: "Resumen Anual", href: "/administracion/anual", icon: CalendarRange },
         ],
+      },
+      {
+        name: "Partners",
+        icon: Handshake,
+        href: "/partners",
       },
       {
         name: "Super Admin",
