@@ -188,13 +188,20 @@ export interface ShalomMassiveTrackResult {
   orderNumber: string;
   orderCode: string;
   search?: { success: boolean; message: string };
-  statuses?: unknown;
+  statuses?: {
+    /** Forma resumida que devuelve `POST /track/batch`. */
+    estado?: string;
+    status?: string;
+    /** Forma detallada que devuelve `POST /track`. */
+    data?: Record<string, unknown>;
+  } | null;
 }
 
 /**
  * Rastreo masivo de envíos Shalom — hasta 50 órdenes por request.
  * NO requiere companyId (usa la Admin Key global del servidor Shalom).
- * La respuesta es un array plano; cada ítem trae `statuses.data` con los pasos.
+ * La respuesta es un array plano; cada ítem puede traer el resumen
+ * `statuses.estado` o la línea de tiempo `statuses.data`.
  * Evita disparar N `POST /shalom/track` sueltos en paralelo (429 del proveedor
  * que también tira abajo cotización y agencias por compartir la API key global).
  */
