@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrderHeader } from "@/interfaces/IOrder";
 import {
@@ -72,6 +72,41 @@ function makeKey(orderNumber: unknown, orderCode: unknown): string {
 }
 
 /**
+ * `POST /track/batch` no devuelve la misma forma que `POST /track`:
+ * el lote puede traer un único código en `statuses.estado` (por ejemplo
+ * `EN_CAMINO`) en vez de la línea de tiempo `statuses.data`. Esta tabla
+ * convierte ambos formatos al mismo label que usan los badges.
+ */
+function getShalomStateLabel(rawState: unknown): string | null {
+  const state = String(rawState ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  if (!state) return null;
+  if (state.includes("ENTREGAD")) return "Entregado";
+  if (state.includes("REPART")) return "En reparto";
+  if (state.includes("DESTIN")) return "En destino";
+  if (state.includes("CAMINO") || state.includes("TRANSIT")) {
+    return "En tránsito";
+  }
+  if (state.includes("ORIGEN")) return "En origen";
+  if (
+    state.includes("REGISTR") ||
+    state.includes("PENDIENT") ||
+    state.includes("EXITOS") ||
+    state.includes("CREAD") ||
+    state.includes("GENERAD")
+  ) {
+    return "Registrado";
+  }
+  return null;
+}
+
+/**
  * Deriva el último paso alcanzado recorriendo `SHALOM_STEPS` de atrás para
  * adelante sobre `statuses.data`. Acepta tanto la respuesta cruda de
  * `POST /shalom/track` (con `data` anidado) como un ítem del array de
@@ -87,12 +122,34 @@ function getLatestShalomStep(rawResponse: Record<string, unknown>): string | nul
     }
     break;
   }
-  const statuses = (payload?.statuses as { data?: Record<string, unknown> } | undefined)?.data;
-  if (!statuses) return null;
-  for (let i = SHALOM_STEPS.length - 1; i >= 0; i--) {
-    if (statuses[SHALOM_STEPS[i].key]) return SHALOM_STEPS[i].label;
+  const statuses = payload?.statuses as
+    | {
+        data?: Record<string, unknown>;
+        estado?: unknown;
+        status?: unknown;
+      }
+    | undefined;
+
+  if (statuses?.data) {
+    for (let i = SHALOM_STEPS.length - 1; i >= 0; i--) {
+      if (statuses.data[SHALOM_STEPS[i].key]) return SHALOM_STEPS[i].label;
+    }
   }
-  return null;
+
+  // Forma real documentada por el backend para `POST /track/batch`.
+  const batchLabel = getShalomStateLabel(statuses?.estado ?? statuses?.status);
+  if (batchLabel) return batchLabel;
+
+  // Forma defensiva para respuestas individuales/envueltas por Shalom.
+  const searchData = (payload?.search as { data?: Record<string, unknown> } | undefined)?.data;
+  return getShalomStateLabel(searchData?.estado ?? searchData?.status);
+}
+
+export interface ShalomLiveRefreshResult {
+  requested: number;
+  updated: number;
+  failed: number;
+  unresolved: number;
 }
 
 /**
@@ -111,14 +168,31 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
   const { auth } = useAuth();
   const [liveStatuses, setLiveStatuses] = useState<Record<string, string>>({});
   const [loadingLiveStatuses, setLoadingLiveStatuses] = useState(false);
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
+
+  // Evita reconsultar si el caller reconstruye el mismo array durante un
+  // render. Solo cambia cuando cambia un pedido o sus credenciales de tracking.
+  const ordersKey = orders
+    .map(
+      (order) =>
+        `${order.id}:${order.externalTrackingNumber ?? ""}:${order.shippingCode ?? ""}`,
+    )
+    .join("|");
 
   const fetchLiveStatuses = useCallback(
-    async (list: OrderHeader[]) => {
-      if (!auth?.accessToken) return;
+    async (list: OrderHeader[]): Promise<ShalomLiveRefreshResult> => {
+      const emptyResult: ShalomLiveRefreshResult = {
+        requested: 0,
+        updated: 0,
+        failed: 0,
+        unresolved: 0,
+      };
+      if (!auth?.accessToken) return emptyResult;
       const eligible = list.filter(
         (o) => o.externalTrackingNumber && o.shippingCode,
       );
-      if (!eligible.length) return;
+      if (!eligible.length) return emptyResult;
 
       // Índice orderNumber+orderCode → orderId para reasociar la respuesta plana.
       const orderIdByTrackKey = new Map<string, string>();
@@ -128,6 +202,18 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
           o.id,
         );
       });
+
+      // No conservar como "en vivo" un badge de una consulta anterior. Si el
+      // nuevo intento falla o no trae un estado interpretable, el caller puede
+      // mostrar el persistido junto con un aviso explícito del resultado.
+      setLiveStatuses((prev) => {
+        const next = { ...prev };
+        eligible.forEach((order) => delete next[order.id]);
+        return next;
+      });
+
+      let failed = 0;
+      const updatedOrderIds = new Set<string>();
 
       setLoadingLiveStatuses(true);
       try {
@@ -141,10 +227,13 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
                 orderCode: o.shippingCode!,
               })),
             );
-          } catch {
-            // Lote fallido (429/5xx del proveedor): se conservan los demás
-            // lotes (y los badges ya resueltos) y el caller cae de vuelta a
-            // `order.shalomStatus`.
+          } catch (error) {
+            failed += group.length;
+            const message =
+              error instanceof Error ? error.message : "Error desconocido";
+            console.error(
+              `No se pudo actualizar un lote de estados Shalom: ${message}`,
+            );
             continue;
           }
 
@@ -157,7 +246,10 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
             const label = getLatestShalomStep(
               item as unknown as Record<string, unknown>,
             );
-            if (label) chunkUpdates[orderId] = label;
+            if (label) {
+              chunkUpdates[orderId] = label;
+              updatedOrderIds.add(orderId);
+            }
           });
 
           // Merge por lote: feedback progresivo con muchos pedidos y un refetch
@@ -169,15 +261,28 @@ export function useShalomLiveStatuses(orders: OrderHeader[]) {
       } finally {
         setLoadingLiveStatuses(false);
       }
+
+      return {
+        requested: eligible.length,
+        updated: updatedOrderIds.size,
+        failed,
+        unresolved: Math.max(0, eligible.length - failed - updatedOrderIds.size),
+      };
     },
     [auth?.accessToken],
   );
 
   useEffect(() => {
-    if (orders.length > 0) fetchLiveStatuses(orders);
+    if (ordersRef.current.length > 0) {
+      void fetchLiveStatuses(ordersRef.current);
+    }
     // `fetchLiveStatuses` cambia de identidad cuando llega `auth.accessToken`
     // (auth cargando en la primera corrida) → re-dispara el rastreo al tenerlo.
-  }, [orders, fetchLiveStatuses]);
+  }, [ordersKey, fetchLiveStatuses]);
 
-  return { liveStatuses, loadingLiveStatuses };
+  return {
+    liveStatuses,
+    loadingLiveStatuses,
+    refreshLiveStatuses: fetchLiveStatuses,
+  };
 }

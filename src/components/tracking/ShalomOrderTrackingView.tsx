@@ -318,8 +318,34 @@ export default function ShalomOrderTrackingView() {
         ),
     [pagedOrders],
   );
-  const { liveStatuses, loadingLiveStatuses } =
+  const { liveStatuses, loadingLiveStatuses, refreshLiveStatuses } =
     useShalomLiveStatuses(pagedShalomHeaders);
+
+  const handleRefreshLiveStatuses = async () => {
+    const result = await refreshLiveStatuses(pagedShalomHeaders);
+
+    if (result.requested === 0) {
+      toast.warning("No hay pedidos visibles con número y código de seguimiento");
+      return;
+    }
+    if (result.updated === result.requested) {
+      toast.success(
+        `Estados actualizados desde Shalom (${result.updated}/${result.requested})`,
+      );
+      return;
+    }
+    if (result.updated > 0) {
+      toast.warning(
+        `Shalom actualizó ${result.updated} de ${result.requested} pedidos. Revisa los restantes.`,
+      );
+      return;
+    }
+    if (result.failed > 0) {
+      toast.error("Shalom no respondió. Intenta actualizar nuevamente.");
+      return;
+    }
+    toast.warning("Shalom respondió, pero no devolvió un estado reconocible");
+  };
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.checked) {
@@ -601,9 +627,7 @@ export default function ShalomOrderTrackingView() {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => {
-              fetchShalomOrders();
-            }}
+            onClick={handleRefreshLiveStatuses}
             disabled={loading || loadingLiveStatuses}
             className="gap-2"
           >

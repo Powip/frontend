@@ -134,6 +134,41 @@ describe('useShalomLiveStatuses', () => {
     );
   });
 
+  it('mapea statuses.estado EN_CAMINO de la respuesta real del lote', async () => {
+    const orders = eligibleOrders(1);
+    mockTrack.mockResolvedValue([
+      {
+        orderNumber: '10000000',
+        orderCode: 'C0',
+        search: { success: true, message: 'OK' },
+        statuses: { estado: 'EN_CAMINO' },
+      },
+    ]);
+
+    const { result } = renderHook(() => useShalomLiveStatuses(orders));
+
+    await waitFor(() =>
+      expect(result.current.liveStatuses['ord-0']).toBe('En tránsito'),
+    );
+  });
+
+  it('mapea variantes con espacios y tildes del estado resumido', async () => {
+    const orders = eligibleOrders(1);
+    mockTrack.mockResolvedValue([
+      {
+        orderNumber: '10000000',
+        orderCode: 'C0',
+        statuses: { estado: 'En tránsito' },
+      },
+    ]);
+
+    const { result } = renderHook(() => useShalomLiveStatuses(orders));
+
+    await waitFor(() =>
+      expect(result.current.liveStatuses['ord-0']).toBe('En tránsito'),
+    );
+  });
+
   it('reasocia aunque el proveedor ecoe el orderCode con distinto case/espacios', async () => {
     // En prod se vio `shippingCode` con espacio final ("CHJN "); el proveedor
     // puede devolver el codigo trimmeado y/o en otro case. La clave del Map se
