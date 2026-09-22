@@ -74,15 +74,20 @@ export interface PrintLabelCompany {
   stores?: { id: string; name: string }[];
 }
 
-/** Etiqueta de estado para la impresión — vocabulario de despacho, no el enum crudo. */
-const PRINT_STATUS_LABEL: Record<string, { label: string; bg: string; color: string }> = {
-  PENDIENTE: { label: "POR DESPACHAR", bg: "#e0e7ff", color: "#3730a3" },
-  PREPARADO: { label: "POR DESPACHAR", bg: "#e0e7ff", color: "#3730a3" },
-  LLAMADO: { label: "POR DESPACHAR", bg: "#e0e7ff", color: "#3730a3" },
-  ASIGNADO_A_GUIA: { label: "ASIGNADO A GUÍA", bg: "#e0e7ff", color: "#3730a3" },
-  EN_ENVIO: { label: "EN CAMINO", bg: "#cffafe", color: "#155e75" },
-  ENTREGADO: { label: "ENTREGADO", bg: "#dcfce7", color: "#166534" },
-  ANULADO: { label: "ANULADO", bg: "#fee2e2", color: "#991b1b" },
+/**
+ * Etiqueta de estado para la impresión — vocabulario de despacho, no el enum
+ * crudo. Sin color (solo `label`): el `.status-badge` es borde + texto negro
+ * para todos los estados, porque el relleno de color no se lee en impresoras
+ * térmicas monocromas.
+ */
+const PRINT_STATUS_LABEL: Record<string, { label: string }> = {
+  PENDIENTE: { label: "POR DESPACHAR" },
+  PREPARADO: { label: "POR DESPACHAR" },
+  LLAMADO: { label: "POR DESPACHAR" },
+  ASIGNADO_A_GUIA: { label: "ASIGNADO A GUÍA" },
+  EN_ENVIO: { label: "EN CAMINO" },
+  ENTREGADO: { label: "ENTREGADO" },
+  ANULADO: { label: "ANULADO" },
 };
 
 export const PRINT_DELIVERY_TYPE_LABEL: Record<string, string> = {
@@ -138,11 +143,13 @@ const LABEL_STYLES = `
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: Arial, sans-serif;
-    font-size: 12px;
+    font-size: 13.5px;
+    font-weight: 900;
+    -webkit-text-stroke: 0.3px currentColor;
     padding: 14px;
     max-width: 380px;
     margin: 0 auto;
-    color: #111;
+    color: #000;
   }
   .label-page { max-width: 380px; margin: 0 auto; }
   .company-header {
@@ -150,26 +157,26 @@ const LABEL_STYLES = `
     align-items: center;
     gap: 10px;
     padding-bottom: 10px;
-    border-bottom: 2px solid #111;
+    border-bottom: 2px solid #000;
     margin-bottom: 10px;
   }
   .logo-box {
     width: 48px;
     height: 48px;
     border-radius: 8px;
-    background: #1f2937;
-    color: #fff;
+    border: 1.5px solid #000;
+    color: #000;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 9px;
-    font-weight: bold;
+    font-size: 10px;
+    font-weight: 900;
     flex-shrink: 0;
     overflow: hidden;
   }
   .logo-box img { width: 100%; height: 100%; object-fit: contain; }
-  .company-name { font-size: 16px; font-weight: bold; }
-  .company-meta { font-size: 10px; color: #333; font-weight: 500; margin-top: 2px; }
+  .company-name { font-size: 18px; font-weight: 900; }
+  .company-meta { font-size: 11.5px; color: #000; font-weight: 900; margin-top: 2px; }
 
   .order-block {
     display: flex;
@@ -178,16 +185,23 @@ const LABEL_STYLES = `
     margin-bottom: 8px;
   }
   .order-qr { width: 72px; height: 72px; flex-shrink: 0; }
-  .order-number { font-size: 20px; font-weight: bold; letter-spacing: 0.5px; }
-  .order-dates { font-size: 10px; color: #222; font-weight: 500; margin-top: 3px; display: flex; gap: 10px; }
-  .order-dates b { color: #111; }
+  .order-number { font-size: 23px; font-weight: 900; letter-spacing: 0.5px; }
+  .order-dates { font-size: 11.5px; color: #000; font-weight: 900; margin-top: 3px; display: flex; gap: 10px; }
+  .order-dates b { color: #000; }
+  /* Los rellenos de color (pastel o solidos) no imprimen bien en impresoras
+     térmicas monocromas — el dithering vuelve el texto ilegible (fondo negro
+     con letras blancas, o pasteles que quedan sin contraste). Todos los
+     "badges" de esta etiqueta usan borde + texto negro en vez de relleno de
+     color, que es lo único que se lee consistente en térmica. */
   .status-badge {
     display: inline-block;
     margin-top: 5px;
-    padding: 2px 8px;
+    padding: 3px 10px;
+    border: 1.5px solid #000;
     border-radius: 4px;
-    font-size: 9px;
-    font-weight: bold;
+    font-size: 11px;
+    font-weight: 900;
+    color: #000;
   }
 
   .barcode-wrap { text-align: center; margin: 8px 0 10px; padding-bottom: 8px; border-bottom: 1px dashed #999; }
@@ -197,52 +211,56 @@ const LABEL_STYLES = `
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #111;
+    background: #000;
     color: #fff;
-    padding: 8px 10px;
+    padding: 9px 11px;
+    border: 2.5px solid #000;
     border-radius: 6px;
     margin-bottom: 10px;
   }
-  .cod-banner .cod-label { font-size: 10px; font-weight: bold; text-transform: uppercase; line-height: 1.4; }
-  .cod-banner .cod-amount { font-size: 20px; font-weight: bold; white-space: nowrap; }
+  .cod-banner .cod-label { font-size: 11.5px; font-weight: 900; text-transform: uppercase; line-height: 1.4; }
+  .cod-banner .cod-amount { font-size: 23px; font-weight: 900; white-space: nowrap; }
   .paid-banner {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    background: #dcfce7;
-    color: #166534;
-    padding: 8px 10px;
+    background: #fff;
+    color: #000;
+    padding: 9px 11px;
+    border: 2.5px solid #000;
     border-radius: 6px;
     margin-bottom: 10px;
-    font-size: 11px;
-    font-weight: bold;
+    font-size: 13px;
+    font-weight: 900;
   }
 
-  .info-row { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #ccc; }
-  .customer-info { font-size: 10.5px; line-height: 1.55; }
-  .customer-info b { font-weight: 600; }
-  .location-info { text-align: right; font-size: 10px; flex-shrink: 0; }
+  .info-row { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px dashed #999; }
+  .customer-info { font-size: 12px; line-height: 1.6; }
+  .customer-info b { font-weight: 900; }
+  .location-info { text-align: right; font-size: 11.5px; flex-shrink: 0; }
   .district-pill {
     display: inline-block;
-    background: #fef3c7;
-    color: #92400e;
-    font-weight: bold;
-    padding: 2px 8px;
+    background: #fff;
+    color: #000;
+    font-weight: 900;
+    padding: 3px 9px;
+    border: 1.5px solid #000;
     border-radius: 4px;
-    font-size: 10.5px;
+    font-size: 12px;
     margin-bottom: 3px;
   }
-  .location-info div { color: #222; font-weight: 500; }
+  .location-info div { color: #000; font-weight: 900; }
 
   .courier-row {
     display: flex;
     justify-content: space-between;
-    font-size: 10.5px;
+    font-size: 12px;
     padding: 6px 0;
-    border-bottom: 1px dashed #ccc;
+    border-bottom: 1px dashed #999;
     margin-bottom: 8px;
+    color: #000;
   }
-  .courier-row b { font-weight: bold; }
+  .courier-row b { font-weight: 900; }
 
   .picking-header {
     display: flex;
@@ -250,37 +268,37 @@ const LABEL_STYLES = `
     align-items: baseline;
     margin-bottom: 6px;
   }
-  .picking-title { font-size: 11px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
-  .picking-almacen { font-size: 9.5px; color: #333; font-weight: 500; text-align: right; }
+  .picking-title { font-size: 12.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; }
+  .picking-almacen { font-size: 11px; color: #000; font-weight: 900; text-align: right; }
 
-  .pick-item { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px dotted #ddd; }
-  .pick-checkbox { width: 14px; height: 14px; border: 1.5px solid #333; border-radius: 2px; margin-top: 2px; flex-shrink: 0; }
-  .pick-qty { text-align: center; width: 26px; flex-shrink: 0; }
-  .pick-qty .num { font-size: 15px; font-weight: bold; line-height: 1; }
-  .pick-qty .unit { font-size: 8px; color: #333; font-weight: 500; }
+  .pick-item { display: flex; gap: 8px; align-items: flex-start; padding: 7px 0; border-bottom: 1px dotted #999; }
+  .pick-checkbox { width: 15px; height: 15px; border: 1.5px solid #000; border-radius: 2px; margin-top: 2px; flex-shrink: 0; }
+  .pick-qty { text-align: center; width: 28px; flex-shrink: 0; }
+  .pick-qty .num { font-size: 17px; font-weight: 900; line-height: 1; }
+  .pick-qty .unit { font-size: 9.5px; color: #000; font-weight: 900; }
   .pick-body { flex: 1; min-width: 0; }
-  .pick-name { font-weight: bold; font-size: 11px; }
-  .pick-meta { font-size: 9px; color: #333; font-weight: 500; margin-top: 1px; }
-  .pick-price { font-size: 11px; font-weight: 600; white-space: nowrap; }
-  .pick-summary { font-size: 9.5px; color: #333; font-weight: 500; margin-top: 6px; }
+  .pick-name { font-weight: 900; font-size: 12.5px; }
+  .pick-meta { font-size: 11px; color: #000; font-weight: 900; margin-top: 1px; }
+  .pick-price { font-size: 12.5px; font-weight: 900; white-space: nowrap; }
+  .pick-summary { font-size: 11px; color: #000; font-weight: 900; margin-top: 6px; }
 
-  .totals { margin-top: 10px; padding-top: 8px; border-top: 1px solid #333; font-size: 10.5px; }
-  .totals-line { color: #222; font-weight: 500; margin-bottom: 4px; }
+  .totals { margin-top: 10px; padding-top: 8px; border-top: 1px solid #000; font-size: 12px; }
+  .totals-line { color: #000; font-weight: 900; margin-bottom: 4px; }
   .total-main { display: flex; justify-content: space-between; align-items: baseline; }
-  .total-main .label { font-size: 14px; font-weight: bold; }
-  .total-main .value { font-size: 18px; font-weight: bold; }
-  .advance-line { display: flex; justify-content: space-between; font-size: 10px; color: #222; font-weight: 500; margin-top: 3px; }
+  .total-main .label { font-size: 16px; font-weight: 900; }
+  .total-main .value { font-size: 20px; font-weight: 900; }
+  .advance-line { display: flex; justify-content: space-between; font-size: 11.5px; color: #000; font-weight: 900; margin-top: 3px; }
 
   .tracking-section {
     margin-top: 10px;
     padding-top: 8px;
-    border-top: 1px dashed #333;
-    font-size: 10px;
+    border-top: 1px dashed #000;
+    font-size: 11.5px;
   }
   .tracking-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
-  .tracking-item { line-height: 1.2; }
-  .tracking-label { color: #333; font-weight: 600; font-size: 8px; text-decoration: underline; }
-  .tracking-value { font-weight: bold; display: block; }
+  .tracking-item { line-height: 1.25; }
+  .tracking-label { color: #000; font-weight: 900; font-size: 10px; text-decoration: underline; }
+  .tracking-value { font-weight: 900; display: block; color: #000; font-size: 12.5px; }
 
   @media print {
     body { padding: 8px; }
@@ -312,22 +330,27 @@ async function buildOrderLabelHtml(
   // finanzas queda en 0 ahí, y la etiqueta mostraba "Por cobrar contra
   // entrega" el total completo, pidiéndole al courier cobrar de más. Se
   // recalcula sumando `receipt.payments` sin filtrar por status (mismo
-  // criterio que ya usa la vista en pantalla del modal de éxito).
+  // criterio que ya usa la vista en pantalla del modal de éxito) — esto es
+  // solo para lo que se le cobra al cliente, no debe tocar el gate de la
+  // clave (ver `keyLocked` más abajo).
   const totalPaid = receipt.payments.reduce(
     (acc, p) => acc + Number(p.amount || 0),
     0,
   );
   const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
+  // La clave de recojo NO debe revelarse con el mismo criterio "cualquier
+  // pago, aprobado o no" de arriba — eso permitiría imprimir la clave real
+  // con solo un comprobante cargado y sin validar, exactamente lo que
+  // `isDebtFree` (CustomerServiceModal) y `getPendingPayment` (Rastreo
+  // Courier) evitan hoy. Se mantiene el criterio estricto de solo pagos
+  // APROBADOS para decidir si se oculta.
+  const keyLocked = (receipt.totals.pendingAmount ?? 0) > 0;
 
   // "Almacén" = nombre de la tienda del pedido — no existe un concepto de
   // almacén/bodega separado en el sistema hoy, es el dato más cercano.
   const storeName = company?.stores?.find((s) => s.id === orderHeader?.storeId)?.name;
   const rawStatus = orderHeader?.status ?? receipt.status;
-  const statusInfo = PRINT_STATUS_LABEL[rawStatus] ?? {
-    label: rawStatus,
-    bg: "#f1f5f9",
-    color: "#334155",
-  };
+  const statusInfo = PRINT_STATUS_LABEL[rawStatus] ?? { label: rawStatus };
   const deliveryLabel =
     PRINT_DELIVERY_TYPE_LABEL[orderHeader?.deliveryType ?? ""] ??
     orderHeader?.deliveryType ??
@@ -357,7 +380,7 @@ async function buildOrderLabelHtml(
             <span>Creado: <b>${fmtShort(receipt.createdAt)}</b></span>
             ${orderHeader?.callbackAt ? `<span>Entrega: <b>${fmtShort(orderHeader.callbackAt)}</b></span>` : ""}
           </div>
-          <div class="status-badge" style="background:${statusInfo.bg};color:${statusInfo.color}">${statusInfo.label}</div>
+          <div class="status-badge">${statusInfo.label}</div>
         </div>
       </div>
 
@@ -481,7 +504,7 @@ async function buildOrderLabelHtml(
           <div class="tracking-item">
             <span class="tracking-label">Clave:</span>
             <span class="tracking-value">${
-              pendingAmount > 0
+              keyLocked
                 ? '<span style="color:red; font-weight:bold;">CLAVE OCULTA (Pago Pendiente)</span>'
                 : receipt.shippingKey
             }</span>
