@@ -1,4 +1,6 @@
 import { OrderStatus } from "@/interfaces/IOrder";
+import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 interface Props {
   data: any;
@@ -91,13 +93,13 @@ export default function OrderReceiptView({ data }: Props) {
   const pendingAmount = Math.max(totals.grandTotal - totalPaid, 0);
 
   return (
-    <div id="receipt-content" className="p-6 text-sm">
+    <div id="receipt-content" className="p-6 text-sm min-w-0">
       {/* Status Badge */}
-      <div
-        className={`${statusStyle.bg} ${statusStyle.text} px-4 py-3 rounded-md mb-6 font-medium`}
+      <Badge
+        className={`${statusStyle.bg} ${statusStyle.text} mb-6 rounded-md px-4 py-1.5 text-sm font-medium`}
       >
         {statusStyle.label}
-      </div>
+      </Badge>
 
       {/* Payment Status Banner */}
       {(() => {
@@ -106,107 +108,100 @@ export default function OrderReceiptView({ data }: Props) {
         const pendingPaymentsCount = totals.pendingPaymentsCount || 0;
         const approvedPaymentsCount = totals.approvedPaymentsCount || 0;
         const total = totals.grandTotal || 0;
-        
+
         // Caso 1: Completamente pagado (aprobado)
         if (totalPaidApproved >= total) {
           return (
-            <div className="bg-green-50 border-l-4 border-green-500 p-4 mb-6 rounded-r-md">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">✅</span>
-                <div>
-                  <p className="font-semibold text-green-800">Pago Completo</p>
-                  <p className="text-sm text-green-700">
-                    {approvedPaymentsCount} pago(s) aprobado(s) - Total: S/ {totalPaidApproved.toFixed(2)}
-                  </p>
-                </div>
-              </div>
-            </div>
+            <Alert className="mb-6 border-green-200 bg-green-50">
+              <AlertTitle className="text-green-800">✅ Pago Completo</AlertTitle>
+              <AlertDescription className="text-green-700 break-words">
+                {approvedPaymentsCount} pago(s) aprobado(s) - Total: S/ {totalPaidApproved.toFixed(2)}
+              </AlertDescription>
+            </Alert>
           );
         }
-        
+
         // Caso 2: Hay pagos pendientes de revisión
         if (pendingPaymentsCount > 0) {
           return (
-            <div className="bg-yellow-50 border-l-4 border-yellow-500 p-4 mb-6 rounded-r-md">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">⏳</span>
-                <div>
-                  <p className="font-semibold text-yellow-800">Pagos Pendientes de Aprobación</p>
-                  <p className="text-sm text-yellow-700">
-                    {pendingPaymentsCount} pago(s) en revisión por S/ {totalPendingApproval.toFixed(2)}
+            <Alert className="mb-6 border-yellow-200 bg-yellow-50">
+              <AlertTitle className="text-yellow-800">⏳ Pagos Pendientes de Aprobación</AlertTitle>
+              <AlertDescription className="text-yellow-700 break-words">
+                <p>{pendingPaymentsCount} pago(s) en revisión por S/ {totalPendingApproval.toFixed(2)}</p>
+                {approvedPaymentsCount > 0 && (
+                  <p className="text-green-700 mt-1">
+                    ✓ {approvedPaymentsCount} pago(s) aprobado(s) por S/ {totalPaidApproved.toFixed(2)}
                   </p>
-                  {approvedPaymentsCount > 0 && (
-                    <p className="text-sm text-green-700 mt-1">
-                      ✓ {approvedPaymentsCount} pago(s) aprobado(s) por S/ {totalPaidApproved.toFixed(2)}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
+                )}
+              </AlertDescription>
+            </Alert>
           );
         }
-        
+
         // Caso 3: Falta monto (sin pagos pendientes de revisión)
         if (pendingAmount > 0) {
           return (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6 rounded-r-md">
-              <div className="flex items-center gap-3">
-                <span className="text-2xl">💰</span>
-                <div>
-                  <p className="font-semibold text-red-800">Pago Pendiente</p>
-                  <p className="text-sm text-red-700">
-                    Falta por pagar: S/ {pendingAmount.toFixed(2)}
+            <Alert className="mb-6 border-red-200 bg-red-50">
+              <AlertTitle className="text-red-800">💰 Pago Pendiente</AlertTitle>
+              <AlertDescription className="text-red-700 break-words">
+                <p>Falta por pagar: S/ {pendingAmount.toFixed(2)}</p>
+                {approvedPaymentsCount > 0 && (
+                  <p className="text-green-700 mt-1">
+                    ✓ Adelanto aprobado: S/ {totalPaidApproved.toFixed(2)}
                   </p>
-                  {approvedPaymentsCount > 0 && (
-                    <p className="text-sm text-green-700 mt-1">
-                      ✓ Adelanto aprobado: S/ {totalPaidApproved.toFixed(2)}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
+                )}
+              </AlertDescription>
+            </Alert>
           );
         }
-        
+
         return null;
       })()}
 
       {/* Payment Warning Alert - Only shown when there's pending balance and not ANULADO */}
       {pendingAmount > 0 && status !== 'ANULADO' && (
-        <div className="bg-amber-50 border-l-4 border-amber-500 p-4 mb-6 rounded-r-md">
-          <div className="flex items-start gap-3">
-            <span className="text-amber-500 text-xl">⚠️</span>
-            <div className="text-sm text-amber-800">
-              <p className="font-semibold mb-2">
-                Atención: Validación de Pago pendiente
-              </p>
-              <p className="mb-2">
-                Tenga en cuenta que para realizar el despacho es{' '}
-                <strong>obligatorio</strong> que el cliente realice el pago en
-                su totalidad antes de la entrega.
-              </p>
-              <p className="mb-2">
-                Por favor, contacte con el cliente para validar el pago y
-                asegúrese de adjuntar el comprobante correspondiente antes de
-                proceder.
-              </p>
-              <p className="font-bold text-amber-900 mt-3">
-                ⚠️ IMPORTANTE: Sin la validación del pago, el motorizado o la
-                empresa de transportes no está autorizado a entregar el paquete.
-              </p>
-            </div>
-          </div>
-        </div>
+        <Alert className="mb-6 border-amber-200 bg-amber-50">
+          <AlertTitle className="text-amber-800">
+            ⚠️ Atención: Validación de Pago pendiente
+          </AlertTitle>
+          <AlertDescription className="text-amber-800 break-words">
+            <p>
+              Tenga en cuenta que para realizar el despacho es{" "}
+              <strong>obligatorio</strong> que el cliente realice el pago en
+              su totalidad antes de la entrega.
+            </p>
+            <p>
+              Por favor, contacte con el cliente para validar el pago y
+              asegúrese de adjuntar el comprobante correspondiente antes de
+              proceder.
+            </p>
+            <p className="font-bold text-amber-900">
+              ⚠️ IMPORTANTE: Sin la validación del pago, el motorizado o la
+              empresa de transportes no está autorizado a entregar el paquete.
+            </p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Order Header */}
       <div className="mb-6">
         <h2 className="text-xl font-bold">No de Orden # {orderNumber}</h2>
-        <p className="text-lg font-semibold">Total: S/{Number(totals.grandTotal).toFixed(2)}</p>
+        <div className="flex items-center gap-2 flex-wrap mt-1">
+          <p className="text-lg font-semibold">
+            Total: S/{Number(totals.grandTotal).toFixed(2)}
+          </p>
+          {pendingAmount > 0 ? (
+            <Badge className="bg-red-100 text-red-700">
+              Por cobrar S/ {pendingAmount.toFixed(2)}
+            </Badge>
+          ) : (
+            <Badge className="bg-emerald-100 text-emerald-700">Pagado</Badge>
+          )}
+        </div>
       </div>
 
       {/* Customer & Order Info Grid */}
-      <div className="grid grid-cols-2 gap-x-8 gap-y-2 mb-6 text-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 mb-6 text-sm [&>div]:min-w-0 [&>div]:break-words">
         <div>
           <span className="text-muted-foreground">Nombre: </span>
           <span className="text-black-600 font-medium">{customer.fullName}</span>
@@ -325,34 +320,54 @@ export default function OrderReceiptView({ data }: Props) {
 
       {/* Totals Section */}
       <div className="border-t pt-4 space-y-2">
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Productos:</span>
+        <div className="flex justify-between text-muted-foreground">
+          <span>Productos:</span>
           <span>S/ {Number(totals.productsTotal).toFixed(2)}</span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">IGV 18%:</span>
+        <div className="flex justify-between text-muted-foreground">
+          <span>IGV 18%:</span>
           <span>S/ {Number(totals.taxTotal).toFixed(2)}</span>
         </div>
-        <div className="flex justify-between">
-          <span className="text-muted-foreground">Envío:</span>
+        <div className="flex justify-between text-muted-foreground">
+          <span>Envío:</span>
           <span>S/ {Number(totals.shippingTotal).toFixed(2)}</span>
         </div>
-        <div className="flex justify-between font-bold text-lg border-t pt-2 mt-2">
+        {Number(totals.discountTotal) > 0 && (
+          <div className="flex justify-between text-muted-foreground">
+            <span>Descuentos:</span>
+            <span>- S/ {Number(totals.discountTotal).toFixed(2)}</span>
+          </div>
+        )}
+        {/* Total — ya no es el elemento más destacado de la sección: cuando
+            hay un adelanto parcial, el cliente lo confundía con "el adelanto
+            no se aplicó" porque este número no cambiaba. Ahora el
+            protagonista es "Por Cobrar" (o el check de pagado) más abajo. */}
+        <div className="flex justify-between font-medium border-t pt-2 mt-2">
           <span>Total:</span>
           <span>S/ {Number(totals.grandTotal).toFixed(2)}</span>
         </div>
-        <div className="flex justify-between text-muted-foreground">
-          <span>Descuentos:</span>
-          <span>S/ {Number(totals.discountTotal).toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-muted-foreground">
-          <span>Adelanto:</span>
-          <span>S/ {totalPaid.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-muted-foreground">
-          <span>Por Cobrar:</span>
-          <span>S/ {pendingAmount.toFixed(2)}</span>
-        </div>
+
+        {totalPaid > 0 && (
+          <div className="flex justify-between text-emerald-600 font-medium">
+            <span>✓ Adelanto pagado:</span>
+            <span>S/ {totalPaid.toFixed(2)}</span>
+          </div>
+        )}
+
+        {pendingAmount > 0 ? (
+          <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-3 py-2.5">
+            <span className="font-bold text-red-700">Por Cobrar</span>
+            <span className="text-lg font-extrabold text-red-700">
+              S/ {pendingAmount.toFixed(2)}
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+            <span className="font-bold text-emerald-700">
+              ✓ Pagado en su totalidad
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

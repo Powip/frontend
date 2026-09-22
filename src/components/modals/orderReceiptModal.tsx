@@ -127,7 +127,7 @@ export default function OrderReceiptModal({
     >
       <DialogContent
         id="order-receipt-print-area"
-        className="max-w-3xl max-h-[90vh] overflow-y-auto"
+        className="max-w-3xl max-h-[90vh] overflow-y-auto overflow-x-hidden"
       >
         <DialogHeader>
           <DialogTitle>Comprobante de pedido</DialogTitle>
@@ -148,7 +148,7 @@ export default function OrderReceiptModal({
           />
         )}
 
-        <div className="flex justify-end gap-2 mt-4">
+        <div className="flex flex-wrap justify-end gap-2 mt-4">
           <Button
             variant="outline"
             onClick={() => {

@@ -307,8 +307,17 @@ async function buildOrderLabelHtml(
   const qrDataUrl = await generateQR(trackingUrlForQr);
   const barcodeDataUrl = generateBarcode(receipt.orderNumber);
 
-  const totalPaid = receipt.totals.totalPaid || 0;
-  const pendingAmount = receipt.totals.pendingAmount || 0;
+  // `receipt.totals.totalPaid` solo suma pagos APROBADOS (status PAID) — un
+  // adelanto recién registrado que todavía está PENDING de aprobación por
+  // finanzas queda en 0 ahí, y la etiqueta mostraba "Por cobrar contra
+  // entrega" el total completo, pidiéndole al courier cobrar de más. Se
+  // recalcula sumando `receipt.payments` sin filtrar por status (mismo
+  // criterio que ya usa la vista en pantalla del modal de éxito).
+  const totalPaid = receipt.payments.reduce(
+    (acc, p) => acc + Number(p.amount || 0),
+    0,
+  );
+  const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
 
   // "Almacén" = nombre de la tienda del pedido — no existe un concepto de
   // almacén/bodega separado en el sistema hoy, es el dato más cercano.

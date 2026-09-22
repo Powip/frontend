@@ -55,8 +55,17 @@ export async function downloadNotaVentaPdf(
   const trackingUrlForQr = `${process.env.NEXT_PUBLIC_LANDING_URL}/rastreo/${receipt.orderNumber}`;
   const qrDataUrl = await generateQR(trackingUrlForQr);
 
-  const totalPaid = receipt.totals.totalPaid || 0;
-  const pendingAmount = receipt.totals.pendingAmount || 0;
+  // `receipt.totals.totalPaid` solo suma pagos APROBADOS (status PAID) — un
+  // adelanto recién registrado que todavía está PENDING de aprobación por
+  // finanzas queda en 0 ahí, y el documento mostraba "Por cobrar" el total
+  // completo como si el adelanto nunca se hubiera aplicado. Se recalcula
+  // sumando `receipt.payments` sin filtrar por status (mismo criterio que ya
+  // usa la vista en pantalla del modal de éxito, OrderReceiptView).
+  const totalPaid = receipt.payments.reduce(
+    (acc, p) => acc + Number(p.amount || 0),
+    0,
+  );
+  const pendingAmount = Math.max(receipt.totals.grandTotal - totalPaid, 0);
 
   const rawStatus = orderHeader?.status ?? receipt.status;
   const statusColor = PDF_STATUS_COLOR[rawStatus] ?? { bg: "#f1f5f9", color: "#334155" };
