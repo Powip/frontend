@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 /**
  * Tests: ReconciliationTab (FEAT-17 Fase 5 — bandeja de reconciliación)
  *
