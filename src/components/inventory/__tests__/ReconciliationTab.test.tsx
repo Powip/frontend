@@ -21,18 +21,25 @@
  *    service directo al click: abren `ReconciliationRejectDialog` ("Rechazar
  *    tarea de reconciliación"). Recién al confirmar ahí se llama a
  *    `rejectReconciliationTask` con el id correcto.
- * 8. Selección múltiple (checkboxes de provisional + duplicate_cluster) +
- *    "Confirmar seleccionadas" abre el diálogo de confirmación y, al
- *    confirmar, llama a `bulkConfirmReconciliationTasks` con los ids
- *    seleccionados.
+ * 8. Selección múltiple: FEAT-17 hotfix — `BULK_SELECTABLE_TYPES` ya no
+ *    incluye `duplicate_cluster`, así que solo las filas `provisional`
+ *    muestran checkbox. Seleccionar un provisional + "Confirmar
+ *    seleccionadas" abre el diálogo de confirmación (texto actualizado:
+ *    "Los provisionales seleccionados se confirmarán...") y, al confirmar,
+ *    llama a `bulkConfirmReconciliationTasks` con el id seleccionado.
  * 9. Si una acción individual rechaza la promesa, se muestra `toast.error` (con
  *    el fallback del propio componente) y el componente no se rompe (el item
  *    sigue visible, el botón vuelve a estar habilitado).
  * 10. Cola manual: NO se renderizan botones de "Confirmar"/"Vincular" ni el
  *     input de UUID para items `type: 'manual'`, solo "Rechazar".
- * 11. "Resolver merge" en un cluster de duplicados abre `ReconciliationMergeDialog`
- *     (no mockeado — es seguro en jsdom, ver nota de mocks) con los candidatos
- *     del cluster.
+ * 11. FEAT-17 hotfix (`DUPLICATE_MERGE_PAUSED = true`): la fusión de
+ *     duplicados queda pausada. "Resolver merge" en un cluster está
+ *     disabled con title "Fusión pausada temporalmente" y el click no abre
+ *     `ReconciliationMergeDialog`. Se muestra un `Alert` ("Fusión de
+ *     duplicados pausada") arriba de los clusters. Los clusters ya no
+ *     tienen checkbox de selección (ver punto 8), pero "Rechazar" sigue
+ *     habilitado y abre `ReconciliationRejectDialog` igual que en el resto
+ *     de los tipos.
  * 12. Con `companyId: undefined`, `loadTasks` corta antes de llamar a
  *     `listReconciliationTasks`, sale de `isLoading` y muestra directamente
  *     el estado vacío (sin pasar por el skeleton).
@@ -490,7 +497,7 @@ describe('ReconciliationTab', () => {
   });
 
   describe('selección múltiple + confirmación en lote', () => {
-    it('selecciona provisional + cluster y llama a bulkConfirmReconciliationTasks con ambos ids', async () => {
+    it('solo el provisional tiene checkbox (el cluster ya no es bulk-selectable, FEAT-17) y confirmar en lote llama a bulkConfirmReconciliationTasks con su id', async () => {
       const provisional = makeProvisionalTask();
       const cluster = makeClusterTask();
       mockListTasks
@@ -499,34 +506,38 @@ describe('ReconciliationTab', () => {
 
       const bulkResults: BulkConfirmResultItem[] = [
         { task_id: 'task-prov-1', status: 'confirmed' },
-        { task_id: 'task-cluster-1', status: 'confirmed' },
       ];
       mockBulkConfirm.mockResolvedValueOnce(bulkResults);
 
       renderTab();
       await screen.findByText('Zapatilla Roja Talla 40');
+      // El cluster también está renderizado en la misma pantalla, pero no
+      // aporta checkbox: el único checkbox visible es el del provisional.
+      await screen.findByText('Camiseta Azul M');
 
       const user = userEvent.setup();
       const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes).toHaveLength(2);
+      expect(checkboxes).toHaveLength(1);
       await user.click(checkboxes[0]);
-      await user.click(checkboxes[1]);
 
-      await user.click(screen.getByRole('button', { name: /confirmar seleccionadas \(2\)/i }));
+      await user.click(screen.getByRole('button', { name: /confirmar seleccionadas \(1\)/i }));
 
       expect(
-        await screen.findByText(/confirmar 2 tarea\(s\) en lote/i),
+        await screen.findByText(/confirmar 1 tarea\(s\) en lote/i),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /los provisionales seleccionados se confirmarán como productos nuevos\. esta acción no se puede deshacer\./i,
+        ),
       ).toBeInTheDocument();
 
       await user.click(screen.getByRole('button', { name: /confirmar en lote/i }));
 
       await waitFor(() => expect(mockBulkConfirm).toHaveBeenCalledTimes(1));
-      const [calledIds] = mockBulkConfirm.mock.calls[0];
-      expect(calledIds).toHaveLength(2);
-      expect(calledIds).toEqual(expect.arrayContaining(['task-prov-1', 'task-cluster-1']));
+      expect(mockBulkConfirm).toHaveBeenCalledWith(['task-prov-1']);
 
       await waitFor(() =>
-        expect(mockToast.success).toHaveBeenCalledWith('2 tarea(s) confirmada(s) correctamente'),
+        expect(mockToast.success).toHaveBeenCalledWith('1 tarea(s) confirmada(s) correctamente'),
       );
       await waitFor(() => expect(mockListTasks).toHaveBeenCalledTimes(2));
     });
@@ -570,17 +581,68 @@ describe('ReconciliationTab', () => {
     });
   });
 
-  describe('clusters de duplicados', () => {
-    it('"Resolver merge" abre el diálogo de fusión con los candidatos del cluster', async () => {
+  describe('clusters de duplicados (FEAT-17: fusión pausada)', () => {
+    it('muestra el alert de "Fusión de duplicados pausada" sobre la sección de clusters', async () => {
       mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
 
       renderTab();
       await screen.findByText('Camiseta Azul M');
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /resolver merge/i }));
+      expect(screen.getByText('Fusión de duplicados pausada')).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          /la fusión de duplicados está pausada mientras incorporamos la consolidación automática de stock\. podés revisar los grupos, pero todavía no fusionarlos\./i,
+        ),
+      ).toBeInTheDocument();
+    });
 
-      expect(await screen.findByText(/resolver duplicados/i)).toBeInTheDocument();
+    it('"Resolver merge" está deshabilitado con title "Fusión pausada temporalmente" y no abre ReconciliationMergeDialog', async () => {
+      mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
+
+      renderTab();
+      await screen.findByText('Camiseta Azul M');
+
+      const mergeButton = screen.getByRole('button', { name: /resolver merge/i });
+      expect(mergeButton).toBeDisabled();
+      expect(mergeButton).toHaveAttribute('title', 'Fusión pausada temporalmente');
+
+      const user = userEvent.setup();
+      await user.click(mergeButton);
+
+      expect(screen.queryByText(/resolver duplicados/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    });
+
+    it('no muestra checkbox de selección en las filas de cluster', async () => {
+      mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
+
+      renderTab();
+      await screen.findByText('Camiseta Azul M');
+
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+
+    it('"Rechazar" en un cluster sigue habilitado y abre el diálogo de confirmación, y confirmar sí llama a rejectReconciliationTask', async () => {
+      const cluster = makeClusterTask();
+      mockListTasks.mockResolvedValueOnce([cluster]);
+
+      renderTab();
+      await screen.findByText('Camiseta Azul M');
+
+      const rejectButton = screen.getByRole('button', { name: 'Rechazar' });
+      expect(rejectButton).not.toBeDisabled();
+
+      const user = userEvent.setup();
+      await user.click(rejectButton);
+
+      expect(mockReject).not.toHaveBeenCalled();
+      const rejectDialog = within(await screen.findByRole('alertdialog'));
+      expect(rejectDialog.getByText(/rechazar tarea de reconciliación/i)).toBeInTheDocument();
+
+      await user.click(rejectDialog.getByRole('button', { name: /confirmar rechazo/i }));
+
+      await waitFor(() => expect(mockReject).toHaveBeenCalledWith('task-cluster-1'));
+      expect(mockToast.success).toHaveBeenCalledWith('Tarea rechazada');
     });
   });
 });

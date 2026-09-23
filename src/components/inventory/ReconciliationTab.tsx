@@ -6,6 +6,7 @@ import {
   Check,
   CheckCheck,
   GitMerge,
+  Info,
   Link2,
   Loader2,
   PackageSearch,
@@ -13,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Table,
   TableBody,
@@ -64,10 +66,14 @@ type StatusFilter = "ALL" | ReconciliationTaskStatus;
 // Tipos cuyas tareas `pending` pueden entrar al lote de `bulk-confirm` —
 // 'manual' siempre vuelve `skipped` en el backend (no tiene mecanismo de
 // confirmación automática), así que ni se ofrece el checkbox para esas filas.
-const BULK_SELECTABLE_TYPES: ReconciliationTaskType[] = [
-  "provisional",
-  "duplicate_cluster",
-];
+// 'duplicate_cluster' queda afuera temporalmente (hotfix FEAT-17): el merge
+// todavía no consolida stock en ms-logistics, así que la fusión (y su
+// selección para confirmar en lote) está pausada hasta reactivarla.
+const BULK_SELECTABLE_TYPES: ReconciliationTaskType[] = ["provisional"];
+
+// FEAT-17 (hotfix): la fusión de duplicados queda pausada hasta que el merge
+// consolide stock en ms-logistics — sacar esta constante para reactivarla.
+const DUPLICATE_MERGE_PAUSED = true;
 
 interface ReconciliationTabProps {
   companyId: string | undefined;
@@ -558,6 +564,18 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
                 <Badge variant="secondary">{duplicateClusterTasks.length}</Badge>
               </h4>
 
+              <Alert className="border-amber-200 bg-amber-50">
+                <Info className="h-4 w-4 text-amber-800" />
+                <AlertTitle className="text-amber-800">
+                  Fusión de duplicados pausada
+                </AlertTitle>
+                <AlertDescription className="text-amber-800 break-words">
+                  La fusión de duplicados está pausada mientras incorporamos
+                  la consolidación automática de stock. Podés revisar los
+                  grupos, pero todavía no fusionarlos.
+                </AlertDescription>
+              </Alert>
+
               {duplicateClusterTasks.length === 0 ? (
                 <div className="flex h-24 items-center justify-center rounded-md border bg-card italic text-muted-foreground shadow-sm">
                   No hay clusters de duplicados sugeridos.
@@ -573,14 +591,6 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            {task.status === "pending" && (
-                              <Checkbox
-                                checked={selectedIds.has(task.id)}
-                                onCheckedChange={(checked) =>
-                                  toggleSelected(task.id, checked === true)
-                                }
-                              />
-                            )}
                             <span className="text-sm font-semibold">
                               Cluster de {task.items.length} variantes candidatas
                             </span>
@@ -594,7 +604,12 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
                           <div className="flex gap-2">
                             <Button
                               size="sm"
-                              disabled={isProcessing}
+                              disabled={DUPLICATE_MERGE_PAUSED || isProcessing}
+                              title={
+                                DUPLICATE_MERGE_PAUSED
+                                  ? "Fusión pausada temporalmente"
+                                  : undefined
+                              }
                               onClick={() => setMergeTask(task)}
                             >
                               <GitMerge className="mr-1 h-3.5 w-3.5" />
@@ -715,9 +730,7 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
             </AlertDialogTitle>
             <AlertDialogDescription>
               Los provisionales seleccionados se confirmarán como productos
-              nuevos. Los clusters de duplicados seleccionados se fusionarán
-              automáticamente usando la variante ganadora sugerida por el
-              sistema. Esta acción no se puede deshacer.
+              nuevos. Esta acción no se puede deshacer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
