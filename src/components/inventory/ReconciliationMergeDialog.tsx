@@ -101,8 +101,9 @@ export function ReconciliationMergeDialog({
               <p>
                 Elegí cuál de las variantes candidatas es la correcta. Las
                 demás se fusionarán contra ella (soft-merge) y dejarán de
-                existir como variantes independientes. Esta acción no se
-                puede deshacer.
+                existir como variantes independientes. El stock y las
+                reservas de las variantes que se eliminan pasan a la
+                variante que queda. Esta acción no se puede deshacer.
               </p>
               <div className="max-h-64 space-y-2 overflow-y-auto">
                 {task.items.map((item) => {

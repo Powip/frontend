@@ -15,10 +15,22 @@
  *    (dispara `onClose`).
  * 6. Si `resolveReconciliationMerge` rechaza la promesa, se muestra
  *    `toast.error` y el diálogo sigue abierto (no se llama a `onClose`).
+ * 7. La advertencia del diálogo incluye el texto sobre que el stock y las
+ *    reservas de las variantes eliminadas pasan a la variante que queda
+ *    (FEAT-17 Anexo A), además de la leyenda de que la acción no se puede
+ *    deshacer.
+ * 8. Si `resolveReconciliationMerge` rechaza con un error de conflicto de
+ *    atributos (`{ response: { data: { message } } }`), el `toast.error`
+ *    muestra ese mensaje puntual (no el fallback genérico) y el diálogo
+ *    sigue abierto.
  *
  * Mocks aplicados:
  * - @/services/reconciliationTask.service → `resolveReconciliationMerge` +
- *   `getReconciliationTaskErrorMessage` (devuelve el `fallback` recibido).
+ *   `getReconciliationTaskErrorMessage` (por defecto devuelve el `fallback`
+ *   recibido; en el test del punto 8 se sobreescribe una vez con una
+ *   implementación que replica el comportamiento real del helper —
+ *   `error.response.data.message` si existe, si no el `fallback` — para
+ *   poder verificar que el mensaje puntual del backend llega al toast).
  * - sonner → toast.success/error.
  * - AlertDialog (Radix) → SIN mockear, es seguro en jsdom (no depende de
  *   pointer capture / ResizeObserver como sí lo hace Select).
@@ -55,6 +67,7 @@ jest.mock('@/services/reconciliationTask.service', () => ({
 import { toast } from 'sonner';
 import {
   resolveReconciliationMerge,
+  getReconciliationTaskErrorMessage,
   type ReconciliationTask,
   type ReconciliationTaskItem,
 } from '@/services/reconciliationTask.service';
@@ -63,6 +76,7 @@ import { ReconciliationMergeDialog } from '../ReconciliationMergeDialog';
 // ── Casts ────────────────────────────────────────────────────────────────────
 
 const mockResolveMerge = jest.mocked(resolveReconciliationMerge);
+const mockGetErrorMessage = jest.mocked(getReconciliationTaskErrorMessage);
 const mockToast = toast as jest.Mocked<typeof toast>;
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -144,6 +158,20 @@ describe('ReconciliationMergeDialog', () => {
     );
 
     expect(screen.queryByText(/resolver duplicados/i)).not.toBeInTheDocument();
+  });
+
+  describe('advertencia de la fusión', () => {
+    it('incluye el texto de que el stock y las reservas de las variantes eliminadas pasan a la variante que queda, además de la leyenda de irreversibilidad', () => {
+      const task = makeClusterTask();
+      render(<ReconciliationMergeDialog task={task} onClose={jest.fn()} onSuccess={jest.fn()} />);
+
+      expect(
+        screen.getByText(
+          /el stock y las reservas de las variantes que se eliminan pasan a la variante que queda/i,
+        ),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/esta acción no se puede deshacer/i)).toBeInTheDocument();
+    });
   });
 
   describe('preselección del ganador sugerido', () => {
@@ -239,6 +267,34 @@ describe('ReconciliationMergeDialog', () => {
       ).toBeInTheDocument();
       expect(mockToast.error).toHaveBeenCalledWith('No se pudo resolver el merge del cluster');
       expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('si resolveReconciliationMerge rechaza con un error de conflicto de atributos, el toast muestra ese mensaje puntual y el diálogo sigue abierto', async () => {
+      const task = makeClusterTask();
+      const onClose = jest.fn();
+      const conflictMessage =
+        'No se pueden fusionar variantes con atributos distintos (color/talle/etc.). Revisá el cluster.';
+      mockResolveMerge.mockRejectedValueOnce({
+        response: { data: { message: conflictMessage } },
+      });
+      // El mock por defecto del módulo devuelve directamente el `fallback`
+      // (ver comentario del archivo) — acá se sobreescribe una vez para
+      // replicar el comportamiento real del helper y así poder verificar que
+      // el mensaje puntual del backend (no el fallback genérico) es el que
+      // llega al toast.
+      mockGetErrorMessage.mockImplementationOnce((error: unknown, fallback: string) => {
+        const apiError = error as { response?: { data?: { message?: string } } };
+        return apiError?.response?.data?.message ?? fallback;
+      });
+      render(<ReconciliationMergeDialog task={task} onClose={onClose} onSuccess={jest.fn()} />);
+
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('button', { name: /confirmar fusión/i }));
+
+      await waitFor(() => expect(mockToast.error).toHaveBeenCalledWith(conflictMessage));
+      expect(onClose).not.toHaveBeenCalled();
+      expect(screen.getByRole('alertdialog')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /confirmar fusión/i })).toBeInTheDocument();
     });
   });
 });

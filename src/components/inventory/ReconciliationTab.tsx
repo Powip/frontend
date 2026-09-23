@@ -5,14 +5,12 @@ import { toast } from "sonner";
 import {
   CheckCheck,
   GitMerge,
-  Info,
   Loader2,
   PackageSearch,
   Users,
   X,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Table,
   TableBody,
@@ -66,14 +64,12 @@ type StatusFilter = "ALL" | ReconciliationTaskStatus;
 // Tipos cuyas tareas `pending` pueden entrar al lote de `bulk-confirm` —
 // 'manual' siempre vuelve `skipped` en el backend (no tiene mecanismo de
 // confirmación automática), así que ni se ofrece el checkbox para esas filas.
-// 'duplicate_cluster' queda afuera temporalmente (hotfix FEAT-17): el merge
-// todavía no consolida stock en ms-logistics, así que la fusión (y su
-// selección para confirmar en lote) está pausada hasta reactivarla.
+// 'duplicate_cluster' queda afuera por decisión de producto (no es una
+// limitación técnica): cada fusión se confirma una por una vía
+// `ReconciliationMergeDialog`, eligiendo explícitamente la variante ganadora,
+// así que el backend sigue salteando (`skipped`) los clusters en
+// `bulk-confirm`.
 const BULK_SELECTABLE_TYPES: ReconciliationTaskType[] = ["provisional"];
-
-// FEAT-17 (hotfix): la fusión de duplicados queda pausada hasta que el merge
-// consolide stock en ms-logistics — sacar esta constante para reactivarla.
-const DUPLICATE_MERGE_PAUSED = true;
 
 interface ReconciliationTabProps {
   companyId: string | undefined;
@@ -465,18 +461,6 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
                 <Badge variant="secondary">{duplicateClusterTasks.length}</Badge>
               </h4>
 
-              <Alert className="border-amber-200 bg-amber-50">
-                <Info className="h-4 w-4 text-amber-800" />
-                <AlertTitle className="text-amber-800">
-                  Fusión de duplicados pausada
-                </AlertTitle>
-                <AlertDescription className="text-amber-800 break-words">
-                  La fusión de duplicados está pausada mientras incorporamos
-                  la consolidación automática de stock. Podés revisar los
-                  grupos, pero todavía no fusionarlos.
-                </AlertDescription>
-              </Alert>
-
               {duplicateClusterTasks.length === 0 ? (
                 <div className="flex h-24 items-center justify-center rounded-md border bg-card italic text-muted-foreground shadow-sm">
                   No hay clusters de duplicados sugeridos.
@@ -505,12 +489,7 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
                           <div className="flex gap-2">
                             <Button
                               size="sm"
-                              disabled={DUPLICATE_MERGE_PAUSED || isProcessing}
-                              title={
-                                DUPLICATE_MERGE_PAUSED
-                                  ? "Fusión pausada temporalmente"
-                                  : undefined
-                              }
+                              disabled={isProcessing}
                               onClick={() => setMergeTask(task)}
                             >
                               <GitMerge className="mr-1 h-3.5 w-3.5" />

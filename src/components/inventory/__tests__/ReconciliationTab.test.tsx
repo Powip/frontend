@@ -36,14 +36,14 @@
  *     buscador de variantes ("Buscar otra variante") para items
  *     `type: 'manual'`, solo "Rechazar" — esos items no pasan por
  *     `ReconciliationProvisionalCard`.
- * 11. FEAT-17 hotfix (`DUPLICATE_MERGE_PAUSED = true`): la fusión de
- *     duplicados queda pausada. "Resolver merge" en un cluster está
- *     disabled con title "Fusión pausada temporalmente" y el click no abre
- *     `ReconciliationMergeDialog`. Se muestra un `Alert` ("Fusión de
- *     duplicados pausada") arriba de los clusters. Los clusters ya no
- *     tienen checkbox de selección (ver punto 8), pero "Rechazar" sigue
- *     habilitado y abre `ReconciliationRejectDialog` igual que en el resto
- *     de los tipos.
+ * 11. FEAT-17 Anexo A (fusión reactivada): "Resolver merge" en un cluster
+ *     está habilitado (solo se deshabilita mientras `isProcessing`) y el
+ *     click abre `ReconciliationMergeDialog` ("Resolver duplicados"). Ya no
+ *     se muestra ningún `Alert` de "Fusión de duplicados pausada" sobre la
+ *     sección de clusters. Los clusters siguen sin checkbox de selección
+ *     (ver punto 8 — `BULK_SELECTABLE_TYPES` solo incluye `provisional`),
+ *     pero "Rechazar" sigue habilitado y abre `ReconciliationRejectDialog`
+ *     igual que en el resto de los tipos.
  * 12. Con `companyId: undefined`, `loadTasks` corta antes de llamar a
  *     `listReconciliationTasks`, sale de `isLoading` y muestra directamente
  *     el estado vacío (sin pasar por el skeleton).
@@ -640,36 +640,30 @@ describe('ReconciliationTab', () => {
     });
   });
 
-  describe('clusters de duplicados (FEAT-17: fusión pausada)', () => {
-    it('muestra el alert de "Fusión de duplicados pausada" sobre la sección de clusters', async () => {
+  describe('clusters de duplicados (FEAT-17 Anexo A: fusión reactivada)', () => {
+    it('no muestra ningún alert de "Fusión de duplicados pausada" sobre la sección de clusters', async () => {
       mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
 
       renderTab();
       await screen.findByText('Camiseta Azul M');
 
-      expect(screen.getByText('Fusión de duplicados pausada')).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          /la fusión de duplicados está pausada mientras incorporamos la consolidación automática de stock\. podés revisar los grupos, pero todavía no fusionarlos\./i,
-        ),
-      ).toBeInTheDocument();
+      expect(screen.queryByText(/fusión de duplicados pausada/i)).not.toBeInTheDocument();
     });
 
-    it('"Resolver merge" está deshabilitado con title "Fusión pausada temporalmente" y no abre ReconciliationMergeDialog', async () => {
+    it('"Resolver merge" está habilitado y el click abre ReconciliationMergeDialog ("Resolver duplicados")', async () => {
       mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
 
       renderTab();
       await screen.findByText('Camiseta Azul M');
 
       const mergeButton = screen.getByRole('button', { name: /resolver merge/i });
-      expect(mergeButton).toBeDisabled();
-      expect(mergeButton).toHaveAttribute('title', 'Fusión pausada temporalmente');
+      expect(mergeButton).not.toBeDisabled();
 
       const user = userEvent.setup();
       await user.click(mergeButton);
 
-      expect(screen.queryByText(/resolver duplicados/i)).not.toBeInTheDocument();
-      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+      const mergeDialog = within(await screen.findByRole('alertdialog'));
+      expect(mergeDialog.getByText(/resolver duplicados/i)).toBeInTheDocument();
     });
 
     it('no muestra checkbox de selección en las filas de cluster', async () => {
