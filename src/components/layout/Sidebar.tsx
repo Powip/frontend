@@ -41,6 +41,7 @@ import {
   PiggyBank,
   CalendarRange,
   Handshake,
+  LayoutList,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -287,6 +288,11 @@ export function Sidebar({ className }: SidebarProps) {
         name: "Partners",
         icon: Handshake,
         href: "/partners",
+      },
+      {
+        name: "Partners Admin",
+        icon: LayoutList,
+        href: "/partners/admin",
       },
       {
         name: "Super Admin",

@@ -1,18 +1,18 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FunnelBars } from "@/components/partners/funnel-bars";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { PartnerFunnelStep } from "@/features/partners/models/partner-summary";
+import type { AdminDashboardSummary } from "@/features/partners/models/admin-dashboard-summary";
 
-interface PartnerReferralFunnelProps {
-  funnel: PartnerFunnelStep[] | undefined;
+interface ProgramFunnelProps {
+  funnel: AdminDashboardSummary["funnel"] | undefined;
   isLoading: boolean;
 }
 
-export function PartnerReferralFunnel({ funnel, isLoading }: PartnerReferralFunnelProps) {
+export function ProgramFunnel({ funnel, isLoading }: ProgramFunnelProps) {
   return (
     <Card className="rounded-2xl">
       <CardHeader>
-        <CardTitle>Embudo de referidos</CardTitle>
+        <CardTitle>Embudo del programa</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading || !funnel ? (

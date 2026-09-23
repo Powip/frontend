@@ -1,0 +1,48 @@
+import type { ReviewQueueItem } from "../models/review-queue-item";
+
+export const REVIEW_QUEUE_MOCK: ReviewQueueItem[] = [
+  {
+    id: "queue-boutique-sol",
+    businessName: "Boutique Sol",
+    partnerName: "María Torres",
+    origin: "link",
+    contact: "sol@boutique.com",
+    kind: "conflicto",
+    explanation: "Ese email ya estaba en pipeline directo desde el 03 ago. No aplica comisión.",
+    note: null,
+    resolution: "pendiente",
+  },
+  {
+    id: "queue-mi-tienda-test",
+    businessName: "Mi Tienda Test",
+    partnerName: "Joel Coila",
+    origin: "codigo",
+    contact: "mismo teléfono del partner",
+    kind: "fraude",
+    explanation: "Posible auto-referido: el teléfono coincide con el del partner.",
+    note: null,
+    resolution: "pendiente",
+  },
+  {
+    id: "queue-tienda-gamer",
+    businessName: "Tienda Gamer",
+    partnerName: "Dev Studio",
+    origin: "manual",
+    contact: "gamer@mail.com",
+    kind: "revision",
+    explanation: "En revisión manual.",
+    note: "Cliente de un proyecto, quiere centralizar 3 canales.",
+    resolution: "pendiente",
+  },
+  {
+    id: "queue-zapateria-andes",
+    businessName: "Zapatería Andes",
+    partnerName: "Joel Coila",
+    origin: "link",
+    contact: "andes@mail.com",
+    kind: "sin_conflicto",
+    explanation: "Email libre · Correo de activación abierto · Link en ventana",
+    note: null,
+    resolution: "pendiente",
+  },
+];

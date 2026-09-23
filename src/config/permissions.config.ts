@@ -48,6 +48,7 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/couriers": [],
   "/atencion-cliente": [],
   "/facturacion": [],
+  "/partners/admin": ["__SUPERADMIN__"],
   "/partners": [],
   // Métricas: accesibles para cualquier usuario autenticado
   "/metricas/ventas": [],
@@ -90,6 +91,7 @@ export const SIDEBAR_ITEMS_PERMISSIONS: Record<string, string> = {
   "Atención al cliente": "",
   Facturación: "",
   Partners: "",
+  "Partners Admin": "VIEW_PARTNERS_ADMIN",
   "Super Admin": "VIEW_SUPER_ADMIN",
 };
 
