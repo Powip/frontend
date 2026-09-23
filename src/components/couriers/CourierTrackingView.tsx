@@ -79,6 +79,7 @@ import { getEvaCredentials } from "@/services/evaService";
 import { getAliclikCredentials } from "@/services/aliclikService";
 import { OrderHeader } from "@/interfaces/IOrder";
 import { isAliclikCourier, isEvaCourier, isShalomCourier } from "@/utils/courierNormalizer";
+import { isOrderTrackable } from "@/utils/domain/courier-tracking";
 import { useShalomLiveStatuses, SHALOM_STEP_STYLES, SHALOM_STEP_ICONS } from "@/components/tracking/useShalomLiveStatus";
 import {
   CourierStatusBadge,
@@ -478,13 +479,7 @@ export default function CourierTrackingView() {
         // guía propia O quedó vinculado a cualquier integración de courier.
         // Se excluyen los anulados: conservan guía/tracking de antes de
         // anularse, pero no deben listarse como pedidos despachados vigentes.
-        (o) =>
-          o.status !== "ANULADO" &&
-          (!!o.guideNumber ||
-            !!o.evaStatus ||
-            !!o.aliclikDispatchStatus ||
-            !!o.shalomStatus ||
-            !!o.externalTrackingNumber),
+        isOrderTrackable,
       ),
     [orders],
   );
