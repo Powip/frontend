@@ -19,6 +19,10 @@
  *    rompe (sigue mostrando sus filas).
  * 5. Regresión: la paginación normal de la tabla (`searchInventoryItems` con
  *    `page`/`limit`) sigue funcionando sin cambios.
+ * 6. FEAT-17 Fase 5: la pestaña nueva "Reconciliación" se renderiza en el
+ *    `TabsList` junto a "Stock Actual" e "Historial de Movimientos" (cambio
+ *    aditivo). La cobertura de comportamiento de `ReconciliationTab` en sí
+ *    vive en components/inventory/__tests__/ReconciliationTab.test.tsx.
  *
  * Mocks aplicados:
  * - @/contexts/AuthContext → useAuth
@@ -397,6 +401,24 @@ describe('AlmacenPage — export a Excel (FEAT-09)', () => {
       expect(screen.getByText('Producto Uno')).toBeInTheDocument();
       expect(screen.getByText('Producto Dos')).toBeInTheDocument();
     });
+  });
+});
+
+describe('AlmacenPage — pestaña de Reconciliación (FEAT-17 Fase 5)', () => {
+  // Cambio aditivo: agrega una pestaña nueva al `Tabs` existente. Radix Tabs
+  // desmonta (`Presence`) el contenido de las pestañas inactivas, así que
+  // `ReconciliationTab` (con su propio fetch a reconciliationTask.service) NO
+  // se monta mientras la pestaña activa siga siendo "Stock Actual" (default) —
+  // por eso este test no necesita mockear ese service. La cobertura de
+  // comportamiento de `ReconciliationTab` vive en su propio archivo de test
+  // (components/inventory/__tests__/ReconciliationTab.test.tsx).
+  it('renderiza la pestaña "Reconciliación" junto a Stock Actual e Historial de Movimientos', async () => {
+    renderPage();
+    await waitForInitialLoad();
+
+    expect(screen.getByRole('tab', { name: /stock actual/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /historial de movimientos/i })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /reconciliación/i })).toBeInTheDocument();
   });
 });
 

@@ -34,6 +34,7 @@ import {
   LayoutList,
   PackagePlus,
   HelpCircle,
+  GitMerge,
 } from "lucide-react";
 import {
   Tooltip,
@@ -64,6 +65,7 @@ import { Pagination } from "@/components/ui/pagination";
 import ShopifySyncWizard from "../productos/shopify-sync-wizard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MovementHistoryTable } from "@/components/inventory/MovementHistoryTable";
+import { ReconciliationTab } from "@/components/inventory/ReconciliationTab";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -285,6 +287,13 @@ export default function AlmacenPage() {
               <TabsTrigger value="history" className="flex items-center gap-2">
                 <History className="h-4 w-4" />
                 Historial de Movimientos
+              </TabsTrigger>
+              <TabsTrigger
+                value="reconciliation"
+                className="flex items-center gap-2"
+              >
+                <GitMerge className="h-4 w-4" />
+                Reconciliación
               </TabsTrigger>
             </TabsList>
 
@@ -615,6 +624,17 @@ export default function AlmacenPage() {
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
                 <MovementHistoryTable companyId={auth?.company?.id} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent
+            value="reconciliation"
+            className="flex-1 flex flex-col mt-0"
+          >
+            <Card className="flex-1 flex flex-col">
+              <CardContent className="p-6 overflow-auto">
+                <ReconciliationTab companyId={auth?.company?.id} />
               </CardContent>
             </Card>
           </TabsContent>
