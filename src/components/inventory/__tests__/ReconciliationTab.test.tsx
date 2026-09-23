@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Tests: ReconciliationTab (FEAT-17 Fase 5 — bandeja de reconciliación)
+ * Tests: ReconciliationTab (FEAT-17 Anexo A — bandeja de reconciliación)
  *
  * Comportamiento verificado:
  * 1. Estado de carga: mientras `listReconciliationTasks` está pendiente no se
@@ -11,12 +11,14 @@
  *    se renderizan las 3 secciones con sus items correspondientes.
  * 4. Cambiar el filtro de Tipo o Estado dispara un nuevo `listReconciliationTasks`
  *    con los params `{ type, status }` actualizados.
- * 5. "Confirmar" en un provisional llama a `confirmReconciliationProvisional`
+ * 5. "Confirmar como nuevo" en un provisional (sin sugerencias, via
+ *    `ReconciliationProvisionalCard`) llama a `confirmReconciliationProvisional`
  *    con el id correcto y refresca la lista.
- * 6. "Vincular a esta variante" en un provisional NO ejecuta el service
- *    directo al click: abre `ReconciliationLinkDialog` ("Vincular a variante
- *    existente"). Recién al confirmar ahí se llama a
- *    `resolveReconciliationLink` con `(id, target_variant_id)`.
+ * 6. "Sí, es la misma → unificar" en un provisional CON sugerencia NO ejecuta
+ *    el service directo al click: abre `ReconciliationLinkDialog` ("Vincular
+ *    a variante existente") con la sugerencia elegida como variante destino.
+ *    Recién al confirmar ahí se llama a `resolveReconciliationLink` con
+ *    `(taskId, variant_id de la sugerencia)`.
  * 7. Los 3 botones "Rechazar" (provisional/manual/cluster) NO ejecutan el
  *    service directo al click: abren `ReconciliationRejectDialog` ("Rechazar
  *    tarea de reconciliación"). Recién al confirmar ahí se llama a
@@ -30,8 +32,10 @@
  * 9. Si una acción individual rechaza la promesa, se muestra `toast.error` (con
  *    el fallback del propio componente) y el componente no se rompe (el item
  *    sigue visible, el botón vuelve a estar habilitado).
- * 10. Cola manual: NO se renderizan botones de "Confirmar"/"Vincular" ni el
- *     input de UUID para items `type: 'manual'`, solo "Rechazar".
+ * 10. Cola manual: NO se renderiza el botón "Confirmar como nuevo" ni el
+ *     buscador de variantes ("Buscar otra variante") para items
+ *     `type: 'manual'`, solo "Rechazar" — esos items no pasan por
+ *     `ReconciliationProvisionalCard`.
  * 11. FEAT-17 hotfix (`DUPLICATE_MERGE_PAUSED = true`): la fusión de
  *     duplicados queda pausada. "Resolver merge" en un cluster está
  *     disabled con title "Fusión pausada temporalmente" y el click no abre
@@ -45,11 +49,13 @@
  *     el estado vacío (sin pasar por el skeleton).
  *
  * Mocks aplicados:
- * - @/services/reconciliationTask.service → las 7 funciones + el helper
- *   `getReconciliationTaskErrorMessage` (se mockea devolviendo directamente el
- *   `fallback` recibido, para que los mensajes de `toast.error` sean
- *   predecibles sin depender de la lógica real del helper, ya cubierta en
- *   `reconciliationTask.service.test.ts`).
+ * - @/services/reconciliationTask.service → las 7 funciones de siempre +
+ *   `searchReconciliationVariants` (usada por el buscador de
+ *   `ReconciliationProvisionalCard`, resuelta con `[]` por defecto — acá no
+ *   se ejercita el buscador, ya cubierto en
+ *   `ReconciliationProvisionalCard.test.tsx`) + el helper
+ *   `getReconciliationTaskErrorMessage` (se mockea devolviendo directamente
+ *   el `fallback` recibido).
  * - sonner → toast.success/error.
  * - @/components/ui/select → `<select>` nativo (mismo patrón que
  *   ExcelImportWizard.test.tsx / SendToEvaGuideModal.test.tsx): Radix Select
@@ -60,10 +66,16 @@
  * - AlertDialog y Checkbox (Radix) → SIN mockear: a diferencia de Select, no
  *   dependen de pointer capture / ResizeObserver, funcionan normalmente sobre
  *   jsdom.
+ * - `ReconciliationProvisionalCard` usa el hook real
+ *   `useReconciliationVariantSearch` (react-query) para su buscador, así que
+ *   `renderTab` envuelve en `QueryClientProvider` (retry: false), mismo
+ *   patrón que `useUpsellRecords.test.ts`.
  */
 
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
@@ -82,6 +94,7 @@ jest.mock('@/services/reconciliationTask.service', () => ({
   confirmReconciliationProvisional: jest.fn(),
   rejectReconciliationTask: jest.fn(),
   bulkConfirmReconciliationTasks: jest.fn(),
+  searchReconciliationVariants: jest.fn(),
   getReconciliationTaskErrorMessage: jest.fn(
     (_error: unknown, fallback: string) => fallback,
   ),
@@ -166,8 +179,10 @@ import {
   resolveReconciliationLink,
   rejectReconciliationTask,
   bulkConfirmReconciliationTasks,
+  searchReconciliationVariants,
   type ReconciliationTask,
   type ReconciliationTaskItem,
+  type ReconciliationTaskSuggestion,
   type BulkConfirmResultItem,
 } from '@/services/reconciliationTask.service';
 import { ReconciliationTab } from '../ReconciliationTab';
@@ -179,6 +194,7 @@ const mockConfirmProvisional = jest.mocked(confirmReconciliationProvisional);
 const mockResolveLink = jest.mocked(resolveReconciliationLink);
 const mockReject = jest.mocked(rejectReconciliationTask);
 const mockBulkConfirm = jest.mocked(bulkConfirmReconciliationTasks);
+const mockSearchVariants = jest.mocked(searchReconciliationVariants);
 const mockToast = toast as jest.Mocked<typeof toast>;
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -230,6 +246,31 @@ function makeProvisionalTask(overrides: Partial<ReconciliationTask> = {}): Recon
         confidence: 0,
       }),
     ],
+    ...overrides,
+  });
+}
+
+function makeSuggestion(
+  overrides: Partial<ReconciliationTaskSuggestion> = {},
+): ReconciliationTaskSuggestion {
+  return {
+    variant_id: 'variant-sugerida-1',
+    product_name: 'Zapatilla Roja Talla 40 (Powip)',
+    sku: 'ZAP-ROJA-40-POWIP',
+    company_sku: null,
+    attribute_values: { color: 'Rojo', talla: '40' },
+    match: 'sku',
+    score: 0.95,
+    ...overrides,
+  };
+}
+
+function makeProvisionalTaskWithSuggestion(
+  overrides: Partial<ReconciliationTask> = {},
+): ReconciliationTask {
+  const base = makeProvisionalTask();
+  return makeProvisionalTask({
+    items: [{ ...base.items[0], suggestions: [makeSuggestion()] }],
     ...overrides,
   });
 }
@@ -295,10 +336,25 @@ beforeEach(() => {
   mockResolveLink.mockResolvedValue(DEFAULT_TASK_RESPONSE);
   mockReject.mockResolvedValue(DEFAULT_TASK_RESPONSE);
   mockBulkConfirm.mockResolvedValue([]);
+  mockSearchVariants.mockResolvedValue([]);
 });
 
-function renderTab() {
-  return render(<ReconciliationTab companyId="company-1" />);
+function buildWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+
+function renderTab(companyId: string | undefined = 'company-1') {
+  const Wrapper = buildWrapper();
+  return render(
+    <Wrapper>
+      <ReconciliationTab companyId={companyId} />
+    </Wrapper>,
+  );
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -335,7 +391,18 @@ describe('ReconciliationTab', () => {
     });
 
     it('con companyId undefined, sale de loading sin llamar a listReconciliationTasks y muestra el estado vacío sin pasar por el skeleton', () => {
-      const { container } = render(<ReconciliationTab companyId={undefined} />);
+      // Render directo (sin pasar por el helper `renderTab`, que tiene un
+      // parámetro con default `= 'company-1'`): un default de parámetro se
+      // aplica siempre que el argumento sea `undefined` — también cuando se
+      // pasa explícitamente `undefined` — así que `renderTab(undefined)`
+      // terminaría renderizando con `companyId: 'company-1'` en vez de
+      // `undefined` de verdad, invalidando este test.
+      const Wrapper = buildWrapper();
+      const { container } = render(
+        <Wrapper>
+          <ReconciliationTab companyId={undefined} />
+        </Wrapper>,
+      );
 
       // `loadTasks` corta antes de pedir datos: nunca queda en isLoading.
       expect(mockListTasks).not.toHaveBeenCalled();
@@ -406,7 +473,7 @@ describe('ReconciliationTab', () => {
   });
 
   describe('acciones sobre provisionales', () => {
-    it('"Confirmar" llama a confirmReconciliationProvisional con el id correcto y refresca la lista', async () => {
+    it('"Confirmar como nuevo" (sin sugerencias) llama a confirmReconciliationProvisional con el id correcto y refresca la lista', async () => {
       const task = makeProvisionalTask();
       mockListTasks.mockResolvedValueOnce([task]).mockResolvedValueOnce([]);
 
@@ -414,7 +481,7 @@ describe('ReconciliationTab', () => {
       await screen.findByText('Zapatilla Roja Talla 40');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: 'Confirmar' }));
+      await user.click(screen.getByRole('button', { name: /confirmar como nuevo/i }));
 
       await waitFor(() => expect(mockConfirmProvisional).toHaveBeenCalledWith('task-prov-1'));
       expect(mockToast.success).toHaveBeenCalledWith('Producto confirmado como nuevo');
@@ -425,45 +492,35 @@ describe('ReconciliationTab', () => {
         await screen.findByText(/no hay tareas de reconciliación con los filtros aplicados/i),
       ).toBeInTheDocument();
     });
+  });
 
-    it('"Vincular a esta variante" NO llama al service directo: abre el diálogo de confirmación, y confirmar sí llama a resolveReconciliationLink', async () => {
-      const task = makeProvisionalTask();
+  describe('vincular a variante existente (provisional con sugerencia)', () => {
+    it('"Sí, es la misma → unificar" NO llama al service directo: abre ReconciliationLinkDialog con la sugerencia, y confirmar sí llama a resolveReconciliationLink', async () => {
+      const task = makeProvisionalTaskWithSuggestion();
       mockListTasks.mockResolvedValueOnce([task]);
 
       renderTab();
       await screen.findByText('Zapatilla Roja Talla 40');
 
       const user = userEvent.setup();
-      const input = screen.getByPlaceholderText(/uuid de variante existente/i);
-      await user.type(input, 'variant-existing-99');
-
-      await user.click(screen.getByRole('button', { name: /vincular a esta variante/i }));
+      await user.click(screen.getByRole('button', { name: /sí, es la misma → unificar/i }));
 
       // El click abre el diálogo (ReconciliationLinkDialog) sin ejecutar la
       // mutación todavía. Se scopea con `within(alertdialog)` porque el
-      // título del diálogo ("Vincular a variante existente") coincide
-      // textualmente con el <th> de la columna de la tabla — sin scopear,
-      // `getByText` encuentra 2 matches y tira.
+      // título del diálogo coincide textualmente con contenido de la tarjeta.
       expect(mockResolveLink).not.toHaveBeenCalled();
       const linkDialog = within(await screen.findByRole('alertdialog'));
       expect(linkDialog.getByText(/vincular a variante existente/i)).toBeInTheDocument();
+      expect(linkDialog.getByText('Variante en Powip')).toBeInTheDocument();
+      expect(linkDialog.getByText('Zapatilla Roja Talla 40 (Powip)')).toBeInTheDocument();
       expect(linkDialog.getByText(/esta acción no se puede deshacer/i)).toBeInTheDocument();
 
       await user.click(linkDialog.getByRole('button', { name: /confirmar vinculación/i }));
 
       await waitFor(() =>
-        expect(mockResolveLink).toHaveBeenCalledWith('task-prov-1', 'variant-existing-99'),
+        expect(mockResolveLink).toHaveBeenCalledWith('task-prov-1', 'variant-sugerida-1'),
       );
       expect(mockToast.success).toHaveBeenCalledWith('Variante vinculada correctamente');
-    });
-
-    it('el botón "Vincular a esta variante" está deshabilitado mientras el input está vacío', async () => {
-      mockListTasks.mockResolvedValueOnce([makeProvisionalTask()]);
-
-      renderTab();
-      await screen.findByText('Zapatilla Roja Talla 40');
-
-      expect(screen.getByRole('button', { name: /vincular a esta variante/i })).toBeDisabled();
     });
   });
 
@@ -476,11 +533,11 @@ describe('ReconciliationTab', () => {
       await screen.findByText('Zapatilla Roja Talla 40');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: 'Rechazar' }));
+      await user.click(screen.getByRole('button', { name: /rechazar/i }));
 
       // El click abre el diálogo (ReconciliationRejectDialog) sin ejecutar la
       // mutación todavía. Se scopea con `within(alertdialog)` por el mismo
-      // criterio que el test de "Vincular" — evita falsos matches contra el
+      // criterio que el test de "vincular" — evita falsos matches contra el
       // resto de la tabla/página si el texto se repite en otro lado.
       expect(mockReject).not.toHaveBeenCalled();
       const rejectDialog = within(await screen.findByRole('alertdialog'));
@@ -553,7 +610,7 @@ describe('ReconciliationTab', () => {
       await screen.findByText('Zapatilla Roja Talla 40');
 
       const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: 'Confirmar' }));
+      await user.click(screen.getByRole('button', { name: /confirmar como nuevo/i }));
 
       await waitFor(() =>
         expect(mockToast.error).toHaveBeenCalledWith('No se pudo confirmar el producto'),
@@ -561,23 +618,25 @@ describe('ReconciliationTab', () => {
 
       // El componente sigue en pie: el item no desaparece y el botón vuelve a estar habilitado.
       expect(screen.getByText('Zapatilla Roja Talla 40')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Confirmar' })).not.toBeDisabled();
+      expect(screen.getByRole('button', { name: /confirmar como nuevo/i })).not.toBeDisabled();
     });
   });
 
   describe('cola manual', () => {
-    it('NO renderiza botones de Confirmar/Vincular para items type: manual, solo Rechazar', async () => {
+    it('NO renderiza "Confirmar como nuevo" ni el buscador de variantes para items type: manual, solo Rechazar', async () => {
       mockListTasks.mockResolvedValueOnce([makeManualTask()]);
 
       renderTab();
       await screen.findByText('Línea de venta sin match');
 
-      expect(screen.queryByRole('button', { name: 'Confirmar' })).not.toBeInTheDocument();
       expect(
-        screen.queryByRole('button', { name: /vincular a esta variante/i }),
+        screen.queryByRole('button', { name: /confirmar como nuevo/i }),
       ).not.toBeInTheDocument();
-      expect(screen.queryByPlaceholderText(/uuid de variante existente/i)).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Rechazar' })).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /sí, es la misma → unificar/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/buscar otra variante/i)).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /rechazar/i })).toBeInTheDocument();
     });
   });
 
@@ -629,7 +688,7 @@ describe('ReconciliationTab', () => {
       renderTab();
       await screen.findByText('Camiseta Azul M');
 
-      const rejectButton = screen.getByRole('button', { name: 'Rechazar' });
+      const rejectButton = screen.getByRole('button', { name: /rechazar/i });
       expect(rejectButton).not.toBeDisabled();
 
       const user = userEvent.setup();

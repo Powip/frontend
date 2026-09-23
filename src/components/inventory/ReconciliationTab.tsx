@@ -3,11 +3,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
-  Check,
   CheckCheck,
   GitMerge,
   Info,
-  Link2,
   Loader2,
   PackageSearch,
   Users,
@@ -23,7 +21,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -34,7 +31,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,8 +52,12 @@ import {
   getReconciliationTaskErrorMessage,
   listReconciliationTasks,
 } from "@/services/reconciliationTask.service";
-import { ReconciliationLinkDialog } from "./ReconciliationLinkDialog";
+import {
+  ReconciliationLinkDialog,
+  ReconciliationLinkTargetVariant,
+} from "./ReconciliationLinkDialog";
 import { ReconciliationMergeDialog } from "./ReconciliationMergeDialog";
+import { ReconciliationProvisionalCard } from "./ReconciliationProvisionalCard";
 import { ReconciliationRejectDialog } from "./ReconciliationRejectDialog";
 
 type TypeFilter = "ALL" | ReconciliationTaskType;
@@ -85,7 +85,6 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("pending");
 
-  const [linkInputs, setLinkInputs] = useState<Record<string, string>>({});
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -93,7 +92,13 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
   const [isBulkConfirming, setIsBulkConfirming] = useState(false);
 
   const [mergeTask, setMergeTask] = useState<ReconciliationTask | null>(null);
-  const [linkTask, setLinkTask] = useState<ReconciliationTask | null>(null);
+  // FEAT-17 Anexo A — reemplaza al viejo `linkTask` + `linkInputs[taskId]`
+  // (pegado de UUID): acá viaja la tarea junto con la variante ya elegida
+  // (sugerencia aceptada o resultado de "Buscar otra variante").
+  const [linkTarget, setLinkTarget] = useState<{
+    task: ReconciliationTask;
+    variant: ReconciliationLinkTargetVariant;
+  } | null>(null);
   const [rejectTask, setRejectTask] = useState<ReconciliationTask | null>(
     null,
   );
@@ -182,21 +187,13 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
     }
   };
 
-  // Limpia el input de UUID de la fila y refresca la lista una vez que
-  // `ReconciliationLinkDialog` confirma el vínculo — la mutación en sí vive
-  // en el diálogo (requiere confirmación explícita antes de ejecutar el
-  // merge irreversible contra la variante existente).
-  const handleLinkSuccess = useCallback(
-    async (taskId: string) => {
-      setLinkInputs((prev) => {
-        const next = { ...prev };
-        delete next[taskId];
-        return next;
-      });
-      await loadTasks();
-    },
-    [loadTasks],
-  );
+  // Refresca la lista una vez que `ReconciliationLinkDialog` confirma el
+  // vínculo — la mutación en sí vive en el diálogo (requiere confirmación
+  // explícita antes de ejecutar el merge irreversible contra la variante
+  // existente).
+  const handleLinkSuccess = useCallback(async () => {
+    await loadTasks();
+  }, [loadTasks]);
 
   const handleBulkConfirm = async () => {
     if (selectedIds.size === 0) return;
@@ -353,126 +350,30 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
                 Provisionales pendientes
                 <Badge variant="secondary">{provisionalTasks.length}</Badge>
               </h4>
-              <div className="overflow-hidden rounded-md border bg-card shadow-sm">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/50">
-                      <TableHead className="w-[40px]" />
-                      <TableHead>Nombre</TableHead>
-                      <TableHead>SKU</TableHead>
-                      <TableHead>Origen</TableHead>
-                      <TableHead>Vincular a variante existente</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {provisionalTasks.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="h-24 text-center italic text-muted-foreground"
-                        >
-                          No hay provisionales pendientes.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      provisionalTasks.map((task) => {
-                        const item = task.items[0];
-                        const isProcessing = actionLoadingId === task.id;
-                        return (
-                          <TableRow key={task.id}>
-                            <TableCell>
-                              {task.status === "pending" && (
-                                <Checkbox
-                                  checked={selectedIds.has(task.id)}
-                                  onCheckedChange={(checked) =>
-                                    toggleSelected(task.id, checked === true)
-                                  }
-                                />
-                              )}
-                            </TableCell>
-                            <TableCell
-                              className="max-w-[220px] truncate text-sm font-medium"
-                              title={item?.variant_name}
-                            >
-                              {item?.variant_name ?? "-"}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {item?.sku ?? item?.company_sku ?? "Sin SKU"}
-                            </TableCell>
-                            <TableCell>
-                              {item?.source ? (
-                                <Badge
-                                  variant="outline"
-                                  className="text-[10px] uppercase"
-                                >
-                                  {item.source}
-                                </Badge>
-                              ) : (
-                                "-"
-                              )}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-1">
-                                <Input
-                                  placeholder="UUID de variante existente"
-                                  className="h-8 w-[220px] text-xs"
-                                  value={linkInputs[task.id] ?? ""}
-                                  onChange={(e) =>
-                                    setLinkInputs((prev) => ({
-                                      ...prev,
-                                      [task.id]: e.target.value,
-                                    }))
-                                  }
-                                  disabled={isProcessing}
-                                />
-                                <Button
-                                  size="icon-sm"
-                                  variant="outline"
-                                  title="Vincular a esta variante"
-                                  disabled={
-                                    isProcessing ||
-                                    !linkInputs[task.id]?.trim()
-                                  }
-                                  onClick={() => setLinkTask(task)}
-                                >
-                                  <Link2 className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                            <TableCell className="space-x-1 text-right">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 border-emerald-200 text-emerald-600 hover:bg-emerald-50"
-                                disabled={isProcessing}
-                                onClick={() => handleConfirmProvisional(task)}
-                              >
-                                {isProcessing ? (
-                                  <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Check className="mr-1 h-3.5 w-3.5" />
-                                )}
-                                Confirmar
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                className="h-8 border-destructive/30 text-destructive hover:bg-destructive/10"
-                                disabled={isProcessing}
-                                onClick={() => setRejectTask(task)}
-                              >
-                                <X className="mr-1 h-3.5 w-3.5" />
-                                Rechazar
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              {provisionalTasks.length === 0 ? (
+                <div className="flex h-24 items-center justify-center rounded-md border bg-card italic text-muted-foreground shadow-sm">
+                  No hay provisionales pendientes.
+                </div>
+              ) : (
+                <div className="flex flex-col space-y-3">
+                  {provisionalTasks.map((task) => (
+                    <ReconciliationProvisionalCard
+                      key={task.id}
+                      task={task}
+                      isSelected={selectedIds.has(task.id)}
+                      isProcessing={actionLoadingId === task.id}
+                      onToggleSelected={(checked) =>
+                        toggleSelected(task.id, checked)
+                      }
+                      onConfirmNew={() => handleConfirmProvisional(task)}
+                      onReject={() => setRejectTask(task)}
+                      onLinkToVariant={(variant) =>
+                        setLinkTarget({ task, variant })
+                      }
+                    />
+                  ))}
+                </div>
+              )}
             </section>
           )}
 
@@ -705,9 +606,8 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
       />
 
       <ReconciliationLinkDialog
-        task={linkTask}
-        targetVariantId={linkTask ? (linkInputs[linkTask.id] ?? "") : ""}
-        onClose={() => setLinkTask(null)}
+        target={linkTarget}
+        onClose={() => setLinkTarget(null)}
         onSuccess={handleLinkSuccess}
       />
 

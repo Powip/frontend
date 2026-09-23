@@ -20,6 +20,39 @@ export type ReconciliationTaskStatus = "pending" | "confirmed" | "rejected";
 
 export type ReconciliationTaskItemSource = "shopify" | "yavendio" | "aliclik";
 
+// FEAT-17 Anexo A (sección 4) — coincidencia que generó la sugerencia: SKU
+// exacto pesa más que nombre+atributos, que a su vez pesa más que sólo
+// nombre. Ver ms-products `reconciliationtask.service.ts` (sync-on-read).
+export type ReconciliationTaskSuggestionMatch =
+  | "sku"
+  | "name_attributes"
+  | "name";
+
+// Candidato ya existente en el catálogo que el backend sugiere para una
+// provisional (calculado en `GET /reconciliation-tasks`, máx. 3, orden score
+// desc). Nada se vincula automático: son sólo insumo para la UI de "¿Es la
+// misma?" — la confirmación explícita siempre la hace el dueño.
+export interface ReconciliationTaskSuggestion {
+  variant_id: string;
+  product_name: string;
+  sku: string;
+  company_sku: string | null;
+  attribute_values: Record<string, string>;
+  match: ReconciliationTaskSuggestionMatch;
+  score: number;
+}
+
+// Resultado de `GET /reconciliation-tasks/variant-search` — buscador seguro
+// (JWT, `companyId` derivado del token) que reemplaza el pegado de UUID al
+// vincular una provisional a mano.
+export interface VariantSearchResult {
+  variant_id: string;
+  product_name: string;
+  sku: string;
+  company_sku: string | null;
+  attribute_values: Record<string, string>;
+}
+
 export interface ReconciliationTaskItem {
   // `null` únicamente para `type: 'manual'` — no hay variante/producto real
   // contra el cual matchear.
@@ -37,6 +70,15 @@ export interface ReconciliationTaskItem {
   // Presentes SOLO para `type: 'manual'`.
   external_order_id?: string;
   external_line_ref?: string;
+  // FEAT-17 Anexo A — sólo en items de tareas `type: 'provisional'`:
+  // atributos de la línea externa que originó la provisional (p.ej.
+  // `variant_title` de Shopify ya parseado). Puede faltar (fuentes o líneas
+  // viejas que no los mandan) — nunca asumir que están presentes.
+  attribute_values?: Record<string, string>;
+  // FEAT-17 Anexo A — sólo en items de tareas `type: 'provisional'`
+  // `status: 'pending'`: hasta 3 variantes candidatas para el bloque
+  // "¿Es la misma?" de la bandeja.
+  suggestions?: ReconciliationTaskSuggestion[];
 }
 
 export interface ReconciliationTask {
@@ -182,6 +224,24 @@ export async function bulkConfirmReconciliationTasks(
   const res = await axiosAuth.post<BulkConfirmResultItem[]>(
     `${BASE_URL}/bulk-confirm`,
     { task_ids: taskIds },
+  );
+  return res.data;
+}
+
+/**
+ * Buscador seguro de variantes existentes de la empresa (FEAT-17 Anexo A):
+ * reemplaza el pegado de UUID al vincular una provisional. `companyId` lo
+ * deriva el backend del JWT (nunca se manda acá, mismo criterio que el
+ * resto del archivo). Mín. 2 caracteres; el backend limita a 20 resultados
+ * y excluye provisionales pendientes y variantes ya fusionadas
+ * (`merged_into`).
+ */
+export async function searchReconciliationVariants(
+  q: string,
+): Promise<VariantSearchResult[]> {
+  const res = await axiosAuth.get<VariantSearchResult[]>(
+    `${BASE_URL}/variant-search`,
+    { params: { q } },
   );
   return res.data;
 }

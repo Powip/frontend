@@ -15,7 +15,10 @@
  * 6. rejectReconciliationTask — POST a `.../:id/resolve-reject` sin body.
  * 7. bulkConfirmReconciliationTasks — POST a `.../bulk-confirm` con body
  *    `{ task_ids }`, devuelve el array de resultados tal cual.
- * 8. getReconciliationTaskErrorMessage:
+ * 8. searchReconciliationVariants (FEAT-17 Anexo A) — GET a
+ *    `.../variant-search` con `{ params: { q } }`, devuelve `res.data` tal
+ *    cual (sin transformar).
+ * 9. getReconciliationTaskErrorMessage:
  *    - `response.data.message` string → se devuelve tal cual.
  *    - `response.data.message` array (class-validator) no vacío → se unen con ", ".
  *    - `response.data.message` array VACÍO → cae al fallback (no hay mensaje útil).
@@ -47,6 +50,7 @@ import axiosAuth from '@/lib/axiosAuth';
 import type {
   BulkConfirmResultItem,
   ReconciliationTask,
+  VariantSearchResult,
 } from '@/services/reconciliationTask.service';
 
 type ServiceModule = typeof import('@/services/reconciliationTask.service');
@@ -58,6 +62,7 @@ let resolveReconciliationMerge: ServiceModule['resolveReconciliationMerge'];
 let confirmReconciliationProvisional: ServiceModule['confirmReconciliationProvisional'];
 let rejectReconciliationTask: ServiceModule['rejectReconciliationTask'];
 let bulkConfirmReconciliationTasks: ServiceModule['bulkConfirmReconciliationTasks'];
+let searchReconciliationVariants: ServiceModule['searchReconciliationVariants'];
 let getReconciliationTaskErrorMessage: ServiceModule['getReconciliationTaskErrorMessage'];
 
 beforeAll(() => {
@@ -73,6 +78,7 @@ beforeAll(() => {
     confirmReconciliationProvisional = mod.confirmReconciliationProvisional;
     rejectReconciliationTask = mod.rejectReconciliationTask;
     bulkConfirmReconciliationTasks = mod.bulkConfirmReconciliationTasks;
+    searchReconciliationVariants = mod.searchReconciliationVariants;
     getReconciliationTaskErrorMessage = mod.getReconciliationTaskErrorMessage;
   });
 });
@@ -225,6 +231,46 @@ describe('reconciliationTask.service', () => {
         task_ids: ['task-1', 'task-2'],
       });
       expect(result).toEqual(BULK_RESULTS);
+    });
+  });
+
+  describe('searchReconciliationVariants', () => {
+    it('hace GET a /variant-search con { params: { q } } y devuelve res.data tal cual', async () => {
+      const results: VariantSearchResult[] = [
+        {
+          variant_id: 'variant-1',
+          product_name: 'Zapatilla Roja Talla 40',
+          sku: 'ZAP-ROJA-40',
+          company_sku: null,
+          attribute_values: { color: 'Rojo', talla: '40' },
+        },
+        {
+          variant_id: 'variant-2',
+          product_name: 'Zapatilla Roja Talla 41',
+          sku: 'ZAP-ROJA-41',
+          company_sku: 'ZAP-41-CUSTOM',
+          attribute_values: { color: 'Rojo', talla: '41' },
+        },
+      ];
+      mockGet.mockResolvedValueOnce({ data: results });
+
+      const result = await searchReconciliationVariants('zapatilla roja');
+
+      expect(mockGet).toHaveBeenCalledWith(`${BASE_URL}/variant-search`, {
+        params: { q: 'zapatilla roja' },
+      });
+      expect(result).toEqual(results);
+    });
+
+    it('sin resultados, devuelve el array vacío tal cual', async () => {
+      mockGet.mockResolvedValueOnce({ data: [] });
+
+      const result = await searchReconciliationVariants('xx');
+
+      expect(mockGet).toHaveBeenCalledWith(`${BASE_URL}/variant-search`, {
+        params: { q: 'xx' },
+      });
+      expect(result).toEqual([]);
     });
   });
 

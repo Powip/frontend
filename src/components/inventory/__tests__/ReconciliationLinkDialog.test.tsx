@@ -1,18 +1,21 @@
 /**
- * Tests: ReconciliationLinkDialog (FEAT-17 Fase 5 — bandeja de reconciliación)
+ * Tests: ReconciliationLinkDialog (FEAT-17 Anexo A — bandeja de reconciliación)
  *
  * Comportamiento verificado:
- * 1. `task: null` no renderiza nada.
- * 2. Muestra el `variant_name`, el SKU y el `targetVariantId` recibido por
- *    props, junto con la advertencia "Esta acción no se puede deshacer.".
+ * 1. `target: null` no renderiza nada.
+ * 2. Con `target` presente, muestra ambos lados: "Provisional (venta)" (con
+ *    el `variant_name`/SKU/atributos del item de la tarea) y "Variante en
+ *    Powip" (con `product_name`/`sku`/atributos de la variante elegida),
+ *    más el texto "Las próximas ventas de esta variante descontarán
+ *    stock..." y la advertencia "Esta acción no se puede deshacer.".
  * 3. Cancelar NO llama a `resolveReconciliationLink` y dispara `onClose`.
- * 4. Confirmar llama a `resolveReconciliationLink(task.id, targetVariantId)`
- *    (recortando espacios) y, si resuelve, llama a `onSuccess(task.id)` y
+ * 4. Confirmar llama a `resolveReconciliationLink(task.id, variant.variant_id)`
+ *    y, si resuelve, muestra `toast.success`, llama a `onSuccess(task.id)` y
  *    luego a `onClose`.
- * 5. Si `resolveReconciliationLink` rechaza la promesa, se muestra
- *    `toast.error` y el diálogo sigue abierto (no se llama a `onClose`).
- * 6. El botón "Confirmar vinculación" muestra "Vinculando..." mientras la
+ * 5. El botón "Confirmar vinculación" muestra "Vinculando..." mientras la
  *    mutación está en curso.
+ * 6. Si `resolveReconciliationLink` rechaza la promesa, se muestra
+ *    `toast.error` y el diálogo sigue abierto (no se llama a `onClose`).
  *
  * Mocks aplicados:
  * - @/services/reconciliationTask.service → `resolveReconciliationLink` +
@@ -22,7 +25,7 @@
  *   pointer capture / ResizeObserver como sí lo hace Select).
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
@@ -49,7 +52,10 @@ import {
   type ReconciliationTask,
   type ReconciliationTaskItem,
 } from '@/services/reconciliationTask.service';
-import { ReconciliationLinkDialog } from '../ReconciliationLinkDialog';
+import {
+  ReconciliationLinkDialog,
+  type ReconciliationLinkTargetVariant,
+} from '../ReconciliationLinkDialog';
 
 // ── Casts ────────────────────────────────────────────────────────────────────
 
@@ -68,6 +74,7 @@ function makeItem(overrides: Partial<ReconciliationTaskItem> = {}): Reconciliati
     external_id: 'ext-shopify-1',
     source: 'shopify',
     confidence: 0,
+    attribute_values: { color: 'Rojo', talla: '40' },
     ...overrides,
   };
 }
@@ -89,6 +96,28 @@ function makeProvisionalTask(overrides: Partial<ReconciliationTask> = {}): Recon
   };
 }
 
+function makeVariant(
+  overrides: Partial<ReconciliationLinkTargetVariant> = {},
+): ReconciliationLinkTargetVariant {
+  return {
+    variant_id: 'variant-existing-99',
+    product_name: 'Zapatilla Roja Talla 40 (Powip)',
+    sku: 'ZAP-ROJA-40-POWIP',
+    attribute_values: { color: 'Rojo', material: 'Cuero' },
+    ...overrides,
+  };
+}
+
+function makeTarget(overrides: {
+  task?: ReconciliationTask;
+  variant?: ReconciliationLinkTargetVariant;
+} = {}) {
+  return {
+    task: overrides.task ?? makeProvisionalTask(),
+    variant: overrides.variant ?? makeVariant(),
+  };
+}
+
 // ── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -99,48 +128,56 @@ beforeEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('ReconciliationLinkDialog', () => {
-  it('task: null no renderiza nada', () => {
+  it('target: null no renderiza nada', () => {
     render(
-      <ReconciliationLinkDialog
-        task={null}
-        targetVariantId="variant-existing-99"
-        onClose={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
+      <ReconciliationLinkDialog target={null} onClose={jest.fn()} onSuccess={jest.fn()} />,
     );
 
     expect(screen.queryByText(/vincular a variante existente/i)).not.toBeInTheDocument();
   });
 
-  it('muestra variant_name, SKU y el targetVariantId recibido, con la advertencia de acción irreversible', () => {
-    const task = makeProvisionalTask();
+  it('muestra ambos lados (provisional y variante en Powip) con sus atributos, y la advertencia de acción irreversible', () => {
+    const target = makeTarget();
     render(
-      <ReconciliationLinkDialog
-        task={task}
-        targetVariantId="variant-existing-99"
-        onClose={jest.fn()}
-        onSuccess={jest.fn()}
-      />,
+      <ReconciliationLinkDialog target={target} onClose={jest.fn()} onSuccess={jest.fn()} />,
     );
 
     expect(screen.getByText(/vincular a variante existente/i)).toBeInTheDocument();
-    expect(screen.getByText(/zapatilla roja talla 40/i)).toBeInTheDocument();
-    expect(screen.getByText(/zap-roja-40/i)).toBeInTheDocument();
-    expect(screen.getByText(/variant-existing-99/i)).toBeInTheDocument();
+
+    // Cada lado se scopea con `within()` sobre su columna (ubicada a partir
+    // del título "Provisional (venta)" / "Variante en Powip" y su
+    // `.closest('div')` contenedor): el SKU de la variante de Powip
+    // ("ZAP-ROJA-40-POWIP") contiene como substring el SKU del provisional
+    // ("ZAP-ROJA-40"), así que sin scopear por columna una búsqueda laxa
+    // matchea ambos lados a la vez.
+    const provisionalColumn = within(
+      screen.getByText('Provisional (venta)').closest('div') as HTMLElement,
+    );
+    expect(provisionalColumn.getByText('Zapatilla Roja Talla 40')).toBeInTheDocument();
+    expect(provisionalColumn.getByText('SKU: ZAP-ROJA-40')).toBeInTheDocument();
+    expect(provisionalColumn.getByText('Rojo · 40')).toBeInTheDocument();
+
+    const powipColumn = within(
+      screen.getByText('Variante en Powip').closest('div') as HTMLElement,
+    );
+    expect(powipColumn.getByText('Zapatilla Roja Talla 40 (Powip)')).toBeInTheDocument();
+    expect(powipColumn.getByText('SKU: ZAP-ROJA-40-POWIP')).toBeInTheDocument();
+    expect(powipColumn.getByText('Rojo · Cuero')).toBeInTheDocument();
+
+    expect(
+      screen.getByText(
+        /las próximas ventas de esta variante descontarán stock de la variante de powip/i,
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByText(/esta acción no se puede deshacer/i)).toBeInTheDocument();
   });
 
   describe('cancelar', () => {
     it('NO llama a resolveReconciliationLink y dispara onClose', async () => {
-      const task = makeProvisionalTask();
+      const target = makeTarget();
       const onClose = jest.fn();
       render(
-        <ReconciliationLinkDialog
-          task={task}
-          targetVariantId="variant-existing-99"
-          onClose={onClose}
-          onSuccess={jest.fn()}
-        />,
+        <ReconciliationLinkDialog target={target} onClose={onClose} onSuccess={jest.fn()} />,
       );
 
       const user = userEvent.setup();
@@ -152,15 +189,10 @@ describe('ReconciliationLinkDialog', () => {
   });
 
   describe('confirmar la vinculación', () => {
-    it('llama a resolveReconciliationLink con el id de la tarea y el targetVariantId recortado', async () => {
-      const task = makeProvisionalTask();
+    it('llama a resolveReconciliationLink con el id de la tarea y el variant_id de la variante elegida', async () => {
+      const target = makeTarget();
       render(
-        <ReconciliationLinkDialog
-          task={task}
-          targetVariantId="  variant-existing-99  "
-          onClose={jest.fn()}
-          onSuccess={jest.fn()}
-        />,
+        <ReconciliationLinkDialog target={target} onClose={jest.fn()} onSuccess={jest.fn()} />,
       );
 
       const user = userEvent.setup();
@@ -173,7 +205,7 @@ describe('ReconciliationLinkDialog', () => {
     });
 
     it('muestra "Vinculando..." en el botón mientras la mutación está en curso', async () => {
-      const task = makeProvisionalTask();
+      const target = makeTarget();
       let resolveLink!: (value: ReconciliationTask) => void;
       mockResolveLink.mockImplementationOnce(
         () =>
@@ -182,12 +214,7 @@ describe('ReconciliationLinkDialog', () => {
           }),
       );
       render(
-        <ReconciliationLinkDialog
-          task={task}
-          targetVariantId="variant-existing-99"
-          onClose={jest.fn()}
-          onSuccess={jest.fn()}
-        />,
+        <ReconciliationLinkDialog target={target} onClose={jest.fn()} onSuccess={jest.fn()} />,
       );
 
       const user = userEvent.setup();
@@ -203,16 +230,11 @@ describe('ReconciliationLinkDialog', () => {
     });
 
     it('tras confirmar exitosamente, llama a onSuccess(taskId) y luego a onClose', async () => {
-      const task = makeProvisionalTask();
+      const target = makeTarget();
       const onClose = jest.fn();
       const onSuccess = jest.fn().mockResolvedValue(undefined);
       render(
-        <ReconciliationLinkDialog
-          task={task}
-          targetVariantId="variant-existing-99"
-          onClose={onClose}
-          onSuccess={onSuccess}
-        />,
+        <ReconciliationLinkDialog target={target} onClose={onClose} onSuccess={onSuccess} />,
       );
 
       const user = userEvent.setup();
@@ -221,34 +243,15 @@ describe('ReconciliationLinkDialog', () => {
       await waitFor(() => expect(onSuccess).toHaveBeenCalledWith('task-prov-1'));
       await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
     });
-
-    it('el botón está deshabilitado si targetVariantId está vacío (solo espacios)', () => {
-      const task = makeProvisionalTask();
-      render(
-        <ReconciliationLinkDialog
-          task={task}
-          targetVariantId="   "
-          onClose={jest.fn()}
-          onSuccess={jest.fn()}
-        />,
-      );
-
-      expect(screen.getByRole('button', { name: /confirmar vinculación/i })).toBeDisabled();
-    });
   });
 
   describe('manejo de errores', () => {
     it('si resolveReconciliationLink rechaza, muestra toast.error y no cierra el diálogo', async () => {
-      const task = makeProvisionalTask();
+      const target = makeTarget();
       const onClose = jest.fn();
       mockResolveLink.mockRejectedValueOnce(new Error('falla de red'));
       render(
-        <ReconciliationLinkDialog
-          task={task}
-          targetVariantId="variant-existing-99"
-          onClose={onClose}
-          onSuccess={jest.fn()}
-        />,
+        <ReconciliationLinkDialog target={target} onClose={onClose} onSuccess={jest.fn()} />,
       );
 
       const user = userEvent.setup();
