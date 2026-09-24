@@ -40,9 +40,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { buttonVariants } from "@/components/ui/buttonVariant";
+import { cn } from "@/lib/utils";
 import {
   BulkConfirmResultItem,
   ReconciliationTask,
+  ReconciliationTaskItemSource,
   ReconciliationTaskStatus,
   ReconciliationTaskType,
   bulkConfirmReconciliationTasks,
@@ -57,6 +59,40 @@ import {
 import { ReconciliationMergeDialog } from "./ReconciliationMergeDialog";
 import { ReconciliationProvisionalCard } from "./ReconciliationProvisionalCard";
 import { ReconciliationRejectDialog } from "./ReconciliationRejectDialog";
+import {
+  ReconciliationSourceChip,
+  getReconciliationSourceLabel,
+} from "./ReconciliationSourceChip";
+
+// Paleta rotativa para el thumb con iniciales de cada cluster (estilo
+// `.gcard .thumb` de `recon.html`) — sin dato de "color" propio del
+// producto en `task.items`, se deriva un color estable a partir del id de
+// la tarea para que no cambie entre renders.
+const CLUSTER_THUMB_COLORS = [
+  "bg-teal-600",
+  "bg-indigo-600",
+  "bg-rose-600",
+  "bg-amber-600",
+  "bg-cyan-600",
+  "bg-fuchsia-600",
+];
+
+function getClusterThumbColor(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  }
+  return CLUSTER_THUMB_COLORS[hash % CLUSTER_THUMB_COLORS.length];
+}
+
+function getClusterInitials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0]?.toUpperCase() ?? "")
+    .join("");
+}
 
 type TypeFilter = "ALL" | ReconciliationTaskType;
 type StatusFilter = "ALL" | ReconciliationTaskStatus;
@@ -469,22 +505,54 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
                 <div className="flex flex-col space-y-3">
                   {duplicateClusterTasks.map((task) => {
                     const isProcessing = actionLoadingId === task.id;
+                    const suggestedItem =
+                      task.items.find((item) => item.is_suggested_winner) ??
+                      task.items[0];
+                    const sources = task.items
+                      .map((item) => item.source)
+                      .filter(
+                        (source): source is ReconciliationTaskItemSource =>
+                          source !== null,
+                      );
+                    const allSameSource =
+                      sources.length === task.items.length &&
+                      sources.every((source) => source === sources[0]);
+
                     return (
                       <div
                         key={task.id}
-                        className="space-y-3 rounded-md border bg-card p-4 shadow-sm"
+                        className="overflow-hidden rounded-md border bg-card shadow-sm"
                       >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold">
-                              Cluster de {task.items.length} variantes candidatas
-                            </span>
-                            {task.confidenceLevel !== null && (
-                              <Badge variant="secondary">
-                                {Math.round(Number(task.confidenceLevel) * 100)}%
-                                confianza
-                              </Badge>
+                        <div className="flex flex-wrap items-center gap-4 p-4">
+                          <div
+                            className={cn(
+                              "flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white",
+                              getClusterThumbColor(task.id),
                             )}
+                          >
+                            {getClusterInitials(
+                              suggestedItem?.variant_name ?? "?",
+                            )}
+                          </div>
+                          <div className="min-w-[240px] flex-1 space-y-1">
+                            <p
+                              className="text-sm font-semibold"
+                              title={suggestedItem?.variant_name}
+                            >
+                              {suggestedItem?.variant_name ??
+                                "Producto sin nombre"}
+                            </p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-xs text-muted-foreground">
+                                {task.items.length} variantes candidatas
+                              </span>
+                              {task.confidenceLevel !== null && (
+                                <Badge variant="secondary">
+                                  {Math.round(Number(task.confidenceLevel) * 100)}
+                                  % confianza
+                                </Badge>
+                              )}
+                            </div>
                           </div>
                           <div className="flex gap-2">
                             <Button
@@ -493,7 +561,7 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
                               onClick={() => setMergeTask(task)}
                             >
                               <GitMerge className="mr-1 h-3.5 w-3.5" />
-                              Resolver merge
+                              Revisar y unificar
                             </Button>
                             <Button
                               size="sm"
@@ -503,71 +571,52 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
                               onClick={() => setRejectTask(task)}
                             >
                               <X className="mr-1 h-3.5 w-3.5" />
-                              Rechazar
+                              Son distintos
                             </Button>
                           </div>
                         </div>
 
-                        <div className="overflow-hidden rounded border">
-                          <Table>
-                            <TableHeader>
-                              <TableRow className="bg-muted/50">
-                                <TableHead>Nombre</TableHead>
-                                <TableHead>SKU</TableHead>
-                                <TableHead>Origen</TableHead>
-                                <TableHead className="text-right">
-                                  Confianza
-                                </TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {task.items.map((item) => (
-                                <TableRow
-                                  key={item.variant_id ?? item.variant_name}
-                                  className={
-                                    item.is_suggested_winner
-                                      ? "bg-emerald-50 dark:bg-emerald-950/20"
-                                      : undefined
-                                  }
+                        <div className="grid grid-cols-1 divide-y border-t sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                          {task.items.map((item) => (
+                            <div
+                              key={item.variant_id ?? item.variant_name}
+                              className="space-y-1.5 p-3 text-xs"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span
+                                  className="truncate text-sm font-medium"
+                                  title={item.variant_name}
                                 >
-                                  <TableCell className="text-sm">
-                                    <div className="flex items-center gap-2">
-                                      {item.is_suggested_winner && (
-                                        <Badge className="bg-emerald-600 hover:bg-emerald-600">
-                                          Sugerida
-                                        </Badge>
-                                      )}
-                                      <span
-                                        className="max-w-[220px] truncate"
-                                        title={item.variant_name}
-                                      >
-                                        {item.variant_name}
-                                      </span>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell className="font-mono text-xs">
-                                    {item.sku ?? item.company_sku ?? "Sin SKU"}
-                                  </TableCell>
-                                  <TableCell>
-                                    {item.source ? (
-                                      <Badge
-                                        variant="outline"
-                                        className="text-[10px] uppercase"
-                                      >
-                                        {item.source}
-                                      </Badge>
-                                    ) : (
-                                      "-"
-                                    )}
-                                  </TableCell>
-                                  <TableCell className="text-right text-xs">
-                                    {Math.round(item.confidence * 100)}%
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
+                                  {item.variant_name}
+                                </span>
+                                {item.is_suggested_winner && (
+                                  <Badge className="bg-emerald-600 hover:bg-emerald-600">
+                                    Sugerida
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <ReconciliationSourceChip source={item.source} />
+                                <span className="font-mono text-muted-foreground">
+                                  {item.sku ?? item.company_sku ?? "Sin SKU"}
+                                </span>
+                                <span className="text-muted-foreground">
+                                  {Math.round(item.confidence * 100)}% confianza
+                                </span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
+
+                        {allSameSource && (
+                          <div className="border-t border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800">
+                            Todas están en{" "}
+                            {getReconciliationSourceLabel(sources[0])}: es un
+                            duplicado dentro del mismo canal. Después de
+                            unificar, eliminá el duplicado también en{" "}
+                            {getReconciliationSourceLabel(sources[0])}.
+                          </div>
+                        )}
                       </div>
                     );
                   })}

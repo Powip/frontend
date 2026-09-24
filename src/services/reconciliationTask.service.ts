@@ -245,3 +245,85 @@ export async function searchReconciliationVariants(
   );
   return res.data;
 }
+
+// ---------------------------------------------------------------------------
+// FEAT-17 Anexo B — GET /reconciliation-tasks/:id/details: detalle
+// enriquecido (producto, marca, categoría, variantes hermanas) de las
+// candidatas de una tarea `type: 'duplicate_cluster'`, para el modal
+// "Unificar" con detalle de producto. `companyId` siempre del JWT — una
+// tarea de otra empresa devuelve 404 (no filtra existencia).
+// ---------------------------------------------------------------------------
+
+export interface ReconciliationTaskDetailBrand {
+  id: string;
+  name: string;
+}
+
+export interface ReconciliationTaskDetailCategory {
+  id: string;
+  name: string;
+}
+
+export interface ReconciliationTaskDetailVariant {
+  id: string;
+  sku: string | null;
+  company_sku: string | null;
+  attribute_values: Record<string, string>;
+  // Precio de venta y costo/base de `ProductVariant` — dos decimales.
+  price: number;
+  cost?: number | null;
+  is_active: boolean;
+  merged_into: string | null;
+}
+
+export interface ReconciliationTaskDetailProductVariant {
+  id: string;
+  sku: string | null;
+  company_sku: string | null;
+  attribute_values: Record<string, string>;
+  price: number;
+  is_active: boolean;
+}
+
+export interface ReconciliationTaskDetailProduct {
+  id: string;
+  name: string;
+  description: string | null;
+  image_url: string | null;
+  brand: ReconciliationTaskDetailBrand | null;
+  category: ReconciliationTaskDetailCategory | null;
+  subcategory: ReconciliationTaskDetailCategory | null;
+  external_source: ReconciliationTaskItemSource | null;
+  // Sólo variantes con `merged_into IS NULL` e `is_active: true`, más la
+  // propia candidata aunque no cumpla ese filtro (spec Anexo B).
+  variants: ReconciliationTaskDetailProductVariant[];
+}
+
+export interface ReconciliationTaskDetailCandidate {
+  variant_id: string;
+  is_suggested_winner: boolean;
+  confidence: number;
+  source: ReconciliationTaskItemSource | null;
+  variant: ReconciliationTaskDetailVariant;
+  product: ReconciliationTaskDetailProduct | null;
+}
+
+export interface ReconciliationTaskDetails {
+  task_id: string;
+  candidates: ReconciliationTaskDetailCandidate[];
+}
+
+/**
+ * Detalle enriquecido de las candidatas de un cluster de duplicados, para
+ * `ReconciliationMergeDialog` (FEAT-17 Anexo B). Si falla (404 de otra
+ * empresa, error de red, endpoint todavía no desplegado), el diálogo cae a
+ * la info básica de `task.items` — el merge se puede resolver igual.
+ */
+export async function getReconciliationTaskDetails(
+  taskId: string,
+): Promise<ReconciliationTaskDetails> {
+  const res = await axiosAuth.get<ReconciliationTaskDetails>(
+    `${BASE_URL}/${taskId}/details`,
+  );
+  return res.data;
+}

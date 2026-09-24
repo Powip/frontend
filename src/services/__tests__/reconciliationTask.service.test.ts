@@ -18,7 +18,9 @@
  * 8. searchReconciliationVariants (FEAT-17 Anexo A) — GET a
  *    `.../variant-search` con `{ params: { q } }`, devuelve `res.data` tal
  *    cual (sin transformar).
- * 9. getReconciliationTaskErrorMessage:
+ * 9. getReconciliationTaskDetails (FEAT-17 Anexo B) — GET a
+ *    `.../:id/details`, devuelve `res.data` tal cual (sin transformar).
+ * 10. getReconciliationTaskErrorMessage:
  *    - `response.data.message` string → se devuelve tal cual.
  *    - `response.data.message` array (class-validator) no vacío → se unen con ", ".
  *    - `response.data.message` array VACÍO → cae al fallback (no hay mensaje útil).
@@ -50,6 +52,7 @@ import axiosAuth from '@/lib/axiosAuth';
 import type {
   BulkConfirmResultItem,
   ReconciliationTask,
+  ReconciliationTaskDetails,
   VariantSearchResult,
 } from '@/services/reconciliationTask.service';
 
@@ -63,6 +66,7 @@ let confirmReconciliationProvisional: ServiceModule['confirmReconciliationProvis
 let rejectReconciliationTask: ServiceModule['rejectReconciliationTask'];
 let bulkConfirmReconciliationTasks: ServiceModule['bulkConfirmReconciliationTasks'];
 let searchReconciliationVariants: ServiceModule['searchReconciliationVariants'];
+let getReconciliationTaskDetails: ServiceModule['getReconciliationTaskDetails'];
 let getReconciliationTaskErrorMessage: ServiceModule['getReconciliationTaskErrorMessage'];
 
 beforeAll(() => {
@@ -79,6 +83,7 @@ beforeAll(() => {
     rejectReconciliationTask = mod.rejectReconciliationTask;
     bulkConfirmReconciliationTasks = mod.bulkConfirmReconciliationTasks;
     searchReconciliationVariants = mod.searchReconciliationVariants;
+    getReconciliationTaskDetails = mod.getReconciliationTaskDetails;
     getReconciliationTaskErrorMessage = mod.getReconciliationTaskErrorMessage;
   });
 });
@@ -271,6 +276,58 @@ describe('reconciliationTask.service', () => {
         params: { q: 'xx' },
       });
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('getReconciliationTaskDetails', () => {
+    it('hace GET a /:id/details y devuelve res.data tal cual', async () => {
+      const details: ReconciliationTaskDetails = {
+        task_id: 'task-cluster-1',
+        candidates: [
+          {
+            variant_id: 'variant-a',
+            is_suggested_winner: true,
+            confidence: 0.9,
+            source: 'shopify',
+            variant: {
+              id: 'variant-a',
+              sku: 'SKU-A',
+              company_sku: null,
+              attribute_values: { color: 'Rojo' },
+              price: 45,
+              cost: 20,
+              is_active: true,
+              merged_into: null,
+            },
+            product: {
+              id: 'product-a',
+              name: 'Producto A',
+              description: 'Descripción A',
+              image_url: null,
+              brand: { id: 'brand-a', name: 'Marca A' },
+              category: { id: 'cat-a', name: 'Calzado' },
+              subcategory: null,
+              external_source: 'shopify',
+              variants: [
+                {
+                  id: 'variant-a',
+                  sku: 'SKU-A',
+                  company_sku: null,
+                  attribute_values: { color: 'Rojo' },
+                  price: 45,
+                  is_active: true,
+                },
+              ],
+            },
+          },
+        ],
+      };
+      mockGet.mockResolvedValueOnce({ data: details });
+
+      const result = await getReconciliationTaskDetails('task-cluster-1');
+
+      expect(mockGet).toHaveBeenCalledWith(`${BASE_URL}/task-cluster-1/details`);
+      expect(result).toEqual(details);
     });
   });
 

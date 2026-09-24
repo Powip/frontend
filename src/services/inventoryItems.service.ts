@@ -60,3 +60,50 @@ export async function exportInventoryItems(
 
   return res.data.data;
 }
+
+// FEAT-17 Anexo B — POST /inventory-item/stock-by-variants: stock/reservas
+// agregados (sólo inventarios activos) por variante, usado en el modal
+// "Unificar" de reconciliación para mostrar stock antes/después del merge.
+// El backend limita el body a 1..100 variantIds, así que acá se parte en
+// bloques y se piden en paralelo — el caller nunca se preocupa del límite.
+export interface VariantStockInventoryDetail {
+  inventory_id: string;
+  inventory_name: string;
+  store_id: string | null;
+  quantity: number;
+  reserved_quantity: number;
+}
+
+export interface VariantStock {
+  variant_id: string;
+  quantity: number;
+  reserved_quantity: number;
+  available: number;
+  inventories: VariantStockInventoryDetail[];
+}
+
+const STOCK_BY_VARIANTS_CHUNK_SIZE = 100;
+
+export async function getStockByVariants(
+  variantIds: string[],
+): Promise<VariantStock[]> {
+  const uniqueIds = Array.from(new Set(variantIds));
+  if (uniqueIds.length === 0) return [];
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < uniqueIds.length; i += STOCK_BY_VARIANTS_CHUNK_SIZE) {
+    chunks.push(uniqueIds.slice(i, i + STOCK_BY_VARIANTS_CHUNK_SIZE));
+  }
+
+  const results = await Promise.all(
+    chunks.map(async (variantIdsChunk) => {
+      const res = await axiosAuth.post<VariantStock[]>(
+        `${API_INVENTORY}/inventory-item/stock-by-variants`,
+        { variantIds: variantIdsChunk },
+      );
+      return res.data;
+    }),
+  );
+
+  return results.flat();
+}

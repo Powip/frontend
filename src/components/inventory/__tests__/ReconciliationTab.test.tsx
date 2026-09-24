@@ -36,17 +36,22 @@
  *     buscador de variantes ("Buscar otra variante") para items
  *     `type: 'manual'`, solo "Rechazar" — esos items no pasan por
  *     `ReconciliationProvisionalCard`.
- * 11. FEAT-17 Anexo A (fusión reactivada): "Resolver merge" en un cluster
- *     está habilitado (solo se deshabilita mientras `isProcessing`) y el
- *     click abre `ReconciliationMergeDialog` ("Resolver duplicados"). Ya no
- *     se muestra ningún `Alert` de "Fusión de duplicados pausada" sobre la
- *     sección de clusters. Los clusters siguen sin checkbox de selección
- *     (ver punto 8 — `BULK_SELECTABLE_TYPES` solo incluye `provisional`),
- *     pero "Rechazar" sigue habilitado y abre `ReconciliationRejectDialog`
- *     igual que en el resto de los tipos.
+ * 11. FEAT-17 Anexo B (rediseño de la sección de clusters): "Revisar y
+ *     unificar" en un cluster está habilitado (solo se deshabilita mientras
+ *     `isProcessing`) y el click abre `ReconciliationMergeDialog`
+ *     ("Unificar · {nombre de la sugerida}"). Ya no se muestra ningún
+ *     `Alert` de "Fusión de duplicados pausada" sobre la sección de
+ *     clusters. Los clusters siguen sin checkbox de selección (ver punto 8
+ *     — `BULK_SELECTABLE_TYPES` solo incluye `provisional`), pero "Son
+ *     distintos" (el rechazo del cluster, ya no dice "Rechazar") sigue
+ *     habilitado y abre `ReconciliationRejectDialog` igual que en el resto
+ *     de los tipos.
  * 12. Con `companyId: undefined`, `loadTasks` corta antes de llamar a
  *     `listReconciliationTasks`, sale de `isLoading` y muestra directamente
  *     el estado vacío (sin pasar por el skeleton).
+ * 13. FEAT-17 Anexo B — la franja ámbar "Todas están en {canal}" se muestra
+ *     bajo la grilla de candidatas de un cluster cuando TODAS comparten el
+ *     mismo `source`, y no aparece si difieren.
  *
  * Mocks aplicados:
  * - @/services/reconciliationTask.service → las 7 funciones de siempre +
@@ -55,7 +60,12 @@
  *   se ejercita el buscador, ya cubierto en
  *   `ReconciliationProvisionalCard.test.tsx`) + el helper
  *   `getReconciliationTaskErrorMessage` (se mockea devolviendo directamente
- *   el `fallback` recibido).
+ *   el `fallback` recibido) + `getReconciliationTaskDetails` (FEAT-17 Anexo
+ *   B, usado por `ReconciliationMergeDialog` — se resuelve con candidatas
+ *   vacías por defecto, ya que el detalle enriquecido en sí se cubre en
+ *   `ReconciliationMergeDialog.test.tsx`).
+ * - @/services/inventoryItems.service → `getStockByVariants` (ídem, usado
+ *   por `ReconciliationMergeDialog`, resuelto con `[]` por defecto).
  * - sonner → toast.success/error.
  * - @/components/ui/select → `<select>` nativo (mismo patrón que
  *   ExcelImportWizard.test.tsx / SendToEvaGuideModal.test.tsx): Radix Select
@@ -98,6 +108,18 @@ jest.mock('@/services/reconciliationTask.service', () => ({
   getReconciliationTaskErrorMessage: jest.fn(
     (_error: unknown, fallback: string) => fallback,
   ),
+  // FEAT-17 Anexo B — usado por `ReconciliationMergeDialog` (react-query).
+  // Resuelto con candidatas vacías por defecto: el diálogo cae al nombre
+  // básico de `task.items` para el título, que es lo único que estos tests
+  // necesitan (el detalle enriquecido en sí ya se cubre en
+  // `ReconciliationMergeDialog.test.tsx`).
+  getReconciliationTaskDetails: jest.fn(),
+}));
+
+// FEAT-17 Anexo B — usado por `ReconciliationMergeDialog` para el stock de
+// la vista previa (react-query). Resuelto con `[]` por defecto.
+jest.mock('@/services/inventoryItems.service', () => ({
+  getStockByVariants: jest.fn(),
 }));
 
 /**
@@ -180,11 +202,13 @@ import {
   rejectReconciliationTask,
   bulkConfirmReconciliationTasks,
   searchReconciliationVariants,
+  getReconciliationTaskDetails,
   type ReconciliationTask,
   type ReconciliationTaskItem,
   type ReconciliationTaskSuggestion,
   type BulkConfirmResultItem,
 } from '@/services/reconciliationTask.service';
+import { getStockByVariants } from '@/services/inventoryItems.service';
 import { ReconciliationTab } from '../ReconciliationTab';
 
 // ── Casts ────────────────────────────────────────────────────────────────────
@@ -195,6 +219,8 @@ const mockResolveLink = jest.mocked(resolveReconciliationLink);
 const mockReject = jest.mocked(rejectReconciliationTask);
 const mockBulkConfirm = jest.mocked(bulkConfirmReconciliationTasks);
 const mockSearchVariants = jest.mocked(searchReconciliationVariants);
+const mockGetTaskDetails = jest.mocked(getReconciliationTaskDetails);
+const mockGetStock = jest.mocked(getStockByVariants);
 const mockToast = toast as jest.Mocked<typeof toast>;
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
@@ -337,6 +363,8 @@ beforeEach(() => {
   mockReject.mockResolvedValue(DEFAULT_TASK_RESPONSE);
   mockBulkConfirm.mockResolvedValue([]);
   mockSearchVariants.mockResolvedValue([]);
+  mockGetTaskDetails.mockResolvedValue({ task_id: '', candidates: [] });
+  mockGetStock.mockResolvedValue([]);
 });
 
 function buildWrapper() {
@@ -440,7 +468,10 @@ describe('ReconciliationTab', () => {
 
       expect(screen.getByText('Zapatilla Roja Talla 40')).toBeInTheDocument();
       expect(screen.getByText('Línea de venta sin match')).toBeInTheDocument();
-      expect(screen.getByText('Camiseta Azul M')).toBeInTheDocument();
+      // "Camiseta Azul M" (la candidata sugerida) aparece 2 veces en la
+      // tarjeta del cluster rediseñada (FEAT-17 Anexo B): una en el título
+      // y otra en su fila dentro de la grilla de candidatas.
+      expect(screen.getAllByText('Camiseta Azul M')).toHaveLength(2);
       expect(screen.getByText('Camiseta Azul Mediana')).toBeInTheDocument();
       expect(screen.getByText('Sugerida')).toBeInTheDocument();
     });
@@ -574,7 +605,9 @@ describe('ReconciliationTab', () => {
       await screen.findByText('Zapatilla Roja Talla 40');
       // El cluster también está renderizado en la misma pantalla, pero no
       // aporta checkbox: el único checkbox visible es el del provisional.
-      await screen.findByText('Camiseta Azul M');
+      // "Camiseta Azul M" aparece 2 veces (título + grilla) — `findAllByText`
+      // sólo se usa acá para esperar el render, sin afirmar sobre la cuenta.
+      await screen.findAllByText('Camiseta Azul M');
 
       const user = userEvent.setup();
       const checkboxes = screen.getAllByRole('checkbox');
@@ -644,49 +677,49 @@ describe('ReconciliationTab', () => {
     });
   });
 
-  describe('clusters de duplicados (FEAT-17 Anexo A: fusión reactivada)', () => {
+  describe('clusters de duplicados (FEAT-17 Anexo B: tarjeta rediseñada)', () => {
     it('no muestra ningún alert de "Fusión de duplicados pausada" sobre la sección de clusters', async () => {
       mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
 
       renderTab();
-      await screen.findByText('Camiseta Azul M');
+      await screen.findAllByText('Camiseta Azul M');
 
       expect(screen.queryByText(/fusión de duplicados pausada/i)).not.toBeInTheDocument();
     });
 
-    it('"Resolver merge" está habilitado y el click abre ReconciliationMergeDialog ("Resolver duplicados")', async () => {
+    it('"Revisar y unificar" está habilitado y el click abre ReconciliationMergeDialog ("Unificar · ...")', async () => {
       mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
 
       renderTab();
-      await screen.findByText('Camiseta Azul M');
+      await screen.findAllByText('Camiseta Azul M');
 
-      const mergeButton = screen.getByRole('button', { name: /resolver merge/i });
+      const mergeButton = screen.getByRole('button', { name: /revisar y unificar/i });
       expect(mergeButton).not.toBeDisabled();
 
       const user = userEvent.setup();
       await user.click(mergeButton);
 
       const mergeDialog = within(await screen.findByRole('alertdialog'));
-      expect(mergeDialog.getByText(/resolver duplicados/i)).toBeInTheDocument();
+      expect(await mergeDialog.findByText(/unificar · camiseta azul m/i)).toBeInTheDocument();
     });
 
     it('no muestra checkbox de selección en las filas de cluster', async () => {
       mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
 
       renderTab();
-      await screen.findByText('Camiseta Azul M');
+      await screen.findAllByText('Camiseta Azul M');
 
       expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
     });
 
-    it('"Rechazar" en un cluster sigue habilitado y abre el diálogo de confirmación, y confirmar sí llama a rejectReconciliationTask', async () => {
+    it('"Son distintos" en un cluster sigue habilitado y abre el diálogo de confirmación, y confirmar sí llama a rejectReconciliationTask', async () => {
       const cluster = makeClusterTask();
       mockListTasks.mockResolvedValueOnce([cluster]);
 
       renderTab();
-      await screen.findByText('Camiseta Azul M');
+      await screen.findAllByText('Camiseta Azul M');
 
-      const rejectButton = screen.getByRole('button', { name: /rechazar/i });
+      const rejectButton = screen.getByRole('button', { name: /son distintos/i });
       expect(rejectButton).not.toBeDisabled();
 
       const user = userEvent.setup();
@@ -700,6 +733,51 @@ describe('ReconciliationTab', () => {
 
       await waitFor(() => expect(mockReject).toHaveBeenCalledWith('task-cluster-1'));
       expect(mockToast.success).toHaveBeenCalledWith('Tarea rechazada');
+    });
+
+    describe('franja ámbar "Todas están en {canal}"', () => {
+      it('se muestra cuando todas las candidatas del cluster comparten el mismo origen', async () => {
+        const sameSourceCluster = makeTask({
+          id: 'task-cluster-2',
+          type: 'duplicate_cluster',
+          confidenceLevel: 0.8,
+          items: [
+            makeItem({
+              variant_id: 'variant-x',
+              product_id: 'product-x',
+              variant_name: 'Zapatilla Blanca 42',
+              sku: 'ZAP-BLA-42',
+              source: 'shopify',
+              confidence: 0.9,
+              is_suggested_winner: true,
+            }),
+            makeItem({
+              variant_id: 'variant-y',
+              product_id: 'product-y',
+              variant_name: 'Zapatilla Blanca Talla 42',
+              sku: 'ZAP-BLA-42-2',
+              source: 'shopify',
+              confidence: 0.85,
+            }),
+          ],
+        });
+        mockListTasks.mockResolvedValueOnce([sameSourceCluster]);
+
+        renderTab();
+        await screen.findByText('Zapatilla Blanca Talla 42');
+
+        expect(screen.getByText(/todas están en shopify/i)).toBeInTheDocument();
+      });
+
+      it('no aparece si las candidatas tienen distinto origen', async () => {
+        // `makeClusterTask()` por defecto trae 'shopify' y 'aliclik'.
+        mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
+
+        renderTab();
+        await screen.findAllByText('Camiseta Azul M');
+
+        expect(screen.queryByText(/todas están en/i)).not.toBeInTheDocument();
+      });
     });
   });
 });
