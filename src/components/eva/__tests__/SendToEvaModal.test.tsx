@@ -377,6 +377,7 @@ describe('SendToEvaModal', () => {
   describe('verificación de credencial', () => {
     it('muestra spinner mientras verifica la credencial EVA', () => {
       mockGetCredentials.mockReturnValue(new Promise(() => {}));
+      mockGetDistricts.mockReturnValue(new Promise(() => {}));
       renderModal();
       expect(screen.getByTestId('loader')).toBeInTheDocument();
       expect(screen.getByText(/verificando configuración de eva/i)).toBeInTheDocument();

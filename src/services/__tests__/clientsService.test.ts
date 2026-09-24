@@ -2,49 +2,35 @@
  * Tests: clients.service
  *
  * Comportamiento verificado:
- * 1. createClient hace POST a /clients con body JSON que incluye los campos del payload.
+ * 1. createClient hace POST a ${GATEWAY.ventas}/clients con el payload.
  * 2. createClient incluye latitude y longitude en el body cuando se pasan.
  * 3. createClient NO rompe (funciona correctamente) cuando no se pasan lat/lng.
- * 4. updateClient hace PATCH a /clients/:id con el body JSON del payload.
+ * 4. updateClient hace PATCH a ${GATEWAY.ventas}/clients/:id con el payload.
  * 5. updateClient incluye latitude y longitude en el body cuando se pasan.
  * 6. updateClient NO rompe cuando no se pasan lat/lng.
- * 7. updateClient lanza error cuando la respuesta no es ok.
- * 8. createClient lanza error cuando la respuesta no es ok.
+ * 7. updateClient propaga el error HTTP de axiosAuth.
+ * 8. createClient propaga el error HTTP de axiosAuth.
  *
- * fetch global está mockeado para evitar llamadas reales a la red.
- * NEXT_PUBLIC_API_VENTAS se fija antes de importar el módulo vía jest.isolateModules.
+ * @/lib/axiosAuth está mockeado para evitar llamadas reales a la red.
  */
 
-// ── Configuración de entorno — DEBE ir antes del import del módulo ────────────
-const FAKE_API_VENTAS = 'http://localhost:3002';
+import axiosAuth from '@/lib/axiosAuth';
+import { GATEWAY } from '@/lib/gateway';
+import { createClient, updateClient } from '@/services/clients.service';
 
-// ── Mock de fetch global ──────────────────────────────────────────────────────
-const mockFetch = jest.fn();
+jest.mock('@/lib/axiosAuth', () => ({
+  __esModule: true,
+  default: {
+    get: jest.fn(),
+    post: jest.fn(),
+    patch: jest.fn(),
+  },
+}));
 
-// ── Tipos de las funciones bajo prueba (sin importar el módulo todavía) ───────
-type CreateClientFn = typeof import('@/services/clients.service').createClient;
-type UpdateClientFn = typeof import('@/services/clients.service').updateClient;
+const mockPost = axiosAuth.post as jest.Mock;
+const mockPatch = axiosAuth.patch as jest.Mock;
 
-// Variables que se asignarán dentro de isolateModules
-let createClient: CreateClientFn;
-let updateClient: UpdateClientFn;
-
-// ── Setup: cargar el módulo con la env var correcta ───────────────────────────
-
-beforeAll(() => {
-  process.env.NEXT_PUBLIC_API_VENTAS = FAKE_API_VENTAS;
-  global.fetch = mockFetch;
-
-  jest.isolateModules(() => {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require('@/services/clients.service') as {
-      createClient: CreateClientFn;
-      updateClient: UpdateClientFn;
-    };
-    createClient = mod.createClient;
-    updateClient = mod.updateClient;
-  });
-});
+const API_VENTAS = GATEWAY.ventas;
 
 // ── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -77,21 +63,15 @@ const BASE_CREATE_PAYLOAD = {
   address: 'Av. Larco 123',
 };
 
-// Helper para crear una respuesta fetch simulada
 function mockOkResponse(data: unknown) {
-  return {
-    ok: true,
-    status: 200,
-    json: jest.fn().mockResolvedValue(data),
-  };
+  return { status: 200, data };
 }
 
-function mockErrorResponse(status = 500) {
-  return {
-    ok: false,
-    status,
-    json: jest.fn().mockResolvedValue({ message: 'Error' }),
-  };
+function buildHttpError(status: number) {
+  return Object.assign(new Error(`Request failed with status code ${status}`), {
+    isAxiosError: true,
+    response: { status, data: { message: 'Error' } },
+  });
 }
 
 // ── Setup por test ────────────────────────────────────────────────────────────
@@ -107,28 +87,25 @@ describe('clients.service', () => {
   // ── createClient ─────────────────────────────────────────────────────────
 
   describe('createClient', () => {
-    it('hace POST a /clients con el método correcto', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+    it('hace POST a /clients', async () => {
+      mockPost.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       await createClient(BASE_CREATE_PAYLOAD);
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        `${FAKE_API_VENTAS}/clients`,
-        expect.objectContaining({ method: 'POST' }),
-      );
+      expect(mockPost).toHaveBeenCalledWith(`${API_VENTAS}/clients`, expect.any(Object));
     });
 
-    it('incluye Content-Type application/json en los headers', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+    it('envía el payload recibido como body', async () => {
+      mockPost.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       await createClient(BASE_CREATE_PAYLOAD);
 
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-      expect((options.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+      const [, body] = mockPost.mock.calls[0];
+      expect(body).toEqual(BASE_CREATE_PAYLOAD);
     });
 
     it('incluye latitude y longitude en el body cuando se pasan', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+      mockPost.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       await createClient({
         ...BASE_CREATE_PAYLOAD,
@@ -136,36 +113,34 @@ describe('clients.service', () => {
         longitude: -77.042793,
       });
 
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-      const body = JSON.parse(options.body as string);
+      const [, body] = mockPost.mock.calls[0];
       expect(body.latitude).toBe(-12.046374);
       expect(body.longitude).toBe(-77.042793);
     });
 
     it('NO incluye latitude/longitude en el body cuando no se pasan', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+      mockPost.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       await createClient(BASE_CREATE_PAYLOAD);
 
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-      const body = JSON.parse(options.body as string);
-      // latitude/longitude deben ser undefined (no presentes en el JSON serializado)
+      const [, body] = mockPost.mock.calls[0];
       expect(body).not.toHaveProperty('latitude');
       expect(body).not.toHaveProperty('longitude');
     });
 
     it('retorna el cliente creado en la respuesta', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+      mockPost.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       const result = await createClient(BASE_CREATE_PAYLOAD);
 
       expect(result).toEqual(MOCK_CLIENT);
     });
 
-    it('lanza un error cuando la respuesta no es ok', async () => {
-      mockFetch.mockResolvedValue(mockErrorResponse(400));
+    it('propaga el error cuando la respuesta no es ok', async () => {
+      const error = buildHttpError(400);
+      mockPost.mockRejectedValue(error);
 
-      await expect(createClient(BASE_CREATE_PAYLOAD)).rejects.toThrow('Error creating client');
+      await expect(createClient(BASE_CREATE_PAYLOAD)).rejects.toBe(error);
     });
   });
 
@@ -173,27 +148,27 @@ describe('clients.service', () => {
 
   describe('updateClient', () => {
     it('hace PATCH a /clients/:id con el id correcto', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+      mockPatch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       await updateClient('client-42', { companyId: 'company-1' });
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        `${FAKE_API_VENTAS}/clients/client-42`,
-        expect.objectContaining({ method: 'PATCH' }),
+      expect(mockPatch).toHaveBeenCalledWith(
+        `${API_VENTAS}/clients/client-42`,
+        expect.any(Object),
       );
     });
 
-    it('incluye Content-Type application/json en los headers', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+    it('envía el payload recibido como body', async () => {
+      mockPatch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       await updateClient('client-1', { companyId: 'company-1' });
 
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-      expect((options.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+      const [, body] = mockPatch.mock.calls[0];
+      expect(body).toEqual({ companyId: 'company-1' });
     });
 
     it('incluye latitude y longitude en el body cuando se pasan', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+      mockPatch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       await updateClient('client-1', {
         companyId: 'company-1',
@@ -201,14 +176,13 @@ describe('clients.service', () => {
         longitude: -77.042793,
       });
 
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-      const body = JSON.parse(options.body as string);
+      const [, body] = mockPatch.mock.calls[0];
       expect(body.latitude).toBe(-12.046374);
       expect(body.longitude).toBe(-77.042793);
     });
 
     it('incluye companyId en el body del payload', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+      mockPatch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       await updateClient('client-1', {
         companyId: 'company-99',
@@ -216,47 +190,46 @@ describe('clients.service', () => {
         longitude: -76.0,
       });
 
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-      const body = JSON.parse(options.body as string);
+      const [, body] = mockPatch.mock.calls[0];
       expect(body.companyId).toBe('company-99');
     });
 
     it('NO rompe cuando no se pasan lat/lng (payload parcial)', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+      mockPatch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       const result = await updateClient('client-1', {
         fullName: 'Nuevo Nombre',
       });
 
       expect(result).toEqual(MOCK_CLIENT);
-      const [, options] = mockFetch.mock.calls[0] as [string, RequestInit];
-      const body = JSON.parse(options.body as string);
+      const [, body] = mockPatch.mock.calls[0];
       expect(body.fullName).toBe('Nuevo Nombre');
     });
 
     it('retorna el cliente actualizado en la respuesta', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+      mockPatch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       const result = await updateClient('client-1', { companyId: 'company-1' });
 
       expect(result).toEqual(MOCK_CLIENT);
     });
 
-    it('lanza un error cuando la respuesta no es ok', async () => {
-      mockFetch.mockResolvedValue(mockErrorResponse(404));
+    it('propaga el error cuando la respuesta no es ok', async () => {
+      const error = buildHttpError(404);
+      mockPatch.mockRejectedValue(error);
 
       await expect(
         updateClient('client-not-found', { companyId: 'company-1' }),
-      ).rejects.toThrow('Error updating client');
+      ).rejects.toBe(error);
     });
 
     it('construye correctamente la URL con distintos ids', async () => {
-      mockFetch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
+      mockPatch.mockResolvedValue(mockOkResponse(MOCK_CLIENT));
 
       await updateClient('abc-123-xyz', { latitude: -5.0, longitude: -80.0 });
 
-      expect(mockFetch).toHaveBeenCalledWith(
-        `${FAKE_API_VENTAS}/clients/abc-123-xyz`,
+      expect(mockPatch).toHaveBeenCalledWith(
+        `${API_VENTAS}/clients/abc-123-xyz`,
         expect.anything(),
       );
     });

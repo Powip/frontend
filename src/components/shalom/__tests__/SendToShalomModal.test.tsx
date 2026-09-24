@@ -34,7 +34,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ──────────────────────────────────────────────────
@@ -225,8 +225,12 @@ const BASE_PROPS = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function renderModal(propOverrides: Partial<typeof BASE_PROPS> = {}) {
-  return render(<SendToShalomModal {...BASE_PROPS} {...propOverrides} />);
+async function renderModal(propOverrides: Partial<typeof BASE_PROPS> = {}) {
+  const result = render(<SendToShalomModal {...BASE_PROPS} {...propOverrides} />);
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  return result;
 }
 
 /**
@@ -329,7 +333,7 @@ async function setupValidForm() {
   });
 
   const user = userEvent.setup();
-  renderModal();
+  await renderModal();
 
   const { originSelect, destSelect } = await fillValidForm(user);
 
@@ -419,18 +423,18 @@ describe('SendToShalomModal', () => {
   // ── 1. Render inicial ───────────────────────────────────────────────────────
 
   describe('render inicial', () => {
-    it('muestra el título "Enviar a Shalom Pro"', () => {
-      renderModal();
+    it('muestra el título "Enviar a Shalom Pro"', async () => {
+      await renderModal();
       expect(screen.getByText('Enviar a Shalom Pro')).toBeInTheDocument();
     });
 
-    it('muestra el label "Declaración jurada"', () => {
-      renderModal();
+    it('muestra el label "Declaración jurada"', async () => {
+      await renderModal();
       expect(screen.getByText(/declaración jurada/i)).toBeInTheDocument();
     });
 
-    it('el dropdown de declaración jurada tiene el sentinel "__ninguna__" (Ninguna) como valor seleccionado por default', () => {
-      renderModal();
+    it('el dropdown de declaración jurada tiene el sentinel "__ninguna__" (Ninguna) como valor seleccionado por default', async () => {
+      await renderModal();
       // El <select> mockeado tiene value=estado; buscamos el <select> que tenga la opción __ninguna__
       const selects = screen.getAllByRole('combobox') as HTMLSelectElement[];
       const djSelect = selects.find((s) =>
@@ -440,8 +444,8 @@ describe('SendToShalomModal', () => {
       expect(djSelect!.value).toBe('__ninguna__');
     });
 
-    it('renderiza exactamente las opciones del enum de Shalom y no las opciones antiguas', () => {
-      renderModal();
+    it('renderiza exactamente las opciones del enum de Shalom y no las opciones antiguas', async () => {
+      await renderModal();
       const options = screen.getAllByRole('option');
       const optionValues = options.map((o) => (o as HTMLOptionElement).value);
       // Opciones nuevas que deben estar presentes
@@ -455,15 +459,15 @@ describe('SendToShalomModal', () => {
       expect(optionValues).not.toContain('Mercadería general');
     });
 
-    it('no muestra el mensaje "No hay pedidos seleccionados" cuando hay órdenes', () => {
-      renderModal();
+    it('no muestra el mensaje "No hay pedidos seleccionados" cuando hay órdenes', async () => {
+      await renderModal();
       expect(
         screen.queryByText('No hay pedidos seleccionados'),
       ).not.toBeInTheDocument();
     });
 
-    it('muestra el mensaje vacío cuando orders=[]', () => {
-      renderModal({ orders: [] });
+    it('muestra el mensaje vacío cuando orders=[]', async () => {
+      await renderModal({ orders: [] });
       expect(screen.getByText('No hay pedidos seleccionados')).toBeInTheDocument();
     });
   });
@@ -471,25 +475,25 @@ describe('SendToShalomModal', () => {
   // ── 2. Selector de modalidad por orden ─────────────────────────────────────
 
   describe('selector de modalidad de envío', () => {
-    it('muestra el botón "Terrestre" por cada orden', () => {
-      renderModal();
+    it('muestra el botón "Terrestre" por cada orden', async () => {
+      await renderModal();
       expect(screen.getByRole('button', { name: /terrestre/i })).toBeInTheDocument();
     });
 
-    it('muestra el botón "Aéreo" por cada orden', () => {
-      renderModal();
+    it('muestra el botón "Aéreo" por cada orden', async () => {
+      await renderModal();
       expect(screen.getByRole('button', { name: /aéreo/i })).toBeInTheDocument();
     });
 
-    it('el botón "Terrestre" está activo por default (tiene clase de fondo activo)', () => {
-      renderModal();
+    it('el botón "Terrestre" está activo por default (tiene clase de fondo activo)', async () => {
+      await renderModal();
       const terrestreBtn = screen.getByRole('button', { name: /terrestre/i });
       // El componente usa bg-slate-700 cuando !data.aereo (default false)
       expect(terrestreBtn.className).toMatch(/bg-slate-700/);
     });
 
-    it('el botón "Aéreo" no está activo por default', () => {
-      renderModal();
+    it('el botón "Aéreo" no está activo por default', async () => {
+      await renderModal();
       const aereoBtn = screen.getByRole('button', { name: /aéreo/i });
       // bg-sky-600 solo se aplica cuando aereo=true
       expect(aereoBtn.className).not.toMatch(/bg-sky-600/);
@@ -497,7 +501,7 @@ describe('SendToShalomModal', () => {
 
     it('al hacer click en "Aéreo" cambia su estilo al estado activo', async () => {
       const user = userEvent.setup();
-      renderModal();
+      await renderModal();
       const aereoBtn = screen.getByRole('button', { name: /aéreo/i });
       await user.click(aereoBtn);
       expect(aereoBtn.className).toMatch(/bg-sky-600/);
@@ -505,7 +509,7 @@ describe('SendToShalomModal', () => {
 
     it('al hacer click en "Terrestre" después de "Aéreo" vuelve a ser activo', async () => {
       const user = userEvent.setup();
-      renderModal();
+      await renderModal();
       const terrestreBtn = screen.getByRole('button', { name: /terrestre/i });
       const aereoBtn = screen.getByRole('button', { name: /aéreo/i });
       await user.click(aereoBtn);
@@ -513,12 +517,12 @@ describe('SendToShalomModal', () => {
       expect(terrestreBtn.className).toMatch(/bg-slate-700/);
     });
 
-    it('renderiza un selector de modalidad por cada orden en la lista', () => {
+    it('renderiza un selector de modalidad por cada orden en la lista', async () => {
       const orders = [
         { ...MOCK_ORDER, id: 'order-1', orderNumber: 'ORD-001' },
         { ...MOCK_ORDER, id: 'order-2', orderNumber: 'ORD-002' },
       ];
-      renderModal({ orders });
+      await renderModal({ orders });
       expect(screen.getAllByRole('button', { name: /terrestre/i })).toHaveLength(2);
       expect(screen.getAllByRole('button', { name: /aéreo/i })).toHaveLength(2);
     });
@@ -809,23 +813,23 @@ describe('SendToShalomModal', () => {
   // ── 5. Comportamiento de cierre y props ────────────────────────────────────
 
   describe('props y comportamiento del modal', () => {
-    it('no renderiza el contenido cuando open=false', () => {
-      renderModal({ open: false });
+    it('no renderiza el contenido cuando open=false', async () => {
+      await renderModal({ open: false });
       expect(screen.queryByText('Enviar a Shalom Pro')).not.toBeInTheDocument();
     });
 
-    it('muestra el número de orden del pedido', () => {
-      renderModal();
+    it('muestra el número de orden del pedido', async () => {
+      await renderModal();
       expect(screen.getByText(`#${MOCK_ORDER.orderNumber}`)).toBeInTheDocument();
     });
 
-    it('muestra el nombre del cliente del pedido', () => {
-      renderModal();
+    it('muestra el nombre del cliente del pedido', async () => {
+      await renderModal();
       expect(screen.getByText(MOCK_ORDER.customer.fullName)).toBeInTheDocument();
     });
 
-    it('el botón de envío está deshabilitado inicialmente', () => {
-      renderModal();
+    it('el botón de envío está deshabilitado inicialmente', async () => {
+      await renderModal();
       const sendBtn = screen.getByRole('button', { name: /confirmar y enviar a shalom/i });
       expect(sendBtn).toBeDisabled();
     });
@@ -851,15 +855,15 @@ describe('SendToShalomModal', () => {
   // ── 6. Código de seguridad inválido ────────────────────────────────────────
 
   describe('validación del código de seguridad', () => {
-    it('muestra el label "FALTANTE" cuando el código de seguridad está vacío', () => {
-      renderModal();
+    it('muestra el label "FALTANTE" cuando el código de seguridad está vacío', async () => {
+      await renderModal();
       // Hay múltiples "FALTANTE" por los campos pendientes — verificamos que existe alguno
       expect(screen.getAllByText('FALTANTE').length).toBeGreaterThan(0);
     });
 
     it('llama a toast.error al ingresar un código de seguridad secuencial (ej: 1234)', async () => {
       const user = userEvent.setup();
-      renderModal();
+      await renderModal();
       // Hay dos inputs con placeholder "Ej: 1357": el global (primero en DOM)
       // y el por-orden (segundo). Apuntamos al global, que es el que dispara
       // toast.error con el mensaje "Código inválido: no uses..."
@@ -876,7 +880,7 @@ describe('SendToShalomModal', () => {
 
     it('llama a toast.error al ingresar un código de seguridad repetido (ej: 1111)', async () => {
       const user = userEvent.setup();
-      renderModal();
+      await renderModal();
       // Apuntamos al input global (primero en DOM)
       const securityInputs = screen.getAllByPlaceholderText('Ej: 1357') as HTMLInputElement[];
       const globalInput = securityInputs[0];

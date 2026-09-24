@@ -55,6 +55,11 @@ jest.mock('axios', () => ({
   },
 }));
 
+jest.mock('@/components/modals/CustomerServiceModal', () => ({
+  __esModule: true,
+  default: () => null,
+}));
+
 /**
  * Mock de CancelAliclikButton: renderiza un placeholder que muestra el orderId
  * para poder verificar que se renderiza por fila, sin activar su lógica interna.
@@ -190,7 +195,43 @@ jest.mock('lucide-react', () => ({
     <span data-testid="icon-refresh" className={className} />
   ),
   AlertTriangle: () => <span data-testid="icon-alert" />,
+  Eye: ({ className }: { className?: string }) => (
+    <span data-testid="icon-eye" className={className} />
+  ),
+  FileSpreadsheet: ({ className }: { className?: string }) => (
+    <span data-testid="icon-excel" className={className} />
+  ),
+  ChevronDown: () => <span data-testid="icon-chevron-down" />,
+  CheckIcon: () => <span data-testid="icon-check" />,
 }));
+
+jest.mock('@/components/ui/pagination', () => ({
+  Pagination: () => null,
+}));
+
+jest.mock('@/components/ui/select', () => {
+  const React = require('react');
+  const Passthrough = ({ children }: { children?: unknown }) =>
+    React.createElement('div', null, children);
+  return {
+    Select: Passthrough,
+    SelectTrigger: Passthrough,
+    SelectValue: () => null,
+    SelectContent: () => null,
+    SelectItem: () => null,
+  };
+});
+
+jest.mock('xlsx', () => ({
+  utils: {
+    json_to_sheet: jest.fn(() => ({})),
+    book_new: jest.fn(() => ({})),
+    book_append_sheet: jest.fn(),
+  },
+  write: jest.fn(() => new ArrayBuffer(0)),
+}));
+
+jest.mock('file-saver', () => ({ saveAs: jest.fn() }));
 
 jest.mock('@/lib/utils', () => ({
   cn: (...args: unknown[]) => args.filter(Boolean).join(' '),
@@ -349,7 +390,7 @@ describe('AliclikOrderTrackingView', () => {
   describe('resumen de contadores por estado', () => {
     it('muestra el label "Por preparar" en el resumen cuando hay un pedido TO_PREPARE', async () => {
       renderView();
-      expect(await screen.findByText('Por preparar')).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /por preparar/i })).toBeInTheDocument();
     });
 
     it('muestra el label "Cancelados" en el resumen cuando hay un pedido CANCELED', async () => {
@@ -360,21 +401,16 @@ describe('AliclikOrderTrackingView', () => {
     it('muestra el conteo 1 para el estado TO_PREPARE', async () => {
       // Datos: 1 TO_PREPARE, 1 CANCELED → la burbuja de conteo de TO_PREPARE es "1"
       renderView();
-      await screen.findByText('Por preparar');
       // El componente renderiza el conteo en un span separado; verificamos que
       // el botón de "Por preparar" contiene el número "1"
-      const toPrepareBtns = screen.getAllByRole('button', { name: /por preparar/i });
-      // El botón del resumen incluye el count en su texto accesible
-      expect(toPrepareBtns.length).toBeGreaterThan(0);
-      expect(toPrepareBtns[0].textContent).toContain('1');
+      const toPrepareBtn = await screen.findByRole('button', { name: /por preparar/i });
+      expect(toPrepareBtn).toHaveTextContent('1');
     });
 
     it('muestra el conteo 1 para el estado CANCELED', async () => {
       renderView();
-      await screen.findByText('Cancelados');
-      const canceledBtns = screen.getAllByRole('button', { name: /cancelados/i });
-      expect(canceledBtns.length).toBeGreaterThan(0);
-      expect(canceledBtns[0].textContent).toContain('1');
+      const canceledBtn = await screen.findByRole('button', { name: /cancelados\s*1/i });
+      expect(canceledBtn).toHaveTextContent('1');
     });
 
     it('no muestra el resumen cuando no hay pedidos con aliclikDispatchStatus', async () => {
