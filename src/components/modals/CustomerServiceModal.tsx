@@ -1043,6 +1043,43 @@ export default function CustomerServiceModal({
     (s) => s.id === orderHeader?.storeId,
   )?.name;
 
+  const lockedKeyCard = (
+    <div className="mt-3 rounded-xl border border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30 p-[13px]">
+      <div className="flex items-center gap-[11px]">
+        <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0 bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300">
+          <Lock className="h-4 w-4" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-extrabold text-[13.5px] text-[#92400E] dark:text-amber-400">
+            Clave de recojo bloqueada
+          </div>
+          <div className="text-xs text-muted-foreground">
+            {`Pendiente de cobro${
+              receipt?.totals.pendingAmount
+                ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
+                : ""
+            }`}
+          </div>
+        </div>
+        <div className="font-mono font-black tracking-[0.24em] text-xl text-[#C29B54] dark:text-amber-400">
+          ••••
+        </div>
+      </div>
+      <Button
+        size="sm"
+        className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
+        onClick={() => setPaymentModalOpen(true)}
+      >
+        <DollarSign className="h-4 w-4 mr-1.5" />
+        Registrar cobranza
+      </Button>
+      <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
+        La clave se habilita cuando el pedido queda libre
+        de deuda.
+      </p>
+    </div>
+  );
+
   return (
     <>
       <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -1557,40 +1594,7 @@ export default function CustomerServiceModal({
                               tab Seguimiento, sin exponer el valor real en
                               ningún texto. */}
                           {!isDebtFree ? (
-                            <div className="mt-3 rounded-xl border border-[#F3D9A8] bg-[#FEF3E2] dark:border-amber-800 dark:bg-amber-950/30 p-[13px]">
-                              <div className="flex items-center gap-[11px]">
-                                <div className="h-9 w-9 rounded-lg grid place-items-center shrink-0 bg-white dark:bg-amber-900 text-[#B45309] dark:text-amber-300">
-                                  <Lock className="h-4 w-4" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-extrabold text-[13.5px] text-[#92400E] dark:text-amber-400">
-                                    Clave de recojo bloqueada
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {`Pendiente de cobro${
-                                      receipt.totals.pendingAmount
-                                        ? ` · S/ ${receipt.totals.pendingAmount.toFixed(2)}`
-                                        : ""
-                                    }`}
-                                  </div>
-                                </div>
-                                <div className="font-mono font-black tracking-[0.24em] text-xl text-[#C29B54] dark:text-amber-400">
-                                  ••••
-                                </div>
-                              </div>
-                              <Button
-                                size="sm"
-                                className="w-full mt-[11px] bg-[#B45309] hover:bg-[#92400E] text-white"
-                                onClick={() => setPaymentModalOpen(true)}
-                              >
-                                <DollarSign className="h-4 w-4 mr-1.5" />
-                                Registrar cobranza
-                              </Button>
-                              <p className="text-[11px] text-muted-foreground mt-2 leading-[1.45]">
-                                La clave se habilita al validar el comprobante
-                                de pago cargado para este pedido.
-                              </p>
-                            </div>
+                            receipt.shippingKey ? lockedKeyCard : null
                           ) : (
                             <div className="mt-3">
                               <span className="text-muted-foreground block text-[10px] uppercase mb-1">
@@ -1667,15 +1671,18 @@ export default function CustomerServiceModal({
                                   {receipt.shippingCode || "-"}
                                 </span>
                               </div>
-                              <div>
-                                <span className="text-muted-foreground block text-xs underline mb-1">
-                                  Clave
-                                </span>
-                                <span className="text-sm font-semibold">
-                                  {receipt.shippingKey || "-"}
-                                </span>
-                              </div>
+                              {isDebtFree && (
+                                <div>
+                                  <span className="text-muted-foreground block text-xs underline mb-1">
+                                    Clave
+                                  </span>
+                                  <span className="text-sm font-semibold">
+                                    {receipt.shippingKey || "-"}
+                                  </span>
+                                </div>
+                              )}
                             </div>
+                            {!isDebtFree && !!receipt.shippingKey && lockedKeyCard}
                           </div>
                         )}
                     </div>
