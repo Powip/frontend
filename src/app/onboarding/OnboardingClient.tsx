@@ -1166,7 +1166,7 @@ export default function OnboardingClient({
   initialAuth,
   onGoToDashboard,
 }: OnboardingClientProps) {
-  const { auth, login, refreshSubscription } = useAuth();
+  const { auth, login, refreshSession } = useAuth();
   const router = useRouter();
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [addOns, setAddOns] = useState<BackendAddOn[]>([]);
@@ -1185,7 +1185,11 @@ export default function OnboardingClient({
   } = useOnboardingFlow(
     { planId, planName, price, initialUserId: initialAuth?.userId ?? null },
     login,
-    refreshSubscription,
+    // Al pagar, ms-subscription pasa al usuario a ADMINISTRADOR en ms-auth: hace
+    // falta un token nuevo con ese rol (y la suscripción ACTIVE en el contexto).
+    async () => {
+      await refreshSession();
+    },
   );
 
   const [devStepOverride, setDevStepOverride] = useState<number | null>(null);

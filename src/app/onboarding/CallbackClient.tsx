@@ -17,7 +17,7 @@ type InitStatus = 'loading' | 'no-session' | 'ready';
  * de refresh, se confirma el pago igual que desde el widget embebido.
  */
 export default function CallbackClient() {
-  const { auth, loading, login, refreshSubscription } = useAuth();
+  const { auth, loading, login, refreshSession } = useAuth();
   const searchParams = useSearchParams();
   const [initStatus, setInitStatus] = useState<InitStatus>('loading');
   const started = useRef(false);
@@ -25,7 +25,11 @@ export default function CallbackClient() {
   const { state, confirmPayment, checkPaymentAgain, restoreFromStorage } = useOnboardingFlow(
     { planId: '', planName: '', price: 0 },
     login,
-    refreshSubscription,
+    // Al pagar, ms-subscription pasa al usuario a ADMINISTRADOR en ms-auth: hace
+    // falta un token nuevo con ese rol (y la suscripción ACTIVE en el contexto).
+    async () => {
+      await refreshSession();
+    },
   );
 
   // 1) Recuperar el contexto del checkout: token de la URL (o del storage) + plan.

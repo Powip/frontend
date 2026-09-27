@@ -90,6 +90,12 @@ interface AuthContextType {
   hasPermission: (permission: string) => boolean;
   /** Relee la suscripción (ej. al confirmarse el pago del onboarding). */
   refreshSubscription: () => Promise<void>;
+  /**
+   * Pide a ms-auth un access token nuevo (cookie de refresh) y recarga empresa y
+   * suscripción. Necesario cuando cambian datos que viajan en el JWT: al pagar el
+   * usuario pasa a ADMINISTRADOR y al crear la empresa recibe su companyId.
+   */
+  refreshSession: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -309,6 +315,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         updateCompany,
         hasPermission,
         refreshSubscription,
+        refreshSession: silentRefresh,
       }}
     >
       {children}

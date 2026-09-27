@@ -89,7 +89,7 @@ function adaptPlans(plans: Plan[]): FrontPlan[] {
 }
 
 export default function SinPlanPage() {
-  const { auth, logout, refreshSubscription } = useAuth();
+  const { auth, logout, refreshSession } = useAuth();
   const router = useRouter();
 
   const [plans, setPlans] = useState<FrontPlan[]>([]);
@@ -115,7 +115,7 @@ export default function SinPlanPage() {
 
   // Pago confirmado: el guard ya deja pasar a /new-company (sin empresa todavía).
   const handleSubscriptionComplete = async () => {
-    await refreshSubscription();
+    await refreshSession();
     router.push("/new-company");
   };
 

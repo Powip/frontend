@@ -40,7 +40,7 @@ interface FormData {
 }
 
 export default function NewCompanyPage() {
-  const { auth, updateCompany, setSelectedStore } = useAuth();
+  const { auth, updateCompany, setSelectedStore, refreshSession } = useAuth();
   const router = useRouter();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -159,6 +159,11 @@ export default function NewCompanyPage() {
           const firstStoreId = fullCompany.stores[0].id;
           setSelectedStore(firstStoreId);
         }
+
+        // Token nuevo con el companyId (lo sincroniza ms-company en ms-auth) y el
+        // rol ADMINISTRADOR que el dueño recibió al pagar (FEAT-11). Best effort:
+        // si falla, se actualiza en el próximo refresh de la página.
+        await refreshSession().catch(() => false);
 
         router.push("/dashboard");
       }
