@@ -66,6 +66,8 @@ interface AuthData {
     permissions: string[];
     name?: string;
     surname?: string;
+    /** companyId del JWT (dueños y personal con empresa asignada). */
+    companyId?: string | null;
   };
   company: Company | null;
   subscription: Subscription | null;
@@ -86,6 +88,8 @@ interface AuthContextType {
   inventories: Inventory[];
   refreshInventories: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
+  /** Relee la suscripción (ej. al confirmarse el pago del onboarding). */
+  refreshSubscription: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -123,6 +127,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           permissions: decoded.permissions || [],
           name: decoded.name,
           surname: decoded.surname,
+          companyId: decoded.companyId ?? null,
         };
 
         let company = await fetchUserCompany(
@@ -218,6 +223,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       permissions: decoded.permissions || [],
       name: decoded.name,
       surname: decoded.surname,
+      companyId: decoded.companyId ?? null,
     };
 
     let company = await fetchUserCompany(decoded.id, accessToken);
@@ -276,6 +282,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem(STORE_PREFERENCE_KEY);
   };
 
+  // ---- REFRESH SUBSCRIPTION ----
+  const refreshSubscription = useCallback(async () => {
+    if (!auth?.accessToken) return;
+    const subscription = await fetchUserSubscription(auth.user.id, auth.accessToken);
+    setAuth((prev) => (prev ? { ...prev, subscription } : prev));
+  }, [auth?.accessToken, auth?.user.id]);
+
   // ---- CHECK PERMISSION ----
   const hasPermission = (permission: string): boolean => {
     if (isSuperadmin(auth?.user?.email)) return true;
@@ -295,6 +308,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         refreshInventories,
         updateCompany,
         hasPermission,
+        refreshSubscription,
       }}
     >
       {children}

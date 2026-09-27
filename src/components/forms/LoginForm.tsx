@@ -1,6 +1,8 @@
 "use client";
+
 import axios from "axios";
 import { useRouter } from "next/navigation";
+import { postLoginRoute } from "@/lib/subscriptionGate";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Eye, EyeOff, ArrowRight } from "lucide-react";
@@ -67,23 +69,14 @@ export default function LoginForm() {
         return;
       }
 
-      // 1️⃣ Si tiene compañía (dueño o staff), va al dashboard
-      if (authResult.company) {
-        router.push("/");
-        return;
-      }
-
-      // 2️⃣ Si NO tiene compañía, verificar suscripción para permitir crear una
-      if (
-        !authResult.subscription ||
-        authResult.subscription.status !== "ACTIVE"
-      ) {
-        router.push("/subscriptions");
-        return;
-      }
-
-      // 3️⃣ Tiene suscripción activa pero no compañía -> Crear compañía
-      router.push("/new-company");
+      // Con empresa (dueño o staff) → dashboard. Sin empresa: con plan vigente →
+      // crear empresa; sin plan → elegir y pagar plan (FEAT-11, lib/subscriptionGate).
+      router.push(
+        postLoginRoute(
+          !!authResult.company || !!authResult.user?.companyId,
+          authResult.subscription?.status,
+        ),
+      );
     } catch (error: any) {
       console.error("Login Error:", error.response?.data || error.message);
       const errorMessage =

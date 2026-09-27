@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, ReactNode } from "react";
 import { getRoutePermissions, hasAnyPermission, isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
+import { resolveSubscriptionRedirect } from "@/lib/subscriptionGate";
 
 interface AuthGuardProps {
   children: ReactNode;
@@ -16,6 +17,7 @@ const PUBLIC_ROUTES = [
   "/restablecer-contrasena",
   "/subscriptions",
   "/rastreo",
+  "/onboarding",
 ];
 
 /**
@@ -43,12 +45,28 @@ export default function AuthGuard({ children }: AuthGuardProps) {
       ? hasAdminAccess(auth?.user?.role)
       : hasAnyPermission(auth?.user?.permissions, requiredPermissions));
 
+  // Sin pago no se entra (FEAT-11): usuarios sin empresa van a elegir/pagar un
+  // plan o, si ya pagaron, a crear su empresa. Ver lib/subscriptionGate.ts.
+  const gateRedirect =
+    !loading && auth && !isPublicRoute && pathname
+      ? resolveSubscriptionRedirect({
+          pathname,
+          isSuperadmin: isSuperadmin(auth.user?.email),
+          hasCompany: !!auth.company || !!auth.user?.companyId,
+          subscriptionStatus: auth.subscription?.status,
+        })
+      : null;
+
   useEffect(() => {
     // Si no está cargando, no hay auth, y NO es ruta pública -> login
     if (!loading && !auth && !isPublicRoute) {
       router.push("/login");
+      return;
     }
-  }, [auth, loading, router, isPublicRoute]);
+    if (gateRedirect) {
+      router.replace(gateRedirect);
+    }
+  }, [auth, loading, router, isPublicRoute, gateRedirect]);
 
   // Rutas públicas: renderizar directamente
   if (isPublicRoute) {
@@ -68,6 +86,15 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   // Si no está autenticado (después de cargar), no renderizar nada
   if (!auth) {
     return null;
+  }
+
+  // Redirigiendo por falta de plan/empresa: no mostrar la página de destino.
+  if (gateRedirect) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center">
+        <PowipPulseLoader label="Cargando..." />
+      </div>
+    );
   }
 
   // Si está autenticado pero no tiene permisos para esta ruta
