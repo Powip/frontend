@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import OnboardingClient from './OnboardingClient';
+import { resolveOnboardingPlanName } from '@/lib/onboardingPlan';
 
 interface SearchParams {
   planId?: string;
@@ -7,6 +8,10 @@ interface SearchParams {
   /** Alternativa a planName para links cortos desde la landing (?plan=Basic). */
   plan?: string;
   price?: string;
+  /** "true" = pago anual: se contrata el plan "<nombre> Anual" (365 días). */
+  annual?: string;
+  /** Nombre usado por el onboarding de develop; equivale a annual. */
+  isAnnual?: string;
 }
 
 interface OnboardingPageProps {
@@ -19,11 +24,12 @@ interface OnboardingPageProps {
  * (el catálogo requiere JWT). El precio es solo informativo: el cobro lo arma
  * ms-subscription con el plan real.
  *
- * Solo planes mensuales por ahora (ms-subscription no tiene planes anuales).
+ * Pago mensual o anual (?annual=true).
  */
 export default async function OnboardingPage({ searchParams }: OnboardingPageProps) {
   const params = await searchParams;
-  const planName = params.planName ?? params.plan;
+  const isAnnual = params.annual === 'true' || params.isAnnual === 'true';
+  const planName = resolveOnboardingPlanName(params.planName ?? params.plan, isAnnual);
   const parsedPrice = params.price ? parseFloat(params.price) : NaN;
 
   if (!planName || isNaN(parsedPrice)) {
@@ -35,7 +41,7 @@ export default async function OnboardingPage({ searchParams }: OnboardingPagePro
       planId={params.planId ?? ''}
       planName={planName}
       price={parsedPrice}
-      isAnnual={false}
+      isAnnual={isAnnual}
     />
   );
 }

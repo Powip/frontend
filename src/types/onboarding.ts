@@ -14,9 +14,17 @@ export interface BackendAddOn {
   code: string;
   name: string;
   description?: string | null;
+  /** Monto por mes (planes mensuales). */
   amount: number;
+  /** Monto por año con un plan anual (12 × amount), lo calcula ms-subscription. */
+  annualAmount?: number | null;
   currency: string;
   active?: boolean;
+}
+
+/** Precio del add-on en el ciclo del plan (mensual o anual). */
+export function addOnPrice(addOn: Pick<BackendAddOn, 'amount' | 'annualAmount'>, isAnnual: boolean): number {
+  return isAnnual ? (addOn.annualAmount ?? addOn.amount * 12) : addOn.amount;
 }
 
 /** Plan de ms-subscription (GET /subscription/plans). */

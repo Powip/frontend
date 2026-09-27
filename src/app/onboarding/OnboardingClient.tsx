@@ -22,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import FlowWidgetStep from "@/components/onboarding/FlowWidgetStep";
-import type { BackendAddOn, SubscriptionMe } from "@/types/onboarding";
+import { addOnPrice, type BackendAddOn, type SubscriptionMe } from "@/types/onboarding";
 import Image from "next/image";
 import { toast } from "sonner";
 
@@ -553,7 +553,7 @@ function Step2({
 }: Step2Props) {
   const addOnsTotal = selectedAddons.reduce((sum, id) => {
     const addon = addOns.find((a) => a.id === id);
-    return sum + (addon?.amount ?? 0);
+    return sum + (addon ? addOnPrice(addon, isAnnual) : 0);
   }, 0);
   const total = price + addOnsTotal;
   const period = isAnnual ? "año" : "mes";
@@ -564,7 +564,7 @@ function Step2({
       <div className="mb-1">
         <h3 className="font-bold text-xl text-gray-900">Add-ons opcionales</h3>
         <p className="text-sm text-gray-500 mt-1">
-          {addOns.length > 0 ? `Desde S/ ${Math.min(...addOns.map((a) => a.amount))}/${period} cada uno` : "Opcionales"} — actívalos ahora o después desde{" "}
+          {addOns.length > 0 ? `Desde S/ ${Math.min(...addOns.map((a) => addOnPrice(a, isAnnual)))}/${period} cada uno` : "Opcionales"} — actívalos ahora o después desde{" "}
           <strong className="text-gray-700">Configuración</strong>.
         </p>
       </div>
@@ -644,7 +644,7 @@ function Step2({
                 className="font-bold text-sm mt-3"
                 style={{ color: "#4F3A96" }}
               >
-                + S/ {addon.amount}/{period}
+                + S/ {addOnPrice(addon, isAnnual)}/{period}
               </div>
             </button>
           );
@@ -736,7 +736,7 @@ function Step3({
   onError,
 }: Step3Props) {
   const selectedFull = allAddOns.filter((a) => selectedAddons.includes(a.id));
-  const addOnsTotal = selectedFull.reduce((sum, a) => sum + a.amount, 0);
+  const addOnsTotal = selectedFull.reduce((sum, a) => sum + addOnPrice(a, isAnnual), 0);
   const total = price + addOnsTotal;
   const period = isAnnual ? "año" : "mes";
 
@@ -848,7 +848,7 @@ function Step3({
                 {config?.icon ?? "➕"} {config?.name ?? addon.name}
               </span>
               <span className="font-medium text-sm text-gray-800">
-                +S/ {addon.amount}/{period}
+                +S/ {addOnPrice(addon, isAnnual)}/{period}
               </span>
             </div>
           );
@@ -1265,7 +1265,7 @@ export default function OnboardingClient({
           POWIP
         </span>
         <div className="ml-auto text-white/70 text-xs">
-          Plan {planName} — S/ {price}/mes
+          Plan {planName} — S/ {price}/{isAnnual ? "año" : "mes"}
         </div>
       </div>
 
