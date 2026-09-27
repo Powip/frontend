@@ -1,6 +1,7 @@
 import { OrderStatus } from "@/interfaces/IOrder";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { MapsLink } from "@/components/shared/MapsLink";
 
 interface Props {
   data: any;
@@ -253,18 +254,11 @@ export default function OrderReceiptView({ data }: Props) {
         </div>
         <div>
           <span className="text-muted-foreground">Link Maps: </span>
-          {customer.googleMapsUrl ? (
-            <a
-              href={customer.googleMapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 font-medium underline underline-offset-2"
-            >
-              Ver ubicación
-            </a>
-          ) : (
-            <span className="text-black-600 font-medium">-</span>
-          )}
+          <MapsLink
+            url={customer.googleMapsUrl}
+            className="text-blue-600 font-medium underline underline-offset-2"
+            fallback={<span className="text-black-600 font-medium">-</span>}
+          />
         </div>
       </div>
 
