@@ -26,6 +26,7 @@ export interface OrderReceipt {
     province?: string;
     clientType?: string;
     reference?: string;
+    googleMapsUrl?: string | null;
   };
   items: {
     productName: string;

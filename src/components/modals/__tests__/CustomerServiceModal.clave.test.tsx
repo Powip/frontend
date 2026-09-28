@@ -32,7 +32,10 @@ jest.mock('next/navigation', () => ({
 }));
 
 jest.mock('@/contexts/AuthContext', () => ({
-  useAuth: () => ({ auth: { accessToken: 'token', company: { stores: [] } } }),
+  useAuth: () => ({
+    auth: { accessToken: 'token', company: { stores: [] } },
+    hasPermission: () => false,
+  }),
 }));
 
 jest.mock('@/components/ui/dialog', () => {
@@ -94,6 +97,7 @@ function buildReceipt(pendingAmount: number, shippingKey: string) {
 function mockApi(pendingAmount: number, shippingKey: string = CLAVE) {
   const impl = (url: string) => {
     if (url.endsWith('/receipt')) return Promise.resolve({ data: buildReceipt(pendingAmount, shippingKey) });
+    if (url.endsWith('/evidence')) return Promise.resolve({ data: [] });
     if (url.includes('/log-ventas/')) return Promise.resolve({ data: [] });
     if (url.includes('/order-header/')) {
       return Promise.resolve({ data: { id: 'order-1', status: 'PENDIENTE', payments: [] } });

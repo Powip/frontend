@@ -24,6 +24,7 @@ export function toCustomer(dto: CustomerResponseDto): Customer {
 
     latitude: dto.latitude,
     longitude: dto.longitude,
+    googleMapsUrl: dto.googleMapsUrl,
 
     isActive: dto.isActive,
 

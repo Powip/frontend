@@ -110,6 +110,7 @@ export interface OrderCustomer {
   zone?: string;
   latitude: number | null;
   longitude: number | null;
+  googleMapsUrl?: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

@@ -90,6 +90,8 @@ import { getAvailableStatuses, getStatusChainSteps, getStatusLabel } from "@/uti
 import { isJunkDni } from "@/utils/junk-document.util";
 import { printOrderLabel, type OrderReceipt } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
+import { MapsLink, toSafeHttpUrl } from "@/components/shared/MapsLink";
+import { OrderEvidenceSection } from "@/components/orders/OrderEvidenceSection";
 
 interface LogEntry {
   id: number;
@@ -186,7 +188,7 @@ export default function CustomerServiceModal({
   initialTab,
 }: Props) {
   const router = useRouter();
-  const { auth } = useAuth();
+  const { auth, hasPermission } = useAuth();
   const [loading, setLoading] = useState(false);
   const [receipt, setReceipt] = useState<OrderReceipt | null>(null);
   const [cancellationModalOpen, setCancellationModalOpen] = useState(false);
@@ -1488,24 +1490,20 @@ export default function CustomerServiceModal({
                         <span className="text-muted-foreground">
                           Link Maps:{" "}
                         </span>
-                        {orderHeader?.customer?.googleMapsUrl ? (
+                        {toSafeHttpUrl(receipt.customer.googleMapsUrl) ? (
                           <>
-                            <a
-                              href={orderHeader.customer.googleMapsUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
+                            <MapsLink
+                              url={receipt.customer.googleMapsUrl}
                               className="font-medium text-primary underline underline-offset-2 truncate max-w-[160px]"
-                              title={orderHeader.customer.googleMapsUrl}
-                            >
-                              Ver ubicación
-                            </a>
+                              title={receipt.customer.googleMapsUrl ?? undefined}
+                            />
                             <Button
                               size="icon"
                               variant="ghost"
                               className="h-5 w-5 text-muted-foreground hover:text-foreground"
                               onClick={() =>
                                 copyField(
-                                  orderHeader.customer!.googleMapsUrl,
+                                  receipt.customer.googleMapsUrl ?? "",
                                   "Link de Maps",
                                 )
                               }
@@ -1689,6 +1687,11 @@ export default function CustomerServiceModal({
                   </div>
                 </div>
               </div>
+              <OrderEvidenceSection
+                orderId={orderId}
+                canUpload={isOperaciones && hasPermission("MANAGE_OPERATIONS")}
+                accessToken={auth?.accessToken}
+              />
                   <div
                     className={
                       hasGestionColumn
