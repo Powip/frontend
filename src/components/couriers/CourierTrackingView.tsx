@@ -613,10 +613,12 @@ export default function CourierTrackingView() {
       )
       .sort(
         (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          new Date(dispatchDateFor(b, dispatchDateByOrderId)).getTime() -
+          new Date(dispatchDateFor(a, dispatchDateByOrderId)).getTime(),
       );
   }, [
     dispatchedOrders,
+    dispatchDateByOrderId,
     search,
     courierFilter,
     statusFilters,
@@ -1472,9 +1474,10 @@ function CourierOrdersTab({
       )
       .sort(
         (a, b) =>
-          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+          new Date(dispatchDateFor(b, dispatchDateByOrderId)).getTime() -
+          new Date(dispatchDateFor(a, dispatchDateByOrderId)).getTime(),
       );
-  }, [dispatchedOrders, courierName, search, saldoFilter, fechaDesde, fechaHasta]);
+  }, [dispatchedOrders, dispatchDateByOrderId, courierName, search, saldoFilter, fechaDesde, fechaHasta]);
 
   useEffect(() => {
     setPage(1);
