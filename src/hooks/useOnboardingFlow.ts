@@ -222,7 +222,9 @@ export function useOnboardingFlow(
           ? "Ya hay un pago en proceso para tu cuenta. Esperá unos minutos y volvé a ingresar."
           : code === "PLAN_NOT_AVAILABLE_IN_FLOW"
             ? "Este plan todavía no está disponible para pago online. Contactá a soporte."
-            : "No pudimos iniciar el registro de tarjeta. Intenta nuevamente.";
+            : code === "INVALID_EMAIL"
+              ? "Flow no aceptó el email de tu cuenta: tiene que ser un email real que recibas. Contactá a soporte para corregirlo."
+              : "No pudimos iniciar el registro de tarjeta. Intenta nuevamente.";
       toast.error(message);
       dispatch({ type: "SET_ERROR", error: message });
     }

@@ -118,6 +118,16 @@ describe("useOnboardingFlow", () => {
     expect(onActivated).toHaveBeenCalled();
   });
 
+  it("checkout con email rechazado por Flow explica que el email tiene que ser real", async () => {
+    mocked.startFlowCheckout.mockRejectedValue(apiError(422, "INVALID_EMAIL"));
+    const { result } = setup();
+
+    await act(() => result.current.initiateCardRegistration());
+
+    expect(result.current.state.error).toMatch(/email/i);
+    expect(result.current.state.step).not.toBe("CARD_WIDGET");
+  });
+
   async function reachWidget(result: ReturnType<typeof setup>["result"]) {
     mocked.startFlowCheckout.mockResolvedValue({ subscriptionId: "s1", status: "PENDING_PAYMENT", redirectUrl: "u", cardToken: "tk" });
     await act(() => result.current.initiateCardRegistration());
