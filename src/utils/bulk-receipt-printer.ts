@@ -260,6 +260,54 @@ export function openPrintWindow(): Window | null {
   return printWindow;
 }
 
+export async function buildReceiptsDocument(
+  receipts: ReceiptData[],
+  company: PrintCompany | null | undefined,
+): Promise<string> {
+  if (receipts.length === 0) {
+    throw new Error("No receipts to print");
+  }
+
+  const landingUrl = process.env.NEXT_PUBLIC_LANDING_URL;
+
+  // Genera QR (link público de rastreo, no el orderId crudo) y código de
+  // barras (N° de pedido) para todos los recibos en paralelo.
+  const qrPromises = receipts.map((r) => generateQR(`${landingUrl}/rastreo/${r.orderNumber}`));
+  const qrUrls = await Promise.all(qrPromises);
+  const barcodeUrls = receipts.map((r) => generateBarcode(r.orderNumber));
+
+  const receiptHTMLs = receipts.map((receipt, index) =>
+    generateReceiptHTML(
+      receipt,
+      qrUrls[index],
+      barcodeUrls[index],
+      company,
+      index === receipts.length - 1,
+    ),
+  );
+
+  return `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>Impresión de Etiquetas</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; }
+        @media print {
+          body { padding: 0; }
+          @page { margin: 5mm; size: 100mm auto; }
+        }
+      </style>
+    </head>
+    <body>
+      ${receiptHTMLs.join("")}
+    </body>
+    </html>
+  `;
+}
+
 /**
  * Prints multiple receipts using the label format (logo, QR de rastreo,
  * código de barras, banner de cobro/pago, checklist de picking) — mismo
@@ -286,44 +334,7 @@ export async function printReceipts(
     );
   }
 
-  const landingUrl = process.env.NEXT_PUBLIC_LANDING_URL;
-
-  // Genera QR (link público de rastreo, no el orderId crudo) y código de
-  // barras (N° de pedido) para todos los recibos en paralelo.
-  const qrPromises = receipts.map((r) => generateQR(`${landingUrl}/rastreo/${r.orderNumber}`));
-  const qrUrls = await Promise.all(qrPromises);
-  const barcodeUrls = receipts.map((r) => generateBarcode(r.orderNumber));
-
-  const receiptHTMLs = receipts.map((receipt, index) =>
-    generateReceiptHTML(
-      receipt,
-      qrUrls[index],
-      barcodeUrls[index],
-      company,
-      index === receipts.length - 1,
-    ),
-  );
-
-  const printContent = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>Impresión de Etiquetas</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: Arial, sans-serif; }
-        @media print {
-          body { padding: 0; }
-          @page { margin: 5mm; size: 100mm auto; }
-        }
-      </style>
-    </head>
-    <body>
-      ${receiptHTMLs.join("")}
-    </body>
-    </html>
-  `;
+  const printContent = await buildReceiptsDocument(receipts, company);
 
   // Reemplaza el placeholder de openPrintWindow() por el contenido final.
   printWindow.document.open();

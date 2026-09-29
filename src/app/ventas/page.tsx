@@ -78,6 +78,7 @@ import {
 import { SaleSecondaryDetails } from "@/components/ventas/SaleSecondaryDetails";
 import { StatusSelect } from "@/components/ventas/StatusSelect";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
+import { BulkPrintPreviewDialog } from "@/components/ventas/BulkPrintPreviewDialog";
 import CommentsTimelineModal from "@/components/modals/CommentsTimelineModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import {
@@ -292,7 +293,7 @@ export default function VentasPage() {
     useState<Sale | null>(null);
 
   // Estado para modal de confirmación de impresión
-  const [printConfirmOpen, setPrintConfirmOpen] = useState(false);
+  const [printPreviewOpen, setPrintPreviewOpen] = useState(false);
   const [pendingPrintSales, setPendingPrintSales] = useState<Sale[]>([]);
 
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -643,8 +644,7 @@ Estado: ${sale.status}
     toast.success(`Exportados ${salesList.length} registros`);
   };
 
-  // Impresión masiva: obtiene recibos, imprime cada uno en página separada, luego cambia estado
-  const handleBulkPrint = async () => {
+  const handleBulkPrint = () => {
     const selectedPendientes = pendientes.filter((s) =>
       selectedSaleIds.has(s.id),
     );
@@ -654,44 +654,16 @@ Estado: ${sale.status}
       return;
     }
 
-    // Abrir la ventana ANTES de cualquier await: si se abre después de
-    // esperar las requests de abajo, el navegador la bloquea en silencio.
-    const printWindow = openPrintWindow();
-    if (!printWindow) {
-      toast.error("No se pudo abrir la ventana de impresión. Verifica que los popups no estén bloqueados.");
-      return;
-    }
-
-    setIsPrinting(true);
-    toast.info(
-      `Preparando ${selectedPendientes.length} recibo(s) para imprimir...`,
-    );
-
-    try {
-      // Obtener recibos de todas las ventas seleccionadas
-      const receipts = await Promise.all(
-        selectedPendientes.map(async (sale) => {
-          const res = await axios.get<ReceiptData>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
-          );
-          return res.data;
-        }),
-      );
-
-      // Imprimir usando la utilidad compartida (formato compacto con QR)
-      await printReceipts(receipts, auth?.company, printWindow);
-
-      // Guardar ventas pendientes y mostrar modal de confirmación
-      setPendingPrintSales(selectedPendientes);
-      setPrintConfirmOpen(true);
-      setIsPrinting(false);
-    } catch (error) {
-      printWindow.close();
-      console.error("Error en impresión masiva", error);
-      toast.error("Error al preparar los recibos para imprimir");
-      setIsPrinting(false);
-    }
+    setPendingPrintSales(selectedPendientes);
+    setPrintPreviewOpen(true);
   };
+
+  const fetchPrintReceipt = useCallback(async (sale: { id: string }) => {
+    const res = await axios.get<ReceiptData>(
+      `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
+    );
+    return res.data;
+  }, []);
 
   // Confirmar impresión y cambiar estados
   const handleConfirmPrint = async () => {
@@ -728,8 +700,6 @@ Estado: ${sale.status}
 
     refetchOrders();
     setSelectedIdsForActiveTab(new Set());
-    setPendingPrintSales([]);
-    setPrintConfirmOpen(false);
     setIsPrinting(false);
 
     // Si hubo órdenes con problemas de stock, mostrar el modal de alerta
@@ -738,11 +708,9 @@ Estado: ${sale.status}
     }
   };
 
-  // Cancelar confirmación de impresión
-  const handleCancelPrint = () => {
-    toast.info("Impresión cancelada. Los estados no fueron modificados.");
+  const handleClosePrintPreview = () => {
+    setPrintPreviewOpen(false);
     setPendingPrintSales([]);
-    setPrintConfirmOpen(false);
   };
 
   // Impresión masiva genérica (sin cambiar estado)
@@ -2138,45 +2106,14 @@ Estado: ${sale.status}
         onPaymentUpdated={refetchOrders}
       />
 
-      {/* Modal de confirmación de impresión */}
-      <AlertDialog open={printConfirmOpen} onOpenChange={setPrintConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              ¿Se imprimieron correctamente los recibos?
-            </AlertDialogTitle>
-            <AlertDialogDescription asChild>
-              <div className="space-y-2 text-muted-foreground text-sm">
-                <span className="block">
-                  Confirma que los siguientes{" "}
-                  <strong>{pendingPrintSales.length}</strong> recibo(s) se
-                  imprimieron correctamente:
-                </span>
-                <span className="block max-h-32 overflow-y-auto bg-muted/50 rounded p-2 text-sm">
-                  {pendingPrintSales.map((s) => s.orderNumber).join(", ")}
-                </span>
-                <span className="block text-amber-600 font-medium">
-                  Al confirmar, los estados cambiarán a PREPARADO.
-                </span>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel
-              onClick={handleCancelPrint}
-              disabled={isPrinting}
-            >
-              No, cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmPrint}
-              disabled={isPrinting}
-            >
-              {isPrinting ? "Actualizando..." : "Sí, confirmar"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <BulkPrintPreviewDialog
+        open={printPreviewOpen}
+        orders={pendingPrintSales}
+        company={auth?.company}
+        fetchReceipt={fetchPrintReceipt}
+        onConfirm={handleConfirmPrint}
+        onClose={handleClosePrintPreview}
+      />
       {/* Modal de alerta de stock insuficiente */}
       <AlertDialog open={stockAlertOpen} onOpenChange={setStockAlertOpen}>
         <AlertDialogContent className="max-w-lg">
