@@ -37,6 +37,7 @@ import {
   Trash2,
   Copy,
 } from "lucide-react";
+import { MapsLink } from "@/components/shared/MapsLink";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import axios from "axios";
@@ -115,6 +116,7 @@ export interface OrderDetail {
     district?: string;
     address?: string;
     dni?: string | null;
+    googleMapsUrl?: string | null;
   };
   payments: Array<{
     id?: string;
@@ -1681,6 +1683,13 @@ export default function GuideDetailsModal({
                                   {order.customer.address}
                                 </p>
                               )}
+                              <p>
+                                <MapPin className="h-3 w-3 inline mr-1" />
+                                <MapsLink
+                                  url={order.customer.googleMapsUrl}
+                                  className="text-primary underline underline-offset-2"
+                                />
+                              </p>
                             </div>
 
                             {/* Tracking del pedido */}
