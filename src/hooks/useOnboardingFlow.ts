@@ -22,7 +22,7 @@ import {
 type OnboardingAction =
   | { type: "SET_LOADING"; isLoading: boolean }
   | { type: "SET_STEP"; step: OnboardingStep }
-  | { type: "SET_PLAN"; planId: string }
+  | { type: "SET_PLAN"; planId: string; planName: string; price: number }
   | { type: "SET_ADD_ONS"; addOnIds: string[] }
   | { type: "SET_USER"; userId: string }
   | { type: "SET_CHECKOUT"; cardToken: string; redirectUrl: string }
@@ -53,7 +53,7 @@ const HAS_PLAN = new Set(["ACTIVE", "PENDING_RENEWAL"]);
 
 export interface UseOnboardingFlowReturn {
   state: OnboardingState;
-  setPlan: (planId: string) => void;
+  setPlan: (plan: { id: string; name: string; price: number }) => void;
   selectAddOns: (ids: string[]) => void;
   register: (data: RegisterData) => Promise<void>;
   initiateCardRegistration: () => Promise<void>;
@@ -72,7 +72,7 @@ function reducer(state: OnboardingState, action: OnboardingAction): OnboardingSt
     case "SET_STEP":
       return { ...state, step: action.step, isLoading: false, error: null };
     case "SET_PLAN":
-      return { ...state, planId: action.planId };
+      return { ...state, planId: action.planId, planName: action.planName, price: action.price };
     case "SET_ADD_ONS":
       return { ...state, addOnIds: action.addOnIds };
     case "SET_USER":
@@ -136,7 +136,11 @@ export function useOnboardingFlow(
     };
   }, []);
 
-  const setPlan = useCallback((planId: string) => dispatch({ type: "SET_PLAN", planId }), []);
+  const setPlan = useCallback(
+    (plan: { id: string; name: string; price: number }) =>
+      dispatch({ type: "SET_PLAN", planId: plan.id, planName: plan.name, price: plan.price }),
+    [],
+  );
 
   const selectAddOns = useCallback((ids: string[]) => {
     dispatch({ type: "SET_ADD_ONS", addOnIds: ids });

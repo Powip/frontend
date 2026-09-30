@@ -107,6 +107,20 @@ describe("useOnboardingFlow", () => {
     expect(getStoredOnboardingState()).toMatchObject({ cardToken: "tk", addOnIds: ["a1"] });
   });
 
+  it("setPlan cambia el plan elegido y el checkout cobra ese plan", async () => {
+    mocked.startFlowCheckout.mockResolvedValue({ subscriptionId: "s1", status: "PENDING_PAYMENT", redirectUrl: "u", cardToken: "tk" });
+    const { result } = setup();
+
+    act(() => result.current.setPlan({ id: "p2", name: "Medium Anual", price: 1399 }));
+    expect(result.current.state).toMatchObject({ planId: "p2", planName: "Medium Anual", price: 1399 });
+
+    act(() => result.current.selectAddOns([]));
+    await act(() => result.current.initiateCardRegistration());
+
+    expect(mocked.startFlowCheckout).toHaveBeenCalledWith("p2", []);
+    expect(getStoredOnboardingState()).toMatchObject({ planId: "p2", planName: "Medium Anual", price: 1399 });
+  });
+
   it("checkout de alguien que ya pagó lo lleva directo al final", async () => {
     mocked.startFlowCheckout.mockRejectedValue(apiError(409, "ALREADY_SUBSCRIBED"));
     mocked.fetchMySubscription.mockResolvedValue(active);

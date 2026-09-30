@@ -18,19 +18,22 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useOnboardingFlow, type RegisterData } from "@/hooks/useOnboardingFlow";
 import { fetchAddOns, fetchPlans } from "@/services/onboardingService";
+import PlanPicker from "@/components/onboarding/PlanPicker";
+import EnterpriseContactModal from "@/components/modals/EnterpriseContactModal";
+import { basePlanName, counterpartPlan, isAnnualPlanName } from "@/lib/onboardingPlan";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import FlowWidgetStep from "@/components/onboarding/FlowWidgetStep";
-import { addOnPrice, type BackendAddOn, type SubscriptionMe } from "@/types/onboarding";
+import { addOnPrice, type BackendAddOn, type BackendPlan, type SubscriptionMe } from "@/types/onboarding";
 import Image from "next/image";
 import { toast } from "sonner";
 
 interface OnboardingClientProps {
-  planId: string;
-  planName: string;
-  price: number;
-  isAnnual: boolean;
+  /** Plan preseleccionado (desde la landing o /sin-plan); se cambia en el paso 2. */
+  planId?: string;
+  planName?: string;
+  price?: number;
   /** Usuario ya logueado (viene de /sin-plan): se saltea el registro. */
   initialAuth?: { userId: string };
   onGoToDashboard?: () => void;
@@ -62,7 +65,7 @@ const ADDON_MODAL_CONFIG: Record<
 
 const STEPS = [
   { num: 1, name: "Cuenta" },
-  { num: 2, name: "Add-ons" },
+  { num: 2, name: "Plan" },
   { num: 3, name: "Pago" },
   { num: 4, name: "¡Listo!" },
 ];
@@ -74,8 +77,8 @@ const BRAND_PANEL_CONTENT: Record<number, { headline: string; sub: string; masco
     mascot: "/mascota-saludando.svg",
   },
   2: {
-    headline: "Potencia tu plan",
-    sub: "Los add-ons se integran perfectamente con tu plan base. Actívalos ahora o cuando los necesites.",
+    headline: "Elige tu plan",
+    sub: "Elige el plan que mejor se adapta a tu negocio y sumá los add-ons que necesites. Podés activar más add-ons después.",
     mascot: "/mascota-idea.svg",
   },
   3: {
@@ -99,6 +102,11 @@ const TRUST_SIGNALS = [
 // ---------------------------------------------------------------------------
 // BrandPanel
 // ---------------------------------------------------------------------------
+
+function planLabel(planName: string, price: number, isAnnual: boolean): string {
+  if (!planName) return "Elige tu plan";
+  return `Plan ${basePlanName(planName)} — S/ ${price}/${isAnnual ? "año" : "mes"}`;
+}
 
 interface BrandPanelProps {
   currentStep: number;
@@ -163,8 +171,7 @@ function BrandPanel({
         >
           <div className="w-2 h-2 rounded-full bg-white/80" />
           <span className="text-white/90 text-sm font-medium">
-            Plan {planName} — S/ {price}
-            {isAnnual ? "/año" : "/mes"}
+            {planLabel(planName, price, isAnnual)}
           </span>
         </div>
 
@@ -535,6 +542,11 @@ function Step1({ isLoading, error, onNext }: Step1Props) {
 // ---------------------------------------------------------------------------
 
 interface Step2Props {
+  plans: BackendPlan[];
+  planId: string;
+  onSelectPlan: (plan: BackendPlan) => void;
+  onCycleChange: (isAnnual: boolean) => void;
+  onEnterprise: () => void;
   price: number;
   isAnnual: boolean;
   selectedAddons: string[];
@@ -544,6 +556,11 @@ interface Step2Props {
 }
 
 function Step2({
+  plans,
+  planId,
+  onSelectPlan,
+  onCycleChange,
+  onEnterprise,
   price,
   isAnnual,
   selectedAddons,
@@ -555,13 +572,23 @@ function Step2({
     const addon = addOns.find((a) => a.id === id);
     return sum + (addon ? addOnPrice(addon, isAnnual) : 0);
   }, 0);
-  const total = price + addOnsTotal;
+  const hasPlan = planId !== "";
+  const total = (hasPlan ? price : 0) + addOnsTotal;
   const period = isAnnual ? "año" : "mes";
 
   return (
     <div className="flex flex-col gap-4">
+      <PlanPicker
+        plans={plans}
+        selectedPlanId={planId}
+        isAnnual={isAnnual}
+        onSelect={onSelectPlan}
+        onCycleChange={onCycleChange}
+        onEnterprise={onEnterprise}
+      />
+
       {/* Header */}
-      <div className="mb-1">
+      <div className="mb-1 mt-2">
         <h3 className="font-bold text-xl text-gray-900">Add-ons opcionales</h3>
         <p className="text-sm text-gray-500 mt-1">
           {addOns.length > 0 ? `Desde S/ ${Math.min(...addOns.map((a) => addOnPrice(a, isAnnual)))}/${period} cada uno` : "Opcionales"} — actívalos ahora o después desde{" "}
@@ -660,7 +687,7 @@ function Step2({
           Total {period}al
           <br />
           <span className="text-xs">
-            Plan S/{price}
+            {hasPlan ? `Plan S/${price}` : "Sin plan elegido"}
             {selectedAddons.length > 0 && ` + Add-ons S/${addOnsTotal}`}
           </span>
         </div>
@@ -674,18 +701,22 @@ function Step2({
         <button
           type="button"
           onClick={onNext}
-          className="w-full h-12 text-base rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity"
+          disabled={!hasPlan}
+          className="w-full h-12 text-base rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ background: "#4F3A96" }}
         >
           <ArrowRight className="w-4 h-4" />
-          {selectedAddons.length > 0
-            ? `Continuar con ${selectedAddons.length} add-on${selectedAddons.length > 1 ? "s" : ""}`
-            : "Continuar al pago"}
+          {!hasPlan
+            ? "Elige un plan para continuar"
+            : selectedAddons.length > 0
+              ? `Continuar con ${selectedAddons.length} add-on${selectedAddons.length > 1 ? "s" : ""}`
+              : "Continuar al pago"}
         </button>
         <button
           type="button"
           onClick={onNext}
-          className="text-sm text-gray-400 hover:text-gray-600 font-medium py-2 transition-colors"
+          disabled={!hasPlan}
+          className="text-sm text-gray-400 hover:text-gray-600 font-medium py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Omitir por ahora — activo después desde Configuración
         </button>
@@ -1159,10 +1190,9 @@ function StepSuccess({
 // ---------------------------------------------------------------------------
 
 export default function OnboardingClient({
-  planId,
-  planName,
-  price,
-  isAnnual,
+  planId = "",
+  planName = "",
+  price = 0,
   initialAuth,
   onGoToDashboard,
 }: OnboardingClientProps) {
@@ -1170,6 +1200,8 @@ export default function OnboardingClient({
   const router = useRouter();
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [addOns, setAddOns] = useState<BackendAddOn[]>([]);
+  const [plans, setPlans] = useState<BackendPlan[]>([]);
+  const [enterpriseOpen, setEnterpriseOpen] = useState(false);
 
   const {
     state: flowState,
@@ -1191,6 +1223,10 @@ export default function OnboardingClient({
       await refreshSession();
     },
   );
+
+  // El plan elegido manda; sin plan, el ciclo lo marca el toggle del paso 2.
+  const [annualView, setAnnualView] = useState(isAnnualPlanName(planName));
+  const isAnnual = flowState.planName ? isAnnualPlanName(flowState.planName) : annualView;
 
   const [devStepOverride, setDevStepOverride] = useState<number | null>(null);
 
@@ -1222,22 +1258,34 @@ export default function OnboardingClient({
     return () => controller.abort();
   }, [accessToken]);
 
-  // La landing puede mandar solo el nombre del plan (?plan=Basic): se resuelve el id.
+  // Catálogo de planes para el paso 2. Si la landing mandó un plan (?plan=Basic),
+  // queda preseleccionado con su id y precio reales; si no existe, no se elige nada.
+  const hintAppliedRef = useRef(false);
   useEffect(() => {
-    if (!accessToken || flowState.planId) return;
+    if (!accessToken) return;
     fetchPlans()
-      .then((plans) => {
-        const match = plans.find((p) => p.name.toLowerCase() === planName.toLowerCase());
-        if (match) setPlan(match.id);
-        else setError("No encontramos el plan elegido. Volvé a elegirlo desde la página de planes.");
+      .then((catalog) => {
+        setPlans(catalog);
+        if (hintAppliedRef.current) return;
+        hintAppliedRef.current = true;
+        const hint = planName.toLowerCase();
+        const match = hint && catalog.find((p) => p.name.toLowerCase() === hint);
+        if (match) setPlan(match);
       })
-      .catch(() => setError("No pudimos cargar el plan elegido. Intentá nuevamente."));
-  }, [accessToken, flowState.planId, planName, setPlan, setError]);
+      .catch(() => setError("No pudimos cargar los planes. Intentá nuevamente."));
+  }, [accessToken, planName, setPlan, setError]);
+
+  const handleCycleChange = (annual: boolean) => {
+    setAnnualView(annual);
+    if (!flowState.planName || isAnnualPlanName(flowState.planName) === annual) return;
+    setPlan(counterpartPlan(plans, flowState.planName, annual) ?? { id: "", name: "", price: 0 });
+  };
 
   const handleStep1Next = async (data: AccountFormValues) => {
     await register(data);
   };
   const handleStep2Next = () => {
+    if (!flowState.planId) return;
     selectAddOns(selectedAddons);
   };
 
@@ -1269,7 +1317,7 @@ export default function OnboardingClient({
           POWIP
         </span>
         <div className="ml-auto text-white/70 text-xs">
-          Plan {planName} — S/ {price}/{isAnnual ? "año" : "mes"}
+          {planLabel(flowState.planName, flowState.price, isAnnual)}
         </div>
       </div>
 
@@ -1278,8 +1326,8 @@ export default function OnboardingClient({
         <div className="hidden lg:block">
           <BrandPanel
             currentStep={currentStep}
-            planName={planName}
-            price={price}
+            planName={flowState.planName}
+            price={flowState.price}
             isAnnual={isAnnual}
           />
         </div>
@@ -1296,8 +1344,7 @@ export default function OnboardingClient({
                 className="w-2 h-2 rounded-full"
                 style={{ background: "#4F3A96" }}
               />
-              Plan {planName} — S/ {price}
-              {isAnnual ? "/año" : "/mes"}
+              {planLabel(flowState.planName, flowState.price, isAnnual)}
             </div>
 
             {/* Progress */}
@@ -1320,7 +1367,12 @@ export default function OnboardingClient({
 
               {currentStep === 2 && (
                 <Step2
-                  price={price}
+                  plans={plans}
+                  planId={flowState.planId}
+                  onSelectPlan={setPlan}
+                  onCycleChange={handleCycleChange}
+                  onEnterprise={() => setEnterpriseOpen(true)}
+                  price={flowState.price}
                   isAnnual={isAnnual}
                   selectedAddons={selectedAddons}
                   onToggleAddon={toggleAddon}
@@ -1331,8 +1383,8 @@ export default function OnboardingClient({
 
               {currentStep === 3 && (
                 <Step3
-                  planName={planName}
-                  price={price}
+                  planName={flowState.planName}
+                  price={flowState.price}
                   isAnnual={isAnnual}
                   selectedAddons={selectedAddons}
                   allAddOns={addOns}
@@ -1352,8 +1404,8 @@ export default function OnboardingClient({
 
               {(currentStep === 4 || flowState.step === "DONE") && (
                 <StepSuccess
-                  planName={planName}
-                  price={price}
+                  planName={flowState.planName}
+                  price={flowState.price}
                   isAnnual={isAnnual}
                   subscription={flowState.subscription}
                   onGoToDashboard={handleGoToDashboard}
@@ -1363,6 +1415,8 @@ export default function OnboardingClient({
           </div>
         </div>
       </div>
+      <EnterpriseContactModal open={enterpriseOpen} onClose={() => setEnterpriseOpen(false)} />
+
       {/* Dev Mode Step Selector */}
       {process.env.NODE_ENV === "development" && (
         <div className="fixed bottom-4 left-4 z-50 bg-white/95 backdrop-blur-md border border-purple-200 p-3 rounded-2xl shadow-lg flex items-center gap-2">
