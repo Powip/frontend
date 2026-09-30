@@ -21,7 +21,7 @@ import {
 import { cn } from "@/lib/utils";
 import { createPlatformUser, deleteUser } from "@/services/userService";
 import { createCompany, deleteCompany } from "@/services/companyService";
-import { createSubscription, cancelSubscription } from "@/services/subscriptionService";
+import { createSubscription, deleteSubscription } from "@/services/subscriptionService";
 import { createClient } from "@/utils/supabase/client";
 
 interface LeadActivationFlowProps {
@@ -278,7 +278,7 @@ export const LeadActivationFlow: React.FC<LeadActivationFlowProps> = ({
       // ROLLBACK platform entities (user/subscription/company creation failed)
       try {
         if (createdBusinessId) await deleteCompany(auth.accessToken, createdBusinessId);
-        if (createdSubscriptionId) await cancelSubscription(auth.accessToken, createdSubscriptionId);
+        if (createdSubscriptionId) await deleteSubscription(auth.accessToken, createdSubscriptionId);
         if (createdUserId) await deleteUser(createdUserId, auth.accessToken);
       } catch (rollbackError) {
         console.error("[LeadActivation] Error during rollback:", rollbackError);
