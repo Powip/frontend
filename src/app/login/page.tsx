@@ -1,5 +1,4 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import RegisterForm from "@/components/forms/RegisterForm";
 import LoginForm from "@/components/forms/LoginForm";
 import Image from "next/image";
 import { ArrowLeft, Shield, Zap, Users } from "lucide-react";
@@ -109,22 +108,19 @@ export default function LoginPage() {
               >
                 Iniciar sesión
               </TabsTrigger>
-              <TabsTrigger
-                value="register"
-                className="data-[state=active]:bg-[#4F3A96] data-[state=active]:text-white"
+              {/* El registro es el onboarding: cuenta + plan + pago en un solo flujo. */}
+              <Link
+                href="/onboarding"
+                className="inline-flex items-center justify-center rounded-md px-3 py-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 Registrarse
-              </TabsTrigger>
+              </Link>
             </TabsList>
 
             <TabsContent value="login">
               <div className="w-full max-w-xl mx-auto">
                 <LoginForm />
               </div>
-            </TabsContent>
-
-            <TabsContent value="register">
-              <RegisterForm />
             </TabsContent>
           </Tabs>
 

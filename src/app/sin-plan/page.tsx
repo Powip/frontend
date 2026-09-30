@@ -17,6 +17,7 @@ import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import OnboardingClient from "@/app/onboarding/OnboardingClient";
 import EnterpriseContactModal from "@/components/modals/EnterpriseContactModal";
+import { adaptPlans, type PlanMarketing } from "@/lib/planCatalog";
 
 interface Plan {
   id: string;
@@ -26,67 +27,7 @@ interface Plan {
   durationInDays: number;
 }
 
-interface FrontPlan extends Plan {
-  features: string[];
-  popular: boolean;
-  target?: string;
-  limits?: string[];
-}
-
-function adaptPlans(plans: Plan[]): FrontPlan[] {
-  return plans.map((plan) => {
-    let features: string[] = [];
-    let target = "";
-    let limits: string[] = [];
-    let popular = false;
-
-    if (plan.name.toUpperCase().includes("BASIC")) {
-      target = "Emprendedores pequeños (IG + WA)";
-      features = [
-        "Hasta 300 pedidos / mes",
-        "2 usuarios",
-        "WhatsApp Básico",
-        "Reportes Simples",
-        "Soporte Estándar",
-        "Gestión básica de pedidos",
-      ];
-      limits = ["No incluye automatización"];
-    } else if (plan.name.toUpperCase().includes("MEDIUM")) {
-      target = "Tiendas Shopify, marcas activas, COD";
-      features = [
-        "Hasta 700 pedidos / mes",
-        "Multiusuario",
-        "WhatsApp Automatizado",
-        "Estados automáticos",
-        "Reportes Completos",
-        "Soporte Estándar",
-      ];
-      popular = true;
-    } else if (plan.name.toUpperCase().includes("SCALE")) {
-      target = "Empresas en crecimiento";
-      features = [
-        "Hasta 2,000 pedidos / mes",
-        "Multiusuario",
-        "WhatsApp Automatizado",
-        "Reglas automáticas e IA básica",
-        "Reportes Avanzados",
-        "Soporte Prioritario",
-      ];
-    } else if (plan.name.toUpperCase().includes("ENTERPRISE")) {
-      target = "Grandes corporaciones";
-      features = [
-        "Pedidos Ilimitados",
-        "Usuarios Ilimitados",
-        "WhatsApp Automatizado",
-        "Integraciones custom y White label",
-        "Gerente de cuenta dedicado",
-        "Reportes avanzados y personalizados",
-      ];
-    }
-
-    return { ...plan, features, target, limits, popular };
-  });
-}
+type FrontPlan = Plan & PlanMarketing;
 
 export default function SinPlanPage() {
   const { auth, logout, refreshSession } = useAuth();
@@ -136,7 +77,6 @@ export default function SinPlanPage() {
           planId={selectedPlan.id}
           planName={selectedPlan.name}
           price={selectedPlan.price}
-          isAnnual={selectedPlan.durationInDays >= 360}
           initialAuth={initialAuth}
           onGoToDashboard={handleSubscriptionComplete}
         />
