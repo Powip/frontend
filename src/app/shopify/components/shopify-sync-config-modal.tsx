@@ -30,7 +30,6 @@ export function ShopifySyncConfigModal({
   storeId,
 }: ShopifySyncConfigModalProps) {
   const { auth } = useAuth();
-  const [ventasStartDate, setVentasStartDate] = useState('2025-01-01');
   const [checkoutsEnabled, setCheckoutsEnabled] = useState(false);
   const [checkoutsStartDate, setCheckoutsStartDate] = useState('2025-01-01');
   const [productStrategy, setProductStrategy] = useState<'all' | 'from_orders'>('all');
@@ -45,7 +44,6 @@ export function ShopifySyncConfigModal({
         {
           companyId,
           storeId,
-          ventas: { startDate: new Date(ventasStartDate).toISOString() },
           checkouts: {
             enabled: checkoutsEnabled,
             startDate: checkoutsEnabled
@@ -69,7 +67,6 @@ export function ShopifySyncConfigModal({
 
   const handleClose = () => {
     setSuccess(false);
-    setVentasStartDate('2025-01-01');
     setCheckoutsEnabled(false);
     setCheckoutsStartDate('2025-01-01');
     setProductStrategy('all');
@@ -98,15 +95,17 @@ export function ShopifySyncConfigModal({
           <div className="space-y-5 py-2">
             {/* Ventas */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Importar ventas desde
-              </label>
-              <input
-                type="date"
-                value={ventasStartDate}
-                onChange={(e) => setVentasStartDate(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
+              <p className="text-sm font-medium text-gray-700 mb-1">Ventas</p>
+              <p className="text-sm text-gray-600">
+                Las ventas se sincronizaran a partir de hoy{' '}
+                {new Date().toLocaleDateString('es-PE', {
+                  timeZone: 'America/Lima',
+                  day: '2-digit',
+                  month: '2-digit',
+                  year: 'numeric',
+                })}
+                .
+              </p>
             </div>
 
             {/* Checkouts */}
