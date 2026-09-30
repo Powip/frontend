@@ -1,20 +1,11 @@
-/**
- * Tests: useRegisterReferral
- *
- * Comportamiento verificado:
- * 1. Al mutar con éxito, invalida la query de referidos (para que la lista se actualice).
- * 2. Al mutar con éxito, muestra un toast de éxito con el nombre del negocio.
- * 3. Si el service rechaza, expone isError y muestra un toast de error.
- */
-
-import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { renderHook, waitFor } from "@testing-library/react";
 import React from "react";
 import { toast } from "sonner";
-import { useRegisterReferral } from "../use-register-referral";
-import { registerReferral } from "../../services/register-referral";
 import { partnersKeys } from "../../keys/partners.keys";
-import type { PartnerReferral } from "../../models/partner-referral";
+import type { RegisteredReferral } from "../../models/registered-referral";
+import { registerReferral } from "../../services/register-referral";
+import { useRegisterReferral } from "../use-register-referral";
 
 jest.mock("../../services/register-referral", () => ({
   registerReferral: jest.fn(),
@@ -26,15 +17,17 @@ jest.mock("sonner", () => ({
 
 const mockRegisterReferral = jest.mocked(registerReferral);
 
-const NEW_REFERRAL: PartnerReferral = {
+const REGISTERED_REFERRAL: RegisteredReferral = {
   id: "ref-new",
-  businessName: "Café Norte",
   origin: "manual",
-  status: "correo_enviado",
-  registeredAt: "2026-08-17",
-  planName: "Standard",
-  firstMonthCommission: null,
-  recurringCommission: null,
+  status: "en_revision",
+  registeredAt: "2026-09-24T15:00:00Z",
+  expiresAt: "2026-11-23T15:00:00Z",
+};
+
+const INPUT = {
+  values: { businessName: "Café Norte", email: "cafe@norte.com", phone: "" },
+  idempotencyKey: "key-abc",
 };
 
 function buildWrapper() {
@@ -54,36 +47,40 @@ describe("useRegisterReferral", () => {
     jest.mocked(toast.error).mockReset();
   });
 
+  it("pasa los valores y la Idempotency-Key al service", async () => {
+    mockRegisterReferral.mockResolvedValue(REGISTERED_REFERRAL);
+    const { wrapper } = buildWrapper();
+    const { result } = renderHook(() => useRegisterReferral(), { wrapper });
+
+    result.current.mutate(INPUT);
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(mockRegisterReferral.mock.calls[0][0]).toEqual(INPUT);
+  });
+
   it("invalida la query de referidos al mutar con éxito", async () => {
-    mockRegisterReferral.mockResolvedValue(NEW_REFERRAL);
+    mockRegisterReferral.mockResolvedValue(REGISTERED_REFERRAL);
     const { wrapper, invalidateQueries } = buildWrapper();
     const { result } = renderHook(() => useRegisterReferral(), { wrapper });
 
-    result.current.mutate({
-      businessName: "Café Norte",
-      email: "cafe@norte.com",
-      phone: "",
-      planValue: "standard",
-    });
+    result.current.mutate(INPUT);
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: partnersKeys.referrals() });
   });
 
-  it("muestra un toast de éxito con el nombre del negocio", async () => {
-    mockRegisterReferral.mockResolvedValue(NEW_REFERRAL);
+  it("el toast de éxito nombra al negocio y no afirma que la invitación fue enviada", async () => {
+    mockRegisterReferral.mockResolvedValue(REGISTERED_REFERRAL);
     const { wrapper } = buildWrapper();
     const { result } = renderHook(() => useRegisterReferral(), { wrapper });
 
-    result.current.mutate({
-      businessName: "Café Norte",
-      email: "cafe@norte.com",
-      phone: "",
-      planValue: "standard",
-    });
+    result.current.mutate(INPUT);
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("Café Norte"));
+    const message = jest.mocked(toast.success).mock.calls[0][0] as string;
+    expect(message).toContain("Café Norte");
+    expect(message).toMatch(/revisión/i);
+    expect(message).not.toMatch(/invitación enviada/i);
   });
 
   it("muestra un toast de error cuando el service rechaza", async () => {
@@ -91,12 +88,7 @@ describe("useRegisterReferral", () => {
     const { wrapper } = buildWrapper();
     const { result } = renderHook(() => useRegisterReferral(), { wrapper });
 
-    result.current.mutate({
-      businessName: "Café Norte",
-      email: "cafe@norte.com",
-      phone: "",
-      planValue: "standard",
-    });
+    result.current.mutate(INPUT);
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(toast.error).toHaveBeenCalled();

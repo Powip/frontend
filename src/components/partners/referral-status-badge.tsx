@@ -6,6 +6,14 @@ interface ReferralStatusBadgeProps {
 }
 
 const STATUS_MAP: Record<ReferralStatus, { label: string; className: string }> = {
+  registrado: {
+    label: "Registrado",
+    className: "bg-slate-100 text-slate-700 border-slate-200 dark:bg-slate-900 dark:text-slate-300 dark:border-slate-800",
+  },
+  desconocido: {
+    label: "Estado no disponible",
+    className: "bg-muted text-muted-foreground border-border",
+  },
   correo_enviado: {
     label: "Correo enviado",
     className: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300 dark:border-blue-900",

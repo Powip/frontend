@@ -1,7 +1,9 @@
-import { listPartnerReferrals } from "../mocks/partner-referrals.store";
-import type { PartnerReferral } from "../models/partner-referral";
+import { getPartnerReferralsApi } from "../api/partner-referrals.api";
+import { toPartnerReferralPage } from "../mappers/to-partner-referral";
+import type { PartnerReferralPage } from "../models/partner-referral-page";
 
-export async function getReferrals(): Promise<PartnerReferral[]> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  return listPartnerReferrals();
+export async function getReferrals(cursor: string | null = null): Promise<PartnerReferralPage> {
+  const responseDto = await getPartnerReferralsApi(cursor);
+
+  return toPartnerReferralPage(responseDto);
 }

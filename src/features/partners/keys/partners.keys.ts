@@ -1,6 +1,8 @@
 export const partnersKeys = {
   all: ["partners"] as const,
 
+  me: () => [...partnersKeys.all, "me"] as const,
+
   summary: () => [...partnersKeys.all, "summary"] as const,
 
   referrals: (limit?: number) => [...partnersKeys.all, "referrals", limit] as const,

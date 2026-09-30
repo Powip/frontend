@@ -1,11 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { partnersKeys } from "../keys/partners.keys";
-import type { PartnerReferral } from "../models/partner-referral";
 import { getReferrals } from "../services/get-referrals";
 
 export function useReferrals() {
-  return useQuery<PartnerReferral[], Error>({
+  return useInfiniteQuery({
     queryKey: partnersKeys.referrals(),
-    queryFn: getReferrals,
+    queryFn: ({ pageParam }) => getReferrals(pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.nextCursor,
   });
 }

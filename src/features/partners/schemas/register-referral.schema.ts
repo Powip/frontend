@@ -1,7 +1,4 @@
 import z from "zod";
-import { PARTNER_PLAN_OPTIONS } from "../models/plan-option";
-
-const PLAN_VALUES = PARTNER_PLAN_OPTIONS.map((option) => option.value) as [string, ...string[]];
 
 export const registerReferralSchema = z.object({
   businessName: z
@@ -16,10 +13,6 @@ export const registerReferralSchema = z.object({
     .email("Ingresa un correo válido"),
 
   phone: z.string().trim().optional(),
-
-  planValue: z.enum(PLAN_VALUES, {
-    error: "Selecciona un plan",
-  }),
 });
 
 export type RegisterReferralFormValues = z.infer<typeof registerReferralSchema>;

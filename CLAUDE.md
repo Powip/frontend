@@ -41,6 +41,7 @@ Llama via HTTP:
 - ms-courier — guías de envío y seguimiento
 - ms-subscription — planes y suscripción activa
 - ms-integrations — estado de integraciones
+- ms-partners — referidos del partner (`/v1/partners`)
 
 ## Puertos expuestos
 
@@ -61,6 +62,7 @@ NEXT_PUBLIC_API_INTEGRATIONS
 NEXT_PUBLIC_FRONTEND_URL
 NEXT_PUBLIC_LANDING_URL
 NEXT_PUBLIC_MERCADOPAGO_PUBLIC_KEY
+NEXT_PUBLIC_API_PARTNERS
 ```
 
 ## Normas aplicables

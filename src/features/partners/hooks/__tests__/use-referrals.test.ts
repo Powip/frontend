@@ -1,18 +1,9 @@
-/**
- * Tests: useReferrals
- *
- * Comportamiento verificado:
- * 1. Empieza en isLoading antes de que resuelva el service.
- * 2. Expone data con los referidos devueltos por el service al resolver.
- * 3. Expone isError cuando el service rechaza.
- */
-
-import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import React from "react";
-import { useReferrals } from "../use-referrals";
-import { getReferrals } from "../../services/get-referrals";
 import type { PartnerReferral } from "../../models/partner-referral";
+import { getReferrals } from "../../services/get-referrals";
+import { useReferrals } from "../use-referrals";
 
 jest.mock("../../services/get-referrals", () => ({
   getReferrals: jest.fn(),
@@ -20,16 +11,18 @@ jest.mock("../../services/get-referrals", () => ({
 
 const mockGetReferrals = jest.mocked(getReferrals);
 
-const MOCK_REFERRAL: PartnerReferral = {
-  id: "ref-1",
-  businessName: "Negocio Uno",
-  origin: "link",
-  status: "pagando",
-  registeredAt: "2026-08-01",
-  planName: "Standard",
-  firstMonthCommission: 10,
-  recurringCommission: 2,
-};
+function makeReferral(id: string): PartnerReferral {
+  return {
+    id,
+    businessName: `Negocio ${id}`,
+    origin: "link",
+    status: "cuenta_creada",
+    registeredAt: "2026-09-24T15:00:00Z",
+    planName: null,
+    firstMonthCommission: null,
+    recurringCommission: null,
+  };
+}
 
 function buildWrapper() {
   const queryClient = new QueryClient({
@@ -50,12 +43,35 @@ describe("useReferrals", () => {
     expect(result.current.isLoading).toBe(true);
   });
 
-  it("expone data cuando el service resuelve", async () => {
-    mockGetReferrals.mockResolvedValue([MOCK_REFERRAL]);
+  it("pide la primera página sin cursor y expone sus items", async () => {
+    mockGetReferrals.mockResolvedValue({ items: [makeReferral("1")], nextCursor: null });
     const { result } = renderHook(() => useReferrals(), { wrapper: buildWrapper() });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(result.current.data).toEqual([MOCK_REFERRAL]);
+    expect(mockGetReferrals).toHaveBeenCalledWith(null);
+    expect(result.current.data?.pages[0].items).toEqual([makeReferral("1")]);
+    expect(result.current.hasNextPage).toBe(false);
+  });
+
+  it("usa nextCursor para pedir la página siguiente y acumula las páginas", async () => {
+    mockGetReferrals
+      .mockResolvedValueOnce({ items: [makeReferral("1")], nextCursor: "cursor-2" })
+      .mockResolvedValueOnce({ items: [makeReferral("2")], nextCursor: null });
+    const { result } = renderHook(() => useReferrals(), { wrapper: buildWrapper() });
+
+    await waitFor(() => expect(result.current.hasNextPage).toBe(true));
+
+    await act(async () => {
+      await result.current.fetchNextPage();
+    });
+
+    expect(mockGetReferrals).toHaveBeenLastCalledWith("cursor-2");
+    await waitFor(() =>
+      expect(
+        result.current.data?.pages.flatMap((page) => page.items.map((item) => item.id)),
+      ).toEqual(["1", "2"]),
+    );
+    expect(result.current.hasNextPage).toBe(false);
   });
 
   it("expone isError cuando el service rechaza", async () => {

@@ -2,12 +2,14 @@
  * Tests: RegisterReferralDialog
  *
  * Comportamiento verificado:
- * 1. Al enviar el formulario vacío, muestra los mensajes de validación (nombre, correo, plan)
+ * 1. Al enviar el formulario vacío, muestra los mensajes de validación (nombre, correo)
  *    y NO llama a la mutación.
  * 2. Un correo con formato inválido muestra "Ingresa un correo válido" y no envía.
- * 3. Con datos válidos, la mutación se llama con los valores exactos del formulario.
- * 4. El botón "Cancelar" llama a onClose sin invocar la mutación.
- * 5. Mientras la mutación está en curso (isPending), el botón de submit se deshabilita
+ * 3. Con datos válidos, la mutación recibe los valores del formulario (sin plan) y una Idempotency-Key.
+ * 4. La selección de plan está bloqueada y explica por qué.
+ * 5. Reintentar con los mismos datos reutiliza la Idempotency-Key; cambiar los datos genera otra.
+ * 6. El botón "Cancelar" llama a onClose sin invocar la mutación.
+ * 7. Mientras la mutación está en curso (isPending), el botón de submit se deshabilita
  *    y muestra el texto de carga.
  */
 
@@ -16,72 +18,32 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { RegisterReferralDialog } from "../register-referral-dialog";
 import { useRegisterReferral } from "@/features/partners/hooks/use-register-referral";
+import { createIdempotencyKey } from "@/features/partners/utils/create-idempotency-key";
 
 jest.mock("@/features/partners/hooks/use-register-referral", () => ({
   useRegisterReferral: jest.fn(),
 }));
 
+jest.mock("@/features/partners/utils/create-idempotency-key", () => ({
+  createIdempotencyKey: jest.fn(),
+}));
+
 jest.mock("@/components/ui/select", () => {
-  const ReactLib = require("react");
-
-  function extractText(node: unknown): string {
-    if (node === null || node === undefined) return "";
-    if (typeof node === "string" || typeof node === "number") return String(node);
-    if (typeof node === "boolean") return "";
-    if (Array.isArray(node)) return node.map(extractText).join("");
-    if (typeof node === "object" && node !== null && "props" in node) {
-      const el = node as { props: { children?: unknown } };
-      return extractText(el.props.children);
-    }
-    return "";
-  }
-
-  const Select = ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value?: string;
-    onValueChange?: (v: string) => void;
-    children?: React.ReactNode;
-  }) => {
-    const options: { value: string; label: string }[] = [];
-    ReactLib.Children.forEach(children, (child: React.ReactElement<{ children?: React.ReactNode }>) => {
-      if (!child || !child.props) return;
-      if (child.props.children) {
-        ReactLib.Children.forEach(
-          child.props.children,
-          (item: React.ReactElement<{ value?: string; children?: React.ReactNode }>) => {
-            if (item && item.props && item.props.value !== undefined) {
-              options.push({ value: item.props.value, label: extractText(item.props.children) });
-            }
-          },
-        );
-      }
-    });
-    return (
-      <select aria-label="Plan que le interesa" value={value ?? ""} onChange={(e) => onValueChange?.(e.target.value)}>
-        <option value="" disabled />
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    );
-  };
-
-  const SelectContent = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
-  const SelectItem = ({ value, children }: { value: string; children?: React.ReactNode }) => (
-    <option value={value}>{children}</option>
+  const Select = ({ disabled }: { disabled?: boolean; children?: React.ReactNode }) => (
+    <select aria-label="Plan que le interesa" disabled={disabled} />
   );
-  const SelectTrigger = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
-  const SelectValue = ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>;
+  const Passthrough = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
 
-  return { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };
+  return {
+    Select,
+    SelectContent: Passthrough,
+    SelectTrigger: Passthrough,
+    SelectValue: Passthrough,
+  };
 });
 
 const mockUseRegisterReferral = jest.mocked(useRegisterReferral);
+const mockCreateIdempotencyKey = jest.mocked(createIdempotencyKey);
 
 function setupMutation(overrides: Partial<ReturnType<typeof useRegisterReferral>> = {}) {
   const mutate = jest.fn();
@@ -93,9 +55,17 @@ function setupMutation(overrides: Partial<ReturnType<typeof useRegisterReferral>
   return mutate;
 }
 
+async function fillValidForm(user: ReturnType<typeof userEvent.setup>) {
+  await user.type(screen.getByLabelText(/nombre del negocio/i), "Zapatería Andes");
+  await user.type(screen.getByLabelText(/correo del negocio/i), "andes@mail.com");
+}
+
 describe("RegisterReferralDialog", () => {
   beforeEach(() => {
+    let counter = 0;
     mockUseRegisterReferral.mockReset();
+    mockCreateIdempotencyKey.mockReset();
+    mockCreateIdempotencyKey.mockImplementation(() => `key-${++counter}`);
   });
 
   it("muestra mensajes de validación con el formulario vacío y no llama a la mutación", async () => {
@@ -103,7 +73,7 @@ describe("RegisterReferralDialog", () => {
     const user = userEvent.setup();
 
     render(<RegisterReferralDialog isOpen={true} onClose={jest.fn()} />);
-    await user.click(screen.getByRole("button", { name: /enviar invitación/i }));
+    await user.click(screen.getByRole("button", { name: /registrar referido/i }));
 
     expect(await screen.findByText(/el nombre del negocio es obligatorio/i)).toBeInTheDocument();
     expect(screen.getByText(/el correo es obligatorio/i)).toBeInTheDocument();
@@ -117,29 +87,65 @@ describe("RegisterReferralDialog", () => {
     render(<RegisterReferralDialog isOpen={true} onClose={jest.fn()} />);
     await user.type(screen.getByLabelText(/nombre del negocio/i), "Zapatería Andes");
     await user.type(screen.getByLabelText(/correo del negocio/i), "no-es-un-correo");
-    await user.click(screen.getByRole("button", { name: /enviar invitación/i }));
+    await user.click(screen.getByRole("button", { name: /registrar referido/i }));
 
     expect(await screen.findByText(/ingresa un correo válido/i)).toBeInTheDocument();
   });
 
-  it("llama a la mutación con los valores exactos cuando el formulario es válido", async () => {
+  it("llama a la mutación con los valores del formulario, sin plan, y una Idempotency-Key", async () => {
     const mutate = setupMutation();
     const user = userEvent.setup();
 
     render(<RegisterReferralDialog isOpen={true} onClose={jest.fn()} />);
-    await user.type(screen.getByLabelText(/nombre del negocio/i), "Zapatería Andes");
-    await user.type(screen.getByLabelText(/correo del negocio/i), "andes@mail.com");
-    await user.selectOptions(screen.getByRole("combobox"), "standard");
-    await user.click(screen.getByRole("button", { name: /enviar invitación/i }));
+    await fillValidForm(user);
+    await user.click(screen.getByRole("button", { name: /registrar referido/i }));
 
     expect(mutate).toHaveBeenCalledWith(
-      expect.objectContaining({
-        businessName: "Zapatería Andes",
-        email: "andes@mail.com",
-        planValue: "standard",
-      }),
+      {
+        values: { businessName: "Zapatería Andes", email: "andes@mail.com", phone: "" },
+        idempotencyKey: "key-1",
+      },
       expect.anything(),
     );
+    const [{ values }] = mutate.mock.calls[0];
+    expect(values).not.toHaveProperty("planValue");
+    expect(values).not.toHaveProperty("planId");
+  });
+
+  it("bloquea la selección de plan y explica el motivo", () => {
+    setupMutation();
+
+    render(<RegisterReferralDialog isOpen={true} onClose={jest.fn()} />);
+
+    expect(screen.getByRole("combobox", { name: /plan que le interesa/i })).toBeDisabled();
+    expect(screen.getByText(/falta el identificador del plan/i)).toBeInTheDocument();
+  });
+
+  it("reutiliza la Idempotency-Key al reintentar con los mismos datos", async () => {
+    const mutate = setupMutation();
+    const user = userEvent.setup();
+
+    render(<RegisterReferralDialog isOpen={true} onClose={jest.fn()} />);
+    await fillValidForm(user);
+    await user.click(screen.getByRole("button", { name: /registrar referido/i }));
+    await user.click(screen.getByRole("button", { name: /registrar referido/i }));
+
+    expect(mutate).toHaveBeenCalledTimes(2);
+    expect(mutate.mock.calls[1][0].idempotencyKey).toBe(mutate.mock.calls[0][0].idempotencyKey);
+  });
+
+  it("genera otra Idempotency-Key si el usuario cambia los datos antes de reintentar", async () => {
+    const mutate = setupMutation();
+    const user = userEvent.setup();
+
+    render(<RegisterReferralDialog isOpen={true} onClose={jest.fn()} />);
+    await fillValidForm(user);
+    await user.click(screen.getByRole("button", { name: /registrar referido/i }));
+    await user.type(screen.getByLabelText(/teléfono/i), "+51987654321");
+    await user.click(screen.getByRole("button", { name: /registrar referido/i }));
+
+    expect(mutate).toHaveBeenCalledTimes(2);
+    expect(mutate.mock.calls[1][0].idempotencyKey).not.toBe(mutate.mock.calls[0][0].idempotencyKey);
   });
 
   it('el botón "Cancelar" llama a onClose sin invocar la mutación', async () => {
@@ -159,7 +165,7 @@ describe("RegisterReferralDialog", () => {
 
     render(<RegisterReferralDialog isOpen={true} onClose={jest.fn()} />);
 
-    const submitButton = screen.getByRole("button", { name: /enviando/i });
+    const submitButton = screen.getByRole("button", { name: /registrando/i });
     expect(submitButton).toBeDisabled();
   });
 });

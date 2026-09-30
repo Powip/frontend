@@ -5,5 +5,4 @@ export const registerReferralDefaultValues: DefaultValues<RegisterReferralFormVa
   businessName: "",
   email: "",
   phone: "",
-  planValue: undefined,
 };

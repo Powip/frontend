@@ -1,4 +1,12 @@
 import type { PartnerReferral } from "@/features/partners/models/partner-referral";
+import type { ReferralStatus } from "@/features/partners/models/referral-status.enum";
+
+const NOT_ACTIVATED_STATUSES: ReferralStatus[] = [
+  "registrado",
+  "en_revision",
+  "correo_enviado",
+  "cuenta_creada",
+];
 
 export type ReferralFilterKey = "all" | "pagando" | "sin_activar" | "sin_pago";
 
@@ -17,13 +25,9 @@ export function filterReferrals(
     case "pagando":
       return referrals.filter((referral) => referral.status === "pagando");
     case "sin_activar":
-      return referrals.filter(
-        (referral) => referral.status === "correo_enviado" || referral.status === "cuenta_creada",
-      );
+      return referrals.filter((referral) => NOT_ACTIVATED_STATUSES.includes(referral.status));
     case "sin_pago":
-      return referrals.filter(
-        (referral) => referral.status === "activo_sin_pago" || referral.status === "en_revision",
-      );
+      return referrals.filter((referral) => referral.status === "activo_sin_pago");
     default:
       return referrals;
   }

@@ -1,19 +1,18 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { partnersKeys } from "../keys/partners.keys";
-import type { PartnerReferral } from "../models/partner-referral";
-import { registerReferral } from "../services/register-referral";
-import type { RegisterReferralFormValues } from "../schemas/register-referral.schema";
+import type { RegisteredReferral } from "../models/registered-referral";
+import { type RegisterReferralInput, registerReferral } from "../services/register-referral";
 
 export function useRegisterReferral() {
   const queryClient = useQueryClient();
 
-  return useMutation<PartnerReferral, Error, RegisterReferralFormValues>({
+  return useMutation<RegisteredReferral, Error, RegisterReferralInput>({
     mutationFn: registerReferral,
 
-    onSuccess: (referral) => {
+    onSuccess: (_referral, { values }) => {
       queryClient.invalidateQueries({ queryKey: partnersKeys.referrals() });
-      toast.success(`Invitación enviada a ${referral.businessName}.`);
+      toast.success(`Registramos a ${values.businessName}. Queda en revisión antes de invitarlo.`);
     },
 
     onError: () => {

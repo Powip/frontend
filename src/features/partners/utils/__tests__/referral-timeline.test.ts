@@ -39,6 +39,20 @@ describe("getReferralTimeline", () => {
     expect(steps[3].state).toBe("bad");
   });
 
+  it('"registrado" marca el primer paso como active y el resto pending', () => {
+    const steps = getReferralTimeline("registrado");
+    expect(steps).toHaveLength(5);
+    expect(steps[0].state).toBe("active");
+    expect(steps.slice(1).every((step) => step.state === "pending")).toBe(true);
+  });
+
+  it('"desconocido" no inventa una etapa: solo el registro done y un paso pendiente', () => {
+    const steps = getReferralTimeline("desconocido");
+    expect(steps).toHaveLength(2);
+    expect(steps[0].state).toBe("done");
+    expect(steps[1]).toMatchObject({ label: "Estado no disponible", state: "pending" });
+  });
+
   it("los pasos futuros nunca son done ni active", () => {
     const steps = getReferralTimeline("correo_enviado");
     const futureSteps = steps.slice(2);

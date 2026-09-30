@@ -89,7 +89,7 @@ export function ReferralDetailDrawer({ referral, onClose }: ReferralDetailDrawer
                 </>
               ) : (
                 <p className="mt-2 text-sm text-muted-foreground">
-                  Todavía no generó comisión.
+                  El detalle de tus comisiones está en la sección Comisiones.
                 </p>
               )}
             </div>

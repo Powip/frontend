@@ -21,7 +21,7 @@ interface ReferralsTableProps {
   isLoading: boolean;
   hasAnyReferral: boolean;
   onSelectReferral: (referral: PartnerReferral) => void;
-  onRegisterReferral: () => void;
+  onRegisterReferral?: () => void;
 }
 
 export function ReferralsTable({
@@ -46,8 +46,12 @@ export function ReferralsTable({
       <EmptyState
         icon={Users}
         title="Todavía no tenés referidos"
-        description="Registrá un negocio o compartí tu link para empezar a sumar referidos."
-        actionLabel="Registrar referido"
+        description={
+          onRegisterReferral
+            ? "Registrá un negocio o compartí tu link para empezar a sumar referidos."
+            : "Compartí tu link para empezar a sumar referidos."
+        }
+        actionLabel={onRegisterReferral ? "Registrar referido" : undefined}
         onAction={onRegisterReferral}
       />
     );

@@ -16,7 +16,8 @@ const STEPS: { label: string; description: string }[] = [
   { label: "Pagó · comisión activa", description: "1er mes + recurrente" },
 ];
 
-const CURRENT_STEP_INDEX: Record<Exclude<ReferralStatus, "cancelado">, number> = {
+const CURRENT_STEP_INDEX: Record<Exclude<ReferralStatus, "cancelado" | "desconocido">, number> = {
+  registrado: 0,
   en_revision: 0,
   correo_enviado: 1,
   cuenta_creada: 2,
@@ -32,6 +33,17 @@ export function getReferralTimeline(status: ReferralStatus): ReferralTimelineSte
         label: "Canceló · comisión detenida",
         description: "El negocio dio de baja o se revirtió el pago",
         state: "bad" as const,
+      },
+    ];
+  }
+
+  if (status === "desconocido") {
+    return [
+      { ...STEPS[0], state: "done" },
+      {
+        label: "Estado no disponible",
+        description: "Todavía no podemos mostrar en qué etapa está este referido",
+        state: "pending",
       },
     ];
   }

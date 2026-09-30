@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { PartnersTabs } from "./_components/partners-tabs";
+import { PartnerPortalGate } from "./_components/partner-portal-gate";
 
 export const metadata: Metadata = {
   title: { template: "%s | Partners | Powip", default: "Partners | Powip" },
@@ -21,9 +21,7 @@ export default function PartnersLayout({ children }: { children: React.ReactNode
         </div>
       </header>
 
-      <PartnersTabs />
-
-      <div className="flex-1 overflow-auto">{children}</div>
+      <PartnerPortalGate>{children}</PartnerPortalGate>
     </div>
   );
 }

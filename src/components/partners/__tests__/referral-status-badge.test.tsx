@@ -14,6 +14,8 @@ import type { ReferralStatus } from "@/features/partners/models/referral-status.
 
 describe("ReferralStatusBadge", () => {
   const cases: [ReferralStatus, string][] = [
+    ["registrado", "Registrado"],
+    ["desconocido", "Estado no disponible"],
     ["correo_enviado", "Correo enviado"],
     ["cuenta_creada", "Cuenta creada"],
     ["activo_sin_pago", "Activó · sin pago"],

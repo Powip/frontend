@@ -35,7 +35,7 @@ Igual que la tabla de "últimos referidos" del Resumen, pero completa y con 2 co
 ## Acciones del usuario
 
 - Filtrar por estado (client-side, sobre la lista ya cargada).
-- Registrar un referido nuevo (nombre, correo, teléfono opcional, plan) → queda con estado "Correo enviado".
+- Registrar un referido nuevo (nombre, correo, teléfono opcional) → queda en el estado que devuelva backend (hoy `UNDER_REVIEW` → "En revisión"). La selección de plan está bloqueada hasta tener el `planId` real.
 - Ver el detalle de un referido (click o Enter/Espacio sobre la fila).
 
 ## Estados
@@ -49,25 +49,48 @@ Dos casos distintos, con mensajes distintos:
 - Tiene referidos pero el filtro activo no matchea ninguno → texto simple "No hay referidos en este filtro" (no se repite el `EmptyState` grande, sería confuso sugerir "registrar" cuando ya tiene referidos).
 
 ### Error
-`PartnerSectionError` con botón "Reintentar" (`refetch()`) si `useReferrals()` falla.
+`PartnerSectionError` con botón "Reintentar" (`refetch()`) si falla la primera carga. Si falla una página siguiente, la tabla se conserva y aparece un aviso "No pudimos cargar más referidos".
 
 ### Success
-Tabla con los referidos filtrados.
+Tabla con los referidos filtrados. Si la respuesta trae `nextCursor`, aparece "Cargar más" (`useInfiniteQuery`). Los filtros se aplican sobre las páginas ya cargadas.
 
 ### Mutation (alta de referido)
-- Botón de submit deshabilitado + spinner + texto "Enviando..." mientras `isPending`.
-- Éxito: toast (`sonner`) "Invitación enviada a {negocio}", el dialog se cierra, el formulario se resetea, la tabla se actualiza sola (invalidación de query).
+- Botón de submit deshabilitado + spinner + texto "Registrando..." mientras `isPending`.
+- Éxito: toast (`sonner`) "Registramos a {negocio}. Queda en revisión antes de invitarlo." (el contrato prohíbe afirmar que se envió la invitación antes de la validación de backend), el dialog se cierra, el formulario se resetea, la tabla se actualiza sola (invalidación de query).
 - Error: toast de error, el dialog se mantiene abierto con los datos que el usuario ya cargó (no se pierde el formulario).
 
 ## Datos requeridos
 
 Mismo modelo `PartnerReferral` de la página anterior — no se agregó ningún campo nuevo, la ficha completa ya alcanzaba.
 
-## Mock data
+## Integración HTTP
 
-- `src/features/partners/mocks/partner-referrals.store.ts` — un store en memoria (mutable, a nivel de módulo) sembrado desde `partner-referrals.mock.ts`, con `listPartnerReferrals()` / `addPartnerReferral()` / `resetPartnerReferralsStore()` (el reset es para tests).
-- **Limitación conocida del mock**: este store es independiente del mock estático que lee el Resumen (`get-partner-summary.ts`/`get-recent-referrals.ts`). Registrar un referido acá lo suma a la lista completa de esta página, pero **no** actualiza la mini-tabla "Últimos referidos" del Resumen ni sus KPIs en la misma sesión — eso requiere backend real (o una capa de mock compartida más elaborada, que no se justifica todavía).
-- `src/features/partners/services/get-referrals.ts` y `register-referral.ts` son el único lugar a tocar cuando exista backend.
+Esta pantalla ya no usa mocks: consume los endpoints STABLE SHAPE de la colección Postman "POWIP Partners — Frontend Contract v2".
+
+- Base URL: `NEXT_PUBLIC_API_PARTNERS` (ej. `http://localhost:8080/v1/partners`), expuesta como `API.partners` en `src/lib/api.ts`.
+- Auth: `axiosAuth` (Bearer del `tokenStore`, que llena `AuthContext`). Nunca se envía `partnerId`.
+- Capas: `api/partner-referrals.api.ts` → `dto/` → `mappers/` → `services/get-referrals.ts` / `services/register-referral.ts` → hooks.
+- El Resumen (`get-recent-referrals.ts`) sigue leyendo `partner-referrals.mock.ts`; no forma parte de este flujo.
+
+### Mapeo de estados (`state` → `ReferralStatus`)
+
+| Backend | UI |
+| --- | --- |
+| `CAPTURED` | `registrado` |
+| `UNDER_REVIEW` | `en_revision` |
+| `INVITATION_SENT` | `correo_enviado` |
+| `ACCOUNT_CREATED` | `cuenta_creada` |
+| `COMPANY_CREATED` | `activo_sin_pago` |
+| `QUALIFYING_PAYMENT` | `pagando` |
+| cualquier otro | `desconocido` ("Estado no disponible") |
+
+Origen: `LINK` → `link`, `CODE` → `codigo`, `MANUAL` → `manual`. `businessLabel` (enmascarado) → `businessName`, `capturedAt` → `registeredAt`, `planLabel` → `planName`. El listado no trae importes: `firstMonthCommission`/`recurringCommission` quedan en `null`.
+
+### Alta manual
+
+- Body: `businessName`, `email`, `phone` (opcional, sin espacios/guiones). No se envía `planValue` ni `planId`.
+- `Idempotency-Key`: UUID por intento lógico. Reintentar con los mismos datos reutiliza la clave; cambiar los datos o cerrar/reabrir el diálogo genera otra.
+- Plan bloqueado: el único catálogo con UUIDs es ms-subscription `GET /plans`, pero el contrato no confirma que `planId` referencie ese catálogo ni que el token de partner pueda leerlo.
 
 ## Backend Requirements
 
@@ -78,44 +101,26 @@ Propuesta, no confirmada.
 3. **BACKEND TBD**: ¿qué pasa si el correo ya existe como referido de otro partner o como cliente directo? (el mockup original contemplaba "conflicto de atribución" — no lo implementamos acá porque es lógica de revisión que le compete a la vista Admin, fuera de esta ronda).
 4. **BACKEND TBD**: ¿el alta de referido devuelve inmediatamente el referido creado (síncrono) o queda en un estado "pendiente de validar" hasta que un proceso backend lo confirme?
 
-## API Contract Proposal
+## API Contract
 
-### Request
+Fuente de verdad: colección Postman "POWIP Partners — Frontend Contract v2", carpeta "02 · STABLE SHAPE · Partner Identity & Referrals".
 
 ```
-GET /partners/me/referrals
+GET {NEXT_PUBLIC_API_PARTNERS}/me/referrals[?cursor=...]
 Authorization: Bearer <token>
+
+200 { "items": [ { "id", "businessLabel", "contactLabel", "origin", "state", "capturedAt", "expiresAt", "companyState", "planLabel" } ], "nextCursor": null }
 ```
 
 ```
-POST /partners/me/referrals
+POST {NEXT_PUBLIC_API_PARTNERS}/me/referrals
 Authorization: Bearer <token>
+Idempotency-Key: <uuid>
 Content-Type: application/json
 
-{
-  "businessName": "Zapatería Andes",
-  "email": "andes@mail.com",
-  "phone": "+51 987654321",
-  "planValue": "standard"
-}
-```
+{ "businessName": "Zapatería Andes", "email": "andes@example.com", "phone": "+51987654321" }
 
-### Response
-
-`GET /partners/me/referrals` → mismo shape que `GET /partners/me/referrals?limit=5` del Resumen, sin el parámetro `limit`.
-
-`POST /partners/me/referrals`
-```json
-{
-  "id": "ref-abc123",
-  "businessName": "Zapatería Andes",
-  "origin": "manual",
-  "status": "correo_enviado",
-  "registeredAt": "2026-08-17",
-  "planName": "Standard",
-  "firstMonthCommission": null,
-  "recurringCommission": null
-}
+201 { "id", "origin": "MANUAL", "state": "UNDER_REVIEW", "capturedAt", "expiresAt" }
 ```
 
 ## Business Rules

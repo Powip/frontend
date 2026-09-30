@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import type { PartnerPermission } from "@/features/partners/models/partner-permission.enum";
+import { getRequiredPartnerPermission } from "@/features/partners/utils/partner-access";
 import { cn } from "@/lib/utils";
 
 const TABS = [
@@ -13,15 +15,23 @@ const TABS = [
   { label: "Mi Plan", href: "/partners/plan" },
 ];
 
-export function PartnersTabs() {
+interface PartnersTabsProps {
+  permissions: PartnerPermission[];
+}
+
+export function PartnersTabs({ permissions }: PartnersTabsProps) {
   const pathname = usePathname();
+  const visibleTabs = TABS.filter((tab) => {
+    const requiredPermission = getRequiredPartnerPermission(tab.href);
+    return requiredPermission === null || permissions.includes(requiredPermission);
+  });
 
   return (
     <nav
       aria-label="Secciones de Partners"
       className="flex overflow-x-auto border-b border-border bg-background px-8"
     >
-      {TABS.map((tab) => {
+      {visibleTabs.map((tab) => {
         const isActive = pathname === tab.href;
         return (
           <Link

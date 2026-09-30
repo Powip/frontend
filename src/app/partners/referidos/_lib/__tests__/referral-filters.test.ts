@@ -4,9 +4,10 @@
  * Comportamiento verificado:
  * 1. "all" devuelve la lista completa sin modificarla.
  * 2. "pagando" devuelve solo los referidos con status "pagando".
- * 3. "sin_activar" devuelve los que están en "correo_enviado" o "cuenta_creada".
- * 4. "sin_pago" devuelve los que están en "activo_sin_pago" o "en_revision".
+ * 3. "sin_activar" devuelve los que están en "registrado", "en_revision", "correo_enviado" o "cuenta_creada".
+ * 4. "sin_pago" devuelve solo los que están en "activo_sin_pago".
  * 5. Un filtro que no matchea a nadie devuelve un array vacío, no undefined ni error.
+ * 6. "desconocido" solo aparece en "all".
  */
 
 import { filterReferrals } from "../referral-filters";
@@ -33,6 +34,8 @@ const REFERRALS: PartnerReferral[] = [
   makeReferral({ id: "4", status: "activo_sin_pago" }),
   makeReferral({ id: "5", status: "en_revision" }),
   makeReferral({ id: "6", status: "cancelado" }),
+  makeReferral({ id: "7", status: "registrado" }),
+  makeReferral({ id: "8", status: "desconocido" }),
 ];
 
 describe("filterReferrals", () => {
@@ -45,14 +48,20 @@ describe("filterReferrals", () => {
     expect(result.map((r) => r.id)).toEqual(["1"]);
   });
 
-  it('"sin_activar" devuelve correo_enviado y cuenta_creada', () => {
+  it('"sin_activar" devuelve registrado, en_revision, correo_enviado y cuenta_creada', () => {
     const result = filterReferrals(REFERRALS, "sin_activar");
-    expect(result.map((r) => r.id).sort()).toEqual(["2", "3"]);
+    expect(result.map((r) => r.id).sort()).toEqual(["2", "3", "5", "7"]);
   });
 
-  it('"sin_pago" devuelve activo_sin_pago y en_revision', () => {
+  it('"sin_pago" devuelve solo activo_sin_pago', () => {
     const result = filterReferrals(REFERRALS, "sin_pago");
-    expect(result.map((r) => r.id).sort()).toEqual(["4", "5"]);
+    expect(result.map((r) => r.id)).toEqual(["4"]);
+  });
+
+  it('"desconocido" solo aparece en "all"', () => {
+    for (const filter of ["pagando", "sin_activar", "sin_pago"] as const) {
+      expect(filterReferrals(REFERRALS, filter).some((r) => r.status === "desconocido")).toBe(false);
+    }
   });
 
   it("un filtro sin coincidencias devuelve un array vacío", () => {

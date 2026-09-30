@@ -1,71 +1,59 @@
-/**
- * Tests: registerReferral
- *
- * Comportamiento verificado:
- * 1. Resuelve con un PartnerReferral nuevo, origen "manual" y status "correo_enviado".
- * 2. El nombre del negocio y el plan elegido quedan reflejados en el resultado.
- * 3. Las comisiones del referido nuevo son null (todavía no generó ninguna).
- * 4. Cada referido registrado tiene un id distinto.
- */
-
+import { registerPartnerReferralApi } from "../../api/partner-referrals.api";
 import { registerReferral } from "../register-referral";
-import { resetPartnerReferralsStore } from "../../mocks/partner-referrals.store";
+
+jest.mock("../../api/partner-referrals.api", () => ({
+  registerPartnerReferralApi: jest.fn(),
+}));
+
+const mockRegisterPartnerReferralApi = jest.mocked(registerPartnerReferralApi);
 
 describe("registerReferral", () => {
   beforeEach(() => {
-    resetPartnerReferralsStore();
+    mockRegisterPartnerReferralApi.mockReset();
+    mockRegisterPartnerReferralApi.mockResolvedValue({
+      id: "77777777-7777-4777-8777-777777777777",
+      origin: "MANUAL",
+      state: "UNDER_REVIEW",
+      capturedAt: "2026-09-24T15:00:00Z",
+      expiresAt: "2026-11-23T15:00:00Z",
+    });
   });
 
-  it("crea un referido con origen manual y status correo_enviado", async () => {
+  it("envía el DTO del contrato y la Idempotency-Key recibida", async () => {
+    await registerReferral({
+      values: { businessName: "Café Norte", email: "cafe@norte.com", phone: "+51 999 111 222" },
+      idempotencyKey: "key-abc",
+    });
+
+    expect(mockRegisterPartnerReferralApi).toHaveBeenCalledWith(
+      { businessName: "Café Norte", email: "cafe@norte.com", phone: "+51999111222" },
+      "key-abc",
+    );
+  });
+
+  it("devuelve el referido registrado en el estado que informa el backend", async () => {
     const result = await registerReferral({
-      businessName: "Café Norte",
-      email: "cafe@norte.com",
-      phone: "",
-      planValue: "standard",
+      values: { businessName: "Café Norte", email: "cafe@norte.com", phone: "" },
+      idempotencyKey: "key-abc",
     });
 
-    expect(result.origin).toBe("manual");
-    expect(result.status).toBe("correo_enviado");
+    expect(result).toEqual({
+      id: "77777777-7777-4777-8777-777777777777",
+      origin: "manual",
+      status: "en_revision",
+      registeredAt: "2026-09-24T15:00:00Z",
+      expiresAt: "2026-11-23T15:00:00Z",
+    });
   });
 
-  it("refleja el nombre del negocio y la etiqueta del plan elegido", async () => {
-    const result = await registerReferral({
-      businessName: "Café Norte",
-      email: "cafe@norte.com",
-      phone: "",
-      planValue: "full",
-    });
+  it("propaga el error del backend", async () => {
+    mockRegisterPartnerReferralApi.mockRejectedValue(new Error("409"));
 
-    expect(result.businessName).toBe("Café Norte");
-    expect(result.planName).toBe("Full");
-  });
-
-  it("las comisiones del referido nuevo son null", async () => {
-    const result = await registerReferral({
-      businessName: "Café Norte",
-      email: "cafe@norte.com",
-      phone: "",
-      planValue: "basic",
-    });
-
-    expect(result.firstMonthCommission).toBeNull();
-    expect(result.recurringCommission).toBeNull();
-  });
-
-  it("cada referido registrado tiene un id distinto", async () => {
-    const first = await registerReferral({
-      businessName: "Negocio A",
-      email: "a@negocio.com",
-      phone: "",
-      planValue: "basic",
-    });
-    const second = await registerReferral({
-      businessName: "Negocio B",
-      email: "b@negocio.com",
-      phone: "",
-      planValue: "basic",
-    });
-
-    expect(first.id).not.toBe(second.id);
+    await expect(
+      registerReferral({
+        values: { businessName: "Café Norte", email: "cafe@norte.com" },
+        idempotencyKey: "key-abc",
+      }),
+    ).rejects.toThrow("409");
   });
 });
