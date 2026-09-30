@@ -88,7 +88,20 @@ export const updateSubscription = async (
   return response.data;
 };
 
+// Cancela en ms-subscription y, si es de Flow, también en Flow (si no, Flow sigue cobrando).
 export const cancelSubscription = async (
+  accessToken: string,
+  subscriptionId: string,
+): Promise<void> => {
+  await axios.put(`${API_SUBS}/subscriptions/${subscriptionId}/cancel`, null, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  });
+};
+
+// Borra la fila sin tocar la pasarela: solo para el rollback de un alta manual recién creada.
+export const deleteSubscription = async (
   accessToken: string,
   subscriptionId: string,
 ): Promise<void> => {
