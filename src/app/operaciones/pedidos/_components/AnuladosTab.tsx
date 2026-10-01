@@ -17,6 +17,7 @@ import {
   SalesFilters,
   emptySalesFilters,
   applyFilters,
+  buildProductFilterOptions,
 } from "@/components/ventas/SalesTableFilters";
 import { getCancellationReasonLabel } from "@/components/modals/CancellationModal";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
@@ -54,6 +55,8 @@ export function AnuladosTab({
     return Array.from(set).sort();
   }, [sales, actions.salesChannels]);
 
+  const productOptions = useMemo(() => buildProductFilterOptions(sales), [sales]);
+
   const filtered = useMemo(
     () => applyFilters(sales, filters),
     [sales, filters],
@@ -81,7 +84,7 @@ export function AnuladosTab({
             size="sm"
             variant="outline"
             className="h-8 gap-1 text-xs"
-            onClick={() => actions.onExportExcel(filtered, "anulados")}
+            onClick={() => actions.onExportExcel(filtered, "anulados", filters.product)}
           >
             <FileSpreadsheet className="h-3.5 w-3.5" />
             Exportar Excel
@@ -99,6 +102,8 @@ export function AnuladosTab({
         showSourceFilter
         showChannelFilter
         availableChannels={channelOptions}
+        showProductFilter
+        availableProducts={productOptions}
       />
 
       <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">

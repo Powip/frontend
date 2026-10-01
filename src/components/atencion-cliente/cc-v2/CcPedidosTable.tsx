@@ -1,6 +1,7 @@
 "use client";
 
 import { FileText, MessageCircle, DollarSign, AlertTriangle, UserPen, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -17,6 +18,7 @@ import SendToEvaButton from "@/components/eva/SendToEvaButton";
 import { isEvaCourier } from "@/utils/courierNormalizer";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import { resolveStoreName, getPedidoMontos, getUpsellCount, isDniFaltante } from "./ccPedidoFields";
 
 /* ---------- Sub-estado chip ---------- */
 const SUB_ESTADO_STYLES: Record<SubEstadoCc, { label: string; cls: string }> = {
@@ -43,37 +45,6 @@ const CANAL_COLORS: Record<string, string> = {
   whatsapp_manual:    "bg-green-100 text-green-700",
   carrito_abandonado: "bg-purple-100 text-purple-700",
 };
-
-function resolveStoreName(order: OrderHeader): string | null {
-  const src = order.externalSource?.toLowerCase() ?? "";
-
-  if (src === "shopify" || src.includes("shopify")) {
-    const raw = order.externalData;
-    if (!raw) return null;
-
-    const parsed: any =
-      typeof raw === "string"
-        ? (() => { try { return JSON.parse(raw); } catch { return null; } })()
-        : raw;
-    if (!parsed) return null;
-
-    const vendor = parsed?.line_items?.[0]?.vendor;
-    if (vendor && String(vendor).trim()) return String(vendor).trim().toUpperCase();
-
-    const statusUrl = parsed?.order_status_url;
-    if (statusUrl) {
-      try {
-        const host = new URL(String(statusUrl)).hostname.replace(/^www\./, "").split(".")[0];
-        if (host) return host.toUpperCase();
-      } catch { /* URL malformada */ }
-    }
-    return null;
-  }
-
-  if (src === "google_sheets") return "SHEETS";
-  if (src) return src.toUpperCase();
-  return null;
-}
 
 function IntentoDots({ intentos, max = 3 }: { intentos: number; max?: number }) {
   return (
@@ -104,6 +75,8 @@ interface Props {
   totalPages?: number;
   total?: number;
   onPageChange?: (page: number) => void;
+  /** Contenido de la fila vacía (p. ej. "sin resultados" de una búsqueda). */
+  emptyMessage?: ReactNode;
 }
 
 export function CcPedidosTable({
@@ -122,6 +95,7 @@ export function CcPedidosTable({
   totalPages = 1,
   total,
   onPageChange,
+  emptyMessage = "No hay pedidos en esta categoría",
 }: Props) {
   const showAdelanto = tipoGestion === "cod";
   const showIntentos = tipoGestion === "cod" || tipoGestion === "carrito";
@@ -167,11 +141,7 @@ export function CcPedidosTable({
           {data.map((order) => {
             const clientName = order.customer?.fullName ?? "—";
             const phone = order.customer?.phoneNumber ?? "—";
-            const grandTotal = Number(order.grandTotal ?? 0);
-            const totalPaid = (order.payments ?? [])
-              .filter((p) => p.status === "PAID")
-              .reduce((s, p) => s + Number(p.amount), 0);
-            const porCobrar = Math.max(grandTotal - totalPaid, 0);
+            const { grandTotal, totalPaid, porCobrar } = getPedidoMontos(order);
 
             const subEstado = order.subEstadoCc;
             const subStyle = subEstado ? SUB_ESTADO_STYLES[subEstado] : null;
@@ -179,7 +149,7 @@ export function CcPedidosTable({
               ? (CANAL_COLORS[order.canalOrigen] ?? "bg-gray-100 text-gray-600")
               : "bg-gray-100 text-gray-600";
 
-            const dniFaltante = !order.datosCompletos && !order.dniCliente;
+            const dniFaltante = isDniFaltante(order);
 
             return (
               <TableRow key={order.id}>
@@ -305,9 +275,7 @@ export function CcPedidosTable({
                 {/* Upsell */}
                 <TableCell className="text-center">
                   {(() => {
-                    const count = (order.items ?? [])
-                      .filter((i) => i.isPromoItem)
-                      .reduce((s, i) => s + (i.quantity ?? 0), 0);
+                    const count = getUpsellCount(order);
                     return count > 0 ? (
                       <span className="text-[11px] font-bold text-orange-600 bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800 px-2 py-0.5 rounded-full">
                         +{count}
@@ -389,7 +357,7 @@ export function CcPedidosTable({
           {data.length === 0 && (
             <TableRow>
               <TableCell colSpan={19} className="text-center text-gray-400 dark:text-slate-500 py-8 text-sm">
-                No hay pedidos en esta categoría
+                {emptyMessage}
               </TableCell>
             </TableRow>
           )}

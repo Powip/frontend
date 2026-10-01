@@ -47,6 +47,7 @@ import {
   SalesFilters,
   emptySalesFilters,
   applyFilters,
+  buildProductFilterOptions,
 } from "@/components/ventas/SalesTableFilters";
 import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
@@ -60,9 +61,11 @@ import {
   money,
   saleDayKey,
   saleSource,
+  splitSelectionByFilter,
 } from "./types";
 import {
   CallStatusBadge,
+  HiddenSelectionNotice,
   PaymentButton,
   ProductThumbnails,
   RowStatusSelect,
@@ -235,6 +238,8 @@ export function PorDespacharTab({
     return Array.from(set).sort();
   }, [sales, actions.salesChannels]);
 
+  const productOptions = useMemo(() => buildProductFilterOptions(sales), [sales]);
+
   // Cuántos pedidos salen cada día — base del pronóstico Y del calendario mensual.
   const dayCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -337,6 +342,8 @@ export function PorDespacharTab({
   // filtro de pipeline silenciosamente descartaría lo seleccionado en otra
   // vista al generar guía o hacer cualquier acción masiva.
   const selectedSales = sales.filter((s) => selectedIds.has(s.id));
+  // Exportar sí respeta los filtros actuales: solo la parte visible de la selección.
+  const exportSelection = splitSelectionByFilter(selectedSales, filtered);
   const bulkStatuses = useMemo(
     () => computeBulkAvailableStatuses(selectedSales),
     [selectedSales],
@@ -572,6 +579,8 @@ export function PorDespacharTab({
         availableCouriers={actions.apiCouriers}
         availableStatuses={statusOptions}
         availableChannels={channelOptions}
+        showProductFilter
+        availableProducts={productOptions}
       />
 
       {noLlamadosEnSeleccion > 0 && (
@@ -683,14 +692,20 @@ export function PorDespacharTab({
               size="sm"
               variant="outline"
               className="h-8 gap-1 text-xs"
+              disabled={exportSelection.visible.length === 0}
               onClick={() =>
-                actions.onExportExcel(selectedSales, "por_despachar")
+                actions.onExportExcel(
+                  exportSelection.visible,
+                  "por_despachar",
+                  filters.product,
+                )
               }
             >
               <FileSpreadsheet className="h-3.5 w-3.5" />
-              Exportar Excel
+              Exportar Excel ({exportSelection.visible.length})
             </Button>
           )}
+          {canExport && <HiddenSelectionNotice count={exportSelection.hiddenCount} />}
         </div>
       )}
 

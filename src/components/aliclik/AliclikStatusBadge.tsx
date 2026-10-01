@@ -8,7 +8,7 @@ interface AliclikStatusBadgeProps {
   aliclikSyncedAt?: string | null;
 }
 
-const DISPATCH_STATUS_MAP: Record<string, { label: string; cls: string }> = {
+export const DISPATCH_STATUS_MAP: Record<string, { label: string; cls: string }> = {
   TO_PREPARE:   { label: "Por preparar",  cls: "bg-amber-100 text-amber-700 border-amber-200" },
   IN_TRANSIT:   { label: "En tránsito",   cls: "bg-blue-100 text-blue-700 border-blue-200" },
   DELIVERED:    { label: "Entregado",     cls: "bg-green-100 text-green-700 border-green-200" },

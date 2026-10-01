@@ -336,3 +336,21 @@ export function formatDateTime(dateStr?: string | null): string {
     month: "short",
   });
 }
+
+/**
+ * Aviso junto a "Exportar Excel" cuando parte de la selección no cumple los
+ * filtros actuales — esos pedidos siguen seleccionados (para acciones
+ * masivas) pero no se exportan.
+ */
+export function HiddenSelectionNotice({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      role="status"
+      className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+    >
+      <AlertTriangle className="h-3 w-3" />
+      {count} seleccionado(s) oculto(s) por los filtros — no se exportan
+    </span>
+  );
+}

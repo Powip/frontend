@@ -1,6 +1,8 @@
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import type { OpsPermission } from "@/config/operationsPermissions";
 import { ORDER_STATUS_FLOW, getStatusLabel } from "@/utils/domain/orders-status-flow";
+import { formatProductsForExport, type SaleExportData } from "@/utils/exportSalesExcel";
+import { countProductUnits } from "@/components/ventas/SalesTableFilters";
 
 /* -----------------------------------------------------------------------
    Modelo de fila para las tablas de Pedidos.
@@ -58,8 +60,11 @@ export interface Sale {
 }
 
 export interface SaleItem {
+  /** Identificador inequívoco del producto (filtro por producto). */
+  productVariantId: string | null;
   productName: string;
   sku: string;
+  attributes: Record<string, string>;
   quantity: number;
   imageUrl?: string | null;
   /** = subtotal del ítem. No hay COGS real en el modelo de datos (OrderItem
@@ -130,13 +135,49 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     createdAt: order.created_at,
     updatedAt: order.updated_at,
     items: (order.items ?? []).map((it) => ({
+      productVariantId: it.productVariantId ?? null,
       productName: it.productName,
       sku: it.sku,
+      attributes: it.attributes ?? {},
       quantity: it.quantity,
       imageUrl: it.imageUrl ?? null,
       subtotal: Number(it.subtotal || 0),
     })),
   };
+}
+
+/**
+ * Filas del Excel de Pedidos: una por pedido, Total = total de la orden y
+ * "Productos" con todos sus ítems. Con filtro por producto (`productFilter`)
+ * se agregan las unidades de ese producto en cada pedido.
+ */
+export function buildPedidosExportRows(sales: Sale[], productFilter?: string): SaleExportData[] {
+  return sales.map((s) => ({
+    orderNumber: s.orderNumber,
+    clientName: s.clientName,
+    phoneNumber: s.phoneNumber,
+    documentType: s.documentType,
+    documentNumber: s.documentNumber,
+    date: s.date,
+    total: s.total,
+    advancePayment: s.advancePayment,
+    pendingPayment: s.pendingPayment,
+    status: s.status,
+    salesRegion: s.salesRegion,
+    province: s.province,
+    city: s.city,
+    district: s.district,
+    zone: s.zone,
+    address: s.address,
+    googleMapsUrl: s.googleMapsUrl,
+    paymentMethod: s.paymentMethod,
+    deliveryType: s.deliveryType,
+    courier: s.courier,
+    sellerName: s.sellerName,
+    guideNumber: s.guideNumber,
+    products: formatProductsForExport(s.items),
+    ...(productFilter && { filteredProductUnits: countProductUnits(s.items, productFilter) }),
+  }));
 }
 
 /**
@@ -253,13 +294,28 @@ export interface PedidosActions {
   onBulkWhatsApp: (selected: Sale[]) => void;
   onBulkPrint: (selected: Sale[]) => void;
   onCopySelected: (selected: Sale[]) => void;
-  onExportExcel: (selected: Sale[], tabName: string) => void;
+  /** `productFilter` = clave del filtro Producto activo ("" = sin filtro) → agrega la columna de unidades. */
+  onExportExcel: (selected: Sale[], tabName: string, productFilter?: string) => void;
   onWhatsApp: (sale: Sale) => void;
   onEdit: (sale: Sale) => void;
   onSyncCourier: () => void;
   onReturnToStock: (sale: Sale) => void;
   onMarkAsLoss: (sale: Sale) => void;
   companyId?: string;
+}
+
+/**
+ * La selección persiste entre vistas/filtros (para no perderla en acciones
+ * masivas), pero exportar debe respetar lo que se ve: `visible` son los
+ * seleccionados que cumplen los filtros actuales; `hiddenCount`, los que no.
+ */
+export function splitSelectionByFilter(
+  selected: Sale[],
+  filtered: Sale[],
+): { visible: Sale[]; hiddenCount: number } {
+  const filteredIds = new Set(filtered.map((s) => s.id));
+  const visible = selected.filter((s) => filteredIds.has(s.id));
+  return { visible, hiddenCount: selected.length - visible.length };
 }
 
 /**

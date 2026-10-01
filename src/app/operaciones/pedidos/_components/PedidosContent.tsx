@@ -25,7 +25,7 @@ import { fetchCouriers } from "@/services/courierService";
 import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 import { reassignSeller } from "@/services/atencionClienteService";
 import { getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-status-flow";
-import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
+import { exportSalesToExcel } from "@/utils/exportSalesExcel";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 
 import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
@@ -43,7 +43,7 @@ import { EnCaminoTab } from "./EnCaminoTab";
 import { AtencionTab } from "./AtencionTab";
 import { HistorialTab } from "./HistorialTab";
 import { AnuladosTab } from "./AnuladosTab";
-import { PedidosActions, Sale, mapOrderToSale, openWhatsApp, formatSalesForClipboard } from "./types";
+import { PedidosActions, Sale, buildPedidosExportRows, mapOrderToSale, openWhatsApp, formatSalesForClipboard } from "./types";
 
 const API_VENTAS = process.env.NEXT_PUBLIC_API_VENTAS;
 const API_COURIER = process.env.NEXT_PUBLIC_API_COURIER;
@@ -550,36 +550,12 @@ export function PedidosContent() {
     toast.success(`${selected.length} pedido(s) copiados`);
   }, []);
 
-  const handleExportExcel = useCallback((selected: Sale[], tabName: string) => {
+  const handleExportExcel = useCallback((selected: Sale[], tabName: string, productFilter?: string) => {
     if (selected.length === 0) {
       toast.warning("No hay datos para exportar");
       return;
     }
-    const exportData: SaleExportData[] = selected.map((s) => ({
-      orderNumber: s.orderNumber,
-      clientName: s.clientName,
-      phoneNumber: s.phoneNumber,
-      documentType: s.documentType,
-      documentNumber: s.documentNumber,
-      date: s.date,
-      total: s.total,
-      advancePayment: s.advancePayment,
-      pendingPayment: s.pendingPayment,
-      status: s.status,
-      salesRegion: s.salesRegion,
-      province: s.province,
-      city: s.city,
-      district: s.district,
-      zone: s.zone,
-      address: s.address,
-      googleMapsUrl: s.googleMapsUrl,
-      paymentMethod: s.paymentMethod,
-      deliveryType: s.deliveryType,
-      courier: s.courier,
-      sellerName: s.sellerName,
-      guideNumber: s.guideNumber,
-    }));
-    exportSalesToExcel(exportData, `operaciones_pedidos_${tabName}`);
+    exportSalesToExcel(buildPedidosExportRows(selected, productFilter), `operaciones_pedidos_${tabName}`);
     toast.success(`Exportados ${selected.length} registros`);
   }, []);
 

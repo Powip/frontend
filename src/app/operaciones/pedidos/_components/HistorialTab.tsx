@@ -17,6 +17,7 @@ import {
   SalesFilters,
   emptySalesFilters,
   applyFilters,
+  buildProductFilterOptions,
 } from "@/components/ventas/SalesTableFilters";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
 import { ITEMS_PER_PAGE, PedidosActions, Sale, money } from "./types";
@@ -48,6 +49,8 @@ export function HistorialTab({
     for (const s of sales) if (s.salesChannel) set.add(s.salesChannel);
     return Array.from(set).sort();
   }, [sales, actions.salesChannels]);
+
+  const productOptions = useMemo(() => buildProductFilterOptions(sales), [sales]);
 
   const byStatus = useMemo(() => {
     if (statusFilter === "SALDO") return sales.filter((s) => s.pendingPayment > 0);
@@ -86,7 +89,7 @@ export function HistorialTab({
           ))}
         </div>
         {canExport && (
-          <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onExportExcel(filtered, "historial")}>
+          <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onExportExcel(filtered, "historial", filters.product)}>
             <FileSpreadsheet className="h-3.5 w-3.5" />
             Exportar Excel
           </Button>
@@ -104,6 +107,8 @@ export function HistorialTab({
         showSourceFilter
         showChannelFilter
         availableChannels={channelOptions}
+        showProductFilter
+        availableProducts={productOptions}
       />
 
       <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">

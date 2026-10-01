@@ -18,6 +18,7 @@ import {
   SalesFilters,
   emptySalesFilters,
   applyFilters,
+  buildProductFilterOptions,
 } from "@/components/ventas/SalesTableFilters";
 import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
 import { OPS_PERMISSIONS } from "@/config/operationsPermissions";
@@ -29,8 +30,9 @@ import {
   computeBulkAvailableStatuses,
   daysSince,
   money,
+  splitSelectionByFilter,
 } from "./types";
-import { DiasBadge, WhatsAppIcon, formatDateTime } from "./shared";
+import { DiasBadge, HiddenSelectionNotice, WhatsAppIcon, formatDateTime } from "./shared";
 
 type ViewMode = "pedido" | "guia";
 
@@ -115,6 +117,8 @@ export function EnCaminoTab({
     return Array.from(set).sort();
   }, [sales, actions.salesChannels]);
 
+  const productOptions = useMemo(() => buildProductFilterOptions(sales), [sales]);
+
   const mas15Dias = useMemo(() => sales.filter((s) => daysSince(s.createdAt) > 15), [sales]);
 
   const byQf = useMemo(() => {
@@ -150,6 +154,8 @@ export function EnCaminoTab({
   // cambiar de filtro/courier/antigüedad descartaría en silencio lo
   // seleccionado en otra vista al hacer una acción masiva.
   const selectedSales = sales.filter((s) => selectedIds.has(s.id));
+  // Exportar sí respeta los filtros actuales: solo la parte visible de la selección.
+  const exportSelection = splitSelectionByFilter(selectedSales, filtered);
   const bulkStatuses = useMemo(() => computeBulkAvailableStatuses(selectedSales), [selectedSales]);
 
   const toggle = (id: string) => {
@@ -252,6 +258,8 @@ export function EnCaminoTab({
         availableCouriers={actions.apiCouriers}
         availableStatuses={statusOptions}
         availableChannels={channelOptions}
+        showProductFilter
+        availableProducts={productOptions}
       />
 
       {mas15Dias.length > 0 && qf !== "mas-15-dias" && (
@@ -289,10 +297,17 @@ export function EnCaminoTab({
                 Copiar
               </Button>
               {actions.can(OPS_PERMISSIONS.EXPORT) && (
-                <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onExportExcel(selectedSales, "en_camino")}>
-                  Exportar Excel
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 gap-1 text-xs"
+                  disabled={exportSelection.visible.length === 0}
+                  onClick={() => actions.onExportExcel(exportSelection.visible, "en_camino", filters.product)}
+                >
+                  Exportar Excel ({exportSelection.visible.length})
                 </Button>
               )}
+              {actions.can(OPS_PERMISSIONS.EXPORT) && <HiddenSelectionNotice count={exportSelection.hiddenCount} />}
             </div>
           )}
 

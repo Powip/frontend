@@ -1,7 +1,8 @@
 "use client";
 
-import { MessageCircle, Copy } from "lucide-react";
+import { MessageCircle, Copy, Search, X, FileDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { AgenteConKpis } from "@/interfaces/IOrder";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { DateRange } from "react-day-picker";
@@ -21,6 +22,12 @@ interface Props {
   canales: string[];
   date?: DateRange | undefined;
   onDateChange?: (date: DateRange | undefined) => void;
+  /** Buscador de clientes (se muestra solo si se pasa onSearchChange). */
+  search?: string;
+  onSearchChange?: (value: string) => void;
+  /** Exportar selección a Excel (se muestra solo si se pasa onExportar). */
+  onExportar?: () => void;
+  exporting?: boolean;
 }
 
 export function CcToolbar({
@@ -36,9 +43,39 @@ export function CcToolbar({
   canales,
   date,
   onDateChange,
+  search = "",
+  onSearchChange,
+  onExportar,
+  exporting,
 }: Props) {
   return (
     <div className="flex items-center gap-2 flex-wrap">
+      {/* Buscador de clientes */}
+      {onSearchChange && (
+        <div className="relative w-[240px]">
+          <Input
+            type="search"
+            placeholder="Buscar cliente, teléfono u orden..."
+            aria-label="Buscar pedidos por cliente, teléfono u orden"
+            value={search}
+            onChange={(e) => onSearchChange(e.target.value)}
+            icon={Search}
+            className="h-[30px] text-xs md:text-xs pr-7 bg-white [&::-webkit-search-cancel-button]:hidden"
+          />
+          {search && (
+            <button
+              type="button"
+              title="Limpiar búsqueda"
+              aria-label="Limpiar búsqueda"
+              onClick={() => onSearchChange("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Filtro Agente */}
       <select
         value={agenteId}
@@ -103,6 +140,20 @@ export function CcToolbar({
         <Copy className="h-3.5 w-3.5" />
         Copiar {selectedCount > 0 && `(${selectedCount})`}
       </Button>
+
+      {onExportar && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-emerald-700 border-emerald-200 hover:bg-emerald-50 text-xs gap-1.5"
+          disabled={selectedCount === 0 || exporting}
+          onClick={onExportar}
+          title={selectedCount === 0 ? "Selecciona pedidos para exportar" : undefined}
+        >
+          <FileDown className="h-3.5 w-3.5" />
+          {exporting ? "Exportando..." : `Exportar Excel${selectedCount > 0 ? ` (${selectedCount})` : ""}`}
+        </Button>
+      )}
     </div>
   );
 }

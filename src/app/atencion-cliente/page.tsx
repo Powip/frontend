@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { DateRange } from "react-day-picker";
 import { useAuth } from "@/contexts/AuthContext";
 import { useOrdersByStore } from "@/hooks/useOrdersByStore";
 import { useIncompleteOrders } from "@/hooks/useIncompleteOrders";
 import { useCcPedidos } from "@/hooks/useCcPedidos";
+import { useCcPedidosAll } from "@/hooks/useCcPedidosAll";
 import { useCcKpis } from "@/hooks/useCcKpis";
 import { OrderHeader, OrderStatus, SubEstadoCc, TipoGestionCC } from "@/interfaces/IOrder";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
@@ -28,6 +29,8 @@ import { CcTabsL2, defaultSubEstado } from "@/components/atencion-cliente/cc-v2/
 import { CcKpiBar } from "@/components/atencion-cliente/cc-v2/CcKpiBar";
 import { CcToolbar, AGENTE_UNASSIGNED } from "@/components/atencion-cliente/cc-v2/CcToolbar";
 import { CcPedidosTable } from "@/components/atencion-cliente/cc-v2/CcPedidosTable";
+import { matchesCcSearch } from "@/components/atencion-cliente/cc-v2/ccPedidoFields";
+import { exportCcPedidosToExcel } from "@/utils/exportCcPedidosExcel";
 import { useAgentes } from "@/hooks/useAgentes";
 import { IncompleteOrdersTab } from "@/components/atencion-cliente/IncompleteOrdersTab";
 
@@ -75,6 +78,15 @@ function mapOrderToLegacySale(order: OrderHeader) {
   };
 }
 
+const CC_PAGE_SIZE = 50;
+
+/** Sub-pestañas de Gestión COD que permiten exportar la selección a Excel. */
+const CC_EXPORT_TABS: Partial<Record<SubEstadoCc, string>> = {
+  contactado: "Contactado",
+  no_contesta: "No contesta",
+  anulado_cc: "Anulados",
+};
+
 /* -------------------------------------------------------
    Page
 ------------------------------------------------------- */
@@ -90,6 +102,8 @@ export default function AtencionClientePage() {
   const [dateFiltro, setDateFiltro] = useState<DateRange | undefined>();
   const [pageCc, setPageCc] = useState(1);
   const [selectedCcIds, setSelectedCcIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState("");
+  const [exportingCc, setExportingCc] = useState(false);
   const [movimientosActive, setMovimientosActive] = useState(false);
   const [cierreDiaActive, setCierreDiaActive] = useState(false);
 
@@ -100,7 +114,7 @@ export default function AtencionClientePage() {
   /* ── CC v2 data ──────────────────────────────────────── */
   const { data: agentes = [], isLoading: agentesLoading } = useAgentes(selectedStoreId);
 
-  const { data: ccResult, isLoading: ccLoading, refetch: refetchCc } = useCcPedidos({
+  const ccFilters = {
     storeId: selectedStoreId ?? undefined,
     tipoGestion: l1,
     subEstado: l2,
@@ -109,18 +123,72 @@ export default function AtencionClientePage() {
     unassigned: agenteFiltro === AGENTE_UNASSIGNED ? true : undefined,
     startDate: dateFiltro?.from?.toISOString(),
     endDate: dateFiltro?.to?.toISOString(),
+  };
+
+  const { data: ccResult, isLoading: ccPageLoading, refetch: refetchCcPage } = useCcPedidos({
+    ...ccFilters,
     page: pageCc,
-    limit: 50,
+    limit: CC_PAGE_SIZE,
   });
 
+  // Búsqueda: el endpoint no filtra por texto, así que con búsqueda activa se
+  // traen todos los pedidos de la pestaña (mismos filtros) y se filtra en cliente.
+  const isSearching = search.trim().length > 0;
+  const {
+    data: ccAllResult,
+    isLoading: ccAllLoading,
+    isError: ccAllError,
+    refetch: refetchCcAll,
+  } = useCcPedidosAll(ccFilters, isSearching);
+
   const ccPedidos = ccResult?.data ?? [];
-  const ccTotalPages = ccResult?.totalPages ?? 1;
-  const ccTotal = ccResult?.total;
+
+  const ccSearchMatches = useMemo(
+    () => (isSearching ? (ccAllResult?.data ?? []).filter((o) => matchesCcSearch(o, search)) : []),
+    [isSearching, ccAllResult, search],
+  );
+
+  const ccSearchPages = Math.max(1, Math.ceil(ccSearchMatches.length / CC_PAGE_SIZE));
+  // Si un refresco reduce los resultados, no quedarse en una página vacía.
+  const ccSearchPage = Math.min(pageCc, ccSearchPages);
+
+  const ccRows = useMemo(
+    () =>
+      isSearching
+        ? ccSearchMatches.slice((ccSearchPage - 1) * CC_PAGE_SIZE, ccSearchPage * CC_PAGE_SIZE)
+        : (ccResult?.data ?? []),
+    [isSearching, ccSearchMatches, ccSearchPage, ccResult],
+  );
+  const ccCurrentPage = isSearching ? ccSearchPage : pageCc;
+  const ccTotalPages = isSearching ? ccSearchPages : (ccResult?.totalPages ?? 1);
+  const ccTotal = isSearching ? ccSearchMatches.length : ccResult?.total;
+  const ccLoading = isSearching ? ccAllLoading : ccPageLoading;
+
+  function refetchCc() {
+    refetchCcPage();
+    if (isSearching) refetchCcAll();
+  }
 
   // Resetear página cuando cambia cualquier filtro (excepto la propia página)
   useEffect(() => {
     setPageCc(1);
-  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro]);
+  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro, search]);
+
+  function handleSearchChange(value: string) {
+    setSearch(value);
+    setPageCc(1); // en el mismo render: no mostrar la página N de la búsqueda anterior
+  }
+
+  // Pedidos seleccionados por id: permite exportar pedidos seleccionados en
+  // otras páginas de la misma pestaña (ccRows solo tiene la página visible).
+  const selectedOrdersCache = useRef<Map<string, { order: OrderHeader; page: number }>>(new Map());
+
+  // Limpiar la selección al cambiar de pestaña, filtro o búsqueda: evita que
+  // pedidos ya no visibles (otra pestaña/filtro) terminen en WA, Copiar o Exportar.
+  useEffect(() => {
+    setSelectedCcIds(new Set());
+    selectedOrdersCache.current = new Map();
+  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro, search]);
 
   // KPIs por tab para contadores globales (independiente de la tab activa)
   const { data: kpisCod }     = useCcKpis("cod",     selectedStoreId);
@@ -220,7 +288,14 @@ export default function AtencionClientePage() {
   }
 
   /* ── CC table handlers ───────────────────────────────── */
+  function cacheSelectedOrders(ids: string[]) {
+    ccRows.forEach((o) => {
+      if (ids.includes(o.id)) selectedOrdersCache.current.set(o.id, { order: o, page: ccCurrentPage });
+    });
+  }
+
   function handleToggleCc(id: string) {
+    cacheSelectedOrders([id]);
     setSelectedCcIds((prev) => {
       const next = new Set(prev);
       next.has(id) ? next.delete(id) : next.add(id);
@@ -228,9 +303,64 @@ export default function AtencionClientePage() {
     });
   }
 
+  /** El checkbox de cabecera marca/desmarca solo la página visible y conserva
+   *  lo seleccionado en otras páginas de la misma pestaña. */
   function handleToggleAllCc(ids: string[]) {
-    const all = ids.every((id) => selectedCcIds.has(id));
-    setSelectedCcIds(all ? new Set() : new Set(ids));
+    cacheSelectedOrders(ids);
+    setSelectedCcIds((prev) => {
+      const next = new Set(prev);
+      const all = ids.every((id) => prev.has(id));
+      ids.forEach((id) => (all ? next.delete(id) : next.add(id)));
+      return next;
+    });
+  }
+
+  /**
+   * Selección efectiva (la que usan WA Masivo, Copiar y Exportar, y la que
+   * muestran sus contadores). Toma la versión más reciente de cada pedido y
+   * descarta los que ya no pertenecen a la pestaña activa:
+   *  - con búsqueda, el conjunto completo de la pestaña es la referencia;
+   *  - sin búsqueda, la página visible lo es para los pedidos seleccionados en
+   *    ella (si un refresco los sacó de la pestaña, dejan de contarse);
+   *  - los de otras páginas usan la copia tomada al seleccionarlos.
+   */
+  const selectedCcOrders = (() => {
+    if (selectedCcIds.size === 0) return [];
+    const poolLoaded = isSearching && !!ccAllResult && !ccAllResult.truncated;
+    const pageLoaded = !isSearching && !!ccResult;
+    const fresh = new Map<string, OrderHeader>();
+    if (isSearching) (ccAllResult?.data ?? []).forEach((o) => fresh.set(o.id, o));
+    ccRows.forEach((o) => fresh.set(o.id, o));
+
+    return [...selectedCcIds]
+      .map((id) => {
+        const current = fresh.get(id);
+        if (current) return current;
+        const cached = selectedOrdersCache.current.get(id);
+        if (!cached || poolLoaded) return undefined;
+        if (pageLoaded && cached.page === pageCc) return undefined;
+        return cached.order;
+      })
+      .filter((o): o is OrderHeader => !!o && o.subEstadoCc === l2);
+  })();
+
+  const exportTabLabel = l1 === "cod" ? CC_EXPORT_TABS[l2] : undefined;
+
+  async function handleExportarCc() {
+    if (!exportTabLabel) return;
+    const selected = selectedCcOrders;
+    if (!selected.length) { toast.warning("No hay pedidos seleccionados en esta pestaña"); return; }
+
+    setExportingCc(true);
+    try {
+      await exportCcPedidosToExcel(selected, exportTabLabel);
+      toast.success(`${selected.length} pedido(s) exportados`);
+    } catch (err) {
+      console.error("Error al exportar pedidos CC:", err);
+      toast.error("No se pudo generar el Excel");
+    } finally {
+      setExportingCc(false);
+    }
   }
 
   function handleWhatsApp(order: OrderHeader) {
@@ -241,7 +371,7 @@ export default function AtencionClientePage() {
   }
 
   function handleWhatsAppMasivo() {
-    const selected = ccPedidos.filter((o) => selectedCcIds.has(o.id));
+    const selected = selectedCcOrders;
     if (!selected.length) { toast.warning("No hay pedidos seleccionados"); return; }
     setSelectedCcIds(new Set());
     toast.info(`Abriendo ${selected.length} pestañas de WhatsApp...`);
@@ -249,7 +379,7 @@ export default function AtencionClientePage() {
   }
 
   async function handleCopiarCc() {
-    const selected = ccPedidos.filter((o) => selectedCcIds.has(o.id));
+    const selected = selectedCcOrders;
     if (!selected.length) { toast.warning("No hay pedidos seleccionados"); return; }
     const text = selected
       .map((o) =>
@@ -301,6 +431,7 @@ export default function AtencionClientePage() {
     setCanalFiltro("");
     setAgenteFiltro("");
     setDateFiltro(undefined);
+    setSearch("");
     setSelectedCcIds(new Set());
     setMovimientosActive(false);
     setCierreDiaActive(false);
@@ -386,20 +517,46 @@ export default function AtencionClientePage() {
                     agentesLoading={agentesLoading}
                     onAgenteChange={setAgenteFiltro}
                     onCanalChange={setCanalFiltro}
-                    selectedCount={selectedCcIds.size}
+                    selectedCount={selectedCcOrders.length}
                     onWhatsAppMasivo={handleWhatsAppMasivo}
                     onCopiar={handleCopiarCc}
                     canales={canaresUnicos}
                     date={dateFiltro}
                     onDateChange={setDateFiltro}
+                    search={l1 === "cod" ? search : undefined}
+                    onSearchChange={l1 === "cod" ? handleSearchChange : undefined}
+                    onExportar={exportTabLabel ? handleExportarCc : undefined}
+                    exporting={exportingCc}
                   />
+                  {isSearching && ccAllResult?.truncated && (
+                    <p role="status" className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                      Resultados incompletos: la búsqueda cubre {ccAllResult.data.length} de {ccAllResult.total} pedidos de esta pestaña.
+                      Acota con los filtros de fecha, agente o canal para buscar en el resto.
+                    </p>
+                  )}
                   {ccLoading ? (
                     <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center text-gray-400 dark:text-slate-500 text-sm">
-                      Cargando pedidos...
+                      {isSearching ? "Buscando pedidos..." : "Cargando pedidos..."}
                     </div>
                   ) : (
                     <CcPedidosTable
-                      data={ccPedidos}
+                      data={ccRows}
+                      emptyMessage={
+                        isSearching && ccAllError ? (
+                          "No se pudieron cargar los pedidos para la búsqueda. Intenta nuevamente."
+                        ) : isSearching ? (
+                          <span>
+                            No se encontraron pedidos para “{search.trim()}” con los filtros actuales.{" "}
+                            <button
+                              type="button"
+                              className="underline text-blue-600 hover:text-blue-700"
+                              onClick={() => handleSearchChange("")}
+                            >
+                              Limpiar búsqueda
+                            </button>
+                          </span>
+                        ) : undefined
+                      }
                       tipoGestion={l1}
                       selectedIds={selectedCcIds}
                       onToggle={handleToggleCc}
@@ -412,7 +569,7 @@ export default function AtencionClientePage() {
                         setReassignSellerModalOpen(true);
                       }}
                       onRecuperar={handleRecuperar}
-                      page={pageCc}
+                      page={ccCurrentPage}
                       totalPages={ccTotalPages}
                       total={ccTotal}
                       onPageChange={setPageCc}

@@ -28,6 +28,34 @@ export interface SaleExportData {
   sellerName?: string | null;
   guideNumber?: string | null;
   products?: string;
+  /** Solo con filtro por producto: unidades de ese producto en la orden. */
+  filteredProductUnits?: number;
+}
+
+export const FILTERED_PRODUCT_UNITS_HEADER = "Unidades del producto filtrado";
+
+/**
+ * Texto de la columna "Productos": todos los ítems de la orden como
+ * "Nombre (atributos) xCant", separados por "; " (los nombres pueden traer
+ * comas). Una fila por orden — no se desglosa en filas por ítem.
+ */
+export function formatProductsForExport(
+  items:
+    | {
+        productName: string;
+        quantity: number;
+        attributes?: Record<string, string> | null;
+      }[]
+    | null
+    | undefined,
+): string {
+  if (!items || items.length === 0) return "";
+  return items
+    .map((it) => {
+      const attrs = Object.values(it.attributes ?? {}).filter(Boolean).join(" / ");
+      return `${it.productName}${attrs ? ` (${attrs})` : ""} x${it.quantity}`;
+    })
+    .join("; ");
 }
 
 /**
@@ -44,6 +72,10 @@ export function exportSalesToExcel(
     return;
   }
 
+  // La columna de unidades aparece solo si el export viene con filtro por
+  // producto (todas las filas traen el campo); el Total sigue siendo el de la orden.
+  const withUnits = sales.some((s) => s.filteredProductUnits !== undefined);
+
   const exportData = sales.map((s, index) => ({
     "N°": index + 1,
     Orden: s.orderNumber,
@@ -53,6 +85,9 @@ export function exportSalesToExcel(
     "N° Documento": s.documentNumber || "-",
     Fecha: s.date,
     Productos: s.products || "-",
+    ...(withUnits && {
+      [FILTERED_PRODUCT_UNITS_HEADER]: s.filteredProductUnits ?? 0,
+    }),
     Total: s.total.toFixed(2),
     Adelanto: s.advancePayment.toFixed(2),
     "Por Cobrar": s.pendingPayment.toFixed(2),

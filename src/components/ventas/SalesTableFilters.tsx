@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,8 @@ export interface SalesFilters {
   source: "" | "shopify" | "google_sheets" | "manual";
   status: OrderStatus | "";
   salesChannel: string;
+  /** Clave de producto (ver getProductFilterKey) — "" = todos. */
+  product: string;
 }
 
 export const emptySalesFilters: SalesFilters = {
@@ -38,7 +40,82 @@ export const emptySalesFilters: SalesFilters = {
   source: "",
   status: "",
   salesChannel: "",
+  product: "",
 };
+
+/** Ítem mínimo para filtrar por producto — lo cumplen OrderItem (Ventas) y SaleItem (Pedidos). */
+export interface FilterableOrderItem {
+  productVariantId?: string | null;
+  sku?: string | null;
+  productName: string;
+  attributes?: Record<string, string> | null;
+}
+
+export interface ProductFilterOption {
+  value: string;
+  label: string;
+}
+
+/**
+ * Identificador inequívoco del producto de un ítem: el `productVariantId`
+ * (el nombre no sirve — es un snapshot editable y dos variantes comparten
+ * nombre). Solo si falta se usa el SKU, con prefijo para que nunca choque
+ * con un id. Sin ninguno de los dos el ítem no es filtrable.
+ */
+export function getProductFilterKey(item: FilterableOrderItem): string | null {
+  if (item.productVariantId) return item.productVariantId;
+  if (item.sku) return `sku:${item.sku}`;
+  return null;
+}
+
+/** Unidades del producto (clave de getProductFilterKey) en una orden: suma de quantity de sus ítems. */
+export function countProductUnits(
+  items: (FilterableOrderItem & { quantity: number })[] | null | undefined,
+  productKey: string,
+): number {
+  return (items ?? [])
+    .filter((it) => getProductFilterKey(it) === productKey)
+    .reduce((sum, it) => sum + Number(it.quantity || 0), 0);
+}
+
+function productOptionLabel(item: FilterableOrderItem): string {
+  const attrs = Object.values(item.attributes ?? {}).filter(Boolean).join(" / ");
+  return [
+    item.productName,
+    attrs ? `(${attrs})` : "",
+    item.sku ? `· SKU ${item.sku}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * Opciones del filtro "Producto" a partir de los ítems de las órdenes de la
+ * vista (antes de aplicar los demás filtros, así la opción elegida no
+ * desaparece al combinarla). Si dos claves distintas quedan con el mismo
+ * texto, se les agrega un sufijo del id para poder distinguirlas.
+ */
+export function buildProductFilterOptions(
+  orders: { items?: FilterableOrderItem[] | null }[],
+): ProductFilterOption[] {
+  const labels = new Map<string, string>();
+  for (const order of orders) {
+    for (const item of order.items ?? []) {
+      const key = getProductFilterKey(item);
+      if (key && !labels.has(key)) labels.set(key, productOptionLabel(item));
+    }
+  }
+
+  const labelCount = new Map<string, number>();
+  for (const label of labels.values()) {
+    labelCount.set(label, (labelCount.get(label) ?? 0) + 1);
+  }
+
+  return Array.from(labels, ([value, label]) => ({
+    value,
+    label: (labelCount.get(label) ?? 0) > 1 ? `${label} [${value.slice(-6)}]` : label,
+  })).sort((a, b) => a.label.localeCompare(b.label, "es"));
+}
 
 interface SalesTableFiltersProps {
   filters: SalesFilters;
@@ -50,11 +127,14 @@ interface SalesTableFiltersProps {
   showSourceFilter?: boolean;
   showStatusFilter?: boolean;
   showChannelFilter?: boolean;
+  showProductFilter?: boolean;
   availableCouriers?: string[];
   /** Estados reales presentes en la vista actual — evita ofrecer opciones que no matchean nada. */
   availableStatuses?: OrderStatus[];
   /** Canales de venta de la empresa (Configuración › Tiendas) + los que ya aparecen en los datos. */
   availableChannels?: string[];
+  /** Productos presentes en la vista actual (ver buildProductFilterOptions). */
+  availableProducts?: ProductFilterOption[];
 }
 
 /** "TIENDA_FISICA" → "TIENDA FISICA" — mismo criterio que el <select> de Canal de venta en Registrar Venta. */
@@ -129,11 +209,14 @@ export function SalesTableFilters({
   showSourceFilter = true,
   showStatusFilter = false,
   showChannelFilter = false,
+  showProductFilter = false,
   availableCouriers = [],
   availableStatuses = [],
   availableChannels = [],
+  availableProducts = [],
 }: SalesTableFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  const productSelectId = useId();
 
   const updateFilter = <K extends keyof SalesFilters>(
     key: K,
@@ -224,6 +307,28 @@ export function SalesTableFilters({
                 className="h-8 text-sm"
               />
             </div>
+
+            {/* Producto */}
+            {showProductFilter && (
+              <div className="space-y-1 col-span-2">
+                <Label htmlFor={productSelectId} className="text-xs">
+                  Producto
+                </Label>
+                <select
+                  id={productSelectId}
+                  className="w-full h-8 text-sm border rounded-md px-2 bg-background text-foreground"
+                  value={filters.product}
+                  onChange={(e) => updateFilter("product", e.target.value)}
+                >
+                  <option value="">Todos</option>
+                  {availableProducts.map((p) => (
+                    <option key={p.value} value={p.value}>
+                      {p.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             {/* Método de pago */}
             <div className="space-y-1">
@@ -439,6 +544,7 @@ export function applyFilters<T extends {
   externalSource?: string | null;
   status?: OrderStatus;
   salesChannel?: string | null;
+  items?: FilterableOrderItem[] | null;
 }>(data: T[], filters: SalesFilters): T[] {
   return data.filter((item) => {
     // Search filter (cliente, teléfono, N° orden)
@@ -515,6 +621,14 @@ export function applyFilters<T extends {
 
     // Sales channel filter
     if (filters.salesChannel && item.salesChannel !== filters.salesChannel) {
+      return false;
+    }
+
+    // Product filter — la orden entra si alguno de sus ítems es el producto
+    if (
+      filters.product &&
+      !(item.items ?? []).some((it) => getProductFilterKey(it) === filters.product)
+    ) {
       return false;
     }
 

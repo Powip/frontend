@@ -25,6 +25,7 @@ import {
   SalesFilters,
   emptySalesFilters,
   applyFilters,
+  buildProductFilterOptions,
 } from "@/components/ventas/SalesTableFilters";
 import {
   ITEMS_PER_PAGE,
@@ -111,6 +112,8 @@ export function AtencionTab({
     for (const s of sales) if (s.salesChannel) set.add(s.salesChannel);
     return Array.from(set).sort();
   }, [sales, actions.salesChannels]);
+
+  const productOptions = useMemo(() => buildProductFilterOptions(sales), [sales]);
 
   const motivoOptions = useMemo(() => {
     if (subView !== "trabados") return [];
@@ -236,6 +239,8 @@ export function AtencionTab({
         availableCouriers={actions.apiCouriers}
         availableStatuses={statusOptions}
         availableChannels={channelOptions}
+        showProductFilter
+        availableProducts={productOptions}
       />
 
       {subView !== "devoluciones" && selectedSales.length > 0 && (

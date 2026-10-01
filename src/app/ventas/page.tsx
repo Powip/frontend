@@ -65,6 +65,8 @@ import {
   SalesFilters,
   emptySalesFilters,
   applyFilters,
+  buildProductFilterOptions,
+  countProductUnits,
 } from "@/components/ventas/SalesTableFilters";
 import { Copy, MessageSquare, DollarSign } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -91,7 +93,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { exportSalesToExcel, SaleExportData } from "@/utils/exportSalesExcel";
+import {
+  exportSalesToExcel,
+  formatProductsForExport,
+  SaleExportData,
+} from "@/utils/exportSalesExcel";
 import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
 import type { BulkExtraAction } from "@/components/ventas/BulkStatusSelect";
 import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
@@ -611,7 +617,11 @@ Estado: ${sale.status}
   };
 
   // Exportar a Excel (XLSX)
-  const handleExportExcel = (salesList: Sale[], tabName: string) => {
+  const handleExportExcel = (
+    salesList: Sale[],
+    tabName: string,
+    productFilter: string,
+  ) => {
     if (salesList.length === 0) {
       toast.warning("No hay datos para exportar");
       return;
@@ -638,6 +648,10 @@ Estado: ${sale.status}
       googleMapsUrl: s.googleMapsUrl,
       paymentMethod: s.paymentMethod,
       deliveryType: s.deliveryType,
+      products: formatProductsForExport(s.items),
+      ...(productFilter && {
+        filteredProductUnits: countProductUnits(s.items, productFilter),
+      }),
     }));
 
     exportSalesToExcel(exportData, `ventas_${tabName}`);
@@ -1580,21 +1594,43 @@ Estado: ${sale.status}
      Filters
   ----------------------------------------- */
 
-  const pendientes = useMemo(() => {
-    const statusFiltered = sales.filter((s) => isPendienteStatus(s.status));
-    return applyFilters(statusFiltered, filtersPendiente);
-  }, [sales, filtersPendiente]);
+  const allPendientes = useMemo(
+    () => sales.filter((s) => isPendienteStatus(s.status)),
+    [sales],
+  );
+  const allAnulados = useMemo(
+    () => sales.filter((s) => s.status === ORDER_STATUS.ANULADO),
+    [sales],
+  );
 
-  const anulados = useMemo(() => {
-    const statusFiltered = sales.filter(
-      (s) => s.status === ORDER_STATUS.ANULADO,
-    );
-    return applyFilters(statusFiltered, filtersAnulado);
-  }, [sales, filtersAnulado]);
+  const pendientes = useMemo(
+    () => applyFilters(allPendientes, filtersPendiente),
+    [allPendientes, filtersPendiente],
+  );
+
+  const anulados = useMemo(
+    () => applyFilters(allAnulados, filtersAnulado),
+    [allAnulados, filtersAnulado],
+  );
 
   const todasLasVentas = useMemo(
     () => applyFilters(sales, filtersAll),
     [sales, filtersAll],
+  );
+
+  // Opciones del filtro Producto: los productos de toda la pestaña (no solo
+  // de lo filtrado/paginado), así elegir uno no achica la lista.
+  const productOptionsPendientes = useMemo(
+    () => buildProductFilterOptions(allPendientes),
+    [allPendientes],
+  );
+  const productOptionsAnulados = useMemo(
+    () => buildProductFilterOptions(allAnulados),
+    [allAnulados],
+  );
+  const productOptionsAll = useMemo(
+    () => buildProductFilterOptions(sales),
+    [sales],
   );
 
   const kpis = useMemo(() => {
@@ -1819,7 +1855,11 @@ Estado: ${sale.status}
                       variant="outline"
                       className="w-full lg:w-auto"
                       onClick={() =>
-                        handleExportExcel(pendientes, "pendientes")
+                        handleExportExcel(
+                          pendientes,
+                          "pendientes",
+                          filtersPendiente.product,
+                        )
                       }
                     >
                       <Download className="h-4 w-4 mr-2" />
@@ -1832,6 +1872,8 @@ Estado: ${sale.status}
                 <SalesTableFilters
                   filters={filtersPendiente}
                   onFiltersChange={setFiltersPendiente}
+                  showProductFilter
+                  availableProducts={productOptionsPendientes}
                 />
                 {renderPendientesTable(pendientes, activeTab === "todas")}
               </CardContent>
@@ -1905,7 +1947,13 @@ Estado: ${sale.status}
                     <Button
                       variant="outline"
                       className="w-full lg:w-auto"
-                      onClick={() => handleExportExcel(anulados, "anuladas")}
+                      onClick={() =>
+                        handleExportExcel(
+                          anulados,
+                          "anuladas",
+                          filtersAnulado.product,
+                        )
+                      }
                     >
                       <Download className="h-4 w-4 mr-2" />
                       Exportar Excel
@@ -1917,6 +1965,8 @@ Estado: ${sale.status}
                 <SalesTableFilters
                   filters={filtersAnulado}
                   onFiltersChange={setFiltersAnulado}
+                  showProductFilter
+                  availableProducts={productOptionsAnulados}
                 />
                 {renderAnuladosTable(anulados, activeTab === "todas")}
               </CardContent>
@@ -2003,7 +2053,11 @@ Estado: ${sale.status}
                       variant="outline"
                       className="w-full lg:w-auto"
                       onClick={() =>
-                        handleExportExcel(todasLasVentas, "todas_las_ventas")
+                        handleExportExcel(
+                          todasLasVentas,
+                          "todas_las_ventas",
+                          filtersAll.product,
+                        )
                       }
                     >
                       <Download className="h-4 w-4 mr-2" />
@@ -2019,6 +2073,8 @@ Estado: ${sale.status}
                     setFiltersAll(newFilters);
                     setPageAll(1); // Reset page when filters change
                   }}
+                  showProductFilter
+                  availableProducts={productOptionsAll}
                 />
                 {renderPendientesTable(
                   todasLasVentas.slice(
