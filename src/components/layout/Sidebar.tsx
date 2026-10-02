@@ -57,6 +57,7 @@ import {
   SIDEBAR_ITEMS_PERMISSIONS,
   isSuperadmin,
   hasAdminAccess,
+  hasRouteAccess,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -361,6 +362,10 @@ export function Sidebar({ className }: SidebarProps) {
             ) {
               return isSuperadmin(auth?.user.email);
             }
+            // Mismo criterio que AuthGuard: no mostrar enlaces a rutas que
+            // después niegan el acceso (p.ej. /usuarios, solo admins).
+            const href = (child as { href?: string }).href;
+            if (href && !hasRouteAccess(href, auth?.user)) return false;
             const childPermission = SIDEBAR_ITEMS_PERMISSIONS[child.name];
             if (!childPermission) return true;
             return hasPermission(childPermission);

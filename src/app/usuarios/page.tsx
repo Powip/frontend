@@ -14,7 +14,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Edit, Trash2, ShieldCheck, User as UserIcon } from "lucide-react";
+import { Plus, Search, Edit, ShieldCheck, User as UserIcon } from "lucide-react";
+import { hasAdminAccess } from "@/config/permissions.config";
 import { useAuth } from "@/contexts/AuthContext";
 import UserModal from "@/components/modals/UserModal";
 import { User } from "@/interfaces/IUser";
@@ -86,23 +87,22 @@ export default function UsuariosPage() {
     toast.success("Usuario guardado correctamente");
   };
 
-  const handleToggleStatus = (user: User) => {
-    setUsers(prev => prev.map(u =>
-      u.id === user.id ? { ...u, status: !u.status } : u
-    ));
-    toast.success(`Usuario ${user.status ? 'desactivado' : 'activado'} correctamente`);
-  };
+  // Activar/desactivar no se ofrece: el contrato actual de ms-auth
+  // (PUT /api/v1/auth/user/{id}, UpdateUserRequest) no incluye `status`, y no
+  // hay otro endpoint que lo persista. Antes la acción cambiaba solo el estado
+  // local y mostraba éxito. El estado se muestra tal como lo devuelve la API.
+  // Para habilitarla, ms-auth tiene que confirmar un endpoint que persista el
+  // estado (p.ej. `status` en PUT /api/v1/auth/user/{id}, o un PATCH dedicado)
+  // y devuelva el usuario actualizado para verificar el cambio.
 
+  // Mismo criterio de "admin de empresa" que el acceso a esta ruta
+  // (hasAdminAccess); el nombre se muestra tal como lo devuelve ms-auth.
   const getRoleBadge = (roleName?: string) => {
     const name = roleName?.toUpperCase() || "SIN ROL";
-    switch (name) {
-      case "ADMIN":
-        return <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-100 gap-1"><ShieldCheck className="w-3 h-3" /> ADMIN</Badge>;
-      case "VENDEDOR":
-        return <Badge className="bg-blue-100 text-blue-700 hover:bg-blue-100">AGENTE</Badge>;
-      default:
-        return <Badge variant="outline" className="text-muted-foreground">{name}</Badge>;
+    if (hasAdminAccess(roleName)) {
+      return <Badge className="bg-rose-100 text-rose-700 hover:bg-rose-100 gap-1"><ShieldCheck className="w-3 h-3" /> {name}</Badge>;
     }
+    return <Badge variant="outline" className="text-muted-foreground">{name}</Badge>;
   };
 
   if (!auth) return null;
@@ -217,22 +217,13 @@ export default function UsuariosPage() {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8"
+                              aria-label={`Editar ${u.name} ${u.surname}`}
                               onClick={() => {
                                 setSelectedUser(u);
                                 setOpenModal(true);
                               }}
                             >
                               <Edit className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 hover:text-red-600"
-                              onClick={() => {
-                                handleToggleStatus(u);
-                              }}
-                            >
-                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </TableCell>

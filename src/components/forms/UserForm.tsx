@@ -29,16 +29,25 @@ interface UserFormProps {
   onUserSaved: () => void;
 }
 
+/** Roles asignables a colaboradores de una empresa (no ADMINISTRADOR ni USUARIO). */
+const COMPANY_USER_ROLES = ["AGENTES", "VENTAS", "OPERACIONES", "COURIER", "CALLER"];
+
+type RolesStatus = "loading" | "ready" | "empty" | "error";
+
+const ROLES_UNAVAILABLE_MESSAGE: Record<Exclude<RolesStatus, "ready">, string> = {
+  loading: "Cargando roles…",
+  empty: "No hay roles disponibles para asignar",
+  error: "No se pudieron cargar los roles. No se puede guardar sin un rol válido.",
+};
+
 export default function UserForm({ user, onUserSaved }: UserFormProps) {
   const { auth } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [roles, setRoles] = useState<Role[]>([
-    { id: "1", name: "AGENTES", description: "Personal de agentes" },
-    { id: "2", name: "VENTAS", description: "Personal de ventas" },
-    { id: "3", name: "OPERACIONES", description: "Personal de operaciones" },
-    { id: "4", name: "COURIER", description: "Personal de entregas/courier" },
-    { id: "5", name: "CALLER", description: "Integraciones externas" },
-  ]);
+  // Solo roles reales de GET /api/v1/roles — sin respaldo local: un rol
+  // inventado (antes ids "1"–"5") terminaba enviándose a ms-auth.
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [rolesStatus, setRolesStatus] = useState<RolesStatus>("loading");
+  const [rolesReloadKey, setRolesReloadKey] = useState(0);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -55,6 +64,14 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
     status: true,
   });
 
+  // Rol actual del usuario cuando no es uno de los asignables (p.ej.
+  // ADMINISTRADOR/USUARIO, o un rol que la API ya no devuelve). Se conserva
+  // explícito en el selector para no mostrarlo vacío/ambiguo, pero no se
+  // puede reasignar: queda deshabilitado en la lista.
+  const currentRoleName = user?.role?.name || "";
+  const isCurrentRoleAssignable =
+    !currentRoleName || roles.some((r) => r.name === currentRoleName);
+
   // Ubigeo data logic
   const departments = ubigeos[0].departments;
   const filteredProvinces =
@@ -65,25 +82,29 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
 
   // Load roles from API
   useEffect(() => {
-    const loadRoles = async () => {
-      if (!auth?.accessToken) return;
-      try {
-        const rolesData = await getRoles(auth.accessToken);
+    if (!auth?.accessToken) return;
+    let cancelled = false;
+    setRolesStatus("loading");
+    getRoles(auth.accessToken)
+      .then((rolesData) => {
+        if (cancelled) return;
         // Filtrar solo roles permitidos para usuarios de compañía (no ADMINISTRADOR ni USUARIO)
-        const allowedRoles = rolesData.filter((r) =>
-          ["AGENTES", "VENTAS", "OPERACIONES", "COURIER", "CALLER"].includes(
-            r.name.toUpperCase(),
-          ),
+        const allowedRoles = (Array.isArray(rolesData) ? rolesData : []).filter(
+          (r) => COMPANY_USER_ROLES.includes(r.name?.toUpperCase()),
         );
-        if (allowedRoles.length > 0) {
-          setRoles(allowedRoles);
-        }
-      } catch (error) {
-        // Usar roles por defecto si falla la API
-      }
+        setRoles(allowedRoles);
+        setRolesStatus(allowedRoles.length > 0 ? "ready" : "empty");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRoles([]);
+        setRolesStatus("error");
+        toast.error("No se pudieron cargar los roles");
+      });
+    return () => {
+      cancelled = true;
     };
-    loadRoles();
-  }, [auth?.accessToken]);
+  }, [auth?.accessToken, rolesReloadKey]);
 
   useEffect(() => {
     if (user) {
@@ -128,8 +149,23 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
       return;
     }
 
+    if (rolesStatus !== "ready") {
+      toast.error(ROLES_UNAVAILABLE_MESSAGE[rolesStatus]);
+      return;
+    }
+
     if (!formData.roleName) {
       toast.error("Selecciona un rol para el usuario");
+      return;
+    }
+
+    // Solo se envían roles que vinieron de la API (o, al editar, el rol que
+    // el usuario ya tiene asignado).
+    const isKnownRole =
+      roles.some((r) => r.name === formData.roleName) ||
+      (!!user && user.role?.name === formData.roleName);
+    if (!isKnownRole) {
+      toast.error("El rol seleccionado no es válido");
       return;
     }
 
@@ -306,11 +342,23 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           onValueChange={(value) =>
             setFormData({ ...formData, roleName: value })
           }
+          disabled={rolesStatus !== "ready"}
         >
-          <SelectTrigger>
-            <SelectValue placeholder="Seleccionar rol" />
+          <SelectTrigger id="role">
+            <SelectValue
+              placeholder={
+                rolesStatus === "ready"
+                  ? "Seleccionar rol"
+                  : ROLES_UNAVAILABLE_MESSAGE[rolesStatus]
+              }
+            />
           </SelectTrigger>
           <SelectContent>
+            {!isCurrentRoleAssignable && (
+              <SelectItem value={currentRoleName} disabled>
+                {currentRoleName} (actual, no asignable)
+              </SelectItem>
+            )}
             {roles.map((role) => (
               <SelectItem key={role.id} value={role.name}>
                 {role.name}
@@ -318,6 +366,23 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
             ))}
           </SelectContent>
         </Select>
+        {(rolesStatus === "error" || rolesStatus === "empty") && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+          >
+            <span>{ROLES_UNAVAILABLE_MESSAGE[rolesStatus]}</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => setRolesReloadKey((k) => k + 1)}
+            >
+              Reintentar
+            </Button>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-4">
@@ -418,7 +483,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
         <Button
           type="submit"
           className="bg-teal-600 hover:bg-teal-700"
-          disabled={loading}
+          disabled={loading || rolesStatus !== "ready"}
         >
           {loading
             ? "Guardando..."

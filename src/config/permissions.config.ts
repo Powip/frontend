@@ -43,7 +43,9 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/finanzas": [],
   "/clientes": [],
   "/proveedores": [],
-  "/usuarios": [],
+  // Alta/edición de colaboradores de la empresa: solo admins de empresa
+  // (rol de la sesión, ver ADMIN_ROLES) y superadmins.
+  "/usuarios": ["__ADMIN_ROLE__"],
   "/couriers": [],
   "/atencion-cliente": [],
   "/facturacion": [],
@@ -120,4 +122,28 @@ export const getRoutePermissions = (pathname: string): string[] => {
     (route) => pathname === route || pathname.startsWith(route + "/"),
   );
   return route ? ROUTE_PERMISSIONS[route] : [];
+};
+
+export interface RouteAccessUser {
+  email?: string;
+  role?: string;
+  permissions?: string[];
+}
+
+/**
+ * ¿Puede este usuario entrar a la ruta? Única regla para AuthGuard (acceso
+ * por URL) y Sidebar (visibilidad del enlace), así no hay enlaces visibles a
+ * páginas que después niegan el acceso:
+ * 1. Superadmin siempre entra.
+ * 2. "__ADMIN_ROLE__" → rol de admin de empresa (hasAdminAccess).
+ * 3. Si no, permisos del JWT; sin requisitos, cualquier autenticado.
+ */
+export const hasRouteAccess = (
+  pathname: string,
+  user: RouteAccessUser | null | undefined,
+): boolean => {
+  if (isSuperadmin(user?.email)) return true;
+  const required = getRoutePermissions(pathname);
+  if (required.includes("__ADMIN_ROLE__")) return hasAdminAccess(user?.role);
+  return hasAnyPermission(user?.permissions, required);
 };
