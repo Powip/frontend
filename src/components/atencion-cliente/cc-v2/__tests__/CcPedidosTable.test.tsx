@@ -2,6 +2,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CcPedidosTable } from '../CcPedidosTable';
+import { OrderDetailModalProvider } from '@/components/orders/OrderDetailModal';
 import { OrderHeader } from '@/interfaces/IOrder';
 
 /* ---------------------------------------------------------------
@@ -112,7 +113,6 @@ const baseProps = {
   selectedIds: new Set<string>(),
   onToggle: jest.fn(),
   onToggleAll: jest.fn(),
-  onVerPedido: jest.fn(),
   onWhatsApp: jest.fn(),
   onGestionarPago: jest.fn(),
 };
@@ -127,6 +127,7 @@ function renderTable(
       {...baseProps}
       {...extra}
     />,
+    { wrapper: OrderDetailModalProvider },
   );
 }
 

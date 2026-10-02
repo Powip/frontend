@@ -14,6 +14,7 @@ jest.mock("next/image", () => ({ __esModule: true, default: () => null }));
 
 import { PorDespacharTab } from "../PorDespacharTab";
 import { EnCaminoTab } from "../EnCaminoTab";
+import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
 import { buildPedidosExportRows, type PedidosActions, type Sale, type SaleItem } from "../types";
 import type { OrderStatus } from "@/interfaces/IOrder";
 
@@ -90,7 +91,7 @@ describe.each([
 
   function setup() {
     const onExportExcel = jest.fn();
-    render(<Tab sales={SALES} actions={makeActions(onExportExcel)} />);
+    render(<Tab sales={SALES} actions={makeActions(onExportExcel)} />, { wrapper: OrderDetailModalProvider });
     selectAllOnPage();
     openFilters();
     return onExportExcel;

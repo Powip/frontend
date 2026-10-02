@@ -7,12 +7,10 @@ import {
   Plus,
   Pencil,
   Trash2,
-  FileText,
   ArrowRight,
   Printer,
   AlertTriangle,
   Download,
-  MessageCircle,
   Loader2,
   UploadCloud,
   MapPin,
@@ -52,7 +50,11 @@ import { OrderHeader, OrderStatus, OrderItem } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import ImportSalesModal from "@/components/modals/ImportSalesModal";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import {
+  OrderDetailButton,
+  OrderDetailModalProvider,
+} from "@/components/orders/OrderDetailModal";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import CreateGuideModal, {
   CreateGuideData,
@@ -260,7 +262,6 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
 export default function VentasPage() {
   const [sales, setSales] = useState<Sale[]>([]);
-  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
   const [createGuideOrder, setCreateGuideOrder] = useState<OrderHeader | null>(
     null,
   );
@@ -1262,14 +1263,10 @@ Estado: ${sale.status}
                     <ReprogramadoChip sale={sale} />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setViewOrderId(sale.id)}
-                    >
-                      <FileText className="h-4 w-4 mr-1" />
-                      Ver
-                    </Button>
+                    <OrderDetailButton
+                      orderId={sale.id}
+                      orderNumber={sale.orderNumber}
+                    />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-0 w-[140px] min-w-[140px] 2xl:z-10 bg-background text-right">
                     <div className="flex gap-1 justify-end">
@@ -1308,7 +1305,7 @@ Estado: ${sale.status}
                           )
                         }
                       >
-                        <MessageCircle className="h-4 w-4" />
+                        <WhatsAppIcon className="h-4 w-4" />
                       </Button>
                       <Button
                         size="icon"
@@ -1515,14 +1512,10 @@ Estado: ${sale.status}
                     />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-[140px] w-[100px] min-w-[100px] 2xl:z-10 bg-background">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setViewOrderId(sale.id)}
-                    >
-                      <FileText className="h-4 w-4 mr-1" />
-                      Ver
-                    </Button>
+                    <OrderDetailButton
+                      orderId={sale.id}
+                      orderNumber={sale.orderNumber}
+                    />
                   </TableCell>
                   <TableCell className="2xl:sticky 2xl:right-0 w-[140px] min-w-[140px] 2xl:z-10 bg-background text-right">
                     <div className="flex gap-1 justify-end">
@@ -1539,7 +1532,7 @@ Estado: ${sale.status}
                           )
                         }
                       >
-                        <MessageCircle className="h-4 w-4" />
+                        <WhatsAppIcon className="h-4 w-4" />
                       </Button>
                       <Button
                         size="icon"
@@ -1672,615 +1665,612 @@ Estado: ${sale.status}
   if (!auth) return null;
 
   return (
-    <div className="flex h-screen w-full bg-slate-100 dark:bg-background">
-      <main className="flex-1 p-6 space-y-6 overflow-auto">
-        <HeaderConfig
-          title="Ventas"
-          description="Gestión de ventas pendientes y anuladas — todo en un solo panel."
-        >
-          <Button
-            variant="outline"
-            className="w-full lg:w-auto"
-            onClick={() => setImportModalOpen(true)}
+    <OrderDetailModalProvider
+      onOrderUpdated={refetchOrders}
+      showTracking
+      onOpenCreateGuide={(order) => setCreateGuideOrder(order)}
+    >
+      <div className="flex h-screen w-full bg-slate-100 dark:bg-background">
+        <main className="flex-1 p-6 space-y-6 overflow-auto">
+          <HeaderConfig
+            title="Ventas"
+            description="Gestión de ventas pendientes y anuladas — todo en un solo panel."
           >
-            <UploadCloud className="h-4 w-4 mr-2" />
-            Importar Excel
-          </Button>
-          <Link href="/registrar-venta" className="w-full lg:w-auto">
             <Button
-              size="lg"
-              className="w-full lg:w-auto bg-gradient-to-r from-violet-600 to-purple-700 text-white font-semibold shadow-lg shadow-purple-500/40 hover:shadow-purple-500/60 hover:from-violet-500 hover:to-purple-600 transition-shadow"
+              variant="outline"
+              className="w-full lg:w-auto"
+              onClick={() => setImportModalOpen(true)}
             >
-              <Plus className="h-4 w-4 mr-2" />
-              Nueva venta
+              <UploadCloud className="h-4 w-4 mr-2" />
+              Importar Excel
             </Button>
-          </Link>
-        </HeaderConfig>
+            <Link href="/registrar-venta" className="w-full lg:w-auto">
+              <Button
+                size="lg"
+                className="w-full lg:w-auto bg-gradient-to-r from-violet-600 to-purple-700 text-white font-semibold shadow-lg shadow-purple-500/40 hover:shadow-purple-500/60 hover:from-violet-500 hover:to-purple-600 transition-shadow"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva venta
+              </Button>
+            </Link>
+          </HeaderConfig>
 
-        {/* KPIs */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-bold text-muted-foreground">
-              Estadísticas
-            </h2>
-            <p className="text-xs text-muted-foreground/80">
-              Corresponden a los pedidos pendientes por procesar.
-            </p>
-          </div>
-          <PeriodSelector
-            onPeriodChange={(from, to) => {
-              setKpiDateFrom(from);
-              setKpiDateTo(to);
-            }}
-          />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
-          <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Pendientes</p>
-                  <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                    {kpis.pendientes}
-                  </h3>
-                </div>
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                  <Clock className="h-5 w-5" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Anuladas</p>
-                  <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                    {kpis.anuladas}
-                  </h3>
-                </div>
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400">
-                  <Ban className="h-5 w-5" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Por cobrar</p>
-                  <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                    {formatSoles(kpis.porCobrar)}
-                  </h3>
-                </div>
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
-                  <DollarSign className="h-5 w-5" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
-            <CardContent className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Adelantado</p>
-                  <h3 className="mt-2 text-3xl font-bold tracking-tight">
-                    {formatSoles(kpis.adelantado)}
-                  </h3>
-                </div>
-                <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">
-                  <CheckCircle2 className="h-5 w-5" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Tabs para Ventas */}
-        <Tabs
-          defaultValue="pendientes"
-          className="w-full"
-          onValueChange={setActiveTab}
-        >
-          <TabsList className="mb-4">
-            <TabsTrigger value="pendientes">
-              Ventas Pendientes
-              <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
-                {pendientes.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="anuladas">
-              Ventas Anuladas
-              <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
-                {anulados.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="todas">
-              Todas las Ventas
-              <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
-                {todasLasVentas.length}
-              </span>
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Tab Pendientes */}
-          <TabsContent value="pendientes">
-            <Card>
-              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <CardTitle>Ventas Pendientes</CardTitle>
-                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
-                  <BulkStatusSelect
-                    selectedCount={selectedSaleIds.size}
-                    availableStatuses={bulkAvailableStatuses}
-                    onStatusChange={handleBulkStatusChange}
-                    isLoading={isBulkLoading}
-                    extraActions={bulkExtraActions}
-                    onExtraAction={handleBulkExtraAction}
-                  />
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    disabled={selectedPendientesCount === 0 || isPrinting}
-                    onClick={handleBulkPrint}
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    {isPrinting
-                      ? "Procesando..."
-                      : `Imprimir seleccionados (${selectedPendientesCount})`}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
-                    disabled={selectedPendientesCount === 0}
-                    onClick={() => handleBulkWhatsApp(pendientes)}
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    WhatsApp Masivo ({selectedPendientesCount})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    disabled={selectedPendientesCount === 0}
-                    onClick={() => handleCopySelected(pendientes)}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados ({selectedPendientesCount})
-                  </Button>
-                  {auth?.user?.role === "ADMIN" && (
-                    <Button
-                      variant="outline"
-                      className="w-full lg:w-auto"
-                      onClick={() =>
-                        handleExportExcel(
-                          pendientes,
-                          "pendientes",
-                          filtersPendiente.product,
-                        )
-                      }
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Exportar Excel
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <SalesTableFilters
-                  filters={filtersPendiente}
-                  onFiltersChange={setFiltersPendiente}
-                  showProductFilter
-                  availableProducts={productOptionsPendientes}
-                />
-                {renderPendientesTable(pendientes, activeTab === "todas")}
-              </CardContent>
-              <Pagination
-                currentPage={1}
-                totalPages={Math.ceil(pendientes.length / 10) || 1}
-                totalItems={pendientes.length}
-                itemsPerPage={10}
-                onPageChange={() => {}}
-                itemName="ventas"
-              />
-            </Card>
-          </TabsContent>
-
-          {/* Tab Anuladas */}
-          <TabsContent value="anuladas">
-            <Card>
-              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <CardTitle>Ventas Anuladas</CardTitle>
-                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
-                  <BulkStatusSelect
-                    selectedCount={selectedSaleIds.size}
-                    availableStatuses={bulkAvailableStatuses}
-                    onStatusChange={handleBulkStatusChange}
-                    isLoading={isBulkLoading}
-                    extraActions={bulkExtraActions}
-                    onExtraAction={handleBulkExtraAction}
-                  />
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    disabled={
-                      anulados.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0 || isPrinting
-                    }
-                    onClick={() =>
-                      handleBulkPrintForStatus(anulados, "ANULADO")
-                    }
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados (
-                    {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
-                    disabled={
-                      anulados.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0
-                    }
-                    onClick={() => handleBulkWhatsApp(anulados)}
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    WhatsApp Masivo (
-                    {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    disabled={
-                      anulados.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0
-                    }
-                    onClick={() => handleCopySelected(anulados)}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados (
-                    {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
-                  </Button>
-                  {auth?.user?.role === "ADMIN" && (
-                    <Button
-                      variant="outline"
-                      className="w-full lg:w-auto"
-                      onClick={() =>
-                        handleExportExcel(
-                          anulados,
-                          "anuladas",
-                          filtersAnulado.product,
-                        )
-                      }
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Exportar Excel
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <SalesTableFilters
-                  filters={filtersAnulado}
-                  onFiltersChange={setFiltersAnulado}
-                  showProductFilter
-                  availableProducts={productOptionsAnulados}
-                />
-                {renderAnuladosTable(anulados, activeTab === "todas")}
-              </CardContent>
-              <Pagination
-                currentPage={1}
-                totalPages={Math.ceil(anulados.length / 10) || 1}
-                totalItems={anulados.length}
-                itemsPerPage={10}
-                onPageChange={() => {}}
-                itemName="ventas"
-              />
-            </Card>
-          </TabsContent>
-
-          {/* Tab Todas las Ventas */}
-          <TabsContent value="todas">
-            <Card>
-              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <CardTitle>Todas las Ventas</CardTitle>
-                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
-                  <BulkStatusSelect
-                    selectedCount={selectedSaleIds.size}
-                    availableStatuses={bulkAvailableStatuses}
-                    onStatusChange={handleBulkStatusChange}
-                    isLoading={isBulkLoading}
-                    extraActions={bulkExtraActions}
-                    onExtraAction={handleBulkExtraAction}
-                  />
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    disabled={
-                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0 || isPrinting
-                    }
-                    onClick={() =>
-                      handleBulkPrintForStatus(todasLasVentas, "TODAS")
-                    }
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados (
-                    {
-                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
-                        .length
-                    }
-                    )
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
-                    disabled={
-                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0
-                    }
-                    onClick={() => handleBulkWhatsApp(todasLasVentas)}
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    WhatsApp Masivo (
-                    {
-                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
-                        .length
-                    }
-                    )
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto"
-                    disabled={
-                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0
-                    }
-                    onClick={() => handleCopySelected(todasLasVentas)}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados (
-                    {
-                      todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
-                        .length
-                    }
-                    )
-                  </Button>
-                  {auth?.user?.role === "ADMIN" && (
-                    <Button
-                      variant="outline"
-                      className="w-full lg:w-auto"
-                      onClick={() =>
-                        handleExportExcel(
-                          todasLasVentas,
-                          "todas_las_ventas",
-                          filtersAll.product,
-                        )
-                      }
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Exportar Excel
-                    </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <SalesTableFilters
-                  filters={filtersAll}
-                  onFiltersChange={(newFilters) => {
-                    setFiltersAll(newFilters);
-                    setPageAll(1); // Reset page when filters change
-                  }}
-                  showProductFilter
-                  availableProducts={productOptionsAll}
-                />
-                {renderPendientesTable(
-                  todasLasVentas.slice(
-                    (pageAll - 1) * ITEMS_PER_PAGE,
-                    pageAll * ITEMS_PER_PAGE,
-                  ),
-                  activeTab === "todas",
-                )}
-              </CardContent>
-              <Pagination
-                currentPage={pageAll}
-                totalPages={
-                  Math.ceil(todasLasVentas.length / ITEMS_PER_PAGE) || 1
-                }
-                totalItems={todasLasVentas.length}
-                itemsPerPage={ITEMS_PER_PAGE}
-                onPageChange={setPageAll}
-                itemName="ventas"
-              />
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </main>
-
-      <CustomerServiceModal
-        open={!!viewOrderId}
-        orderId={viewOrderId || ""}
-        onClose={() => setViewOrderId(null)}
-        onOrderUpdated={refetchOrders}
-        showTracking
-        onOpenCreateGuide={(order) => setCreateGuideOrder(order)}
-      />
-
-      {createGuideOrder && (
-        <CreateGuideModal
-          open={!!createGuideOrder}
-          onClose={() => setCreateGuideOrder(null)}
-          storeId={selectedStoreId || ""}
-          isLoading={isCreatingGuide}
-          selectedOrders={[
-            {
-              id: createGuideOrder.id,
-              orderNumber: createGuideOrder.orderNumber,
-              clientName: createGuideOrder.customer.fullName,
-              address: createGuideOrder.customer.address,
-              district: createGuideOrder.customer.district,
-              total: Number(createGuideOrder.grandTotal),
-              pendingPayment: getPendingPayment(createGuideOrder),
-              zone: createGuideOrder.customer.zone,
-            },
-          ]}
-          onConfirm={handleCreateGuide}
-        />
-      )}
-
-      <CancellationModal
-        open={cancellationModalOpen}
-        onClose={() => {
-          setCancellationModalOpen(false);
-          setSaleToCancel(null);
-        }}
-        orderNumber={saleToCancel?.orderNumber || ""}
-        onConfirm={handleConfirmCancellation}
-        isLoading={isCancelling}
-      />
-
-      <CommentsTimelineModal
-        open={commentsModalOpen}
-        onClose={() => {
-          setCommentsModalOpen(false);
-          setSelectedSaleForComments(null);
-        }}
-        orderId={selectedSaleForComments?.id || ""}
-        orderNumber={selectedSaleForComments?.orderNumber || ""}
-      />
-
-      <PaymentVerificationModal
-        open={paymentModalOpen}
-        onClose={() => {
-          setPaymentModalOpen(false);
-          setSelectedSaleForPayment(null);
-        }}
-        orderId={selectedSaleForPayment?.id || ""}
-        orderNumber={selectedSaleForPayment?.orderNumber || ""}
-        onPaymentUpdated={refetchOrders}
-      />
-
-      <BulkPrintPreviewDialog
-        open={printPreviewOpen}
-        orders={pendingPrintSales}
-        company={auth?.company}
-        fetchReceipt={fetchPrintReceipt}
-        onConfirm={handleConfirmPrint}
-        onClose={handleClosePrintPreview}
-      />
-      {/* Modal de alerta de stock insuficiente */}
-      <AlertDialog open={stockAlertOpen} onOpenChange={setStockAlertOpen}>
-        <AlertDialogContent className="max-w-lg">
-          <AlertDialogHeader>
-            <div className="flex items-center gap-2 text-amber-600 mb-2">
-              <AlertTriangle className="h-5 w-5" />
-              <AlertDialogTitle>Atención: Stock Insuficiente</AlertDialogTitle>
+          {/* KPIs */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-muted-foreground">
+                Estadísticas
+              </h2>
+              <p className="text-xs text-muted-foreground/80">
+                Corresponden a los pedidos pendientes por procesar.
+              </p>
             </div>
-            <AlertDialogDescription asChild>
-              <div className="space-y-4 text-sm">
-                <p className="text-muted-foreground">
-                  Se han actualizado los estados a <strong>PREPARADO</strong>,
-                  pero se ha detectado que los siguientes pedidos tienen
-                  productos con <strong>stock insuficiente o nulo</strong>:
-                </p>
-                <div className="max-h-60 overflow-y-auto rounded-md border bg-muted/30 p-3">
-                  <ul className="space-y-3">
-                    {ordersWithStockIssue.map((sale) => (
-                      <li
-                        key={sale.id}
-                        className="border-b border-border/50 pb-2 last:border-0 last:pb-0"
-                      >
-                        <div className="font-bold text-foreground mb-1">
-                          Pedido: {sale.orderNumber}
-                        </div>
-                        <div className="text-xs text-muted-foreground flex flex-col gap-1">
-                          <span className="flex items-center gap-1">
-                            <strong>Cliente:</strong> {sale.clientName}
-                          </span>
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {sale.items.map((item, idx) => (
-                              <span
-                                key={idx}
-                                className="bg-background px-2 py-0.5 rounded border border-border text-[10px]"
-                              >
-                                {item.productName} (x{item.quantity})
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
+            <PeriodSelector
+              onPeriodChange={(from, to) => {
+                setKpiDateFrom(from);
+                setKpiDateTo(to);
+              }}
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 2xl:grid-cols-4 gap-4">
+            <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Pendientes</p>
+                    <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                      {kpis.pendientes}
+                    </h3>
+                  </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Clock className="h-5 w-5" />
+                  </div>
                 </div>
-                <p className="text-amber-700 bg-amber-50 p-2 rounded border border-amber-100 italic">
-                  Por favor, revise el inventario físico antes de proceder con
-                  el despacho de estos pedidos.
-                </p>
-              </div>
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction className="bg-amber-600 hover:bg-amber-700">
-              Entendido
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+              </CardContent>
+            </Card>
 
-      <ImportSalesModal
-        isOpen={importModalOpen}
-        onClose={() => setImportModalOpen(false)}
-        onSuccess={() => {
-          refetchOrders();
-          setImportModalOpen(false);
-        }}
-        storeId={selectedStoreId || ""}
-        userId={auth.user?.id}
-        sellerName={
-          auth.user
-            ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim()
-            : undefined
-        }
-      />
+            <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Anuladas</p>
+                    <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                      {kpis.anuladas}
+                    </h3>
+                  </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400">
+                    <Ban className="h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-      <RescheduleDialog
-        open={rescheduleDialogSaleId !== null}
-        onOpenChange={(open) => {
-          if (!open) setRescheduleDialogSaleId(null);
-        }}
-        onConfirm={(date) => {
-          if (rescheduleDialogSaleId) {
-            handleIndividualReprogramar(rescheduleDialogSaleId, date);
-            setRescheduleDialogSaleId(null);
-          }
-        }}
-      />
+            <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Por cobrar</p>
+                    <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                      {formatSoles(kpis.porCobrar)}
+                    </h3>
+                  </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                    <DollarSign className="h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
-      <RescheduleDialog
-        open={bulkRescheduleOpen}
-        onOpenChange={setBulkRescheduleOpen}
-        onConfirm={(date) => {
-          handleBulkReprogramar(date);
-          setBulkRescheduleOpen(false);
-        }}
-      />
+            <Card className="transition-all duration-200 hover:shadow-md hover:-translate-y-1 border-muted">
+              <CardContent className="p-5">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">Adelantado</p>
+                    <h3 className="mt-2 text-3xl font-bold tracking-tight">
+                      {formatSoles(kpis.adelantado)}
+                    </h3>
+                  </div>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-400">
+                    <CheckCircle2 className="h-5 w-5" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
 
-      {saleToReassign && (
-        <ReassignSellerModal
-          open={reassignSellerModalOpen}
+          {/* Tabs para Ventas */}
+          <Tabs
+            defaultValue="pendientes"
+            className="w-full"
+            onValueChange={setActiveTab}
+          >
+            <TabsList className="mb-4">
+              <TabsTrigger value="pendientes">
+                Ventas Pendientes
+                <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
+                  {pendientes.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="anuladas">
+                Ventas Anuladas
+                <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
+                  {anulados.length}
+                </span>
+              </TabsTrigger>
+              <TabsTrigger value="todas">
+                Todas las Ventas
+                <span className="ml-1.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300 px-1.5 py-0.5 text-[10px] font-bold">
+                  {todasLasVentas.length}
+                </span>
+              </TabsTrigger>
+            </TabsList>
+
+            {/* Tab Pendientes */}
+            <TabsContent value="pendientes">
+              <Card>
+                <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <CardTitle>Ventas Pendientes</CardTitle>
+                  <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                    <BulkStatusSelect
+                      selectedCount={selectedSaleIds.size}
+                      availableStatuses={bulkAvailableStatuses}
+                      onStatusChange={handleBulkStatusChange}
+                      isLoading={isBulkLoading}
+                      extraActions={bulkExtraActions}
+                      onExtraAction={handleBulkExtraAction}
+                    />
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      disabled={selectedPendientesCount === 0 || isPrinting}
+                      onClick={handleBulkPrint}
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      {isPrinting
+                        ? "Procesando..."
+                        : `Imprimir seleccionados (${selectedPendientesCount})`}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                      disabled={selectedPendientesCount === 0}
+                      onClick={() => handleBulkWhatsApp(pendientes)}
+                    >
+                      <WhatsAppIcon className="h-4 w-4 mr-2" />
+                      WhatsApp Masivo ({selectedPendientesCount})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      disabled={selectedPendientesCount === 0}
+                      onClick={() => handleCopySelected(pendientes)}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copiar seleccionados ({selectedPendientesCount})
+                    </Button>
+                    {auth?.user?.role === "ADMIN" && (
+                      <Button
+                        variant="outline"
+                        className="w-full lg:w-auto"
+                        onClick={() =>
+                          handleExportExcel(
+                            pendientes,
+                            "pendientes",
+                            filtersPendiente.product,
+                          )
+                        }
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Exportar Excel
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <SalesTableFilters
+                    filters={filtersPendiente}
+                    onFiltersChange={setFiltersPendiente}
+                    showProductFilter
+                    availableProducts={productOptionsPendientes}
+                  />
+                  {renderPendientesTable(pendientes, activeTab === "todas")}
+                </CardContent>
+                <Pagination
+                  currentPage={1}
+                  totalPages={Math.ceil(pendientes.length / 10) || 1}
+                  totalItems={pendientes.length}
+                  itemsPerPage={10}
+                  onPageChange={() => {}}
+                  itemName="ventas"
+                />
+              </Card>
+            </TabsContent>
+
+            {/* Tab Anuladas */}
+            <TabsContent value="anuladas">
+              <Card>
+                <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <CardTitle>Ventas Anuladas</CardTitle>
+                  <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                    <BulkStatusSelect
+                      selectedCount={selectedSaleIds.size}
+                      availableStatuses={bulkAvailableStatuses}
+                      onStatusChange={handleBulkStatusChange}
+                      isLoading={isBulkLoading}
+                      extraActions={bulkExtraActions}
+                      onExtraAction={handleBulkExtraAction}
+                    />
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      disabled={
+                        anulados.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0 || isPrinting
+                      }
+                      onClick={() =>
+                        handleBulkPrintForStatus(anulados, "ANULADO")
+                      }
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Imprimir seleccionados (
+                      {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                      disabled={
+                        anulados.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0
+                      }
+                      onClick={() => handleBulkWhatsApp(anulados)}
+                    >
+                      <WhatsAppIcon className="h-4 w-4 mr-2" />
+                      WhatsApp Masivo (
+                      {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      disabled={
+                        anulados.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0
+                      }
+                      onClick={() => handleCopySelected(anulados)}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copiar seleccionados (
+                      {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
+                    </Button>
+                    {auth?.user?.role === "ADMIN" && (
+                      <Button
+                        variant="outline"
+                        className="w-full lg:w-auto"
+                        onClick={() =>
+                          handleExportExcel(
+                            anulados,
+                            "anuladas",
+                            filtersAnulado.product,
+                          )
+                        }
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Exportar Excel
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <SalesTableFilters
+                    filters={filtersAnulado}
+                    onFiltersChange={setFiltersAnulado}
+                    showProductFilter
+                    availableProducts={productOptionsAnulados}
+                  />
+                  {renderAnuladosTable(anulados, activeTab === "todas")}
+                </CardContent>
+                <Pagination
+                  currentPage={1}
+                  totalPages={Math.ceil(anulados.length / 10) || 1}
+                  totalItems={anulados.length}
+                  itemsPerPage={10}
+                  onPageChange={() => {}}
+                  itemName="ventas"
+                />
+              </Card>
+            </TabsContent>
+
+            {/* Tab Todas las Ventas */}
+            <TabsContent value="todas">
+              <Card>
+                <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <CardTitle>Todas las Ventas</CardTitle>
+                  <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
+                    <BulkStatusSelect
+                      selectedCount={selectedSaleIds.size}
+                      availableStatuses={bulkAvailableStatuses}
+                      onStatusChange={handleBulkStatusChange}
+                      isLoading={isBulkLoading}
+                      extraActions={bulkExtraActions}
+                      onExtraAction={handleBulkExtraAction}
+                    />
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      disabled={
+                        todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0 || isPrinting
+                      }
+                      onClick={() =>
+                        handleBulkPrintForStatus(todasLasVentas, "TODAS")
+                      }
+                    >
+                      <Printer className="h-4 w-4 mr-2" />
+                      Imprimir seleccionados (
+                      {
+                        todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                          .length
+                      }
+                      )
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto text-green-600 border-green-200 hover:bg-green-50"
+                      disabled={
+                        todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0
+                      }
+                      onClick={() => handleBulkWhatsApp(todasLasVentas)}
+                    >
+                      <WhatsAppIcon className="h-4 w-4 mr-2" />
+                      WhatsApp Masivo (
+                      {
+                        todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                          .length
+                      }
+                      )
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto"
+                      disabled={
+                        todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0
+                      }
+                      onClick={() => handleCopySelected(todasLasVentas)}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copiar seleccionados (
+                      {
+                        todasLasVentas.filter((s) => selectedSaleIds.has(s.id))
+                          .length
+                      }
+                      )
+                    </Button>
+                    {auth?.user?.role === "ADMIN" && (
+                      <Button
+                        variant="outline"
+                        className="w-full lg:w-auto"
+                        onClick={() =>
+                          handleExportExcel(
+                            todasLasVentas,
+                            "todas_las_ventas",
+                            filtersAll.product,
+                          )
+                        }
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Exportar Excel
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <SalesTableFilters
+                    filters={filtersAll}
+                    onFiltersChange={(newFilters) => {
+                      setFiltersAll(newFilters);
+                      setPageAll(1); // Reset page when filters change
+                    }}
+                    showProductFilter
+                    availableProducts={productOptionsAll}
+                  />
+                  {renderPendientesTable(
+                    todasLasVentas.slice(
+                      (pageAll - 1) * ITEMS_PER_PAGE,
+                      pageAll * ITEMS_PER_PAGE,
+                    ),
+                    activeTab === "todas",
+                  )}
+                </CardContent>
+                <Pagination
+                  currentPage={pageAll}
+                  totalPages={
+                    Math.ceil(todasLasVentas.length / ITEMS_PER_PAGE) || 1
+                  }
+                  totalItems={todasLasVentas.length}
+                  itemsPerPage={ITEMS_PER_PAGE}
+                  onPageChange={setPageAll}
+                  itemName="ventas"
+                />
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </main>
+
+        {createGuideOrder && (
+          <CreateGuideModal
+            open={!!createGuideOrder}
+            onClose={() => setCreateGuideOrder(null)}
+            storeId={selectedStoreId || ""}
+            isLoading={isCreatingGuide}
+            selectedOrders={[
+              {
+                id: createGuideOrder.id,
+                orderNumber: createGuideOrder.orderNumber,
+                clientName: createGuideOrder.customer.fullName,
+                address: createGuideOrder.customer.address,
+                district: createGuideOrder.customer.district,
+                total: Number(createGuideOrder.grandTotal),
+                pendingPayment: getPendingPayment(createGuideOrder),
+                zone: createGuideOrder.customer.zone,
+              },
+            ]}
+            onConfirm={handleCreateGuide}
+          />
+        )}
+
+        <CancellationModal
+          open={cancellationModalOpen}
           onClose={() => {
-            setReassignSellerModalOpen(false);
-            setSaleToReassign(null);
+            setCancellationModalOpen(false);
+            setSaleToCancel(null);
           }}
-          orderNumber={saleToReassign.orderNumber}
-          currentSellerName={saleToReassign.sellerName}
-          companyId={auth?.company?.id ?? ""}
-          onConfirm={handleReassignSeller}
-          isLoading={isReassigningLoading}
+          orderNumber={saleToCancel?.orderNumber || ""}
+          onConfirm={handleConfirmCancellation}
+          isLoading={isCancelling}
         />
-      )}
-    </div>
+
+        <CommentsTimelineModal
+          open={commentsModalOpen}
+          onClose={() => {
+            setCommentsModalOpen(false);
+            setSelectedSaleForComments(null);
+          }}
+          orderId={selectedSaleForComments?.id || ""}
+          orderNumber={selectedSaleForComments?.orderNumber || ""}
+        />
+
+        <PaymentVerificationModal
+          open={paymentModalOpen}
+          onClose={() => {
+            setPaymentModalOpen(false);
+            setSelectedSaleForPayment(null);
+          }}
+          orderId={selectedSaleForPayment?.id || ""}
+          orderNumber={selectedSaleForPayment?.orderNumber || ""}
+          onPaymentUpdated={refetchOrders}
+        />
+
+        <BulkPrintPreviewDialog
+          open={printPreviewOpen}
+          orders={pendingPrintSales}
+          company={auth?.company}
+          fetchReceipt={fetchPrintReceipt}
+          onConfirm={handleConfirmPrint}
+          onClose={handleClosePrintPreview}
+        />
+        {/* Modal de alerta de stock insuficiente */}
+        <AlertDialog open={stockAlertOpen} onOpenChange={setStockAlertOpen}>
+          <AlertDialogContent className="max-w-lg">
+            <AlertDialogHeader>
+              <div className="flex items-center gap-2 text-amber-600 mb-2">
+                <AlertTriangle className="h-5 w-5" />
+                <AlertDialogTitle>Atención: Stock Insuficiente</AlertDialogTitle>
+              </div>
+              <AlertDialogDescription asChild>
+                <div className="space-y-4 text-sm">
+                  <p className="text-muted-foreground">
+                    Se han actualizado los estados a <strong>PREPARADO</strong>,
+                    pero se ha detectado que los siguientes pedidos tienen
+                    productos con <strong>stock insuficiente o nulo</strong>:
+                  </p>
+                  <div className="max-h-60 overflow-y-auto rounded-md border bg-muted/30 p-3">
+                    <ul className="space-y-3">
+                      {ordersWithStockIssue.map((sale) => (
+                        <li
+                          key={sale.id}
+                          className="border-b border-border/50 pb-2 last:border-0 last:pb-0"
+                        >
+                          <div className="font-bold text-foreground mb-1">
+                            Pedido: {sale.orderNumber}
+                          </div>
+                          <div className="text-xs text-muted-foreground flex flex-col gap-1">
+                            <span className="flex items-center gap-1">
+                              <strong>Cliente:</strong> {sale.clientName}
+                            </span>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {sale.items.map((item, idx) => (
+                                <span
+                                  key={idx}
+                                  className="bg-background px-2 py-0.5 rounded border border-border text-[10px]"
+                                >
+                                  {item.productName} (x{item.quantity})
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <p className="text-amber-700 bg-amber-50 p-2 rounded border border-amber-100 italic">
+                    Por favor, revise el inventario físico antes de proceder con
+                    el despacho de estos pedidos.
+                  </p>
+                </div>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogAction className="bg-amber-600 hover:bg-amber-700">
+                Entendido
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <ImportSalesModal
+          isOpen={importModalOpen}
+          onClose={() => setImportModalOpen(false)}
+          onSuccess={() => {
+            refetchOrders();
+            setImportModalOpen(false);
+          }}
+          storeId={selectedStoreId || ""}
+          userId={auth.user?.id}
+          sellerName={
+            auth.user
+              ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim()
+              : undefined
+          }
+        />
+
+        <RescheduleDialog
+          open={rescheduleDialogSaleId !== null}
+          onOpenChange={(open) => {
+            if (!open) setRescheduleDialogSaleId(null);
+          }}
+          onConfirm={(date) => {
+            if (rescheduleDialogSaleId) {
+              handleIndividualReprogramar(rescheduleDialogSaleId, date);
+              setRescheduleDialogSaleId(null);
+            }
+          }}
+        />
+
+        <RescheduleDialog
+          open={bulkRescheduleOpen}
+          onOpenChange={setBulkRescheduleOpen}
+          onConfirm={(date) => {
+            handleBulkReprogramar(date);
+            setBulkRescheduleOpen(false);
+          }}
+        />
+
+        {saleToReassign && (
+          <ReassignSellerModal
+            open={reassignSellerModalOpen}
+            onClose={() => {
+              setReassignSellerModalOpen(false);
+              setSaleToReassign(null);
+            }}
+            orderNumber={saleToReassign.orderNumber}
+            currentSellerName={saleToReassign.sellerName}
+            companyId={auth?.company?.id ?? ""}
+            onConfirm={handleReassignSeller}
+            isLoading={isReassigningLoading}
+          />
+        )}
+      </div>
+    </OrderDetailModalProvider>
   );
 }

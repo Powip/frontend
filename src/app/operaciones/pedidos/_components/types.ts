@@ -277,7 +277,6 @@ export interface PedidosActions {
   apiCouriers: string[];
   salesChannels: string[];
   isBulkLoading: boolean;
-  onView: (sale: Sale) => void;
   onOpenPayment: (sale: Sale) => void;
   onOpenGuide: (sale: Sale) => void;
   onReassignSeller: (sale: Sale) => void;

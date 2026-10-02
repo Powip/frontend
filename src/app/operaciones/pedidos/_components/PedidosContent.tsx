@@ -28,7 +28,7 @@ import { getStatusChainSteps, getStatusLabel } from "@/utils/domain/orders-statu
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
 import { openPrintWindow, printReceipts, ReceiptData } from "@/utils/bulk-receipt-printer";
 
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import CreateGuideModal, { CreateGuideData } from "@/components/modals/CreateGuideModal";
@@ -82,7 +82,6 @@ export function PedidosContent() {
   const [scannerOpen, setScannerOpen] = useState(false);
 
   // ---- Modales ----
-  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
   const [paymentSale, setPaymentSale] = useState<Sale | null>(null);
   const [guideSale, setGuideSale] = useState<Sale | null>(null);
   const [createGuideOrders, setCreateGuideOrders] = useState<Sale[] | null>(null);
@@ -170,10 +169,6 @@ export function PedidosContent() {
   }, [salesByTab]);
 
   /* ------------------------------ Handlers ------------------------------ */
-
-  const handleView = useCallback((sale: Sale) => {
-    setViewOrderId(sale.id);
-  }, []);
 
   const handleChangeStatus = useCallback(
     async (saleId: string, newStatus: OrderStatus) => {
@@ -717,7 +712,6 @@ export function PedidosContent() {
     apiCouriers,
     salesChannels,
     isBulkLoading,
-    onView: handleView,
     onOpenPayment: setPaymentSale,
     onOpenGuide: setGuideSale,
     onReassignSeller: setReassignSale,
@@ -748,177 +742,168 @@ export function PedidosContent() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-extrabold tracking-tight">Pedidos</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Despacho, seguimiento y atención de pedidos — el flujo completo, en un solo lugar.
-          </p>
+    <OrderDetailModalProvider onOrderUpdated={fetchOrders} isOperaciones showTracking>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-extrabold tracking-tight">Pedidos</h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Despacho, seguimiento y atención de pedidos — el flujo completo, en un solo lugar.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
+            onClick={() => setScannerOpen(true)}
+          >
+            <ScanLine className="h-4 w-4" />
+            Escanear
+          </Button>
         </div>
-        <Button
-          size="sm"
-          className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
-          onClick={() => setScannerOpen(true)}
-        >
-          <ScanLine className="h-4 w-4" />
-          Escanear
-        </Button>
-      </div>
 
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PedidosTabKey)}>
-        <TabsList className="h-auto w-full gap-1 bg-muted/60 p-1">
-          {PEDIDOS_TABS.map((tab) => {
-            const Icon = TAB_ICON[tab.key];
-            return (
-            <TabsTrigger
-              key={tab.key}
-              value={tab.key}
-              className={`flex-1 gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium sm:text-sm ${tab.alerta && tabCounts[tab.key] > 0 ? "data-[state=active]:text-red-600" : ""}`}
-            >
-              <Icon className="h-4 w-4" />
-              {tab.label}
-              <span
-                className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
-                  tab.alerta && tabCounts[tab.key] > 0
-                    ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
-                    : "bg-background text-muted-foreground"
-                }`}
+        <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as PedidosTabKey)}>
+          <TabsList className="h-auto w-full gap-1 bg-muted/60 p-1">
+            {PEDIDOS_TABS.map((tab) => {
+              const Icon = TAB_ICON[tab.key];
+              return (
+              <TabsTrigger
+                key={tab.key}
+                value={tab.key}
+                className={`flex-1 gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium sm:text-sm ${tab.alerta && tabCounts[tab.key] > 0 ? "data-[state=active]:text-red-600" : ""}`}
               >
-                {tabCounts[tab.key]}
-              </span>
-            </TabsTrigger>
-            );
-          })}
-        </TabsList>
+                <Icon className="h-4 w-4" />
+                {tab.label}
+                <span
+                  className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${
+                    tab.alerta && tabCounts[tab.key] > 0
+                      ? "bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300"
+                      : "bg-background text-muted-foreground"
+                  }`}
+                >
+                  {tabCounts[tab.key]}
+                </span>
+              </TabsTrigger>
+              );
+            })}
+          </TabsList>
 
-        <TabsContent value="despachar">
-          <PorDespacharTab
-            sales={salesByTab.despachar}
-            actions={actions}
-            initialSearch={initialTab === "despachar" ? initialQ : undefined}
-            initialQf={initialTab === "despachar" ? initialQf : undefined}
+          <TabsContent value="despachar">
+            <PorDespacharTab
+              sales={salesByTab.despachar}
+              actions={actions}
+              initialSearch={initialTab === "despachar" ? initialQ : undefined}
+              initialQf={initialTab === "despachar" ? initialQf : undefined}
+            />
+          </TabsContent>
+          <TabsContent value="camino">
+            <EnCaminoTab
+              sales={salesByTab.camino}
+              actions={actions}
+              initialSearch={initialTab === "camino" ? initialQ : undefined}
+              initialQf={initialTab === "camino" ? initialQf : undefined}
+            />
+          </TabsContent>
+          <TabsContent value="atencion">
+            <AtencionTab
+              sales={salesByTab.atencion}
+              actions={actions}
+              initialSearch={initialTab === "atencion" ? initialQ : undefined}
+              initialQf={initialTab === "atencion" ? initialQf : undefined}
+            />
+          </TabsContent>
+          <TabsContent value="historial">
+            <HistorialTab sales={salesByTab.historial} actions={actions} initialSearch={initialTab === "historial" ? initialQ : undefined} />
+          </TabsContent>
+          <TabsContent value="anulados">
+            <AnuladosTab sales={salesByTab.anulados} actions={actions} initialSearch={initialTab === "anulados" ? initialQ : undefined} />
+          </TabsContent>
+        </Tabs>
+
+        {/* ------------------------------ Modales ------------------------------ */}
+
+        {paymentSale && (
+          <PaymentVerificationModal
+            open={!!paymentSale}
+            onClose={() => setPaymentSale(null)}
+            orderId={paymentSale.id}
+            orderNumber={paymentSale.orderNumber}
+            onPaymentUpdated={fetchOrders}
+            canApprove={can(OPS_PERMISSIONS.APPROVE_PAYMENTS)}
           />
-        </TabsContent>
-        <TabsContent value="camino">
-          <EnCaminoTab
-            sales={salesByTab.camino}
-            actions={actions}
-            initialSearch={initialTab === "camino" ? initialQ : undefined}
-            initialQf={initialTab === "camino" ? initialQf : undefined}
+        )}
+
+        {guideSale && (
+          <GuideDetailsModal
+            open={!!guideSale}
+            onClose={() => setGuideSale(null)}
+            orderId={guideSale.id}
+            defaultCourier={guideSale.courier}
+            onGuideUpdated={fetchOrders}
           />
-        </TabsContent>
-        <TabsContent value="atencion">
-          <AtencionTab
-            sales={salesByTab.atencion}
-            actions={actions}
-            initialSearch={initialTab === "atencion" ? initialQ : undefined}
-            initialQf={initialTab === "atencion" ? initialQf : undefined}
+        )}
+
+        {createGuideOrders && (
+          <CreateGuideModal
+            open={!!createGuideOrders}
+            onClose={() => setCreateGuideOrders(null)}
+            selectedOrders={createGuideOrders}
+            storeId={selectedStoreId || ""}
+            onConfirm={handleCreateGuideConfirm}
+            isLoading={isCreatingGuide}
           />
-        </TabsContent>
-        <TabsContent value="historial">
-          <HistorialTab sales={salesByTab.historial} actions={actions} initialSearch={initialTab === "historial" ? initialQ : undefined} />
-        </TabsContent>
-        <TabsContent value="anulados">
-          <AnuladosTab sales={salesByTab.anulados} actions={actions} initialSearch={initialTab === "anulados" ? initialQ : undefined} />
-        </TabsContent>
-      </Tabs>
+        )}
 
-      {/* ------------------------------ Modales ------------------------------ */}
+        {addToGuideOrders && (
+          <AddToExistingGuideModal
+            open={!!addToGuideOrders}
+            onClose={() => setAddToGuideOrders(null)}
+            selectedOrders={addToGuideOrders}
+            storeId={selectedStoreId || ""}
+            onConfirm={handleAddToGuideConfirm}
+            isLoading={isAddingToGuide}
+          />
+        )}
 
-      {viewOrderId && (
-        <CustomerServiceModal
-          open={!!viewOrderId}
-          orderId={viewOrderId}
-          onClose={() => setViewOrderId(null)}
-          onOrderUpdated={fetchOrders}
-          isOperaciones
-          showTracking
+        {cancelSale && (
+          <CancellationModal
+            open={!!cancelSale}
+            onClose={() => setCancelSale(null)}
+            orderNumber={cancelSale.orderNumber}
+            onConfirm={handleConfirmCancellation}
+            isLoading={isCancelling}
+          />
+        )}
+
+        {courierAssignSales && (
+          <CourierAssignmentModal
+            open={!!courierAssignSales}
+            onClose={() => setCourierAssignSales(null)}
+            selectedCount={courierAssignSales.length}
+            onConfirm={handleAssignCourierConfirm}
+            isLoading={isAssigningCourier}
+          />
+        )}
+
+        {reassignSale && (
+          <ReassignSellerModal
+            open={!!reassignSale}
+            onClose={() => setReassignSale(null)}
+            orderNumber={reassignSale.orderNumber}
+            currentSellerName={reassignSale.sellerName}
+            companyId={auth?.company?.id || ""}
+            onConfirm={handleReassignSellerConfirm}
+            isLoading={isReassigning}
+          />
+        )}
+
+        <RescheduleDialog
+          open={!!rescheduleTarget}
+          onOpenChange={(v) => !v && setRescheduleTarget(null)}
+          onConfirm={handleRescheduleConfirm}
         />
-      )}
 
-      {paymentSale && (
-        <PaymentVerificationModal
-          open={!!paymentSale}
-          onClose={() => setPaymentSale(null)}
-          orderId={paymentSale.id}
-          orderNumber={paymentSale.orderNumber}
-          onPaymentUpdated={fetchOrders}
-          canApprove={can(OPS_PERMISSIONS.APPROVE_PAYMENTS)}
-        />
-      )}
-
-      {guideSale && (
-        <GuideDetailsModal
-          open={!!guideSale}
-          onClose={() => setGuideSale(null)}
-          orderId={guideSale.id}
-          defaultCourier={guideSale.courier}
-          onGuideUpdated={fetchOrders}
-        />
-      )}
-
-      {createGuideOrders && (
-        <CreateGuideModal
-          open={!!createGuideOrders}
-          onClose={() => setCreateGuideOrders(null)}
-          selectedOrders={createGuideOrders}
-          storeId={selectedStoreId || ""}
-          onConfirm={handleCreateGuideConfirm}
-          isLoading={isCreatingGuide}
-        />
-      )}
-
-      {addToGuideOrders && (
-        <AddToExistingGuideModal
-          open={!!addToGuideOrders}
-          onClose={() => setAddToGuideOrders(null)}
-          selectedOrders={addToGuideOrders}
-          storeId={selectedStoreId || ""}
-          onConfirm={handleAddToGuideConfirm}
-          isLoading={isAddingToGuide}
-        />
-      )}
-
-      {cancelSale && (
-        <CancellationModal
-          open={!!cancelSale}
-          onClose={() => setCancelSale(null)}
-          orderNumber={cancelSale.orderNumber}
-          onConfirm={handleConfirmCancellation}
-          isLoading={isCancelling}
-        />
-      )}
-
-      {courierAssignSales && (
-        <CourierAssignmentModal
-          open={!!courierAssignSales}
-          onClose={() => setCourierAssignSales(null)}
-          selectedCount={courierAssignSales.length}
-          onConfirm={handleAssignCourierConfirm}
-          isLoading={isAssigningCourier}
-        />
-      )}
-
-      {reassignSale && (
-        <ReassignSellerModal
-          open={!!reassignSale}
-          onClose={() => setReassignSale(null)}
-          orderNumber={reassignSale.orderNumber}
-          currentSellerName={reassignSale.sellerName}
-          companyId={auth?.company?.id || ""}
-          onConfirm={handleReassignSellerConfirm}
-          isLoading={isReassigning}
-        />
-      )}
-
-      <RescheduleDialog
-        open={!!rescheduleTarget}
-        onOpenChange={(v) => !v && setRescheduleTarget(null)}
-        onConfirm={handleRescheduleConfirm}
-      />
-
-      <GlobalScanner open={scannerOpen} onOpenChange={setScannerOpen} />
-    </div>
+        <GlobalScanner open={scannerOpen} onOpenChange={setScannerOpen} />
+      </div>
+    </OrderDetailModalProvider>
   );
 }

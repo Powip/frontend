@@ -7,7 +7,6 @@ import {
   Search,
   RefreshCw,
   AlertTriangle,
-  Eye,
   FileSpreadsheet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -43,7 +42,10 @@ import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
 import CancelAliclikButton from "@/components/aliclik/CancelAliclikButton";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import {
+  OrderDetailButton,
+  OrderDetailModalProvider,
+} from "@/components/orders/OrderDetailModal";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 
 const ITEMS_PER_PAGE = 15;
@@ -128,7 +130,6 @@ export default function AliclikOrderTrackingView() {
   const [activeFilter, setActiveFilter] = useState<AliclikFilter>("all");
   const [saldoFilter, setSaldoFilter] = useState<"all" | "pending" | "paid">("all");
   const [page, setPage] = useState(1);
-  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
 
   // ── Fetch ────────────────────────────────────────────────────────────────
 
@@ -265,337 +266,328 @@ export default function AliclikOrderTrackingView() {
   // ─── RENDER ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <OrderDetailModalProvider
+      onOrderUpdated={fetchOrders}
+      isOperaciones
+      showTracking
+      initialTab="seguimiento"
+    >
+      <div className="space-y-4">
 
-      {/* ── Resumen de estados ── */}
-      {statusCounts.length > 0 && (
-        <div className="flex flex-wrap gap-2 p-3 border rounded-xl bg-muted/20">
-          {statusCounts.map(({ status, label, count, colorClass }) => (
-            <button
-              key={status}
-              type="button"
-              onClick={() =>
-                setStatusFilters((prev) =>
-                  prev.includes(status)
-                    ? prev.filter((v) => v !== status)
-                    : [...prev, status],
-                )
-              }
-              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all
-                ${colorClass}
-                ${statusFilters.includes(status) ? "ring-2 ring-offset-1 ring-current" : "opacity-90 hover:opacity-100"}
-              `}
-            >
-              <span>{label}</span>
-              <span className="bg-white/50 rounded-full px-1.5 py-0.5 font-bold text-[11px]">
-                {count}
-              </span>
-            </button>
-          ))}
-          {statusFilters.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setStatusFilters([])}
-              className="text-xs text-muted-foreground underline self-center ml-1"
-            >
-              Limpiar filtro
-            </button>
-          )}
-        </div>
-      )}
+        {/* ── Resumen de estados ── */}
+        {statusCounts.length > 0 && (
+          <div className="flex flex-wrap gap-2 p-3 border rounded-xl bg-muted/20">
+            {statusCounts.map(({ status, label, count, colorClass }) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() =>
+                  setStatusFilters((prev) =>
+                    prev.includes(status)
+                      ? prev.filter((v) => v !== status)
+                      : [...prev, status],
+                  )
+                }
+                className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all
+                  ${colorClass}
+                  ${statusFilters.includes(status) ? "ring-2 ring-offset-1 ring-current" : "opacity-90 hover:opacity-100"}
+                `}
+              >
+                <span>{label}</span>
+                <span className="bg-white/50 rounded-full px-1.5 py-0.5 font-bold text-[11px]">
+                  {count}
+                </span>
+              </button>
+            ))}
+            {statusFilters.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setStatusFilters([])}
+                className="text-xs text-muted-foreground underline self-center ml-1"
+              >
+                Limpiar filtro
+              </button>
+            )}
+          </div>
+        )}
 
-      {/* ── Barra de filtros ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border rounded-xl bg-muted/20">
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold">Búsqueda rápida</Label>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="N° pedido o cliente..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9"
-            />
+        {/* ── Barra de filtros ── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border rounded-xl bg-muted/20">
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Búsqueda rápida</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="N° pedido o cliente..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Estado Aliclik</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full h-9 text-sm justify-between font-normal"
+                >
+                  {statusFilters.length === 0
+                    ? "Todos los estados"
+                    : statusFilters.length === 1
+                      ? ALICLIK_STATUS_FILTER_OPTIONS.find(
+                          (opt) => opt.value === statusFilters[0],
+                        )?.label
+                      : `${statusFilters.length} estados seleccionados`}
+                  <ChevronDown className="h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" align="start">
+                <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Filtrar por estado
+                  </span>
+                  {statusFilters.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-xs text-primary hover:underline"
+                      onClick={() => setStatusFilters([])}
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  {ALICLIK_STATUS_FILTER_OPTIONS.map((opt) => (
+                    <label
+                      key={opt.value}
+                      className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                    >
+                      <Checkbox
+                        checked={statusFilters.includes(opt.value)}
+                        onCheckedChange={(checked) => {
+                          setStatusFilters((prev) =>
+                            checked
+                              ? [...prev, opt.value]
+                              : prev.filter((v) => v !== opt.value),
+                          );
+                        }}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Saldo</Label>
+            <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
+              <SelectTrigger className="h-9 bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Con y sin saldo</SelectItem>
+                <SelectItem value="pending">Con saldo pendiente</SelectItem>
+                <SelectItem value="paid">Pagado completo</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold">Estado Aliclik</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full h-9 text-sm justify-between font-normal"
-              >
-                {statusFilters.length === 0
-                  ? "Todos los estados"
-                  : statusFilters.length === 1
-                    ? ALICLIK_STATUS_FILTER_OPTIONS.find(
-                        (opt) => opt.value === statusFilters[0],
-                      )?.label
-                    : `${statusFilters.length} estados seleccionados`}
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-56 p-2" align="start">
-              <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  Filtrar por estado
-                </span>
-                {statusFilters.length > 0 && (
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:underline"
-                    onClick={() => setStatusFilters([])}
-                  >
-                    Limpiar
-                  </button>
-                )}
-              </div>
-              <div className="space-y-1">
-                {ALICLIK_STATUS_FILTER_OPTIONS.map((opt) => (
-                  <label
-                    key={opt.value}
-                    className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
-                  >
-                    <Checkbox
-                      checked={statusFilters.includes(opt.value)}
-                      onCheckedChange={(checked) => {
-                        setStatusFilters((prev) =>
-                          checked
-                            ? [...prev, opt.value]
-                            : prev.filter((v) => v !== opt.value),
-                        );
-                      }}
-                    />
-                    {opt.label}
-                  </label>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold">Saldo</Label>
-          <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
-            <SelectTrigger className="h-9 bg-background">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Con y sin saldo</SelectItem>
-              <SelectItem value="pending">Con saldo pendiente</SelectItem>
-              <SelectItem value="paid">Pagado completo</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
 
-      {/* ── Tabs de filtro interno ── */}
-      <div className="flex items-center gap-2">
-        {(
-          [
-            { key: "all",      label: "Todos" },
-            { key: "problem",  label: "Con problemas" },
-            { key: "canceled", label: "Cancelados" },
-          ] as { key: AliclikFilter; label: string }[]
-        ).map(({ key, label }) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setActiveFilter(key)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors
-              ${
-                activeFilter === key
-                  ? "bg-foreground text-background border-foreground"
-                  : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/60"
-              }
-            `}
-          >
-            {label}
-          </button>
-        ))}
-        <span className="ml-auto text-xs text-muted-foreground">
-          {filteredOrders.length} registro{filteredOrders.length !== 1 ? "s" : ""}
-        </span>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={fetchOrders}
-          disabled={loading}
-          className="gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Actualizar
-        </Button>
-        <Button size="sm" variant="outline" onClick={handleExportExcel} className="gap-2">
-          <FileSpreadsheet className="h-4 w-4" />
-          Exportar Excel
-        </Button>
-      </div>
-
-      {/* ── Banner de devueltos ── */}
-      {returnedCount > 0 && activeFilter !== "problem" && (
-        <div
-          role="alert"
-          className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg"
-        >
-          <span className="flex items-center gap-2 text-sm font-medium text-red-800">
-            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-            {returnedCount} pedido{returnedCount !== 1 ? "s" : ""} devuelto{returnedCount !== 1 ? "s" : ""} en Aliclik
+        {/* ── Tabs de filtro interno ── */}
+        <div className="flex items-center gap-2">
+          {(
+            [
+              { key: "all",      label: "Todos" },
+              { key: "problem",  label: "Con problemas" },
+              { key: "canceled", label: "Cancelados" },
+            ] as { key: AliclikFilter; label: string }[]
+          ).map(({ key, label }) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActiveFilter(key)}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors
+                ${
+                  activeFilter === key
+                    ? "bg-foreground text-background border-foreground"
+                    : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/60"
+                }
+              `}
+            >
+              {label}
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-muted-foreground">
+            {filteredOrders.length} registro{filteredOrders.length !== 1 ? "s" : ""}
           </span>
           <Button
             size="sm"
             variant="outline"
-            className="border-red-300 text-red-700 hover:bg-red-100"
-            onClick={() => setActiveFilter("problem")}
+            onClick={fetchOrders}
+            disabled={loading}
+            className="gap-2"
           >
-            Ver devueltos
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Actualizar
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleExportExcel} className="gap-2">
+            <FileSpreadsheet className="h-4 w-4" />
+            Exportar Excel
           </Button>
         </div>
-      )}
 
-      {/* ── Tabla ── */}
-      <div className="border rounded-xl overflow-hidden bg-background">
-        <Table>
-          <TableHeader className="bg-muted/50">
-            <TableRow>
-              <TableHead className="text-[11px] uppercase font-bold px-4">
-                N° Pedido
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4">
-                Cliente
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4 text-center">
-                Estado Aliclik
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4 text-center">
-                Sincronizado
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4">
-                Fecha pedido
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4 text-right">
-                Acciones
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
+        {/* ── Banner de devueltos ── */}
+        {returnedCount > 0 && activeFilter !== "problem" && (
+          <div
+            role="alert"
+            className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg"
+          >
+            <span className="flex items-center gap-2 text-sm font-medium text-red-800">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+              {returnedCount} pedido{returnedCount !== 1 ? "s" : ""} devuelto{returnedCount !== 1 ? "s" : ""} en Aliclik
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-300 text-red-700 hover:bg-red-100"
+              onClick={() => setActiveFilter("problem")}
+            >
+              Ver devueltos
+            </Button>
+          </div>
+        )}
+
+        {/* ── Tabla ── */}
+        <div className="border rounded-xl overflow-hidden bg-background">
+          <Table>
+            <TableHeader className="bg-muted/50">
+              <TableRow>
+                <TableHead className="text-[11px] uppercase font-bold px-4">
+                  N° Pedido
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4">
+                  Cliente
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4 text-center">
+                  Estado Aliclik
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4 text-center">
+                  Sincronizado
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4">
+                  Fecha pedido
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4 text-right">
+                  Acciones
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell
+                      colSpan={6}
+                      className="h-12 animate-pulse bg-muted/20"
+                    />
+                  </TableRow>
+                ))
+              ) : filteredOrders.length === 0 ? (
+                <TableRow>
                   <TableCell
                     colSpan={6}
-                    className="h-12 animate-pulse bg-muted/20"
-                  />
+                    className="h-32 text-center text-muted-foreground"
+                  >
+                    No hay pedidos enviados a Aliclik
+                    {(search || statusFilters.length > 0 || activeFilter !== "all" || saldoFilter !== "all") && (
+                      <span className="block text-xs mt-1">
+                        Probá quitando los filtros activos
+                      </span>
+                    )}
+                  </TableCell>
                 </TableRow>
-              ))
-            ) : filteredOrders.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={6}
-                  className="h-32 text-center text-muted-foreground"
-                >
-                  No hay pedidos enviados a Aliclik
-                  {(search || statusFilters.length > 0 || activeFilter !== "all" || saldoFilter !== "all") && (
-                    <span className="block text-xs mt-1">
-                      Probá quitando los filtros activos
-                    </span>
-                  )}
-                </TableCell>
-              </TableRow>
-            ) : (
-              pagedOrders.map((order) => (
-                <TableRow
-                  key={order.id}
-                  className="hover:bg-muted/30 transition-colors"
-                >
-                  {/* N° Pedido */}
-                  <TableCell className="px-4 py-3 text-xs font-bold font-mono">
-                    {order.orderNumber}
-                  </TableCell>
+              ) : (
+                pagedOrders.map((order) => (
+                  <TableRow
+                    key={order.id}
+                    className="hover:bg-muted/30 transition-colors"
+                  >
+                    {/* N° Pedido */}
+                    <TableCell className="px-4 py-3 text-xs font-bold font-mono">
+                      {order.orderNumber}
+                    </TableCell>
 
-                  {/* Cliente */}
-                  <TableCell className="px-4 py-3 text-xs max-w-[140px] truncate">
-                    {order.customer?.fullName ?? (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
+                    {/* Cliente */}
+                    <TableCell className="px-4 py-3 text-xs max-w-[140px] truncate">
+                      {order.customer?.fullName ?? (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
 
-                  {/* Estado Aliclik */}
-                  <TableCell className="px-4 py-3 text-center">
-                    <AliclikStatusBadge
-                      aliclikDispatchStatus={order.aliclikDispatchStatus}
-                      aliclikSyncedAt={order.aliclikSyncedAt}
-                    />
-                  </TableCell>
-
-                  {/* Sincronizado */}
-                  <TableCell className="px-4 py-3 text-center">
-                    {order.aliclikSyncedAt ? (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] font-mono bg-muted/30"
-                      >
-                        {formatSyncedAt(order.aliclikSyncedAt)}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground text-[11px]">—</span>
-                    )}
-                  </TableCell>
-
-                  {/* Fecha pedido */}
-                  <TableCell className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDate(order.created_at)}
-                  </TableCell>
-
-                  {/* Acciones */}
-                  <TableCell className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-1.5">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title="Ver seguimiento"
-                        aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
-                        onClick={() => setViewOrderId(order.id)}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
-                      <CancelAliclikButton
-                        orderId={order.id}
-                        companyId={auth?.company?.id}
+                    {/* Estado Aliclik */}
+                    <TableCell className="px-4 py-3 text-center">
+                      <AliclikStatusBadge
                         aliclikDispatchStatus={order.aliclikDispatchStatus}
-                        onSuccess={fetchOrders}
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-[11px] px-2 gap-1 border-red-200 text-red-600 hover:bg-red-50"
-                        label="Cancelar"
+                        aliclikSyncedAt={order.aliclikSyncedAt}
                       />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-        <Pagination
-          currentPage={page}
-          totalPages={totalPages}
-          totalItems={filteredOrders.length}
-          itemsPerPage={ITEMS_PER_PAGE}
-          onPageChange={setPage}
-          itemName="pedidos"
-        />
-      </div>
+                    </TableCell>
 
-      <CustomerServiceModal
-        open={!!viewOrderId}
-        orderId={viewOrderId || ""}
-        onClose={() => setViewOrderId(null)}
-        onOrderUpdated={fetchOrders}
-        isOperaciones
-        showTracking
-        initialTab="seguimiento"
-      />
-    </div>
+                    {/* Sincronizado */}
+                    <TableCell className="px-4 py-3 text-center">
+                      {order.aliclikSyncedAt ? (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-mono bg-muted/30"
+                        >
+                          {formatSyncedAt(order.aliclikSyncedAt)}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-[11px]">—</span>
+                      )}
+                    </TableCell>
+
+                    {/* Fecha pedido */}
+                    <TableCell className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                      {formatDate(order.created_at)}
+                    </TableCell>
+
+                    {/* Acciones */}
+                    <TableCell className="px-4 py-3 text-right">
+                      <div className="flex justify-end gap-1.5">
+                        <OrderDetailButton
+                          orderId={order.id}
+                          ariaLabel={`Ver seguimiento del pedido ${order.orderNumber}`}
+                        />
+                        <CancelAliclikButton
+                          orderId={order.id}
+                          companyId={auth?.company?.id}
+                          aliclikDispatchStatus={order.aliclikDispatchStatus}
+                          onSuccess={fetchOrders}
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-[11px] px-2 gap-1 border-red-200 text-red-600 hover:bg-red-50"
+                          label="Cancelar"
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={filteredOrders.length}
+            itemsPerPage={ITEMS_PER_PAGE}
+            onPageChange={setPage}
+            itemName="pedidos"
+          />
+        </div>
+      </div>
+    </OrderDetailModalProvider>
   );
 }

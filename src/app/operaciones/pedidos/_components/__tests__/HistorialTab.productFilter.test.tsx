@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import type { OrderHeader, OrderItem } from "@/interfaces/IOrder";
 import { formatProductsForExport } from "@/utils/exportSalesExcel";
 import { HistorialTab } from "../HistorialTab";
+import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
 import { mapOrderToSale, type PedidosActions } from "../types";
 
 /**
@@ -63,12 +64,11 @@ function makeActions(onExportExcel = jest.fn()): PedidosActions {
     salesChannels: [],
     isBulkLoading: false,
     onExportExcel,
-    onView: jest.fn(),
   } as unknown as PedidosActions;
 }
 
 function renderTab(onExportExcel = jest.fn()) {
-  render(<HistorialTab sales={SALES} actions={makeActions(onExportExcel)} />);
+  render(<HistorialTab sales={SALES} actions={makeActions(onExportExcel)} />, { wrapper: OrderDetailModalProvider });
   fireEvent.click(screen.getByRole("button", { name: /Filtros/ }));
   return onExportExcel;
 }

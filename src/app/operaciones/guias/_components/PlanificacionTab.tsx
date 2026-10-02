@@ -15,7 +15,6 @@ import {
   FileSpreadsheet,
   CalendarClock,
   ListChecks,
-  Eye,
   Pencil,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -50,7 +49,10 @@ import {
   WhatsAppIcon,
 } from "@/app/operaciones/pedidos/_components/shared";
 import { SourceBadge } from "@/components/shared/SourceBadge";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import {
+  OrderDetailButton,
+  OrderDetailModalProvider,
+} from "@/components/orders/OrderDetailModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 
 /* -----------------------------------------------------------------------
@@ -137,7 +139,6 @@ export default function PlanificacionTab() {
   const [autoPassOn, setAutoPassOn] = useState(true);
   const [countdown, setCountdown] = useState("");
   const [rescheduleDate, setRescheduleDate] = useState("");
-  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
   const [paymentSale, setPaymentSale] = useState<Sale | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -367,382 +368,367 @@ export default function PlanificacionTab() {
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
-          <button
-            onClick={() => setViewMode("cal")}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-              viewMode === "cal"
-                ? "bg-background shadow-sm"
-                : "text-muted-foreground"
-            }`}
-          >
-            <CalendarClock className="h-3.5 w-3.5" />
-            Calendario semana
-          </button>
-          <button
-            onClick={() => setViewMode("list")}
-            className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-              viewMode === "list"
-                ? "bg-background shadow-sm"
-                : "text-muted-foreground"
-            }`}
-          >
-            <ListChecks className="h-3.5 w-3.5" />
-            Agendados del día
-          </button>
-        </div>
-      </div>
-
-      {viewMode === "cal" ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
-          {days.map((d, idx) => (
-            <DayCard
-              key={dayKey(d)}
-              date={d}
-              isToday={idx === 0}
-              items={buckets.get(dayKey(d)) ?? []}
-              onVerAgendados={() => openDayInList(dayKey(d))}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {/* Reloj de pase automático */}
-          <div className="flex flex-wrap items-center gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-500/30 dark:bg-violet-500/10">
-            <Clock className="h-5 w-5 shrink-0 text-violet-600 dark:text-violet-300" />
-            <div className="min-w-[220px] flex-1">
-              <p className="text-sm font-bold text-violet-900 dark:text-violet-200">
-                Pase automático a Preparados: hoy {AUTO_PASS_HOUR}:00 a.m.
-              </p>
-              <p className="text-xs text-violet-700 dark:text-violet-300">
-                A esa hora POWIP mueve solo los agendados de hoy a Por
-                Despachar. Si quieres adelantarlo, confírmalos manualmente acá
-                abajo.
-              </p>
-            </div>
-            <span className="rounded-full bg-violet-600 px-3 py-1 text-xs font-bold text-white">
-              faltan {countdown}
-            </span>
-            <label className="flex items-center gap-2 text-xs font-semibold text-violet-700 dark:text-violet-300">
-              <Switch checked={autoPassOn} onCheckedChange={setAutoPassOn} />
-              Pase automático activo
-            </label>
+    <OrderDetailModalProvider onOrderUpdated={load} isOperaciones showTracking>
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-1 rounded-lg border bg-muted/40 p-1">
+            <button
+              onClick={() => setViewMode("cal")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                viewMode === "cal"
+                  ? "bg-background shadow-sm"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              Calendario semana
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                viewMode === "list"
+                  ? "bg-background shadow-sm"
+                  : "text-muted-foreground"
+              }`}
+            >
+              <ListChecks className="h-3.5 w-3.5" />
+              Agendados del día
+            </button>
           </div>
+        </div>
 
-          {selectedItems.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-violet-600 p-2.5 text-sm text-white shadow-sm">
-              <span className="font-semibold">
-                {selectedItems.length} agendados seleccionados
-              </span>
-              <div className="ml-1 h-5 w-px bg-white/30" />
-              <Button
-                size="sm"
-                disabled={busy}
-                className="h-8 gap-1 bg-white text-xs font-bold text-violet-700 hover:bg-white/90"
-                onClick={() =>
-                  pasarAPreparados(selectedItems.map((it) => it.order.id))
-                }
-              >
-                <Package className="h-3.5 w-3.5" />
-                Confirmar y pasar a Preparados ahora
-              </Button>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-8 gap-1 border-white/40 bg-white/10 text-xs text-white hover:bg-white/20"
-                  >
-                    <CalendarClock className="h-3.5 w-3.5" />
-                    Reprogramar a otro día
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-64">
-                  <p className="mb-2 text-xs font-semibold text-foreground">
-                    Nueva fecha de entrega
-                  </p>
-                  <Input
-                    type="date"
-                    value={rescheduleDate}
-                    onChange={(e) => setRescheduleDate(e.target.value)}
-                  />
-                  <Button
-                    size="sm"
-                    disabled={!rescheduleDate || busy}
-                    className="mt-2 w-full"
-                    onClick={reprogramar}
-                  >
-                    Reprogramar
-                  </Button>
-                </PopoverContent>
-              </Popover>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-8 gap-1 border-white/40 bg-white/10 text-xs text-white hover:bg-white/20"
-                onClick={handleCopySelected}
-              >
-                <Copy className="h-3.5 w-3.5" />
-                Copiar
-              </Button>
-              <button
-                className="ml-auto text-white/80 hover:text-white"
-                onClick={() => setSelectedIds(new Set())}
-              >
-                ✕
-              </button>
-            </div>
-          )}
-
-          <div className="rounded-xl border bg-card shadow-sm">
-            <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4">
-              <div>
-                <h3 className="flex items-center gap-2 font-bold capitalize">
-                  Agendados de {activeDayKey === todayKey ? "hoy" : ""} ·{" "}
-                  {activeDayLabel}
-                  <Badge className="border-violet-200 bg-violet-100 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/15 dark:text-violet-300">
-                    {agendados.length} por pasar
-                  </Badge>
-                </h3>
-                <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
-                  Estos aún <b>no están</b> en la cola de despacho. Cuando se
-                  confirman (auto a las {AUTO_PASS_HOUR}am o manual acá), pasan
-                  a <b>Por Despachar</b> y se juntan con las ventas del día. La
-                  guía se arma allá, no acá.
+        {viewMode === "cal" ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
+            {days.map((d, idx) => (
+              <DayCard
+                key={dayKey(d)}
+                date={d}
+                isToday={idx === 0}
+                items={buckets.get(dayKey(d)) ?? []}
+                onVerAgendados={() => openDayInList(dayKey(d))}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {/* Reloj de pase automático */}
+            <div className="flex flex-wrap items-center gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3 dark:border-violet-500/30 dark:bg-violet-500/10">
+              <Clock className="h-5 w-5 shrink-0 text-violet-600 dark:text-violet-300" />
+              <div className="min-w-[220px] flex-1">
+                <p className="text-sm font-bold text-violet-900 dark:text-violet-200">
+                  Pase automático a Preparados: hoy {AUTO_PASS_HOUR}:00 a.m.
+                </p>
+                <p className="text-xs text-violet-700 dark:text-violet-300">
+                  A esa hora POWIP mueve solo los agendados de hoy a Por
+                  Despachar. Si quieres adelantarlo, confírmalos manualmente acá
+                  abajo.
                 </p>
               </div>
-              <div className="flex shrink-0 gap-2">
+              <span className="rounded-full bg-violet-600 px-3 py-1 text-xs font-bold text-white">
+                faltan {countdown}
+              </span>
+              <label className="flex items-center gap-2 text-xs font-semibold text-violet-700 dark:text-violet-300">
+                <Switch checked={autoPassOn} onCheckedChange={setAutoPassOn} />
+                Pase automático activo
+              </label>
+            </div>
+
+            {selectedItems.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-violet-600 p-2.5 text-sm text-white shadow-sm">
+                <span className="font-semibold">
+                  {selectedItems.length} agendados seleccionados
+                </span>
+                <div className="ml-1 h-5 w-px bg-white/30" />
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  className="h-8 gap-1 bg-white text-xs font-bold text-violet-700 hover:bg-white/90"
+                  onClick={() =>
+                    pasarAPreparados(selectedItems.map((it) => it.order.id))
+                  }
+                >
+                  <Package className="h-3.5 w-3.5" />
+                  Confirmar y pasar a Preparados ahora
+                </Button>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1 border-white/40 bg-white/10 text-xs text-white hover:bg-white/20"
+                    >
+                      <CalendarClock className="h-3.5 w-3.5" />
+                      Reprogramar a otro día
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64">
+                    <p className="mb-2 text-xs font-semibold text-foreground">
+                      Nueva fecha de entrega
+                    </p>
+                    <Input
+                      type="date"
+                      value={rescheduleDate}
+                      onChange={(e) => setRescheduleDate(e.target.value)}
+                    />
+                    <Button
+                      size="sm"
+                      disabled={!rescheduleDate || busy}
+                      className="mt-2 w-full"
+                      onClick={reprogramar}
+                    >
+                      Reprogramar
+                    </Button>
+                  </PopoverContent>
+                </Popover>
                 <Button
                   size="sm"
                   variant="outline"
-                  className="gap-1.5"
-                  onClick={handleExport}
+                  className="h-8 gap-1 border-white/40 bg-white/10 text-xs text-white hover:bg-white/20"
+                  onClick={handleCopySelected}
                 >
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Exportar
+                  <Copy className="h-3.5 w-3.5" />
+                  Copiar
                 </Button>
-                <Button
-                  size="sm"
-                  disabled={agendados.length === 0 || busy}
-                  className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
-                  onClick={() =>
-                    pasarAPreparados(agendados.map((it) => it.order.id))
-                  }
+                <button
+                  className="ml-auto text-white/80 hover:text-white"
+                  onClick={() => setSelectedIds(new Set())}
                 >
-                  <Package className="h-4 w-4" />
-                  Confirmar día → Preparados
-                </Button>
+                  ✕
+                </button>
               </div>
-            </div>
+            )}
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/60">
-                  <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="px-3 py-2">
-                      <Checkbox
-                        checked={
-                          agendados.length > 0 &&
-                          agendados.every((it) => selectedIds.has(it.order.id))
-                        }
-                        onCheckedChange={toggleAll}
-                      />
-                    </th>
-                    <th className="px-3 py-2">N° Orden</th>
-                    <th className="px-3 py-2">Cliente</th>
-                    <th className="px-3 py-2">Distrito</th>
-                    <th className="px-3 py-2">Zona</th>
-                    <th className="px-3 py-2">Productos</th>
-                    <th className="px-3 py-2">Agendado</th>
-                    <th className="px-3 py-2">Origen</th>
-                    <th className="px-3 py-2 text-right">Total / Saldo</th>
-                    <th className="px-3 py-2">Estado</th>
-                    <th className="px-3 py-2">Guía</th>
-                    <th className="px-3 py-2">Courier</th>
-                    <th className="px-3 py-2">Vendedor</th>
-                    <th className="px-3 py-2 text-right">Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {agendados.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={14}
-                        className="py-10 text-center text-muted-foreground"
-                      >
-                        Nada agendado para este día.
-                      </td>
+            <div className="rounded-xl border bg-card shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-3 border-b p-4">
+                <div>
+                  <h3 className="flex items-center gap-2 font-bold capitalize">
+                    Agendados de {activeDayKey === todayKey ? "hoy" : ""} ·{" "}
+                    {activeDayLabel}
+                    <Badge className="border-violet-200 bg-violet-100 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/15 dark:text-violet-300">
+                      {agendados.length} por pasar
+                    </Badge>
+                  </h3>
+                  <p className="mt-1 max-w-2xl text-xs text-muted-foreground">
+                    Estos aún <b>no están</b> en la cola de despacho. Cuando se
+                    confirman (auto a las {AUTO_PASS_HOUR}am o manual acá), pasan
+                    a <b>Por Despachar</b> y se juntan con las ventas del día. La
+                    guía se arma allá, no acá.
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={handleExport}
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Exportar
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={agendados.length === 0 || busy}
+                    className="gap-1.5 bg-violet-600 text-white hover:bg-violet-700"
+                    onClick={() =>
+                      pasarAPreparados(agendados.map((it) => it.order.id))
+                    }
+                  >
+                    <Package className="h-4 w-4" />
+                    Confirmar día → Preparados
+                  </Button>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/60">
+                    <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <th className="px-3 py-2">
+                        <Checkbox
+                          checked={
+                            agendados.length > 0 &&
+                            agendados.every((it) => selectedIds.has(it.order.id))
+                          }
+                          onCheckedChange={toggleAll}
+                        />
+                      </th>
+                      <th className="px-3 py-2">N° Orden</th>
+                      <th className="px-3 py-2">Cliente</th>
+                      <th className="px-3 py-2">Distrito</th>
+                      <th className="px-3 py-2">Zona</th>
+                      <th className="px-3 py-2">Productos</th>
+                      <th className="px-3 py-2">Agendado</th>
+                      <th className="px-3 py-2">Origen</th>
+                      <th className="px-3 py-2 text-right">Total / Saldo</th>
+                      <th className="px-3 py-2">Estado</th>
+                      <th className="px-3 py-2">Guía</th>
+                      <th className="px-3 py-2">Courier</th>
+                      <th className="px-3 py-2">Vendedor</th>
+                      <th className="px-3 py-2 text-right">Acciones</th>
                     </tr>
-                  ) : (
-                    agendados.map((it) => {
-                      const sale = mapOrderToSale(it.order);
-                      return (
-                        <tr
-                          key={it.order.id}
-                          className="border-t hover:bg-muted/30"
+                  </thead>
+                  <tbody>
+                    {agendados.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={14}
+                          className="py-10 text-center text-muted-foreground"
                         >
-                          <td className="px-3 py-2">
-                            <Checkbox
-                              checked={selectedIds.has(sale.id)}
-                              onCheckedChange={() => toggleOne(sale.id)}
-                            />
-                          </td>
-                          <td className="px-3 py-2 font-medium">
-                            <div className="flex items-center gap-1.5">
-                              <StockIssueIcon show={sale.hasStockIssue} />
-                              {sale.orderNumber}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="font-medium">{sale.clientName}</div>
-                            <div className="text-xs text-muted-foreground">
-                              {sale.phoneNumber}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-sm">
-                            {sale.district || "—"}
-                          </td>
-                          <td className="px-3 py-2">
-                            <ZoneBadge zone={sale.zone} />
-                          </td>
-                          <td className="px-3 py-2 max-w-[200px] whitespace-normal text-xs text-muted-foreground">
-                            {formatProductsShort(sale.items)}
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${SOURCE_BADGE_CLASS[it.source]}`}
-                            >
-                              {SOURCE_LABEL[it.source]}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2">
-                            <SourceBadge source={sale.externalSource} />
-                          </td>
-                          <td className="px-3 py-2 text-right text-sm tabular-nums">
-                            {money(sale.total)}
-                            {sale.pendingPayment > 0 && (
-                              <div className="text-xs font-semibold text-red-600">
-                                Saldo {money(sale.pendingPayment)}
-                              </div>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex items-center gap-1.5">
-                              <StatusPill status={sale.status} />
-                              <CallStatusBadge sale={sale} />
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 text-sm">
-                            {sale.guideNumber || "—"}
-                          </td>
-                          <td className="px-3 py-2 text-sm">
-                            {sale.courier || "—"}
-                          </td>
-                          <td className="px-3 py-2 text-sm">
-                            {sale.sellerName || "—"}
-                          </td>
-                          <td className="px-3 py-2 text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                title="Ver pedido"
-                                onClick={() => setViewOrderId(sale.id)}
-                              >
-                                <Eye className="h-3.5 w-3.5" />
-                              </Button>
-                              <PaymentButton
-                                hasPendingApproval={sale.hasPendingApprovalPayments}
-                                onClick={() => setPaymentSale(sale)}
+                          Nada agendado para este día.
+                        </td>
+                      </tr>
+                    ) : (
+                      agendados.map((it) => {
+                        const sale = mapOrderToSale(it.order);
+                        return (
+                          <tr
+                            key={it.order.id}
+                            className="border-t hover:bg-muted/30"
+                          >
+                            <td className="px-3 py-2">
+                              <Checkbox
+                                checked={selectedIds.has(sale.id)}
+                                onCheckedChange={() => toggleOne(sale.id)}
                               />
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7 text-green-600 hover:text-green-700"
-                                title="WhatsApp"
-                                onClick={() =>
-                                  openWhatsApp(
-                                    sale.phoneNumber,
-                                    sale.orderNumber,
-                                    sale.clientName,
-                                  )
-                                }
+                            </td>
+                            <td className="px-3 py-2 font-medium">
+                              <div className="flex items-center gap-1.5">
+                                <StockIssueIcon show={sale.hasStockIssue} />
+                                {sale.orderNumber}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="font-medium">{sale.clientName}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {sale.phoneNumber}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-sm">
+                              {sale.district || "—"}
+                            </td>
+                            <td className="px-3 py-2">
+                              <ZoneBadge zone={sale.zone} />
+                            </td>
+                            <td className="px-3 py-2 max-w-[200px] whitespace-normal text-xs text-muted-foreground">
+                              {formatProductsShort(sale.items)}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span
+                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${SOURCE_BADGE_CLASS[it.source]}`}
                               >
-                                <WhatsAppIcon className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                title="Editar pedido"
-                                onClick={() =>
-                                  router.push(`/registrar-venta?orderId=${sale.id}`)
-                                }
-                              >
-                                <Pencil className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                title="Pasar a Preparados"
-                                disabled={busy}
-                                onClick={() => pasarAPreparados([sale.id])}
-                              >
-                                <Package className="h-3.5 w-3.5" />
-                              </Button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                                {SOURCE_LABEL[it.source]}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              <SourceBadge source={sale.externalSource} />
+                            </td>
+                            <td className="px-3 py-2 text-right text-sm tabular-nums">
+                              {money(sale.total)}
+                              {sale.pendingPayment > 0 && (
+                                <div className="text-xs font-semibold text-red-600">
+                                  Saldo {money(sale.pendingPayment)}
+                                </div>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-1.5">
+                                <StatusPill status={sale.status} />
+                                <CallStatusBadge sale={sale} />
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-sm">
+                              {sale.guideNumber || "—"}
+                            </td>
+                            <td className="px-3 py-2 text-sm">
+                              {sale.courier || "—"}
+                            </td>
+                            <td className="px-3 py-2 text-sm">
+                              {sale.sellerName || "—"}
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <OrderDetailButton orderId={sale.id} orderNumber={sale.orderNumber} />
+                                <PaymentButton
+                                  hasPendingApproval={sale.hasPendingApprovalPayments}
+                                  onClick={() => setPaymentSale(sale)}
+                                />
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7 text-green-600 hover:text-green-700"
+                                  title="WhatsApp"
+                                  onClick={() =>
+                                    openWhatsApp(
+                                      sale.phoneNumber,
+                                      sale.orderNumber,
+                                      sale.clientName,
+                                    )
+                                  }
+                                >
+                                  <WhatsAppIcon className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7"
+                                  title="Editar pedido"
+                                  onClick={() =>
+                                    router.push(`/registrar-venta?orderId=${sale.id}`)
+                                  }
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-7 w-7"
+                                  title="Pasar a Preparados"
+                                  disabled={busy}
+                                  onClick={() => pasarAPreparados([sale.id])}
+                                >
+                                  <Package className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground">
-              <span>
-                {agendados.length} agendados · al confirmar se suman a los que
-                ya están en Por Despachar · {money(totalPorCobrar)} por cobrar
-              </span>
-              <div className="flex items-center gap-2">
-                <span>Pase automático {AUTO_PASS_HOUR}:00 am</span>
-                <Button
-                  variant="link"
-                  size="sm"
-                  className="h-auto p-0 text-xs"
-                  onClick={goDespachar}
-                >
-                  Ir a Por Despachar <ArrowRight className="ml-1 h-3 w-3" />
-                </Button>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t px-4 py-2.5 text-xs text-muted-foreground">
+                <span>
+                  {agendados.length} agendados · al confirmar se suman a los que
+                  ya están en Por Despachar · {money(totalPorCobrar)} por cobrar
+                </span>
+                <div className="flex items-center gap-2">
+                  <span>Pase automático {AUTO_PASS_HOUR}:00 am</span>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="h-auto p-0 text-xs"
+                    onClick={goDespachar}
+                  >
+                    Ir a Por Despachar <ArrowRight className="ml-1 h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      <CustomerServiceModal
-        open={!!viewOrderId}
-        orderId={viewOrderId || ""}
-        onClose={() => setViewOrderId(null)}
-        onOrderUpdated={load}
-        isOperaciones
-        showTracking
-      />
-
-      <PaymentVerificationModal
-        open={!!paymentSale}
-        onClose={() => setPaymentSale(null)}
-        orderId={paymentSale?.id || ""}
-        orderNumber={paymentSale?.orderNumber || ""}
-        onPaymentUpdated={load}
-        canApprove={can(OPS_PERMISSIONS.APPROVE_PAYMENTS)}
-      />
-    </div>
+        <PaymentVerificationModal
+          open={!!paymentSale}
+          onClose={() => setPaymentSale(null)}
+          orderId={paymentSale?.id || ""}
+          orderNumber={paymentSale?.orderNumber || ""}
+          onPaymentUpdated={load}
+          canApprove={can(OPS_PERMISSIONS.APPROVE_PAYMENTS)}
+        />
+      </div>
+    </OrderDetailModalProvider>
   );
 }
 

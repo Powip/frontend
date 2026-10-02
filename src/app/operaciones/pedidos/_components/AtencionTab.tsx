@@ -12,11 +12,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
+import { OrderDetailButton } from "@/components/orders/OrderDetailModal";
 import {
-  Eye,
   Clock3,
   Copy,
-  MessageCircle,
   PackageCheck,
   TrendingDown,
 } from "lucide-react";
@@ -265,7 +264,7 @@ export function AtencionTab({
             className="h-8 gap-1 text-xs"
             onClick={() => actions.onBulkWhatsApp(selectedSales)}
           >
-            <MessageCircle className="h-3.5 w-3.5" />
+            <WhatsAppIcon className="h-3.5 w-3.5" />
             WhatsApp masivo
           </Button>
           <Button
@@ -426,15 +425,7 @@ export function AtencionTab({
                       >
                         <WhatsAppIcon className="h-3.5 w-3.5" />
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title="Ver pedido"
-                        onClick={() => actions.onView(sale)}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
+                      <OrderDetailButton orderId={sale.id} orderNumber={sale.orderNumber} />
                     </div>
                   </TableCell>
                 </TableRow>

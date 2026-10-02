@@ -22,12 +22,10 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import {
-  Eye,
   UserPen,
   PackagePlus,
   PlusCircle,
   Printer,
-  MessageCircle,
   Copy,
   FileSpreadsheet,
   Truck,
@@ -42,6 +40,7 @@ import {
   CalendarCheck2,
 } from "lucide-react";
 import { SourceBadge } from "@/components/shared/SourceBadge";
+import { OrderDetailButton } from "@/components/orders/OrderDetailModal";
 import {
   SalesTableFilters,
   SalesFilters,
@@ -655,7 +654,7 @@ export function PorDespacharTab({
             className="h-8 gap-1 text-xs"
             onClick={() => actions.onBulkWhatsApp(selectedSales)}
           >
-            <MessageCircle className="h-3.5 w-3.5" />
+            <WhatsAppIcon className="h-3.5 w-3.5" />
             WhatsApp masivo
           </Button>
           {canChangeStatus && (
@@ -949,15 +948,7 @@ export function PorDespacharTab({
                   )}
                   <TableCell className="sticky right-0 z-10 bg-gray-100 dark:bg-gray-900 border-l">
                     <div className="flex items-center justify-end gap-1">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title="Ver pedido"
-                        onClick={() => actions.onView(sale)}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
+                      <OrderDetailButton orderId={sale.id} orderNumber={sale.orderNumber} />
                       <PaymentButton
                         hasPendingApproval={sale.hasPendingApprovalPayments}
                         onClick={() => actions.onOpenPayment(sale)}

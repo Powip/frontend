@@ -191,6 +191,7 @@ jest.mock("@/components/ventas/SalesTableFilters", () => {
 // ── Imports bajo prueba (después de los mocks) ──────────────────────────────
 
 import { PorDespacharTab } from "../PorDespacharTab";
+import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
 import type { PedidosActions, Sale } from "../types";
 import type { OrderStatus } from "@/interfaces/IOrder";
 
@@ -232,7 +233,6 @@ function makeActions(overrides: Partial<PedidosActions> = {}): PedidosActions {
     apiCouriers: [],
     salesChannels: [],
     isBulkLoading: false,
-    onView: jest.fn(),
     onOpenPayment: jest.fn(),
     onOpenGuide: jest.fn(),
     onReassignSeller: jest.fn(),
@@ -280,7 +280,7 @@ describe("PorDespacharTab — armado de guía", () => {
       guideNumber: null,
     });
 
-    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />);
+    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
 
     expect(screen.getByText("ORD-PREPARADO-1")).toBeInTheDocument();
 
@@ -301,7 +301,7 @@ describe("PorDespacharTab — armado de guía", () => {
     const actions = makeActions();
     const sale = makeSale({ id: "sale-preparado-1", status: "PREPARADO" });
 
-    render(<PorDespacharTab sales={[sale]} actions={actions} />);
+    render(<PorDespacharTab sales={[sale]} actions={actions} />, { wrapper: OrderDetailModalProvider });
     await selectLastRow(user);
 
     await user.click(
@@ -315,7 +315,7 @@ describe("PorDespacharTab — armado de guía", () => {
   });
 
   it("sin selección, el botón 'Generar Guía' de la cabecera está deshabilitado", () => {
-    render(<PorDespacharTab sales={[makeSale()]} actions={makeActions()} />);
+    render(<PorDespacharTab sales={[makeSale()]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
 
     expect(
       screen.getByRole("button", { name: /generar guía/i }),
@@ -331,7 +331,7 @@ describe("PorDespacharTab — armado de guía", () => {
       deliveryType: "DOMICILIO",
     });
 
-    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />);
+    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
     await selectLastRow(user);
 
     expect(
@@ -353,7 +353,7 @@ describe("PorDespacharTab — armado de guía", () => {
       deliveryType: "DOMICILIO",
     });
 
-    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />);
+    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
     await selectLastRow(user);
 
     expect(
@@ -375,7 +375,7 @@ describe("PorDespacharTab — armado de guía", () => {
       deliveryType: "RETIRO TIENDA",
     });
 
-    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />);
+    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
     await selectLastRow(user);
 
     expect(
@@ -398,7 +398,7 @@ describe("PorDespacharTab — armado de guía", () => {
       guideNumber: "GUIA-123",
     });
 
-    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />);
+    render(<PorDespacharTab sales={[sale]} actions={makeActions()} />, { wrapper: OrderDetailModalProvider });
     await selectLastRow(user);
 
     expect(
