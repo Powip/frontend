@@ -54,6 +54,7 @@ import {
   OrderDetailButton,
   OrderDetailModalProvider,
 } from "@/components/orders/OrderDetailModal";
+import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import CreateGuideModal, {
@@ -597,20 +598,21 @@ export default function VentasPage() {
     }
 
     const text = selectedSales
-      .map((sale) =>
-        `
+      .map((sale) => {
+        const mapsLine = formatGoogleMapsClipboardLine(sale.googleMapsUrl);
+        return `
 Venta ${sale.orderNumber}
 Cliente: ${sale.clientName}
 Teléfono: ${sale.phoneNumber}
 Distrito: ${sale.district}
-Dirección: ${sale.address}
+Dirección: ${sale.address}${mapsLine ? `\n${mapsLine}` : ""}
 Fecha: ${sale.date}
 Total Venta: ${formatSoles(sale.total)}
 Adelanto: ${formatSoles(sale.advancePayment)}
 Por Cobrar: ${formatSoles(sale.pendingPayment)}
 Estado: ${sale.status}
-`.trim(),
-      )
+`.trim();
+      })
       .join("\n\n--------------------\n\n");
 
     await navigator.clipboard.writeText(text);

@@ -29,6 +29,7 @@ import {
   OrderDetailButton,
   OrderDetailModalProvider,
 } from "@/components/orders/OrderDetailModal";
+import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
@@ -473,20 +474,21 @@ export default function FinanzasPage() {
     }
 
     const text = selectedSales
-      .map((sale) =>
-        `
+      .map((sale) => {
+        const mapsLine = formatGoogleMapsClipboardLine(sale.googleMapsUrl);
+        return `
 Venta ${sale.orderNumber}
 Cliente: ${sale.clientName}
 Teléfono: ${sale.phoneNumber}
 Distrito: ${sale.district}
-Dirección: ${sale.address}
+Dirección: ${sale.address}${mapsLine ? `\n${mapsLine}` : ""}
 Fecha: ${sale.date}
 Total Venta: $${sale.total.toFixed(2)}
 Adelanto: $${sale.advancePayment.toFixed(2)}
 Por Cobrar: $${sale.pendingPayment.toFixed(2)}
 Estado: ${sale.status}
-`.trim(),
-      )
+`.trim();
+      })
       .join("\n\n--------------------\n\n");
 
     await navigator.clipboard.writeText(text);

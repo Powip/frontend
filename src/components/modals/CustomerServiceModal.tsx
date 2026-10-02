@@ -90,7 +90,7 @@ import { getAvailableStatuses, getStatusChainSteps, getStatusLabel } from "@/uti
 import { isJunkDni } from "@/utils/junk-document.util";
 import { printOrderLabel, type OrderReceipt } from "@/utils/printOrderLabel";
 import { downloadNotaVentaPdf } from "@/utils/downloadNotaVentaPdf";
-import { MapsLink, toSafeHttpUrl } from "@/components/shared/MapsLink";
+import { GoogleMapsUrlField } from "@/components/shared/GoogleMapsUrlField";
 import { OrderEvidenceSection } from "@/components/orders/OrderEvidenceSection";
 
 interface LogEntry {
@@ -1409,6 +1409,10 @@ export default function CustomerServiceModal({
                           <Copy className="h-3 w-3" />
                         </Button>
                       </div>
+                      <GoogleMapsUrlField
+                        url={receipt.customer.googleMapsUrl}
+                        className="col-span-2"
+                      />
                       <div className="flex items-center gap-1">
                         <span className="text-muted-foreground">
                           Departamento:{" "}
@@ -1485,36 +1489,6 @@ export default function CustomerServiceModal({
                         <span className="font-medium">
                           {receipt.customer.reference || "-"}
                         </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-muted-foreground">
-                          Link Maps:{" "}
-                        </span>
-                        {toSafeHttpUrl(receipt.customer.googleMapsUrl) ? (
-                          <>
-                            <MapsLink
-                              url={receipt.customer.googleMapsUrl}
-                              className="font-medium text-primary underline underline-offset-2 truncate max-w-[160px]"
-                              title={receipt.customer.googleMapsUrl ?? undefined}
-                            />
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-5 w-5 text-muted-foreground hover:text-foreground"
-                              onClick={() =>
-                                copyField(
-                                  receipt.customer.googleMapsUrl ?? "",
-                                  "Link de Maps",
-                                )
-                              }
-                              title="Copiar link"
-                            >
-                              <Copy className="h-3 w-3" />
-                            </Button>
-                          </>
-                        ) : (
-                          <span className="font-medium">-</span>
-                        )}
                       </div>
 
                       {/* Datos de tracking manual — para couriers sin

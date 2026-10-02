@@ -3,6 +3,7 @@ import type { OpsPermission } from "@/config/operationsPermissions";
 import { ORDER_STATUS_FLOW, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { formatProductsForExport, type SaleExportData } from "@/utils/exportSalesExcel";
 import { countProductUnits } from "@/components/ventas/SalesTableFilters";
+import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 
 /* -----------------------------------------------------------------------
    Modelo de fila para las tablas de Pedidos.
@@ -187,9 +188,10 @@ export function buildPedidosExportRows(sales: Sale[], productFilter?: string): S
  */
 export function formatSalesForClipboard(sales: Sale[]): string {
   return sales
-    .map((sale) =>
-      `Venta ${sale.orderNumber}\nCliente: ${sale.clientName}\nTeléfono: ${sale.phoneNumber}\nDistrito: ${sale.district}\nDirección: ${sale.address}\nFecha: ${sale.date}\nTotal: S/ ${sale.total.toFixed(2)}\nAdelanto: S/ ${sale.advancePayment.toFixed(2)}\nPor Cobrar: S/ ${sale.pendingPayment.toFixed(2)}\nEstado: ${getStatusLabel(sale.status)}`.trim(),
-    )
+    .map((sale) => {
+      const mapsLine = formatGoogleMapsClipboardLine(sale.googleMapsUrl);
+      return `Venta ${sale.orderNumber}\nCliente: ${sale.clientName}\nTeléfono: ${sale.phoneNumber}\nDistrito: ${sale.district}\nDirección: ${sale.address}${mapsLine ? `\n${mapsLine}` : ""}\nFecha: ${sale.date}\nTotal: S/ ${sale.total.toFixed(2)}\nAdelanto: S/ ${sale.advancePayment.toFixed(2)}\nPor Cobrar: S/ ${sale.pendingPayment.toFixed(2)}\nEstado: ${getStatusLabel(sale.status)}`.trim();
+    })
     .join("\n\n--------------------\n\n");
 }
 

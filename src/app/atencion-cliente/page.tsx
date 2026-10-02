@@ -35,6 +35,7 @@ import { useAgentes } from "@/hooks/useAgentes";
 import { IncompleteOrdersTab } from "@/components/atencion-cliente/IncompleteOrdersTab";
 
 import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
+import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
 import { reassignSeller, recuperarVentaCC } from "@/services/atencionClienteService";
@@ -375,9 +376,10 @@ export default function AtencionClientePage() {
     const selected = selectedCcOrders;
     if (!selected.length) { toast.warning("No hay pedidos seleccionados"); return; }
     const text = selected
-      .map((o) =>
-        `Pedido ${o.orderNumber}\nCliente: ${o.customer?.fullName}\nTel: ${o.customer?.phoneNumber}\nTotal: S/${Number(o.grandTotal).toFixed(2)}`
-      )
+      .map((o) => {
+        const mapsLine = formatGoogleMapsClipboardLine(o.customer?.googleMapsUrl);
+        return `Pedido ${o.orderNumber}\nCliente: ${o.customer?.fullName}\nTel: ${o.customer?.phoneNumber}\nTotal: S/${Number(o.grandTotal).toFixed(2)}${mapsLine ? `\n${mapsLine}` : ""}`;
+      })
       .join("\n\n---\n\n");
     await navigator.clipboard.writeText(text);
     toast.success(`${selected.length} pedido(s) copiados`);

@@ -366,6 +366,30 @@ describe('Gestión COD — buscador', () => {
     expect(toast.info).toHaveBeenCalledWith('Abriendo 2 pestañas de WhatsApp...');
   });
 
+  it('Copiar incluye el enlace de Google Maps solo en el bloque del pedido que lo tiene', async () => {
+    const mapsUrl = 'https://maps.app.goo.gl/AbCdEf123?g_st=iw';
+    db[4] = makeOrder(5, {
+      customer: { fullName: 'Cliente 5', phoneNumber: '900000005', googleMapsUrl: mapsUrl } as any,
+    });
+    render(<AtencionClientePage />);
+    await goToSubTab(/^Contactado\s*\d*$/);
+    await typeSearch('cliente 5');
+    await toggleRow('ORD-005');
+    await toggleRow('ORD-052');
+
+    await userEvent.click(screen.getByRole('button', { name: /copiar/i }));
+    const copied: string = jest.mocked(navigator.clipboard.writeText).mock.calls[0][0];
+    const blocks = copied.split('\n\n---\n\n');
+    const withMaps = blocks.find((b) => b.includes('Pedido ORD-005'))!;
+    const withoutMaps = blocks.find((b) => b.includes('Pedido ORD-052'))!;
+
+    expect(withMaps).toContain('Pedido ORD-005');
+    expect(withMaps).toContain(`Google Maps: ${mapsUrl}`);
+    expect(withoutMaps).toContain('Pedido ORD-052');
+    expect(withoutMaps).not.toContain('Google Maps');
+    expect(copied).not.toMatch(/undefined|null/);
+  });
+
   it('cambiar la búsqueda limpia la selección', async () => {
     render(<AtencionClientePage />);
     await goToSubTab(/^Contactado\s*\d*$/);
