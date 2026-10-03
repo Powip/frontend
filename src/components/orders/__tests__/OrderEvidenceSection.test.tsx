@@ -48,8 +48,34 @@ describe("OrderEvidenceSection", () => {
 
     render(<OrderEvidenceSection orderId="order-1" accessToken="token" />);
 
-    expect(await screen.findByText("Este pedido aún no tiene fotografías.")).toBeInTheDocument();
+    expect(await screen.findByText("Sin fotografías")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Evidencia de despacho" })).toBeInTheDocument();
+    // Estado vacío compacto: sin descripción ni caja interna de mensaje.
+    expect(screen.queryByText(/Fotografías del paquete preparado/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/aún no tiene fotografías/)).not.toBeInTheDocument();
     expect(screen.queryByText("Tomar o subir fotos")).not.toBeInTheDocument();
+  });
+
+  it("con permiso de carga, el estado vacío muestra el botón en el mismo encabezado", async () => {
+    mockedAxios.get.mockResolvedValue(response([]));
+
+    render(<OrderEvidenceSection orderId="order-1" accessToken="token" canUpload />);
+
+    expect(await screen.findByText("Sin fotografías")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Tomar o subir fotos/ })).toBeEnabled();
+  });
+
+  it("con fotos no muestra 'Sin fotografías' y conserva galería y botón de carga", async () => {
+    mockedAxios.get.mockResolvedValue(
+      response([evidence, { ...evidence, id: "ev-2", originalName: "caja.png" }]),
+    );
+
+    render(<OrderEvidenceSection orderId="order-1" accessToken="token" canUpload />);
+
+    expect(await screen.findByRole("button", { name: "Ver evidencia paquete.png" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Ver evidencia caja.png" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Tomar o subir fotos/ })).toBeInTheDocument();
+    expect(screen.queryByText("Sin fotografías")).not.toBeInTheDocument();
   });
 
   it("muestra la galería y permite visualizar una foto sin salir del detalle", async () => {
@@ -77,7 +103,7 @@ describe("OrderEvidenceSection", () => {
 
     rerender(<OrderEvidenceSection orderId="order-2" accessToken="token" />);
 
-    expect(await screen.findByText("Este pedido aún no tiene fotografías.")).toBeInTheDocument();
+    expect(await screen.findByText("Sin fotografías")).toBeInTheDocument();
     expect(
       screen.queryByRole("heading", { level: 2, name: "Evidencia de despacho" }),
     ).not.toBeInTheDocument();

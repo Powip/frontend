@@ -107,6 +107,11 @@ interface LogEntry {
 // Labels legibles para shippingGuide.status — mismos valores que ya
 // coloreaba el badge de "Guía de Envío", solo para el chip compacto del
 // header (courier + modalidad · estado).
+// Definición única de columnas para las filas de 2 cards del Resumen
+// (Productos/Cliente, Evidencia/Promo, Gestión/Historial): mismo ancho de
+// columna y mismo gap, así los bordes de todas las filas quedan alineados.
+const RESUMEN_ROW_GRID = "grid grid-cols-1 lg:grid-cols-2 gap-4";
+
 const STATUS_LABEL: Record<string, string> = {
   GENERADA: "Generada",
   ASIGNADA: "Asignada",
@@ -1148,11 +1153,13 @@ export default function CustomerServiceModal({
                   </div>
 
                   <TabsContent value="resumen" className="pt-3 space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className={RESUMEN_ROW_GRID}>
                 {/* ================================== */}
                 {/* SECCIÓN IZQUIERDA */}
                 {/* ================================== */}
-                <div className="space-y-4">
+                {/* flex-col + Resumen de Pagos flex-1: el borde inferior queda
+                    alineado con la card de Cliente (columna derecha). */}
+                <div className="flex flex-col gap-4">
                   {/* Productos */}
                   <div className="border border-border rounded-lg p-4">
                     <h3 className="font-semibold mb-3 text-lg">Productos</h3>
@@ -1208,7 +1215,7 @@ export default function CustomerServiceModal({
                   </div>
 
                   {/* Resumen de Pagos */}
-                  <div className="border border-border rounded-lg p-4 bg-muted">
+                  <div className="flex-1 border border-border rounded-lg p-4 bg-muted">
                     <h3 className="font-semibold mb-3 text-lg">
                       Resumen de Pagos
                     </h3>
@@ -1661,24 +1668,15 @@ export default function CustomerServiceModal({
                   </div>
                 </div>
               </div>
-              <OrderEvidenceSection
-                orderId={orderId}
-                canUpload={isOperaciones && hasPermission("MANAGE_OPERATIONS")}
-                accessToken={auth?.accessToken}
-              />
                   <div
-                    className={
-                      hasGestionColumn
-                        ? "grid grid-cols-1 lg:grid-cols-2 gap-4 items-start"
-                        : "space-y-3"
-                    }
+                    className={`${RESUMEN_ROW_GRID} items-start`}
                   >
                   {/* ================================== */}
                   {/* COLUMNA IZQUIERDA: gestión del pedido */}
                   {/* ================================== */}
-                  {hasGestionColumn && (
                   <div className="space-y-3">
-                  {/* Promo del día - only shown in customer service view */}
+                  {/* Promo del día (solo vista de atención al cliente) y Evidencia de
+                      despacho, arriba de la gestión — ocupan solo esta columna. */}
                   {!hideCallManagement && (
                     <div className="flex items-center justify-between gap-2 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
                       <p className="text-sm text-red-700 dark:text-red-400 truncate">
@@ -1699,7 +1697,13 @@ export default function CustomerServiceModal({
                       </Button>
                     </div>
                   )}
-
+                  <OrderEvidenceSection
+                    orderId={orderId}
+                    canUpload={isOperaciones && hasPermission("MANAGE_OPERATIONS")}
+                    accessToken={auth?.accessToken}
+                  />
+                  {hasGestionColumn && (
+                  <>
                   {/* CC v2: bloque datos incompletos (visible cuando el pedido tiene sub_estado_cc activo) */}
                   {!hideCallManagement && subEstadoCc && (
                     <DatosIncompletosBlock
@@ -2058,8 +2062,9 @@ export default function CustomerServiceModal({
                       orderNumber={receipt.orderNumber}
                     />
                   )}
-                  </div>
+                  </>
                   )}
+                  </div>
 
                   {/* ================================== */}
                   {/* COLUMNA DERECHA: historial y comentarios */}
@@ -2087,11 +2092,10 @@ export default function CustomerServiceModal({
                     </div>
 
                     {/* Historial — más reciente arriba; scrollea de a un comentario por vez.
-                        Altura fija más alta que antes (92px alcanzaba para ~1 comentario y
-                        obligaba a scrollear constantemente) — el modal completo ya scrollea
-                        (DialogContent max-h-[90vh] overflow-y-auto), así que este alto extra
-                        no lo desborda. */}
-                    <div className="h-[280px] overflow-y-auto mb-3 pr-1 snap-y snap-mandatory">
+                        Altura máxima (no fija): con pocos registros el formulario queda
+                        justo debajo sin hueco vacío; con muchos, la lista scrollea a 280px
+                        y el formulario sigue a la vista. */}
+                    <div className="max-h-[280px] overflow-y-auto mb-3 pr-1 snap-y snap-mandatory">
                       {logsLoading ? (
                         <div className="text-center text-muted-foreground py-4">
                           Cargando historial...

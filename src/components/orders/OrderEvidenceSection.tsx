@@ -1,7 +1,7 @@
 "use client";
 
 import axios from "axios";
-import { Camera, ImageIcon, Loader2, Upload } from "lucide-react";
+import { Camera, Loader2, Upload } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -143,15 +143,23 @@ export function OrderEvidenceSection({ orderId, canUpload = false, accessToken }
   };
 
   return (
-    <section className="rounded-lg border border-border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h3 className="flex items-center gap-2 text-lg font-semibold">
-            <Camera className="h-5 w-5" /> Evidencia de despacho
+    <section className="rounded-lg border border-border px-3 py-2">
+      {/* Encabezado compacto en una fila; en pantallas angostas el botón baja
+          a una segunda fila (flex-wrap) en vez de desbordar. */}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+            <Camera className="h-4 w-4 shrink-0" aria-hidden="true" /> Evidencia de despacho
           </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Fotografías del paquete preparado para este pedido.
-          </p>
+          {loading ? (
+            <span role="status" className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> Cargando evidencia...
+            </span>
+          ) : (
+            evidence.length === 0 && (
+              <span className="text-xs text-muted-foreground">Sin fotografías</span>
+            )
+          )}
         </div>
 
         {canUpload && (
@@ -183,16 +191,8 @@ export function OrderEvidenceSection({ orderId, canUpload = false, accessToken }
         )}
       </div>
 
-      {loading ? (
-        <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> Cargando evidencia...
-        </div>
-      ) : evidence.length === 0 ? (
-        <div className="mt-4 flex items-center gap-2 rounded-md bg-muted/60 px-3 py-4 text-sm text-muted-foreground">
-          <ImageIcon className="h-4 w-4" /> Este pedido aún no tiene fotografías.
-        </div>
-      ) : (
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+      {!loading && evidence.length > 0 && (
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {evidence.map((item) => (
             <button
               type="button"
