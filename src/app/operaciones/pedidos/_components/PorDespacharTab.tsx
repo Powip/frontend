@@ -74,6 +74,9 @@ import {
   ZoneBadge,
   formatDateTime,
 } from "./shared";
+import { GuideBlockReason, splitGuideEligibility } from "./guideEligibility";
+import { GuideEligibilityDialog } from "./GuideEligibilityDialog";
+import type { GuideReviewReturn } from "./guideReviewReturn";
 
 /**
  * Pestaña "Por Despachar" — cockpit diario. Junta 3 fuentes en una sola
@@ -139,18 +142,14 @@ const DEFAULT_COLUMNS: ColumnPrefs = {
   vendedor: true,
 };
 
-// ORDER_STATUS_FLOW (orders-status-flow.ts) solo permite saltar a
-// ASIGNADO_A_GUIA desde LLAMADO — un PREPARADO puede armar guía igual: los
-// handlers de creación de guía (PedidosContent.tsx) encadenan el/los
-// paso(s) intermedio(s) a LLAMADO de forma transparente antes de asignar la
-// guía. PAGADO (cobrado al 100% pero todavía no empacado por almacén) queda
-// afuera a propósito — cobrar no es preparar, así que ni siquiera se lista
-// en esta pestaña (ver PRE_FULFILLMENT_STATUSES en operations-pedidos-tabs.ts).
-const GUIDE_ELIGIBLE_STATUSES: OrderStatus[] = [
-  "PREPARADO",
-  "LLAMADO",
-  "ASIGNADO_A_GUIA",
-];
+const BLOCK_SUMMARY_LABEL: Record<GuideBlockReason, string> = {
+  STATUS_NOT_ALLOWED:
+    "por su estado actual — avanzalos con \"Cambiar estado\" de cada fila o en lote",
+  PICKUP_IN_STORE: "configurado(s) como retiro en tienda",
+  HAS_GUIDE: "que ya tiene(n) guía",
+  MISSING_DELIVERY_TYPE: "sin tipo de entrega configurado",
+  UNSUPPORTED_DELIVERY_TYPE: "con un tipo de entrega que no admite guía",
+};
 
 function loadColumnPrefs(): ColumnPrefs {
   if (typeof window === "undefined") return DEFAULT_COLUMNS;
@@ -195,11 +194,18 @@ export function PorDespacharTab({
   actions,
   initialSearch,
   initialQf,
+  guideReturn,
+  onGuideReturnHandled,
 }: {
   sales: Sale[];
   actions: PedidosActions;
   initialSearch?: string;
   initialQf?: string;
+  /** Vuelta desde /registrar-venta: se restaura la selección (IDs ya
+   *  filtrados contra los pedidos recargados) y, solo si el pedido se
+   *  guardó (`updatedId`), se reabre la revisión — sin generar nada. */
+  guideReturn?: GuideReviewReturn | null;
+  onGuideReturnHandled?: () => void;
 }) {
   const [filters, setFilters] = useState<SalesFilters>({
     ...emptySalesFilters,
@@ -214,8 +220,31 @@ export function PorDespacharTab({
   const [dayKey, setDayKey] = useState(todayKey());
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [columns, setColumns] = useState<ColumnPrefs>(DEFAULT_COLUMNS);
+  // Solo IDs: los pedidos de la revisión se resuelven siempre contra `sales`
+  // (datos actuales), así la elegibilidad nunca usa objetos viejos.
+  const [guideReview, setGuideReview] = useState<{
+    ids: string[];
+    updatedId: string | null;
+  } | null>(null);
 
   useEffect(() => setColumns(loadColumnPrefs()), []);
+
+  useEffect(() => {
+    if (!guideReturn) return;
+    setSelectedIds(new Set(guideReturn.selectedIds));
+    const updated = guideReturn.updatedId
+      ? sales.find((s) => s.id === guideReturn.updatedId)
+      : undefined;
+    if (updated) setDayKey(saleDayKey(updated));
+    else if (guideReturn.dayKey) setDayKey(guideReturn.dayKey);
+    // Sin guardado ("Volver") no se reabre nada ni se anuncia éxito.
+    if (guideReturn.updatedId)
+      setGuideReview({
+        ids: guideReturn.selectedIds,
+        updatedId: guideReturn.updatedId,
+      });
+    onGuideReturnHandled?.();
+  }, [guideReturn, onGuideReturnHandled, sales]);
 
   const setColumn = (key: keyof ColumnPrefs, value: boolean) => {
     setColumns((prev) => {
@@ -351,19 +380,43 @@ export function PorDespacharTab({
   const canExport = actions.can(OPS_PERMISSIONS.EXPORT);
   const canChangeStatus = actions.can(OPS_PERMISSIONS.CHANGE_STATUS_MANUAL);
 
-  const eligibleForGuide = selectedSales.filter(
-    (s) =>
-      !s.guideNumber &&
-      s.deliveryType.toUpperCase() === "DOMICILIO" &&
-      GUIDE_ELIGIBLE_STATUSES.includes(s.status),
-  );
+  const { eligible: eligibleForGuide, blocked: blockedForGuide } =
+    splitGuideEligibility(selectedSales);
   const eligibleForCourier = selectedSales.filter(
     (s) => s.status === "ASIGNADO_A_GUIA" && !s.courier,
   );
-  const noLlamadosEnSeleccion = selectedSales.filter(
-    (s) =>
-      !GUIDE_ELIGIBLE_STATUSES.includes(s.status) && s.status !== "ANULADO",
-  ).length;
+  // Resumen del aviso por motivo. ANULADO no se cuenta (no tiene sentido
+  // pedir que se avance), igual que antes.
+  const blockSummary = blockedForGuide
+    .filter((b) => b.sale.status !== "ANULADO")
+    .reduce(
+      (acc, b) => acc.set(b.reason, (acc.get(b.reason) ?? 0) + 1),
+      new Map<GuideBlockReason, number>(),
+    );
+  const blockedCount = Array.from(blockSummary.values()).reduce(
+    (a, b) => a + b,
+    0,
+  );
+  const guideButtonCount =
+    blockedForGuide.length === 0
+      ? `${eligibleForGuide.length}`
+      : `${eligibleForGuide.length} de ${selectedSales.length}`;
+
+  const reviewSales = guideReview
+    ? sales.filter((s) => guideReview.ids.includes(s.id))
+    : [];
+
+  // Con selección el botón siempre abre algo: si todo es elegible va directo
+  // al modal de guía (como antes); si hay bloqueados, primero la revisión
+  // con el motivo de cada uno — nunca se omiten pedidos en silencio.
+  const handleGenerateGuide = () => {
+    if (selectedSales.length === 0) return;
+    if (blockedForGuide.length === 0) {
+      actions.onOpenCreateGuide(eligibleForGuide);
+      return;
+    }
+    setGuideReview({ ids: selectedSales.map((s) => s.id), updatedId: null });
+  };
 
   const handlePickingExport = () => {
     const bySku = new Map<
@@ -582,16 +635,22 @@ export function PorDespacharTab({
         availableProducts={productOptions}
       />
 
-      {noLlamadosEnSeleccion > 0 && (
+      {blockedCount > 0 && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <b>
-              {noLlamadosEnSeleccion} pedido(s) seleccionados no se pueden
-              incluir en una guía
-            </b>{" "}
-            por su estado actual. Avanzalos primero con el selector
-            &quot;Cambiar estado&quot; de cada fila o en lote.
+              {blockedCount} pedido(s) seleccionados no se pueden incluir en
+              una guía:
+            </b>
+            <ul className="mt-1 list-disc pl-4">
+              {Array.from(blockSummary.entries()).map(([reason, count]) => (
+                <li key={reason}>
+                  {count} {BLOCK_SUMMARY_LABEL[reason]}
+                </li>
+              ))}
+            </ul>
+            Tocá &quot;Generar guía&quot; para ver el detalle de cada pedido.
           </div>
         </div>
       )}
@@ -606,11 +665,15 @@ export function PorDespacharTab({
               <Button
                 size="sm"
                 className="h-8 gap-1 bg-violet-600 text-xs text-white hover:bg-violet-700"
-                disabled={eligibleForGuide.length === 0}
-                onClick={() => actions.onOpenCreateGuide(eligibleForGuide)}
+                onClick={handleGenerateGuide}
+                title={
+                  blockedForGuide.length > 0
+                    ? `${blockedForGuide.length} pedido(s) bloqueado(s) — ver detalle`
+                    : undefined
+                }
               >
                 <PackagePlus className="h-3.5 w-3.5" />
-                Generar guía ({eligibleForGuide.length})
+                Generar guía ({guideButtonCount})
               </Button>
               <Button
                 size="sm"
@@ -772,8 +835,8 @@ export function PorDespacharTab({
               <Button
                 size="sm"
                 className="gap-1.5 bg-teal-600 text-white hover:bg-teal-700"
-                disabled={eligibleForGuide.length === 0}
-                onClick={() => actions.onOpenCreateGuide(eligibleForGuide)}
+                disabled={selectedSales.length === 0}
+                onClick={handleGenerateGuide}
               >
                 <PackagePlus className="h-3.5 w-3.5" />
                 Generar Guía
@@ -1010,6 +1073,26 @@ export function PorDespacharTab({
           </span>
         </div>
       </div>
+
+      {guideReview && reviewSales.length > 0 && (
+        <GuideEligibilityDialog
+          open
+          sales={reviewSales}
+          updatedOrderId={guideReview.updatedId}
+          onClose={() => setGuideReview(null)}
+          onContinue={(eligible) => {
+            setGuideReview(null);
+            actions.onOpenCreateGuide(eligible);
+          }}
+          onEditDeliveryType={(sale) => {
+            setGuideReview(null);
+            actions.onEditDeliveryType(sale, {
+              selectedIds: selectedSales.map((s) => s.id),
+              dayKey,
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

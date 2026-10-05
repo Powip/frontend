@@ -299,6 +299,13 @@ export interface PedidosActions {
   onExportExcel: (selected: Sale[], tabName: string, productFilter?: string) => void;
   onWhatsApp: (sale: Sale) => void;
   onEdit: (sale: Sale) => void;
+  /** Abre el formulario de la venta para cambiar el tipo de entrega. Al
+   *  volver se restaura la selección (`selectedIds`) y el día; solo si se
+   *  guardó, se reabre la revisión de guía. */
+  onEditDeliveryType: (
+    sale: Sale,
+    context: { selectedIds: string[]; dayKey: string },
+  ) => void;
   onSyncCourier: () => void;
   onReturnToStock: (sale: Sale) => void;
   onMarkAsLoss: (sale: Sale) => void;

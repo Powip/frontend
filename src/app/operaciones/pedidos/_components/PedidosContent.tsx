@@ -39,6 +39,7 @@ import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
 import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
 
 import { PorDespacharTab } from "./PorDespacharTab";
+import { buildGuideReviewReturnTo, useGuideReviewReturn } from "./guideReviewReturn";
 import { EnCaminoTab } from "./EnCaminoTab";
 import { AtencionTab } from "./AtencionTab";
 import { HistorialTab } from "./HistorialTab";
@@ -161,6 +162,15 @@ export function PedidosContent() {
     for (const key of TAB_KEYS) out[key] = grouped[key].map(mapOrderToSale);
     return out;
   }, [visibleOrders]);
+
+  // Vuelta desde /registrar-venta (editar tipo de entrega): los pedidos se
+  // refetchearon al montar, así que la selección y la elegibilidad se
+  // recalculan con datos frescos. Ver guideReviewReturn.ts.
+  const { pending: guideReturn, clear: clearGuideReturn } =
+    useGuideReviewReturn(!loading, salesByTab.despachar);
+  useEffect(() => {
+    if (guideReturn) setActiveTab("despachar");
+  }, [guideReturn]);
 
   const salesById = useMemo(() => {
     const map = new Map<string, Sale>();
@@ -656,6 +666,23 @@ export function PedidosContent() {
     [router],
   );
 
+  // El tipo de entrega solo se persiste con el PUT completo del formulario
+  // de venta (que además exige método de envío para DOMICILIO): no hay un
+  // PATCH comprobado para cambiarlo suelto, así que se reutiliza ese
+  // formulario y se vuelve acá al guardar.
+  const handleEditDeliveryType = useCallback(
+    (sale: Sale, context: { selectedIds: string[]; dayKey: string }) => {
+      const returnTo = buildGuideReviewReturnTo(
+        context.selectedIds,
+        context.dayKey,
+      );
+      router.push(
+        `/registrar-venta?orderId=${encodeURIComponent(sale.id)}&returnTo=${encodeURIComponent(returnTo)}`,
+      );
+    },
+    [router],
+  );
+
   const handleSyncCourier = useCallback(() => {
     toast.promise(fetchOrders(), {
       loading: "Sincronizando con courier...",
@@ -731,6 +758,7 @@ export function PedidosContent() {
     onExportExcel: handleExportExcel,
     onWhatsApp: (sale) => openWhatsApp(sale.phoneNumber, sale.orderNumber, sale.clientName),
     onEdit: handleEdit,
+    onEditDeliveryType: handleEditDeliveryType,
     onSyncCourier: handleSyncCourier,
     onReturnToStock: handleReturnToStock,
     onMarkAsLoss: handleMarkAsLoss,
@@ -793,6 +821,8 @@ export function PedidosContent() {
               actions={actions}
               initialSearch={initialTab === "despachar" ? initialQ : undefined}
               initialQf={initialTab === "despachar" ? initialQf : undefined}
+              guideReturn={guideReturn}
+              onGuideReturnHandled={clearGuideReturn}
             />
           </TabsContent>
           <TabsContent value="camino">
