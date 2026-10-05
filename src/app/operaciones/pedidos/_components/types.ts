@@ -47,6 +47,8 @@ export interface Sale {
   sellerName: string | null;
   salesChannel?: string | null;
   externalSource?: string | null;
+  shopifyCancelledAt?: string | null;
+  shopifyCancelReason?: string | null;
   externalId?: string | null;
   aliclikDispatchStatus?: string | null;
   aliclikSyncedAt?: string | null;
@@ -125,6 +127,8 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     sellerName: order.sellerName ?? null,
     salesChannel: order.salesChannel ?? null,
     externalSource: order.externalSource ?? null,
+    shopifyCancelledAt: order.shopifyCancelledAt ?? null,
+    shopifyCancelReason: order.shopifyCancelReason ?? null,
     externalId: order.externalId ?? null,
     aliclikDispatchStatus: order.aliclikDispatchStatus ?? null,
     aliclikSyncedAt: order.aliclikSyncedAt ?? null,
