@@ -1,7 +1,7 @@
 # Contrato técnico de backend — Usuarios, Roles e Invitaciones
 
 Estado: **borrador para validar con backend**. Fecha de elaboración: 2026-10-02.
-Rama de referencia: `feat/usuarios-roles-permisos` (HEAD `1f1c824`, «fix(users): restrict access and remove unpersisted actions»). En el working tree solo está este documento, sin trackear. Las referencias `archivo:línea` se verificaron contra ese commit.
+Rama de referencia: `feat/usuarios-roles-permisos`. El documento está trackeado desde el commit `e9ef6af` («feat: contrato»), subido a `origin/feat/usuarios-roles-permisos`. Las referencias `archivo:línea` se verificaron contra el commit anterior, `1f1c824` («fix(users): restrict access and remove unpersisted actions»); cambios posteriores en esos archivos pueden desplazarlas.
 
 ## 0. Alcance, fuentes y convención de evidencia
 
@@ -16,7 +16,7 @@ Rama de referencia: `feat/usuarios-roles-permisos` (HEAD `1f1c824`, «fix(users)
 
 | Fuente | Qué se usó |
 |---|---|
-| Código del repo (rama actual; los archivos de `/usuarios` coinciden con el commit `1f1c824`) | Estado actual comprobable desde frontend |
+| Código del repo, revisado en el commit `1f1c824` de esta rama (los archivos de `/usuarios` pueden haber cambiado después) | Estado comprobable desde frontend en ese commit |
 | `powip_doc_tecnica_v2.docx.pdf` (Mauricio Martinez / Octavio Toledo), §3 y §6 | Módulo Usuarios: tablas, invitación, endpoints, roles personalizados |
 | `powip_permisos_roles_spec.docx.pdf`, §1, §7.3, §8 | Roles semilla, JWT recomendado, middleware |
 | `powip_doc_tecnica_comisiones-equipo-completa.docx.pdf`, §2.4 y §5 | Solo la frontera (`rol_call`, `supervisor`, `/funciones`) |

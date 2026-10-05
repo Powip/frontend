@@ -28,7 +28,7 @@ export default function UserModal({
             {user ? "Editar Usuario" : "Nuevo Usuario"}
           </DialogTitle>
         </DialogHeader>
-        <UserForm user={user} onUserSaved={onUserSaved} />
+        <UserForm user={user} onUserSaved={onUserSaved} onCancel={onClose} />
       </DialogContent>
     </Dialog>
   );

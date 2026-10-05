@@ -27,6 +27,7 @@ import ubigeos from "@/utils/json/ubigeos.json";
 interface UserFormProps {
   user: User | null;
   onUserSaved: () => void;
+  onCancel: () => void;
 }
 
 /** Roles asignables a colaboradores de una empresa (no ADMINISTRADOR ni USUARIO). */
@@ -40,7 +41,7 @@ const ROLES_UNAVAILABLE_MESSAGE: Record<Exclude<RolesStatus, "ready">, string> =
   error: "No se pudieron cargar los roles. No se puede guardar sin un rol válido.",
 };
 
-export default function UserForm({ user, onUserSaved }: UserFormProps) {
+export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps) {
   const { auth } = useAuth();
   const [loading, setLoading] = useState(false);
   // Solo roles reales de GET /api/v1/roles — sin respaldo local: un rol
@@ -71,6 +72,12 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
   const currentRoleName = user?.role?.name || "";
   const isCurrentRoleAssignable =
     !currentRoleName || roles.some((r) => r.name === currentRoleName);
+
+  // PUT /api/v1/auth/user/{id} (UpdateUserRequest) no acepta email ni
+  // documento: al editar se muestran de solo lectura en vez de aceptar un
+  // cambio que se descartaría y reportar "actualizado". Para hacerlos
+  // editables, ms-auth tiene que incluirlos en el contrato de edición (O-04).
+  const isEditing = !!user;
 
   // Ubigeo data logic
   const departments = ubigeos[0].departments;
@@ -279,6 +286,8 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
               setFormData({ ...formData, email: e.target.value })
             }
             required
+            disabled={isEditing}
+            aria-describedby={isEditing ? "readonly-fields-hint" : undefined}
           />
         </div>
         <div className="space-y-2">
@@ -305,6 +314,8 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
               setFormData({ ...formData, identityDocument: e.target.value })
             }
             required
+            disabled={isEditing}
+            aria-describedby={isEditing ? "readonly-fields-hint" : undefined}
           />
         </div>
         <div className="space-y-2">
@@ -334,6 +345,12 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
           )}
         </div>
       </div>
+
+      {isEditing && (
+        <p id="readonly-fields-hint" className="text-xs text-muted-foreground">
+          El correo y el documento no se pueden modificar desde aquí.
+        </p>
+      )}
 
       <div className="space-y-2">
         <Label htmlFor="role">Rol</Label>
@@ -475,7 +492,7 @@ export default function UserForm({ user, onUserSaved }: UserFormProps) {
         <Button
           variant="outline"
           type="button"
-          onClick={() => onUserSaved()}
+          onClick={onCancel}
           disabled={loading}
         >
           Cancelar

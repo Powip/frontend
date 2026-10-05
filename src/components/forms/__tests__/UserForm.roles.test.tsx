@@ -99,7 +99,7 @@ describe("UserForm — fallo al cargar roles", () => {
   beforeEach(() => mockGetRoles.mockRejectedValue(new Error("500")));
 
   it("muestra el error y no ofrece roles falsos", async () => {
-    render(<UserForm user={null} onUserSaved={jest.fn()} />);
+    render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudieron cargar los roles");
     expect(toast.error).toHaveBeenCalledWith("No se pudieron cargar los roles");
@@ -110,7 +110,7 @@ describe("UserForm — fallo al cargar roles", () => {
 
   it("no crea un usuario", async () => {
     const onSaved = jest.fn();
-    render(<UserForm user={null} onUserSaved={onSaved} />);
+    render(<UserForm user={null} onUserSaved={onSaved} onCancel={jest.fn()} />);
     await screen.findByRole("alert");
     fillNewUser();
 
@@ -124,7 +124,7 @@ describe("UserForm — fallo al cargar roles", () => {
   });
 
   it("no edita un usuario existente", async () => {
-    render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} />);
+    render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await screen.findByRole("alert");
 
     fireEvent.submit(screen.getByRole("button", { name: "Actualizar Usuario" }).closest("form")!);
@@ -134,7 +134,7 @@ describe("UserForm — fallo al cargar roles", () => {
   });
 
   it("'Reintentar' vuelve a pedir los roles y, si cargan, habilita el formulario", async () => {
-    render(<UserForm user={null} onUserSaved={jest.fn()} />);
+    render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await screen.findByRole("alert");
     mockGetRoles.mockResolvedValueOnce([{ id: "r-ventas", name: "VENTAS" }]);
 
@@ -152,7 +152,7 @@ describe("UserForm — API sin roles asignables", () => {
       { id: "r-admin", name: "ADMINISTRADOR" },
       { id: "r-user", name: "USUARIO" },
     ]);
-    render(<UserForm user={null} onUserSaved={jest.fn()} />);
+    render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No hay roles disponibles para asignar");
     expect(roleOptions()).toHaveLength(0);
@@ -170,7 +170,7 @@ describe("UserForm — roles cargados", () => {
   );
 
   it("ofrece solo los roles asignables que devolvió la API", async () => {
-    render(<UserForm user={null} onUserSaved={jest.fn()} />);
+    render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
 
     await waitFor(() => expect(roleOptions().map((o) => o.value)).toEqual(["VENTAS", "OPERACIONES"]));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -179,7 +179,7 @@ describe("UserForm — roles cargados", () => {
   it("crea el usuario con el rol elegido", async () => {
     mockCreate.mockResolvedValue({});
     const onSaved = jest.fn();
-    render(<UserForm user={null} onUserSaved={onSaved} />);
+    render(<UserForm user={null} onUserSaved={onSaved} onCancel={jest.fn()} />);
     await waitFor(() => expect(roleSelect()).toBeEnabled());
     fillNewUser();
     fireEvent.change(roleSelect(), { target: { value: "OPERACIONES" } });
@@ -196,7 +196,7 @@ describe("UserForm — roles cargados", () => {
       ...EXISTING_USER,
       role: { id: "r-admin", name: "ADMINISTRADOR" },
     };
-    render(<UserForm user={userWithUnassignableRole} onUserSaved={jest.fn()} />);
+    render(<UserForm user={userWithUnassignableRole} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
 
     await waitFor(() => expect(roleSelect()).toBeEnabled());
 
@@ -220,12 +220,68 @@ describe("UserForm — roles cargados", () => {
       ...EXISTING_USER,
       role: { id: "r-admin", name: "ADMINISTRADOR" },
     };
-    render(<UserForm user={userWithUnassignableRole} onUserSaved={jest.fn()} />);
+    render(<UserForm user={userWithUnassignableRole} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await waitFor(() => expect(roleSelect()).toBeEnabled());
 
     fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate.mock.calls[0][1]).toMatchObject({ roleName: "ADMINISTRADOR" });
+  });
+});
+
+/**
+ * UserForm — solo reporta lo que persiste.
+ *
+ * 1. "Cancelar" cierra sin avisar éxito (antes llamaba a onUserSaved y la
+ *    página mostraba "Usuario guardado correctamente").
+ * 2. Al editar, email y documento son de solo lectura: UpdateUserRequest no
+ *    los incluye, así que un cambio se descartaba y se mostraba "actualizado".
+ */
+describe("UserForm — sin éxitos simulados", () => {
+  beforeEach(() => mockGetRoles.mockResolvedValue([{ id: "r-ventas", name: "VENTAS" }]));
+
+  it("'Cancelar' llama a onCancel, no a onUserSaved, y no muestra éxito", async () => {
+    const onSaved = jest.fn();
+    const onCancel = jest.fn();
+    render(<UserForm user={EXISTING_USER} onUserSaved={onSaved} onCancel={onCancel} />);
+    await waitFor(() => expect(roleSelect()).toBeEnabled());
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(mockUpdate).not.toHaveBeenCalled();
+    expect(toast.success).not.toHaveBeenCalled();
+  });
+
+  it("al editar, email y documento son de solo lectura y no se envían", async () => {
+    mockUpdate.mockResolvedValue({});
+    render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
+    await waitFor(() => expect(roleSelect()).toBeEnabled());
+
+    const email = screen.getByLabelText("Correo electrónico");
+    const document = screen.getByLabelText("Documento de Identidad");
+    expect(email).toBeDisabled();
+    expect(email).toHaveValue("luis@empresa.com");
+    expect(document).toBeDisabled();
+    expect(document).toHaveValue("87654321");
+    expect(email).toHaveAccessibleDescription("El correo y el documento no se pueden modificar desde aquí.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
+
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+    const payload = mockUpdate.mock.calls[0][1];
+    expect(payload).not.toHaveProperty("email");
+    expect(payload).not.toHaveProperty("identityDocument");
+  });
+
+  it("al crear, email y documento son editables", async () => {
+    render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
+    await waitFor(() => expect(roleSelect()).toBeEnabled());
+
+    expect(screen.getByLabelText("Correo electrónico")).toBeEnabled();
+    expect(screen.getByLabelText("Documento de Identidad")).toBeEnabled();
+    expect(screen.queryByText(/no se pueden modificar/)).not.toBeInTheDocument();
   });
 });
