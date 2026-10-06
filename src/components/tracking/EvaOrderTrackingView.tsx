@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
-import { Search, RefreshCw, Eye, FileSpreadsheet } from "lucide-react";
+import { Search, RefreshCw, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -41,7 +41,10 @@ import EvaStatusBadge, {
   GROUP_CLS,
 } from "@/components/eva/EvaStatusBadge";
 import SendToEvaButton from "@/components/eva/SendToEvaButton";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import {
+  OrderDetailButton,
+  OrderDetailModalProvider,
+} from "@/components/orders/OrderDetailModal";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import { isEvaCourier } from "@/utils/courierNormalizer";
 
@@ -92,7 +95,6 @@ export default function EvaOrderTrackingView() {
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [saldoFilter, setSaldoFilter] = useState<"all" | "pending" | "paid">("all");
   const [page, setPage] = useState(1);
-  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
 
   // ── Fetch ────────────────────────────────────────────────────────────────
 
@@ -223,307 +225,298 @@ export default function EvaOrderTrackingView() {
   // ─── RENDER ───────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-4">
+    <OrderDetailModalProvider
+      onOrderUpdated={fetchOrders}
+      isOperaciones
+      showTracking
+      initialTab="seguimiento"
+    >
+      <div className="space-y-4">
 
-      {/* ── Resumen de estados ── */}
-      {statusCounts.length > 0 && (
-        <div className="flex flex-wrap gap-2 p-3 border rounded-xl bg-muted/20">
-          {statusCounts.map(({ status, label, count, colorClass }) => (
-            <button
-              key={status}
-              type="button"
-              onClick={() =>
-                setStatusFilters((prev) =>
-                  prev.includes(status)
-                    ? prev.filter((v) => v !== status)
-                    : [...prev, status],
-                )
-              }
-              className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all
-                ${colorClass}
-                ${statusFilters.includes(status) ? "ring-2 ring-offset-1 ring-current" : "opacity-90 hover:opacity-100"}
-              `}
-            >
-              <span>{label}</span>
-              <span className="bg-white/50 rounded-full px-1.5 py-0.5 font-bold text-[11px]">
-                {count}
-              </span>
-            </button>
-          ))}
-          {statusFilters.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setStatusFilters([])}
-              className="text-xs text-muted-foreground underline self-center ml-1"
-            >
-              Limpiar filtro
-            </button>
-          )}
-        </div>
-      )}
+        {/* ── Resumen de estados ── */}
+        {statusCounts.length > 0 && (
+          <div className="flex flex-wrap gap-2 p-3 border rounded-xl bg-muted/20">
+            {statusCounts.map(({ status, label, count, colorClass }) => (
+              <button
+                key={status}
+                type="button"
+                onClick={() =>
+                  setStatusFilters((prev) =>
+                    prev.includes(status)
+                      ? prev.filter((v) => v !== status)
+                      : [...prev, status],
+                  )
+                }
+                className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border transition-all
+                  ${colorClass}
+                  ${statusFilters.includes(status) ? "ring-2 ring-offset-1 ring-current" : "opacity-90 hover:opacity-100"}
+                `}
+              >
+                <span>{label}</span>
+                <span className="bg-white/50 rounded-full px-1.5 py-0.5 font-bold text-[11px]">
+                  {count}
+                </span>
+              </button>
+            ))}
+            {statusFilters.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setStatusFilters([])}
+                className="text-xs text-muted-foreground underline self-center ml-1"
+              >
+                Limpiar filtro
+              </button>
+            )}
+          </div>
+        )}
 
-      {/* ── Barra de filtros ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border rounded-xl bg-muted/20">
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold">Búsqueda rápida</Label>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="N° pedido o cliente..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 h-9"
-            />
+        {/* ── Barra de filtros ── */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-4 border rounded-xl bg-muted/20">
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Búsqueda rápida</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="N° pedido o cliente..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Estado EVA</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full h-9 text-sm justify-between font-normal"
+                >
+                  {statusFilters.length === 0
+                    ? "Todos los estados"
+                    : statusFilters.length === 1
+                      ? (STATUS_LABEL[statusFilters[0]] ?? statusFilters[0])
+                      : `${statusFilters.length} estados seleccionados`}
+                  <ChevronDown className="h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" align="start">
+                <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Filtrar por estado
+                  </span>
+                  {statusFilters.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-xs text-primary hover:underline"
+                      onClick={() => setStatusFilters([])}
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1 max-h-64 overflow-y-auto">
+                  {Object.entries(STATUS_LABEL).map(([status, label]) => (
+                    <label
+                      key={status}
+                      className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                    >
+                      <Checkbox
+                        checked={statusFilters.includes(status)}
+                        onCheckedChange={(checked) => {
+                          setStatusFilters((prev) =>
+                            checked
+                              ? [...prev, status]
+                              : prev.filter((v) => v !== status),
+                          );
+                        }}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Saldo</Label>
+            <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
+              <SelectTrigger className="h-9 bg-background">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Con y sin saldo</SelectItem>
+                <SelectItem value="pending">Con saldo pendiente</SelectItem>
+                <SelectItem value="paid">Pagado completo</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold">Estado EVA</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full h-9 text-sm justify-between font-normal"
-              >
-                {statusFilters.length === 0
-                  ? "Todos los estados"
-                  : statusFilters.length === 1
-                    ? (STATUS_LABEL[statusFilters[0]] ?? statusFilters[0])
-                    : `${statusFilters.length} estados seleccionados`}
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-56 p-2" align="start">
-              <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  Filtrar por estado
-                </span>
-                {statusFilters.length > 0 && (
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:underline"
-                    onClick={() => setStatusFilters([])}
-                  >
-                    Limpiar
-                  </button>
-                )}
-              </div>
-              <div className="space-y-1 max-h-64 overflow-y-auto">
-                {Object.entries(STATUS_LABEL).map(([status, label]) => (
-                  <label
-                    key={status}
-                    className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
-                  >
-                    <Checkbox
-                      checked={statusFilters.includes(status)}
-                      onCheckedChange={(checked) => {
-                        setStatusFilters((prev) =>
-                          checked
-                            ? [...prev, status]
-                            : prev.filter((v) => v !== status),
-                        );
-                      }}
+
+        {/* ── Contador y refresco ── */}
+        <div className="flex items-center gap-2">
+          <span className="ml-auto text-xs text-muted-foreground">
+            {filteredOrders.length} registro{filteredOrders.length !== 1 ? "s" : ""}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={fetchOrders}
+            disabled={loading}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            Actualizar
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleExportExcel} className="gap-2">
+            <FileSpreadsheet className="h-4 w-4" />
+            Exportar Excel
+          </Button>
+        </div>
+
+        {/* ── Tabla ── */}
+        <div className="border rounded-xl overflow-hidden bg-background">
+          <Table>
+            <TableHeader className="bg-muted/50">
+              <TableRow>
+                <TableHead className="text-[11px] uppercase font-bold px-4">
+                  N° Pedido
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4">
+                  Cliente
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4 text-center">
+                  Estado EVA
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4 text-center">
+                  Sincronizado
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4">
+                  Fecha pedido
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4">
+                  Tracking EVA
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold px-4 text-right">
+                  Acciones
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell
+                      colSpan={7}
+                      className="h-12 animate-pulse bg-muted/20"
                     />
-                    {label}
-                  </label>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold">Saldo</Label>
-          <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
-            <SelectTrigger className="h-9 bg-background">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Con y sin saldo</SelectItem>
-              <SelectItem value="pending">Con saldo pendiente</SelectItem>
-              <SelectItem value="paid">Pagado completo</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-      {/* ── Contador y refresco ── */}
-      <div className="flex items-center gap-2">
-        <span className="ml-auto text-xs text-muted-foreground">
-          {filteredOrders.length} registro{filteredOrders.length !== 1 ? "s" : ""}
-        </span>
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={fetchOrders}
-          disabled={loading}
-          className="gap-2"
-        >
-          <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          Actualizar
-        </Button>
-        <Button size="sm" variant="outline" onClick={handleExportExcel} className="gap-2">
-          <FileSpreadsheet className="h-4 w-4" />
-          Exportar Excel
-        </Button>
-      </div>
-
-      {/* ── Tabla ── */}
-      <div className="border rounded-xl overflow-hidden bg-background">
-        <Table>
-          <TableHeader className="bg-muted/50">
-            <TableRow>
-              <TableHead className="text-[11px] uppercase font-bold px-4">
-                N° Pedido
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4">
-                Cliente
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4 text-center">
-                Estado EVA
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4 text-center">
-                Sincronizado
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4">
-                Fecha pedido
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4">
-                Tracking EVA
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold px-4 text-right">
-                Acciones
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
+                  </TableRow>
+                ))
+              ) : filteredOrders.length === 0 ? (
+                <TableRow>
                   <TableCell
                     colSpan={7}
-                    className="h-12 animate-pulse bg-muted/20"
-                  />
+                    className="h-32 text-center text-muted-foreground"
+                  >
+                    No hay pedidos con courier EVA
+                    {(search || statusFilters.length > 0 || saldoFilter !== "all") && (
+                      <span className="block text-xs mt-1">
+                        Probá quitando los filtros activos
+                      </span>
+                    )}
+                  </TableCell>
                 </TableRow>
-              ))
-            ) : filteredOrders.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={7}
-                  className="h-32 text-center text-muted-foreground"
-                >
-                  No hay pedidos con courier EVA
-                  {(search || statusFilters.length > 0 || saldoFilter !== "all") && (
-                    <span className="block text-xs mt-1">
-                      Probá quitando los filtros activos
-                    </span>
-                  )}
-                </TableCell>
-              </TableRow>
-            ) : (
-              pagedOrders.map((order) => (
-                <TableRow
-                  key={order.id}
-                  className="hover:bg-muted/30 transition-colors"
-                >
-                  {/* N° Pedido */}
-                  <TableCell className="px-4 py-3 text-xs font-bold font-mono">
-                    {order.orderNumber}
-                  </TableCell>
+              ) : (
+                pagedOrders.map((order) => (
+                  <TableRow
+                    key={order.id}
+                    className="hover:bg-muted/30 transition-colors"
+                  >
+                    {/* N° Pedido */}
+                    <TableCell className="px-4 py-3 text-xs font-bold font-mono">
+                      {order.orderNumber}
+                    </TableCell>
 
-                  {/* Cliente */}
-                  <TableCell className="px-4 py-3 text-xs max-w-[140px] truncate">
-                    {order.customer?.fullName ?? (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-
-                  {/* Estado EVA */}
-                  <TableCell className="px-4 py-3 text-center">
-                    <EvaStatusBadge
-                      evaStatus={order.evaStatus}
-                      evaSyncedAt={order.evaSyncedAt}
-                    />
-                  </TableCell>
-
-                  {/* Sincronizado */}
-                  <TableCell className="px-4 py-3 text-center">
-                    {order.evaSyncedAt ? (
-                      <Badge
-                        variant="outline"
-                        className="text-[10px] font-mono bg-muted/30"
-                      >
-                        {formatSyncedAt(order.evaSyncedAt)}
-                      </Badge>
-                    ) : (
-                      <span className="text-muted-foreground text-[11px]">—</span>
-                    )}
-                  </TableCell>
-
-                  {/* Fecha pedido */}
-                  <TableCell className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
-                    {formatDate(order.created_at)}
-                  </TableCell>
-
-                  {/* Tracking EVA */}
-                  <TableCell className="px-4 py-3 text-xs font-mono">
-                    {order.evaTrackingId ?? (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-
-                  {/* Acciones */}
-                  <TableCell className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {!order.evaStatus && (
-                        <SendToEvaButton
-                          orderId={order.id}
-                          companyId={auth?.company?.id}
-                          recipientName={order.customer?.fullName ?? ""}
-                          recipientPhone={order.customer?.phoneNumber ?? ""}
-                          district={order.customer?.district ?? ""}
-                          address={order.customer?.address ?? ""}
-                          amount={getPendingPayment(order)}
-                          onSuccess={fetchOrders}
-                          variant="outline"
-                          size="sm"
-                          label="Enviar a EVA"
-                        />
+                    {/* Cliente */}
+                    <TableCell className="px-4 py-3 text-xs max-w-[140px] truncate">
+                      {order.customer?.fullName ?? (
+                        <span className="text-muted-foreground">—</span>
                       )}
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-7 w-7"
-                        title="Ver seguimiento"
-                        aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
-                        onClick={() => setViewOrderId(order.id)}
-                      >
-                        <Eye className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-        <Pagination
-          currentPage={page}
-          totalPages={totalPages}
-          totalItems={filteredOrders.length}
-          itemsPerPage={ITEMS_PER_PAGE}
-          onPageChange={setPage}
-          itemName="pedidos"
-        />
-      </div>
+                    </TableCell>
 
-      <CustomerServiceModal
-        open={!!viewOrderId}
-        orderId={viewOrderId || ""}
-        onClose={() => setViewOrderId(null)}
-        onOrderUpdated={fetchOrders}
-        isOperaciones
-        showTracking
-        initialTab="seguimiento"
-      />
-    </div>
+                    {/* Estado EVA */}
+                    <TableCell className="px-4 py-3 text-center">
+                      <EvaStatusBadge
+                        evaStatus={order.evaStatus}
+                        evaSyncedAt={order.evaSyncedAt}
+                      />
+                    </TableCell>
+
+                    {/* Sincronizado */}
+                    <TableCell className="px-4 py-3 text-center">
+                      {order.evaSyncedAt ? (
+                        <Badge
+                          variant="outline"
+                          className="text-[10px] font-mono bg-muted/30"
+                        >
+                          {formatSyncedAt(order.evaSyncedAt)}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-[11px]">—</span>
+                      )}
+                    </TableCell>
+
+                    {/* Fecha pedido */}
+                    <TableCell className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                      {formatDate(order.created_at)}
+                    </TableCell>
+
+                    {/* Tracking EVA */}
+                    <TableCell className="px-4 py-3 text-xs font-mono">
+                      {order.evaTrackingId ?? (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+
+                    {/* Acciones */}
+                    <TableCell className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {!order.evaStatus && (
+                          <SendToEvaButton
+                            orderId={order.id}
+                            companyId={auth?.company?.id}
+                            recipientName={order.customer?.fullName ?? ""}
+                            recipientPhone={order.customer?.phoneNumber ?? ""}
+                            district={order.customer?.district ?? ""}
+                            address={order.customer?.address ?? ""}
+                            amount={getPendingPayment(order)}
+                            onSuccess={fetchOrders}
+                            variant="outline"
+                            size="sm"
+                            label="Enviar a EVA"
+                          />
+                        )}
+                        <OrderDetailButton
+                          orderId={order.id}
+                          ariaLabel={`Ver seguimiento del pedido ${order.orderNumber}`}
+                        />
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={filteredOrders.length}
+            itemsPerPage={ITEMS_PER_PAGE}
+            onPageChange={setPage}
+            itemName="pedidos"
+          />
+        </div>
+      </div>
+    </OrderDetailModalProvider>
   );
 }

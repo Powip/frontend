@@ -1,6 +1,7 @@
 "use client";
 
-import { MessageCircle, Copy, Search, X, FileDown } from "lucide-react";
+import { Copy, Search, X, FileDown } from "lucide-react";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AgenteConKpis } from "@/interfaces/IOrder";
@@ -126,7 +127,7 @@ export function CcToolbar({
         disabled={selectedCount === 0}
         onClick={onWhatsAppMasivo}
       >
-        <MessageCircle className="h-3.5 w-3.5" />
+        <WhatsAppIcon className="h-3.5 w-3.5" />
         WA Masivo {selectedCount > 0 && `(${selectedCount})`}
       </Button>
 

@@ -221,6 +221,17 @@ function RegistrarVentaContent() {
   const router = useRouter();
   const orderId = searchParams.get("orderId");
   const isPromo = searchParams.get("isPromo") === "true";
+  // A dónde volver tras actualizar (p. ej. Por Despachar al editar el tipo de
+  // entrega para generar guía). Solo rutas internas: evita open redirects.
+  const rawReturnTo = searchParams.get("returnTo");
+  const returnTo =
+    orderId &&
+    rawReturnTo &&
+    rawReturnTo.startsWith("/") &&
+    !rawReturnTo.startsWith("//") &&
+    !rawReturnTo.includes("\\")
+      ? rawReturnTo
+      : null;
 
   /* ---------------- Cliente ---------------- */
   const [clientFound, setClientFound] = useState<Client | null>(null);
@@ -1266,11 +1277,33 @@ function RegistrarVentaContent() {
           const updatedId = orderData.id;
           toast.success("Venta actualizada correctamente");
           resetForm();
+          if (returnTo) {
+            // `updated` solo se agrega acá, tras guardar con éxito: el
+            // "Volver" del header usa el returnTo pelado y no anuncia nada.
+            const sep = returnTo.includes("?") ? "&" : "?";
+            router.replace(
+              `${returnTo}${sep}updated=${encodeURIComponent(updatedId)}`,
+            );
+            return;
+          }
           setReceiptOrderId(updatedId);
           setReceiptOpen(true);
         }
-      } catch {
-        toast.error("Error al registrar la venta");
+      } catch (error) {
+        if (orderData) {
+          // El form no se resetea en error: lo editado sigue cargado.
+          const apiMessage = (
+            error as { response?: { data?: { message?: string | string[] } } }
+          )?.response?.data?.message;
+          const detail = Array.isArray(apiMessage)
+            ? apiMessage.join(", ")
+            : apiMessage;
+          toast.error(
+            `No se pudo actualizar la venta${detail ? `: ${detail}` : ""}. Tus cambios siguen en el formulario; podés reintentar.`,
+          );
+        } else {
+          toast.error("Error al registrar la venta");
+        }
       } finally {
         setIsSubmitting(false);
       }
@@ -1587,7 +1620,7 @@ function RegistrarVentaContent() {
         <div className="mx-auto max-w-[1400px] p-6 space-y-6 lg:p-8">
           {/* Header */}
           <div className="flex items-center gap-4">
-            <Link href="/ventas">
+            <Link href={returnTo ?? "/ventas"}>
               <Button variant="outline" size="sm" className="rounded-full">
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Volver
@@ -1598,6 +1631,19 @@ function RegistrarVentaContent() {
               description="Carga completa de una venta"
             />
           </div>
+
+          {returnTo && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Editá el <b>tipo de entrega</b> en &quot;Detalles de la venta&quot; y
+                guardá con &quot;Actualizar venta&quot;. Al guardar volverás a
+                Por Despachar con tu selección para revisar la generación de
+                guía; la guía no se genera automáticamente. Si tocás
+                &quot;Volver&quot; sin guardar, no se aplica ningún cambio.
+              </span>
+            </div>
+          )}
 
           <div className="grid gap-6 items-start lg:grid-cols-[1fr_400px]">
             <div className="space-y-6 min-w-0">

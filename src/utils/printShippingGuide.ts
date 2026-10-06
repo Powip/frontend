@@ -3,6 +3,22 @@ import { toast } from "sonner";
 import { generateBarcode } from "./printOrderLabel";
 import { GUIDE_STATUS_LABEL, ZONE_LABELS } from "@/constants/operationsDomain";
 import type { OrderDetail, ShippingGuide } from "@/components/modals/GuideDetailsModal";
+import { getGoogleMapsUrl } from "@/components/shared/MapsLink";
+
+const escapeHtml = (value: string) =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+
+/** Enlace de Google Maps bajo la dirección: URL completa, partida en líneas para no desbordar la celda. */
+function renderMapsUrl(value?: string | null): string {
+  const url = getGoogleMapsUrl(value);
+  if (!url) return "";
+  const safe = escapeHtml(url);
+  return `<span class="maps">Google Maps: <a href="${safe}">${safe}</a></span>`;
+}
 
 export interface PrintGuideCompany {
   name?: string;
@@ -94,6 +110,7 @@ export function printShippingGuide(
       <td class="addr">
         <span class="dist">${r.order.customer.district || "-"}</span><br/>
         ${r.order.customer.address || "-"}
+        ${renderMapsUrl(r.order.customer.googleMapsUrl)}
       </td>
       <td class="cont">${r.contenido}</td>
       <td class="r">
@@ -166,6 +183,8 @@ export function printShippingGuide(
         .who span{display:block; font-weight:700; margin-top:.2mm; font-size:2.3mm;}
         .addr{font-weight:700; line-height:1.2; font-size:2.3mm;}
         .addr .dist{font-weight:800;}
+        .addr .maps{display:block; margin-top:0.6mm; font-weight:500; font-size:2mm; line-height:1.25; overflow-wrap:anywhere; word-break:break-all;}
+        .addr .maps a{color:inherit; text-decoration:underline;}
         .cont{font-weight:700; line-height:1.25; font-size:2.3mm;}
         .cont .q{font-weight:800;}
         .cobrar-pre{font-weight:800; color:var(--pre); font-size:2.3mm;}

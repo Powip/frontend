@@ -4,9 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Pencil,
-  FileText,
   ArrowLeft,
-  MessageCircle,
   Download,
 } from "lucide-react";
 
@@ -27,7 +25,12 @@ import { Label } from "@/components/ui/label";
 import { OrderHeader, OrderStatus, SubEstadoCc } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import {
+  OrderDetailButton,
+  OrderDetailModalProvider,
+} from "@/components/orders/OrderDetailModal";
+import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Pagination } from "@/components/ui/pagination";
@@ -192,8 +195,6 @@ function mapOrderToSale(order: OrderHeader): Sale {
 export default function FinanzasPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [loading, setLoading] = useState(true);
-  const [receiptOpen, setReceiptOpen] = useState(false);
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   // Filtros avanzados
   const [filtersPagosPendientes, setFiltersPagosPendientes] =
@@ -473,20 +474,21 @@ export default function FinanzasPage() {
     }
 
     const text = selectedSales
-      .map((sale) =>
-        `
+      .map((sale) => {
+        const mapsLine = formatGoogleMapsClipboardLine(sale.googleMapsUrl);
+        return `
 Venta ${sale.orderNumber}
 Cliente: ${sale.clientName}
 Teléfono: ${sale.phoneNumber}
 Distrito: ${sale.district}
-Dirección: ${sale.address}
+Dirección: ${sale.address}${mapsLine ? `\n${mapsLine}` : ""}
 Fecha: ${sale.date}
 Total Venta: $${sale.total.toFixed(2)}
 Adelanto: $${sale.advancePayment.toFixed(2)}
 Por Cobrar: $${sale.pendingPayment.toFixed(2)}
 Estado: ${sale.status}
-`.trim(),
-      )
+`.trim();
+      })
       .join("\n\n--------------------\n\n");
 
     await navigator.clipboard.writeText(text);
@@ -683,17 +685,10 @@ Estado: ${sale.status}
               {sale.salesRegion}
             </TableCell>
             <TableCell className="w-[100px] min-w-[100px]">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setSelectedOrderId(sale.id);
-                  setReceiptOpen(true);
-                }}
-              >
-                <FileText className="h-4 w-4 mr-1" />
-                Ver
-              </Button>
+              <OrderDetailButton
+                orderId={sale.id}
+                orderNumber={sale.orderNumber}
+              />
             </TableCell>
             <TableCell className="text-right lg:sticky lg:right-0 w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
               <div className="flex gap-1 justify-end">
@@ -710,7 +705,7 @@ Estado: ${sale.status}
                     )
                   }
                 >
-                  <MessageCircle className="h-4 w-4" />
+                  <WhatsAppIcon className="h-4 w-4" />
                 </Button>
                 <Button
                   size="icon"
@@ -875,17 +870,10 @@ Estado: ${sale.status}
               {sale.salesRegion}
             </TableCell>
             <TableCell className="w-[100px] min-w-[100px]">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setSelectedOrderId(sale.id);
-                  setReceiptOpen(true);
-                }}
-              >
-                <FileText className="h-4 w-4 mr-1" />
-                Ver
-              </Button>
+              <OrderDetailButton
+                orderId={sale.id}
+                orderNumber={sale.orderNumber}
+              />
             </TableCell>
             <TableCell className="text-right lg:sticky lg:right-0 w-[100px] min-w-[100px] lg:z-10 bg-background border-l">
               <div className="flex gap-1 justify-end">
@@ -902,7 +890,7 @@ Estado: ${sale.status}
                     )
                   }
                 >
-                  <MessageCircle className="h-4 w-4" />
+                  <WhatsAppIcon className="h-4 w-4" />
                 </Button>
                 <Button
                   size="icon"
@@ -963,382 +951,369 @@ Estado: ${sale.status}
   }, [sales]);
 
   return (
-    <div className="flex h-screen w-full">
-      <main className="flex-1 p-6 space-y-6 overflow-auto">
-        <div className="flex flex-col items-center mb-6">
-          <HeaderConfig
-            title="Finanzas"
-            description="Gestión de pagos pendientes y ventas entregadas"
-          />
-        </div>
+    <OrderDetailModalProvider onOrderUpdated={fetchOrders} hideCallManagement>
+      <div className="flex h-screen w-full">
+        <main className="flex-1 p-6 space-y-6 overflow-auto">
+          <div className="flex flex-col items-center mb-6">
+            <HeaderConfig
+              title="Finanzas"
+              description="Gestión de pagos pendientes y ventas entregadas"
+            />
+          </div>
 
-        {/* Tabs para Finanzas */}
-        {loading ? (
-          <PowipPulseLoader label="Cargando finanzas..." />
-        ) : (
-        <Tabs defaultValue="pagosPendientes" className="w-full">
-          <TabsList className="mb-4">
-            <TabsTrigger value="pagosPendientes">
-              Pagos Pendientes ({pagosPendientes.length})
-            </TabsTrigger>
-            <TabsTrigger value="entregados">
-              Entregados ({entregados.length})
-            </TabsTrigger>
-            <TabsTrigger value="liquidacionesCourier">
-              Liquidaciones Courier
-            </TabsTrigger>
-          </TabsList>
+          {/* Tabs para Finanzas */}
+          {loading ? (
+            <PowipPulseLoader label="Cargando finanzas..." />
+          ) : (
+          <Tabs defaultValue="pagosPendientes" className="w-full">
+            <TabsList className="mb-4">
+              <TabsTrigger value="pagosPendientes">
+                Pagos Pendientes ({pagosPendientes.length})
+              </TabsTrigger>
+              <TabsTrigger value="entregados">
+                Entregados ({entregados.length})
+              </TabsTrigger>
+              <TabsTrigger value="liquidacionesCourier">
+                Liquidaciones Courier
+              </TabsTrigger>
+            </TabsList>
 
-          {/* Tab Pagos Pendientes */}
-          <TabsContent value="pagosPendientes">
-            <Card>
-              <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div>
-                  <CardTitle>Pagos Pendientes de Aprobación</CardTitle>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Ventas con comprobantes de pago por verificar
-                  </p>
-                </div>
-                <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
-                    disabled={
-                      pagosPendientes.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0
-                    }
-                    onClick={() => handleBulkWhatsApp(pagosPendientes)}
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    WhatsApp Masivo (
-                    {
-                      pagosPendientes.filter((s) => selectedSaleIds.has(s.id))
-                        .length
-                    }
-                    )
-                  </Button>
-                  {auth?.user?.role === "ADMIN" && (
+            {/* Tab Pagos Pendientes */}
+            <TabsContent value="pagosPendientes">
+              <Card>
+                <CardHeader className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  <div>
+                    <CardTitle>Pagos Pendientes de Aprobación</CardTitle>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Ventas con comprobantes de pago por verificar
+                    </p>
+                  </div>
+                  <div className="flex flex-col lg:flex-row gap-2 w-full lg:w-auto">
                     <Button
                       variant="outline"
-                      className="w-full lg:w-auto"
-                      onClick={() =>
-                        handleExportExcel(pagosPendientes, "pagos_pendientes")
+                      className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                      disabled={
+                        pagosPendientes.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0
                       }
+                      onClick={() => handleBulkWhatsApp(pagosPendientes)}
                     >
-                      <Download className="h-4 w-4 mr-2" />
-                      Exportar Excel
+                      <WhatsAppIcon className="h-4 w-4 mr-2" />
+                      WhatsApp Masivo (
+                      {
+                        pagosPendientes.filter((s) => selectedSaleIds.has(s.id))
+                          .length
+                      }
+                      )
                     </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <SalesTableFilters
-                  filters={filtersPagosPendientes}
-                  onFiltersChange={setFiltersPagosPendientes}
-                />
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-[100px] min-w-[100px]">
-                        N° Orden
-                      </TableHead>
-                      <TableHead className="w-[100px] min-w-[100px]">
-                        ID Externo
-                      </TableHead>
-                      <TableHead className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-20 bg-background border-r">
-                        Cliente
-                      </TableHead>
-                      <TableHead className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-20 bg-background border-r">
-                        Teléfono
-                      </TableHead>
-                      <TableHead className="w-[100px] min-w-[100px]">
-                        Región
-                      </TableHead>
-                      <TableHead className="w-[120px] min-w-[120px]">
-                        Ciudad
-                      </TableHead>
-                      <TableHead className="w-[120px] min-w-[120px]">
-                        Courier
-                      </TableHead>
-                      <TableHead className="w-[120px] min-w-[120px]">
-                        Estado Venta
-                      </TableHead>
-                      <TableHead className="w-[100px] min-w-[100px]">
-                        Total Venta
-                      </TableHead>
-                      <TableHead className="w-[140px] min-w-[140px]">
-                        Pagos Pendientes
-                      </TableHead>
-                      <TableHead className="w-[140px] min-w-[140px]">
-                        Monto por Aprobar
-                      </TableHead>
-                      <TableHead className="w-[120px] min-w-[120px]">
-                        Vendedor
-                      </TableHead>
-                      <TableHead className="w-[100px] min-w-[100px]">
-                        Fecha Pago
-                      </TableHead>
-                      <TableHead className="w-[100px] min-w-[100px]">
-                        Resumen
-                      </TableHead>
-                      <TableHead className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-20 bg-background text-right border-l">
-                        Acciones
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {pagosPendientes.map((sale) => (
-                      <TableRow key={sale.id}>
-                        <TableCell className="font-medium w-[100px] min-w-[100px]">
-                          {sale.orderNumber}
-                        </TableCell>
-                        <TableCell className="w-[100px] min-w-[100px] text-xs text-muted-foreground truncate max-w-[100px]">
-                          {sale.externalId || "-"}
-                        </TableCell>
-                        <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
-                          {sale.clientName}
-                        </TableCell>
-                        <TableCell className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-10 bg-background border-r">
-                          {sale.phoneNumber}
-                        </TableCell>
-                        <TableCell className="w-[100px] min-w-[100px]">
-                          <Badge
-                            variant={
-                              sale.salesRegion === "LIMA"
-                                ? "default"
-                                : "secondary"
-                            }
-                          >
-                            {sale.salesRegion}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="w-[120px] min-w-[120px]">
-                          {sale.city || "-"}
-                        </TableCell>
-                        <TableCell className="w-[120px] min-w-[120px]">
-                          {sale.courier || "-"}
-                        </TableCell>
-                        <TableCell className="w-[120px] min-w-[120px]">
-                          <Badge variant="outline">{sale.status}</Badge>
-                        </TableCell>
-                        <TableCell className="w-[100px] min-w-[100px]">
-                          S/{sale.total.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="w-[140px] min-w-[140px]">
-                          <Badge className="bg-amber-100 text-amber-800">
-                            {sale.pendingPaymentsCount} pago(s)
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-medium text-amber-600 w-[140px] min-w-[140px]">
-                          S/{sale.pendingPaymentsAmount.toFixed(2)}
-                        </TableCell>
-                        <TableCell className="w-[120px] min-w-[120px] text-xs">
-                          {sale.sellerName || "—"}
-                        </TableCell>
-                        <TableCell className="w-[100px] min-w-[100px]">
-                          {sale.paymentCreatedAt
-                            ? new Date(
-                                sale.paymentCreatedAt,
-                              ).toLocaleDateString("es-PE")
-                            : "-"}
-                        </TableCell>
-                        <TableCell className="w-[100px] min-w-[100px]">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedOrderId(sale.id);
-                              setReceiptOpen(true);
-                            }}
-                          >
-                            <FileText className="h-4 w-4 mr-1" />
-                            Ver
-                          </Button>
-                        </TableCell>
-                        <TableCell className="text-right lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-10 bg-background border-l">
-                          <div className="flex gap-1 justify-end">
-                            <Button
-                              size="icon"
-                              variant="outline"
-                              className="bg-green-500 hover:bg-green-600 text-white border-green-600"
-                              title="WhatsApp"
-                              onClick={() =>
-                                handleWhatsApp(
-                                  sale.phoneNumber,
-                                  sale.orderNumber,
-                                  sale.clientName,
-                                  sale.pendingPaymentsAmount,
-                                )
+                    {auth?.user?.role === "ADMIN" && (
+                      <Button
+                        variant="outline"
+                        className="w-full lg:w-auto"
+                        onClick={() =>
+                          handleExportExcel(pagosPendientes, "pagos_pendientes")
+                        }
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Exportar Excel
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <SalesTableFilters
+                    filters={filtersPagosPendientes}
+                    onFiltersChange={setFiltersPagosPendientes}
+                  />
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-[100px] min-w-[100px]">
+                          N° Orden
+                        </TableHead>
+                        <TableHead className="w-[100px] min-w-[100px]">
+                          ID Externo
+                        </TableHead>
+                        <TableHead className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-20 bg-background border-r">
+                          Cliente
+                        </TableHead>
+                        <TableHead className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-20 bg-background border-r">
+                          Teléfono
+                        </TableHead>
+                        <TableHead className="w-[100px] min-w-[100px]">
+                          Región
+                        </TableHead>
+                        <TableHead className="w-[120px] min-w-[120px]">
+                          Ciudad
+                        </TableHead>
+                        <TableHead className="w-[120px] min-w-[120px]">
+                          Courier
+                        </TableHead>
+                        <TableHead className="w-[120px] min-w-[120px]">
+                          Estado Venta
+                        </TableHead>
+                        <TableHead className="w-[100px] min-w-[100px]">
+                          Total Venta
+                        </TableHead>
+                        <TableHead className="w-[140px] min-w-[140px]">
+                          Pagos Pendientes
+                        </TableHead>
+                        <TableHead className="w-[140px] min-w-[140px]">
+                          Monto por Aprobar
+                        </TableHead>
+                        <TableHead className="w-[120px] min-w-[120px]">
+                          Vendedor
+                        </TableHead>
+                        <TableHead className="w-[100px] min-w-[100px]">
+                          Fecha Pago
+                        </TableHead>
+                        <TableHead className="w-[100px] min-w-[100px]">
+                          Resumen
+                        </TableHead>
+                        <TableHead className="lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-20 bg-background text-right border-l">
+                          Acciones
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {pagosPendientes.map((sale) => (
+                        <TableRow key={sale.id}>
+                          <TableCell className="font-medium w-[100px] min-w-[100px]">
+                            {sale.orderNumber}
+                          </TableCell>
+                          <TableCell className="w-[100px] min-w-[100px] text-xs text-muted-foreground truncate max-w-[100px]">
+                            {sale.externalId || "-"}
+                          </TableCell>
+                          <TableCell className="lg:sticky lg:left-0 w-[160px] min-w-[160px] lg:z-10 bg-background border-r">
+                            {sale.clientName}
+                          </TableCell>
+                          <TableCell className="lg:sticky lg:left-[160px] w-[120px] min-w-[120px] lg:z-10 bg-background border-r">
+                            {sale.phoneNumber}
+                          </TableCell>
+                          <TableCell className="w-[100px] min-w-[100px]">
+                            <Badge
+                              variant={
+                                sale.salesRegion === "LIMA"
+                                  ? "default"
+                                  : "secondary"
                               }
                             >
-                              <MessageCircle className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="bg-amber-500 hover:bg-amber-600 text-white"
-                              onClick={() => {
-                                setSelectedSaleForPayment(sale);
-                                setPaymentModalOpen(true);
-                              }}
-                            >
-                              <DollarSign className="h-4 w-4 mr-1" />
-                              Gestionar Pagos
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {pagosPendientes.length === 0 && (
-                      <TableRow>
-                        <TableCell
-                          colSpan={13}
-                          className="text-center text-muted-foreground py-6"
-                        >
-                          No hay pagos pendientes de aprobación
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-              <Pagination
-                currentPage={1}
-                totalPages={Math.ceil(pagosPendientes.length / 10) || 1}
-                totalItems={pagosPendientes.length}
-                itemsPerPage={10}
-                onPageChange={() => {}}
-                itemName="ventas"
-              />
-            </Card>
-          </TabsContent>
+                              {sale.salesRegion}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="w-[120px] min-w-[120px]">
+                            {sale.city || "-"}
+                          </TableCell>
+                          <TableCell className="w-[120px] min-w-[120px]">
+                            {sale.courier || "-"}
+                          </TableCell>
+                          <TableCell className="w-[120px] min-w-[120px]">
+                            <Badge variant="outline">{sale.status}</Badge>
+                          </TableCell>
+                          <TableCell className="w-[100px] min-w-[100px]">
+                            S/{sale.total.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="w-[140px] min-w-[140px]">
+                            <Badge className="bg-amber-100 text-amber-800">
+                              {sale.pendingPaymentsCount} pago(s)
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium text-amber-600 w-[140px] min-w-[140px]">
+                            S/{sale.pendingPaymentsAmount.toFixed(2)}
+                          </TableCell>
+                          <TableCell className="w-[120px] min-w-[120px] text-xs">
+                            {sale.sellerName || "—"}
+                          </TableCell>
+                          <TableCell className="w-[100px] min-w-[100px]">
+                            {sale.paymentCreatedAt
+                              ? new Date(
+                                  sale.paymentCreatedAt,
+                                ).toLocaleDateString("es-PE")
+                              : "-"}
+                          </TableCell>
+                          <TableCell className="w-[100px] min-w-[100px]">
+                            <OrderDetailButton
+                              orderId={sale.id}
+                              orderNumber={sale.orderNumber}
+                            />
+                          </TableCell>
+                          <TableCell className="text-right lg:sticky lg:right-0 w-[140px] min-w-[140px] lg:z-10 bg-background border-l">
+                            <div className="flex gap-1 justify-end">
+                              <Button
+                                size="icon"
+                                variant="outline"
+                                className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                                title="WhatsApp"
+                                onClick={() =>
+                                  handleWhatsApp(
+                                    sale.phoneNumber,
+                                    sale.orderNumber,
+                                    sale.clientName,
+                                    sale.pendingPaymentsAmount,
+                                  )
+                                }
+                              >
+                                <WhatsAppIcon className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="bg-amber-500 hover:bg-amber-600 text-white"
+                                onClick={() => {
+                                  setSelectedSaleForPayment(sale);
+                                  setPaymentModalOpen(true);
+                                }}
+                              >
+                                <DollarSign className="h-4 w-4 mr-1" />
+                                Gestionar Pagos
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {pagosPendientes.length === 0 && (
+                        <TableRow>
+                          <TableCell
+                            colSpan={13}
+                            className="text-center text-muted-foreground py-6"
+                          >
+                            No hay pagos pendientes de aprobación
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+                <Pagination
+                  currentPage={1}
+                  totalPages={Math.ceil(pagosPendientes.length / 10) || 1}
+                  totalItems={pagosPendientes.length}
+                  itemsPerPage={10}
+                  onPageChange={() => {}}
+                  itemName="ventas"
+                />
+              </Card>
+            </TabsContent>
 
-          {/* Tab Entregados */}
-          <TabsContent value="entregados">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle>Pedidos Entregados</CardTitle>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    disabled={
-                      entregados.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0 || isPrinting
-                    }
-                    onClick={() => handleBulkPrintForStatus(entregados)}
-                  >
-                    <Printer className="h-4 w-4 mr-2" />
-                    Imprimir seleccionados (
-                    {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
-                    )
-                  </Button>
-                  <Button
-                    variant="outline"
-                    disabled={
-                      entregados.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0
-                    }
-                    onClick={() => handleCopySelected(entregados)}
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copiar seleccionados (
-                    {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
-                    )
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
-                    disabled={
-                      entregados.filter((s) => selectedSaleIds.has(s.id))
-                        .length === 0
-                    }
-                    onClick={() => handleBulkWhatsApp(entregados)}
-                  >
-                    <MessageCircle className="h-4 w-4 mr-2" />
-                    WhatsApp Masivo (
-                    {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
-                    )
-                  </Button>
-                  {auth?.user?.role === "ADMIN" && (
+            {/* Tab Entregados */}
+            <TabsContent value="entregados">
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between">
+                  <CardTitle>Pedidos Entregados</CardTitle>
+                  <div className="flex gap-2">
                     <Button
                       variant="outline"
-                      onClick={() =>
-                        handleExportExcel(entregados, "entregados")
+                      disabled={
+                        entregados.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0 || isPrinting
                       }
+                      onClick={() => handleBulkPrintForStatus(entregados)}
                     >
-                      <Download className="h-4 w-4 mr-2" />
-                      Exportar Excel
+                      <Printer className="h-4 w-4 mr-2" />
+                      Imprimir seleccionados (
+                      {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
+                      )
                     </Button>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                <SalesTableFilters
-                  filters={filtersEntregado}
-                  onFiltersChange={setFiltersEntregado}
-                  showCourierFilter={true}
-                  availableCouriers={availableCouriers}
+                    <Button
+                      variant="outline"
+                      disabled={
+                        entregados.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0
+                      }
+                      onClick={() => handleCopySelected(entregados)}
+                    >
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copiar seleccionados (
+                      {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
+                      )
+                    </Button>
+                    <Button
+                      variant="outline"
+                      className="w-full lg:w-auto bg-green-50 text-green-700 hover:bg-green-100 border-green-200"
+                      disabled={
+                        entregados.filter((s) => selectedSaleIds.has(s.id))
+                          .length === 0
+                      }
+                      onClick={() => handleBulkWhatsApp(entregados)}
+                    >
+                      <WhatsAppIcon className="h-4 w-4 mr-2" />
+                      WhatsApp Masivo (
+                      {entregados.filter((s) => selectedSaleIds.has(s.id)).length}
+                      )
+                    </Button>
+                    {auth?.user?.role === "ADMIN" && (
+                      <Button
+                        variant="outline"
+                        onClick={() =>
+                          handleExportExcel(entregados, "entregados")
+                        }
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Exportar Excel
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <SalesTableFilters
+                    filters={filtersEntregado}
+                    onFiltersChange={setFiltersEntregado}
+                    showCourierFilter={true}
+                    availableCouriers={availableCouriers}
+                  />
+                  {renderEntregadosTable(entregados)}
+                </CardContent>
+                <Pagination
+                  currentPage={1}
+                  totalPages={Math.ceil(entregados.length / 10) || 1}
+                  totalItems={entregados.length}
+                  itemsPerPage={10}
+                  onPageChange={() => {}}
+                  itemName="pedidos"
                 />
-                {renderEntregadosTable(entregados)}
-              </CardContent>
-              <Pagination
-                currentPage={1}
-                totalPages={Math.ceil(entregados.length / 10) || 1}
-                totalItems={entregados.length}
-                itemsPerPage={10}
-                onPageChange={() => {}}
-                itemName="pedidos"
-              />
-            </Card>
-          </TabsContent>
+              </Card>
+            </TabsContent>
 
-          {/* Tab Liquidaciones Courier */}
-          <TabsContent value="liquidacionesCourier">
-            <LiquidacionesCourierTab />
-          </TabsContent>
-        </Tabs>
-        )}
-      </main>
+            {/* Tab Liquidaciones Courier */}
+            <TabsContent value="liquidacionesCourier">
+              <LiquidacionesCourierTab />
+            </TabsContent>
+          </Tabs>
+          )}
+        </main>
 
-      <CustomerServiceModal
-        open={receiptOpen}
-        orderId={selectedOrderId || ""}
-        onClose={() => setReceiptOpen(false)}
-        onOrderUpdated={fetchOrders}
-        hideCallManagement={true}
-      />
+        <CancellationModal
+          open={cancellationModalOpen}
+          onClose={() => {
+            setCancellationModalOpen(false);
+            setSaleToCancel(null);
+          }}
+          orderNumber={saleToCancel?.orderNumber || ""}
+          onConfirm={handleConfirmCancellation}
+          isLoading={isCancelling}
+        />
 
-      <CancellationModal
-        open={cancellationModalOpen}
-        onClose={() => {
-          setCancellationModalOpen(false);
-          setSaleToCancel(null);
-        }}
-        orderNumber={saleToCancel?.orderNumber || ""}
-        onConfirm={handleConfirmCancellation}
-        isLoading={isCancelling}
-      />
+        <CommentsTimelineModal
+          open={commentsModalOpen}
+          onClose={() => {
+            setCommentsModalOpen(false);
+            setSelectedSaleForComments(null);
+          }}
+          orderId={selectedSaleForComments?.id || ""}
+          orderNumber={selectedSaleForComments?.orderNumber || ""}
+        />
 
-      <CommentsTimelineModal
-        open={commentsModalOpen}
-        onClose={() => {
-          setCommentsModalOpen(false);
-          setSelectedSaleForComments(null);
-        }}
-        orderId={selectedSaleForComments?.id || ""}
-        orderNumber={selectedSaleForComments?.orderNumber || ""}
-      />
-
-      <PaymentVerificationModal
-        open={paymentModalOpen}
-        onClose={() => {
-          setPaymentModalOpen(false);
-          setSelectedSaleForPayment(null);
-        }}
-        orderId={selectedSaleForPayment?.id || ""}
-        orderNumber={selectedSaleForPayment?.orderNumber || ""}
-        onPaymentUpdated={fetchOrders}
-        canApprove={true}
-      />
-    </div>
+        <PaymentVerificationModal
+          open={paymentModalOpen}
+          onClose={() => {
+            setPaymentModalOpen(false);
+            setSelectedSaleForPayment(null);
+          }}
+          orderId={selectedSaleForPayment?.id || ""}
+          orderNumber={selectedSaleForPayment?.orderNumber || ""}
+          onPaymentUpdated={fetchOrders}
+          canApprove={true}
+        />
+      </div>
+    </OrderDetailModalProvider>
   );
 }

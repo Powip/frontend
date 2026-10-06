@@ -6,7 +6,6 @@ import {
   Truck,
   FileText,
   DollarSign,
-  MessageCircle,
   Lock,
   Eye,
   EyeOff,
@@ -43,9 +42,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import axios from "axios";
 import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
-import CustomerServiceModal, {
-  ShippingGuideData,
-} from "@/components/modals/CustomerServiceModal";
+import type { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
+import {
+  OrderDetailButton,
+  OrderDetailModalProvider,
+} from "@/components/orders/OrderDetailModal";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import GuideDetailsModal from "@/components/modals/GuideDetailsModal";
 import ShippingNotesModal from "@/components/modals/ShippingNotesModal";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
@@ -117,10 +119,7 @@ export default function ShalomOrderTrackingView() {
   const [page, setPage] = useState(1);
 
   // Modal states
-  const [orderModalOpen, setOrderModalOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
-  const [selectedGuideData, setSelectedGuideData] =
-    useState<ShippingGuideData | null>(null);
 
   const [guideModalOpen, setGuideModalOpen] = useState(false);
   const [notesModalOpen, setNotesModalOpen] = useState(false);
@@ -366,12 +365,6 @@ export default function ShalomOrderTrackingView() {
     toast.info("WhatsApp Masivo en desarrollo");
   };
 
-  const handleOpenOrder = (item: EnvioItem) => {
-    setSelectedOrderId(item.order.id);
-    setSelectedGuideData(item.guide ? ({ ...item.guide } as any) : null);
-    setOrderModalOpen(true);
-  };
-
   const handleOpenGuide = (item: EnvioItem) => {
     setSelectedOrderId(item.order.id);
     setGuideModalOpen(true);
@@ -528,552 +521,541 @@ export default function ShalomOrderTrackingView() {
   };
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 p-4 border rounded-xl bg-muted/20">
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold">Búsqueda rápida</Label>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Orden, guía o cliente..."
-              value={guideSearch}
-              onChange={(e) => setGuideSearch(e.target.value)}
-              className="pl-9 h-9"
+    <OrderDetailModalProvider onOrderUpdated={fetchShalomOrders} hideCallManagement>
+      <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 p-4 border rounded-xl bg-muted/20">
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Búsqueda rápida</Label>
+            <div className="relative">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Orden, guía o cliente..."
+                value={guideSearch}
+                onChange={(e) => setGuideSearch(e.target.value)}
+                className="pl-9 h-9"
+              />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Período</Label>
+            <PeriodSelector
+              onPeriodChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
+              className="w-full"
             />
           </div>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold">Período</Label>
-          <PeriodSelector
-            onPeriodChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
-            className="w-full"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold">Estado Shalom</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="w-full h-9 text-sm justify-between font-normal"
-              >
-                {guideStatusFilters.length === 0
-                  ? "Todos los estados"
-                  : guideStatusFilters.length === 1
-                    ? SHALOM_STATUS_FILTER_OPTIONS.find(
-                        (opt) => opt.value === guideStatusFilters[0],
-                      )?.label
-                    : `${guideStatusFilters.length} estados seleccionados`}
-                <ChevronDown className="h-4 w-4 opacity-50" />
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-56 p-2" align="start">
-              <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
-                <span className="text-xs font-semibold text-muted-foreground">
-                  Filtrar por estado
-                </span>
-                {guideStatusFilters.length > 0 && (
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:underline"
-                    onClick={() => setGuideStatusFilters([])}
-                  >
-                    Limpiar
-                  </button>
-                )}
-              </div>
-              <div className="space-y-1">
-                {SHALOM_STATUS_FILTER_OPTIONS.map((opt) => (
-                  <label
-                    key={opt.value}
-                    className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
-                  >
-                    <Checkbox
-                      checked={guideStatusFilters.includes(opt.value)}
-                      onCheckedChange={(checked) => {
-                        setGuideStatusFilters((prev) =>
-                          checked
-                            ? [...prev, opt.value]
-                            : prev.filter((v) => v !== opt.value),
-                        );
-                      }}
-                    />
-                    {opt.label}
-                  </label>
-                ))}
-              </div>
-            </PopoverContent>
-          </Popover>
-        </div>
-        <div className="space-y-1">
-          <Label className="text-xs font-semibold">Saldo</Label>
-          <select
-            className="w-full h-9 text-sm border rounded-md px-3 bg-background"
-            value={pendingFilter}
-            onChange={(e) => setPendingFilter(e.target.value as "all" | "pending" | "paid")}
-          >
-            <option value="all">Todos</option>
-            <option value="pending">Con saldo pendiente</option>
-            <option value="paid">Pagado completo</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs text-muted-foreground">
-          {filteredOrders.length} registro{filteredOrders.length !== 1 ? "s" : ""}
-        </span>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleRefreshLiveStatuses}
-            disabled={loading || loadingLiveStatuses}
-            className="gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${loadingLiveStatuses ? "animate-spin" : ""}`} />
-            Actualizar estados
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleExportExcel}
-            disabled={filteredOrders.length === 0}
-            className="gap-2 text-green-700 border-green-200 hover:bg-green-50"
-          >
-            <FileSpreadsheet className="h-4 w-4" />
-            Exportar Excel
-          </Button>
-        </div>
-      </div>
-
-      {selectedSaleIds.size > 0 && (
-        <div className="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg">
-          <span className="text-sm font-medium text-orange-800">
-            {selectedSaleIds.size} pedidos seleccionados
-          </span>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              className="bg-green-600 hover:bg-green-700"
-              onClick={handleBulkWhatsApp}
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Estado Shalom</Label>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full h-9 text-sm justify-between font-normal"
+                >
+                  {guideStatusFilters.length === 0
+                    ? "Todos los estados"
+                    : guideStatusFilters.length === 1
+                      ? SHALOM_STATUS_FILTER_OPTIONS.find(
+                          (opt) => opt.value === guideStatusFilters[0],
+                        )?.label
+                      : `${guideStatusFilters.length} estados seleccionados`}
+                  <ChevronDown className="h-4 w-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-56 p-2" align="start">
+                <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    Filtrar por estado
+                  </span>
+                  {guideStatusFilters.length > 0 && (
+                    <button
+                      type="button"
+                      className="text-xs text-primary hover:underline"
+                      onClick={() => setGuideStatusFilters([])}
+                    >
+                      Limpiar
+                    </button>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  {SHALOM_STATUS_FILTER_OPTIONS.map((opt) => (
+                    <label
+                      key={opt.value}
+                      className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                    >
+                      <Checkbox
+                        checked={guideStatusFilters.includes(opt.value)}
+                        onCheckedChange={(checked) => {
+                          setGuideStatusFilters((prev) =>
+                            checked
+                              ? [...prev, opt.value]
+                              : prev.filter((v) => v !== opt.value),
+                          );
+                        }}
+                      />
+                      {opt.label}
+                    </label>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs font-semibold">Saldo</Label>
+            <select
+              className="w-full h-9 text-sm border rounded-md px-3 bg-background"
+              value={pendingFilter}
+              onChange={(e) => setPendingFilter(e.target.value as "all" | "pending" | "paid")}
             >
-              <MessageCircle className="h-4 w-4 mr-2" /> WhatsApp Masivo
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setSelectedSaleIds(new Set())}
-            >
-              Cancelar
-            </Button>
+              <option value="all">Todos</option>
+              <option value="pending">Con saldo pendiente</option>
+              <option value="paid">Pagado completo</option>
+            </select>
           </div>
         </div>
-      )}
 
-      {(() => {
-        const failedCount = shalomOrders.filter(
-          ({ order }) => order.shalomStatus === "FALLIDO",
-        ).length;
-        if (failedCount === 0 || guideStatusFilters.includes("FALLIDO"))
-          return null;
-        return (
-          <div role="alert" className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
-            <span className="flex items-center gap-2 text-sm font-medium text-red-800">
-              <AlertTriangle className="h-4 w-4 flex-shrink-0" />
-              {failedCount} despacho{failedCount !== 1 ? "s" : ""} fallido{failedCount !== 1 ? "s" : ""} requieren atención
-            </span>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs text-muted-foreground">
+            {filteredOrders.length} registro{filteredOrders.length !== 1 ? "s" : ""}
+          </span>
+          <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
               variant="outline"
-              className="border-red-300 text-red-700 hover:bg-red-100"
-              onClick={() => setGuideStatusFilters(["FALLIDO"])}
+              onClick={handleRefreshLiveStatuses}
+              disabled={loading || loadingLiveStatuses}
+              className="gap-2"
             >
-              Ver fallidos
+              <RefreshCw className={`h-4 w-4 ${loadingLiveStatuses ? "animate-spin" : ""}`} />
+              Actualizar estados
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleExportExcel}
+              disabled={filteredOrders.length === 0}
+              className="gap-2 text-green-700 border-green-200 hover:bg-green-50"
+            >
+              <FileSpreadsheet className="h-4 w-4" />
+              Exportar Excel
             </Button>
           </div>
-        );
-      })()}
+        </div>
 
-      <div className="border rounded-xl overflow-hidden bg-background">
-        <Table>
-          <TableHeader className="bg-muted/50">
-            <TableRow>
-              <TableHead className="w-10 text-center">
-                <input
-                  type="checkbox"
-                  onChange={handleSelectAll}
-                  checked={
-                    filteredOrders.length > 0 &&
-                    selectedSaleIds.size === filteredOrders.length
-                  }
-                />
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold">
-                Fecha
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold text-center">
-                Días
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold text-right">
-                Saldo
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold text-center">
-                Estado
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold text-center">
-                Clave
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold">
-                N° Orden
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold">
-                Cliente
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold">
-                N° Guía Shalom
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold">
-                Código
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold">
-                Origen
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold">
-                Destino
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold">
-                DNI
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold">
-                Teléfono
-              </TableHead>
-              <TableHead className="text-[11px] uppercase font-bold text-right">
-                Acciones
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => (
-                <TableRow key={i}>
+        {selectedSaleIds.size > 0 && (
+          <div className="flex items-center justify-between p-3 bg-orange-50 border border-orange-200 rounded-lg">
+            <span className="text-sm font-medium text-orange-800">
+              {selectedSaleIds.size} pedidos seleccionados
+            </span>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                className="bg-green-600 hover:bg-green-700"
+                onClick={handleBulkWhatsApp}
+              >
+                <WhatsAppIcon className="h-4 w-4 mr-2" /> WhatsApp Masivo
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setSelectedSaleIds(new Set())}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {(() => {
+          const failedCount = shalomOrders.filter(
+            ({ order }) => order.shalomStatus === "FALLIDO",
+          ).length;
+          if (failedCount === 0 || guideStatusFilters.includes("FALLIDO"))
+            return null;
+          return (
+            <div role="alert" className="flex items-center justify-between p-3 bg-red-50 border border-red-200 rounded-lg">
+              <span className="flex items-center gap-2 text-sm font-medium text-red-800">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                {failedCount} despacho{failedCount !== 1 ? "s" : ""} fallido{failedCount !== 1 ? "s" : ""} requieren atención
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-red-300 text-red-700 hover:bg-red-100"
+                onClick={() => setGuideStatusFilters(["FALLIDO"])}
+              >
+                Ver fallidos
+              </Button>
+            </div>
+          );
+        })()}
+
+        <div className="border rounded-xl overflow-hidden bg-background">
+          <Table>
+            <TableHeader className="bg-muted/50">
+              <TableRow>
+                <TableHead className="w-10 text-center">
+                  <input
+                    type="checkbox"
+                    onChange={handleSelectAll}
+                    checked={
+                      filteredOrders.length > 0 &&
+                      selectedSaleIds.size === filteredOrders.length
+                    }
+                  />
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">
+                  Fecha
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold text-center">
+                  Días
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold text-right">
+                  Saldo
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold text-center">
+                  Estado
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold text-center">
+                  Clave
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">
+                  N° Orden
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">
+                  Cliente
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">
+                  N° Guía Shalom
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">
+                  Código
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">
+                  Origen
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">
+                  Destino
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">
+                  DNI
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold">
+                  Teléfono
+                </TableHead>
+                <TableHead className="text-[11px] uppercase font-bold text-right">
+                  Acciones
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell
+                      colSpan={15}
+                      className="h-12 animate-pulse bg-muted/20"
+                    />
+                  </TableRow>
+                ))
+              ) : filteredOrders.length === 0 && loadingFilterLiveStatuses ? (
+                <TableRow>
                   <TableCell
                     colSpan={15}
-                    className="h-12 animate-pulse bg-muted/20"
-                  />
-                </TableRow>
-              ))
-            ) : filteredOrders.length === 0 && loadingFilterLiveStatuses ? (
-              <TableRow>
-                <TableCell
-                  colSpan={15}
-                  className="h-12 text-center text-sm text-muted-foreground"
-                >
-                  <div className="flex items-center justify-center gap-2">
-                    <RefreshCw className="h-4 w-4 animate-spin" />
-                    Verificando estado en vivo con Shalom...
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : filteredOrders.length === 0 ? (
-              <TableRow>
-                <TableCell
-                  colSpan={15}
-                  className="h-32 text-center text-muted-foreground"
-                >
-                  No hay órdenes Shalom
-                </TableCell>
-              </TableRow>
-            ) : (
-              pagedOrders.map((item) => {
-                const { order, guide } = item;
-                const pending = calculatePendingPayment(order);
-                return (
-                  <TableRow
-                    key={order.id}
-                    className={
-                      selectedSaleIds.has(order.id) ? "bg-orange-50/30" : ""
-                    }
+                    className="h-12 text-center text-sm text-muted-foreground"
                   >
-                    <TableCell className="text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedSaleIds.has(order.id)}
-                        onChange={() => handleSelectRow(order.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="text-xs">
-                      {new Date(order.created_at).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {(() => {
-                        const today = new Date(); today.setHours(0,0,0,0);
-                        const created = new Date(order.created_at); created.setHours(0,0,0,0);
-                        const days = Math.max(0, Math.floor((today.getTime() - created.getTime()) / 86400000));
-                        const color = days <= 3
-                          ? "bg-green-50 text-green-700 border-green-200"
-                          : days <= 7
-                          ? "bg-amber-50 text-amber-700 border-amber-200"
-                          : "bg-red-50 text-red-700 border-red-200";
-                        return (
-                          <Badge variant="outline" className={`text-[10px] font-bold ${color}`}>
-                            {days}d
-                          </Badge>
-                        );
-                      })()}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {(() => {
-                        const pending = calculatePendingPayment(order);
-                        if (pending <= 0) {
-                          return <span className="text-[10px] font-bold text-green-600">Pagado</span>;
-                        }
-                        return <span className="text-xs font-bold text-red-600">S/ {pending.toFixed(2)}</span>;
-                      })()}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {(() => {
-                        const liveLabel = liveStatuses[order.id];
-
-                        if (liveLabel) {
-                          const style = SHALOM_STEP_STYLES[liveLabel] ?? "bg-amber-50 text-amber-700 border-amber-200";
-                          const icon = SHALOM_STEP_ICONS[liveLabel] ?? "•";
+                    <div className="flex items-center justify-center gap-2">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Verificando estado en vivo con Shalom...
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : filteredOrders.length === 0 ? (
+                <TableRow>
+                  <TableCell
+                    colSpan={15}
+                    className="h-32 text-center text-muted-foreground"
+                  >
+                    No hay órdenes Shalom
+                  </TableCell>
+                </TableRow>
+              ) : (
+                pagedOrders.map((item) => {
+                  const { order, guide } = item;
+                  const pending = calculatePendingPayment(order);
+                  return (
+                    <TableRow
+                      key={order.id}
+                      className={
+                        selectedSaleIds.has(order.id) ? "bg-orange-50/30" : ""
+                      }
+                    >
+                      <TableCell className="text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedSaleIds.has(order.id)}
+                          onChange={() => handleSelectRow(order.id)}
+                        />
+                      </TableCell>
+                      <TableCell className="text-xs">
+                        {new Date(order.created_at).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const today = new Date(); today.setHours(0,0,0,0);
+                          const created = new Date(order.created_at); created.setHours(0,0,0,0);
+                          const days = Math.max(0, Math.floor((today.getTime() - created.getTime()) / 86400000));
+                          const color = days <= 3
+                            ? "bg-green-50 text-green-700 border-green-200"
+                            : days <= 7
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-red-50 text-red-700 border-red-200";
                           return (
-                            <Badge variant="outline" className={`text-[10px] ${style}`}>
-                              {icon} {liveLabel}
+                            <Badge variant="outline" className={`text-[10px] font-bold ${color}`}>
+                              {days}d
                             </Badge>
                           );
-                        }
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {(() => {
+                          const pending = calculatePendingPayment(order);
+                          if (pending <= 0) {
+                            return <span className="text-[10px] font-bold text-green-600">Pagado</span>;
+                          }
+                          return <span className="text-xs font-bold text-red-600">S/ {pending.toFixed(2)}</span>;
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {(() => {
+                          const liveLabel = liveStatuses[order.id];
 
-                        if (loadingLiveStatuses && order.externalTrackingNumber && order.shippingCode) {
-                          return (
-                            <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 text-[10px]">
-                              ⏳ Cargando...
-                            </Badge>
-                          );
-                        }
+                          if (liveLabel) {
+                            const style = SHALOM_STEP_STYLES[liveLabel] ?? "bg-amber-50 text-amber-700 border-amber-200";
+                            const icon = SHALOM_STEP_ICONS[liveLabel] ?? "•";
+                            return (
+                              <Badge variant="outline" className={`text-[10px] ${style}`}>
+                                {icon} {liveLabel}
+                              </Badge>
+                            );
+                          }
 
-                        return <ShalomStatusBadge status={order.shalomStatus} error={order.shalomError} />;
-                      })()}
-                    </TableCell>
-                    <TableCell className="text-center min-w-[120px]">
-                      <div className="flex items-center justify-center gap-1">
-                        {pending > 0 ? (
-                          <Badge
-                            variant="outline"
-                            className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 gap-1"
-                            title="La clave solo es visible cuando no hay saldo pendiente"
-                          >
-                            <Lock className="h-3 w-3" />
-                            Bloqueada
-                          </Badge>
-                        ) : editingKeyId === order.id ? (
-                          <div className="flex items-center gap-1">
-                            <Input
-                              className="h-7 w-20 text-[10px] px-1"
-                              value={tempKey}
-                              onChange={(e) => setTempKey(e.target.value)}
-                              autoFocus
-                            />
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6 text-green-600"
-                              onClick={() => handleSaveKey(order.id)}
-                              disabled={isUpdatingKey}
-                            >
-                              <Check className="h-3 w-3" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-6 w-6 text-red-600"
-                              onClick={() => setEditingKeyId(null)}
-                            >
-                              <X className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="group flex items-center gap-1">
+                          if (loadingLiveStatuses && order.externalTrackingNumber && order.shippingCode) {
+                            return (
+                              <Badge variant="outline" className="bg-slate-50 text-slate-400 border-slate-200 text-[10px]">
+                                ⏳ Cargando...
+                              </Badge>
+                            );
+                          }
+
+                          return <ShalomStatusBadge status={order.shalomStatus} error={order.shalomError} />;
+                        })()}
+                      </TableCell>
+                      <TableCell className="text-center min-w-[120px]">
+                        <div className="flex items-center justify-center gap-1">
+                          {pending > 0 ? (
                             <Badge
                               variant="outline"
-                              className="text-[10px] bg-green-50 text-green-700 border-green-200"
+                              className="text-[10px] bg-amber-50 text-amber-700 border-amber-200 gap-1"
+                              title="La clave solo es visible cuando no hay saldo pendiente"
                             >
-                              {visibleKeyOrders[order.id]
-                                ? order.shippingKey || "-"
-                                : "****"}
+                              <Lock className="h-3 w-3" />
+                              Bloqueada
                             </Badge>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => toggleKeyVisibility(order.id)}
-                              title={
-                                visibleKeyOrders[order.id]
-                                  ? "Ocultar clave"
-                                  : "Mostrar clave"
-                              }
-                            >
-                              {visibleKeyOrders[order.id] ? (
-                                <EyeOff className="h-3 w-3" />
-                              ) : (
-                                <Eye className="h-3 w-3" />
-                              )}
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                              onClick={() => handleStartEditKey(order)}
-                              title="Editar clave"
-                            >
-                              <Edit2 className="h-3 w-3" />
-                            </Button>
-                          </div>
+                          ) : editingKeyId === order.id ? (
+                            <div className="flex items-center gap-1">
+                              <Input
+                                className="h-7 w-20 text-[10px] px-1"
+                                value={tempKey}
+                                onChange={(e) => setTempKey(e.target.value)}
+                                autoFocus
+                              />
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 text-green-600"
+                                onClick={() => handleSaveKey(order.id)}
+                                disabled={isUpdatingKey}
+                              >
+                                <Check className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-6 w-6 text-red-600"
+                                onClick={() => setEditingKeyId(null)}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="group flex items-center gap-1">
+                              <Badge
+                                variant="outline"
+                                className="text-[10px] bg-green-50 text-green-700 border-green-200"
+                              >
+                                {visibleKeyOrders[order.id]
+                                  ? order.shippingKey || "-"
+                                  : "****"}
+                              </Badge>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => toggleKeyVisibility(order.id)}
+                                title={
+                                  visibleKeyOrders[order.id]
+                                    ? "Ocultar clave"
+                                    : "Mostrar clave"
+                                }
+                              >
+                                {visibleKeyOrders[order.id] ? (
+                                  <EyeOff className="h-3 w-3" />
+                                ) : (
+                                  <Eye className="h-3 w-3" />
+                                )}
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-5 w-5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                                onClick={() => handleStartEditKey(order)}
+                                title="Editar clave"
+                              >
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs font-bold">
+                        {order.orderNumber}
+                      </TableCell>
+                      <TableCell className="text-xs max-w-[120px] truncate">
+                        {order.customer?.fullName}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">
+                        {order.externalTrackingNumber ? (
+                          <a
+                            href={order.trackingUrl || "#"}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline"
+                          >
+                            {order.externalTrackingNumber}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground">-</span>
                         )}
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-xs font-bold">
-                      {order.orderNumber}
-                    </TableCell>
-                    <TableCell className="text-xs max-w-[120px] truncate">
-                      {order.customer?.fullName}
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">
-                      {order.externalTrackingNumber ? (
-                        <a
-                          href={order.trackingUrl || "#"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-blue-600 hover:underline"
-                        >
-                          {order.externalTrackingNumber}
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">
-                      {order.shippingCode || <span className="text-muted-foreground">-</span>}
-                    </TableCell>
-                    <TableCell className="text-xs max-w-[130px] truncate">
-                      {order.shalomOriginAgency || <span className="text-muted-foreground">-</span>}
-                    </TableCell>
-                    <TableCell className="text-xs max-w-[130px] truncate">
-                      {order.shalomDestinationAgency || <span className="text-muted-foreground">-</span>}
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">
-                      {order.shalomRecipientDoc || <span className="text-muted-foreground">-</span>}
-                    </TableCell>
-                    <TableCell className="text-xs font-mono">
-                      {order.shalomRecipientPhone || <span className="text-muted-foreground">-</span>}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          title="Copiar link de rastreo"
-                          onClick={() => {
-                            const url = `https://www.powip.lat/rastreo/${order.orderNumber}`;
-                            navigator.clipboard.writeText(url);
-                            setCopiedOrderId(order.id);
-                            setTimeout(() => setCopiedOrderId(null), 2000);
-                          }}
-                        >
-                          {copiedOrderId === order.id
-                            ? <Check className="h-4 w-4 text-green-500" />
-                            : <Link2 className="h-4 w-4 text-purple-500" />
-                          }
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleOpenOrder(item)}
-                          title="Detalle Venta"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleOpenNotes(item)}
-                          title="Seguimiento Premium"
-                        >
-                          <ClipboardList className="h-4 w-4 text-blue-600" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          onClick={() => handleOpenGuide(item)}
-                          title="Gestión Guía"
-                        >
-                          <Truck className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                );
-              })
-            )}
-          </TableBody>
-        </Table>
-        <Pagination
-          currentPage={page}
-          totalPages={totalPages}
-          totalItems={filteredOrders.length}
-          itemsPerPage={ITEMS_PER_PAGE}
-          onPageChange={setPage}
-          itemName="pedidos"
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">
+                        {order.shippingCode || <span className="text-muted-foreground">-</span>}
+                      </TableCell>
+                      <TableCell className="text-xs max-w-[130px] truncate">
+                        {order.shalomOriginAgency || <span className="text-muted-foreground">-</span>}
+                      </TableCell>
+                      <TableCell className="text-xs max-w-[130px] truncate">
+                        {order.shalomDestinationAgency || <span className="text-muted-foreground">-</span>}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">
+                        {order.shalomRecipientDoc || <span className="text-muted-foreground">-</span>}
+                      </TableCell>
+                      <TableCell className="text-xs font-mono">
+                        {order.shalomRecipientPhone || <span className="text-muted-foreground">-</span>}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            title="Copiar link de rastreo"
+                            onClick={() => {
+                              const url = `https://www.powip.lat/rastreo/${order.orderNumber}`;
+                              navigator.clipboard.writeText(url);
+                              setCopiedOrderId(order.id);
+                              setTimeout(() => setCopiedOrderId(null), 2000);
+                            }}
+                          >
+                            {copiedOrderId === order.id
+                              ? <Check className="h-4 w-4 text-green-500" />
+                              : <Link2 className="h-4 w-4 text-purple-500" />
+                            }
+                          </Button>
+                          <OrderDetailButton
+                            orderId={order.id}
+                            orderNumber={order.orderNumber}
+                            shippingGuide={guide ? ({ ...guide } as ShippingGuideData) : null}
+                          />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleOpenNotes(item)}
+                            title="Seguimiento Premium"
+                          >
+                            <ClipboardList className="h-4 w-4 text-blue-600" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7"
+                            onClick={() => handleOpenGuide(item)}
+                            title="Gestión Guía"
+                          >
+                            <Truck className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalItems={filteredOrders.length}
+            itemsPerPage={ITEMS_PER_PAGE}
+            onPageChange={setPage}
+            itemName="pedidos"
+          />
+        </div>
+
+        <GuideDetailsModal
+          open={guideModalOpen}
+          onClose={() => {
+            setGuideModalOpen(false);
+            fetchShalomOrders();
+          }}
+          orderId={selectedOrderId || ""}
+          onGuideUpdated={fetchShalomOrders}
+        />
+
+        <ShippingNotesModal
+          open={notesModalOpen}
+          onClose={() => setNotesModalOpen(false)}
+          guideId={selectedGuideForNotes?.id || ""}
+          initialNotes={selectedGuideForNotes?.notes || "[]"}
+          onNoteAdded={fetchShalomOrders}
+        />
+
+        <PaymentVerificationModal
+          open={paymentModalOpen}
+          onClose={() => setPaymentModalOpen(false)}
+          orderId={selectedOrderId || ""}
+          orderNumber={selectedOrderForPayment?.orderNumber || ""}
+          onPaymentUpdated={fetchShalomOrders}
+          canApprove={true}
+        />
+
+        <ShalomPremiumTrackingModal
+          open={premiumModalOpen}
+          onClose={() => setPremiumModalOpen(false)}
+          order={selectedEnvio?.order || null}
+          guide={selectedEnvio?.guide}
         />
       </div>
-
-      <CustomerServiceModal
-        open={orderModalOpen}
-        onClose={() => setOrderModalOpen(false)}
-        orderId={selectedOrderId || ""}
-        shippingGuide={selectedGuideData}
-        onOrderUpdated={fetchShalomOrders}
-        hideCallManagement={true}
-      />
-
-      <GuideDetailsModal
-        open={guideModalOpen}
-        onClose={() => {
-          setGuideModalOpen(false);
-          fetchShalomOrders();
-        }}
-        orderId={selectedOrderId || ""}
-        onGuideUpdated={fetchShalomOrders}
-      />
-
-      <ShippingNotesModal
-        open={notesModalOpen}
-        onClose={() => setNotesModalOpen(false)}
-        guideId={selectedGuideForNotes?.id || ""}
-        initialNotes={selectedGuideForNotes?.notes || "[]"}
-        onNoteAdded={fetchShalomOrders}
-      />
-
-      <PaymentVerificationModal
-        open={paymentModalOpen}
-        onClose={() => setPaymentModalOpen(false)}
-        orderId={selectedOrderId || ""}
-        orderNumber={selectedOrderForPayment?.orderNumber || ""}
-        onPaymentUpdated={fetchShalomOrders}
-        canApprove={true}
-      />
-
-      <ShalomPremiumTrackingModal
-        open={premiumModalOpen}
-        onClose={() => setPremiumModalOpen(false)}
-        order={selectedEnvio?.order || null}
-        guide={selectedEnvio?.guide}
-      />
-    </div>
+    </OrderDetailModalProvider>
   );
 }

@@ -20,10 +20,10 @@ import {
   Edit,
   Trash2,
   Download,
-  MessageCircle,
   Filter,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import ClienteModal from "@/components/modals/ClienteModal";
 import { Client } from "@/interfaces/ICliente";
 import { toast } from "sonner";
@@ -425,7 +425,7 @@ export default function ClientesPage() {
                               }}
                               title="WhatsApp"
                             >
-                              <MessageCircle className="h-4 w-4" />
+                              <WhatsAppIcon className="h-4 w-4" />
                             </Button>
                             <Button
                               variant="ghost"

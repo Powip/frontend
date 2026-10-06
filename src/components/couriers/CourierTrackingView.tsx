@@ -19,7 +19,6 @@ import {
   User,
   CheckCircle2,
   X,
-  Eye,
   FileSpreadsheet,
   CalendarIcon,
   ChevronDown,
@@ -68,7 +67,10 @@ import {
   trackShalomGuide,
   updateGuideQuote
 } from "@/services/shalomService";
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import {
+  OrderDetailButton,
+  OrderDetailModalProvider,
+} from "@/components/orders/OrderDetailModal";
 import ShalomDocumentModal from "@/components/modals/ShalomDocumentModal";
 import ShalomOrderTrackingView from "@/components/tracking/ShalomOrderTrackingView";
 import AliclikOrderTrackingView from "@/components/tracking/AliclikOrderTrackingView";
@@ -330,7 +332,6 @@ export default function CourierTrackingView() {
   // saldo y costo de envío que la guía de ms-courier no tiene.
   const [orders, setOrders] = useState<OrderHeader[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
   // Comprobante REAL del courier (boleta de Shalom, traída por API) —
   // distinto de shippingProofUrl (foto de prueba de entrega, que casi nunca
   // existe todavía cuando el pedido recién se despacha). Se guarda la orden
@@ -783,317 +784,343 @@ export default function CourierTrackingView() {
     );
   };
 
+  // "Ver" de la pestaña "Todos" y de los tabs genéricos por courier: abre el
+  // modal del pedido directo en Seguimiento.
   return (
-    <div className="space-y-6">
-      <Tabs value={activeCarrierTab} onValueChange={setActiveCarrierTab} className="w-full">
-        <TabsList className="flex h-auto w-full flex-wrap gap-1.5 rounded-xl bg-muted p-1.5 mb-6">
+    <OrderDetailModalProvider
+      onOrderUpdated={fetchOrders}
+      isOperaciones
+      showTracking
+      initialTab="seguimiento"
+    >
+      <div className="space-y-6">
+        <Tabs value={activeCarrierTab} onValueChange={setActiveCarrierTab} className="w-full">
+          <TabsList className="flex h-auto w-full flex-wrap gap-1.5 rounded-xl bg-muted p-1.5 mb-6">
+            {hasShalom && (
+              <TabsTrigger
+                value="shalom"
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+              >
+                Shalom
+              </TabsTrigger>
+            )}
+            <TabsTrigger
+              value="todos"
+              className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+            >
+              Todos
+            </TabsTrigger>
+            {hasAliclik && (
+              <TabsTrigger
+                value="aliclik"
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+              >
+                Aliclik
+              </TabsTrigger>
+            )}
+            {hasEva && (
+              <TabsTrigger
+                value="eva"
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+              >
+                EVA Courier
+              </TabsTrigger>
+            )}
+            {otherCouriers.map((c) => (
+              <TabsTrigger
+                key={c}
+                value={courierTabValue(c)}
+                className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+              >
+                {c}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
           {hasShalom && (
-            <TabsTrigger
-              value="shalom"
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            >
-              Shalom
-            </TabsTrigger>
+            <TabsContent value="shalom">
+              <Card className="border-border shadow-sm">
+                <CardHeader className="pb-3 px-4">
+                  <CardTitle className="text-lg">Seguimiento Detallado Shalom</CardTitle>
+                  <CardDescription>Gestiona las órdenes de Shalom con información de rastreo granular.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <ShalomOrderTrackingView />
+                </CardContent>
+              </Card>
+            </TabsContent>
           )}
-          <TabsTrigger
-            value="todos"
-            className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-          >
-            Todos
-          </TabsTrigger>
+
           {hasAliclik && (
-            <TabsTrigger
-              value="aliclik"
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            >
-              Aliclik
-            </TabsTrigger>
+            <TabsContent value="aliclik">
+              <Card className="border-border shadow-sm">
+                <CardHeader className="pb-3 px-4">
+                  <CardTitle className="text-lg">Seguimiento Aliclik</CardTitle>
+                  <CardDescription>Gestiona los pedidos enviados a Aliclik con información de estado y cancelación.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <AliclikOrderTrackingView />
+                </CardContent>
+              </Card>
+            </TabsContent>
           )}
+
           {hasEva && (
-            <TabsTrigger
-              value="eva"
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            >
-              EVA Courier
-            </TabsTrigger>
+            <TabsContent value="eva">
+              <Card className="border-border shadow-sm">
+                <CardHeader className="pb-3 px-4">
+                  <CardTitle className="text-lg">Seguimiento EVA Courier</CardTitle>
+                  <CardDescription>Gestiona los pedidos enviados a EVA Courier con información de estado en tiempo real.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <EvaOrderTrackingView />
+                </CardContent>
+              </Card>
+            </TabsContent>
           )}
+
           {otherCouriers.map((c) => (
-            <TabsTrigger
-              key={c}
-              value={courierTabValue(c)}
-              className="rounded-lg px-4 py-2 text-sm font-semibold text-muted-foreground data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-            >
-              {c}
-            </TabsTrigger>
+            <TabsContent key={c} value={courierTabValue(c)}>
+              <CourierOrdersTab
+                courierName={c}
+                dispatchedOrders={dispatchedOrders}
+                dispatchDateByOrderId={dispatchDateByOrderId}
+                loading={ordersLoading}
+                onRefresh={fetchOrders}
+                onTrackingSaved={applyTrackingPatch}
+                onViewDoc={setDocOrder}
+              />
+            </TabsContent>
           ))}
-        </TabsList>
 
-        {hasShalom && (
-          <TabsContent value="shalom">
+          <TabsContent value="todos">
             <Card className="border-border shadow-sm">
               <CardHeader className="pb-3 px-4">
-                <CardTitle className="text-lg">Seguimiento Detallado Shalom</CardTitle>
-                <CardDescription>Gestiona las órdenes de Shalom con información de rastreo granular.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ShalomOrderTrackingView />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-
-        {hasAliclik && (
-          <TabsContent value="aliclik">
-            <Card className="border-border shadow-sm">
-              <CardHeader className="pb-3 px-4">
-                <CardTitle className="text-lg">Seguimiento Aliclik</CardTitle>
-                <CardDescription>Gestiona los pedidos enviados a Aliclik con información de estado y cancelación.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <AliclikOrderTrackingView />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-
-        {hasEva && (
-          <TabsContent value="eva">
-            <Card className="border-border shadow-sm">
-              <CardHeader className="pb-3 px-4">
-                <CardTitle className="text-lg">Seguimiento EVA Courier</CardTitle>
-                <CardDescription>Gestiona los pedidos enviados a EVA Courier con información de estado en tiempo real.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <EvaOrderTrackingView />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        )}
-
-        {otherCouriers.map((c) => (
-          <TabsContent key={c} value={courierTabValue(c)}>
-            <CourierOrdersTab
-              courierName={c}
-              dispatchedOrders={dispatchedOrders}
-              dispatchDateByOrderId={dispatchDateByOrderId}
-              loading={ordersLoading}
-              onRefresh={fetchOrders}
-              onTrackingSaved={applyTrackingPatch}
-              onView={setViewOrderId}
-              onViewDoc={setDocOrder}
-            />
-          </TabsContent>
-        ))}
-
-        <TabsContent value="todos">
-          <Card className="border-border shadow-sm">
-            <CardHeader className="pb-3 px-4">
-              <div className="flex flex-wrap justify-between items-center gap-2">
-                <div>
-                  <CardTitle className="text-lg">Todos los pedidos despachados</CardTitle>
-                  <CardDescription>Un pedido por fila, de cualquier courier.</CardDescription>
+                <div className="flex flex-wrap justify-between items-center gap-2">
+                  <div>
+                    <CardTitle className="text-lg">Todos los pedidos despachados</CardTitle>
+                    <CardDescription>Un pedido por fila, de cualquier courier.</CardDescription>
+                  </div>
+                  <div className="text-muted-foreground text-xs font-medium bg-muted/50 px-2 py-1 rounded">
+                    {allOrderRows.length} pedidos
+                  </div>
                 </div>
-                <div className="text-muted-foreground text-xs font-medium bg-muted/50 px-2 py-1 rounded">
-                  {allOrderRows.length} pedidos
-                </div>
-              </div>
-              <div className="flex items-center gap-3 pt-3">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por pedido, cliente o courier..."
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="pl-9 bg-background"
-                  />
-                </div>
-                <Select value={courierFilter} onValueChange={setCourierFilter}>
-                  <SelectTrigger className="w-[190px] shrink-0 bg-background">
-                    <SelectValue placeholder="Courier" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Todos los couriers</SelectItem>
-                    {courierFilterOptions.map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-9 w-[190px] shrink-0 justify-between font-normal bg-background"
-                    >
-                      <span className="truncate">
-                        {statusFilters.length === 0
-                          ? "Todos los estados"
-                          : statusFilters.length === 1
-                            ? statusFilterOptions.find((o) => o.key === statusFilters[0])
-                                ?.label
-                            : `${statusFilters.length} estados seleccionados`}
-                      </span>
-                      <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2" align="start">
-                    <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
-                      <span className="text-xs font-semibold text-muted-foreground">
-                        Filtrar por estado
-                      </span>
-                      {statusFilters.length > 0 && (
-                        <button
-                          type="button"
-                          className="text-xs text-primary hover:underline"
-                          onClick={() => setStatusFilters([])}
-                        >
-                          Limpiar
-                        </button>
-                      )}
-                    </div>
-                    <div className="space-y-1 max-h-72 overflow-y-auto">
-                      {statusFilterOptions.length === 0 ? (
-                        <p className="text-xs text-muted-foreground px-1 py-1">
-                          Sin estados disponibles
-                        </p>
-                      ) : (
-                        statusFilterOptions.map((opt) => (
-                          <label
-                            key={opt.key}
-                            className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
-                          >
-                            <Checkbox
-                              checked={statusFilters.includes(opt.key)}
-                              onCheckedChange={(checked) => {
-                                setStatusFilters((prev) =>
-                                  checked
-                                    ? [...prev, opt.key]
-                                    : prev.filter((v) => v !== opt.key),
-                                );
-                              }}
-                            />
-                            <span className="text-muted-foreground text-xs">
-                              {opt.sourceLabel}:
-                            </span>{" "}
-                            {opt.label}
-                          </label>
-                        ))
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
-                  <SelectTrigger className="w-[170px] shrink-0 bg-background">
-                    <SelectValue placeholder="Saldo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ALL">Con y sin saldo</SelectItem>
-                    <SelectItem value="PENDING">Con saldo</SelectItem>
-                    <SelectItem value="PAID">Sin saldo</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Popover open={fechaCalendarOpen} onOpenChange={setFechaCalendarOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[190px] justify-start shrink-0 bg-background">
-                      <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                      <span className="text-xs">
-                        {fechaRange?.from
-                          ? `${fechaRange.from.toLocaleDateString("es-PE", { day: "2-digit", month: "short" })} – ${(
-                              fechaRange.to ?? fechaRange.from
-                            ).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" })}`
-                          : "Fecha de venta"}
-                      </span>
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-0" align="start">
-                    <Calendar
-                      mode="range"
-                      selected={fechaRange}
-                      onSelect={(r) => {
-                        if (r?.from && !r.to) {
-                          setFechaRange({ from: r.from, to: new Date() });
-                          setFechaCalendarOpen(false);
-                          return;
-                        }
-                        setFechaRange(r);
-                        if (r?.from && r?.to) setFechaCalendarOpen(false);
-                      }}
-                      initialFocus
+                <div className="flex items-center gap-3 pt-3">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Buscar por pedido, cliente o courier..."
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="pl-9 bg-background"
                     />
-                  </PopoverContent>
-                </Popover>
-                {fechaRange?.from && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 shrink-0"
-                    title="Quitar filtro de fecha"
-                    onClick={() => setFechaRange(undefined)}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-                <Button
-                  onClick={() => {
-                    fetchGuides();
-                    fetchOrders();
-                  }}
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 shrink-0"
-                >
-                  <RefreshCw className={ordersLoading || loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-                  Actualizar
-                </Button>
-                <Button
-                  onClick={handleExportExcel}
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 shrink-0"
-                >
-                  <FileSpreadsheet className="h-4 w-4" />
-                  Exportar Excel
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-               <div className="border-t border-border overflow-x-auto">
-                <Table>
-                  <TableHeader className="bg-muted/30">
-                    <TableRow>
-                      <TableHead className={`${STICKY_LEFT_HEAD} left-0 w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>N° Pedido</TableHead>
-                      <TableHead className={`${STICKY_LEFT_HEAD} left-28 w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Fecha de venta</TableHead>
-                      <TableHead className={`${STICKY_LEFT_HEAD} left-[208px] w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Despacho</TableHead>
-                      <TableHead className={`${STICKY_LEFT_HEAD} left-[304px] w-36 min-w-36 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Cliente</TableHead>
-                      <TableHead className={`${STICKY_LEFT_HEAD} left-[448px] w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Teléfono</TableHead>
-                      <TableHead className={`${STICKY_LEFT_HEAD} left-[560px] w-24 min-w-24 border-r font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Ciudad</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Distrito</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Saldo de deuda</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Courier</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Estado</TableHead>
-                      <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Costo de envío</TableHead>
-                      {TRACKING_FIELDS.map((f) =>
-                        f.key === "shippingKey" ? (
-                          <TableHead
-                            key={f.key}
-                            className={`${STICKY_RIGHT_HEAD} right-28 w-28 min-w-28 border-l font-semibold px-2 h-10 text-xs whitespace-nowrap`}
+                  </div>
+                  <Select value={courierFilter} onValueChange={setCourierFilter}>
+                    <SelectTrigger className="w-[190px] shrink-0 bg-background">
+                      <SelectValue placeholder="Courier" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Todos los couriers</SelectItem>
+                      {courierFilterOptions.map((c) => (
+                        <SelectItem key={c} value={c}>
+                          {c}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 w-[190px] shrink-0 justify-between font-normal bg-background"
+                      >
+                        <span className="truncate">
+                          {statusFilters.length === 0
+                            ? "Todos los estados"
+                            : statusFilters.length === 1
+                              ? statusFilterOptions.find((o) => o.key === statusFilters[0])
+                                  ?.label
+                              : `${statusFilters.length} estados seleccionados`}
+                        </span>
+                        <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="start">
+                      <div className="flex items-center justify-between px-1 pb-1.5 mb-1 border-b">
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          Filtrar por estado
+                        </span>
+                        {statusFilters.length > 0 && (
+                          <button
+                            type="button"
+                            className="text-xs text-primary hover:underline"
+                            onClick={() => setStatusFilters([])}
                           >
-                            {f.label}
-                          </TableHead>
+                            Limpiar
+                          </button>
+                        )}
+                      </div>
+                      <div className="space-y-1 max-h-72 overflow-y-auto">
+                        {statusFilterOptions.length === 0 ? (
+                          <p className="text-xs text-muted-foreground px-1 py-1">
+                            Sin estados disponibles
+                          </p>
                         ) : (
-                          <TableHead key={f.key} className="font-semibold px-2 h-10 text-xs whitespace-nowrap">
-                            {f.label}
-                          </TableHead>
-                        ),
-                      )}
-                      <TableHead className={`${STICKY_RIGHT_HEAD} right-0 w-28 min-w-28 font-semibold text-right text-xs whitespace-nowrap`}>Acciones</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {ordersLoading ? (
-                      <>
+                          statusFilterOptions.map((opt) => (
+                            <label
+                              key={opt.key}
+                              className="flex items-center gap-2 px-1 py-1 rounded hover:bg-muted/50 cursor-pointer text-sm"
+                            >
+                              <Checkbox
+                                checked={statusFilters.includes(opt.key)}
+                                onCheckedChange={(checked) => {
+                                  setStatusFilters((prev) =>
+                                    checked
+                                      ? [...prev, opt.key]
+                                      : prev.filter((v) => v !== opt.key),
+                                  );
+                                }}
+                              />
+                              <span className="text-muted-foreground text-xs">
+                                {opt.sourceLabel}:
+                              </span>{" "}
+                              {opt.label}
+                            </label>
+                          ))
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <Select value={saldoFilter} onValueChange={(v) => setSaldoFilter(v as typeof saldoFilter)}>
+                    <SelectTrigger className="w-[170px] shrink-0 bg-background">
+                      <SelectValue placeholder="Saldo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="ALL">Con y sin saldo</SelectItem>
+                      <SelectItem value="PENDING">Con saldo</SelectItem>
+                      <SelectItem value="PAID">Sin saldo</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Popover open={fechaCalendarOpen} onOpenChange={setFechaCalendarOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-9 gap-2 min-w-[190px] justify-start shrink-0 bg-background">
+                        <CalendarIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                        <span className="text-xs">
+                          {fechaRange?.from
+                            ? `${fechaRange.from.toLocaleDateString("es-PE", { day: "2-digit", month: "short" })} – ${(
+                                fechaRange.to ?? fechaRange.from
+                              ).toLocaleDateString("es-PE", { day: "2-digit", month: "short", year: "numeric" })}`
+                            : "Fecha de venta"}
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="range"
+                        selected={fechaRange}
+                        onSelect={(r) => {
+                          if (r?.from && !r.to) {
+                            setFechaRange({ from: r.from, to: new Date() });
+                            setFechaCalendarOpen(false);
+                            return;
+                          }
+                          setFechaRange(r);
+                          if (r?.from && r?.to) setFechaCalendarOpen(false);
+                        }}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+                  {fechaRange?.from && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9 shrink-0"
+                      title="Quitar filtro de fecha"
+                      onClick={() => setFechaRange(undefined)}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  <Button
+                    onClick={() => {
+                      fetchGuides();
+                      fetchOrders();
+                    }}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 shrink-0"
+                  >
+                    <RefreshCw className={ordersLoading || loading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                    Actualizar
+                  </Button>
+                  <Button
+                    onClick={handleExportExcel}
+                    variant="outline"
+                    size="sm"
+                    className="gap-2 shrink-0"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Exportar Excel
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                 <div className="border-t border-border overflow-x-auto">
+                  <Table>
+                    <TableHeader className="bg-muted/30">
+                      <TableRow>
+                        <TableHead className={`${STICKY_LEFT_HEAD} left-0 w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>N° Pedido</TableHead>
+                        <TableHead className={`${STICKY_LEFT_HEAD} left-28 w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Fecha de venta</TableHead>
+                        <TableHead className={`${STICKY_LEFT_HEAD} left-[208px] w-24 min-w-24 font-semibold px-4 h-10 text-xs text-center whitespace-nowrap`}>Despacho</TableHead>
+                        <TableHead className={`${STICKY_LEFT_HEAD} left-[304px] w-36 min-w-36 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Cliente</TableHead>
+                        <TableHead className={`${STICKY_LEFT_HEAD} left-[448px] w-28 min-w-28 font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Teléfono</TableHead>
+                        <TableHead className={`${STICKY_LEFT_HEAD} left-[560px] w-24 min-w-24 border-r font-semibold px-4 h-10 text-xs whitespace-nowrap`}>Ciudad</TableHead>
+                        <TableHead className="font-semibold px-4 h-10 text-xs whitespace-nowrap">Distrito</TableHead>
+                        <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Saldo de deuda</TableHead>
+                        <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Courier</TableHead>
+                        <TableHead className="font-semibold px-4 h-10 text-xs text-center whitespace-nowrap">Estado</TableHead>
+                        <TableHead className="font-semibold px-4 h-10 text-xs text-right whitespace-nowrap">Costo de envío</TableHead>
+                        {TRACKING_FIELDS.map((f) =>
+                          f.key === "shippingKey" ? (
+                            <TableHead
+                              key={f.key}
+                              className={`${STICKY_RIGHT_HEAD} right-28 w-28 min-w-28 border-l font-semibold px-2 h-10 text-xs whitespace-nowrap`}
+                            >
+                              {f.label}
+                            </TableHead>
+                          ) : (
+                            <TableHead key={f.key} className="font-semibold px-2 h-10 text-xs whitespace-nowrap">
+                              {f.label}
+                            </TableHead>
+                          ),
+                        )}
+                        <TableHead className={`${STICKY_RIGHT_HEAD} right-0 w-28 min-w-28 font-semibold text-right text-xs whitespace-nowrap`}>Acciones</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {ordersLoading ? (
+                        <>
+                          <TableRow>
+                            <TableCell
+                              colSpan={16}
+                              className="h-12 px-4 text-center text-sm text-muted-foreground"
+                            >
+                              <div className="flex items-center justify-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Cargando pedidos despachados...
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                          {Array.from({ length: 3 }).map((_, i) => (
+                            <TableRow key={i}>
+                              <TableCell colSpan={16} className="h-16 animate-pulse bg-muted/10 px-4" />
+                            </TableRow>
+                          ))}
+                        </>
+                      ) : allOrderRows.length === 0 &&
+                        loadingShalomFilterLiveStatuses ? (
                         <TableRow>
                           <TableCell
                             colSpan={16}
@@ -1101,313 +1128,277 @@ export default function CourierTrackingView() {
                           >
                             <div className="flex items-center justify-center gap-2">
                               <Loader2 className="h-4 w-4 animate-spin" />
-                              Cargando pedidos despachados...
+                              Verificando estado en vivo con Shalom...
                             </div>
                           </TableCell>
                         </TableRow>
-                        {Array.from({ length: 3 }).map((_, i) => (
-                          <TableRow key={i}>
-                            <TableCell colSpan={16} className="h-16 animate-pulse bg-muted/10 px-4" />
-                          </TableRow>
-                        ))}
-                      </>
-                    ) : allOrderRows.length === 0 &&
-                      loadingShalomFilterLiveStatuses ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={16}
-                          className="h-12 px-4 text-center text-sm text-muted-foreground"
-                        >
-                          <div className="flex items-center justify-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Verificando estado en vivo con Shalom...
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : allOrderRows.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={16} className="h-32 text-center text-muted-foreground text-sm">
-                          No hay pedidos despachados para mostrar.
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      pagedOrderRows.map((order) => {
-                        const despachoAt = dispatchDateFor(order, dispatchDateByOrderId);
-                        return (
-                          <TableRow key={order.id} className="hover:bg-muted/40 transition-colors">
-                            <TableCell className={`${STICKY_LEFT_BODY} left-0 w-28 min-w-28 font-medium px-4 py-3 text-xs whitespace-nowrap`}>
-                              {order.orderNumber}
-                            </TableCell>
-                            <TableCell className={`${STICKY_LEFT_BODY} left-28 w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
-                              {new Date(order.created_at).toLocaleDateString("es-PE")}
-                            </TableCell>
-                            <TableCell className={`${STICKY_LEFT_BODY} left-[208px] w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
-                              {despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-"}
-                            </TableCell>
-                            <TableCell className={`${STICKY_LEFT_BODY} left-[304px] w-36 min-w-36 px-4 py-3 text-xs`}>
-                              {order.customer?.fullName || "-"}
-                            </TableCell>
-                            <TableCell className={`${STICKY_LEFT_BODY} left-[448px] w-28 min-w-28 px-4 py-3 text-xs whitespace-nowrap`}>
-                              {order.customer?.phoneNumber || "-"}
-                            </TableCell>
-                            <TableCell className={`${STICKY_LEFT_BODY} left-[560px] w-24 min-w-24 border-r px-4 py-3 text-xs whitespace-nowrap`}>
-                              {order.customer?.city || "-"}
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
-                              {order.customer?.district || "-"}
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
-                              {money(getPendingPayment(order))}
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-center">
-                              <Badge variant="outline" className="text-[10px]">
-                                {courierLabel(order)}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-center">
-                              {(() => {
-                                const liveLabel = shalomLiveStatuses[order.id];
-                                const live = liveLabel
-                                  ? {
-                                      label: liveLabel,
-                                      style:
-                                        SHALOM_STEP_STYLES[liveLabel] ??
-                                        "bg-amber-50 text-amber-700 border-amber-200",
-                                      icon: SHALOM_STEP_ICONS[liveLabel] ?? "•",
+                      ) : allOrderRows.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={16} className="h-32 text-center text-muted-foreground text-sm">
+                            No hay pedidos despachados para mostrar.
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        pagedOrderRows.map((order) => {
+                          const despachoAt = dispatchDateFor(order, dispatchDateByOrderId);
+                          return (
+                            <TableRow key={order.id} className="hover:bg-muted/40 transition-colors">
+                              <TableCell className={`${STICKY_LEFT_BODY} left-0 w-28 min-w-28 font-medium px-4 py-3 text-xs whitespace-nowrap`}>
+                                {order.orderNumber}
+                              </TableCell>
+                              <TableCell className={`${STICKY_LEFT_BODY} left-28 w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
+                                {new Date(order.created_at).toLocaleDateString("es-PE")}
+                              </TableCell>
+                              <TableCell className={`${STICKY_LEFT_BODY} left-[208px] w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
+                                {despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-"}
+                              </TableCell>
+                              <TableCell className={`${STICKY_LEFT_BODY} left-[304px] w-36 min-w-36 px-4 py-3 text-xs`}>
+                                {order.customer?.fullName || "-"}
+                              </TableCell>
+                              <TableCell className={`${STICKY_LEFT_BODY} left-[448px] w-28 min-w-28 px-4 py-3 text-xs whitespace-nowrap`}>
+                                {order.customer?.phoneNumber || "-"}
+                              </TableCell>
+                              <TableCell className={`${STICKY_LEFT_BODY} left-[560px] w-24 min-w-24 border-r px-4 py-3 text-xs whitespace-nowrap`}>
+                                {order.customer?.city || "-"}
+                              </TableCell>
+                              <TableCell className="px-4 py-3 text-xs whitespace-nowrap">
+                                {order.customer?.district || "-"}
+                              </TableCell>
+                              <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
+                                {money(getPendingPayment(order))}
+                              </TableCell>
+                              <TableCell className="px-4 py-3 text-center">
+                                <Badge variant="outline" className="text-[10px]">
+                                  {courierLabel(order)}
+                                </Badge>
+                              </TableCell>
+                              <TableCell className="px-4 py-3 text-center">
+                                {(() => {
+                                  const liveLabel = shalomLiveStatuses[order.id];
+                                  const live = liveLabel
+                                    ? {
+                                        label: liveLabel,
+                                        style:
+                                          SHALOM_STEP_STYLES[liveLabel] ??
+                                          "bg-amber-50 text-amber-700 border-amber-200",
+                                        icon: SHALOM_STEP_ICONS[liveLabel] ?? "•",
+                                      }
+                                    : undefined;
+                                  return <CourierStatusBadge order={order} live={live} />;
+                                })()}
+                              </TableCell>
+                              <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
+                                {order.carrierShippingCost
+                                  ? money(Number(order.carrierShippingCost))
+                                  : "-"}
+                              </TableCell>
+                              <TrackingInputCells order={order} onSaved={applyTrackingPatch} />
+                              <TableCell className={`${STICKY_RIGHT_BODY} right-0 w-28 min-w-28 px-4 py-3 text-right`}>
+                                <div className="flex items-center justify-end gap-1">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 w-7 p-0"
+                                    title="Ver comprobante del courier"
+                                    aria-label={`Ver comprobante del courier del pedido ${order.orderNumber}`}
+                                    disabled={
+                                      !isShalomCourier(order.courier) ||
+                                      !order.externalTrackingNumber ||
+                                      !order.shippingCode
                                     }
-                                  : undefined;
-                                return <CourierStatusBadge order={order} live={live} />;
-                              })()}
-                            </TableCell>
-                            <TableCell className="px-4 py-3 text-xs text-right tabular-nums whitespace-nowrap">
-                              {order.carrierShippingCost
-                                ? money(Number(order.carrierShippingCost))
-                                : "-"}
-                            </TableCell>
-                            <TrackingInputCells order={order} onSaved={applyTrackingPatch} />
-                            <TableCell className={`${STICKY_RIGHT_BODY} right-0 w-28 min-w-28 px-4 py-3 text-right`}>
-                              <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 w-7 p-0"
-                                  title="Ver comprobante del courier"
-                                  aria-label={`Ver comprobante del courier del pedido ${order.orderNumber}`}
-                                  disabled={
-                                    !isShalomCourier(order.courier) ||
-                                    !order.externalTrackingNumber ||
-                                    !order.shippingCode
-                                  }
-                                  onClick={() => setDocOrder(order)}
-                                >
-                                  <FileText className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 w-7 p-0"
-                                  title="Ver seguimiento"
-                                  aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
-                                  onClick={() => setViewOrderId(order.id)}
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-               </div>
-               <Pagination
-                 currentPage={page}
-                 totalPages={totalPages}
-                 totalItems={allOrderRows.length}
-                 itemsPerPage={ITEMS_PER_PAGE}
-                 onPageChange={setPage}
-                 itemName="pedidos"
-               />
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-
-      {/* MODAL DE TRACKING */}
-      <Dialog open={trackingModalOpen} onOpenChange={setTrackingModalOpen}>
-        <DialogContent className="max-w-xl bg-card border-border">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Truck className="h-5 w-5 text-primary" />
-              Tracking en Tiempo Real - Shalom
-            </DialogTitle>
-          </DialogHeader>
-
-          {trackLoading ? (
-            <div className="py-12 flex flex-col items-center justify-center gap-4">
-              <RefreshCw className="h-8 w-8 animate-spin text-primary" />
-              <p className="text-muted-foreground animate-pulse">Consultando terminal de Shalom...</p>
-            </div>
-          ) : trackResult?.error ? (
-            <div className="py-8 text-center text-destructive flex flex-col items-center gap-2">
-              <AlertCircle className="h-10 w-10" />
-              <p>{trackResult.error}</p>
-            </div>
-          ) : (
-            <div className="space-y-5">
-              {/* 1. RESUMEN DE ORDEN */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/30 p-3 rounded-xl border border-border">
-                <div className="space-y-0.5">
-                  <label className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Orden</label>
-                  <p className="font-mono text-sm font-semibold">{trackResult?.search?.data?.numero_orden || "—"}</p>
-                </div>
-                <div className="space-y-0.5">
-                  <label className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Código</label>
-                  <p className="font-mono text-sm font-semibold">{trackResult?.search?.data?.codigo_orden || "—"}</p>
-                </div>
-                <div className="space-y-0.5">
-                  <label className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Monto</label>
-                  <p className="text-sm font-bold text-primary">S/ {trackResult?.search?.data?.monto || "0.00"}</p>
-                </div>
-                <div className="space-y-0.5">
-                  <label className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Estado Actual</label>
-                  <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
-                    {trackResult?.statuses?.message || "Registrado"}
-                  </Badge>
-                </div>
-              </div>
-
-              {/* 2. RUTA DE ENVÍO */}
-              <div className="relative p-4 bg-muted/20 border border-border rounded-xl">
-                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                    <div className="flex-1 space-y-1">
-                      <div className="flex items-center gap-2 text-primary">
-                        <MapPin className="h-4 w-4" />
-                        <span className="text-xs font-bold uppercase">Origen</span>
-                      </div>
-                      <p className="text-sm font-bold">{trackResult?.search?.data?.origen?.nombre}</p>
-                      <p className="text-[10px] text-muted-foreground italic">
-                        {trackResult?.search?.data?.origen?.distrito}, {trackResult?.search?.data?.origen?.provincia}
-                      </p>
-                    </div>
-
-                    <div className="hidden md:flex flex-col items-center px-4">
-                      <ArrowRight className="h-5 w-5 text-muted-foreground/40" />
-                      <span className="text-[9px] text-muted-foreground font-medium mt-1 uppercase">{trackResult?.search?.data?.tiempo_llegada}</span>
-                    </div>
-
-                    <div className="flex-1 space-y-1 text-right">
-                      <div className="flex items-center gap-2 text-green-600 justify-end">
-                        <span className="text-xs font-bold uppercase">Destino</span>
-                        <MapPin className="h-4 w-4" />
-                      </div>
-                      <p className="text-sm font-bold">{trackResult?.search?.data?.destino?.nombre}</p>
-                      <p className="text-[10px] text-muted-foreground italic">
-                        {trackResult?.search?.data?.destino?.distrito}, {trackResult?.search?.data?.destino?.provincia}
-                      </p>
-                    </div>
+                                    onClick={() => setDocOrder(order)}
+                                  >
+                                    <FileText className="h-3.5 w-3.5" />
+                                  </Button>
+                                  <OrderDetailButton
+                                    orderId={order.id}
+                                    ariaLabel={`Ver seguimiento del pedido ${order.orderNumber}`}
+                                  />
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          );
+                        })
+                      )}
+                    </TableBody>
+                  </Table>
                  </div>
+                 <Pagination
+                   currentPage={page}
+                   totalPages={totalPages}
+                   totalItems={allOrderRows.length}
+                   itemsPerPage={ITEMS_PER_PAGE}
+                   onPageChange={setPage}
+                   itemName="pedidos"
+                 />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* MODAL DE TRACKING */}
+        <Dialog open={trackingModalOpen} onOpenChange={setTrackingModalOpen}>
+          <DialogContent className="max-w-xl bg-card border-border">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Truck className="h-5 w-5 text-primary" />
+                Tracking en Tiempo Real - Shalom
+              </DialogTitle>
+            </DialogHeader>
+
+            {trackLoading ? (
+              <div className="py-12 flex flex-col items-center justify-center gap-4">
+                <RefreshCw className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-muted-foreground animate-pulse">Consultando terminal de Shalom...</p>
+              </div>
+            ) : trackResult?.error ? (
+              <div className="py-8 text-center text-destructive flex flex-col items-center gap-2">
+                <AlertCircle className="h-10 w-10" />
+                <p>{trackResult.error}</p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {/* 1. RESUMEN DE ORDEN */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-muted/30 p-3 rounded-xl border border-border">
+                  <div className="space-y-0.5">
+                    <label className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Orden</label>
+                    <p className="font-mono text-sm font-semibold">{trackResult?.search?.data?.numero_orden || "—"}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <label className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Código</label>
+                    <p className="font-mono text-sm font-semibold">{trackResult?.search?.data?.codigo_orden || "—"}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <label className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Monto</label>
+                    <p className="text-sm font-bold text-primary">S/ {trackResult?.search?.data?.monto || "0.00"}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <label className="text-[9px] text-muted-foreground uppercase font-bold tracking-wider">Estado Actual</label>
+                    <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-700 border-blue-200">
+                      {trackResult?.statuses?.message || "Registrado"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* 2. RUTA DE ENVÍO */}
+                <div className="relative p-4 bg-muted/20 border border-border rounded-xl">
+                   <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2 text-primary">
+                          <MapPin className="h-4 w-4" />
+                          <span className="text-xs font-bold uppercase">Origen</span>
+                        </div>
+                        <p className="text-sm font-bold">{trackResult?.search?.data?.origen?.nombre}</p>
+                        <p className="text-[10px] text-muted-foreground italic">
+                          {trackResult?.search?.data?.origen?.distrito}, {trackResult?.search?.data?.origen?.provincia}
+                        </p>
+                      </div>
+
+                      <div className="hidden md:flex flex-col items-center px-4">
+                        <ArrowRight className="h-5 w-5 text-muted-foreground/40" />
+                        <span className="text-[9px] text-muted-foreground font-medium mt-1 uppercase">{trackResult?.search?.data?.tiempo_llegada}</span>
+                      </div>
+
+                      <div className="flex-1 space-y-1 text-right">
+                        <div className="flex items-center gap-2 text-green-600 justify-end">
+                          <span className="text-xs font-bold uppercase">Destino</span>
+                          <MapPin className="h-4 w-4" />
+                        </div>
+                        <p className="text-sm font-bold">{trackResult?.search?.data?.destino?.nombre}</p>
+                        <p className="text-[10px] text-muted-foreground italic">
+                          {trackResult?.search?.data?.destino?.distrito}, {trackResult?.search?.data?.destino?.provincia}
+                        </p>
+                      </div>
+                   </div>
                  
-                 <div className="mt-4 pt-3 border-t border-border flex justify-between text-[11px]">
-                   <div className="flex items-center gap-1.5">
-                     <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                     <span className="text-muted-foreground">Emisión:</span>
-                     <span className="font-semibold">{trackResult?.search?.data?.fecha_emision?.split(' ')[0]}</span>
-                   </div>
-                   <div className="flex items-center gap-1.5">
-                     <CheckCircle2 className={`h-3.5 w-3.5 ${trackResult?.search?.data?.entregado ? "text-green-500" : "text-amber-500"}`} />
-                     <span className="font-semibold uppercase">{trackResult?.search?.data?.entregado ? "Entregado" : "En Camino"}</span>
-                   </div>
-                 </div>
-              </div>
-
-              {/* 3. PARTICIPANTES Y DETALLES */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-muted/40 rounded-xl border border-border space-y-2">
-                   <div className="flex items-center gap-2 text-muted-foreground">
-                      <User className="h-3.5 w-3.5" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Remitente</span>
-                   </div>
-                   <div>
-                     <p className="text-xs font-bold truncate">{trackResult?.search?.data?.remitente?.nombre}</p>
-                     <p className="text-[10px] text-muted-foreground">{trackResult?.search?.data?.remitente?.documento}</p>
+                   <div className="mt-4 pt-3 border-t border-border flex justify-between text-[11px]">
+                     <div className="flex items-center gap-1.5">
+                       <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                       <span className="text-muted-foreground">Emisión:</span>
+                       <span className="font-semibold">{trackResult?.search?.data?.fecha_emision?.split(' ')[0]}</span>
+                     </div>
+                     <div className="flex items-center gap-1.5">
+                       <CheckCircle2 className={`h-3.5 w-3.5 ${trackResult?.search?.data?.entregado ? "text-green-500" : "text-amber-500"}`} />
+                       <span className="font-semibold uppercase">{trackResult?.search?.data?.entregado ? "Entregado" : "En Camino"}</span>
+                     </div>
                    </div>
                 </div>
-                <div className="p-3 bg-muted/40 rounded-xl border border-border space-y-2">
-                   <div className="flex items-center gap-2 text-muted-foreground">
-                      <User className="h-3.5 w-3.5" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Destinatario</span>
-                   </div>
-                   <div>
-                     <p className="text-xs font-bold truncate">{trackResult?.search?.data?.destinatario?.nombre}</p>
-                     <p className="text-[10px] text-muted-foreground">{trackResult?.search?.data?.destinatario?.documento}</p>
-                   </div>
-                </div>
-              </div>
 
-              {/* 4. TIMELINE DE ESTADOS SHALOM */}
-              <div className="space-y-3 pt-2">
-                <h3 className="text-sm font-bold flex items-center gap-2">
-                  <Truck className="h-4 w-4 text-primary" /> Línea de Tiempo Shalom
-                </h3>
+                {/* 3. PARTICIPANTES Y DETALLES */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-3 bg-muted/40 rounded-xl border border-border space-y-2">
+                     <div className="flex items-center gap-2 text-muted-foreground">
+                        <User className="h-3.5 w-3.5" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Remitente</span>
+                     </div>
+                     <div>
+                       <p className="text-xs font-bold truncate">{trackResult?.search?.data?.remitente?.nombre}</p>
+                       <p className="text-[10px] text-muted-foreground">{trackResult?.search?.data?.remitente?.documento}</p>
+                     </div>
+                  </div>
+                  <div className="p-3 bg-muted/40 rounded-xl border border-border space-y-2">
+                     <div className="flex items-center gap-2 text-muted-foreground">
+                        <User className="h-3.5 w-3.5" />
+                        <span className="text-[10px] font-bold uppercase tracking-wider">Destinatario</span>
+                     </div>
+                     <div>
+                       <p className="text-xs font-bold truncate">{trackResult?.search?.data?.destinatario?.nombre}</p>
+                       <p className="text-[10px] text-muted-foreground">{trackResult?.search?.data?.destinatario?.documento}</p>
+                     </div>
+                  </div>
+                </div>
+
+                {/* 4. TIMELINE DE ESTADOS SHALOM */}
+                <div className="space-y-3 pt-2">
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <Truck className="h-4 w-4 text-primary" /> Línea de Tiempo Shalom
+                  </h3>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 relative pl-4 border-l-2 border-primary/20 ml-2">
-                  {Object.entries(trackResult?.statuses?.data || {}).map(([key, value]: [string, any], idx) => {
-                    const hasData = value && value.fecha;
-                    return (
-                      <div key={key} className="relative py-1">
-                        <div className={`absolute -left-[23px] top-1.5 h-4 w-4 rounded-full border-2 border-background flex items-center justify-center ${hasData ? "bg-primary text-white" : "bg-muted text-muted-foreground/30"}`}>
-                          {hasData && <CheckCircle2 className="h-2.5 w-2.5" />}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 relative pl-4 border-l-2 border-primary/20 ml-2">
+                    {Object.entries(trackResult?.statuses?.data || {}).map(([key, value]: [string, any], idx) => {
+                      const hasData = value && value.fecha;
+                      return (
+                        <div key={key} className="relative py-1">
+                          <div className={`absolute -left-[23px] top-1.5 h-4 w-4 rounded-full border-2 border-background flex items-center justify-center ${hasData ? "bg-primary text-white" : "bg-muted text-muted-foreground/30"}`}>
+                            {hasData && <CheckCircle2 className="h-2.5 w-2.5" />}
+                          </div>
+                          <div className="space-y-0.5">
+                            <p className={`text-[11px] font-bold uppercase ${hasData ? "text-foreground" : "text-muted-foreground/50"}`}>
+                              {key.replace('_', ' ')}
+                            </p>
+                            {hasData ? (
+                              <p className="text-[10px] font-medium text-muted-foreground">{value.fecha}</p>
+                            ) : (
+                              <p className="text-[9px] italic text-muted-foreground/40">Pendiente</p>
+                            )}
+                          </div>
                         </div>
-                        <div className="space-y-0.5">
-                          <p className={`text-[11px] font-bold uppercase ${hasData ? "text-foreground" : "text-muted-foreground/50"}`}>
-                            {key.replace('_', ' ')}
-                          </p>
-                          {hasData ? (
-                            <p className="text-[10px] font-medium text-muted-foreground">{value.fecha}</p>
-                          ) : (
-                            <p className="text-[9px] italic text-muted-foreground/40">Pendiente</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <Button variant="outline" size="sm" onClick={() => setTrackingModalOpen(false)} className="gap-2">
+                    <X className="h-4 w-4" /> Cerrar
+                  </Button>
                 </div>
               </div>
+            )}
+          </DialogContent>
+        </Dialog>
 
-              <div className="flex justify-end pt-2">
-                <Button variant="outline" size="sm" onClick={() => setTrackingModalOpen(false)} className="gap-2">
-                  <X className="h-4 w-4" /> Cerrar
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* MODAL "Ver seguimiento" (pestaña "Todos" y tabs genéricos por
-          courier, vía onView={setViewOrderId}) — abre directo en Seguimiento. */}
-      <CustomerServiceModal
-        open={!!viewOrderId}
-        orderId={viewOrderId || ""}
-        onClose={() => setViewOrderId(null)}
-        onOrderUpdated={fetchOrders}
-        isOperaciones
-        showTracking
-        initialTab="seguimiento"
-      />
-
-      {/* MODAL "Ver comprobante del courier" — boleta + rótulo reales de
-          Shalom, traídos vía API (onViewDoc={setDocOrder}), pixel-perfect
-          al mockup. Distinto de shippingProofUrl (foto de prueba de
-          entrega). */}
-      <ShalomDocumentModal
-        open={!!docOrder}
-        onClose={() => setDocOrder(null)}
-        order={docOrder}
-      />
-    </div>
+        {/* MODAL "Ver comprobante del courier" — boleta + rótulo reales de
+            Shalom, traídos vía API (onViewDoc={setDocOrder}), pixel-perfect
+            al mockup. Distinto de shippingProofUrl (foto de prueba de
+            entrega). */}
+        <ShalomDocumentModal
+          open={!!docOrder}
+          onClose={() => setDocOrder(null)}
+          order={docOrder}
+        />
+      </div>
+    </OrderDetailModalProvider>
   );
 }
 
@@ -1424,7 +1415,6 @@ function CourierOrdersTab({
   loading,
   onRefresh,
   onTrackingSaved,
-  onView,
   onViewDoc,
 }: {
   courierName: string;
@@ -1433,7 +1423,6 @@ function CourierOrdersTab({
   loading: boolean;
   onRefresh: () => void;
   onTrackingSaved: (orderId: string, patch: Partial<Record<TrackingFieldKey, string | null>>) => void;
-  onView: (orderId: string) => void;
   onViewDoc: (order: OrderHeader) => void;
 }) {
   const [search, setSearch] = useState("");
@@ -1706,16 +1695,10 @@ function CourierOrdersTab({
                           >
                             <FileText className="h-3.5 w-3.5" />
                           </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0"
-                            title="Ver seguimiento"
-                            aria-label={`Ver seguimiento del pedido ${order.orderNumber}`}
-                            onClick={() => onView(order.id)}
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
+                          <OrderDetailButton
+                            orderId={order.id}
+                            ariaLabel={`Ver seguimiento del pedido ${order.orderNumber}`}
+                          />
                         </div>
                       </TableCell>
                     </TableRow>

@@ -1,8 +1,10 @@
 "use client";
 
-import { FileText, MessageCircle, DollarSign, AlertTriangle, UserPen, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
+import { DollarSign, AlertTriangle, UserPen, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { OrderDetailButton } from "@/components/orders/OrderDetailModal";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import {
   Table,
   TableBody,
@@ -65,7 +67,6 @@ interface Props {
   selectedIds: Set<string>;
   onToggle: (id: string) => void;
   onToggleAll: (ids: string[]) => void;
-  onVerPedido: (order: OrderHeader) => void;
   onWhatsApp: (order: OrderHeader) => void;
   onGestionarPago: (order: OrderHeader) => void;
   onReassignSeller?: (order: OrderHeader) => void;
@@ -85,7 +86,6 @@ export function CcPedidosTable({
   selectedIds,
   onToggle,
   onToggleAll,
-  onVerPedido,
   onWhatsApp,
   onGestionarPago,
   onReassignSeller,
@@ -311,10 +311,7 @@ export function CcPedidosTable({
 
                 {/* Ver pedido */}
                 <TableCell className="sticky right-[112px] z-10 w-[90px] min-w-[90px] border-l bg-white dark:bg-slate-800">
-                  <Button size="sm" variant="outline" onClick={() => onVerPedido(order)}>
-                    <FileText className="h-3.5 w-3.5 mr-1" />
-                    Ver
-                  </Button>
+                  <OrderDetailButton orderId={order.id} orderNumber={order.orderNumber} />
                 </TableCell>
 
                 {/* Acciones */}
@@ -336,7 +333,7 @@ export function CcPedidosTable({
                       onClick={() => onWhatsApp(order)}
                       title="WhatsApp"
                     >
-                      <MessageCircle className="h-3.5 w-3.5" />
+                      <WhatsAppIcon className="h-3.5 w-3.5" />
                     </Button>
                     {order.subEstadoCc === "anulado_cc" && onRecuperar && (
                       <Button

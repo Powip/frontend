@@ -25,7 +25,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import FlowWidgetStep from "@/components/onboarding/FlowWidgetStep";
-import { addOnPrice, type BackendAddOn, type BackendPlan, type SubscriptionMe } from "@/types/onboarding";
+import {
+  addOnPrice,
+  summarizeSubscription,
+  type BackendAddOn,
+  type BackendPlan,
+  type OnboardingStep,
+  type SubscriptionMe,
+  type SubscriptionSummary,
+} from "@/types/onboarding";
+import {
+  DEMO_ADD_ONS,
+  DEMO_PLANS,
+  OnboardingDevPanel,
+  demoSubscription,
+} from "./_components/OnboardingDevPanel";
 import Image from "next/image";
 import { toast } from "sonner";
 
@@ -108,11 +122,24 @@ function planLabel(planName: string, price: number, isAnnual: boolean): string {
   return `Plan ${basePlanName(planName)} — S/ ${price}/${isAnnual ? "año" : "mes"}`;
 }
 
+/** Igual que planLabel, pero con el total cuando hay add-ons (encabezado mobile del paso Pago). */
+function summaryLabel(planName: string, summary: SubscriptionSummary, isAnnual: boolean): string {
+  const count = summary.addOns.length;
+  if (!planName || count === 0) return planLabel(planName, summary.total, isAnnual);
+  return `Plan ${basePlanName(planName)} + ${count} add-on${count > 1 ? "s" : ""} — S/ ${summary.total}/${isAnnual ? "año" : "mes"}`;
+}
+
+function addOnDisplay(addOn: BackendAddOn): { name: string; icon: string } {
+  const config = ADDON_MODAL_CONFIG[addOn.code];
+  return { name: config?.name ?? addOn.name, icon: config?.icon ?? "➕" };
+}
+
 interface BrandPanelProps {
   currentStep: number;
   planName: string;
   price: number;
   isAnnual: boolean;
+  summary: SubscriptionSummary;
 }
 
 function BrandPanel({
@@ -120,8 +147,11 @@ function BrandPanel({
   planName,
   price,
   isAnnual,
+  summary,
 }: BrandPanelProps) {
   const content = BRAND_PANEL_CONTENT[currentStep] ?? BRAND_PANEL_CONTENT[1];
+  const period = isAnnual ? "año" : "mes";
+  const showSummary = currentStep === 3 && planName !== "";
 
   return (
     <div
@@ -164,16 +194,56 @@ function BrandPanel({
           </p>
         </div>
 
-        {/* Plan badge */}
-        <div
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-full self-start"
-          style={{ background: "rgba(255,255,255,0.12)" }}
-        >
-          <div className="w-2 h-2 rounded-full bg-white/80" />
-          <span className="text-white/90 text-sm font-medium">
-            {planLabel(planName, price, isAnnual)}
-          </span>
-        </div>
+        {showSummary ? (
+          /* Resumen del pedido (paso Pago): mismo cálculo que el resumen principal */
+          <section
+            aria-label="Resumen de tu suscripción"
+            className="w-full max-w-sm rounded-2xl px-5 py-4 backdrop-blur-sm"
+            style={{ background: "rgba(255,255,255,0.12)" }}
+          >
+            <dl className="flex flex-col gap-2 text-sm">
+              <div className="flex items-center justify-between gap-4">
+                <dt className="text-white/90 font-medium">Plan {basePlanName(planName)}</dt>
+                <dd className="text-white font-semibold whitespace-nowrap">
+                  S/ {price}/{period}
+                </dd>
+              </div>
+              {summary.addOns.map(({ addOn, price: addOnAmount }) => {
+                const { name, icon } = addOnDisplay(addOn);
+                return (
+                  <div key={addOn.id} className="flex items-center justify-between gap-4">
+                    <dt className="text-white/75">
+                      <span aria-hidden="true">{icon}</span> {name}
+                    </dt>
+                    <dd className="text-white/90 whitespace-nowrap">
+                      +S/ {addOnAmount}/{period}
+                    </dd>
+                  </div>
+                );
+              })}
+              <div
+                className="flex items-center justify-between gap-4 pt-2 mt-1"
+                style={{ borderTop: "1px solid rgba(255,255,255,0.2)" }}
+              >
+                <dt className="text-white font-bold">Total {period === "año" ? "anual" : "mensual"}</dt>
+                <dd className="text-white font-black text-lg whitespace-nowrap">
+                  S/ {summary.total}/{period}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        ) : (
+          /* Plan badge */
+          <div
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full self-start"
+            style={{ background: "rgba(255,255,255,0.12)" }}
+          >
+            <div className="w-2 h-2 rounded-full bg-white/80" />
+            <span className="text-white/90 text-sm font-medium">
+              {planLabel(planName, price, isAnnual)}
+            </span>
+          </div>
+        )}
 
         {/* Trust signals */}
         <div className="flex flex-col gap-3">
@@ -553,6 +623,7 @@ interface Step2Props {
   onToggleAddon: (id: string) => void;
   onNext: () => void;
   addOns: BackendAddOn[];
+  summary: SubscriptionSummary;
 }
 
 function Step2({
@@ -567,14 +638,13 @@ function Step2({
   onToggleAddon,
   onNext,
   addOns,
+  summary,
 }: Step2Props) {
-  const addOnsTotal = selectedAddons.reduce((sum, id) => {
-    const addon = addOns.find((a) => a.id === id);
-    return sum + (addon ? addOnPrice(addon, isAnnual) : 0);
-  }, 0);
   const hasPlan = planId !== "";
-  const total = (hasPlan ? price : 0) + addOnsTotal;
   const period = isAnnual ? "año" : "mes";
+  const addOnPrices = addOns.map((a) => addOnPrice(a, isAnnual));
+  const minAddOnPrice = Math.min(...addOnPrices);
+  const samePrice = addOnPrices.every((p) => p === minAddOnPrice);
 
   return (
     <div className="flex flex-col gap-4">
@@ -591,7 +661,9 @@ function Step2({
       <div className="mb-1 mt-2">
         <h3 className="font-bold text-xl text-gray-900">Add-ons opcionales</h3>
         <p className="text-sm text-gray-500 mt-1">
-          {addOns.length > 0 ? `Desde S/ ${Math.min(...addOns.map((a) => addOnPrice(a, isAnnual)))}/${period} cada uno` : "Opcionales"} — actívalos ahora o después desde{" "}
+          {addOns.length > 0
+            ? `${samePrice ? "" : "Desde "}S/ ${minAddOnPrice}/${period} cada uno`
+            : "Opcionales"} — actívalos ahora o después desde{" "}
           <strong className="text-gray-700">Configuración</strong>.
         </p>
       </div>
@@ -684,15 +756,15 @@ function Step2({
         style={{ background: "#faf7ff", border: "1px solid #e4d8ff" }}
       >
         <div className="text-gray-500 text-sm">
-          Total {period}al
+          Total {isAnnual ? "anual" : "mensual"}
           <br />
           <span className="text-xs">
             {hasPlan ? `Plan S/${price}` : "Sin plan elegido"}
-            {selectedAddons.length > 0 && ` + Add-ons S/${addOnsTotal}`}
+            {summary.addOns.length > 0 && ` + Add-ons S/${summary.addOnsTotal}`}
           </span>
         </div>
         <div className="font-bold text-xl" style={{ color: "#4F3A96" }}>
-          S/ {total}/{period}
+          S/ {summary.total}/{period}
         </div>
       </div>
 
@@ -733,8 +805,7 @@ interface Step3Props {
   planName: string;
   price: number;
   isAnnual: boolean;
-  selectedAddons: string[];
-  allAddOns: BackendAddOn[];
+  summary: SubscriptionSummary;
   isLoading: boolean;
   step: string;
   error: string | null;
@@ -752,8 +823,7 @@ function Step3({
   planName,
   price,
   isAnnual,
-  selectedAddons,
-  allAddOns,
+  summary,
   isLoading,
   step,
   error,
@@ -766,9 +836,6 @@ function Step3({
   onRetry,
   onError,
 }: Step3Props) {
-  const selectedFull = allAddOns.filter((a) => selectedAddons.includes(a.id));
-  const addOnsTotal = selectedFull.reduce((sum, a) => sum + addOnPrice(a, isAnnual), 0);
-  const total = price + addOnsTotal;
   const period = isAnnual ? "año" : "mes";
 
   if (step === "CONFIRMING") {
@@ -868,18 +935,18 @@ function Step3({
         </div>
 
         {/* Add-on rows */}
-        {selectedFull.map((addon) => {
-          const config = ADDON_MODAL_CONFIG[addon.code];
+        {summary.addOns.map(({ addOn: addon, price: addOnAmount }) => {
+          const { name, icon } = addOnDisplay(addon);
           return (
             <div
               key={addon.id}
               className="flex items-center justify-between mb-2"
             >
               <span className="text-gray-600 text-sm flex items-center gap-1.5">
-                {config?.icon ?? "➕"} {config?.name ?? addon.name}
+                {icon} {name}
               </span>
               <span className="font-medium text-sm text-gray-800">
-                +S/ {addOnPrice(addon, isAnnual)}/{period}
+                +S/ {addOnAmount}/{period}
               </span>
             </div>
           );
@@ -892,7 +959,7 @@ function Step3({
         >
           <span className="font-bold text-gray-900">Total</span>
           <span className="font-black text-xl" style={{ color: "#4F3A96" }}>
-            S/ {total}/{period}
+            S/ {summary.total}/{period}
           </span>
         </div>
       </div>
@@ -925,7 +992,7 @@ function Step3({
       >
         <Shield className="w-5 h-5 shrink-0 mt-0.5 text-indigo-500" />
         <div className="text-sm text-indigo-900">
-          <p className="font-semibold">Pago seguro</p>
+          <p className="font-semibold">Pago seguro con tarjeta</p>
           <p className="mt-1 text-xs leading-relaxed text-indigo-700">
             Registrarás tu tarjeta de débito o crédito directamente en Flow.
             Powip no almacena datos de tu tarjeta.
@@ -1228,7 +1295,11 @@ export default function OnboardingClient({
   const [annualView, setAnnualView] = useState(isAnnualPlanName(planName));
   const isAnnual = flowState.planName ? isAnnualPlanName(flowState.planName) : annualView;
 
+  // Modo desarrollo: forzar paso y estado del pago, y cargar datos demo sin sesión.
+  const isDev = process.env.NODE_ENV === "development";
   const [devStepOverride, setDevStepOverride] = useState<number | null>(null);
+  const [devPaymentStep, setDevPaymentStep] = useState<OnboardingStep | null>(null);
+  const [devDemoLoaded, setDevDemoLoaded] = useState(false);
 
   const currentStep =
     devStepOverride !== null
@@ -1240,6 +1311,38 @@ export default function OnboardingClient({
           : flowState.step === "DONE"
             ? 4
             : 3;
+
+  // Ya en el pago: lo que se va a cobrar (guardado en el flujo). Antes: la selección en curso.
+  const isBeforePayment = flowState.step === "REGISTRATION" || flowState.step === "ADDONS";
+  const summary = summarizeSubscription(
+    flowState.price,
+    addOns,
+    isBeforePayment ? selectedAddons : flowState.addOnIds,
+    isAnnual,
+  );
+
+  const paymentStep = devPaymentStep ?? (isBeforePayment ? "CARD_REDIRECT" : flowState.step);
+  const subscription =
+    flowState.subscription ??
+    (devDemoLoaded && flowState.planId
+      ? demoSubscription(
+          { id: flowState.planId, name: flowState.planName, price: flowState.price },
+          summary.addOns,
+          isAnnual,
+        )
+      : null);
+
+  const loadDevDemo = () => {
+    setPlans(DEMO_PLANS);
+    setAddOns(DEMO_ADD_ONS);
+    if (!flowState.planId) setPlan(DEMO_PLANS.find((p) => p.name === "Medium") ?? DEMO_PLANS[0]);
+    setDevDemoLoaded(true);
+  };
+
+  const resetDev = () => {
+    setDevStepOverride(null);
+    setDevPaymentStep(null);
+  };
 
   const handleGoToDashboard = onGoToDashboard ?? (() => router.push("/new-company"));
 
@@ -1286,10 +1389,12 @@ export default function OnboardingClient({
   };
   const handleStep2Next = () => {
     if (!flowState.planId) return;
+    resetDev();
     selectAddOns(selectedAddons);
   };
 
   const handleGoBack = () => {
+    resetDev();
     setSelectedAddons(flowState.addOnIds);
     goBack();
   };
@@ -1316,8 +1421,10 @@ export default function OnboardingClient({
         <span className="text-white font-black tracking-widest text-base">
           POWIP
         </span>
-        <div className="ml-auto text-white/70 text-xs">
-          {planLabel(flowState.planName, flowState.price, isAnnual)}
+        <div className="ml-auto min-w-0 truncate text-white/70 text-xs">
+          {currentStep === 3
+            ? summaryLabel(flowState.planName, summary, isAnnual)
+            : planLabel(flowState.planName, flowState.price, isAnnual)}
         </div>
       </div>
 
@@ -1329,6 +1436,7 @@ export default function OnboardingClient({
             planName={flowState.planName}
             price={flowState.price}
             isAnnual={isAnnual}
+            summary={summary}
           />
         </div>
 
@@ -1378,6 +1486,7 @@ export default function OnboardingClient({
                   onToggleAddon={toggleAddon}
                   onNext={handleStep2Next}
                   addOns={addOns}
+                  summary={summary}
                 />
               )}
 
@@ -1386,10 +1495,9 @@ export default function OnboardingClient({
                   planName={flowState.planName}
                   price={flowState.price}
                   isAnnual={isAnnual}
-                  selectedAddons={selectedAddons}
-                  allAddOns={addOns}
+                  summary={summary}
                   isLoading={flowState.isLoading}
-                  step={flowState.step}
+                  step={paymentStep}
                   error={flowState.error}
                   cardToken={flowState.cardToken}
                   redirectUrl={flowState.redirectUrl}
@@ -1407,7 +1515,7 @@ export default function OnboardingClient({
                   planName={flowState.planName}
                   price={flowState.price}
                   isAnnual={isAnnual}
-                  subscription={flowState.subscription}
+                  subscription={subscription}
                   onGoToDashboard={handleGoToDashboard}
                 />
               )}
@@ -1417,32 +1525,23 @@ export default function OnboardingClient({
       </div>
       <EnterpriseContactModal open={enterpriseOpen} onClose={() => setEnterpriseOpen(false)} />
 
-      {/* Dev Mode Step Selector */}
-      {process.env.NODE_ENV === "development" && (
-        <div className="fixed bottom-4 left-4 z-50 bg-white/95 backdrop-blur-md border border-purple-200 p-3 rounded-2xl shadow-lg flex items-center gap-2">
-          <span className="text-xs font-bold text-purple-900 mr-1">DEV MODE:</span>
-          {[1, 2, 3, 4].map((stepNum) => (
-            <button
-              key={stepNum}
-              onClick={() => setDevStepOverride(stepNum)}
-              className="px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-              style={{
-                background: currentStep === stepNum ? "#4F3A96" : "#ede9ff",
-                color: currentStep === stepNum ? "white" : "#4F3A96",
-              }}
-            >
-              Step {stepNum}
-            </button>
-          ))}
-          {devStepOverride !== null && (
-            <button
-              onClick={() => setDevStepOverride(null)}
-              className="px-2 py-1 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 transition-colors cursor-pointer"
-            >
-              Reset
-            </button>
-          )}
-        </div>
+      {isDev && (
+        <OnboardingDevPanel
+          currentStep={currentStep}
+          isOverriding={devStepOverride !== null || devPaymentStep !== null}
+          paymentStep={paymentStep}
+          demoLoaded={devDemoLoaded}
+          onStep={(step) => {
+            setDevStepOverride(step);
+            setDevPaymentStep(null);
+          }}
+          onPaymentStep={(step) => {
+            setDevStepOverride(3);
+            setDevPaymentStep(step);
+          }}
+          onLoadDemo={loadDevDemo}
+          onReset={resetDev}
+        />
       )}
     </div>
   );

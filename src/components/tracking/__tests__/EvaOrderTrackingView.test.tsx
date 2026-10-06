@@ -224,8 +224,8 @@ jest.mock('lucide-react', () => ({
   RefreshCw: ({ className }: { className?: string }) => (
     <span data-testid="icon-refresh" className={className} />
   ),
-  Eye: ({ className }: { className?: string }) => (
-    <span data-testid="icon-eye" className={className} />
+  FileText: ({ className }: { className?: string }) => (
+    <span data-testid="icon-file-text" className={className} />
   ),
   FileSpreadsheet: ({ className }: { className?: string }) => (
     <span data-testid="icon-excel" className={className} />

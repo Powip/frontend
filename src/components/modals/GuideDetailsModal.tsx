@@ -37,7 +37,8 @@ import {
   Trash2,
   Copy,
 } from "lucide-react";
-import { MapsLink } from "@/components/shared/MapsLink";
+import { GoogleMapsUrlField } from "@/components/shared/GoogleMapsUrlField";
+import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import axios from "axios";
@@ -648,7 +649,8 @@ export default function GuideDetailsModal({
             .reduce((s, p) => s + Number(p.amount), 0) || 0;
         const total = Number(order.totals?.grandTotal ?? order.grandTotal ?? 0);
         const pending = Math.max(total - paid, 0);
-        return `Venta ${order.orderNumber}\nCliente: ${order.customer.fullName}\nTeléfono: ${order.customer.phoneNumber}\nDistrito: ${order.customer.district || "-"}\nDirección: ${order.customer.address || "-"}\nTotal: S/ ${total.toFixed(2)}\nAdelanto: S/ ${paid.toFixed(2)}\nPor Cobrar: S/ ${pending.toFixed(2)}\nEstado: ${order.status.replace("_", " ")}`;
+        const mapsLine = formatGoogleMapsClipboardLine(order.customer.googleMapsUrl);
+        return `Venta ${order.orderNumber}\nCliente: ${order.customer.fullName}\nTeléfono: ${order.customer.phoneNumber}\nDistrito: ${order.customer.district || "-"}\nDirección: ${order.customer.address || "-"}${mapsLine ? `\n${mapsLine}` : ""}\nTotal: S/ ${total.toFixed(2)}\nAdelanto: S/ ${paid.toFixed(2)}\nPor Cobrar: S/ ${pending.toFixed(2)}\nEstado: ${order.status.replace("_", " ")}`;
       })
       .join("\n\n--------------------\n\n");
     navigator.clipboard.writeText(text);
@@ -1683,13 +1685,9 @@ export default function GuideDetailsModal({
                                   {order.customer.address}
                                 </p>
                               )}
-                              <p>
-                                <MapPin className="h-3 w-3 inline mr-1" />
-                                <MapsLink
-                                  url={order.customer.googleMapsUrl}
-                                  className="text-primary underline underline-offset-2"
-                                />
-                              </p>
+                              <GoogleMapsUrlField
+                                url={order.customer.googleMapsUrl}
+                              />
                             </div>
 
                             {/* Tracking del pedido */}

@@ -10,13 +10,13 @@ import {
   DollarSign,
   FileCheck,
   Loader2,
-  MessageCircle,
   Printer,
   Search,
   Zap,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import DetalleComprobanteModal from "@/app/facturacion/components/modals/DetalleComprobanteModal";
 import EmitirComprobanteModal from "@/app/facturacion/components/modals/EmitirComprobanteModal";
 import LoteEmisionModal from "@/app/facturacion/components/modals/LoteEmisionModal";
@@ -383,7 +383,7 @@ export function TaxDocumentsTab({ comprobantes, onGenerarNota }: TaxDocumentsTab
             title={hasValidPhone ? "Enviar por WhatsApp" : "Teléfono no válido"}
             onClick={() => handleWhatsApp(row)}
           >
-            <MessageCircle
+            <WhatsAppIcon
               className={cn(
                 "h-4 w-4",
                 sent.wa

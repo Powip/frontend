@@ -12,7 +12,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Pagination } from "@/components/ui/pagination";
-import { CheckCircle2, Copy, Eye, Loader2, MessageCircle, RefreshCw, Search as SearchIcon } from "lucide-react";
+import { CheckCircle2, Copy, Eye, Loader2, RefreshCw, Search as SearchIcon } from "lucide-react";
+import { OrderDetailButton, useOrderDetailModal } from "@/components/orders/OrderDetailModal";
 import {
   SalesTableFilters,
   SalesFilters,
@@ -71,6 +72,7 @@ export function EnCaminoTab({
   initialSearch?: string;
   initialQf?: string;
 }) {
+  const { openOrderDetail } = useOrderDetailModal();
   const [filters, setFilters] = useState<SalesFilters>({
     ...emptySalesFilters,
     search: initialSearch ?? "",
@@ -289,7 +291,7 @@ export function EnCaminoTab({
                 />
               )}
               <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onBulkWhatsApp(selectedSales)}>
-                <MessageCircle className="h-3.5 w-3.5" />
+                <WhatsAppIcon className="h-3.5 w-3.5" />
                 WhatsApp masivo
               </Button>
               <Button size="sm" variant="outline" className="h-8 gap-1 text-xs" onClick={() => actions.onCopySelected(selectedSales)}>
@@ -395,10 +397,8 @@ export function EnCaminoTab({
                               Entregado
                             </Button>
                           )}
-                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Ver pedido" onClick={() => actions.onView(sale)}>
-                            <Eye className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Rastrear" onClick={() => actions.onView(sale)}>
+                          <OrderDetailButton orderId={sale.id} orderNumber={sale.orderNumber} />
+                          <Button size="icon" variant="ghost" className="h-7 w-7" title="Rastrear" onClick={() => openOrderDetail(sale.id)}>
                             <SearchIcon className="h-3.5 w-3.5" />
                           </Button>
                           <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:text-green-700" title="WhatsApp" onClick={() => actions.onWhatsApp(sale)}>
@@ -509,7 +509,7 @@ export function EnCaminoTab({
                           <Eye className="h-3.5 w-3.5" />
                         </Button>
                         <Button size="icon" variant="ghost" className="h-7 w-7" title="WhatsApp masivo" onClick={() => actions.onBulkWhatsApp(group)}>
-                          <MessageCircle className="h-3.5 w-3.5" />
+                          <WhatsAppIcon className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </TableCell>

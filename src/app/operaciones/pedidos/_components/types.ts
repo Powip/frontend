@@ -3,6 +3,7 @@ import type { OpsPermission } from "@/config/operationsPermissions";
 import { ORDER_STATUS_FLOW, getStatusLabel } from "@/utils/domain/orders-status-flow";
 import { formatProductsForExport, type SaleExportData } from "@/utils/exportSalesExcel";
 import { countProductUnits } from "@/components/ventas/SalesTableFilters";
+import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 
 /* -----------------------------------------------------------------------
    Modelo de fila para las tablas de Pedidos.
@@ -46,6 +47,8 @@ export interface Sale {
   sellerName: string | null;
   salesChannel?: string | null;
   externalSource?: string | null;
+  shopifyCancelledAt?: string | null;
+  shopifyCancelReason?: string | null;
   externalId?: string | null;
   aliclikDispatchStatus?: string | null;
   aliclikSyncedAt?: string | null;
@@ -124,6 +127,8 @@ export function mapOrderToSale(order: OrderHeader): Sale {
     sellerName: order.sellerName ?? null,
     salesChannel: order.salesChannel ?? null,
     externalSource: order.externalSource ?? null,
+    shopifyCancelledAt: order.shopifyCancelledAt ?? null,
+    shopifyCancelReason: order.shopifyCancelReason ?? null,
     externalId: order.externalId ?? null,
     aliclikDispatchStatus: order.aliclikDispatchStatus ?? null,
     aliclikSyncedAt: order.aliclikSyncedAt ?? null,
@@ -187,9 +192,10 @@ export function buildPedidosExportRows(sales: Sale[], productFilter?: string): S
  */
 export function formatSalesForClipboard(sales: Sale[]): string {
   return sales
-    .map((sale) =>
-      `Venta ${sale.orderNumber}\nCliente: ${sale.clientName}\nTeléfono: ${sale.phoneNumber}\nDistrito: ${sale.district}\nDirección: ${sale.address}\nFecha: ${sale.date}\nTotal: S/ ${sale.total.toFixed(2)}\nAdelanto: S/ ${sale.advancePayment.toFixed(2)}\nPor Cobrar: S/ ${sale.pendingPayment.toFixed(2)}\nEstado: ${getStatusLabel(sale.status)}`.trim(),
-    )
+    .map((sale) => {
+      const mapsLine = formatGoogleMapsClipboardLine(sale.googleMapsUrl);
+      return `Venta ${sale.orderNumber}\nCliente: ${sale.clientName}\nTeléfono: ${sale.phoneNumber}\nDistrito: ${sale.district}\nDirección: ${sale.address}${mapsLine ? `\n${mapsLine}` : ""}\nFecha: ${sale.date}\nTotal: S/ ${sale.total.toFixed(2)}\nAdelanto: S/ ${sale.advancePayment.toFixed(2)}\nPor Cobrar: S/ ${sale.pendingPayment.toFixed(2)}\nEstado: ${getStatusLabel(sale.status)}`.trim();
+    })
     .join("\n\n--------------------\n\n");
 }
 
@@ -277,7 +283,6 @@ export interface PedidosActions {
   apiCouriers: string[];
   salesChannels: string[];
   isBulkLoading: boolean;
-  onView: (sale: Sale) => void;
   onOpenPayment: (sale: Sale) => void;
   onOpenGuide: (sale: Sale) => void;
   onReassignSeller: (sale: Sale) => void;
@@ -298,6 +303,13 @@ export interface PedidosActions {
   onExportExcel: (selected: Sale[], tabName: string, productFilter?: string) => void;
   onWhatsApp: (sale: Sale) => void;
   onEdit: (sale: Sale) => void;
+  /** Abre el formulario de la venta para cambiar el tipo de entrega. Al
+   *  volver se restaura la selección (`selectedIds`) y el día; solo si se
+   *  guardó, se reabre la revisión de guía. */
+  onEditDeliveryType: (
+    sale: Sale,
+    context: { selectedIds: string[]; dayKey: string },
+  ) => void;
   onSyncCourier: () => void;
   onReturnToStock: (sale: Sale) => void;
   onMarkAsLoss: (sale: Sale) => void;

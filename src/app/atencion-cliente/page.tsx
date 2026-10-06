@@ -34,7 +34,8 @@ import { exportCcPedidosToExcel } from "@/utils/exportCcPedidosExcel";
 import { useAgentes } from "@/hooks/useAgentes";
 import { IncompleteOrdersTab } from "@/components/atencion-cliente/IncompleteOrdersTab";
 
-import CustomerServiceModal from "@/components/modals/CustomerServiceModal";
+import { OrderDetailModalProvider } from "@/components/orders/OrderDetailModal";
+import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import PaymentVerificationModal from "@/components/modals/PaymentVerificationModal";
 import ReassignSellerModal from "@/components/modals/ReassignSellerModal";
 import { reassignSeller, recuperarVentaCC } from "@/services/atencionClienteService";
@@ -266,8 +267,6 @@ export default function AtencionClientePage() {
   }, [selectedStoreId, promoFromDate, promoToDate]);
 
   /* ── Modals ──────────────────────────────────────────── */
-  const [modalOpen, setModalOpen] = useState(false);
-  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [paymentOrderId, setPaymentOrderId] = useState<string | null>(null);
   const [paymentOrderNumber, setPaymentOrderNumber] = useState<string>("");
@@ -275,11 +274,6 @@ export default function AtencionClientePage() {
   const [reassignSellerModalOpen, setReassignSellerModalOpen] = useState(false);
   const [orderToReassign, setOrderToReassign] = useState<OrderHeader | null>(null);
   const [isReassigningLoading, setIsReassigningLoading] = useState(false);
-
-  function openModal(order: OrderHeader) {
-    setSelectedOrderId(order.id);
-    setModalOpen(true);
-  }
 
   function openPaymentModal(order: OrderHeader) {
     setPaymentOrderId(order.id);
@@ -382,9 +376,10 @@ export default function AtencionClientePage() {
     const selected = selectedCcOrders;
     if (!selected.length) { toast.warning("No hay pedidos seleccionados"); return; }
     const text = selected
-      .map((o) =>
-        `Pedido ${o.orderNumber}\nCliente: ${o.customer?.fullName}\nTel: ${o.customer?.phoneNumber}\nTotal: S/${Number(o.grandTotal).toFixed(2)}`
-      )
+      .map((o) => {
+        const mapsLine = formatGoogleMapsClipboardLine(o.customer?.googleMapsUrl);
+        return `Pedido ${o.orderNumber}\nCliente: ${o.customer?.fullName}\nTel: ${o.customer?.phoneNumber}\nTotal: S/${Number(o.grandTotal).toFixed(2)}${mapsLine ? `\n${mapsLine}` : ""}`;
+      })
       .join("\n\n---\n\n");
     await navigator.clipboard.writeText(text);
     toast.success(`${selected.length} pedido(s) copiados`);
@@ -440,313 +435,307 @@ export default function AtencionClientePage() {
   if (!auth) return null;
 
   return (
-    <div className="flex h-screen w-full">
-      <main className="flex-1 overflow-auto">
+    <OrderDetailModalProvider onOrderUpdated={refetchCc}>
+      <div className="flex h-screen w-full">
+        <main className="flex-1 overflow-auto">
 
-        {/* Header */}
-        <div className="px-6 pt-6">
-          <HeaderConfig
-            title="Atención al Cliente"
-            description="Call Center v2 — Gestión de ventas COD, entregas Lima y recupero de carritos"
-          />
-        </div>
-
-        {/* ── Tabs raíz: CC v2 | Legacy | Otras ─────────────── */}
-        <Tabs defaultValue="cc" className="w-full">
-          <div className="px-6 pt-4">
-            <TabsList>
-              <TabsTrigger value="cc">📞 Call Center v2</TabsTrigger>
-              <TabsTrigger value="preventa" className="text-violet-600">
-                Pre-Ventas
-                {pedidosPreVenta.length > 0 && (
-                  <span className="ml-1 rounded-full bg-violet-600 text-white text-xs px-1.5 py-0.5">
-                    {pedidosPreVenta.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="correcciones" className="text-orange-600">
-                Correcciones
-                {incompleteOrders.length > 0 && (
-                  <span className="ml-1 rounded-full bg-orange-600 text-white text-xs px-1.5 py-0.5">
-                    {incompleteOrders.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="promos" className="text-purple-600">
-                <Gift className="h-3.5 w-3.5 mr-1" />
-                Promos
-              </TabsTrigger>
-            </TabsList>
+          {/* Header */}
+          <div className="px-6 pt-6">
+            <HeaderConfig
+              title="Atención al Cliente"
+              description="Call Center v2 — Gestión de ventas COD, entregas Lima y recupero de carritos"
+            />
           </div>
 
-          {/* ── TAB: CC v2 ──────────────────────────────────── */}
-          <TabsContent value="cc" className="mt-0">
-            {/* L1 tabs */}
-            <div className="px-6 pt-2">
-              <CcTabsL1
-                active={l1}
-                onChange={handleL1Change}
-                counts={l1Counts}
-                showMovimientos={isAdmin}
-                isMovimientos={movimientosActive}
-                onMovimientosClick={() => { setMovimientosActive(true); setCierreDiaActive(false); }}
-                showCierreDia={isAdmin}
-                isCierreDia={cierreDiaActive}
-                onCierreDiaClick={() => { setCierreDiaActive(true); setMovimientosActive(false); }}
-              />
+          {/* ── Tabs raíz: CC v2 | Legacy | Otras ─────────────── */}
+          <Tabs defaultValue="cc" className="w-full">
+            <div className="px-6 pt-4">
+              <TabsList>
+                <TabsTrigger value="cc">📞 Call Center v2</TabsTrigger>
+                <TabsTrigger value="preventa" className="text-violet-600">
+                  Pre-Ventas
+                  {pedidosPreVenta.length > 0 && (
+                    <span className="ml-1 rounded-full bg-violet-600 text-white text-xs px-1.5 py-0.5">
+                      {pedidosPreVenta.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="correcciones" className="text-orange-600">
+                  Correcciones
+                  {incompleteOrders.length > 0 && (
+                    <span className="ml-1 rounded-full bg-orange-600 text-white text-xs px-1.5 py-0.5">
+                      {incompleteOrders.length}
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="promos" className="text-purple-600">
+                  <Gift className="h-3.5 w-3.5 mr-1" />
+                  Promos
+                </TabsTrigger>
+              </TabsList>
             </div>
 
-            {/* L2 sub-tabs — se ocultan en Movimientos / Cierre del Día */}
-            {!movimientosActive && !cierreDiaActive && (
-              <CcTabsL2 tipoGestion={l1} active={l2} onChange={setL2} counts={l2Counts} />
-            )}
+            {/* ── TAB: CC v2 ──────────────────────────────────── */}
+            <TabsContent value="cc" className="mt-0">
+              {/* L1 tabs */}
+              <div className="px-6 pt-2">
+                <CcTabsL1
+                  active={l1}
+                  onChange={handleL1Change}
+                  counts={l1Counts}
+                  showMovimientos={isAdmin}
+                  isMovimientos={movimientosActive}
+                  onMovimientosClick={() => { setMovimientosActive(true); setCierreDiaActive(false); }}
+                  showCierreDia={isAdmin}
+                  isCierreDia={cierreDiaActive}
+                  onCierreDiaClick={() => { setCierreDiaActive(true); setMovimientosActive(false); }}
+                />
+              </div>
 
-            {/* Content */}
-            <div className="p-6 space-y-4 bg-gray-50 dark:bg-slate-900 min-h-screen">
-              {cierreDiaActive ? (
-                <CcCierreDiaTab storeId={selectedStoreId ?? ""} />
-              ) : movimientosActive ? (
-                <CcMovimientosTab storeId={selectedStoreId ?? ""} />
-              ) : (
-                <>
-                  <CcKpiBar tipoGestion={l1} kpis={ccKpis} loading={kpisLoading} />
-                  <CcToolbar
-                    agenteId={agenteFiltro}
-                    canalOrigen={canalFiltro}
-                    agentes={agentes}
-                    agentesLoading={agentesLoading}
-                    onAgenteChange={setAgenteFiltro}
-                    onCanalChange={setCanalFiltro}
-                    selectedCount={selectedCcOrders.length}
-                    onWhatsAppMasivo={handleWhatsAppMasivo}
-                    onCopiar={handleCopiarCc}
-                    canales={canaresUnicos}
-                    date={dateFiltro}
-                    onDateChange={setDateFiltro}
-                    search={l1 === "cod" ? search : undefined}
-                    onSearchChange={l1 === "cod" ? handleSearchChange : undefined}
-                    onExportar={exportTabLabel ? handleExportarCc : undefined}
-                    exporting={exportingCc}
-                  />
-                  {isSearching && ccAllResult?.truncated && (
-                    <p role="status" className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
-                      Resultados incompletos: la búsqueda cubre {ccAllResult.data.length} de {ccAllResult.total} pedidos de esta pestaña.
-                      Acota con los filtros de fecha, agente o canal para buscar en el resto.
-                    </p>
-                  )}
-                  {ccLoading ? (
-                    <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center text-gray-400 dark:text-slate-500 text-sm">
-                      {isSearching ? "Buscando pedidos..." : "Cargando pedidos..."}
-                    </div>
-                  ) : (
-                    <CcPedidosTable
-                      data={ccRows}
-                      emptyMessage={
-                        isSearching && ccAllError ? (
-                          "No se pudieron cargar los pedidos para la búsqueda. Intenta nuevamente."
-                        ) : isSearching ? (
-                          <span>
-                            No se encontraron pedidos para “{search.trim()}” con los filtros actuales.{" "}
-                            <button
-                              type="button"
-                              className="underline text-blue-600 hover:text-blue-700"
-                              onClick={() => handleSearchChange("")}
-                            >
-                              Limpiar búsqueda
-                            </button>
-                          </span>
-                        ) : undefined
-                      }
-                      tipoGestion={l1}
-                      selectedIds={selectedCcIds}
-                      onToggle={handleToggleCc}
-                      onToggleAll={handleToggleAllCc}
-                      onVerPedido={openModal}
-                      onWhatsApp={handleWhatsApp}
-                      onGestionarPago={openPaymentModal}
-                      onReassignSeller={(order) => {
-                        setOrderToReassign(order);
-                        setReassignSellerModalOpen(true);
-                      }}
-                      onRecuperar={handleRecuperar}
-                      page={ccCurrentPage}
-                      totalPages={ccTotalPages}
-                      total={ccTotal}
-                      onPageChange={setPageCc}
-                    />
-                  )}
-                </>
+              {/* L2 sub-tabs — se ocultan en Movimientos / Cierre del Día */}
+              {!movimientosActive && !cierreDiaActive && (
+                <CcTabsL2 tipoGestion={l1} active={l2} onChange={setL2} counts={l2Counts} />
               )}
-            </div>
-          </TabsContent>
 
-          {/* ── TAB: Pre-Ventas ─────────────────────────────── */}
-          <TabsContent value="preventa" className="p-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Pre-Ventas — pendientes de confirmación</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {pedidosPreVenta.length === 0 ? (
-                  <p className="text-sm text-muted-foreground py-4 text-center">
-                    No hay pedidos en estado Pre-Venta.
-                  </p>
+              {/* Content */}
+              <div className="p-6 space-y-4 bg-gray-50 dark:bg-slate-900 min-h-screen">
+                {cierreDiaActive ? (
+                  <CcCierreDiaTab storeId={selectedStoreId ?? ""} />
+                ) : movimientosActive ? (
+                  <CcMovimientosTab storeId={selectedStoreId ?? ""} />
                 ) : (
+                  <>
+                    <CcKpiBar tipoGestion={l1} kpis={ccKpis} loading={kpisLoading} />
+                    <CcToolbar
+                      agenteId={agenteFiltro}
+                      canalOrigen={canalFiltro}
+                      agentes={agentes}
+                      agentesLoading={agentesLoading}
+                      onAgenteChange={setAgenteFiltro}
+                      onCanalChange={setCanalFiltro}
+                      selectedCount={selectedCcOrders.length}
+                      onWhatsAppMasivo={handleWhatsAppMasivo}
+                      onCopiar={handleCopiarCc}
+                      canales={canaresUnicos}
+                      date={dateFiltro}
+                      onDateChange={setDateFiltro}
+                      search={l1 === "cod" ? search : undefined}
+                      onSearchChange={l1 === "cod" ? handleSearchChange : undefined}
+                      onExportar={exportTabLabel ? handleExportarCc : undefined}
+                      exporting={exportingCc}
+                    />
+                    {isSearching && ccAllResult?.truncated && (
+                      <p role="status" className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+                        Resultados incompletos: la búsqueda cubre {ccAllResult.data.length} de {ccAllResult.total} pedidos de esta pestaña.
+                        Acota con los filtros de fecha, agente o canal para buscar en el resto.
+                      </p>
+                    )}
+                    {ccLoading ? (
+                      <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center text-gray-400 dark:text-slate-500 text-sm">
+                        {isSearching ? "Buscando pedidos..." : "Cargando pedidos..."}
+                      </div>
+                    ) : (
+                      <CcPedidosTable
+                        data={ccRows}
+                        emptyMessage={
+                          isSearching && ccAllError ? (
+                            "No se pudieron cargar los pedidos para la búsqueda. Intenta nuevamente."
+                          ) : isSearching ? (
+                            <span>
+                              No se encontraron pedidos para “{search.trim()}” con los filtros actuales.{" "}
+                              <button
+                                type="button"
+                                className="underline text-blue-600 hover:text-blue-700"
+                                onClick={() => handleSearchChange("")}
+                              >
+                                Limpiar búsqueda
+                              </button>
+                            </span>
+                          ) : undefined
+                        }
+                        tipoGestion={l1}
+                        selectedIds={selectedCcIds}
+                        onToggle={handleToggleCc}
+                        onToggleAll={handleToggleAllCc}
+                        onWhatsApp={handleWhatsApp}
+                        onGestionarPago={openPaymentModal}
+                        onReassignSeller={(order) => {
+                          setOrderToReassign(order);
+                          setReassignSellerModalOpen(true);
+                        }}
+                        onRecuperar={handleRecuperar}
+                        page={ccCurrentPage}
+                        totalPages={ccTotalPages}
+                        total={ccTotal}
+                        onPageChange={setPageCc}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* ── TAB: Pre-Ventas ─────────────────────────────── */}
+            <TabsContent value="preventa" className="p-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Pre-Ventas — pendientes de confirmación</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {pedidosPreVenta.length === 0 ? (
+                    <p className="text-sm text-muted-foreground py-4 text-center">
+                      No hay pedidos en estado Pre-Venta.
+                    </p>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>N° Pedido</TableHead>
+                          <TableHead>Cliente</TableHead>
+                          <TableHead>Teléfono</TableHead>
+                          <TableHead>Total</TableHead>
+                          <TableHead>Fecha</TableHead>
+                          <TableHead>Acción</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {pedidosPreVenta.map((sale) => (
+                          <TableRow key={sale.id}>
+                            <TableCell className="font-mono text-sm">{sale.orderNumber}</TableCell>
+                            <TableCell>{sale.clientName}</TableCell>
+                            <TableCell>{sale.phoneNumber}</TableCell>
+                            <TableCell>S/ {sale.total.toFixed(2)}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{sale.date}</TableCell>
+                            <TableCell>
+                              <Button
+                                size="sm"
+                                onClick={async () => {
+                                  try {
+                                    await confirmOrder(sale.id);
+                                    toast.success(`Pedido ${sale.orderNumber} confirmado`);
+                                    refetchOrders();
+                                  } catch {
+                                    toast.error("Error al confirmar el pedido");
+                                  }
+                                }}
+                              >
+                                Confirmar venta
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* ── TAB: Correcciones ───────────────────────────── */}
+            <TabsContent value="correcciones" className="p-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Pedidos con Errores de Sincronización</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <IncompleteOrdersTab
+                    orders={incompleteOrders}
+                    isLoading={incompleteLoading}
+                    onRepaired={() => { refetchIncomplete(); refetchOrders(); }}
+                  />
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* ── TAB: Promos ─────────────────────────────────── */}
+            <TabsContent value="promos" className="p-6">
+              <Card className="border-purple-200 dark:border-purple-800">
+                <CardHeader className="bg-purple-50 dark:bg-purple-950/30">
+                  <CardTitle className="text-purple-700 dark:text-purple-300 flex items-center gap-2">
+                    <Gift className="h-5 w-5" />
+                    Promos del Día Vendidas
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 pt-4">
+                  <div className="flex gap-4 items-end">
+                    <div className="space-y-1">
+                      <Label>Desde</Label>
+                      <Input type="date" value={promoFromDate} onChange={(e) => setPromoFromDate(e.target.value)} className="w-40" />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Hasta</Label>
+                      <Input type="date" value={promoToDate} onChange={(e) => setPromoToDate(e.target.value)} className="w-40" />
+                    </div>
+                    <Button onClick={fetchPromoItems} disabled={promoLoading}>
+                      {promoLoading ? "Cargando..." : "Buscar"}
+                    </Button>
+                  </div>
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>N° Pedido</TableHead>
-                        <TableHead>Cliente</TableHead>
-                        <TableHead>Teléfono</TableHead>
-                        <TableHead>Total</TableHead>
                         <TableHead>Fecha</TableHead>
-                        <TableHead>Acción</TableHead>
+                        <TableHead>Orden</TableHead>
+                        <TableHead>Cliente</TableHead>
+                        <TableHead>Producto</TableHead>
+                        <TableHead className="text-center">Cant.</TableHead>
+                        <TableHead className="text-right">Subtotal</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {pedidosPreVenta.map((sale) => (
-                        <TableRow key={sale.id}>
-                          <TableCell className="font-mono text-sm">{sale.orderNumber}</TableCell>
-                          <TableCell>{sale.clientName}</TableCell>
-                          <TableCell>{sale.phoneNumber}</TableCell>
-                          <TableCell>S/ {sale.total.toFixed(2)}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{sale.date}</TableCell>
-                          <TableCell>
-                            <Button
-                              size="sm"
-                              onClick={async () => {
-                                try {
-                                  await confirmOrder(sale.id);
-                                  toast.success(`Pedido ${sale.orderNumber} confirmado`);
-                                  refetchOrders();
-                                } catch {
-                                  toast.error("Error al confirmar el pedido");
-                                }
-                              }}
-                            >
-                              Confirmar venta
-                            </Button>
+                      {promoItems.map((promo) => (
+                        <TableRow key={promo.id}>
+                          <TableCell className="text-xs">
+                            {promo.addedAt ? new Date(promo.addedAt).toLocaleDateString("es-PE") : "—"}
+                          </TableCell>
+                          <TableCell className="font-medium">{promo.orderNumber}</TableCell>
+                          <TableCell>{promo.customerName}</TableCell>
+                          <TableCell>{promo.productName}</TableCell>
+                          <TableCell className="text-center">{promo.quantity}</TableCell>
+                          <TableCell className="text-right font-medium">
+                            S/{Number(promo.subtotal).toFixed(2)}
                           </TableCell>
                         </TableRow>
                       ))}
+                      {promoItems.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
+                            {promoLoading ? "Cargando..." : "Seleccioná un rango y hacé clic en Buscar"}
+                          </TableCell>
+                        </TableRow>
+                      )}
                     </TableBody>
                   </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </main>
 
-          {/* ── TAB: Correcciones ───────────────────────────── */}
-          <TabsContent value="correcciones" className="p-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Pedidos con Errores de Sincronización</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <IncompleteOrdersTab
-                  orders={incompleteOrders}
-                  isLoading={incompleteLoading}
-                  onRepaired={() => { refetchIncomplete(); refetchOrders(); }}
-                />
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* ── TAB: Promos ─────────────────────────────────── */}
-          <TabsContent value="promos" className="p-6">
-            <Card className="border-purple-200 dark:border-purple-800">
-              <CardHeader className="bg-purple-50 dark:bg-purple-950/30">
-                <CardTitle className="text-purple-700 dark:text-purple-300 flex items-center gap-2">
-                  <Gift className="h-5 w-5" />
-                  Promos del Día Vendidas
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4 pt-4">
-                <div className="flex gap-4 items-end">
-                  <div className="space-y-1">
-                    <Label>Desde</Label>
-                    <Input type="date" value={promoFromDate} onChange={(e) => setPromoFromDate(e.target.value)} className="w-40" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Hasta</Label>
-                    <Input type="date" value={promoToDate} onChange={(e) => setPromoToDate(e.target.value)} className="w-40" />
-                  </div>
-                  <Button onClick={fetchPromoItems} disabled={promoLoading}>
-                    {promoLoading ? "Cargando..." : "Buscar"}
-                  </Button>
-                </div>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Fecha</TableHead>
-                      <TableHead>Orden</TableHead>
-                      <TableHead>Cliente</TableHead>
-                      <TableHead>Producto</TableHead>
-                      <TableHead className="text-center">Cant.</TableHead>
-                      <TableHead className="text-right">Subtotal</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {promoItems.map((promo) => (
-                      <TableRow key={promo.id}>
-                        <TableCell className="text-xs">
-                          {promo.addedAt ? new Date(promo.addedAt).toLocaleDateString("es-PE") : "—"}
-                        </TableCell>
-                        <TableCell className="font-medium">{promo.orderNumber}</TableCell>
-                        <TableCell>{promo.customerName}</TableCell>
-                        <TableCell>{promo.productName}</TableCell>
-                        <TableCell className="text-center">{promo.quantity}</TableCell>
-                        <TableCell className="text-right font-medium">
-                          S/{Number(promo.subtotal).toFixed(2)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {promoItems.length === 0 && (
-                      <TableRow>
-                        <TableCell colSpan={6} className="text-center text-muted-foreground py-6">
-                          {promoLoading ? "Cargando..." : "Seleccioná un rango y hacé clic en Buscar"}
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-      </main>
-
-      {/* ── Modals ─────────────────────────────────────────── */}
-      <CustomerServiceModal
-        open={modalOpen}
-        orderId={selectedOrderId ?? ""}
-        onClose={() => { setModalOpen(false); setSelectedOrderId(null); }}
-        onOrderUpdated={refetchCc}
-      />
-
-      <PaymentVerificationModal
-        open={paymentModalOpen}
-        onClose={() => { setPaymentModalOpen(false); setPaymentOrderId(null); }}
-        orderId={paymentOrderId ?? ""}
-        orderNumber={paymentOrderNumber}
-        onPaymentUpdated={refetchCc}
-        canApprove={true}
-      />
-
-      {orderToReassign && (
-        <ReassignSellerModal
-          open={reassignSellerModalOpen}
-          onClose={() => {
-            setReassignSellerModalOpen(false);
-            setOrderToReassign(null);
-          }}
-          orderNumber={orderToReassign.orderNumber}
-          currentSellerName={orderToReassign.sellerName ?? null}
-          companyId={auth?.company?.id ?? ""}
-          onConfirm={handleReassignSeller}
-          isLoading={isReassigningLoading}
+        {/* ── Modals ─────────────────────────────────────────── */}
+        <PaymentVerificationModal
+          open={paymentModalOpen}
+          onClose={() => { setPaymentModalOpen(false); setPaymentOrderId(null); }}
+          orderId={paymentOrderId ?? ""}
+          orderNumber={paymentOrderNumber}
+          onPaymentUpdated={refetchCc}
+          canApprove={true}
         />
-      )}
-    </div>
+
+        {orderToReassign && (
+          <ReassignSellerModal
+            open={reassignSellerModalOpen}
+            onClose={() => {
+              setReassignSellerModalOpen(false);
+              setOrderToReassign(null);
+            }}
+            orderNumber={orderToReassign.orderNumber}
+            currentSellerName={orderToReassign.sellerName ?? null}
+            companyId={auth?.company?.id ?? ""}
+            onConfirm={handleReassignSeller}
+            isLoading={isReassigningLoading}
+          />
+        )}
+      </div>
+    </OrderDetailModalProvider>
   );
 }

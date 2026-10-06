@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
 import { Building2, Store, User, Blocks } from "lucide-react";
 import Link from "next/link";
+import { HelpHeaderLink, HelpSection } from "./_components/HelpSection";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
@@ -49,7 +50,9 @@ export default function ConfiguracionPage() {
       <HeaderConfig
         title="Configuración"
         description="Administra los parámetros de tu cuenta y empresa"
-      />
+      >
+        <HelpHeaderLink />
+      </HeaderConfig>
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4 p-6">
         {configSections.map((section) => {
           const Icon = section.icon;
@@ -71,6 +74,9 @@ export default function ConfiguracionPage() {
             </Link>
           );
         })}
+      </div>
+      <div className="px-6 pb-6">
+        <HelpSection />
       </div>
     </main>
   );
