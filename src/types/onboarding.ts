@@ -27,6 +27,31 @@ export function addOnPrice(addOn: Pick<BackendAddOn, 'amount' | 'annualAmount'>,
   return isAnnual ? (addOn.annualAmount ?? addOn.amount * 12) : addOn.amount;
 }
 
+export interface SubscriptionSummary {
+  /** Add-ons elegidos, en el orden del catálogo, con su precio en el ciclo del plan. */
+  addOns: { addOn: BackendAddOn; price: number }[];
+  addOnsTotal: number;
+  /** Plan + add-ons. */
+  total: number;
+}
+
+/**
+ * Resumen único del pedido: lo usan el paso Plan, el paso Pago y el panel
+ * lateral, para que los montos salgan siempre del catálogo de ms-subscription.
+ */
+export function summarizeSubscription(
+  planPrice: number,
+  catalog: BackendAddOn[],
+  selectedIds: string[],
+  isAnnual: boolean,
+): SubscriptionSummary {
+  const addOns = catalog
+    .filter((a) => selectedIds.includes(a.id))
+    .map((addOn) => ({ addOn, price: addOnPrice(addOn, isAnnual) }));
+  const addOnsTotal = addOns.reduce((sum, a) => sum + a.price, 0);
+  return { addOns, addOnsTotal, total: planPrice + addOnsTotal };
+}
+
 /** Plan de ms-subscription (GET /subscription/plans). */
 export interface BackendPlan {
   id: string;
