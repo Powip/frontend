@@ -158,20 +158,18 @@ export default function TiendasPage() {
       const results = await Promise.all(syncPromises);
 
       let totalOrders = 0;
-      let totalDrafts = 0;
 
       results.forEach((res) => {
         totalOrders += res.data.orders_synced || 0;
-        totalDrafts += res.data.drafts_synced || 0;
       });
 
-      if (totalOrders + totalDrafts === 0) {
+      if (totalOrders === 0) {
         toast.success(
           "Sincronización finalizada: No se encontraron nuevas órdenes en ninguna tienda.",
         );
       } else {
         toast.success(
-          `Sincronización finalizada: ${totalOrders} órdenes y ${totalDrafts} borradores importados de ${shopifyConnectedShops.length} tiendas.`,
+          `Sincronización finalizada: ${totalOrders} órdenes importadas de ${shopifyConnectedShops.length} tiendas.`,
         );
       }
     } catch (error) {
@@ -598,7 +596,6 @@ export default function TiendasPage() {
                                   const {
                                     total_found,
                                     orders_synced,
-                                    drafts_synced,
                                   } = response.data;
                                   if (total_found === 0) {
                                     toast.success(
@@ -606,7 +603,7 @@ export default function TiendasPage() {
                                     );
                                   } else {
                                     toast.success(
-                                      `Sincronización finalizada: ${orders_synced} órdenes y ${drafts_synced} borradores importados.`,
+                                      `Sincronización finalizada: ${orders_synced} órdenes importadas.`,
                                     );
                                   }
                                 })

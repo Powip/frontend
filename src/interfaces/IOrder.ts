@@ -218,6 +218,9 @@ export interface OrderHeader {
   // Campos existentes
   sellerName?: string | null;
   externalSource?: string | null;
+  /** FEAT-21: cancelado en Shopify después del import (solo informativo). */
+  shopifyCancelledAt?: string | null;
+  shopifyCancelReason?: string | null;
   externalId?: string | null;
   syncErrors?: Record<string, string> | null;
   externalData?: Record<string, unknown> | null;

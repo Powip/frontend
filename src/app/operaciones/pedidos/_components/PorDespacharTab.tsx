@@ -40,6 +40,7 @@ import {
   CalendarCheck2,
 } from "lucide-react";
 import { SourceBadge } from "@/components/shared/SourceBadge";
+import { ShopifyCancelledBadge } from "@/components/shared/ShopifyCancelledBadge";
 import { OrderDetailButton } from "@/components/orders/OrderDetailModal";
 import {
   SalesTableFilters,
@@ -945,7 +946,10 @@ export function PorDespacharTab({
                     </TableCell>
                   )}
                   <TableCell>
-                    <SourceBadge source={sale.externalSource} />
+                    <span className="inline-flex flex-wrap items-center gap-1">
+                      <SourceBadge source={sale.externalSource} />
+                      <ShopifyCancelledBadge cancelledAt={sale.shopifyCancelledAt} reason={sale.shopifyCancelReason} />
+                    </span>
                   </TableCell>
                   <TableCell className="text-sm tabular-nums">
                     {money(sale.total)}

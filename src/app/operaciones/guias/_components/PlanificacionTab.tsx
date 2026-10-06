@@ -49,6 +49,7 @@ import {
   WhatsAppIcon,
 } from "@/app/operaciones/pedidos/_components/shared";
 import { SourceBadge } from "@/components/shared/SourceBadge";
+import { ShopifyCancelledBadge } from "@/components/shared/ShopifyCancelledBadge";
 import {
   OrderDetailButton,
   OrderDetailModalProvider,
@@ -620,7 +621,10 @@ export default function PlanificacionTab() {
                               </span>
                             </td>
                             <td className="px-3 py-2">
-                              <SourceBadge source={sale.externalSource} />
+                              <span className="inline-flex flex-wrap items-center gap-1">
+                                <SourceBadge source={sale.externalSource} />
+                                <ShopifyCancelledBadge cancelledAt={sale.shopifyCancelledAt} reason={sale.shopifyCancelReason} />
+                              </span>
                             </td>
                             <td className="px-3 py-2 text-right text-sm tabular-nums">
                               {money(sale.total)}

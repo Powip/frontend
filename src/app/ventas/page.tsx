@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SourceBadge } from "@/components/shared/SourceBadge";
+import { ShopifyCancelledBadge } from "@/components/shared/ShopifyCancelledBadge";
 import {
   Table,
   TableBody,
@@ -175,6 +176,8 @@ export interface Sale {
   sellerName: string | null;
   items: OrderItem[];
   externalSource?: string | null;
+  shopifyCancelledAt?: string | null;
+  shopifyCancelReason?: string | null;
   externalId?: string | null;
   aliclikDispatchStatus?: string | null;
   aliclikSyncedAt?: string | null;
@@ -249,6 +252,8 @@ function mapOrderToSale(order: OrderHeader): Sale {
     sellerName: order.sellerName ?? null,
     items: order.items || [],
     externalSource: order.externalSource ?? null,
+    shopifyCancelledAt: order.shopifyCancelledAt ?? null,
+    shopifyCancelReason: order.shopifyCancelReason ?? null,
     externalId: order.externalId ?? null,
     aliclikDispatchStatus: order.aliclikDispatchStatus ?? null,
     aliclikSyncedAt: order.aliclikSyncedAt ?? null,
@@ -1243,7 +1248,10 @@ Estado: ${sale.status}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <SourceBadge source={sale.externalSource} />
+                    <span className="inline-flex flex-wrap items-center gap-1">
+                      <SourceBadge source={sale.externalSource} />
+                      <ShopifyCancelledBadge cancelledAt={sale.shopifyCancelledAt} reason={sale.shopifyCancelReason} />
+                    </span>
                   </TableCell>
                   {/* Columnas fijas derecha (Estado siempre visible para poder cambiarlo) */}
                   <TableCell className="2xl:sticky 2xl:right-[240px] w-[68px] min-w-[68px] 2xl:w-[150px] 2xl:min-w-[150px] 2xl:z-10 bg-background border-l">
@@ -1496,7 +1504,10 @@ Estado: ${sale.status}
                     </span>
                   </TableCell>
                   <TableCell>
-                    <SourceBadge source={sale.externalSource} />
+                    <span className="inline-flex flex-wrap items-center gap-1">
+                      <SourceBadge source={sale.externalSource} />
+                      <ShopifyCancelledBadge cancelledAt={sale.shopifyCancelledAt} reason={sale.shopifyCancelReason} />
+                    </span>
                   </TableCell>
                   {/* Columnas fijas derecha (Estado siempre visible para poder cambiarlo) */}
                   <TableCell className="2xl:sticky 2xl:right-[240px] w-[68px] min-w-[68px] 2xl:w-[150px] 2xl:min-w-[150px] 2xl:z-10 bg-background border-l">
