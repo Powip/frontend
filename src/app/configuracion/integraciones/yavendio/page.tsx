@@ -10,12 +10,14 @@ import {
   saveYavendioConfig,
   testYavendioConnection,
   syncYavendioCatalog,
+  importYavendioCatalog,
   listYavendioWebhooks,
   createYavendioWebhook,
   setYavendioWebhookActive,
   deleteYavendioWebhook,
   YavendioSafeConfig,
   CatalogSyncSummary,
+  CatalogImportSummary,
   YavendioWebhook,
 } from "@/services/yavendioService";
 import YavendioProductPickerModal from "./_components/YavendioProductPickerModal";
@@ -34,6 +36,12 @@ type SaveStep = "saving" | "testing" | "done";
 interface StoreOption {
   id: string;
   name: string;
+}
+
+/** Almacén de Powip, con el nombre de su tienda para el selector del import. */
+interface InventoryOption {
+  id: string;
+  label: string;
 }
 
 export default function YavendioConfigPage() {
@@ -70,6 +78,13 @@ export default function YavendioConfigPage() {
 
   // Sync manual de productos elegidos a mano (activos e inactivos)
   const [pickerOpen, setPickerOpen] = useState(false);
+
+  // Import de productos YaVendió → Powip (Fase C · M6)
+  const [inventoryOptions, setInventoryOptions] = useState<InventoryOption[]>([]);
+  const [importInventoryId, setImportInventoryId] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<CatalogImportSummary | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
 
   // Webhook de pedidos (Fase 5)
   const [webhooks, setWebhooks] = useState<YavendioWebhook[]>([]);
@@ -135,6 +150,39 @@ export default function YavendioConfigPage() {
       .then((response) => setStores(response.data?.stores || []))
       .catch(() => setStores([]));
   }, [companyId]);
+
+  // Almacenes de TODAS las tiendas de la empresa para el import (el
+  // `inventories` del AuthContext solo trae los de la tienda seleccionada).
+  // Mismo llamado por tienda que `GestionAlmacenes`.
+  useEffect(() => {
+    if (!credential?.isActive || stores.length === 0) return;
+    let cancelled = false;
+    Promise.all(
+      stores.map((store) =>
+        axios
+          .get<{ id: string; name: string }[]>(
+            `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${store.id}`,
+          )
+          .then((response) =>
+            (Array.isArray(response.data) ? response.data : []).map((inventory) => ({
+              id: inventory.id,
+              label: `${store.name} — ${inventory.name}`,
+            })),
+          )
+          .catch(() => [] as InventoryOption[]),
+      ),
+    ).then((results) => {
+      if (!cancelled) setInventoryOptions(results.flat());
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [credential?.isActive, stores]);
+
+  // El selector arranca en el almacén guardado en la config.
+  useEffect(() => {
+    setImportInventoryId(credential?.importInventoryId ?? "");
+  }, [credential?.importInventoryId]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -209,6 +257,9 @@ export default function YavendioConfigPage() {
     setSyncResult(null);
     setSyncError(null);
     setSyncing(false);
+    setImportResult(null);
+    setImportError(null);
+    setImporting(false);
   };
 
   const handleSyncCatalog = async () => {
@@ -228,6 +279,27 @@ export default function YavendioConfigPage() {
       );
     } finally {
       setSyncing(false);
+    }
+  };
+
+  const handleImportCatalog = async () => {
+    if (!companyId || !token || !importInventoryId) return;
+    setImporting(true);
+    setImportError(null);
+    setImportResult(null);
+    try {
+      // El backend importa al almacén guardado en la config: si el usuario eligió
+      // otro, se guarda primero (sin tocar la Api-Key, la integración sigue activa).
+      if (importInventoryId !== credential?.importInventoryId) {
+        const updated = await saveYavendioConfig(token, { companyId, importInventoryId });
+        setCredential(updated);
+      }
+      const summary = await importYavendioCatalog(token, companyId);
+      setImportResult(summary);
+    } catch (err: unknown) {
+      setImportError(extractErrorMessage(err, "Error al importar los productos de Yavendio"));
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -566,6 +638,116 @@ export default function YavendioConfigPage() {
                   Elegir productos a sincronizar →
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Import YaVendió → Powip (Fase C · M6) — solo con integración activa */}
+          {credential.isActive && (
+            <div className="border-t border-gray-200 dark:border-slate-700 pt-4 space-y-3">
+              <p className="text-xs font-bold text-gray-700 dark:text-slate-200 uppercase tracking-wide">
+                Traer productos desde Yavendio
+              </p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">
+                Crea en Powip los productos que ya cargaste en Yavendio, o
+                actualiza los que ya existen (por SKU). Entran con stock 0 en el
+                almacén que elijas.
+              </p>
+
+              <div>
+                <label
+                  htmlFor="yavendio-import-inventory"
+                  className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1"
+                >
+                  Almacén destino
+                </label>
+                <select
+                  id="yavendio-import-inventory"
+                  value={importInventoryId}
+                  onChange={(e) => setImportInventoryId(e.target.value)}
+                  disabled={importing}
+                  className="w-full border border-gray-300 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">Elegí un almacén</option>
+                  {inventoryOptions.map((inventory) => (
+                    <option key={inventory.id} value={inventory.id}>
+                      {inventory.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {importing && (
+                <div className="flex items-center gap-3 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg px-3 py-3">
+                  <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                  <p className="text-xs text-gray-600 dark:text-slate-300">
+                    Importando productos... esto puede tardar unos minutos.
+                  </p>
+                </div>
+              )}
+
+              {importError && (
+                <div className="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2 text-xs text-red-700 dark:text-red-400">
+                  {importError}
+                </div>
+              )}
+
+              {importResult && (
+                <div className="space-y-2">
+                  <div className="grid grid-cols-4 gap-2 text-center">
+                    <div className="bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg py-2">
+                      <p className="text-lg font-bold text-gray-800 dark:text-slate-100">{importResult.created}</p>
+                      <p className="text-[10px] text-gray-400 dark:text-slate-500 uppercase">Creados</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg py-2">
+                      <p className="text-lg font-bold text-gray-800 dark:text-slate-100">{importResult.updated}</p>
+                      <p className="text-[10px] text-gray-400 dark:text-slate-500 uppercase">Actualizados</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg py-2">
+                      <p className={`text-lg font-bold ${importResult.partial > 0 ? "text-amber-600 dark:text-amber-400" : "text-gray-800 dark:text-slate-100"}`}>
+                        {importResult.partial}
+                      </p>
+                      <p className="text-[10px] text-gray-400 dark:text-slate-500 uppercase">Parciales</p>
+                    </div>
+                    <div className="bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg py-2">
+                      <p className={`text-lg font-bold ${importResult.failed > 0 ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-slate-100"}`}>
+                        {importResult.failed}
+                      </p>
+                      <p className="text-[10px] text-gray-400 dark:text-slate-500 uppercase">Fallidos</p>
+                    </div>
+                  </div>
+
+                  {/* ms-products crea como provisoria (review_status='pending') toda
+                      variante que no matchea una existente: tanto en los creados como
+                      en los parciales (parte de las variantes ya existían). */}
+                  {importResult.created + importResult.partial > 0 && (
+                    <p className="text-xs text-amber-700 dark:text-amber-400">
+                      Las variantes nuevas quedan pendientes de revisión en
+                      Inventario → Reconciliación.
+                    </p>
+                  )}
+
+                  {importResult.errors.length > 0 && (
+                    <div className="bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-lg px-3 py-2 space-y-1 max-h-40 overflow-y-auto">
+                      {importResult.errors.map((item, idx) => (
+                        <p key={`${item.productId}-${idx}`} className="text-xs text-red-700 dark:text-red-400">
+                          <span className="font-mono">Producto Yavendio #{item.productId}</span>
+                          {": "}
+                          {item.message}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleImportCatalog}
+                disabled={importing || !importInventoryId}
+                className="w-full bg-blue-600 text-white py-2 rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+              >
+                {importing ? "Importando..." : "Importar productos desde Yavendio"}
+              </button>
             </div>
           )}
 

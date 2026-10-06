@@ -14,6 +14,8 @@ export interface YavendioSafeConfig {
   /** Enmascarada por el backend (`****XXXX`) — nunca viaja en texto plano. */
   apiKey: string | null;
   importStoreId: string | null;
+  /** Almacén de Powip donde `POST /yavendio/import/:companyId` crea los productos. */
+  importInventoryId: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -31,6 +33,11 @@ export interface SaveYavendioConfigPayload {
   companyId: string;
   apiKey?: string;
   importStoreId?: string;
+  /**
+   * Se puede mandar solo (con `companyId`): el backend actualiza ese campo y no
+   * toca la Api-Key, así que la integración sigue activa.
+   */
+  importInventoryId?: string;
 }
 
 export interface CatalogSyncErrorItem {
@@ -47,6 +54,24 @@ export interface CatalogSyncSummary {
   skipped: number;
   failed: number;
   errors: CatalogSyncErrorItem[];
+}
+
+export interface CatalogImportErrorItem {
+  /** Id del producto en YaVendió (numérico, no un uuid de Powip). */
+  productId: number;
+  message: string;
+}
+
+/** Resumen de `POST /yavendio/import/:companyId` (YaVendió → Powip). */
+export interface CatalogImportSummary {
+  companyId: string;
+  totalProducts: number;
+  created: number;
+  updated: number;
+  /** Creados con alguna variante provisional (sin match de SKU en Powip). */
+  partial: number;
+  failed: number;
+  errors: CatalogImportErrorItem[];
 }
 
 export type SyncProductOutcome = "created" | "updated" | "skipped";
@@ -152,6 +177,24 @@ export const syncYavendioCatalog = async (
 ): Promise<CatalogSyncSummary> => {
   const res = await axios.post<CatalogSyncSummary>(
     `${API_INTEGRATIONS}/yavendio/sync/${companyId}`,
+    {},
+    { headers: headers(token) },
+  );
+  return res.data;
+};
+
+/**
+ * Importa a Powip los productos ya cargados en Yavendio
+ * (`POST /yavendio/import/:companyId`, FEAT-13 Fase 1j). Los crea o actualiza en el
+ * almacén `importInventoryId` de la config: el backend responde 400 si no hay uno
+ * guardado. Síncrono del lado del backend, puede tardar según el tamaño del catálogo.
+ */
+export const importYavendioCatalog = async (
+  token: string,
+  companyId: string,
+): Promise<CatalogImportSummary> => {
+  const res = await axios.post<CatalogImportSummary>(
+    `${API_INTEGRATIONS}/yavendio/import/${companyId}`,
     {},
     { headers: headers(token) },
   );
