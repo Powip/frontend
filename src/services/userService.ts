@@ -151,7 +151,7 @@ export const createPlatformUser = async (
   // Validar regex de password del backend: al menos 6 chars, una minúscula y un número
   const passwordRegex = /^(?=.*[a-z])(?=.*\d).{6,}$/;
   if (!passwordRegex.test(registerPayload.password)) {
-    const msg = `La contraseña '${registerPayload.password.slice(0, 4)}...' no cumple el formato requerido (mín. 6 chars, una minúscula, un número)`;
+    const msg = "La contraseña no cumple el formato requerido (mín. 6 chars, una minúscula, un número)";
     console.error('[createPlatformUser] Password inválida:', msg);
     throw new Error(msg);
   }
@@ -179,7 +179,11 @@ export const createPlatformUser = async (
       (Array.isArray(backendError?.errors) ? backendError.errors.join(', ') : null) ||
       JSON.stringify(backendError) ||
       err.message;
-    throw new Error(`ms-auth 400: ${errorMsg}`);
+    const safeErrorMsg = [
+      JSON.stringify(registerPayload.password).slice(1, -1),
+      registerPayload.password,
+    ].reduce((text, secret) => text.split(secret).join("[oculto]"), String(errorMsg));
+    throw new Error(`ms-auth 400: ${safeErrorMsg}`);
   }
 };
 

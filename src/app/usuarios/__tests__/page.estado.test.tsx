@@ -317,4 +317,150 @@ describe("UsuariosPage — paginación tras recargar", () => {
     expect(await screen.findByText("Usuario00 Prueba")).toBeInTheDocument();
     expect(screen.queryByText("No se encontraron usuarios.")).not.toBeInTheDocument();
   });
+
+  it("al cambiar la búsqueda vuelve a la primera página", async () => {
+    jest.mocked(getUsersByCompany).mockResolvedValue(many);
+    render(<UsuariosPage />);
+    await screen.findByText("Usuario00 Prueba");
+    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+    await screen.findByText("Usuario10 Prueba");
+
+    fireEvent.change(screen.getByPlaceholderText("Buscar por nombre, email o documento..."), {
+      target: { value: "Prueba" },
+    });
+
+    expect(await screen.findByText("Usuario00 Prueba")).toBeInTheDocument();
+    expect(screen.queryByText("Usuario10 Prueba")).not.toBeInTheDocument();
+  });
+});
+
+describe("UsuariosPage — respuestas fuera de orden", () => {
+  const OTHER_COMPANY_USERS = [{ ...USERS[1], id: "u-3", name: "Rosa", surname: "Díaz" }];
+  const session = (companyId: string | null) =>
+    jest.mocked(useAuth).mockReturnValue({
+      auth: { accessToken: "token", company: companyId ? { id: companyId } : null, user: { id: "admin-1", role: "ADMINISTRADOR" } },
+      loading: false,
+    } as unknown as ReturnType<typeof useAuth>);
+  const deferredCalls = () => {
+    const calls: Array<{ resolve: (users: unknown[]) => void; reject: (e: unknown) => void }> = [];
+    jest.mocked(getUsersByCompany).mockImplementation(
+      () => new Promise((resolve, reject) => calls.push({ resolve: resolve as (users: unknown[]) => void, reject })),
+    );
+    return calls;
+  };
+  let consoleError: jest.SpyInstance;
+
+  beforeEach(() => {
+    consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+  });
+  afterEach(() => consoleError.mockRestore());
+
+  it("una respuesta antigua no sobrescribe la carga más reciente", async () => {
+    const calls = deferredCalls();
+    session("company-1");
+    const { rerender } = render(<UsuariosPage />);
+
+    session("company-2");
+    rerender(<UsuariosPage />);
+    expect(getUsersByCompany).toHaveBeenLastCalledWith("company-2", "token");
+
+    calls[1].resolve(OTHER_COMPANY_USERS);
+    expect(await screen.findByText("Rosa Díaz")).toBeInTheDocument();
+
+    calls[0].resolve(USERS);
+    await waitFor(() => expect(screen.getByText("Rosa Díaz")).toBeInTheDocument());
+    expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument();
+  });
+
+  it("un error de una petición antigua no muestra la alerta ni pisa la carga actual", async () => {
+    const calls = deferredCalls();
+    session("company-1");
+    const { rerender } = render(<UsuariosPage />);
+    session("company-2");
+    rerender(<UsuariosPage />);
+
+    calls[0].reject(new Error("500"));
+    calls[1].resolve(OTHER_COMPANY_USERS);
+
+    expect(await screen.findByText("Rosa Díaz")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("al cambiar de empresa no muestra los usuarios de la empresa previa mientras carga", async () => {
+    const calls = deferredCalls();
+    session("company-1");
+    const { rerender } = render(<UsuariosPage />);
+    calls[0].resolve(USERS);
+    expect(await screen.findByText("Ana Torres")).toBeInTheDocument();
+
+    session("company-2");
+    rerender(<UsuariosPage />);
+
+    await waitFor(() => expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument());
+    expect(screen.queryByText("No se encontraron usuarios.")).not.toBeInTheDocument();
+
+    calls[1].resolve(OTHER_COMPANY_USERS);
+    expect(await screen.findByText("Rosa Díaz")).toBeInTheDocument();
+  });
+
+  it("al perder la empresa, una respuesta pendiente no reaparece", async () => {
+    const calls = deferredCalls();
+    session("company-1");
+    const { rerender } = render(<UsuariosPage />);
+
+    session(null);
+    rerender(<UsuariosPage />);
+    calls[0].resolve(USERS);
+
+    expect(await screen.findByText("No tienes una empresa asociada.")).toBeInTheDocument();
+
+    session("company-2");
+    rerender(<UsuariosPage />);
+
+    await waitFor(() => expect(getUsersByCompany).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument();
+    calls[1].resolve(OTHER_COMPANY_USERS);
+    expect(await screen.findByText("Rosa Díaz")).toBeInTheDocument();
+  });
+
+  it("tras desmontar, una respuesta o error pendiente no registra ni actualiza nada", async () => {
+    const calls = deferredCalls();
+    session("company-1");
+    const { unmount } = render(<UsuariosPage />);
+
+    unmount();
+    calls[0].reject(new Error("500"));
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("el reintento descarta la respuesta de la carga anterior", async () => {
+    const calls = deferredCalls();
+    session("company-1");
+    render(<UsuariosPage />);
+    calls[0].reject(new Error("500"));
+    fireEvent.click(within(await screen.findByRole("alert")).getByRole("button", { name: "Reintentar" }));
+
+    calls[1].resolve(OTHER_COMPANY_USERS);
+
+    expect(await screen.findByText("Rosa Díaz")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("UsuariosPage — ubicación", () => {
+  it("muestra solo las partes disponibles y — si no hay ninguna", async () => {
+    jest.mocked(getUsersByCompany).mockResolvedValue([
+      { ...USERS[0], district: undefined, province: undefined },
+      { ...USERS[1], district: "", province: "Lima" },
+    ]);
+    render(<UsuariosPage />);
+
+    expect(within(await rowOf("Ana Torres")).getByText("—")).toBeInTheDocument();
+    const luisRow = await rowOf("Luis Paz");
+    expect(within(luisRow).getByText("Lima")).toBeInTheDocument();
+    expect(luisRow).not.toHaveTextContent(", Lima");
+  });
 });

@@ -1,7 +1,7 @@
 # Contrato técnico de backend — Usuarios, Roles e Invitaciones
 
 Estado: **borrador para validar con backend**. Fecha de elaboración: 2026-10-02.
-Rama de referencia: `feat/usuarios-roles-permisos`. El documento está trackeado desde el commit `e9ef6af` («feat: contrato»), subido a `origin/feat/usuarios-roles-permisos`. Las referencias `archivo:línea` se verificaron contra el commit anterior, `1f1c824` («fix(users): restrict access and remove unpersisted actions»); cambios posteriores en esos archivos pueden desplazarlas.
+Rama de referencia: `feat/usuarios-roles-permisos`. El documento está trackeado desde el commit `e9ef6af` («feat: contrato»), subido a `origin/feat/usuarios-roles-permisos`. Las referencias `archivo:línea` se verificaron contra el commit anterior, `1f1c824` («fix(users): restrict access and remove unpersisted actions»); cambios posteriores en esos archivos pueden desplazarlas. La sección 1.7 describe el cierre de frontend posterior (2026-10-06) y cita archivos sin número de línea.
 
 ## 0. Alcance, fuentes y convención de evidencia
 
@@ -99,6 +99,32 @@ Implicación para backend: el filtro `COMPANY_USER_ROLES` es una decisión de fr
 ### 1.6 Qué no se puede afirmar desde el frontend
 
 Si ms-auth valida rol y empresa en cada endpoint; si `status=false` bloquea el login y revoca refresh tokens; unicidad real de email/documento; qué devuelve `permissions` en el JWT; si existe soft-delete; códigos de error reales (el frontend solo muestra mensajes genéricos o `JSON.stringify(err.response.data)`, `userService.ts:174-182`). Todo esto pasa a verificación en la sección 5 (P0-01).
+
+### 1.7 Cierre de frontend de Usuarios y Roles (2026-10-06)
+
+Cambios hechos solo en el frontend, sobre los endpoints que ya usa (E1, E2, E3, E5). **No** se agregó ningún endpoint ni campo nuevo en las peticiones, y nada de esta sección pasa a [BE]. Las referencias son a archivos, sin número de línea.
+
+| Cambio | Archivos | Qué hace el frontend | Qué **no** prueba |
+|---|---|---|---|
+| Guardado bloqueante en el modal | `src/components/modals/UserModal.tsx`, `src/components/forms/UserForm.tsx` | Mientras E1/E5 están en curso, el modal no se cierra (Cancelar, X, Esc, clic afuera) y un segundo envío se ignora. El modal solo refleja lo que informa el formulario montado: si un formulario se desmonta durante el guardado (otro usuario, modal cerrado), libera su propio bloqueo una sola vez, en el mismo commit en que se desmonta, y después no llama a `onUserSaved` ni vuelve a tocar el estado del modal. El aviso de éxito o error se sigue mostrando porque refleja la respuesta real | Que E1/E5 sean idempotentes; si la red reintenta, el backend podría recibir dos altas (ver Q-06) |
+| Rol propio | `UserForm.tsx` | Al editarse a sí mismo, el selector de rol queda deshabilitado y el envío rechaza cualquier `roleName` distinto del actual. Se sigue enviando `roleName` con el valor actual en cada edición, porque no se sabe si omitirlo equivale a «sin cambio». Si el usuario que se edita a sí mismo no tiene rol (`role: null`), el formulario explica que no puede asignárselo y no permite guardar: no se inventa un rol ni se habilita la autoasignación | Que ms-auth impida cambiar el propio rol (P0-05). El control del frontend se salta llamando a E5 directamente |
+| Ubicación (`department`/`city`) | `src/interfaces/IUser.ts`, `UserForm.tsx`, `src/app/usuarios/page.tsx` | El modelo `User` acepta `department` y `city` (el modal de superadmin ya lee `city \|\| department`). La edición inicializa el departamento con `department \|\| city`. El alta sigue enviando `department` y la edición `city`, pero **la edición ya no envía `city` vacío**. La tabla muestra solo las partes disponibles de distrito y provincia, o «—» | Qué campo devuelve realmente E3 (P1-02). **Consecuencia:** hasta confirmar el contrato, desde `/usuarios` no se puede borrar el departamento de un usuario, porque omitir `city` evita enviar un vacío que podría borrar el dato sin querer |
+| Validación de campos | `UserForm.tsx` | Recorta nombre, apellido, email, documento, teléfono y dirección; rechaza vacíos en nombre y apellido (y en email y documento al crear). No recorta ni transforma la contraseña | Formato de teléfono y documento: no se impuso ninguno (D12) |
+| Política de contraseña | `UserForm.tsx` | Aplica la regla que el frontend ya usaba en E7 (`^(?=.*[a-z])(?=.*\d).{6,}$`): obligatoria al crear, y al editar solo si se completa. El campo usa `autoComplete="new-password"` para que el navegador no complete la contraseña del admin | Que ms-auth aplique la misma regla en E1/E5; el mínimo de 8 de la spec sigue pendiente (D6) |
+| Roles sin sesión | `UserForm.tsx` | Sin `accessToken` no se llama a E2: se muestra «Sesión no disponible» y no se permite guardar, en lugar de quedar en «Cargando roles» | — |
+| Listado: solo vale la última petición | `page.tsx` | Cada carga de E3 tiene un número; una respuesta o error de una petición anterior se descarta. Al cambiar de empresa, perder la sesión o desmontar, la carga en curso se invalida y la lista se vacía, así que no se muestran usuarios de la empresa previa | Que E3 filtre por la empresa del token (P0-02) |
+| Mensaje de error de `createPlatformUser` (E7) | `src/services/userService.ts` | El error y el `console.error` por contraseña inválida ya no incluyen ningún fragmento de la contraseña. En los errores de ms-auth, el mensaje (que puede ser el cuerpo completo vía `JSON.stringify`) oculta el valor exacto de la contraseña enviada, también en su forma escapada en JSON. Firma, payload y normalización de `userId` sin cambios | Qué devuelve ms-auth en un error de E7. No hay evidencia de que devuelva la contraseña, pero el formato de validación de Spring incluye `rejectedValue` y el frontend mostraba el cuerpo sin filtrar. Que ms-auth no registre contraseñas (P0-08) |
+
+**Preguntas para ms-auth derivadas de este cierre** (se suman a P0-01; ninguna tiene respuesta todavía):
+
+| ID | Pregunta | Por qué importa al frontend |
+|---|---|---|
+| Q-01 | ¿E3 devuelve el departamento como `department`, como `city` o como ambos? ¿Y E5 y E6? | Hoy se lee `department \|\| city`; si es solo uno, se simplifica el modelo (P1-02) |
+| Q-02 | En E5 (`PUT /api/v1/auth/user/{id}`), un campo **ausente**, ¿se conserva o se pone en `null`? ¿Y un string vacío? | Define si se puede volver a enviar `city` vacío para borrar el departamento, y si omitir `roleName` es seguro |
+| Q-03 | ¿E5 acepta `roleName` igual al rol actual cuando ese rol no es asignable por el actor (p. ej. `ADMINISTRADOR`)? | Con la anti-escalada de P0-06, editar los datos de un admin podría fallar aunque el rol no cambie |
+| Q-04 | ¿E5 rechaza que el actor cambie su propio rol (`CANNOT_CHANGE_OWN_ROLE`, P0-05)? | El bloqueo del frontend es solo de interfaz |
+| Q-05 | ¿Qué política de contraseña aplica ms-auth en E1 y E5? ¿Es la misma regex que el frontend atribuye a E7? | El frontend valida 6 + minúscula + número sin confirmación (D6) |
+| Q-06 | ¿E1 es seguro ante una petición duplicada (mismo email o documento → `409`)? | El frontend evita el doble envío, pero no puede garantizarlo ante reintentos de red |
 
 ---
 
@@ -398,4 +424,4 @@ Prioridades: **P0** bloquea gestionar usuarios con seguridad; **P1** bloquea la 
 
 ### Dependencias del frontend que desbloquea este contrato
 
-Persistir activar/desactivar (P0-04), paginación/búsqueda en servidor (P1-01), selector de roles sin lista local (P1-04), invitaciones (P1-03), matriz de permisos (P2-01) y reemplazo de `SUPERADMIN_EMAILS`/`ADMIN_ROLES` por permisos efectivos (P1-05, P2-04).
+Persistir activar/desactivar (P0-04), paginación/búsqueda en servidor (P1-01), selector de roles sin lista local (P1-04), invitaciones (P1-03), matriz de permisos (P2-01) y reemplazo de `SUPERADMIN_EMAILS`/`ADMIN_ROLES` por permisos efectivos (P1-05, P2-04). Las respuestas a Q-01..Q-06 (§1.7) permiten volver a borrar el departamento desde la edición, decidir si `roleName` se omite cuando no cambia y alinear la política de contraseña.

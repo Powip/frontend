@@ -12,6 +12,7 @@ export interface User {
   email: string;
   address?: string;
   department?: string;
+  city?: string;
   province?: string;
   district?: string;
   phoneNumber?: string;

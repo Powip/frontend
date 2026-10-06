@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { User } from "@/interfaces/IUser";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import UserForm from "../forms/UserForm";
@@ -17,18 +18,31 @@ export default function UserModal({
   user,
   onUserSaved,
 }: UserModalProps) {
+  const [saving, setSaving] = useState(false);
+
   return (
     <Dialog
       open={open}
-      onOpenChange={(open) => (!open ? onClose() : undefined)}
+      onOpenChange={(next) => {
+        if (!next && !saving) onClose();
+      }}
     >
-      <DialogContent className="!max-w-[90vw] sm:!max-w-[600px] !w-full">
+      <DialogContent
+        className="!max-w-[90vw] sm:!max-w-[600px] !w-full"
+        showCloseButton={!saving}
+      >
         <DialogHeader>
           <DialogTitle>
             {user ? "Editar Usuario" : "Nuevo Usuario"}
           </DialogTitle>
         </DialogHeader>
-        <UserForm user={user} onUserSaved={onUserSaved} onCancel={onClose} />
+        <UserForm
+          key={user?.id ?? "new"}
+          user={user}
+          onUserSaved={onUserSaved}
+          onCancel={onClose}
+          onSavingChange={setSaving}
+        />
       </DialogContent>
     </Dialog>
   );

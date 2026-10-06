@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,27 +28,45 @@ interface UserFormProps {
   user: User | null;
   onUserSaved: () => void;
   onCancel: () => void;
+  onSavingChange?: (saving: boolean) => void;
 }
 
 /** Roles asignables a colaboradores de una empresa (no ADMINISTRADOR ni USUARIO). */
 const COMPANY_USER_ROLES = ["AGENTES", "VENTAS", "OPERACIONES", "COURIER", "CALLER"];
 
-type RolesStatus = "loading" | "ready" | "empty" | "error";
+const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*\d).{6,}$/;
+
+const PASSWORD_POLICY_MESSAGE =
+  "La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número.";
+
+const SELF_WITHOUT_ROLE_MESSAGE =
+  "Tu usuario no tiene un rol asignado y no podés asignártelo vos. No se pueden guardar cambios en tu perfil desde aquí hasta que otro administrador te asigne un rol.";
+
+type RolesStatus = "loading" | "ready" | "empty" | "error" | "unauthenticated";
 
 const ROLES_UNAVAILABLE_MESSAGE: Record<Exclude<RolesStatus, "ready">, string> = {
   loading: "Cargando roles…",
   empty: "No hay roles disponibles para asignar",
   error: "No se pudieron cargar los roles. No se puede guardar sin un rol válido.",
+  unauthenticated: "Sesión no disponible. Volvé a iniciar sesión para cargar los roles.",
 };
 
-export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps) {
+export default function UserForm({
+  user,
+  onUserSaved,
+  onCancel,
+  onSavingChange,
+}: UserFormProps) {
   const { auth } = useAuth();
   const [loading, setLoading] = useState(false);
+  const mountedRef = useRef(true);
+  const savingRef = useRef(false);
+  const onSavingChangeRef = useRef(onSavingChange);
+  const rolesRequestRef = useRef(0);
   // Solo roles reales de GET /api/v1/roles — sin respaldo local: un rol
   // inventado (antes ids "1"–"5") terminaba enviándose a ms-auth.
   const [roles, setRoles] = useState<Role[]>([]);
   const [rolesStatus, setRolesStatus] = useState<RolesStatus>("loading");
-  const [rolesReloadKey, setRolesReloadKey] = useState(0);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -78,6 +96,8 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
   // cambio que se descartaría y reportar "actualizado". Para hacerlos
   // editables, ms-auth tiene que incluirlos en el contrato de edición (O-04).
   const isEditing = !!user;
+  const isSelf = !!user && !!auth?.user?.id && user.id === auth.user.id;
+  const isSelfWithoutRole = isSelf && !currentRoleName;
 
   // Ubigeo data logic
   const departments = ubigeos[0].departments;
@@ -87,14 +107,28 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
     filteredProvinces.find((p) => p.name === formData.province)?.districts ||
     [];
 
+  useLayoutEffect(() => {
+    onSavingChangeRef.current = onSavingChange;
+  }, [onSavingChange]);
+
+  useLayoutEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (savingRef.current) {
+        savingRef.current = false;
+        onSavingChangeRef.current?.(false);
+      }
+    };
+  }, []);
+
   // Load roles from API
-  useEffect(() => {
-    if (!auth?.accessToken) return;
-    let cancelled = false;
+  const loadRoles = useCallback((accessToken: string) => {
+    const requestId = ++rolesRequestRef.current;
     setRolesStatus("loading");
-    getRoles(auth.accessToken)
+    getRoles(accessToken)
       .then((rolesData) => {
-        if (cancelled) return;
+        if (requestId !== rolesRequestRef.current) return;
         // Filtrar solo roles permitidos para usuarios de compañía (no ADMINISTRADOR ni USUARIO)
         const allowedRoles = (Array.isArray(rolesData) ? rolesData : []).filter(
           (r) => COMPANY_USER_ROLES.includes(r.name?.toUpperCase()),
@@ -103,15 +137,26 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
         setRolesStatus(allowedRoles.length > 0 ? "ready" : "empty");
       })
       .catch(() => {
-        if (cancelled) return;
+        if (requestId !== rolesRequestRef.current) return;
         setRoles([]);
         setRolesStatus("error");
         toast.error("No se pudieron cargar los roles");
       });
+  }, []);
+
+  useEffect(() => {
+    const accessToken = auth?.accessToken;
+    if (!accessToken) {
+      rolesRequestRef.current += 1;
+      setRoles([]);
+      setRolesStatus("unauthenticated");
+      return;
+    }
+    loadRoles(accessToken);
     return () => {
-      cancelled = true;
+      rolesRequestRef.current += 1;
     };
-  }, [auth?.accessToken, rolesReloadKey]);
+  }, [auth?.accessToken, loadRoles]);
 
   useEffect(() => {
     if (user) {
@@ -123,7 +168,7 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
         phoneNumber: user.phoneNumber || "",
         password: "", // No mostrar contraseña al editar
         address: user.address || "",
-        department: user.department || "",
+        department: user.department || user.city || "",
         province: user.province || "",
         district: user.district || "",
         roleName: user.role?.name || "",
@@ -148,16 +193,61 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
     }
   }, [user]);
 
+  const setSaving = (saving: boolean) => {
+    savingRef.current = saving;
+    setLoading(saving);
+    onSavingChange?.(saving);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!auth?.company?.id) {
+    if (savingRef.current) return;
+
+    const companyId = auth?.company?.id;
+    if (!companyId) {
       toast.error("No se encontró la compañía asociada");
+      return;
+    }
+
+    const accessToken = auth?.accessToken;
+    if (!accessToken) {
+      toast.error(ROLES_UNAVAILABLE_MESSAGE.unauthenticated);
       return;
     }
 
     if (rolesStatus !== "ready") {
       toast.error(ROLES_UNAVAILABLE_MESSAGE[rolesStatus]);
+      return;
+    }
+
+    const fields = {
+      name: formData.name.trim(),
+      surname: formData.surname.trim(),
+      email: formData.email.trim(),
+      identityDocument: formData.identityDocument.trim(),
+      phoneNumber: formData.phoneNumber.trim(),
+      address: formData.address.trim(),
+    };
+
+    const missingFields = [
+      !fields.name && "Nombre",
+      !fields.surname && "Apellido",
+      !isEditing && !fields.email && "Correo electrónico",
+      !isEditing && !fields.identityDocument && "Documento de Identidad",
+    ].filter(Boolean);
+    if (missingFields.length > 0) {
+      toast.error(`Completá los campos obligatorios: ${missingFields.join(", ")}`);
+      return;
+    }
+
+    if (isSelfWithoutRole) {
+      toast.error(SELF_WITHOUT_ROLE_MESSAGE);
+      return;
+    }
+
+    if (isSelf && formData.roleName !== currentRoleName) {
+      toast.error("No podés cambiar tu propio rol");
       return;
     }
 
@@ -181,45 +271,52 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
       return;
     }
 
-    setLoading(true);
+    if (formData.password && !PASSWORD_POLICY.test(formData.password)) {
+      toast.error(PASSWORD_POLICY_MESSAGE);
+      return;
+    }
+
+    setSaving(true);
 
     try {
       if (user) {
         // Actualizar usuario existente
         const updateRequest: UpdateUserRequest = {
-          name: formData.name,
-          surname: formData.surname,
-          address: formData.address,
-          city: formData.department,
+          name: fields.name,
+          surname: fields.surname,
+          address: fields.address,
+          ...(formData.department && { city: formData.department }),
           province: formData.province,
           district: formData.district,
-          phoneNumber: formData.phoneNumber,
+          phoneNumber: fields.phoneNumber,
           roleName: formData.roleName,
           // Solo enviar password si se ingresó uno nuevo
           ...(formData.password && { password: formData.password }),
         };
 
-        await updateUser(user.id, updateRequest, auth.accessToken!);
+        await updateUser(user.id, updateRequest, accessToken);
         toast.success("Usuario actualizado exitosamente");
       } else {
         // Crear nuevo usuario
         const request: CreateCompanyUserRequest = {
-          identityDocument: formData.identityDocument,
-          name: formData.name,
-          surname: formData.surname,
-          email: formData.email,
+          identityDocument: fields.identityDocument,
+          name: fields.name,
+          surname: fields.surname,
+          email: fields.email,
           password: formData.password,
-          address: formData.address,
+          address: fields.address,
           department: formData.department,
           province: formData.province,
           district: formData.district,
-          phoneNumber: formData.phoneNumber,
+          phoneNumber: fields.phoneNumber,
           roleName: formData.roleName,
         };
 
-        await createCompanyUser(auth.company.id, request, auth.accessToken);
+        await createCompanyUser(companyId, request, accessToken);
         toast.success("Usuario creado exitosamente");
       }
+      if (!mountedRef.current) return;
+      setSaving(false);
       onUserSaved();
     } catch (error: any) {
       // Extraer mensaje de error específico del backend
@@ -242,8 +339,7 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
       }
 
       toast.error(message);
-    } finally {
-      setLoading(false);
+      if (mountedRef.current) setSaving(false);
     }
   };
 
@@ -330,6 +426,7 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
           <Input
             id="password"
             type="password"
+            autoComplete="new-password"
             placeholder={user ? "••••••••" : "Mínimo 6 caracteres"}
             value={formData.password}
             onChange={(e) =>
@@ -359,9 +456,12 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
           onValueChange={(value) =>
             setFormData({ ...formData, roleName: value })
           }
-          disabled={rolesStatus !== "ready"}
+          disabled={rolesStatus !== "ready" || isSelf}
         >
-          <SelectTrigger id="role">
+          <SelectTrigger
+            id="role"
+            aria-describedby={isSelf ? "own-role-hint" : undefined}
+          >
             <SelectValue
               placeholder={
                 rolesStatus === "ready"
@@ -383,6 +483,28 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
             ))}
           </SelectContent>
         </Select>
+        {isSelf && !isSelfWithoutRole && (
+          <p id="own-role-hint" className="text-xs text-muted-foreground">
+            No podés cambiar tu propio rol.
+          </p>
+        )}
+        {isSelfWithoutRole && (
+          <p
+            id="own-role-hint"
+            role="status"
+            className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300"
+          >
+            {SELF_WITHOUT_ROLE_MESSAGE}
+          </p>
+        )}
+        {rolesStatus === "unauthenticated" && (
+          <div
+            role="alert"
+            className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+          >
+            {ROLES_UNAVAILABLE_MESSAGE.unauthenticated}
+          </div>
+        )}
         {(rolesStatus === "error" || rolesStatus === "empty") && (
           <div
             role="alert"
@@ -394,7 +516,9 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
               variant="outline"
               size="sm"
               className="h-7 text-xs"
-              onClick={() => setRolesReloadKey((k) => k + 1)}
+              onClick={() => {
+                if (auth?.accessToken) loadRoles(auth.accessToken);
+              }}
             >
               Reintentar
             </Button>
@@ -500,7 +624,7 @@ export default function UserForm({ user, onUserSaved, onCancel }: UserFormProps)
         <Button
           type="submit"
           className="bg-teal-600 hover:bg-teal-700"
-          disabled={loading || rolesStatus !== "ready"}
+          disabled={loading || rolesStatus !== "ready" || isSelfWithoutRole}
         >
           {loading
             ? "Guardando..."

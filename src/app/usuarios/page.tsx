@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,8 @@ import { getUsersByCompany } from "@/services/userService";
 
 const ITEMS_PER_PAGE = 10;
 
+const SKELETON_ROW_KEYS = ["skeleton-1", "skeleton-2", "skeleton-3", "skeleton-4", "skeleton-5"];
+
 export default function UsuariosPage() {
   const { auth, loading: authLoading } = useAuth();
   // Misma fuente que el resto de las páginas de empresa (auth.company, de
@@ -41,8 +43,10 @@ export default function UsuariosPage() {
   const [openModal, setOpenModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
+  const requestIdRef = useRef(0);
 
   const fetchUsers = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     // Sin empresa o sin token no se pide nada: el render muestra el aviso de
     // empresa ausente (o nada, si la sesión todavía carga).
     if (!companyId || !accessToken) return;
@@ -51,17 +55,23 @@ export default function UsuariosPage() {
     setLoadError(false);
     try {
       const usersData = await getUsersByCompany(companyId, accessToken);
+      if (requestId !== requestIdRef.current) return;
       setUsers(usersData);
     } catch (error) {
+      if (requestId !== requestIdRef.current) return;
       console.error("Error al cargar usuarios:", error);
       setLoadError(true);
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [companyId, accessToken]);
 
   useEffect(() => {
+    setUsers([]);
     fetchUsers();
+    return () => {
+      requestIdRef.current += 1;
+    };
   }, [fetchUsers]);
 
   const filtered = users.filter((u) => {
@@ -84,11 +94,6 @@ export default function UsuariosPage() {
   const startIndex = (page - 1) * ITEMS_PER_PAGE;
   const endIndex = startIndex + ITEMS_PER_PAGE;
   const paginatedUsers = filtered.slice(startIndex, endIndex);
-
-  // Reset to page 1 when search changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery]);
 
   const handleUserSaved = () => {
     setOpenModal(false);
@@ -173,7 +178,10 @@ export default function UsuariosPage() {
                   <Input
                     placeholder="Buscar por nombre, email o documento..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setCurrentPage(1);
+                    }}
                     className="pl-9"
                   />
                 </div>
@@ -197,8 +205,8 @@ export default function UsuariosPage() {
 
                   <TableBody>
                     {loading ? (
-                      [...Array(5)].map((_, i) => (
-                        <TableRow key={i}>
+                      SKELETON_ROW_KEYS.map((key) => (
+                        <TableRow key={key}>
                           <TableCell className="border-r"><Skeleton className="h-4 w-8" /></TableCell>
                           <TableCell className="border-r"><Skeleton className="h-4 w-32" /></TableCell>
                           <TableCell className="border-r"><Skeleton className="h-4 w-40" /></TableCell>
@@ -246,7 +254,7 @@ export default function UsuariosPage() {
                           <TableCell className="border-r text-muted-foreground">{u.email}</TableCell>
                           <TableCell className="border-r">{u.identityDocument}</TableCell>
                           <TableCell className="border-r text-xs text-muted-foreground whitespace-nowrap">
-                            {u.district}, {u.province}
+                            {[u.district, u.province].filter(Boolean).join(", ") || "—"}
                           </TableCell>
                           <TableCell className="border-r">
                             {getRoleBadge(u.role?.name)}
