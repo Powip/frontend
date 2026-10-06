@@ -72,6 +72,18 @@
  *     - `testYavendioConnection` rechaza (401) → `connectionOk=false` (alerta
  *       de conexión fallida) y NO aparece la nota de catálogo.
  *
+ * 18. Importar productos desde YaVendió (FEAT-13 Fase C · M6, sección
+ *     "Traer productos desde Yavendio", solo con `credential.isActive`):
+ *     - Selector "Almacén destino" con los almacenes de TODAS las tiendas
+ *       (`GET ${NEXT_PUBLIC_API_INVENTORY}/inventory/store/:storeId` por
+ *       tienda), rotulados "Tienda — Almacén", preseleccionando
+ *       `importInventoryId` de la config. Sin almacén → botón deshabilitado.
+ *     - Si el almacén elegido difiere del guardado, primero
+ *       `saveYavendioConfig({ companyId, importInventoryId })` y después
+ *       `importYavendioCatalog`; si es el mismo, solo importa.
+ *     - Resumen creados/actualizados/parciales/fallidos + detalle de errores
+ *       + aviso de variantes pendientes de revisión. Error → mensaje visible.
+ *
  * Mocks aplicados:
  * - @/contexts/AuthContext → useAuth
  * - sonner → toast (success/error) — el componente llama `toast.success` al
@@ -129,6 +141,7 @@ jest.mock('@/services/yavendioService', () => ({
   saveYavendioConfig: jest.fn(),
   testYavendioConnection: jest.fn(),
   syncYavendioCatalog: jest.fn(),
+  importYavendioCatalog: jest.fn(),
   listYavendioWebhooks: jest.fn(),
   createYavendioWebhook: jest.fn(),
   setYavendioWebhookActive: jest.fn(),
@@ -190,6 +203,7 @@ import {
   saveYavendioConfig,
   testYavendioConnection,
   syncYavendioCatalog,
+  importYavendioCatalog,
   listYavendioWebhooks,
   createYavendioWebhook,
   setYavendioWebhookActive,
@@ -198,6 +212,7 @@ import {
 import type {
   YavendioSafeConfig,
   CatalogSyncSummary,
+  CatalogImportSummary,
   YavendioWebhook,
 } from '@/services/yavendioService';
 import YavendioConfigPage from '../page';
@@ -209,6 +224,7 @@ const mockGetConfig = jest.mocked(getYavendioConfig);
 const mockSaveConfig = jest.mocked(saveYavendioConfig);
 const mockTestConnection = jest.mocked(testYavendioConnection);
 const mockSyncCatalog = jest.mocked(syncYavendioCatalog);
+const mockImportCatalog = jest.mocked(importYavendioCatalog);
 const mockListWebhooks = jest.mocked(listYavendioWebhooks);
 const mockCreateWebhook = jest.mocked(createYavendioWebhook);
 const mockSetWebhookActive = jest.mocked(setYavendioWebhookActive);
@@ -246,6 +262,7 @@ const MOCK_CONFIG_ACTIVE: YavendioSafeConfig = {
   companyId: 'company-1',
   apiKey: '****abcd',
   importStoreId: 'store-1',
+  importInventoryId: null,
   isActive: true,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -299,6 +316,25 @@ const MOCK_SYNC_SUMMARY_WITH_ERRORS: CatalogSyncSummary = {
   ],
 };
 
+/** Almacenes por tienda: `GET ${NEXT_PUBLIC_API_INVENTORY}/inventory/store/:storeId`. */
+const MOCK_INVENTORIES_BY_STORE: Record<string, { id: string; name: string }[]> = {
+  'store-1': [{ id: 'inv-1', name: 'Almacén Central' }],
+  'store-2': [{ id: 'inv-2', name: 'Almacén Norte' }],
+};
+
+const MOCK_IMPORT_SUMMARY: CatalogImportSummary = {
+  companyId: 'company-1',
+  totalProducts: 8,
+  created: 3,
+  updated: 2,
+  partial: 1,
+  failed: 2,
+  errors: [
+    { productId: 501, message: 'SKU duplicado' },
+    { productId: 502, message: 'Variante sin precio' },
+  ],
+};
+
 // URL que arma la página para el webhook RECEPTOR (singular "webhook"),
 // distinta de la ruta de administración (plural) — ver comentario en page.tsx.
 const WEBHOOK_URL = 'http://localhost:3004/yavendio/webhook/company-1';
@@ -348,8 +384,17 @@ beforeEach(() => {
   mockSetWebhookActive.mockResolvedValue(MOCK_WEBHOOK_ACTIVE);
   mockDeleteWebhook.mockResolvedValue(undefined);
 
-  // Selector de tiendas: axios.get inline de la page (sin service dedicado)
-  mockAxiosGet.mockResolvedValue({ data: { stores: MOCK_STORES } });
+  mockImportCatalog.mockResolvedValue(MOCK_IMPORT_SUMMARY);
+
+  // axios.get inline de la page (sin service dedicado): selector de tiendas
+  // (company) y almacenes por tienda (inventory).
+  mockAxiosGet.mockImplementation((url: string) => {
+    const inventoryMatch = /\/inventory\/store\/([^/]+)$/.exec(url);
+    if (inventoryMatch) {
+      return Promise.resolve({ data: MOCK_INVENTORIES_BY_STORE[inventoryMatch[1]] ?? [] });
+    }
+    return Promise.resolve({ data: { stores: MOCK_STORES } });
+  });
 });
 
 // ── Helper ─────────────────────────────────────────────────────────────────────
@@ -820,6 +865,118 @@ describe('YavendioConfigPage', () => {
       await user.click(screen.getByRole('button', { name: /actualizar credenciales/i }));
 
       expect(screen.queryByText(/^creados$/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // ── 18. Importar productos desde YaVendió (FEAT-13 Fase C · M6) ─────────
+
+  describe('importar productos desde YaVendió', () => {
+    beforeEach(() => {
+      mockGetConfig.mockResolvedValue(MOCK_CONFIG_ACTIVE);
+    });
+
+    async function findImportSelect() {
+      return screen.findByLabelText(/almacén destino/i);
+    }
+
+    it('lista los almacenes de todas las tiendas, con el nombre de la tienda', async () => {
+      renderPage();
+      const select = await findImportSelect();
+
+      await waitFor(() => {
+        expect(select).toHaveTextContent('Tienda Principal — Almacén Central');
+        expect(select).toHaveTextContent('Tienda Secundaria — Almacén Norte');
+      });
+    });
+
+    it('sin almacén elegido, el botón de importar está deshabilitado', async () => {
+      renderPage();
+      await findImportSelect();
+
+      expect(
+        screen.getByRole('button', { name: /importar productos desde yavendio/i }),
+      ).toBeDisabled();
+    });
+
+    it('preselecciona el almacén guardado en la config', async () => {
+      mockGetConfig.mockResolvedValue({ ...MOCK_CONFIG_ACTIVE, importInventoryId: 'inv-2' });
+      renderPage();
+      const select = await findImportSelect();
+
+      await waitFor(() => expect(select).toHaveValue('inv-2'));
+    });
+
+    it('con un almacén nuevo, lo guarda en la config antes de importar y muestra el resumen', async () => {
+      mockSaveConfig.mockResolvedValue({ ...MOCK_CONFIG_ACTIVE, importInventoryId: 'inv-1' });
+      const { container } = renderPage();
+      const select = await findImportSelect();
+      await waitFor(() => expect(select).toHaveTextContent('Almacén Central'));
+      const user = userEvent.setup();
+
+      await user.selectOptions(select, 'inv-1');
+      await user.click(screen.getByRole('button', { name: /importar productos desde yavendio/i }));
+
+      await waitFor(() => {
+        expect(mockImportCatalog).toHaveBeenCalledWith('fake-token', 'company-1');
+      });
+      expect(mockSaveConfig).toHaveBeenCalledWith('fake-token', {
+        companyId: 'company-1',
+        importInventoryId: 'inv-1',
+      });
+      expect(mockSaveConfig.mock.invocationCallOrder[0]).toBeLessThan(
+        mockImportCatalog.mock.invocationCallOrder[0],
+      );
+
+      const partialLabel = await screen.findByText(/^parciales$/i);
+      expect(partialLabel.previousElementSibling).toHaveTextContent('1');
+      expect(screen.getByText(/^creados$/i).previousElementSibling).toHaveTextContent('3');
+      expect(screen.getByText(/^actualizados$/i).previousElementSibling).toHaveTextContent('2');
+      expect(screen.getByText(/^fallidos$/i).previousElementSibling).toHaveTextContent('2');
+      expect(container.textContent).toContain('SKU duplicado');
+      expect(container.textContent).toContain('502');
+      expect(screen.getByText(/pendientes de revisión/i)).toBeInTheDocument();
+    });
+
+    it('con el almacén ya guardado, importa sin volver a guardar la config', async () => {
+      mockGetConfig.mockResolvedValue({ ...MOCK_CONFIG_ACTIVE, importInventoryId: 'inv-1' });
+      renderPage();
+      const select = await findImportSelect();
+      await waitFor(() => expect(select).toHaveValue('inv-1'));
+      const user = userEvent.setup();
+
+      await user.click(screen.getByRole('button', { name: /importar productos desde yavendio/i }));
+
+      await waitFor(() => expect(mockImportCatalog).toHaveBeenCalled());
+      expect(mockSaveConfig).not.toHaveBeenCalled();
+    });
+
+    it('si el import falla, muestra el mensaje del backend sin romper la página', async () => {
+      mockGetConfig.mockResolvedValue({ ...MOCK_CONFIG_ACTIVE, importInventoryId: 'inv-1' });
+      mockImportCatalog.mockRejectedValue({
+        response: { data: { message: 'YaVendió no respondió' } },
+      });
+      renderPage();
+      const select = await findImportSelect();
+      await waitFor(() => expect(select).toHaveValue('inv-1'));
+      const user = userEvent.setup();
+
+      await user.click(screen.getByRole('button', { name: /importar productos desde yavendio/i }));
+
+      expect(await screen.findByText('YaVendió no respondió')).toBeInTheDocument();
+      expect(
+        screen.getByRole('button', { name: /importar productos desde yavendio/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('con la integración inactiva no muestra la sección de import', async () => {
+      mockGetConfig.mockResolvedValue(MOCK_CONFIG_INACTIVE);
+      renderPage();
+      await screen.findByText(/credenciales guardadas/i);
+
+      expect(screen.queryByLabelText(/almacén destino/i)).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /importar productos desde yavendio/i }),
+      ).not.toBeInTheDocument();
     });
   });
 
