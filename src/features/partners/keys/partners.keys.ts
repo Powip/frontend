@@ -5,7 +5,9 @@ export const partnersKeys = {
 
   summary: () => [...partnersKeys.all, "summary"] as const,
 
-  referrals: (limit?: number) => [...partnersKeys.all, "referrals", limit] as const,
+  referralsAll: () => [...partnersKeys.all, "referrals"] as const,
+
+  referrals: (limit?: number) => [...partnersKeys.referralsAll(), limit] as const,
 
   commissions: () => [...partnersKeys.all, "commissions"] as const,
 
@@ -27,7 +29,12 @@ export const partnersKeys = {
 
   adminPartnerReferrals: (id: string) => [...partnersKeys.all, "admin-partners", id, "referrals"] as const,
 
-  reviewQueue: () => [...partnersKeys.all, "review-queue"] as const,
+  adminApplicationsAll: () => [...partnersKeys.all, "admin-applications"] as const,
+
+  adminApplications: (status: string | null) =>
+    [...partnersKeys.adminApplicationsAll(), status] as const,
+
+  reviewQueue: () =>[...partnersKeys.all, "review-queue"] as const,
 
   pendingPaymentConfirmations: () => [...partnersKeys.all, "pending-payment-confirmations"] as const,
 

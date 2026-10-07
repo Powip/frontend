@@ -3,7 +3,7 @@
  *
  * Comportamiento verificado:
  * 1. El botón de WhatsApp abre wa.me con el link codificado en el mensaje.
- * 2. Los botones de WhatsApp/Instagram están deshabilitados si todavía no hay link.
+ * 2. Los botones de WhatsApp/Instagram están deshabilitados si el perfil no tiene link.
  * 3. "Instagram" copia el link al portapapeles y muestra un toast mencionando Instagram.
  * 4. "Descargar QR" está deshabilitado mientras no hay QR generado, y llama a saveAs con
  *    el nombre de archivo correcto una vez que el QR está listo.
@@ -20,7 +20,6 @@ import { saveAs } from "file-saver";
 import { toast } from "sonner";
 import { ShareKitCard } from "../share-kit-card";
 import { useQRCode } from "@/hooks/useQrCode";
-import type { PartnerLink } from "@/features/partners/models/partner-link";
 import type { PartnerResource } from "@/features/partners/models/partner-resource";
 
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
@@ -32,14 +31,8 @@ jest.mock("@/hooks/useQrCode", () => ({ useQRCode: jest.fn() }));
 const mockUseQRCode = jest.mocked(useQRCode);
 const mockSaveAs = jest.mocked(saveAs);
 
-const LINK: PartnerLink = {
-  url: "powip.com/r/joel-coila",
-  code: "JOEL10",
-  discountPct: 10,
-  clicks: 312,
-  codeUses: 47,
-  conversions: 7,
-};
+const REFERRAL_LINK = "https://www.powip.tech/r/partner-demo-code";
+const REFERRAL_CODE = "PARTNERDEMO";
 
 const RESOURCE: PartnerResource = {
   id: "res-1",
@@ -63,7 +56,8 @@ describe("ShareKitCard", () => {
 
     render(
       <ShareKitCard
-        link={LINK}
+        referralLink={REFERRAL_LINK}
+        referralCode={REFERRAL_CODE}
         resources={[]}
         isLoadingResources={false}
         isResourcesError={false}
@@ -78,14 +72,15 @@ describe("ShareKitCard", () => {
       "noopener,noreferrer",
     );
     const calledUrl = jest.mocked(window.open).mock.calls[0][0] as string;
-    expect(calledUrl).toContain(encodeURIComponent(LINK.url));
+    expect(calledUrl).toContain(encodeURIComponent(REFERRAL_LINK));
   });
 
   it("WhatsApp e Instagram están deshabilitados sin link", () => {
     mockUseQRCode.mockReturnValue(null);
     render(
       <ShareKitCard
-        link={undefined}
+        referralLink={null}
+        referralCode={null}
         resources={[]}
         isLoadingResources={false}
         isResourcesError={false}
@@ -103,7 +98,8 @@ describe("ShareKitCard", () => {
 
     render(
       <ShareKitCard
-        link={LINK}
+        referralLink={REFERRAL_LINK}
+        referralCode={REFERRAL_CODE}
         resources={[]}
         isLoadingResources={false}
         isResourcesError={false}
@@ -112,7 +108,7 @@ describe("ShareKitCard", () => {
     );
     await user.click(screen.getByRole("button", { name: /instagram/i }));
 
-    expect(writeTextMock).toHaveBeenCalledWith(`https://${LINK.url}`);
+    expect(writeTextMock).toHaveBeenCalledWith(REFERRAL_LINK);
     expect(toast.success).toHaveBeenCalledWith(expect.stringContaining("Instagram"));
   });
 
@@ -120,7 +116,8 @@ describe("ShareKitCard", () => {
     mockUseQRCode.mockReturnValue(null);
     render(
       <ShareKitCard
-        link={LINK}
+        referralLink={REFERRAL_LINK}
+        referralCode={REFERRAL_CODE}
         resources={[]}
         isLoadingResources={false}
         isResourcesError={false}
@@ -136,7 +133,8 @@ describe("ShareKitCard", () => {
 
     render(
       <ShareKitCard
-        link={LINK}
+        referralLink={REFERRAL_LINK}
+        referralCode={REFERRAL_CODE}
         resources={[]}
         isLoadingResources={false}
         isResourcesError={false}
@@ -145,14 +143,15 @@ describe("ShareKitCard", () => {
     );
     await user.click(screen.getByRole("button", { name: /descargar qr/i }));
 
-    expect(saveAs).toHaveBeenCalledWith("data:image/png;base64,fake", `powip-${LINK.code}.png`);
+    expect(saveAs).toHaveBeenCalledWith("data:image/png;base64,fake", `powip-${REFERRAL_CODE}.png`);
   });
 
   it("muestra skeletons mientras cargan los recursos", () => {
     mockUseQRCode.mockReturnValue(null);
     render(
       <ShareKitCard
-        link={LINK}
+        referralLink={REFERRAL_LINK}
+        referralCode={REFERRAL_CODE}
         resources={undefined}
         isLoadingResources={true}
         isResourcesError={false}
@@ -169,7 +168,8 @@ describe("ShareKitCard", () => {
 
     render(
       <ShareKitCard
-        link={LINK}
+        referralLink={REFERRAL_LINK}
+        referralCode={REFERRAL_CODE}
         resources={undefined}
         isLoadingResources={false}
         isResourcesError={true}
@@ -184,7 +184,8 @@ describe("ShareKitCard", () => {
     mockUseQRCode.mockReturnValue(null);
     render(
       <ShareKitCard
-        link={LINK}
+        referralLink={REFERRAL_LINK}
+        referralCode={REFERRAL_CODE}
         resources={[]}
         isLoadingResources={false}
         isResourcesError={false}
@@ -200,7 +201,8 @@ describe("ShareKitCard", () => {
 
     render(
       <ShareKitCard
-        link={LINK}
+        referralLink={REFERRAL_LINK}
+        referralCode={REFERRAL_CODE}
         resources={[RESOURCE]}
         isLoadingResources={false}
         isResourcesError={false}

@@ -59,6 +59,7 @@ import {
   SIDEBAR_ITEMS_PERMISSIONS,
   isSuperadmin,
   hasAdminAccess,
+  hasRouteAccess,
 } from "@/config/permissions.config";
 import {
   DropdownMenu,
@@ -357,11 +358,18 @@ export function Sidebar({ className }: SidebarProps) {
         );
       }
 
+      if (item.name === "Partners Admin") {
+        return hasPermission("VIEW_PARTNERS_ADMIN") || hasPermission("PARTNERS_VIEW");
+      }
+
       const requiredPermission = SIDEBAR_ITEMS_PERMISSIONS[item.name];
       if (!requiredPermission) return true;
       return hasPermission(requiredPermission);
     })
     .map((item: NavigationItem) => {
+      if (item.name === "Partners Admin" && item.href && !hasRouteAccess(item.href, auth?.user)) {
+        return { ...item, href: "/partners/admin/solicitudes" };
+      }
       if (item.children) {
         return {
           ...item,

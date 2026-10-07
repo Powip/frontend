@@ -71,3 +71,7 @@ export function getRequiredPartnerPermission(pathname: string): PartnerPermissio
 export function isPartnerAdminPath(pathname: string): boolean {
   return pathname === "/partners/admin" || pathname.startsWith("/partners/admin/");
 }
+
+export function isPartnerApplicationPath(pathname: string): boolean {
+  return pathname === "/partners/solicitud" || pathname.startsWith("/partners/solicitud/");
+}

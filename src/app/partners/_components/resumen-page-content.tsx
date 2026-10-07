@@ -3,6 +3,7 @@
 import { usePartnerSummary } from "@/features/partners/hooks/use-partner-summary";
 import { useRecentReferrals } from "@/features/partners/hooks/use-recent-referrals";
 import { PartnerSectionError } from "@/components/partners/partner-section-error";
+import { SimulatedDataNotice } from "@/components/partners/simulated-data-notice";
 import { NextPayoutCard } from "@/components/partners/next-payout-card";
 import { PartnerHeroCard } from "./partner-hero-card";
 import { PartnerKpiRow } from "./partner-kpi-row";
@@ -19,6 +20,7 @@ export function ResumenPageContent() {
   return (
     <div className="space-y-5 p-6">
       <h2 className="sr-only">Resumen</h2>
+      <SimulatedDataNotice description="Las métricas, comisiones y pagos del resumen todavía no están conectados al servicio de Partners. Tus últimos referidos sí son reales." />
 
       {summaryQuery.isError ? (
         <PartnerSectionError

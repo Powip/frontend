@@ -26,16 +26,9 @@ const PROFILE_LABELS: Record<AdminPartner["profile"], string> = {
 interface AdminPartnersTableProps {
   partners: AdminPartner[] | undefined;
   isLoading: boolean;
-  approvingId: string | null;
-  onApprove: (id: string) => void;
 }
 
-export function AdminPartnersTable({
-  partners,
-  isLoading,
-  approvingId,
-  onApprove,
-}: AdminPartnersTableProps) {
+export function AdminPartnersTable({ partners, isLoading }: AdminPartnersTableProps) {
   if (isLoading || !partners) {
     return (
       <div className="space-y-2">
@@ -100,19 +93,9 @@ export function AdminPartnersTable({
               <AdminPartnerStatusBadge status={partner.status} />
             </TableCell>
             <TableCell className="text-right">
-              {partner.status === "por_aprobar" ? (
-                <Button
-                  size="sm"
-                  onClick={() => onApprove(partner.id)}
-                  disabled={approvingId === partner.id}
-                >
-                  {approvingId === partner.id ? "Aprobando..." : "Aprobar"}
-                </Button>
-              ) : (
-                <Button asChild size="sm" variant="outline">
-                  <Link href={`/partners/admin/partners/${partner.id}`}>Ver ficha</Link>
-                </Button>
-              )}
+              <Button asChild size="sm" variant="outline">
+                <Link href={`/partners/admin/partners/${partner.id}`}>Ver ficha</Link>
+              </Button>
             </TableCell>
           </TableRow>
         ))}

@@ -157,7 +157,51 @@ describe("PartnerPortalGate", () => {
     expect(
       screen.getByText(/no pudimos validar tu sesión para el programa de partners/i),
     ).toBeInTheDocument();
+    expect(screen.getByText(/volvé a iniciar sesión/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /iniciar sesión/i })).toHaveAttribute("href", "/login");
     expect(screen.queryByText(/contenido del portal/i)).not.toBeInTheDocument();
+  });
+
+  it.each([429, 500, 503])("un %i en /me no se muestra como cuenta sin perfil", (status) => {
+    setupIdentity({ error: buildAxiosError(status) });
+
+    renderGate();
+
+    expect(screen.getByText(/no pudimos verificar tu cuenta de partner/i)).toBeInTheDocument();
+    expect(screen.queryByText(/no tiene un perfil de partner/i)).not.toBeInTheDocument();
+  });
+
+  it("ante un 401 con body vacío también pide volver a iniciar sesión", () => {
+    setupIdentity({ error: buildAxiosError(401, "") });
+
+    renderGate();
+
+    expect(screen.getByText(/volvé a iniciar sesión/i)).toBeInTheDocument();
+  });
+
+  it("sin perfil de partner ofrece enviar una solicitud", () => {
+    setupIdentity({ data: { kind: "not_partner" } });
+
+    renderGate();
+
+    expect(screen.getByRole("link", { name: /solicitar ser partner/i })).toHaveAttribute(
+      "href",
+      "/partners/solicitud",
+    );
+  });
+
+  it("el formulario de solicitud no depende de tener perfil de partner", () => {
+    setupIdentity({});
+    mockUsePathname.mockReturnValue("/partners/solicitud");
+
+    render(
+      <PartnerPortalGate>
+        <p>Formulario de solicitud</p>
+      </PartnerPortalGate>,
+    );
+
+    expect(screen.getByText("Formulario de solicitud")).toBeInTheDocument();
+    expect(mockUsePartnerIdentity).not.toHaveBeenCalled();
   });
 
   it("con perfil activo renderiza el portal y expone el partner actual", () => {

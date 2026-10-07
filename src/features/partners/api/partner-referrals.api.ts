@@ -6,10 +6,15 @@ import type { RegisterReferralResponseDto } from "../dto/register-referral-respo
 
 export async function getPartnerReferralsApi(
   cursor: string | null,
+  limit?: number,
 ): Promise<PartnerReferralPageResponseDto> {
+  const params = {
+    ...(cursor ? { cursor } : {}),
+    ...(limit !== undefined ? { limit } : {}),
+  };
   const { data } = await axiosAuth.get<PartnerReferralPageResponseDto>(
     `${API.partners}/me/referrals`,
-    { params: cursor ? { cursor } : undefined },
+    { params: Object.keys(params).length > 0 ? params : undefined },
   );
 
   return data;

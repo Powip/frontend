@@ -3,6 +3,7 @@
 import { Sidebar } from "@/components/layout/Sidebar";
 import { usePathname } from "next/navigation";
 import AuthGuard from "@/components/auth/AuthGuard";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function AppContainer({
   children,
@@ -10,6 +11,7 @@ export default function AppContainer({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const { auth } = useAuth();
 
   const noSidebarRoutes = [
     "/login",
@@ -19,7 +21,9 @@ export default function AppContainer({
     "/rastreo",
   ];
 
-  const hideSidebar = noSidebarRoutes.some((r) => pathname.startsWith(r));
+  const hideSidebar =
+    noSidebarRoutes.some((r) => pathname.startsWith(r)) ||
+    (!auth && pathname.startsWith("/partners/solicitud"));
 
   return (
     <AuthGuard>

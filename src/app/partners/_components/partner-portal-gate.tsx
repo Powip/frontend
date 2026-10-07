@@ -8,6 +8,7 @@ import {
   getRequiredPartnerPermission,
   hasPartnerPermission,
   isPartnerAdminPath,
+  isPartnerApplicationPath,
   resolvePartnerAccess,
 } from "@/features/partners/utils/partner-access";
 import { PartnerAccessState } from "./partner-access-state";
@@ -53,7 +54,7 @@ function PartnerPortalAccess({ children }: PartnerPortalGateProps) {
 export function PartnerPortalGate({ children }: PartnerPortalGateProps) {
   const pathname = usePathname() ?? "";
 
-  if (isPartnerAdminPath(pathname)) {
+  if (isPartnerAdminPath(pathname) || isPartnerApplicationPath(pathname)) {
     return <div className="flex-1 overflow-auto">{children}</div>;
   }
 

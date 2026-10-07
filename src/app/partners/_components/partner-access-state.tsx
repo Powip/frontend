@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, Clock, Lock, type LucideIcon, ShieldAlert, UserX } from "lucide-react";
+import { Ban, Clock, Lock, LogIn, type LucideIcon, ShieldAlert, UserX } from "lucide-react";
 import Link from "next/link";
 import { PartnerSectionError } from "@/components/partners/partner-section-error";
 import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
@@ -85,20 +85,44 @@ export function PartnerAccessState({ state, onRetry }: PartnerAccessStateProps) 
       );
     case "unauthorized":
       return (
-        <div className="mx-auto max-w-lg">
-          <PartnerSectionError
-            message="No pudimos validar tu sesión para el programa de partners."
-            onRetry={() => onRetry?.()}
-          />
-        </div>
+        <Card role="alert" className="mx-auto max-w-lg rounded-2xl">
+          <CardContent className="flex flex-col items-center gap-3 px-6 py-8 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <LogIn aria-hidden="true" className="h-5 w-5" />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              No pudimos validar tu sesión para el programa de partners. Volvé a iniciar sesión.
+            </p>
+            <Button asChild size="sm" className="rounded-xl">
+              <Link href="/login">Iniciar sesión</Link>
+            </Button>
+          </CardContent>
+        </Card>
       );
     case "no_profile":
       return (
-        <AccessNotice
-          icon={UserX}
-          title="Esta cuenta no tiene un perfil de partner"
-          description="El portal de partners está disponible solo para partners aprobados de Powip."
-        />
+        <Card role="status" className="mx-auto max-w-lg rounded-2xl">
+          <CardContent className="flex flex-col items-center gap-3 px-6 py-8 text-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+              <UserX aria-hidden="true" className="h-5 w-5" />
+            </div>
+            <h2 className="text-base font-semibold text-foreground">
+              Esta cuenta no tiene un perfil de partner
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              El portal de partners está disponible solo para partners aprobados de Powip. Si ya
+              enviaste tu solicitud, vas a poder entrar cuando la aprobemos.
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button asChild size="sm" className="rounded-xl">
+                <Link href="/partners/solicitud">Solicitar ser partner</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline" className="rounded-xl">
+                <Link href="/dashboard">Ir al Dashboard</Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       );
     case "suspended":
       return (

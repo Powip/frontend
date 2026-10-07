@@ -40,6 +40,16 @@ describe("getPartnerReferralsApi", () => {
     });
   });
 
+  it("envía limit cuando se pide una cantidad acotada", async () => {
+    mockGet.mockResolvedValue({ data: { items: [], nextCursor: null } });
+
+    await getPartnerReferralsApi(null, 5);
+
+    expect(mockGet).toHaveBeenCalledWith("https://partners.test/v1/partners/me/referrals", {
+      params: { limit: 5 },
+    });
+  });
+
   it("no envía partnerId: la identidad sale del bearer", async () => {
     mockGet.mockResolvedValue({ data: { items: [], nextCursor: null } });
 

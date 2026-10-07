@@ -58,7 +58,7 @@ describe("useRegisterReferral", () => {
     expect(mockRegisterReferral.mock.calls[0][0]).toEqual(INPUT);
   });
 
-  it("invalida la query de referidos al mutar con éxito", async () => {
+  it("invalida todas las queries de referidos (listado y últimos) al mutar con éxito", async () => {
     mockRegisterReferral.mockResolvedValue(REGISTERED_REFERRAL);
     const { wrapper, invalidateQueries } = buildWrapper();
     const { result } = renderHook(() => useRegisterReferral(), { wrapper });
@@ -66,7 +66,7 @@ describe("useRegisterReferral", () => {
     result.current.mutate(INPUT);
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: partnersKeys.referrals() });
+    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: partnersKeys.referralsAll() });
   });
 
   it("el toast de éxito nombra al negocio y no afirma que la invitación fue enviada", async () => {

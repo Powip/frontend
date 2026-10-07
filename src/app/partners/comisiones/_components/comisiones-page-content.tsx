@@ -1,6 +1,7 @@
 "use client";
 
 import { PartnerSectionError } from "@/components/partners/partner-section-error";
+import { SimulatedDataNotice } from "@/components/partners/simulated-data-notice";
 import { usePartnerSummary } from "@/features/partners/hooks/use-partner-summary";
 import { useCommissionLines } from "@/features/partners/hooks/use-commission-lines";
 import { CommissionExplainerAlert } from "./commission-explainer-alert";
@@ -14,6 +15,7 @@ export function ComisionesPageContent() {
   return (
     <div className="space-y-5 p-6">
       <h2 className="sr-only">Comisiones</h2>
+      <SimulatedDataNotice description="Las comisiones todavía no están conectadas al servicio de Partners." />
 
       {summaryQuery.isError ? (
         <PartnerSectionError

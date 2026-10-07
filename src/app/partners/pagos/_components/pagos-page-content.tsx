@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NextPayoutCard } from "@/components/partners/next-payout-card";
 import { PartnerSectionError } from "@/components/partners/partner-section-error";
+import { SimulatedDataNotice } from "@/components/partners/simulated-data-notice";
 import { usePartnerSummary } from "@/features/partners/hooks/use-partner-summary";
 import { usePayoutHistory } from "@/features/partners/hooks/use-payout-history";
 import { usePayoutSettings } from "@/features/partners/hooks/use-payout-settings";
@@ -21,6 +22,10 @@ export function PagosPageContent() {
   return (
     <div className="grid gap-4 p-6 lg:grid-cols-[1.5fr_1fr]">
       <h2 className="sr-only">Pagos</h2>
+      <SimulatedDataNotice
+        className="lg:col-span-2"
+        description="Los saldos, el historial y los datos de cobro todavía no están conectados al servicio de Partners."
+      />
 
       <Card className="rounded-2xl">
         <CardHeader>

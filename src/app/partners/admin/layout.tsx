@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { AdminSimulatedDataNotice } from "./_components/admin-simulated-data-notice";
 import { PartnersAdminTabs } from "./_components/partners-admin-tabs";
 
 export const metadata: Metadata = {
@@ -23,7 +24,10 @@ export default function PartnersAdminLayout({ children }: { children: React.Reac
 
       <PartnersAdminTabs />
 
-      <div className="flex-1 overflow-auto">{children}</div>
+      <div className="flex-1 overflow-auto">
+        <AdminSimulatedDataNotice />
+        {children}
+      </div>
     </div>
   );
 }

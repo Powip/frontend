@@ -7,6 +7,7 @@ import { Eye, EyeOff, ArrowRight } from "lucide-react";
 
 import { Input } from "../ui/input";
 import { useAuth } from "@/contexts/AuthContext";
+import { getPartnerLoginStatus } from "@/features/partners/services/get-partner-login-status";
 import ForgotPassword from "../modals/forgotPasswortModal";
 import { Label } from "../ui/label";
 
@@ -78,6 +79,10 @@ export default function LoginForm() {
         !authResult.subscription ||
         authResult.subscription.status !== "ACTIVE"
       ) {
+        if ((await getPartnerLoginStatus(authResult.accessToken)) !== "not_partner") {
+          router.push("/partners");
+          return;
+        }
         router.push("/subscriptions");
         return;
       }

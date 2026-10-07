@@ -3,11 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { hasRouteAccess } from "@/config/permissions.config";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { useReviewQueue } from "@/features/partners/hooks/use-review-queue";
 
 const TABS = [
   { label: "Dashboard", href: "/partners/admin" },
+  { label: "Solicitudes", href: "/partners/admin/solicitudes" },
   { label: "Partners", href: "/partners/admin/partners" },
   { label: "Cola de referidos", href: "/partners/admin/cola" },
   { label: "Liquidaciones", href: "/partners/admin/liquidaciones" },
@@ -17,15 +20,17 @@ const TABS = [
 
 export function PartnersAdminTabs() {
   const pathname = usePathname();
+  const { auth } = useAuth();
   const queueQuery = useReviewQueue();
   const pendingCount = queueQuery.data?.filter((item) => item.resolution === "pendiente").length ?? 0;
+  const visibleTabs = TABS.filter((tab) => hasRouteAccess(tab.href, auth?.user));
 
   return (
     <nav
       aria-label="Secciones de administración de Partners"
       className="flex overflow-x-auto border-b border-border bg-background px-8"
     >
-      {TABS.map((tab) => {
+      {visibleTabs.map((tab) => {
         const isActive =
           pathname === tab.href ||
           (tab.href !== "/partners/admin" && pathname.startsWith(`${tab.href}/`));

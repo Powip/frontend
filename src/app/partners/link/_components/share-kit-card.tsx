@@ -9,11 +9,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQRCode } from "@/hooks/useQrCode";
 import { PartnerSectionError } from "@/components/partners/partner-section-error";
-import type { PartnerLink } from "@/features/partners/models/partner-link";
 import type { PartnerResource } from "@/features/partners/models/partner-resource";
 
 interface ShareKitCardProps {
-  link: PartnerLink | undefined;
+  referralLink: string | null;
+  referralCode: string | null;
   resources: PartnerResource[] | undefined;
   isLoadingResources: boolean;
   isResourcesError: boolean;
@@ -21,24 +21,25 @@ interface ShareKitCardProps {
 }
 
 export function ShareKitCard({
-  link,
+  referralLink,
+  referralCode,
   resources,
   isLoadingResources,
   isResourcesError,
   onRetryResources,
 }: ShareKitCardProps) {
-  const qrDataUrl = useQRCode(link ? `https://${link.url}` : "");
+  const qrDataUrl = useQRCode(referralLink ?? "");
 
   function shareOnWhatsApp() {
-    if (!link) return;
-    const message = `Te recomiendo POWIP para centralizar tus pedidos: https://${link.url}`;
+    if (!referralLink) return;
+    const message = `Te recomiendo POWIP para centralizar tus pedidos: ${referralLink}`;
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noopener,noreferrer");
   }
 
   async function shareOnInstagram() {
-    if (!link) return;
+    if (!referralLink) return;
     try {
-      await navigator.clipboard.writeText(`https://${link.url}`);
+      await navigator.clipboard.writeText(referralLink);
       toast.success("Link copiado — pegalo en tu bio o historia de Instagram");
     } catch {
       toast.error("No pudimos copiar. Copialo manualmente.");
@@ -46,8 +47,8 @@ export function ShareKitCard({
   }
 
   function downloadQr() {
-    if (!qrDataUrl || !link) return;
-    saveAs(qrDataUrl, `powip-${link.code}.png`);
+    if (!qrDataUrl || !referralLink) return;
+    saveAs(qrDataUrl, `powip-${referralCode ?? "partner"}.png`);
   }
 
   function openResource(resource: PartnerResource) {
@@ -61,11 +62,11 @@ export function ShareKitCard({
       </CardHeader>
       <CardContent className="space-y-5">
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="sm" onClick={shareOnWhatsApp} disabled={!link}>
+          <Button variant="outline" size="sm" onClick={shareOnWhatsApp} disabled={!referralLink}>
             <MessageCircle aria-hidden="true" className="h-4 w-4" />
             WhatsApp
           </Button>
-          <Button variant="outline" size="sm" onClick={shareOnInstagram} disabled={!link}>
+          <Button variant="outline" size="sm" onClick={shareOnInstagram} disabled={!referralLink}>
             <Instagram aria-hidden="true" className="h-4 w-4" />
             Instagram
           </Button>

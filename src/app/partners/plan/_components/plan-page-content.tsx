@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PartnerSectionError } from "@/components/partners/partner-section-error";
+import { SimulatedDataNotice } from "@/components/partners/simulated-data-notice";
 import { useCommissionOptions } from "@/features/partners/hooks/use-commission-options";
 import { usePartnerLink } from "@/features/partners/hooks/use-partner-link";
 import { usePartnerSummary } from "@/features/partners/hooks/use-partner-summary";
@@ -23,6 +24,7 @@ export function PlanPageContent() {
   return (
     <div className="space-y-5 p-6">
       <h2 className="sr-only">Mi plan</h2>
+      <SimulatedDataNotice description="Las opciones de comisión y tu nivel todavía no están conectados al servicio de Partners. El simulador es solo una estimación." />
 
       <div>
         <h3 className="text-base font-semibold text-foreground">Tu opción de comisión</h3>

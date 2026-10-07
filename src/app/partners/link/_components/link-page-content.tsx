@@ -1,12 +1,13 @@
 "use client";
 
-import { PartnerSectionError } from "@/components/partners/partner-section-error";
+import { useCurrentPartner } from "@/features/partners/context/current-partner.context";
 import { usePartnerLink } from "@/features/partners/hooks/use-partner-link";
 import { usePartnerResources } from "@/features/partners/hooks/use-partner-resources";
 import { PartnerLinkCard } from "./partner-link-card";
 import { ShareKitCard } from "./share-kit-card";
 
 export function LinkPageContent() {
+  const partner = useCurrentPartner();
   const linkQuery = usePartnerLink();
   const resourcesQuery = usePartnerResources();
 
@@ -14,17 +15,18 @@ export function LinkPageContent() {
     <div className="grid gap-4 p-6 lg:grid-cols-2">
       <h2 className="sr-only">Mi link y código</h2>
 
-      {linkQuery.isError ? (
-        <PartnerSectionError
-          message="No pudimos cargar tu link y código."
-          onRetry={() => linkQuery.refetch()}
-        />
-      ) : (
-        <PartnerLinkCard link={linkQuery.data} isLoading={linkQuery.isLoading} />
-      )}
+      <PartnerLinkCard
+        referralLink={partner.referralLink}
+        referralCode={partner.referralCode}
+        metrics={linkQuery.data}
+        isLoadingMetrics={linkQuery.isLoading}
+        isMetricsError={linkQuery.isError}
+        onRetryMetrics={() => linkQuery.refetch()}
+      />
 
       <ShareKitCard
-        link={linkQuery.data}
+        referralLink={partner.referralLink}
+        referralCode={partner.referralCode}
         resources={resourcesQuery.data}
         isLoadingResources={resourcesQuery.isLoading}
         isResourcesError={resourcesQuery.isError}
