@@ -1,11 +1,12 @@
 "use client";
 
 import { useId } from "react";
+import { Button } from "@/components/ui/button";
 import type { RoleOption } from "@/services/userListing";
 import { PendingBackendNotice } from "./PendingBackendNotice";
 import { PermissionMatrix } from "./PermissionMatrix";
 import { UsersModalShell } from "./UsersModalShell";
-import { roleStyle, usersTheme } from "./usersTheme";
+import { roleStyle } from "./usersTheme";
 
 interface EditPermissionsModalProps {
   role: RoleOption | null;
@@ -27,21 +28,18 @@ export function EditPermissionsModal({ role, onOpenChange }: EditPermissionsModa
       subtitle="Define a qué módulos y acciones accede este rol"
       footer={
         <>
-          <button type="button" className={usersTheme.secondaryButton} onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
-          </button>
-          <button type="button" className={usersTheme.primaryButton} disabled aria-describedby={noticeId}>
+          </Button>
+          <Button type="button" disabled aria-describedby={noticeId}>
             Guardar permisos
-          </button>
+          </Button>
         </>
       }
     >
       <div className="space-y-4">
-        <PendingBackendNotice
-          id={noticeId}
-          title="Edición de permisos todavía no habilitada"
-        >
-          Todavía no se pueden ver ni modificar los permisos de este rol. Esta pantalla muestra cómo se verá.
+        <PendingBackendNotice id={noticeId} title="Edición de permisos todavía no habilitada">
+          Todavía no se pueden ver ni modificar los permisos de este rol. La matriz usa rutas de ejemplo.
         </PendingBackendNotice>
         <PermissionMatrix caption={role ? `Permisos del rol ${role.label}` : "Permisos del rol"} />
       </div>

@@ -89,7 +89,7 @@ const chooseRole = (value: string) => {
   if (select) fireEvent.change(select, { target: { value } });
   else fireEvent.click(roleOptions().find((o) => o.value === value) as HTMLInputElement);
 };
-const departmentSelect = () => screen.getAllByRole("combobox", { name: "select" })[0] as HTMLSelectElement;
+const departmentSelect = () => screen.getByRole("combobox", { name: "department" }) as HTMLSelectElement;
 const passwordInput = () => screen.getByLabelText(/^Contraseña/);
 const submitForm = (name: string) =>
   fireEvent.submit(screen.getByRole("button", { name }).closest("form") as HTMLFormElement);
@@ -157,9 +157,52 @@ describe("UserForm — validación de campos", () => {
 
     submitForm("Crear usuario");
 
-    expect(toast.error).toHaveBeenCalledWith(
-      "Completá los campos obligatorios: Nombre, DNI / Documento",
-    );
+    expect(screen.getByLabelText("Nombre")).toHaveAccessibleDescription("Completá este campo.");
+    expect(screen.getByLabelText("Nombre")).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByLabelText("DNI / Documento")).toHaveAccessibleDescription("Completá este campo.");
+    expect(screen.getByLabelText("Apellidos")).not.toHaveAttribute("aria-invalid");
+    await waitFor(() => expect(screen.getByLabelText("Nombre")).toHaveFocus());
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("el error del campo desaparece al corregirlo", async () => {
+    render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
+    fillNewUser({ Nombre: "   " });
+    submitForm("Crear usuario");
+    expect(screen.getByText("Completá este campo.")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Ana" } });
+
+    expect(screen.queryByText("Completá este campo.")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Nombre")).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("rechaza un email con formato inválido junto al campo", async () => {
+    render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
+    fillNewUser({ Email: "ana-sin-arroba" });
+
+    submitForm("Crear usuario");
+
+    expect(screen.getByLabelText("Email")).toHaveAccessibleDescription("Ingresá un email válido.");
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it("pide elegir un rol junto al selector", async () => {
+    render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Ana" } });
+    fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Torres" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "ana@empresa.com" } });
+    fireEvent.change(screen.getByLabelText("DNI / Documento"), { target: { value: "12345678" } });
+    fireEvent.change(passwordInput(), { target: { value: "clave123" } });
+
+    submitForm("Crear usuario");
+
+    expect(roleGroup()).toHaveAccessibleDescription("Elegí un rol para el usuario.");
+    await waitFor(() => expect(roleOptions()[0]).toHaveFocus());
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
@@ -170,7 +213,8 @@ describe("UserForm — validación de campos", () => {
 
     submitForm("Guardar cambios");
 
-    expect(toast.error).toHaveBeenCalledWith("Completá los campos obligatorios: Apellidos");
+    expect(screen.getByLabelText("Apellidos")).toHaveAccessibleDescription("Completá este campo.");
+    expect(toast.error).not.toHaveBeenCalled();
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
@@ -183,9 +227,10 @@ describe("UserForm — validación de campos", () => {
 
       submitForm("Crear usuario");
 
-      expect(toast.error).toHaveBeenCalledWith(
-        "La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número.",
+      expect(passwordInput()).toHaveAccessibleDescription(
+        expect.stringContaining("La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número."),
       );
+      expect(passwordInput()).toHaveAttribute("aria-invalid", "true");
       expect(mockCreate).not.toHaveBeenCalled();
     },
   );
@@ -198,6 +243,9 @@ describe("UserForm — validación de campos", () => {
     fireEvent.change(passwordInput(), { target: { value: "corta" } });
     submitForm("Guardar cambios");
     expect(mockUpdate).not.toHaveBeenCalled();
+    expect(passwordInput()).toHaveAttribute("aria-invalid", "true");
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Más datos" })).toHaveAttribute("aria-selected", "true"));
+    await waitFor(() => expect(passwordInput()).toHaveFocus());
 
     fireEvent.change(passwordInput(), { target: { value: "" } });
     submitForm("Guardar cambios");

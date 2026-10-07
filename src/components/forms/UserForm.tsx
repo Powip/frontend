@@ -22,9 +22,11 @@ import {
   UpdateUserRequest,
 } from "@/services/userService";
 import { isCompanyAssignableRole } from "@/config/userRoles";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Eye, EyeOff, Lock } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PermissionMatrix } from "@/components/users/PermissionMatrix";
-import { PendingBackendNotice } from "@/components/users/PendingBackendNotice";
+import { UsersNotice } from "@/components/users/PendingBackendNotice";
+import { UsersDialogBody, UsersDialogFooter } from "@/components/users/UsersModalShell";
 import { roleStyle, usersTheme } from "@/components/users/usersTheme";
 
 import ubigeos from "@/utils/json/ubigeos.json";
@@ -44,6 +46,31 @@ const PASSWORD_POLICY_MESSAGE =
 const SELF_WITHOUT_ROLE_MESSAGE =
   "Tu usuario no tiene un rol asignado y no podés asignártelo vos. No se pueden guardar cambios en tu perfil desde aquí hasta que otro administrador te asigne un rol.";
 
+const REQUIRED_FIELD_MESSAGE = "Completá este campo.";
+
+const INVALID_EMAIL_MESSAGE = "Ingresá un email válido.";
+
+const ROLE_REQUIRED_MESSAGE = "Elegí un rol para el usuario.";
+
+const PASSWORD_REQUIRED_MESSAGE = "La contraseña es obligatoria para nuevos usuarios.";
+
+type FieldKey = "name" | "surname" | "email" | "identityDocument" | "password" | "role";
+
+type FieldErrors = Partial<Record<FieldKey, string>>;
+
+const FIELD_ORDER: FieldKey[] = ["name", "surname", "email", "identityDocument", "role", "password"];
+
+const MORE_TAB_FIELDS: FieldKey[] = ["identityDocument", "password"];
+
+type EditTab = "main" | "more";
+
+const isValidEmail = (value: string) => {
+  const input = document.createElement("input");
+  input.type = "email";
+  input.value = value;
+  return input.checkValidity();
+};
+
 type RolesStatus = "loading" | "ready" | "empty" | "error" | "unauthenticated";
 
 const ROLES_UNAVAILABLE_MESSAGE: Record<Exclude<RolesStatus, "ready">, string> = {
@@ -62,6 +89,10 @@ export default function UserForm({
   const { auth } = useAuth();
   const [loading, setLoading] = useState(false);
   const [showPermissions, setShowPermissions] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [pendingFocus, setPendingFocus] = useState<FieldKey | null>(null);
+  const [editTab, setEditTab] = useState<EditTab>("main");
   const mountedRef = useRef(true);
   const savingRef = useRef(false);
   const onSavingChangeRef = useRef(onSavingChange);
@@ -103,6 +134,18 @@ export default function UserForm({
   const isSelfWithoutRole = isSelf && !currentRoleName;
   const roleFieldId = useId();
   const roleSelectionDisabled = rolesStatus !== "ready" || isSelf;
+  const fieldDomId = (key: FieldKey) => (key === "role" ? `${roleFieldId}-role` : key);
+
+  useEffect(() => {
+    if (!pendingFocus) return;
+    const wantedTab: EditTab = MORE_TAB_FIELDS.includes(pendingFocus) ? "more" : "main";
+    if (isEditing && editTab !== wantedTab) {
+      setEditTab(wantedTab);
+      return;
+    }
+    document.getElementById(pendingFocus === "role" ? `${roleFieldId}-role` : pendingFocus)?.focus();
+    setPendingFocus(null);
+  }, [pendingFocus, editTab, isEditing, roleFieldId]);
 
   // Ubigeo data logic
   const departments = ubigeos[0].departments;
@@ -235,16 +278,21 @@ export default function UserForm({
       address: formData.address.trim(),
     };
 
-    const missingFields = [
-      !fields.name && "Nombre",
-      !fields.surname && "Apellidos",
-      !isEditing && !fields.email && "Email",
-      !isEditing && !fields.identityDocument && "DNI / Documento",
-    ].filter(Boolean);
-    if (missingFields.length > 0) {
-      toast.error(`Completá los campos obligatorios: ${missingFields.join(", ")}`);
+    const errors: FieldErrors = {};
+    if (!fields.name) errors.name = REQUIRED_FIELD_MESSAGE;
+    if (!fields.surname) errors.surname = REQUIRED_FIELD_MESSAGE;
+    if (!isEditing && !fields.email) errors.email = REQUIRED_FIELD_MESSAGE;
+    else if (!isEditing && !isValidEmail(fields.email)) errors.email = INVALID_EMAIL_MESSAGE;
+    if (!isEditing && !fields.identityDocument) errors.identityDocument = REQUIRED_FIELD_MESSAGE;
+    if (!formData.roleName && !isSelfWithoutRole) errors.role = ROLE_REQUIRED_MESSAGE;
+    if (!user && !formData.password) errors.password = PASSWORD_REQUIRED_MESSAGE;
+    else if (formData.password && !PASSWORD_POLICY.test(formData.password)) errors.password = PASSWORD_POLICY_MESSAGE;
+    if (Object.keys(errors).length > 0) {
+      setFieldErrors(errors);
+      setPendingFocus(FIELD_ORDER.find((key) => errors[key]) ?? null);
       return;
     }
+    setFieldErrors({});
 
     if (isSelfWithoutRole) {
       toast.error(SELF_WITHOUT_ROLE_MESSAGE);
@@ -256,11 +304,6 @@ export default function UserForm({
       return;
     }
 
-    if (!formData.roleName) {
-      toast.error("Selecciona un rol para el usuario");
-      return;
-    }
-
     // Solo se envían roles que vinieron de la API (o, al editar, el rol que
     // el usuario ya tiene asignado).
     const isKnownRole =
@@ -268,16 +311,6 @@ export default function UserForm({
       (!!user && user.role?.name === formData.roleName);
     if (!isKnownRole) {
       toast.error("El rol seleccionado no es válido");
-      return;
-    }
-
-    if (!user && !formData.password) {
-      toast.error("La contraseña es obligatoria para nuevos usuarios");
-      return;
-    }
-
-    if (formData.password && !PASSWORD_POLICY.test(formData.password)) {
-      toast.error(PASSWORD_POLICY_MESSAGE);
       return;
     }
 
@@ -350,189 +383,227 @@ export default function UserForm({
 
   const selectedRoleDescription = roles.find((role) => role.name === formData.roleName)?.description?.trim();
 
+  const errorId = (key: FieldKey) => `${roleFieldId}-${key}-error`;
+  const describedBy = (...ids: Array<string | false | undefined>) => ids.filter(Boolean).join(" ") || undefined;
+  const fieldError = (key: FieldKey) =>
+    fieldErrors[key] ? (
+      <p id={errorId(key)} className={usersTheme.fieldError}>
+        {fieldErrors[key]}
+      </p>
+    ) : null;
+
+  const updateField = (key: keyof typeof formData, value: string, errorKey?: FieldKey) => {
+    setFormData((current) => ({ ...current, [key]: value }));
+    if (errorKey && fieldErrors[errorKey]) {
+      setFieldErrors((current) => {
+        const next = { ...current };
+        delete next[errorKey];
+        return next;
+      });
+    }
+  };
+
   const renderRoleOption = (
     option: { value: string; label: string; description?: string },
     index: number,
     disabled: boolean,
   ) => {
-    const optionId = `${roleFieldId}-option-${index}`;
+    const optionId = index === 0 && !disabled ? fieldDomId("role") : `${roleFieldId}-option-${index}`;
     const descriptionId = option.description ? `${optionId}-description` : undefined;
     const style = roleStyle(option.value);
     return (
-      <div key={option.value} className={usersTheme.selectableCard}>
+      <div key={option.value} className="relative flex min-w-0 items-start gap-2.5 rounded-lg border p-3 transition-colors hover:border-primary/60 has-[:checked]:border-primary has-[:checked]:bg-primary/5 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring/50 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60">
         <input
           id={optionId}
           type="radio"
           name={`${roleFieldId}-role`}
           value={option.value}
           checked={formData.roleName === option.value}
-          onChange={() => setFormData({ ...formData, roleName: option.value })}
+          onChange={() => updateField("roleName", option.value, "role")}
           disabled={disabled}
-          aria-describedby={descriptionId}
-          className="sr-only"
+          aria-describedby={describedBy(descriptionId, fieldErrors.role && errorId("role"))}
+          aria-invalid={fieldErrors.role ? true : undefined}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
         />
-        <span aria-hidden="true" className="mb-1 block text-lg">
+        <span aria-hidden="true" className="text-base leading-5">
           {style.icon}
         </span>
-        <label
-          htmlFor={optionId}
-          className="block cursor-pointer break-words text-xs font-semibold text-[#0e0b1f] after:absolute after:inset-0 after:content-[''] dark:text-foreground"
-        >
-          {option.label}
-        </label>
-        {option.description && (
-          <p id={descriptionId} className="mt-0.5 text-[10px] text-[#8b87a3]">
-            {option.description}
-          </p>
-        )}
+        <div className="min-w-0">
+          <label
+            htmlFor={optionId}
+            className="block cursor-pointer break-words text-sm font-medium after:absolute after:inset-0 after:content-['']"
+          >
+            {option.label}
+          </label>
+          {option.description && (
+            <p id={descriptionId} className="break-words text-xs text-muted-foreground">
+              {option.description}
+            </p>
+          )}
+        </div>
       </div>
     );
   };
 
   const fieldLabel = (htmlFor: string, text: React.ReactNode, required = false) => (
-    <Label
-      htmlFor={htmlFor}
-      className={`${usersTheme.fieldLabel} ${required ? usersTheme.requiredMark : ""}`}
-    >
+    <Label htmlFor={htmlFor} className={required ? usersTheme.requiredMark : undefined}>
       {text}
     </Label>
   );
 
   const nameFields = (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <div className="space-y-1">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="min-w-0 space-y-1.5">
         {fieldLabel("name", "Nombre", true)}
         <Input
           id="name"
           placeholder="Nombre"
           value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+          onChange={(e) => updateField("name", e.target.value, "name")}
           required
-          className={usersTheme.input}
+          aria-invalid={fieldErrors.name ? true : undefined}
+          aria-describedby={describedBy(fieldErrors.name && errorId("name"))}
         />
+        {fieldError("name")}
       </div>
-      <div className="space-y-1">
+      <div className="min-w-0 space-y-1.5">
         {fieldLabel("surname", "Apellidos", true)}
         <Input
           id="surname"
           placeholder="Apellidos"
           value={formData.surname}
-          onChange={(e) => setFormData({ ...formData, surname: e.target.value })}
+          onChange={(e) => updateField("surname", e.target.value, "surname")}
           required
-          className={usersTheme.input}
+          aria-invalid={fieldErrors.surname ? true : undefined}
+          aria-describedby={describedBy(fieldErrors.surname && errorId("surname"))}
         />
+        {fieldError("surname")}
       </div>
     </div>
   );
 
   const emailField = (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1.5">
       {fieldLabel("email", "Email", !isEditing)}
       <Input
         id="email"
         type="email"
         placeholder="colaborador@empresa.com"
         value={formData.email}
-        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+        onChange={(e) => updateField("email", e.target.value, "email")}
         required
         disabled={isEditing}
-        aria-describedby={isEditing ? "readonly-fields-hint" : undefined}
-        className={usersTheme.input}
+        title={isEditing ? formData.email : undefined}
+        aria-invalid={fieldErrors.email ? true : undefined}
+        aria-describedby={describedBy(isEditing && "readonly-fields-hint", fieldErrors.email && errorId("email"))}
       />
+      {fieldError("email")}
     </div>
   );
 
   const phoneField = (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1.5">
       {fieldLabel("phoneNumber", "Teléfono")}
-      <div className="flex overflow-hidden rounded-[9px] border-[1.5px] border-[#e8e4f8] focus-within:border-[#4C2FB5] dark:border-border">
-        <span
-          aria-hidden="true"
-          className="border-r border-[#e8e4f8] bg-[#f7f6ff] px-[11px] py-2 text-xs text-[#8b87a3] dark:border-border dark:bg-muted"
-        >
-          +51
-        </span>
+      <div className="flex min-w-0 overflow-hidden rounded-md border border-input shadow-xs focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
+        {!formData.phoneNumber.trim().startsWith("+") && (
+          <span aria-hidden="true" className="flex items-center border-r bg-muted px-3 text-xs text-muted-foreground">
+            +51
+          </span>
+        )}
         <Input
           id="phoneNumber"
           inputMode="tel"
           placeholder="987 654 321"
           value={formData.phoneNumber}
-          onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-          className="rounded-none border-0 text-[13px] shadow-none focus-visible:ring-0"
+          onChange={(e) => updateField("phoneNumber", e.target.value)}
+          className="min-w-0 rounded-none border-0 shadow-none focus-visible:ring-0"
         />
       </div>
     </div>
   );
 
   const documentField = (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1.5">
       {fieldLabel("identityDocument", "DNI / Documento", !isEditing)}
       <Input
         id="identityDocument"
         placeholder="12345678"
         value={formData.identityDocument}
-        onChange={(e) => setFormData({ ...formData, identityDocument: e.target.value })}
+        onChange={(e) => updateField("identityDocument", e.target.value, "identityDocument")}
         required
         disabled={isEditing}
-        aria-describedby={isEditing ? "readonly-fields-hint" : undefined}
-        className={usersTheme.input}
+        aria-invalid={fieldErrors.identityDocument ? true : undefined}
+        aria-describedby={describedBy(
+          isEditing && "readonly-fields-hint",
+          fieldErrors.identityDocument && errorId("identityDocument"),
+        )}
       />
+      {fieldError("identityDocument")}
     </div>
   );
 
+  const passwordHintId = `${roleFieldId}-password-hint`;
   const passwordField = (
-    <div className="space-y-1">
-      <Label htmlFor="password" className={`${usersTheme.fieldLabel} ${user ? "" : usersTheme.requiredMark}`}>
+    <div className="min-w-0 space-y-1.5">
+      <Label htmlFor="password" className={user ? undefined : usersTheme.requiredMark}>
         Contraseña{" "}
-        {user && (
-          <span className="text-[10px] font-normal normal-case tracking-normal text-[#8b87a3]">
-            (dejar vacío para mantener)
-          </span>
-        )}
+        {user && <span className="text-xs font-normal text-muted-foreground">(dejar vacío para mantener)</span>}
       </Label>
-      <Input
-        id="password"
-        type="password"
-        autoComplete="new-password"
-        placeholder={user ? "••••••••" : "Mínimo 6 caracteres"}
-        value={formData.password}
-        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-        required={!user}
-        className={usersTheme.input}
-      />
-      <p className="text-[10px] text-[#8b87a3]">
+      <div className="relative">
+        <Input
+          id="password"
+          type={showPassword ? "text" : "password"}
+          autoComplete="new-password"
+          placeholder={user ? "••••••••" : "Mínimo 6 caracteres"}
+          value={formData.password}
+          onChange={(e) => updateField("password", e.target.value, "password")}
+          required={!user}
+          aria-invalid={fieldErrors.password ? true : undefined}
+          aria-describedby={describedBy(passwordHintId, fieldErrors.password && errorId("password"))}
+          className="pr-10"
+        />
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+          aria-pressed={showPassword}
+          aria-controls="password"
+          onClick={() => setShowPassword((value) => !value)}
+          className="absolute top-1/2 right-1 h-7 w-7 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+        >
+          {showPassword ? <EyeOff className="h-4 w-4" aria-hidden="true" /> : <Eye className="h-4 w-4" aria-hidden="true" />}
+        </Button>
+      </div>
+      <p id={passwordHintId} className={usersTheme.fieldHint}>
         Al menos 6 caracteres, una letra minúscula y un número.
+        {!user && " Será la contraseña definitiva: el cambio obligatorio al primer ingreso todavía no está disponible."}
       </p>
+      {fieldError("password")}
     </div>
   );
 
   const addressFields = (
-    <div className="space-y-3">
-      <div className="space-y-1">
+    <div className="space-y-4">
+      <div className="min-w-0 space-y-1.5">
         {fieldLabel("address", "Dirección")}
         <Input
           id="address"
           placeholder="Jr. Iquique 807"
           value={formData.address}
-          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-          className={usersTheme.input}
+          onChange={(e) => updateField("address", e.target.value)}
         />
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="space-y-1">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="min-w-0 space-y-1.5">
           {fieldLabel("department", "Departamento")}
           <Select
             value={formData.department}
-            onValueChange={(value) =>
-              setFormData({
-                ...formData,
-                department: value,
-                province: "",
-                district: "",
-              })
-            }
+            onValueChange={(value) => {
+              if (value) setFormData((current) => ({ ...current, department: value, province: "", district: "" }));
+            }}
           >
-            <SelectTrigger className={usersTheme.input}>
+            <SelectTrigger id="department" className="w-full min-w-0">
               <SelectValue placeholder="Departamento" />
             </SelectTrigger>
             <SelectContent>
@@ -544,20 +615,16 @@ export default function UserForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1.5">
           {fieldLabel("province", "Provincia")}
           <Select
             value={formData.province}
-            onValueChange={(value) =>
-              setFormData({
-                ...formData,
-                province: value,
-                district: "",
-              })
-            }
+            onValueChange={(value) => {
+              if (value) setFormData((current) => ({ ...current, province: value, district: "" }));
+            }}
             disabled={!formData.department}
           >
-            <SelectTrigger className={usersTheme.input}>
+            <SelectTrigger id="province" className="w-full min-w-0">
               <SelectValue placeholder="Provincia" />
             </SelectTrigger>
             <SelectContent>
@@ -569,14 +636,16 @@ export default function UserForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-1">
+        <div className="min-w-0 space-y-1.5">
           {fieldLabel("district", "Distrito")}
           <Select
             value={formData.district}
-            onValueChange={(value) => setFormData({ ...formData, district: value })}
+            onValueChange={(value) => {
+              if (value) setFormData((current) => ({ ...current, district: value }));
+            }}
             disabled={!formData.province}
           >
-            <SelectTrigger className={usersTheme.input}>
+            <SelectTrigger id="district" className="w-full min-w-0">
               <SelectValue placeholder="Distrito" />
             </SelectTrigger>
             <SelectContent>
@@ -592,291 +661,298 @@ export default function UserForm({
     </div>
   );
 
-  const roleSection = (compact: boolean) => (
-    <div className="space-y-3">
-      {compact ? (
-        <div className="space-y-1">
-          <Label htmlFor={`${roleFieldId}-role`} className={usersTheme.fieldLabel}>
-            Rol
-          </Label>
-          <select
-            id={`${roleFieldId}-role`}
-            value={formData.roleName}
-            onChange={(e) => setFormData({ ...formData, roleName: e.target.value })}
-            disabled={roleSelectionDisabled}
-            aria-describedby={isSelf ? "own-role-hint" : undefined}
-            className={`h-9 w-full bg-white px-3 dark:bg-transparent ${usersTheme.input}`}
-          >
-            <option value="">
-              {rolesStatus === "ready" ? "Seleccionar rol" : ROLES_UNAVAILABLE_MESSAGE[rolesStatus]}
-            </option>
-            {rolesStatus === "ready" && !isCurrentRoleAssignable && (
-              <option value={currentRoleName} disabled>
-                {currentRoleName} (actual, no asignable)
-              </option>
-            )}
-            {rolesStatus === "ready" &&
-              roles.map((role) => (
-                <option key={role.id || role.name} value={role.name}>
-                  {role.name}
-                </option>
-              ))}
-          </select>
-        </div>
-      ) : (
-      <fieldset
-        disabled={roleSelectionDisabled}
-        aria-describedby={isSelf ? "own-role-hint" : undefined}
-        className="space-y-2"
-      >
-        <legend className="sr-only">Rol</legend>
-        {rolesStatus === "loading" && (
-          <p role="status" className="text-xs text-[#8b87a3]">
-            {ROLES_UNAVAILABLE_MESSAGE.loading}
-          </p>
-        )}
-        {rolesStatus === "ready" && (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {!isCurrentRoleAssignable &&
-              renderRoleOption(
-                {
-                  value: currentRoleName,
-                  label: `${currentRoleName} (actual, no asignable)`,
-                },
-                0,
-                true,
-              )}
-            {roles.map((role, index) =>
-              renderRoleOption(
-                {
-                  value: role.name,
-                  label: role.name,
-                  description: role.description?.trim() || undefined,
-                },
-                index + 1,
-                false,
-              ),
-            )}
-            <button
-                type="button"
-                disabled
-                aria-describedby={`${roleFieldId}-custom-pending`}
-                className="rounded-[9px] border-2 border-dashed border-[#e8e4f8] bg-white p-3 text-center opacity-70 disabled:cursor-not-allowed dark:bg-transparent"
-              >
-                <span aria-hidden="true" className="mb-1 block text-lg">
-                  ⚙️
-                </span>
-                <span className="block text-xs font-semibold">Personalizado</span>
-                <span id={`${roleFieldId}-custom-pending`} className="mt-0.5 block text-[10px] text-[#8b87a3]">
-                  Próximamente
-                </span>
-              </button>
-          </div>
-        )}
-      </fieldset>
-      )}
-      {!compact && selectedRoleDescription && (
-        <p className="rounded-lg bg-[#f7f6ff] px-[11px] py-2 text-[11px] text-[#8b87a3] dark:bg-muted">
-          {selectedRoleDescription}
-        </p>
-      )}
+  const roleRestrictions = (
+    <>
       {isSelf && !isSelfWithoutRole && (
-        <p id="own-role-hint" className="text-xs text-[#8b87a3]">
+        <p id="own-role-hint" className="flex items-center gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+          <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
           No podés cambiar tu propio rol.
         </p>
       )}
       {isSelfWithoutRole && (
-        <p
-          id="own-role-hint"
-          role="status"
-          className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300"
-        >
+        <UsersNotice id="own-role-hint" tone="restriction" role="status" title="No podés asignarte un rol">
           {SELF_WITHOUT_ROLE_MESSAGE}
-        </p>
+        </UsersNotice>
       )}
       {rolesStatus === "unauthenticated" && (
-        <div
-          role="alert"
-          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
-        >
+        <UsersNotice tone="error" title="Roles no disponibles">
           {ROLES_UNAVAILABLE_MESSAGE.unauthenticated}
-        </div>
+        </UsersNotice>
       )}
       {(rolesStatus === "error" || rolesStatus === "empty") && (
-        <div
-          role="alert"
-          className="flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+        <UsersNotice
+          tone="error"
+          title="Roles no disponibles"
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-1 h-7 text-xs"
+              onClick={() => {
+                if (auth?.accessToken) loadRoles(auth.accessToken);
+              }}
+            >
+              Reintentar
+            </Button>
+          }
         >
-          <span>{ROLES_UNAVAILABLE_MESSAGE[rolesStatus]}</span>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 text-xs"
-            onClick={() => {
-              if (auth?.accessToken) loadRoles(auth.accessToken);
-            }}
-          >
-            Reintentar
-          </Button>
-        </div>
+          {ROLES_UNAVAILABLE_MESSAGE[rolesStatus]}
+        </UsersNotice>
       )}
+    </>
+  );
+
+  const roleSelectField = (
+    <div className="min-w-0 space-y-1.5">
+      <Label htmlFor={fieldDomId("role")}>Rol</Label>
+      <select
+        id={fieldDomId("role")}
+        value={formData.roleName}
+        onChange={(e) => updateField("roleName", e.target.value, "role")}
+        disabled={roleSelectionDisabled}
+        aria-invalid={fieldErrors.role ? true : undefined}
+        aria-describedby={describedBy(isSelf && "own-role-hint", `${roleFieldId}-role-hint`, fieldErrors.role && errorId("role"))}
+        className={usersTheme.nativeSelect}
+      >
+        <option value="">{rolesStatus === "ready" ? "Seleccionar rol" : ROLES_UNAVAILABLE_MESSAGE[rolesStatus]}</option>
+        {rolesStatus === "ready" && !isCurrentRoleAssignable && (
+          <option value={currentRoleName} disabled>
+            {currentRoleName} (actual)
+          </option>
+        )}
+        {rolesStatus === "ready" &&
+          roles.map((role) => (
+            <option key={role.id || role.name} value={role.name}>
+              {role.name}
+            </option>
+          ))}
+      </select>
+      <p id={`${roleFieldId}-role-hint`} className={usersTheme.fieldHint}>
+        {rolesStatus === "ready" && !isCurrentRoleAssignable
+          ? "El rol actual no se puede asignar desde aquí y se conserva al guardar. "
+          : ""}
+        Cambiar el rol modifica los accesos del colaborador. Todavía no está definido cuándo se aplica si tiene una
+        sesión abierta.
+      </p>
+      {fieldError("role")}
+      {roleRestrictions}
+    </div>
+  );
+
+  const roleCardsField = (
+    <div className="min-w-0 space-y-3">
+      <fieldset
+        disabled={roleSelectionDisabled}
+        aria-describedby={describedBy(isSelf && "own-role-hint", fieldErrors.role && errorId("role"))}
+        className="min-w-0 space-y-2"
+      >
+        <legend className="sr-only">Rol</legend>
+        {rolesStatus === "loading" && (
+          <p role="status" className={usersTheme.fieldHint}>
+            {ROLES_UNAVAILABLE_MESSAGE.loading}
+          </p>
+        )}
+        {rolesStatus === "ready" && (
+          <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+            {!isCurrentRoleAssignable &&
+              renderRoleOption({ value: currentRoleName, label: `${currentRoleName} (actual, no asignable)` }, -1, true)}
+            {roles.map((role, index) =>
+              renderRoleOption(
+                { value: role.name, label: role.name, description: role.description?.trim() || undefined },
+                index,
+                false,
+              ),
+            )}
+            <button
+              type="button"
+              disabled
+              aria-describedby={`${roleFieldId}-custom-pending`}
+              className="flex min-w-0 items-start gap-2.5 rounded-lg border border-dashed p-3 text-left opacity-70 disabled:cursor-not-allowed"
+            >
+              <span aria-hidden="true" className="text-base leading-5">
+                ⚙️
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium">Personalizado</span>
+                <span id={`${roleFieldId}-custom-pending`} className="block text-xs text-muted-foreground">
+                  Próximamente
+                </span>
+              </span>
+            </button>
+          </div>
+        )}
+      </fieldset>
+      {fieldError("role")}
+      {selectedRoleDescription && (
+        <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">{selectedRoleDescription}</p>
+      )}
+      {roleRestrictions}
     </div>
   );
 
   const readonlyHint = isEditing && (
-    <p id="readonly-fields-hint" className="text-xs text-[#8b87a3]">
+    <p id="readonly-fields-hint" className={usersTheme.fieldHint}>
       El correo y el documento no se pueden modificar desde aquí.
     </p>
   );
 
   const footer = (
-    <div className="sticky bottom-0 -mx-6 -mb-6 flex justify-end gap-2 border-t border-[#e8e4f8] bg-background px-6 py-3.5 dark:border-border">
-      <button type="button" className={usersTheme.secondaryButton} onClick={onCancel} disabled={loading}>
+    <UsersDialogFooter>
+      <Button type="button" variant="outline" onClick={onCancel} disabled={loading}>
         Cancelar
-      </button>
-      <button
-        type="submit"
-        className={usersTheme.primaryButton}
-        disabled={loading || rolesStatus !== "ready" || isSelfWithoutRole}
-      >
+      </Button>
+      <Button type="submit" disabled={loading || rolesStatus !== "ready" || isSelfWithoutRole}>
         {loading ? "Guardando..." : user ? "Guardar cambios" : "Crear usuario"}
-      </button>
-    </div>
+      </Button>
+    </UsersDialogFooter>
   );
 
   if (isEditing) {
     return (
-      <form onSubmit={handleSubmit} className="space-y-3 py-1">
-        {nameFields}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {emailField}
-          {phoneField}
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {roleSection(true)}
-          <div className="space-y-1">
-            <Label htmlFor={`${roleFieldId}-status`} className={usersTheme.fieldLabel}>
-              Estado
-            </Label>
-            <select
-              id={`${roleFieldId}-status`}
-              value={formData.status ? "active" : "inactive"}
-              disabled
-              aria-describedby={`${roleFieldId}-status-pending`}
-              className={`h-9 w-full bg-white px-3 dark:bg-transparent ${usersTheme.input}`}
-            >
-              <option value="active">Activo</option>
-              <option value="inactive">Inactivo</option>
-            </select>
-            <p id={`${roleFieldId}-status-pending`} className="text-[10px] text-[#8b87a3]">
-              El estado todavía no se puede cambiar desde aquí.
-            </p>
-          </div>
-        </div>
-        <p className="rounded-[9px] border border-[#fed7aa] bg-[#fff7ed] px-3 py-2.5 text-xs text-[#c2410c]">
-          ⚠️ Cambiar el rol modifica los accesos del colaborador. Todavía no está definido en qué momento el cambio se
-          aplica si tiene una sesión abierta.
-        </p>
-        {readonlyHint}
-        <details className="group rounded-[9px] border border-[#e8e4f8] px-3 py-2 dark:border-border">
-          <summary className="cursor-pointer text-xs font-semibold text-[#2D2A45] dark:text-foreground">
-            Más datos del colaborador
-          </summary>
-          <div className="mt-3 space-y-3">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {documentField}
-              {passwordField}
-            </div>
-            {addressFields}
-          </div>
-        </details>
+      <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
+        <UsersDialogBody>
+          <Tabs value={editTab} onValueChange={(value) => setEditTab(value as EditTab)} className="gap-4">
+            <TabsList className="w-full sm:w-fit">
+              <TabsTrigger value="main">Datos principales</TabsTrigger>
+              <TabsTrigger value="more">Más datos</TabsTrigger>
+            </TabsList>
+            <TabsContent value="main" forceMount className="space-y-4 data-[state=inactive]:hidden">
+              {nameFields}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {emailField}
+                {phoneField}
+              </div>
+              {readonlyHint}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {roleSelectField}
+                <div className="min-w-0 space-y-1.5">
+                  <Label htmlFor={`${roleFieldId}-status`}>Estado</Label>
+                  <select
+                    id={`${roleFieldId}-status`}
+                    value={formData.status ? "active" : "inactive"}
+                    disabled
+                    aria-describedby={`${roleFieldId}-status-pending`}
+                    className={usersTheme.nativeSelect}
+                  >
+                    <option value="active">Activo</option>
+                    <option value="inactive">Inactivo</option>
+                  </select>
+                  <p id={`${roleFieldId}-status-pending`} className={usersTheme.fieldHint}>
+                    El estado todavía no se puede cambiar desde aquí.
+                  </p>
+                </div>
+              </div>
+            </TabsContent>
+            <TabsContent value="more" forceMount className="space-y-4 data-[state=inactive]:hidden">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {documentField}
+                {passwordField}
+              </div>
+              {addressFields}
+            </TabsContent>
+          </Tabs>
+        </UsersDialogBody>
         {footer}
       </form>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="py-1">
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <section aria-labelledby={`${roleFieldId}-personal`} className="space-y-3">
-          <h3 id={`${roleFieldId}-personal`} className={usersTheme.sectionTitle}>
-            Datos personales
-          </h3>
-          {nameFields}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div className="space-y-1">
-              <Label
-                htmlFor={`${roleFieldId}-login`}
-                className={`${usersTheme.fieldLabel} ${usersTheme.requiredMark}`}
+    <form onSubmit={handleSubmit} noValidate className="flex min-h-0 flex-1 flex-col">
+      <UsersDialogBody>
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <section aria-labelledby={`${roleFieldId}-personal`} className="min-w-0 space-y-4">
+              <h3 id={`${roleFieldId}-personal`} className="text-sm font-semibold">
+                Datos personales
+              </h3>
+              {nameFields}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="min-w-0 space-y-1.5">
+                  <Label htmlFor={`${roleFieldId}-login`} className={usersTheme.requiredMark}>
+                    Usuario / login
+                  </Label>
+                  <Input
+                    id={`${roleFieldId}-login`}
+                    placeholder="ej: cmejia"
+                    disabled
+                    aria-describedby={`${roleFieldId}-identity-pending`}
+                  />
+                </div>
+                <div className="min-w-0 space-y-1.5">
+                  <Label htmlFor={`${roleFieldId}-gender`}>Género</Label>
+                  <select
+                    id={`${roleFieldId}-gender`}
+                    disabled
+                    aria-describedby={`${roleFieldId}-identity-pending`}
+                    className={usersTheme.nativeSelect}
+                  >
+                    <option value="">Selecciona</option>
+                    <option value="masculino">Masculino</option>
+                    <option value="femenino">Femenino</option>
+                    <option value="otro">Otro</option>
+                  </select>
+                </div>
+                <p id={`${roleFieldId}-identity-pending`} className={`${usersTheme.fieldHint} sm:col-span-2`}>
+                  Usuario/login y género todavía no están disponibles: hoy el colaborador ingresa con su email y estos
+                  datos no se guardan.
+                </p>
+              </div>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {emailField}
+                {phoneField}
+              </div>
+              {documentField}
+            </section>
+            <section aria-labelledby={`${roleFieldId}-access`} className="min-w-0 space-y-4">
+              <h3 id={`${roleFieldId}-access`} className="text-sm font-semibold">
+                Rol y accesos
+              </h3>
+              {roleCardsField}
+              <Button
+                type="button"
+                variant="outline"
+                aria-expanded={showPermissions}
+                aria-controls={`${roleFieldId}-permissions`}
+                onClick={() => setShowPermissions((value) => !value)}
+                className="h-auto w-full justify-between whitespace-normal py-2 text-left"
               >
-                Usuario / login
-              </Label>
-              <Input
-                id={`${roleFieldId}-login`}
-                placeholder="ej: cmejia"
-                disabled
-                aria-describedby={`${roleFieldId}-identity-pending`}
-                className={usersTheme.input}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor={`${roleFieldId}-gender`} className={usersTheme.fieldLabel}>
-                Género
-              </Label>
-              <select
-                id={`${roleFieldId}-gender`}
-                disabled
-                aria-describedby={`${roleFieldId}-identity-pending`}
-                className={`h-9 w-full bg-white px-3 dark:bg-transparent ${usersTheme.input}`}
-              >
-                <option value="">Selecciona</option>
-                <option value="masculino">Masculino</option>
-                <option value="femenino">Femenino</option>
-                <option value="otro">Otro</option>
-              </select>
-            </div>
+                <span>Personalizar permisos por módulo y ruta</span>
+                <ChevronDown
+                  aria-hidden="true"
+                  className={`h-4 w-4 shrink-0 transition-transform ${showPermissions ? "rotate-180" : ""}`}
+                />
+              </Button>
+            </section>
           </div>
-          <p id={`${roleFieldId}-identity-pending`} className="text-[10px] text-[#8b87a3]">
-            Usuario/login y género todavía no están disponibles: hoy el colaborador ingresa con su email y estos datos
-            no se guardan.
-          </p>
-          {emailField}
-          {phoneField}
-          <h3 className={`${usersTheme.sectionTitle} pt-2`}>Dirección</h3>
-          {addressFields}
-          {documentField}
-          <h3 className={`${usersTheme.sectionTitle} pt-2`}>Contraseña</h3>
-          {passwordField}
-          <PendingBackendNotice title="Cambio obligatorio al primer ingreso no disponible">
-            La contraseña que definas es la definitiva hasta que esta opción esté disponible.
-          </PendingBackendNotice>
-        </section>
-        <section aria-labelledby={`${roleFieldId}-access`} className="space-y-3">
-          <h3 id={`${roleFieldId}-access`} className={usersTheme.sectionTitle}>
-            Rol y accesos
-          </h3>
-          {roleSection(false)}
-          <button
-            type="button"
-            aria-expanded={showPermissions}
-            aria-controls={`${roleFieldId}-permissions`}
-            onClick={() => setShowPermissions((value) => !value)}
-            className="flex w-full items-center gap-2 rounded-[9px] border border-[#ddd6fe] bg-[#f0eeff] px-[13px] py-2.5 text-left text-[13px] font-semibold text-[#4C2FB5]"
-          >
-            <span className="flex-1">Personalizar permisos por módulo y ruta</span>
-            <ChevronDown
-              aria-hidden="true"
-              className={`h-3.5 w-3.5 transition-transform ${showPermissions ? "rotate-180" : ""}`}
-            />
-          </button>
           {showPermissions && (
-            <div id={`${roleFieldId}-permissions`}>
-              <PermissionMatrix caption="Permisos específicos del usuario" />
-            </div>
+            <section id={`${roleFieldId}-permissions`} aria-labelledby={`${roleFieldId}-matrix-title`} className="min-w-0 space-y-2">
+              <div>
+                <h3 id={`${roleFieldId}-matrix-title`} className="text-sm font-semibold">
+                  Permisos específicos del usuario
+                </h3>
+                <p className={usersTheme.fieldHint}>
+                  Vista previa con rutas de ejemplo: los permisos todavía no se pueden configurar ni se guardan.
+                </p>
+              </div>
+              <PermissionMatrix caption="Tabla de permisos del usuario" />
+            </section>
           )}
-        </section>
-      </div>
+          <section aria-labelledby={`${roleFieldId}-address`} className="min-w-0 space-y-4">
+            <h3 id={`${roleFieldId}-address`} className="text-sm font-semibold">
+              Ubicación
+            </h3>
+            {addressFields}
+          </section>
+          <section aria-labelledby={`${roleFieldId}-password`} className="min-w-0 space-y-4 sm:max-w-sm">
+            <h3 id={`${roleFieldId}-password`} className="text-sm font-semibold">
+              Acceso
+            </h3>
+            {passwordField}
+          </section>
+        </div>
+      </UsersDialogBody>
       {footer}
     </form>
   );

@@ -1,7 +1,9 @@
 "use client";
 
 import { useId, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { PendingBackendNotice } from "./PendingBackendNotice";
 import { PermissionMatrix } from "./PermissionMatrix";
 import { UsersModalShell } from "./UsersModalShell";
@@ -34,56 +36,49 @@ export function CreateRoleModal({ open, onOpenChange }: CreateRoleModalProps) {
       onOpenChange={onOpenChange}
       size="lg"
       icon="🔑"
-      iconClassName="bg-[#fff7ed]"
+      iconClassName="bg-orange-100 dark:bg-orange-500/20"
       title="Crear rol personalizado"
       subtitle="Define un perfil de acceso exacto para un tipo de colaborador"
       footer={
         <>
-          <button type="button" className={usersTheme.secondaryButton} onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
-          </button>
-          <button type="button" className={usersTheme.primaryButton} disabled aria-describedby={noticeId}>
+          </Button>
+          <Button type="button" disabled aria-describedby={noticeId}>
             Guardar rol personalizado
-          </button>
+          </Button>
         </>
       }
     >
-      <div className="space-y-4">
-        <PendingBackendNotice
-          id={noticeId}
-          title="Roles personalizados todavía no habilitados"
-        >
-          Podés revisar el formulario, pero todavía no se puede crear ningún rol.
+      <div className="space-y-5">
+        <PendingBackendNotice id={noticeId} title="Roles personalizados todavía no habilitados">
+          Podés revisar el formulario y la matriz, pero todavía no se puede crear ningún rol.
         </PendingBackendNotice>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="space-y-1">
-            <label htmlFor={`${fieldId}-name`} className={`${usersTheme.fieldLabel} ${usersTheme.requiredMark}`}>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor={`${fieldId}-name`} className={usersTheme.requiredMark}>
               Nombre del rol
-            </label>
+            </Label>
             <Input
               id={`${fieldId}-name`}
-              placeholder="Ej: Asistente de ventas, Supervisor de despacho..."
+              placeholder="Ej: Asistente de ventas"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className={usersTheme.input}
             />
           </div>
-          <div className="space-y-1">
-            <label htmlFor={`${fieldId}-description`} className={usersTheme.fieldLabel}>
-              Descripción corta
-            </label>
+          <div className="min-w-0 space-y-1.5">
+            <Label htmlFor={`${fieldId}-description`}>Descripción corta</Label>
             <Input
               id={`${fieldId}-description`}
-              placeholder="¿Para qué tipo de colaborador es este rol?"
+              placeholder="¿Para qué tipo de colaborador es?"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className={usersTheme.input}
             />
           </div>
         </div>
-        <fieldset>
-          <legend className={usersTheme.fieldLabel}>Color identificador</legend>
-          <div className="mt-1.5 flex flex-wrap gap-2">
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Color identificador</legend>
+          <div className="flex flex-wrap gap-2.5">
             {ROLE_COLORS.map((option) => (
               <label key={option.value} className="relative cursor-pointer">
                 <input
@@ -97,20 +92,22 @@ export function CreateRoleModal({ open, onOpenChange }: CreateRoleModalProps) {
                 />
                 <span
                   aria-hidden="true"
-                  className="block h-[26px] w-[26px] rounded-full border-2 border-transparent ring-offset-2 peer-checked:border-[#0f766e] peer-focus-visible:ring-2 peer-focus-visible:ring-[#4C2FB5]"
+                  className="block h-7 w-7 rounded-full ring-offset-2 ring-offset-background peer-checked:ring-2 peer-checked:ring-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring"
                   style={{ backgroundColor: option.value }}
                 />
               </label>
             ))}
           </div>
         </fieldset>
-        <div>
-          <h3 className={`${usersTheme.sectionTitle} mb-1`}>Matriz de permisos</h3>
-          <p className="mb-3 text-xs text-[#8b87a3]">
-            Selecciona exactamente a qué puede acceder este rol. Puedes marcar por sección completa o ruta individual.
-          </p>
+        <section aria-labelledby={`${fieldId}-matrix`} className="min-w-0 space-y-2">
+          <div>
+            <h3 id={`${fieldId}-matrix`} className="text-sm font-medium">
+              Matriz de permisos
+            </h3>
+            <p className={usersTheme.fieldHint}>Vista previa con rutas de ejemplo: las casillas todavía no se pueden marcar.</p>
+          </div>
           <PermissionMatrix caption="Permisos del rol personalizado" />
-        </div>
+        </section>
       </div>
     </UsersModalShell>
   );

@@ -112,7 +112,8 @@ describe("UserForm — alta con el diseño completo", () => {
     fireEvent.click(toggle);
 
     expect(toggle).toHaveAttribute("aria-expanded", "true");
-    expect(screen.getByText("Matriz en vista previa")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Tabla de permisos del usuario" })).toBeInTheDocument();
+    expect(screen.getByText(/Vista previa con rutas de ejemplo/)).toBeInTheDocument();
     const boxes = screen.getAllByRole("checkbox");
     expect(boxes.every((box) => (box as HTMLInputElement).disabled && !(box as HTMLInputElement).checked)).toBe(true);
   });
@@ -123,7 +124,80 @@ describe("UserForm — alta con el diseño completo", () => {
 
     expect(screen.queryByText(/podrá cambiar su contraseña al primer ingreso/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/email enviado/i)).not.toBeInTheDocument();
-    expect(screen.getByText("Cambio obligatorio al primer ingreso no disponible")).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Contraseña/)).toHaveAccessibleDescription(
+      expect.stringContaining("el cambio obligatorio al primer ingreso todavía no está disponible"),
+    );
+  });
+});
+
+describe("UserForm — estructura de cuerpo y pie", () => {
+  it.each([
+    ["alta", null, "Crear usuario"],
+    ["edición", EXISTING_USER, "Guardar cambios"],
+  ])("en %s los botones quedan fuera del área con scroll y los campos dentro", async (_, user, submit) => {
+    render(<UserForm user={user} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
+    await ready();
+
+    const body = document.querySelector('[data-slot="users-dialog-body"]') as HTMLElement;
+    const footer = document.querySelector('[data-slot="dialog-footer"]') as HTMLElement;
+    expect(body).toContainElement(screen.getByLabelText("Nombre"));
+    expect(body).toContainElement(screen.getByLabelText(/^Contraseña/));
+    expect(body).not.toContainElement(screen.getByRole("button", { name: submit }));
+    expect(footer).toContainElement(screen.getByRole("button", { name: submit }));
+    expect(footer).toContainElement(screen.getByRole("button", { name: "Cancelar" }));
+    expect(body.compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("UserForm — mostrar contraseña", () => {
+  it("alterna la visibilidad sin alterar la contraseña enviada", async () => {
+    mockCreate.mockResolvedValue({});
+    render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
+    await ready();
+    const password = screen.getByLabelText(/^Contraseña/);
+    fireEvent.change(password, { target: { value: "clave123" } });
+    expect(password).toHaveAttribute("type", "password");
+
+    fireEvent.click(screen.getByRole("button", { name: "Mostrar contraseña" }));
+
+    expect(password).toHaveAttribute("type", "text");
+    expect(password).toHaveValue("clave123");
+    const toggle = screen.getByRole("button", { name: "Ocultar contraseña" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(toggle);
+    expect(password).toHaveAttribute("type", "password");
+    expect(password).toHaveAttribute("autocomplete", "new-password");
+
+    fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Ana" } });
+    fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Torres" } });
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "ana@empresa.com" } });
+    fireEvent.change(screen.getByLabelText("DNI / Documento"), { target: { value: "12345678" } });
+    fireEvent.click(within(roleGroup()).getByRole("radio", { name: "VENTAS" }));
+    fireEvent.click(screen.getByRole("button", { name: "Crear usuario" }));
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
+    expect(mockCreate.mock.calls[0][1]).toMatchObject({ password: "clave123" });
+  });
+});
+
+describe("UserForm — ubicación con el Select real", () => {
+  it("al abrir la edición conserva departamento, provincia y distrito y los envía sin cambios", async () => {
+    mockUpdate.mockResolvedValue({});
+    render(
+      <UserForm
+        user={{ ...EXISTING_USER, department: "Lima", province: "Lima", district: "Ate" }}
+        onUserSaved={jest.fn()}
+        onCancel={jest.fn()}
+      />,
+    );
+    await ready();
+
+    expect(screen.getByRole("combobox", { name: "Departamento" })).toHaveTextContent("Lima");
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
+
+    await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
+    expect(mockUpdate.mock.calls[0][1]).toMatchObject({ city: "Lima", province: "Lima", district: "Ate" });
   });
 });
 
@@ -163,7 +237,9 @@ describe("UserForm — select de rol en edición", () => {
     await waitFor(() => expect(screen.getByRole("combobox", { name: "Rol" })).toHaveDisplayValue("VENTAS"));
 
     expect(screen.getByRole("combobox", { name: "Rol" })).toBeDisabled();
-    expect(screen.getByRole("combobox", { name: "Rol" })).toHaveAccessibleDescription("No podés cambiar tu propio rol.");
+    expect(screen.getByRole("combobox", { name: "Rol" })).toHaveAccessibleDescription(
+      expect.stringContaining("No podés cambiar tu propio rol."),
+    );
   });
 });
 
@@ -176,7 +252,7 @@ describe("UserForm — edición compacta", () => {
     const status = screen.getByLabelText("Estado") as HTMLSelectElement;
     expect(status).toBeDisabled();
     expect(status.value).toBe("inactive");
-    expect(screen.getByText("Más datos del colaborador")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Más datos" })).toBeInTheDocument();
     expect(screen.getByLabelText(/^Contraseña/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Usuario / login")).not.toBeInTheDocument();
     expect(screen.queryByText(/de forma inmediata/i)).not.toBeInTheDocument();

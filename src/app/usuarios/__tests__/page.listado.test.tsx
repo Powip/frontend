@@ -451,8 +451,15 @@ describe("UsuariosPage — pestaña Roles y permisos", () => {
     const inspect = async (open: () => Promise<void>, role: "dialog" | "alertdialog", name: string, save: string) => {
       await open();
       const dialog = await screen.findByRole(role, { name });
-      expect(within(dialog).getByRole("button", { name: save })).toBeDisabled();
+      const saveButton = within(dialog).getByRole("button", { name: save });
+      expect(saveButton).toBeDisabled();
       expect(dialog).not.toHaveTextContent(technical);
+      const body = dialog.querySelector('[data-slot="users-dialog-body"]');
+      const notice = within(dialog).getByRole("note");
+      if (body) {
+        expect(body).toContainElement(notice);
+        expect(body).not.toContainElement(saveButton);
+      }
       await user.keyboard("{Escape}");
       await waitFor(() => expect(screen.queryByRole(role, { name })).not.toBeInTheDocument());
     };

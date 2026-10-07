@@ -10,6 +10,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import type { User } from "@/interfaces/IUser";
 import { PendingBackendNotice } from "./PendingBackendNotice";
 
@@ -24,30 +25,19 @@ export function DeleteUserDialog({ user, onOpenChange }: DeleteUserDialogProps) 
 
   return (
     <AlertDialog open={!!user} onOpenChange={onOpenChange}>
-      <AlertDialogContent>
-        <AlertDialogHeader>
-          <AlertDialogTitle>¿Eliminar a {fullName}?</AlertDialogTitle>
-          <AlertDialogDescription>
-            Todavía no se pueden eliminar usuarios desde esta pantalla.
-          </AlertDialogDescription>
+      <AlertDialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+        <AlertDialogHeader className="min-w-0">
+          <AlertDialogTitle className="break-words">¿Eliminar a {fullName}?</AlertDialogTitle>
+          <AlertDialogDescription>Todavía no se pueden eliminar usuarios desde esta pantalla.</AlertDialogDescription>
         </AlertDialogHeader>
-        <PendingBackendNotice
-          id={noticeId}
-          title="Eliminación todavía no habilitada"
-        >
-          Estamos definiendo qué pasa con el historial del colaborador al darlo de baja. Mientras tanto no se elimina
-          ningún usuario.
+        <PendingBackendNotice id={noticeId} title="Eliminación todavía no habilitada">
+          Estamos definiendo qué pasa con el historial del colaborador al darlo de baja.
         </PendingBackendNotice>
         <AlertDialogFooter>
           <AlertDialogCancel>Cancelar</AlertDialogCancel>
-          <button
-            type="button"
-            disabled
-            aria-describedby={noticeId}
-            className="inline-flex h-9 items-center justify-center rounded-md bg-[#ef4444] px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-          >
+          <Button type="button" variant="destructive" disabled aria-describedby={noticeId}>
             Eliminar usuario
-          </button>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

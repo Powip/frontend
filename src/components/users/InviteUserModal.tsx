@@ -1,7 +1,9 @@
 "use client";
 
 import { useId, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import type { Role } from "@/interfaces/IUser";
 import { PendingBackendNotice } from "./PendingBackendNotice";
 import { UsersModalShell } from "./UsersModalShell";
@@ -26,62 +28,58 @@ export function InviteUserModal({ open, onOpenChange, roles, rolesReady }: Invit
       open={open}
       onOpenChange={onOpenChange}
       icon="📧"
-      iconClassName="bg-[#dbeafe]"
+      iconClassName="bg-blue-100 dark:bg-blue-500/20"
       title="Invitar por email"
       subtitle="El colaborador recibe un enlace para activar su cuenta y definir su contraseña"
       footer={
         <>
-          <button type="button" className={usersTheme.secondaryButton} onClick={() => onOpenChange(false)}>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
-          </button>
-          <button type="button" className={usersTheme.primaryButton} disabled aria-describedby={noticeId}>
+          </Button>
+          <Button type="button" disabled aria-describedby={noticeId}>
             Enviar invitación
-          </button>
+          </Button>
         </>
       }
     >
-      <div className="space-y-3">
-        <PendingBackendNotice
-          id={noticeId}
-          title="Invitaciones todavía no habilitadas"
-        >
+      <div className="space-y-4">
+        <PendingBackendNotice id={noticeId} title="Invitaciones todavía no habilitadas">
           Podés revisar el formulario, pero todavía no se puede enviar ninguna invitación.
         </PendingBackendNotice>
-        <div className="space-y-1">
-          <label htmlFor={`${fieldId}-email`} className={`${usersTheme.fieldLabel} ${usersTheme.requiredMark}`}>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${fieldId}-email`} className={usersTheme.requiredMark}>
             Email del colaborador
-          </label>
+          </Label>
           <Input
             id={`${fieldId}-email`}
             type="email"
             placeholder="colaborador@empresa.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className={usersTheme.input}
           />
         </div>
-        <div className="space-y-1">
-          <label htmlFor={`${fieldId}-name`} className={`${usersTheme.fieldLabel} ${usersTheme.requiredMark}`}>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${fieldId}-name`} className={usersTheme.requiredMark}>
             Nombre completo
-          </label>
+          </Label>
           <Input
             id={`${fieldId}-name`}
             placeholder="Para personalizar el email de bienvenida"
             value={fullName}
             onChange={(e) => setFullName(e.target.value)}
-            className={usersTheme.input}
           />
         </div>
-        <div className="space-y-1">
-          <label htmlFor={`${fieldId}-role`} className={`${usersTheme.fieldLabel} ${usersTheme.requiredMark}`}>
+        <div className="space-y-1.5">
+          <Label htmlFor={`${fieldId}-role`} className={usersTheme.requiredMark}>
             Rol a asignar
-          </label>
+          </Label>
           <select
             id={`${fieldId}-role`}
             value={roleName}
             onChange={(e) => setRoleName(e.target.value)}
             disabled={!rolesReady}
-            className={`h-9 w-full bg-white px-3 dark:bg-transparent ${usersTheme.input}`}
+            aria-describedby={`${fieldId}-role-hint`}
+            className={usersTheme.nativeSelect}
           >
             <option value="">{rolesReady ? "Selecciona el rol" : "Roles no disponibles"}</option>
             {roles.map((role) => (
@@ -90,11 +88,10 @@ export function InviteUserModal({ open, onOpenChange, roles, rolesReady }: Invit
               </option>
             ))}
           </select>
+          <p id={`${fieldId}-role-hint`} className={usersTheme.fieldHint}>
+            El colaborador recibirá un enlace de un solo uso para activar su cuenta y definir su contraseña.
+          </p>
         </div>
-        <p className="rounded-[9px] bg-[#f7f6ff] px-3 py-3 text-xs text-[#8b87a3] dark:bg-muted">
-          Cuando esta función esté disponible, el colaborador recibirá un enlace de un solo uso para activar su cuenta y
-          establecer su contraseña.
-        </p>
       </div>
     </UsersModalShell>
   );

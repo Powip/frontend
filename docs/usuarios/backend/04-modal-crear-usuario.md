@@ -4,20 +4,25 @@ Estado: UI preparada · alta integrada en frontend con E1 para los campos actual
 
 ## 1. Pantalla y controles que desbloquea
 
-Modal grande de dos columnas («Crear nuevo usuario»):
+Modal «Crear nuevo usuario» con cabecera fija, cuerpo con scroll propio y pie fijo:
 
-- Izquierda — Datos personales: Nombre, Apellidos, Usuario/login, Género, Email, Teléfono (+51). Dirección: Dirección, ubicación, DNI. Contraseña.
-- Derecha — Rol y accesos: tarjetas de rol, descripción del rol, «Personalizar permisos por módulo y ruta» con la matriz.
-- Pie: Cancelar / Crear usuario.
+- Datos personales: Nombre, Apellidos, Usuario/login, Género, Email, Teléfono (+51), DNI.
+- Rol y accesos: tarjetas de rol, descripción del rol y el botón «Personalizar permisos por módulo y ruta». La matriz se despliega a ancho completo debajo de las dos columnas.
+- Ubicación: Dirección, departamento, provincia y distrito.
+- Acceso: Contraseña.
+- Pie: Cancelar / Crear usuario (apilados en mobile).
+
+En desktop ancho, Datos personales y Rol y accesos se muestran en dos columnas; en mobile, todo en una columna. Esta disposición prioriza claridad y responsive sobre la distribución exacta del mockup.
 
 ## 2. Estado actual y evidencia
 
 - [FE] `src/components/forms/UserForm.tsx` → `createCompanyUser` (E1) envía exactamente: `identityDocument, name, surname, email, password, address, department, province, district, phoneNumber, roleName`.
 - [FE] Usuario/login y Género se muestran **deshabilitados** con aviso; no se envían.
-- [FE] Tarjetas de rol: solo roles de E2 elegibles por el filtro local `COMPANY_USER_ROLES` (`src/config/userRoles.ts`), con `description` si E2 la trae. La tarjeta «Personalizado» está deshabilitada («Pendiente de backend»). No se ofrecen los seis roles del mockup porque no existen con esos nombres.
+- [FE] Tarjetas de rol: solo roles de E2 elegibles por el filtro local `COMPANY_USER_ROLES` (`src/config/userRoles.ts`), con `description` si E2 la trae. La tarjeta «Personalizado» está deshabilitada («Próximamente»). No se ofrecen los seis roles del mockup porque no existen con esos nombres.
 - [FE] Matriz: vista previa sin casillas activas (bloque 11).
-- [FE] Contraseña: política actual del frontend (mínimo 6, una minúscula, un número). El aviso «podrá cambiar su contraseña al primer ingreso» del mockup **no se muestra** porque no existe (bloque 18).
-- [FE] Teléfono: el prefijo +51 es solo visual; se envía lo que se escribe.
+- [FE] Contraseña: política actual del frontend (mínimo 6, una minúscula, un número). El aviso «podrá cambiar su contraseña al primer ingreso» del mockup **no se muestra** porque no existe; la ayuda del campo aclara que la contraseña será la definitiva (bloque 18).
+- [FE] Los errores de validación (obligatorios, formato de email, rol y contraseña) se muestran junto a cada campo, con foco en el primero. Los resultados del guardado siguen informándose con toast.
+- [FE] Teléfono: el prefijo +51 es solo visual y se oculta si el número ya empieza con «+»; se envía lo que se escribe.
 - [FE] Ubicación: se usan departamento, provincia y distrito del ubigeo (el mockup pide solo distrito como texto).
 - [FE] Se conservan las protecciones previas: un solo envío a la vez, bloqueo de cierre mientras guarda, campos recortados, ningún éxito sin respuesta de la API.
 - No se envía ningún campo nuevo a E1 sin confirmación.

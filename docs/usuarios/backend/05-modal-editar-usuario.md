@@ -4,7 +4,12 @@ Estado: UI preparada · datos y rol integrados en frontend con E5 · estado y em
 
 ## 1. Pantalla y controles que desbloquea
 
-Modal compacto «Editar — Nombre Apellido»: Nombre, Apellidos, Email, Teléfono, Rol, Estado, aviso sobre el cambio de rol y «Guardar cambios».
+Modal compacto «Editar — Nombre Apellido» con dos pestañas:
+
+- **Datos principales**: Nombre, Apellidos, Email, Teléfono, Rol, Estado y la ayuda sobre el cambio de rol.
+- **Más datos**: Documento, Contraseña, Dirección, departamento, provincia y distrito.
+
+Pie fijo con Cancelar / Guardar cambios.
 
 ## 2. Estado actual y evidencia
 
@@ -16,7 +21,8 @@ Modal compacto «Editar — Nombre Apellido»: Nombre, Apellidos, Email, Teléfo
 - [FE] `city` vacío no se envía: hoy no se puede borrar el departamento desde la edición (Q-01/Q-02).
 - [FE] El usuario no puede cambiar su propio rol; si no tiene rol, no puede asignárselo.
 - [FE] El aviso del mockup «afecta… de forma inmediata» se reemplazó por uno que dice que el plazo depende de backend (D9).
-- [FE] Documento, contraseña y dirección, que el mockup no muestra en edición, quedan en «Más datos del colaborador» para no perder funciones existentes.
+- [FE] Documento, contraseña y dirección, que el mockup no muestra en edición, quedan en la pestaña «Más datos» para no perder funciones existentes. Si un error de validación está en esa pestaña, el formulario la abre y lleva el foco al campo.
+- [FE] Al abrir la edición se conservan departamento, provincia y distrito del usuario; antes, el Select de ubicación los vaciaba al montarse.
 - [FE] Guardado protegido: un solo envío, sin cierre durante el guardado, sin éxito sin respuesta.
 
 ## 3. Datos necesarios
@@ -101,7 +107,7 @@ Bloques 00 y 08.
 - Estado en el mismo formulario (D17).
 - Plazo de propagación del cambio de rol (D9): hasta resolverlo no se promete «inmediato».
 - El mockup ofrece siete roles en el select de edición (incluidos «Personalizado» y «Solo lectura»); el frontend ofrece solo los roles reales asignables.
-- «Más datos del colaborador» es una extensión para conservar funciones existentes.
+- La pestaña «Más datos» es una extensión para conservar funciones existentes.
 
 ## 12. Checklist de entrega e integración
 

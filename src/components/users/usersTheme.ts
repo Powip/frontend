@@ -11,6 +11,11 @@ export const usersTheme = {
   requiredMark: "after:ml-0.5 after:text-[#dc2626] after:content-['*']",
   input:
     "rounded-[9px] border-[1.5px] border-[#e8e4f8] text-[13px] focus-visible:border-[#4C2FB5] focus-visible:ring-[3px] focus-visible:ring-[#4C2FB5]/15",
+  nativeSelect:
+    "border-input h-9 w-full min-w-0 rounded-md border bg-transparent px-3 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive dark:bg-input/30",
+  formLabel: "text-sm font-medium",
+  fieldHint: "text-xs text-muted-foreground",
+  fieldError: "text-xs font-medium text-destructive",
   selectableCard:
     "relative rounded-[9px] border-2 border-[#e8e4f8] bg-white p-3 text-center transition-colors hover:border-[#4C2FB5] has-[:checked]:border-[#4C2FB5] has-[:checked]:bg-[#f0eeff] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[#4C2FB5]/40 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-60 dark:bg-transparent",
 } as const;

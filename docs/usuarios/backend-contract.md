@@ -172,7 +172,7 @@ El frontend implementa la estructura completa de `powip-usuarios.html`. Las acci
 | Cuenta bancaria / Yape / Plin | Formularios sin guardado y sin promesa de cifrado | [15](backend/15-formulario-cuenta-bancaria.md), [16](backend/16-formulario-yape-plin.md) |
 | Liquidación y avisos | Sin datos | [17](backend/17-liquidacion-y-notificaciones.md) |
 
-Desviaciones visuales registradas: se conserva el shell global de Powip (sin sidebar ni campana propios del mockup) y su tipografía; la ubicación usa ubigeo de tres niveles; «Más datos del colaborador» conserva en edición documento, contraseña y dirección.
+Desviaciones visuales registradas: se conserva el shell global de Powip (sin sidebar ni campana propios del mockup) y su tipografía; la ubicación usa ubigeo de tres niveles; en edición, la pestaña «Más datos» conserva documento, contraseña y dirección. Desde 2026-10-07 los modales priorizan una UI clara y responsive (shadcn/ui) sobre la fidelidad de píxel al mockup.
 
 ## 2. Contrato requerido para la nueva UI
 

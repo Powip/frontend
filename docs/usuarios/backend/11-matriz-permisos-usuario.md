@@ -5,7 +5,7 @@ Estado: UI preparada (vista previa) · backend pendiente de confirmar · sin gua
 ## 1. Pantalla y controles que desbloquea
 
 - Matriz Ver/Crear/Editar/Eliminar/Admin por ruta, con ocho secciones y casilla por sección.
-- Aparece en: Crear usuario («Personalizar permisos por módulo y ruta»), Crear rol (bloque 09) y Editar permisos (bloque 10).
+- Aparece en: Crear usuario («Personalizar permisos por módulo y ruta», desplegada a ancho completo), Crear rol (bloque 09) y Editar permisos (bloque 10). La tabla tiene su propio scroll horizontal y la columna de rutas queda fija.
 - En el mockup la matriz de alta se abre sola al elegir «Personalizado» y también se puede abrir con cualquier rol (permisos por usuario).
 
 ## 2. Estado actual y evidencia

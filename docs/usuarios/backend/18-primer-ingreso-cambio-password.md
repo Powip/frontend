@@ -9,7 +9,7 @@ Estado: UI pendiente · backend pendiente de confirmar.
 
 ## 2. Estado actual y evidencia
 
-- [FE] `UserForm.tsx` muestra «Contraseña» con la política actual (mínimo 6, una minúscula, un número) y el aviso «Cambio obligatorio al primer ingreso no disponible». La contraseña que se define hoy es la definitiva.
+- [FE] `UserForm.tsx` muestra «Contraseña» con la política actual (mínimo 6, una minúscula, un número) y una ayuda en el campo que aclara que será la contraseña definitiva porque el cambio obligatorio al primer ingreso todavía no está disponible.
 - [FE] `configuracion/editar-usuario` cambia la propia contraseña con `POST /auth/update-password` (E12) y sin `Authorization`.
 - [FE] La edición por admin envía `password` en E5 sin pedir la actual.
 - No existe en el frontend ninguna marca `mustChangePassword` ni pantalla de cambio obligatorio.
