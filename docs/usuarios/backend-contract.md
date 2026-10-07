@@ -1,7 +1,7 @@
 # Contrato técnico de backend — Usuarios, Roles e Invitaciones
 
 Estado: **borrador para validar con backend**. Fecha de elaboración: 2026-10-02.
-Rama de referencia: `feat/usuarios-roles-permisos`. El documento está trackeado desde el commit `e9ef6af` («feat: contrato»), subido a `origin/feat/usuarios-roles-permisos`. Las referencias `archivo:línea` se verificaron contra el commit anterior, `1f1c824` («fix(users): restrict access and remove unpersisted actions»); cambios posteriores en esos archivos pueden desplazarlas. La sección 1.7 describe el cierre de frontend posterior (2026-10-06) y cita archivos sin número de línea.
+Rama de referencia: `feat/usuarios-roles-permisos`. El documento está trackeado desde el commit `e9ef6af` («feat: contrato»), subido a `origin/feat/usuarios-roles-permisos`. Las referencias `archivo:línea` se verificaron contra el commit anterior, `1f1c824` («fix(users): restrict access and remove unpersisted actions»); cambios posteriores en esos archivos pueden desplazarlas. Las secciones 1.7 y 1.8 describen el trabajo de frontend posterior (2026-10-06) y citan archivos sin número de línea.
 
 ## 0. Alcance, fuentes y convención de evidencia
 
@@ -125,6 +125,25 @@ Cambios hechos solo en el frontend, sobre los endpoints que ya usa (E1, E2, E3, 
 | Q-04 | ¿E5 rechaza que el actor cambie su propio rol (`CANNOT_CHANGE_OWN_ROLE`, P0-05)? | El bloqueo del frontend es solo de interfaz |
 | Q-05 | ¿Qué política de contraseña aplica ms-auth en E1 y E5? ¿Es la misma regex que el frontend atribuye a E7? | El frontend valida 6 + minúscula + número sin confirmación (D6) |
 | Q-06 | ¿E1 es seguro ante una petición duplicada (mismo email o documento → `409`)? | El frontend evita el doble envío, pero no puede garantizarlo ante reintentos de red |
+
+### 1.8 Nueva UI de Usuarios y Roles con los endpoints actuales (2026-10-06)
+
+Se implementó la parte del prototipo que se puede sostener con E2 y E3 sin endpoints nuevos. Todo se calcula en el navegador sobre la respuesta completa de E3 (usuarios de la empresa de la sesión) y la de E2 (catálogo de roles). Nada de esta sección pasa a [BE]. Archivos: `src/app/usuarios/page.tsx`, `src/services/userListing.ts`, `src/config/userRoles.ts`, `src/components/users/`, `src/components/forms/UserForm.tsx`, `src/components/modals/UserModal.tsx`.
+
+| Elemento | Qué muestra hoy | Origen y límite |
+|---|---|---|
+| Pestañas | «Usuarios» y «Roles». Sin «Referidos» ni «permisos» en el título | — |
+| Tarjetas | Total, **Activos** (`status === true`, es decir, cuenta habilitada), Inactivos (todo lo que no es `status === true`) y Sin rol. No cambian con búsqueda ni filtros; durante la carga muestran un esqueleto y, si E3 falla, «—» | Sobre E3 completo. No representan presencia ni actividad: «Activos ahora» del prototipo requiere O-07 o equivalente. Si E3 pasa a paginarse, hacen falta los `counts` de O-01 |
+| Búsqueda | Nombre, apellido, email, documento, teléfono, rol y distrito; sin distinguir mayúsculas ni tildes | En el navegador (O-01 para servidor) |
+| Filtro de rol | Roles de E2, más los que aparecen en E3 y no están en E2 (marcados «fuera del catálogo»), más «Sin rol». Un rol se identifica primero por `id` exacto; el nombre (sin distinguir mayúsculas ni espacios) solo se usa cuando una de las dos fuentes no trae `id` y la coincidencia es única. Dos `id` distintos con el mismo nombre no se fusionan: la etiqueta agrega «· id …» o «· sin id». Si un rol sin `id` coincide con varios por nombre, o si E3 trae varios `id` para un nombre que E2 tiene sin `id`, no se asigna a ninguno y aparece por separado. Filtro, conteo y «Ver usuarios» usan la misma regla | Depende de que E2 y E3 usen los mismos `id` de rol (P0-01, P1-02, O-12) |
+| Filtro de estado | Todos, Activos, Inactivos | Sobre `status` de E3 |
+| Orden | Nombre, apellido, email y estado, con desempate estable (apellido/nombre, email e `id`) | En el navegador |
+| Paginación | 10, 25 o 50 filas; vuelve a la página 1 al cambiar búsqueda, filtros, orden o tamaño | En el navegador |
+| Tabla | Avatar con iniciales, nombre, apellido, email, documento, teléfono, dirección, distrito/provincia, rol, estado y Editar. Desplazamiento horizontal en pantallas chicas | Sin login, género ni varios roles (D12, D14). Sin acciones de estado, baja ni resumen (P0-04, D10, O-07) |
+| Pestaña Roles | Catálogo de E2 con carga, error con reintento y vacío; nombre, `description` solo si E2 la trae, y cantidad de usuarios de la empresa con ese rol (solo cuando E3 cargó bien). «Ver usuarios» vuelve a Usuarios con ese rol, sin búsqueda ni filtro de estado. La nota «Se puede elegir al crear o editar usuarios» describe el formulario actual (`COMPANY_USER_ROLES`), **no** una autorización de ms-auth | Sin permisos, módulos ni distinción sistema/personalizado (O-12, O-15, D2, D16). ADMINISTRADOR y USUARIO solo aparecen si E2 los devuelve y no se pueden asignar desde el formulario (D13) |
+| Alta y edición | Dos columnas en desktop y una en mobile; rol con tarjetas seleccionables (radios nativos, navegables con teclado) solo para los roles elegibles de E2 con su `description` si existe; se conservan el rol actual no asignable, el bloqueo del rol propio, las validaciones y la protección del guardado. El modal limita su altura y los botones quedan visibles | Sin campos nuevos (D12), sin contraseña temporal ni aviso de email (D6), sin estado (P0-04/D17) y sin aviso de propagación inmediata del rol (D9) |
+
+**Dependencias que siguen abiertas para completar el prototipo:** O-01 (paginación, búsqueda y `counts` en servidor), O-05/P0-04 (estado), O-07 (actividad o presencia), O-08..O-11 (invitaciones), O-12/P1-04 (catálogo con `assignable` y `userCount`), O-13..O-15 (roles personalizados y permisos), D10 (baja), D12 (login, género, DNI), D13 (asignar Administrador) y D14 (varios roles). Además de P0-02, P0-05, P0-06 y Q-01..Q-06.
 
 ---
 

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 /**
  * UserForm — roles solo desde GET /api/v1/roles.
@@ -74,8 +74,11 @@ beforeEach(() => {
   } as unknown as ReturnType<typeof useAuth>);
 });
 
-const roleSelect = () => screen.getByRole("combobox", { name: "role" }) as HTMLSelectElement;
-const roleOptions = () => Array.from(roleSelect().options).filter((o) => o.value !== "");
+const roleGroup = () => screen.getByRole("group", { name: "Rol" });
+const roleOptions = () => within(roleGroup()).queryAllByRole("radio") as HTMLInputElement[];
+const selectedRole = () => roleOptions().find((o) => o.checked)?.value ?? "";
+const chooseRole = (value: string) =>
+  fireEvent.click(roleOptions().find((o) => o.value === value) as HTMLInputElement);
 
 function fillNewUser() {
   fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Ana" } });
@@ -104,7 +107,7 @@ describe("UserForm — fallo al cargar roles", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("No se pudieron cargar los roles");
     expect(toast.error).toHaveBeenCalledWith("No se pudieron cargar los roles");
     expect(roleOptions()).toHaveLength(0);
-    expect(roleSelect()).toBeDisabled();
+    expect(roleGroup()).toBeDisabled();
     expect(screen.queryByText("AGENTES")).not.toBeInTheDocument();
   });
 
@@ -180,9 +183,9 @@ describe("UserForm — roles cargados", () => {
     mockCreate.mockResolvedValue({});
     const onSaved = jest.fn();
     render(<UserForm user={null} onUserSaved={onSaved} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
     fillNewUser();
-    fireEvent.change(roleSelect(), { target: { value: "OPERACIONES" } });
+    chooseRole("OPERACIONES");
 
     fireEvent.click(screen.getByRole("button", { name: "Crear Usuario" }));
 
@@ -198,12 +201,12 @@ describe("UserForm — roles cargados", () => {
     };
     render(<UserForm user={userWithUnassignableRole} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
 
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     // El selector muestra el rol actual en vez de quedar vacío/ambiguo.
-    expect(roleSelect().value).toBe("ADMINISTRADOR");
+    expect(selectedRole()).toBe("ADMINISTRADOR");
 
-    const options = Array.from(roleSelect().options);
+    const options = roleOptions();
     const adminOption = options.find((o) => o.value === "ADMINISTRADOR");
     expect(adminOption).toBeDisabled();
 
@@ -221,7 +224,7 @@ describe("UserForm — roles cargados", () => {
       role: { id: "r-admin", name: "ADMINISTRADOR" },
     };
     render(<UserForm user={userWithUnassignableRole} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
 
@@ -245,7 +248,7 @@ describe("UserForm — sin éxitos simulados", () => {
     const onSaved = jest.fn();
     const onCancel = jest.fn();
     render(<UserForm user={EXISTING_USER} onUserSaved={onSaved} onCancel={onCancel} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
 
@@ -258,7 +261,7 @@ describe("UserForm — sin éxitos simulados", () => {
   it("al editar, email y documento son de solo lectura y no se envían", async () => {
     mockUpdate.mockResolvedValue({});
     render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     const email = screen.getByLabelText("Correo electrónico");
     const document = screen.getByLabelText("Documento de Identidad");
@@ -278,7 +281,7 @@ describe("UserForm — sin éxitos simulados", () => {
 
   it("al crear, email y documento son editables", async () => {
     render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     expect(screen.getByLabelText("Correo electrónico")).toBeEnabled();
     expect(screen.getByLabelText("Documento de Identidad")).toBeEnabled();

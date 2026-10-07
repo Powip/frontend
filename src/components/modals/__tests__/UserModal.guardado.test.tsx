@@ -94,7 +94,7 @@ const pendingUpdates = () => {
 };
 
 const roleReady = () =>
-  waitFor(() => expect(screen.getByRole("combobox", { name: "role" })).toBeEnabled());
+  waitFor(() => expect(screen.getByRole("group", { name: "Rol" })).toBeEnabled());
 const pressEscape = () => fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 const closeButton = () => screen.queryByRole("button", { name: "Close" });
 const clickOutside = () => {

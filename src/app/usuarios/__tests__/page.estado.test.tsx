@@ -14,7 +14,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("next/navigation", () => ({ useRouter: () => ({ push: jest.fn() }), usePathname: () => "/usuarios" }));
-jest.mock("@/services/userService", () => ({ getUsersByCompany: jest.fn(), updateUser: jest.fn() }));
+jest.mock("@/services/userService", () => ({ getUsersByCompany: jest.fn(), getRoles: jest.fn(), updateUser: jest.fn() }));
 // El modal real se prueba en UserForm.roles.test.tsx; aquí solo se expone el
 // contrato onUserSaved / onClose que usa la página.
 jest.mock("@/components/modals/UserModal", () => {
@@ -36,7 +36,7 @@ jest.mock("@/components/modals/UserModal", () => {
 
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { getUsersByCompany, updateUser } from "@/services/userService";
+import { getRoles, getUsersByCompany, updateUser } from "@/services/userService";
 import UsuariosPage from "../page";
 
 const USERS = [
@@ -70,9 +70,18 @@ beforeEach(() => {
     auth: { accessToken: "token", company: { id: "company-1" }, user: { id: "admin-1", role: "ADMINISTRADOR" } },
   } as unknown as ReturnType<typeof useAuth>);
   jest.mocked(getUsersByCompany).mockResolvedValue(USERS);
+  jest.mocked(getRoles).mockResolvedValue([]);
 });
 
-const rowOf = async (name: string) => (await screen.findByText(name)).closest("tr") as HTMLElement;
+const userButton = (name: string) => ({ name: `Editar ${name}` });
+const findUser = (name: string) => screen.findByRole("button", userButton(name));
+const getUser = (name: string) => screen.getByRole("button", userButton(name));
+const queryUser = (name: string) => screen.queryByRole("button", userButton(name));
+const rowOf = async (name: string) => (await findUser(name)).closest("tr") as HTMLElement;
+const cellOf = (row: HTMLElement, header: string) => {
+  const headers = screen.getAllByRole("columnheader").map((cell) => cell.textContent?.trim());
+  return (row as HTMLTableRowElement).cells[headers.indexOf(header)];
+};
 
 describe("UsuariosPage — estado de usuario", () => {
   it("cada fila solo ofrece Editar: no hay acción de activar/desactivar", async () => {
@@ -147,7 +156,7 @@ describe("UsuariosPage — lista vacía", () => {
     jest.mocked(getUsersByCompany).mockResolvedValue([]);
     render(<UsuariosPage />);
 
-    const cell = await screen.findByText("No se encontraron usuarios.");
+    const cell = (await screen.findByText("No se encontraron usuarios.")).closest("td");
     const columns = screen.getAllByRole("columnheader").length;
     expect(cell).toHaveAttribute("colspan", String(columns));
   });
@@ -193,7 +202,7 @@ describe("UsuariosPage — error de carga y reintento", () => {
     render(<UsuariosPage />);
     const alert = await screen.findByRole("alert");
 
-    const search = screen.getByPlaceholderText("Buscar por nombre, email o documento...");
+    const search = screen.getByLabelText("Buscar usuarios");
     fireEvent.change(search, { target: { value: "Luis" } });
     fireEvent.click(within(alert).getByRole("button", { name: "Reintentar" }));
 
@@ -205,8 +214,8 @@ describe("UsuariosPage — error de carga y reintento", () => {
 
     resolveRetry(USERS);
 
-    expect(await screen.findByText("Luis Paz")).toBeInTheDocument();
-    expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument();
+    expect(await findUser("Luis Paz")).toBeInTheDocument();
+    expect(queryUser("Ana Torres")).not.toBeInTheDocument();
     expect(search).toHaveValue("Luis");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
@@ -278,7 +287,7 @@ describe("UsuariosPage — sesión sin empresa", () => {
     authWith({ accessToken: "token", company: { id: "company-1" }, user: { id: "admin-1", role: "ADMINISTRADOR" } });
     rerender(<UsuariosPage />);
 
-    expect(await screen.findByText("Ana Torres")).toBeInTheDocument();
+    expect(await findUser("Ana Torres")).toBeInTheDocument();
     expect(getUsersByCompany).toHaveBeenCalledTimes(1);
     expect(getUsersByCompany).toHaveBeenCalledWith("company-1", "token");
     expect(screen.queryByText(NO_COMPANY)).not.toBeInTheDocument();
@@ -306,7 +315,7 @@ describe("UsuariosPage — paginación tras recargar", () => {
     jest.mocked(getUsersByCompany).mockResolvedValueOnce(many).mockResolvedValueOnce(many.slice(0, 3));
     render(<UsuariosPage />);
 
-    await screen.findByText("Usuario00 Prueba");
+    await findUser("Usuario00 Prueba");
     fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
     const row = await rowOf("Usuario10 Prueba");
 
@@ -314,23 +323,23 @@ describe("UsuariosPage — paginación tras recargar", () => {
     fireEvent.click(within(row).getByRole("button", { name: "Editar Usuario10 Prueba" }));
     fireEvent.click(within(screen.getByTestId("user-modal")).getByRole("button", { name: "mock-guardado" }));
 
-    expect(await screen.findByText("Usuario00 Prueba")).toBeInTheDocument();
+    expect(await findUser("Usuario00 Prueba")).toBeInTheDocument();
     expect(screen.queryByText("No se encontraron usuarios.")).not.toBeInTheDocument();
   });
 
   it("al cambiar la búsqueda vuelve a la primera página", async () => {
     jest.mocked(getUsersByCompany).mockResolvedValue(many);
     render(<UsuariosPage />);
-    await screen.findByText("Usuario00 Prueba");
+    await findUser("Usuario00 Prueba");
     fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
-    await screen.findByText("Usuario10 Prueba");
+    await findUser("Usuario10 Prueba");
 
-    fireEvent.change(screen.getByPlaceholderText("Buscar por nombre, email o documento..."), {
+    fireEvent.change(screen.getByLabelText("Buscar usuarios"), {
       target: { value: "Prueba" },
     });
 
-    expect(await screen.findByText("Usuario00 Prueba")).toBeInTheDocument();
-    expect(screen.queryByText("Usuario10 Prueba")).not.toBeInTheDocument();
+    expect(await findUser("Usuario00 Prueba")).toBeInTheDocument();
+    expect(queryUser("Usuario10 Prueba")).not.toBeInTheDocument();
   });
 });
 
@@ -365,11 +374,11 @@ describe("UsuariosPage — respuestas fuera de orden", () => {
     expect(getUsersByCompany).toHaveBeenLastCalledWith("company-2", "token");
 
     calls[1].resolve(OTHER_COMPANY_USERS);
-    expect(await screen.findByText("Rosa Díaz")).toBeInTheDocument();
+    expect(await findUser("Rosa Díaz")).toBeInTheDocument();
 
     calls[0].resolve(USERS);
-    await waitFor(() => expect(screen.getByText("Rosa Díaz")).toBeInTheDocument());
-    expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument();
+    await waitFor(() => expect(getUser("Rosa Díaz")).toBeInTheDocument());
+    expect(queryUser("Ana Torres")).not.toBeInTheDocument();
   });
 
   it("un error de una petición antigua no muestra la alerta ni pisa la carga actual", async () => {
@@ -382,7 +391,7 @@ describe("UsuariosPage — respuestas fuera de orden", () => {
     calls[0].reject(new Error("500"));
     calls[1].resolve(OTHER_COMPANY_USERS);
 
-    expect(await screen.findByText("Rosa Díaz")).toBeInTheDocument();
+    expect(await findUser("Rosa Díaz")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(consoleError).not.toHaveBeenCalled();
   });
@@ -392,16 +401,16 @@ describe("UsuariosPage — respuestas fuera de orden", () => {
     session("company-1");
     const { rerender } = render(<UsuariosPage />);
     calls[0].resolve(USERS);
-    expect(await screen.findByText("Ana Torres")).toBeInTheDocument();
+    expect(await findUser("Ana Torres")).toBeInTheDocument();
 
     session("company-2");
     rerender(<UsuariosPage />);
 
-    await waitFor(() => expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument());
+    await waitFor(() => expect(queryUser("Ana Torres")).not.toBeInTheDocument());
     expect(screen.queryByText("No se encontraron usuarios.")).not.toBeInTheDocument();
 
     calls[1].resolve(OTHER_COMPANY_USERS);
-    expect(await screen.findByText("Rosa Díaz")).toBeInTheDocument();
+    expect(await findUser("Rosa Díaz")).toBeInTheDocument();
   });
 
   it("al perder la empresa, una respuesta pendiente no reaparece", async () => {
@@ -419,9 +428,9 @@ describe("UsuariosPage — respuestas fuera de orden", () => {
     rerender(<UsuariosPage />);
 
     await waitFor(() => expect(getUsersByCompany).toHaveBeenCalledTimes(2));
-    expect(screen.queryByText("Ana Torres")).not.toBeInTheDocument();
+    expect(queryUser("Ana Torres")).not.toBeInTheDocument();
     calls[1].resolve(OTHER_COMPANY_USERS);
-    expect(await screen.findByText("Rosa Díaz")).toBeInTheDocument();
+    expect(await findUser("Rosa Díaz")).toBeInTheDocument();
   });
 
   it("tras desmontar, una respuesta o error pendiente no registra ni actualiza nada", async () => {
@@ -445,7 +454,7 @@ describe("UsuariosPage — respuestas fuera de orden", () => {
 
     calls[1].resolve(OTHER_COMPANY_USERS);
 
-    expect(await screen.findByText("Rosa Díaz")).toBeInTheDocument();
+    expect(await findUser("Rosa Díaz")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
@@ -458,9 +467,8 @@ describe("UsuariosPage — ubicación", () => {
     ]);
     render(<UsuariosPage />);
 
-    expect(within(await rowOf("Ana Torres")).getByText("—")).toBeInTheDocument();
+    expect(cellOf(await rowOf("Ana Torres"), "Ubicación")).toHaveTextContent(/^—$/);
     const luisRow = await rowOf("Luis Paz");
-    expect(within(luisRow).getByText("Lima")).toBeInTheDocument();
-    expect(luisRow).not.toHaveTextContent(", Lima");
+    expect(cellOf(luisRow, "Ubicación")).toHaveTextContent(/^Lima$/);
   });
 });

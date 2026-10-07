@@ -28,7 +28,7 @@ export default function UserModal({
       }}
     >
       <DialogContent
-        className="!max-w-[90vw] sm:!max-w-[600px] !w-full"
+        className="!max-w-[calc(100vw-2rem)] md:!max-w-[860px] !w-full max-h-[90vh] overflow-y-auto"
         showCloseButton={!saving}
       >
         <DialogHeader>

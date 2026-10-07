@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useId } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,6 +21,7 @@ import {
   updateUser,
   UpdateUserRequest,
 } from "@/services/userService";
+import { isCompanyAssignableRole } from "@/config/userRoles";
 
 import ubigeos from "@/utils/json/ubigeos.json";
 
@@ -30,9 +31,6 @@ interface UserFormProps {
   onCancel: () => void;
   onSavingChange?: (saving: boolean) => void;
 }
-
-/** Roles asignables a colaboradores de una empresa (no ADMINISTRADOR ni USUARIO). */
-const COMPANY_USER_ROLES = ["AGENTES", "VENTAS", "OPERACIONES", "COURIER", "CALLER"];
 
 const PASSWORD_POLICY = /^(?=.*[a-z])(?=.*\d).{6,}$/;
 
@@ -98,6 +96,8 @@ export default function UserForm({
   const isEditing = !!user;
   const isSelf = !!user && !!auth?.user?.id && user.id === auth.user.id;
   const isSelfWithoutRole = isSelf && !currentRoleName;
+  const roleFieldId = useId();
+  const roleSelectionDisabled = rolesStatus !== "ready" || isSelf;
 
   // Ubigeo data logic
   const departments = ubigeos[0].departments;
@@ -131,7 +131,7 @@ export default function UserForm({
         if (requestId !== rolesRequestRef.current) return;
         // Filtrar solo roles permitidos para usuarios de compañía (no ADMINISTRADOR ni USUARIO)
         const allowedRoles = (Array.isArray(rolesData) ? rolesData : []).filter(
-          (r) => COMPANY_USER_ROLES.includes(r.name?.toUpperCase()),
+          (r) => isCompanyAssignableRole(r.name),
         );
         setRoles(allowedRoles);
         setRolesStatus(allowedRoles.length > 0 ? "ready" : "empty");
@@ -343,276 +343,339 @@ export default function UserForm({
     }
   };
 
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4 py-2">
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="name">Nombre</Label>
-          <Input
-            id="name"
-            placeholder="Ej. Juan"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            required
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="surname">Apellido</Label>
-          <Input
-            id="surname"
-            placeholder="Ej. Pérez"
-            value={formData.surname}
-            onChange={(e) =>
-              setFormData({ ...formData, surname: e.target.value })
-            }
-            required
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="email">Correo electrónico</Label>
-          <Input
-            id="email"
-            type="email"
-            placeholder="juan.perez@ejemplo.com"
-            value={formData.email}
-            onChange={(e) =>
-              setFormData({ ...formData, email: e.target.value })
-            }
-            required
-            disabled={isEditing}
-            aria-describedby={isEditing ? "readonly-fields-hint" : undefined}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="phoneNumber">Teléfono</Label>
-          <Input
-            id="phoneNumber"
-            placeholder="912345678"
-            value={formData.phoneNumber}
-            onChange={(e) =>
-              setFormData({ ...formData, phoneNumber: e.target.value })
-            }
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="identityDocument">Documento de Identidad</Label>
-          <Input
-            id="identityDocument"
-            placeholder="DNI / RUC"
-            value={formData.identityDocument}
-            onChange={(e) =>
-              setFormData({ ...formData, identityDocument: e.target.value })
-            }
-            required
-            disabled={isEditing}
-            aria-describedby={isEditing ? "readonly-fields-hint" : undefined}
-          />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="password">
-            Contraseña{" "}
-            {user && (
-              <span className="text-muted-foreground text-xs">
-                (dejar vacío para mantener)
-              </span>
-            )}
-          </Label>
-          <Input
-            id="password"
-            type="password"
-            autoComplete="new-password"
-            placeholder={user ? "••••••••" : "Mínimo 6 caracteres"}
-            value={formData.password}
-            onChange={(e) =>
-              setFormData({ ...formData, password: e.target.value })
-            }
-            required={!user}
-          />
-          {!user && (
-            <p className="text-[10px] text-muted-foreground mt-1">
-              La contraseña debe tener al menos 6 caracteres, una letra
-              minúscula y un número.
+  const renderRoleOption = (
+    option: { value: string; label: string; description?: string },
+    index: number,
+    disabled: boolean,
+  ) => {
+    const optionId = `${roleFieldId}-option-${index}`;
+    const descriptionId = option.description ? `${optionId}-description` : undefined;
+    return (
+      <div
+        key={option.value}
+        className="relative flex items-start gap-3 rounded-lg border p-3 transition-colors has-[:checked]:border-teal-600 has-[:checked]:bg-teal-50 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-teal-600/40 has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-70 dark:has-[:checked]:bg-teal-500/10"
+      >
+        <input
+          id={optionId}
+          type="radio"
+          name={`${roleFieldId}-role`}
+          value={option.value}
+          checked={formData.roleName === option.value}
+          onChange={() => setFormData({ ...formData, roleName: option.value })}
+          disabled={disabled}
+          aria-describedby={descriptionId}
+          className="mt-0.5 h-4 w-4 shrink-0 accent-teal-600"
+        />
+        <div className="min-w-0">
+          <label
+            htmlFor={optionId}
+            className="cursor-pointer text-sm font-medium break-words after:absolute after:inset-0 after:content-['']"
+          >
+            {option.label}
+          </label>
+          {option.description && (
+            <p id={descriptionId} className="text-xs text-muted-foreground">
+              {option.description}
             </p>
           )}
         </div>
       </div>
+    );
+  };
 
-      {isEditing && (
-        <p id="readonly-fields-hint" className="text-xs text-muted-foreground">
-          El correo y el documento no se pueden modificar desde aquí.
-        </p>
-      )}
+  return (
+    <form onSubmit={handleSubmit} className="space-y-6 py-2">
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+        <section aria-labelledby={`${roleFieldId}-personal`} className="space-y-4">
+          <h3
+            id={`${roleFieldId}-personal`}
+            className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+          >
+            Datos personales
+          </h3>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="name">Nombre</Label>
+              <Input
+                id="name"
+                placeholder="Ej. Juan"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="surname">Apellido</Label>
+              <Input
+                id="surname"
+                placeholder="Ej. Pérez"
+                value={formData.surname}
+                onChange={(e) =>
+                  setFormData({ ...formData, surname: e.target.value })
+                }
+                required
+              />
+            </div>
+          </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="role">Rol</Label>
-        <Select
-          value={formData.roleName}
-          onValueChange={(value) =>
-            setFormData({ ...formData, roleName: value })
-          }
-          disabled={rolesStatus !== "ready" || isSelf}
-        >
-          <SelectTrigger
-            id="role"
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="email">Correo electrónico</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="juan.perez@ejemplo.com"
+                value={formData.email}
+                onChange={(e) =>
+                  setFormData({ ...formData, email: e.target.value })
+                }
+                required
+                disabled={isEditing}
+                aria-describedby={isEditing ? "readonly-fields-hint" : undefined}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="phoneNumber">Teléfono</Label>
+              <Input
+                id="phoneNumber"
+                placeholder="912345678"
+                value={formData.phoneNumber}
+                onChange={(e) =>
+                  setFormData({ ...formData, phoneNumber: e.target.value })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="identityDocument">Documento de Identidad</Label>
+              <Input
+                id="identityDocument"
+                placeholder="DNI / RUC"
+                value={formData.identityDocument}
+                onChange={(e) =>
+                  setFormData({ ...formData, identityDocument: e.target.value })
+                }
+                required
+                disabled={isEditing}
+                aria-describedby={isEditing ? "readonly-fields-hint" : undefined}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">
+                Contraseña{" "}
+                {user && (
+                  <span className="text-muted-foreground text-xs">
+                    (dejar vacío para mantener)
+                  </span>
+                )}
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete="new-password"
+                placeholder={user ? "••••••••" : "Mínimo 6 caracteres"}
+                value={formData.password}
+                onChange={(e) =>
+                  setFormData({ ...formData, password: e.target.value })
+                }
+                required={!user}
+              />
+              {!user && (
+                <p className="text-[10px] text-muted-foreground mt-1">
+                  La contraseña debe tener al menos 6 caracteres, una letra
+                  minúscula y un número.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {isEditing && (
+            <p id="readonly-fields-hint" className="text-xs text-muted-foreground">
+              El correo y el documento no se pueden modificar desde aquí.
+            </p>
+          )}
+        </section>
+
+        <section className="space-y-3">
+          <fieldset
+            disabled={roleSelectionDisabled}
             aria-describedby={isSelf ? "own-role-hint" : undefined}
+            className="space-y-3"
           >
-            <SelectValue
-              placeholder={
-                rolesStatus === "ready"
-                  ? "Seleccionar rol"
-                  : ROLES_UNAVAILABLE_MESSAGE[rolesStatus]
-              }
-            />
-          </SelectTrigger>
-          <SelectContent>
-            {!isCurrentRoleAssignable && (
-              <SelectItem value={currentRoleName} disabled>
-                {currentRoleName} (actual, no asignable)
-              </SelectItem>
+            <legend className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Rol
+            </legend>
+            {rolesStatus === "loading" && (
+              <p role="status" className="text-xs text-muted-foreground">
+                {ROLES_UNAVAILABLE_MESSAGE.loading}
+              </p>
             )}
-            {roles.map((role) => (
-              <SelectItem key={role.id} value={role.name}>
-                {role.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {isSelf && !isSelfWithoutRole && (
-          <p id="own-role-hint" className="text-xs text-muted-foreground">
-            No podés cambiar tu propio rol.
-          </p>
-        )}
-        {isSelfWithoutRole && (
-          <p
-            id="own-role-hint"
-            role="status"
-            className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300"
-          >
-            {SELF_WITHOUT_ROLE_MESSAGE}
-          </p>
-        )}
-        {rolesStatus === "unauthenticated" && (
-          <div
-            role="alert"
-            className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
-          >
-            {ROLES_UNAVAILABLE_MESSAGE.unauthenticated}
-          </div>
-        )}
-        {(rolesStatus === "error" || rolesStatus === "empty") && (
-          <div
-            role="alert"
-            className="flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
-          >
-            <span>{ROLES_UNAVAILABLE_MESSAGE[rolesStatus]}</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => {
-                if (auth?.accessToken) loadRoles(auth.accessToken);
-              }}
+            {rolesStatus === "ready" && (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2">
+                {!isCurrentRoleAssignable &&
+                  renderRoleOption(
+                    {
+                      value: currentRoleName,
+                      label: `${currentRoleName} (actual, no asignable)`,
+                    },
+                    0,
+                    true,
+                  )}
+                {roles.map((role, index) =>
+                  renderRoleOption(
+                    {
+                      value: role.name,
+                      label: role.name,
+                      description: role.description?.trim() || undefined,
+                    },
+                    index + 1,
+                    false,
+                  ),
+                )}
+              </div>
+            )}
+          </fieldset>
+          {isSelf && !isSelfWithoutRole && (
+            <p id="own-role-hint" className="text-xs text-muted-foreground">
+              No podés cambiar tu propio rol.
+            </p>
+          )}
+          {isSelfWithoutRole && (
+            <p
+              id="own-role-hint"
+              role="status"
+              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300"
             >
-              Reintentar
-            </Button>
+              {SELF_WITHOUT_ROLE_MESSAGE}
+            </p>
+          )}
+          {rolesStatus === "unauthenticated" && (
+            <div
+              role="alert"
+              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+            >
+              {ROLES_UNAVAILABLE_MESSAGE.unauthenticated}
+            </div>
+          )}
+          {(rolesStatus === "error" || rolesStatus === "empty") && (
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+            >
+              <span>{ROLES_UNAVAILABLE_MESSAGE[rolesStatus]}</span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => {
+                  if (auth?.accessToken) loadRoles(auth.accessToken);
+                }}
+              >
+                Reintentar
+              </Button>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <section aria-labelledby={`${roleFieldId}-address`} className="space-y-4">
+        <h3
+          id={`${roleFieldId}-address`}
+          className="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+        >
+          Ubicación
+        </h3>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="space-y-2">
+            <Label htmlFor="department">Departamento</Label>
+            <Select
+              value={formData.department}
+              onValueChange={(value) =>
+                setFormData({
+                  ...formData,
+                  department: value,
+                  province: "",
+                  district: "",
+                })
+              }
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Departamento" />
+              </SelectTrigger>
+              <SelectContent>
+                {departments.map((d) => (
+                  <SelectItem key={d.name} value={d.name}>
+                    {d.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-3 gap-4">
-        <div className="space-y-2">
-          <Label htmlFor="department">Departamento</Label>
-          <Select
-            value={formData.department}
-            onValueChange={(value) =>
-              setFormData({
-                ...formData,
-                department: value,
-                province: "",
-                district: "",
-              })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Departamento" />
-            </SelectTrigger>
-            <SelectContent>
-              {departments.map((d) => (
-                <SelectItem key={d.name} value={d.name}>
-                  {d.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="space-y-2">
+            <Label htmlFor="province">Provincia</Label>
+            <Select
+              value={formData.province}
+              onValueChange={(value) =>
+                setFormData({
+                  ...formData,
+                  province: value,
+                  district: "",
+                })
+              }
+              disabled={!formData.department}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Provincia" />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredProvinces.map((p) => (
+                  <SelectItem key={p.name} value={p.name}>
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="district">Distrito</Label>
+            <Select
+              value={formData.district}
+              onValueChange={(value) =>
+                setFormData({ ...formData, district: value })
+              }
+              disabled={!formData.province}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Distrito" />
+              </SelectTrigger>
+              <SelectContent>
+                {filteredDistricts.map((d) => (
+                  <SelectItem key={d} value={d}>
+                    {d}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="province">Provincia</Label>
-          <Select
-            value={formData.province}
-            onValueChange={(value) =>
-              setFormData({
-                ...formData,
-                province: value,
-                district: "",
-              })
-            }
-            disabled={!formData.department}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Provincia" />
-            </SelectTrigger>
-            <SelectContent>
-              {filteredProvinces.map((p) => (
-                <SelectItem key={p.name} value={p.name}>
-                  {p.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="district">Distrito</Label>
-          <Select
-            value={formData.district}
-            onValueChange={(value) =>
-              setFormData({ ...formData, district: value })
-            }
-            disabled={!formData.province}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Distrito" />
-            </SelectTrigger>
-            <SelectContent>
-              {filteredDistricts.map((d) => (
-                <SelectItem key={d} value={d}>
-                  {d}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
 
-      <div className="space-y-2">
-        <Label htmlFor="address">Dirección exacta / Referencia</Label>
-        <Input
-          id="address"
-          placeholder="Av. Las Magnolias 123, frente al parque"
-          value={formData.address}
-          onChange={(e) =>
-            setFormData({ ...formData, address: e.target.value })
-          }
-        />
-      </div>
+        <div className="space-y-2">
+          <Label htmlFor="address">Dirección exacta / Referencia</Label>
+          <Input
+            id="address"
+            placeholder="Av. Las Magnolias 123, frente al parque"
+            value={formData.address}
+            onChange={(e) =>
+              setFormData({ ...formData, address: e.target.value })
+            }
+          />
+        </div>
+      </section>
 
-      <div className="flex justify-end gap-2 pt-4">
+      <div className="sticky bottom-0 -mx-6 -mb-6 flex justify-end gap-2 border-t bg-background px-6 py-4">
         <Button
           variant="outline"
           type="button"

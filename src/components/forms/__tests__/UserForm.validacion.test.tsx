@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
@@ -72,8 +72,11 @@ beforeEach(() => {
   ]);
 });
 
-const roleSelect = () => screen.getByRole("combobox", { name: "role" }) as HTMLSelectElement;
-const roleOptions = () => Array.from(roleSelect().options).filter((o) => o.value !== "");
+const roleGroup = () => screen.getByRole("group", { name: "Rol" });
+const roleOptions = () => within(roleGroup()).queryAllByRole("radio") as HTMLInputElement[];
+const selectedRole = () => roleOptions().find((o) => o.checked)?.value ?? "";
+const chooseRole = (value: string) =>
+  fireEvent.click(roleOptions().find((o) => o.value === value) as HTMLInputElement);
 const departmentSelect = () => screen.getAllByRole("combobox", { name: "select" })[0] as HTMLSelectElement;
 const passwordInput = () => screen.getByLabelText(/^Contraseña/);
 const submitForm = (name: string) =>
@@ -103,14 +106,14 @@ function fillNewUser({ password = "clave123", ...overrides }: Partial<Record<str
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   }
   fireEvent.change(passwordInput(), { target: { value: password } });
-  fireEvent.change(roleSelect(), { target: { value: "VENTAS" } });
+  chooseRole("VENTAS");
 }
 
 describe("UserForm — validación de campos", () => {
   it("recorta los campos de texto y envía la contraseña sin transformar", async () => {
     mockCreate.mockResolvedValue({});
     render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
     fillNewUser({
       Nombre: "  Ana ",
       Apellido: " Torres  ",
@@ -137,7 +140,7 @@ describe("UserForm — validación de campos", () => {
 
   it("rechaza obligatorios que quedan vacíos tras recortar", async () => {
     render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
     fillNewUser({ Nombre: "   ", "Documento de Identidad": "  " });
 
     submitForm("Crear Usuario");
@@ -150,7 +153,7 @@ describe("UserForm — validación de campos", () => {
 
   it("al editar rechaza nombre vacío tras recortar", async () => {
     render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
     fireEvent.change(screen.getByLabelText("Apellido"), { target: { value: "  " } });
 
     submitForm("Actualizar Usuario");
@@ -163,7 +166,7 @@ describe("UserForm — validación de campos", () => {
     "al crear rechaza la contraseña '%s' que no cumple la política actual",
     async (password) => {
       render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-      await waitFor(() => expect(roleSelect()).toBeEnabled());
+      await waitFor(() => expect(roleGroup()).toBeEnabled());
       fillNewUser({ password });
 
       submitForm("Crear Usuario");
@@ -178,7 +181,7 @@ describe("UserForm — validación de campos", () => {
   it("al editar valida la contraseña solo si se completó", async () => {
     mockUpdate.mockResolvedValue({});
     render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     fireEvent.change(passwordInput(), { target: { value: "corta" } });
     submitForm("Actualizar Usuario");
@@ -198,7 +201,7 @@ describe("UserForm — validación de campos", () => {
 
     render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     expect(passwordInput()).toHaveAttribute("autocomplete", "new-password");
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
   });
 });
 
@@ -211,8 +214,8 @@ describe("UserForm — rol propio", () => {
     await screen.findByText("No podés cambiar tu propio rol.");
     await waitFor(() => expect(roleOptions()).toHaveLength(3));
 
-    expect(roleSelect()).toBeDisabled();
-    expect(roleSelect().value).toBe("ADMINISTRADOR");
+    expect(roleGroup()).toBeDisabled();
+    expect(selectedRole()).toBe("ADMINISTRADOR");
 
     submitForm("Actualizar Usuario");
 
@@ -224,7 +227,7 @@ describe("UserForm — rol propio", () => {
     render(<UserForm user={SELF} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await waitFor(() => expect(roleOptions()).toHaveLength(3));
 
-    fireEvent.change(roleSelect(), { target: { value: "VENTAS" } });
+    chooseRole("VENTAS");
     submitForm("Actualizar Usuario");
 
     expect(toast.error).toHaveBeenCalledWith("No podés cambiar tu propio rol");
@@ -234,10 +237,10 @@ describe("UserForm — rol propio", () => {
   it("otro usuario sigue pudiendo cambiar de rol", async () => {
     mockUpdate.mockResolvedValue({});
     render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
     expect(screen.queryByText("No podés cambiar tu propio rol.")).not.toBeInTheDocument();
 
-    fireEvent.change(roleSelect(), { target: { value: "OPERACIONES" } });
+    chooseRole("OPERACIONES");
     submitForm("Actualizar Usuario");
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
@@ -251,7 +254,7 @@ describe("UserForm — ubicación", () => {
     render(
       <UserForm user={{ ...EXISTING_USER, city: "Lima" }} onUserSaved={jest.fn()} onCancel={jest.fn()} />,
     );
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     expect(departmentSelect().value).toBe("Lima");
 
@@ -269,7 +272,7 @@ describe("UserForm — ubicación", () => {
         onCancel={jest.fn()}
       />,
     );
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     expect(departmentSelect().value).toBe("Lima");
   });
@@ -277,7 +280,7 @@ describe("UserForm — ubicación", () => {
   it("al editar sin departamento no envía city vacío", async () => {
     mockUpdate.mockResolvedValue({});
     render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     submitForm("Actualizar Usuario");
 
@@ -288,7 +291,7 @@ describe("UserForm — ubicación", () => {
   it("el alta conserva la clave department", async () => {
     mockCreate.mockResolvedValue({});
     render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
     fillNewUser();
     fireEvent.change(departmentSelect(), { target: { value: "Lima" } });
 
@@ -351,7 +354,7 @@ describe("UserForm — guardado pendiente", () => {
         onSavingChange={onSavingChange}
       />,
     );
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     submitForm("Actualizar Usuario");
     submitForm("Guardando...");
@@ -378,7 +381,7 @@ describe("UserForm — guardado pendiente", () => {
         onSavingChange={onSavingChange}
       />,
     );
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     submitForm("Actualizar Usuario");
 
@@ -402,7 +405,7 @@ describe("UserForm — guardado pendiente", () => {
         onSavingChange={onSavingChange}
       />,
     );
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
     submitForm("Actualizar Usuario");
     expect(onSavingChange).toHaveBeenCalledTimes(1);
 
@@ -422,7 +425,7 @@ describe("UserForm — guardado pendiente", () => {
     const { unmount } = render(
       <UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} onSavingChange={onSavingChange} />,
     );
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     unmount();
 
@@ -442,7 +445,7 @@ describe("UserForm — guardado pendiente", () => {
       />
     );
     const { rerender } = render(renderForm());
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
     submitForm("Actualizar Usuario");
 
     rerender(renderForm());
@@ -467,8 +470,8 @@ describe("UserForm — edición propia sin rol", () => {
 
     expect(screen.getByRole("status")).toHaveTextContent(MESSAGE);
     expect(screen.queryByText("No podés cambiar tu propio rol.")).not.toBeInTheDocument();
-    expect(roleSelect()).toBeDisabled();
-    expect(roleSelect().value).toBe("");
+    expect(roleGroup()).toBeDisabled();
+    expect(selectedRole()).toBe("");
     expect(screen.getByRole("button", { name: "Actualizar Usuario" })).toBeDisabled();
 
     submitForm("Actualizar Usuario");
@@ -481,7 +484,7 @@ describe("UserForm — edición propia sin rol", () => {
     render(<UserForm user={SELF_WITHOUT_ROLE} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await waitFor(() => expect(roleOptions()).toHaveLength(2));
 
-    fireEvent.change(roleSelect(), { target: { value: "VENTAS" } });
+    chooseRole("VENTAS");
     submitForm("Actualizar Usuario");
 
     expect(toast.error).toHaveBeenCalledWith(MESSAGE);
@@ -491,10 +494,10 @@ describe("UserForm — edición propia sin rol", () => {
   it("otro usuario sin rol sigue pudiendo recibir uno", async () => {
     mockUpdate.mockResolvedValue({});
     render(<UserForm user={{ ...EXISTING_USER, role: null }} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
-    await waitFor(() => expect(roleSelect()).toBeEnabled());
+    await waitFor(() => expect(roleGroup()).toBeEnabled());
     expect(screen.queryByText(MESSAGE)).not.toBeInTheDocument();
 
-    fireEvent.change(roleSelect(), { target: { value: "VENTAS" } });
+    chooseRole("VENTAS");
     submitForm("Actualizar Usuario");
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
