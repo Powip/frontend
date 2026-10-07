@@ -249,6 +249,24 @@ describe("sortUsers", () => {
   });
 });
 
+describe("login", () => {
+  const people = [
+    user({ id: "a", name: "Zoe", surname: "A", email: "zoe@x.com" }),
+    user({ id: "b", name: "Ana", surname: "B", email: "ana@x.com", username: "zz.ana" }),
+    user({ id: "c", name: "Beto", surname: "C", email: "beto@x.com", address: "Av. Arequipa 100" }),
+  ];
+
+  it("ordena por username cuando existe y por email cuando no", () => {
+    expect(sortUsers(people, "login", "asc").map((u) => u.id)).toEqual(["c", "a", "b"]);
+  });
+
+  it("busca por username y dirección", () => {
+    const filters = { roleKey: ALL_ROLES_FILTER, status: "all" as const };
+    expect(filterUsers(people, { ...filters, query: "zz.an" }, []).map((u) => u.id)).toEqual(["b"]);
+    expect(filterUsers(people, { ...filters, query: "arequipa" }, []).map((u) => u.id)).toEqual(["c"]);
+  });
+});
+
 describe("paginate", () => {
   const items = Array.from({ length: 23 }, (_, i) => i);
 

@@ -7,6 +7,8 @@ export interface Role {
 export interface User {
   id: string;
   identityDocument: string;
+  username?: string;
+  gender?: string;
   name: string;
   surname: string;
   email: string;

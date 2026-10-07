@@ -1,13 +1,13 @@
 # Contrato técnico de backend — Usuarios, Roles e Invitaciones
 
 Estado: **borrador para validar con backend**. Fecha de elaboración: 2026-10-02.
-Rama de referencia: `feat/usuarios-roles-permisos`. El documento está trackeado desde el commit `e9ef6af` («feat: contrato»), subido a `origin/feat/usuarios-roles-permisos`. Las referencias `archivo:línea` se verificaron contra el commit anterior, `1f1c824` («fix(users): restrict access and remove unpersisted actions»); cambios posteriores en esos archivos pueden desplazarlas. Las secciones 1.7 y 1.8 describen el trabajo de frontend posterior (2026-10-06) y citan archivos sin número de línea.
+Rama de referencia: `feat/usuarios-roles-permisos`. El documento está trackeado desde el commit `e9ef6af` («feat: contrato»), subido a `origin/feat/usuarios-roles-permisos`. Las referencias `archivo:línea` se verificaron contra el commit anterior, `1f1c824` («fix(users): restrict access and remove unpersisted actions»); cambios posteriores en esos archivos pueden desplazarlas. Las secciones 1.7 a 1.9 describen el trabajo de frontend posterior (2026-10-06 y 2026-10-07) y citan archivos sin número de línea. Desde 2026-10-07 el trabajo de backend está dividido por bloques en [`backend/README.md`](backend/README.md).
 
 ## 0. Alcance, fuentes y convención de evidencia
 
-**Dentro de alcance:** usuarios de empresa, roles/permisos e invitaciones por email.
+**Dentro de alcance:** usuarios de empresa, roles/permisos e invitaciones por email. **Desde 2026-10-07** el alcance es todo `powip-usuarios.html`, incluida la pestaña «Referidos y cobro»; Referidos mantiene contrato y servicio dueño propios, documentados en los bloques 14 a 17 de [`backend/`](backend/README.md).
 
-**Fuera de alcance (contratos separados):** cuotas/metas, comisiones, facturación y programa de referidos. Solo se citan como frontera:
+**Fuera de alcance (contratos separados):** cuotas/metas, comisiones y facturación. El programa de referidos estuvo fuera hasta 2026-10-06 (D8) y ahora se trabaja en los bloques 14 a 17 sin asumir ms-auth como dueño. Solo se citan como frontera:
 
 - `GET/PATCH /api/usuarios/:id/funciones` (spec de comisiones) pertenece al contrato de comisiones/cuotas.
 - La pestaña «Referidos y cobro» del prototipo tiene tablas y endpoints propios (spec v2 §4); su ubicación se deja como decisión abierta (D8).
@@ -128,6 +128,8 @@ Cambios hechos solo en el frontend, sobre los endpoints que ya usa (E1, E2, E3, 
 
 ### 1.8 Nueva UI de Usuarios y Roles con los endpoints actuales (2026-10-06)
 
+> Reemplazada por §1.9: las decisiones de UI reducida de esta sección (pestaña «Roles», tarjetas «Activos» y «Sin rol», sin acciones pendientes) quedaron sustituidas por el alcance completo del mockup. Se conserva como registro; la regla de identificación de roles sigue vigente.
+
 Se implementó la parte del prototipo que se puede sostener con E2 y E3 sin endpoints nuevos. Todo se calcula en el navegador sobre la respuesta completa de E3 (usuarios de la empresa de la sesión) y la de E2 (catálogo de roles). Nada de esta sección pasa a [BE]. Archivos: `src/app/usuarios/page.tsx`, `src/services/userListing.ts`, `src/config/userRoles.ts`, `src/components/users/`, `src/components/forms/UserForm.tsx`, `src/components/modals/UserModal.tsx`.
 
 | Elemento | Qué muestra hoy | Origen y límite |
@@ -146,6 +148,31 @@ Se implementó la parte del prototipo que se puede sostener con E2 y E3 sin endp
 **Dependencias que siguen abiertas para completar el prototipo:** O-01 (paginación, búsqueda y `counts` en servidor), O-05/P0-04 (estado), O-07 (actividad o presencia), O-08..O-11 (invitaciones), O-12/P1-04 (catálogo con `assignable` y `userCount`), O-13..O-15 (roles personalizados y permisos), D10 (baja), D12 (login, género, DNI), D13 (asignar Administrador) y D14 (varios roles). Además de P0-02, P0-05, P0-06 y Q-01..Q-06.
 
 ---
+
+### 1.9 Alcance completo del mockup (2026-10-07)
+
+El frontend implementa la estructura completa de `powip-usuarios.html`. Las acciones sin contrato quedan visibles con su modal o formulario, pero deshabilitadas, con un aviso breve para el usuario (sin referencias técnicas ni enlaces a estos documentos). «Integrado en frontend» significa que funciona hoy con los endpoints existentes; no equivale a confirmado por backend. Nada de esta sección pasa a [BE].
+
+| Elemento del mockup | Integración actual | Bloque |
+|---|---|---|
+| Pestañas con contadores | «Usuarios (N)» desde E3 y «Roles y permisos (N)» desde E2; sin contador si la carga falla | [01](backend/01-pagina-usuarios.md) |
+| Tarjetas | Total e Inactivos reales; «Activos ahora» y «Roles personalizados» muestran «No disponible» (sin presencia ni `isCustom`) | [02](backend/02-tab-usuarios-listado.md) |
+| Tabla, búsqueda, filtros, orden, 50/25/10 | Integrado en frontend sobre E3 completo; Usuario muestra `username` o «—» (el email no se presenta como login); género si llega | [02](backend/02-tab-usuarios-listado.md) |
+| Selección y Exportar | Integrado en frontend: local (ExcelJS) sobre E3 completo; selección por id; celdas de texto, sin fórmulas | [03](backend/03-seleccion-y-exportacion.md) |
+| Crear usuario | Integrado en frontend con E1 para los campos actuales; login, género, «Personalizado», permisos y contraseña temporal deshabilitados | [04](backend/04-modal-crear-usuario.md), [11](backend/11-matriz-permisos-usuario.md), [18](backend/18-primer-ingreso-cambio-password.md) |
+| Editar usuario | Integrado en frontend con E5 para los campos actuales; rol con select; estado visible y no editable; email de solo lectura | [05](backend/05-modal-editar-usuario.md) |
+| Eliminar | Confirmación sin habilitar; E8 sigue siendo solo rollback de leads | [06](backend/06-eliminar-usuario.md) |
+| Resumen (extensión) | Perfil con datos de E3; actividad no disponible | [07](backend/07-resumen-usuario.md) |
+| Roles y permisos | Catálogo E2, conteos locales, «Ver usuarios»; «Personalizado» como acción | [08](backend/08-tab-roles-y-permisos.md) |
+| Crear rol personalizado | Modal completo sin guardado | [09](backend/09-modal-crear-rol.md) |
+| Editar permisos (extensión) | Modal con matriz en vista previa sin guardado | [10](backend/10-modal-editar-permisos.md) |
+| Matriz de permisos | Estructura de ejemplo del mockup, casillas deshabilitadas y sin marcar | [11](backend/11-matriz-permisos-usuario.md) |
+| Invitar por email | Modal completo sin envío | [12](backend/12-modal-invitar-email.md), [13](backend/13-pagina-aceptar-invitacion.md) |
+| Referidos y cobro | Diseño completo; elección local sin guardar; estadísticas «—»; link no disponible | [14](backend/14-tab-referidos-y-cobro.md) |
+| Cuenta bancaria / Yape / Plin | Formularios sin guardado y sin promesa de cifrado | [15](backend/15-formulario-cuenta-bancaria.md), [16](backend/16-formulario-yape-plin.md) |
+| Liquidación y avisos | Sin datos | [17](backend/17-liquidacion-y-notificaciones.md) |
+
+Desviaciones visuales registradas: se conserva el shell global de Powip (sin sidebar ni campana propios del mockup) y su tipografía; la ubicación usa ubigeo de tres niveles; «Más datos del colaborador» conserva en edición documento, contraseña y dirección.
 
 ## 2. Contrato requerido para la nueva UI
 
@@ -173,7 +200,7 @@ Se implementó la parte del prototipo que se puede sostener con E2 y E3 sin endp
 | Modal «Crear rol personalizado» (nombre, descripción, 6 colores, matriz Ver/Crear/Editar/Eliminar/Admin con las mismas rutas que la spec v2 §3.5, casilla por sección que marca toda la sección) | Roles por empresa, catálogo de permisos y `color` | O-13, O-14, O-15, D2–D4 | No existe |
 | «Personalizar permisos por módulo y ruta» **dentro del alta de usuario**: la matriz se abre sola al elegir «Personalizado», pero el desplegable permite abrirla con cualquier rol | Permisos por usuario, además de los del rol | D15 | No existe |
 | Modal «Invitar por email» (email, nombre completo, rol a asignar incluido «Solo lectura»; enlace de 48 h) | Invitaciones | O-08..O-11, D7 | No existe |
-| Pestaña «Referidos y cobro» | — | **Fuera de alcance** (D8) | — |
+| Pestaña «Referidos y cobro» | Programa, recompensa, destinos de cobro y liquidación | Bloques 14–17 (contrato propio; antes fuera de alcance, D8) | UI preparada, sin integración |
 
 Inconsistencias internas del prototipo:
 

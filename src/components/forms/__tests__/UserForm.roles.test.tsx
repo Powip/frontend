@@ -74,17 +74,29 @@ beforeEach(() => {
   } as unknown as ReturnType<typeof useAuth>);
 });
 
-const roleGroup = () => screen.getByRole("group", { name: "Rol" });
-const roleOptions = () => within(roleGroup()).queryAllByRole("radio") as HTMLInputElement[];
-const selectedRole = () => roleOptions().find((o) => o.checked)?.value ?? "";
-const chooseRole = (value: string) =>
-  fireEvent.click(roleOptions().find((o) => o.value === value) as HTMLInputElement);
+const roleSelect = () => screen.queryByRole("combobox", { name: "Rol" }) as HTMLSelectElement | null;
+const roleGroup = () => roleSelect() ?? screen.getByRole("group", { name: "Rol" });
+const roleOptions = (): Array<HTMLInputElement | HTMLOptionElement> => {
+  const select = roleSelect();
+  if (select) return Array.from(select.options).filter((o) => o.value !== "");
+  return within(roleGroup()).queryAllByRole("radio") as HTMLInputElement[];
+};
+const selectedRole = () => {
+  const select = roleSelect();
+  if (select) return select.value;
+  return (roleOptions() as HTMLInputElement[]).find((o) => o.checked)?.value ?? "";
+};
+const chooseRole = (value: string) => {
+  const select = roleSelect();
+  if (select) fireEvent.change(select, { target: { value } });
+  else fireEvent.click(roleOptions().find((o) => o.value === value) as HTMLInputElement);
+};
 
 function fillNewUser() {
   fireEvent.change(screen.getByLabelText("Nombre"), { target: { value: "Ana" } });
-  fireEvent.change(screen.getByLabelText("Apellido"), { target: { value: "Torres" } });
-  fireEvent.change(screen.getByLabelText("Correo electrónico"), { target: { value: "ana@empresa.com" } });
-  fireEvent.change(screen.getByLabelText("Documento de Identidad"), { target: { value: "12345678" } });
+  fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "Torres" } });
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "ana@empresa.com" } });
+  fireEvent.change(screen.getByLabelText("DNI / Documento"), { target: { value: "12345678" } });
   fireEvent.change(screen.getByLabelText(/^Contraseña/), { target: { value: "clave123" } });
 }
 
@@ -117,7 +129,7 @@ describe("UserForm — fallo al cargar roles", () => {
     await screen.findByRole("alert");
     fillNewUser();
 
-    const submit = screen.getByRole("button", { name: "Crear Usuario" });
+    const submit = screen.getByRole("button", { name: "Crear usuario" });
     expect(submit).toBeDisabled();
     fireEvent.submit(submit.closest("form")!);
 
@@ -130,7 +142,7 @@ describe("UserForm — fallo al cargar roles", () => {
     render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await screen.findByRole("alert");
 
-    fireEvent.submit(screen.getByRole("button", { name: "Actualizar Usuario" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Guardar cambios" }).closest("form")!);
 
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
@@ -145,7 +157,7 @@ describe("UserForm — fallo al cargar roles", () => {
 
     await waitFor(() => expect(roleOptions().map((o) => o.value)).toEqual(["VENTAS"]));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Crear Usuario" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Crear usuario" })).toBeEnabled();
   });
 });
 
@@ -159,7 +171,7 @@ describe("UserForm — API sin roles asignables", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("No hay roles disponibles para asignar");
     expect(roleOptions()).toHaveLength(0);
-    expect(screen.getByRole("button", { name: "Crear Usuario" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Crear usuario" })).toBeDisabled();
   });
 });
 
@@ -187,7 +199,7 @@ describe("UserForm — roles cargados", () => {
     fillNewUser();
     chooseRole("OPERACIONES");
 
-    fireEvent.click(screen.getByRole("button", { name: "Crear Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Crear usuario" }));
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     expect(mockCreate.mock.calls[0][1]).toMatchObject({ roleName: "OPERACIONES", email: "ana@empresa.com" });
@@ -226,7 +238,7 @@ describe("UserForm — roles cargados", () => {
     render(<UserForm user={userWithUnassignableRole} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await waitFor(() => expect(roleGroup()).toBeEnabled());
 
-    fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate.mock.calls[0][1]).toMatchObject({ roleName: "ADMINISTRADOR" });
@@ -263,15 +275,15 @@ describe("UserForm — sin éxitos simulados", () => {
     render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await waitFor(() => expect(roleGroup()).toBeEnabled());
 
-    const email = screen.getByLabelText("Correo electrónico");
-    const document = screen.getByLabelText("Documento de Identidad");
+    const email = screen.getByLabelText("Email");
+    const document = screen.getByLabelText("DNI / Documento");
     expect(email).toBeDisabled();
     expect(email).toHaveValue("luis@empresa.com");
     expect(document).toBeDisabled();
     expect(document).toHaveValue("87654321");
     expect(email).toHaveAccessibleDescription("El correo y el documento no se pueden modificar desde aquí.");
 
-    fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     const payload = mockUpdate.mock.calls[0][1];
@@ -283,8 +295,8 @@ describe("UserForm — sin éxitos simulados", () => {
     render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await waitFor(() => expect(roleGroup()).toBeEnabled());
 
-    expect(screen.getByLabelText("Correo electrónico")).toBeEnabled();
-    expect(screen.getByLabelText("Documento de Identidad")).toBeEnabled();
+    expect(screen.getByLabelText("Email")).toBeEnabled();
+    expect(screen.getByLabelText("DNI / Documento")).toBeEnabled();
     expect(screen.queryByText(/no se pueden modificar/)).not.toBeInTheDocument();
   });
 });

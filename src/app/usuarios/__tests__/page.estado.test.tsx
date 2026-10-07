@@ -84,15 +84,18 @@ const cellOf = (row: HTMLElement, header: string) => {
 };
 
 describe("UsuariosPage — estado de usuario", () => {
-  it("cada fila solo ofrece Editar: no hay acción de activar/desactivar", async () => {
+  it("cada fila ofrece Editar, Eliminar y Resumen, sin acción de activar/desactivar", async () => {
     render(<UsuariosPage />);
 
     for (const name of ["Ana Torres", "Luis Paz"]) {
       const buttons = within(await rowOf(name)).getAllByRole("button");
-      expect(buttons).toHaveLength(1);
-      expect(buttons[0]).toHaveAccessibleName(`Editar ${name}`);
+      expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
+        `Editar ${name}`,
+        `Eliminar ${name}`,
+        `Resumen de ${name}`,
+      ]);
     }
-    expect(screen.queryByRole("button", { name: /desactivar|activar|eliminar/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /desactivar|^activar/i })).not.toBeInTheDocument();
   });
 
   it("muestra el estado que devuelve la API", async () => {
@@ -316,7 +319,8 @@ describe("UsuariosPage — paginación tras recargar", () => {
     render(<UsuariosPage />);
 
     await findUser("Usuario00 Prueba");
-    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Filas por página" }), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: /página siguiente/i }));
     const row = await rowOf("Usuario10 Prueba");
 
     // Guardar desde el modal recarga la lista, que ahora tiene una sola página.
@@ -331,7 +335,8 @@ describe("UsuariosPage — paginación tras recargar", () => {
     jest.mocked(getUsersByCompany).mockResolvedValue(many);
     render(<UsuariosPage />);
     await findUser("Usuario00 Prueba");
-    fireEvent.click(screen.getByRole("button", { name: /siguiente/i }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Filas por página" }), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: /página siguiente/i }));
     await findUser("Usuario10 Prueba");
 
     fireEvent.change(screen.getByLabelText("Buscar usuarios"), {
@@ -459,16 +464,21 @@ describe("UsuariosPage — respuestas fuera de orden", () => {
   });
 });
 
-describe("UsuariosPage — ubicación", () => {
-  it("muestra solo las partes disponibles y — si no hay ninguna", async () => {
+describe("UsuariosPage — distrito", () => {
+  it("muestra el distrito que devuelve la API y — si no hay", async () => {
     jest.mocked(getUsersByCompany).mockResolvedValue([
       { ...USERS[0], district: undefined, province: undefined },
       { ...USERS[1], district: "", province: "Lima" },
     ]);
     render(<UsuariosPage />);
 
-    expect(cellOf(await rowOf("Ana Torres"), "Ubicación")).toHaveTextContent(/^—$/);
-    const luisRow = await rowOf("Luis Paz");
-    expect(cellOf(luisRow, "Ubicación")).toHaveTextContent(/^Lima$/);
+    expect(cellOf(await rowOf("Ana Torres"), "Distrito")).toHaveTextContent(/^—$/);
+    expect(cellOf(await rowOf("Luis Paz"), "Distrito")).toHaveTextContent(/^—$/);
+  });
+
+  it("no completa el distrito con la provincia", async () => {
+    render(<UsuariosPage />);
+
+    expect(cellOf(await rowOf("Luis Paz"), "Distrito")).toHaveTextContent(/^Breña$/);
   });
 });

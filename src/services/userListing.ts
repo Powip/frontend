@@ -4,7 +4,7 @@ export const ALL_ROLES_FILTER = "__all_roles__";
 export const NO_ROLE_FILTER = "__no_role__";
 
 export type StatusFilter = "all" | "active" | "inactive";
-export type SortKey = "name" | "surname" | "email" | "status";
+export type SortKey = "login" | "name" | "surname" | "email" | "status";
 export type SortDirection = "asc" | "desc";
 
 export interface RoleOption {
@@ -155,6 +155,7 @@ export function filterUsers(users: User[], filters: UserFilters, options: RoleOp
 
     if (!query) return true;
     return [
+      user.username,
       user.name,
       user.surname,
       user.email,
@@ -162,6 +163,7 @@ export function filterUsers(users: User[], filters: UserFilters, options: RoleOp
       user.phoneNumber,
       user.role?.name,
       user.district,
+      user.address,
     ].some((field) => normalizeText(field).includes(query));
   });
 }
@@ -170,7 +172,13 @@ const compareText = (a?: string | null, b?: string | null) => collator.compare(a
 
 const compareStatus = (a: User, b: User) => Number(b.status === true) - Number(a.status === true);
 
+export const loginOf = (user: User) => user.username?.trim() ?? "";
+
 const tieBreakers: Record<SortKey, Array<(a: User, b: User) => number>> = {
+  login: [
+    (a, b) => compareText(a.name, b.name),
+    (a, b) => compareText(a.surname, b.surname),
+  ],
   name: [
     (a, b) => compareText(a.surname, b.surname),
     (a, b) => compareText(a.email, b.email),
@@ -191,6 +199,7 @@ const tieBreakers: Record<SortKey, Array<(a: User, b: User) => number>> = {
 };
 
 const primaryComparators: Record<SortKey, (a: User, b: User) => number> = {
+  login: (a, b) => compareText(loginOf(a), loginOf(b)),
   name: (a, b) => compareText(a.name, b.name),
   surname: (a, b) => compareText(a.surname, b.surname),
   email: (a, b) => compareText(a.email, b.email),

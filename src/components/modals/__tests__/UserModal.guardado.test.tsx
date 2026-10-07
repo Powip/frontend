@@ -94,7 +94,9 @@ const pendingUpdates = () => {
 };
 
 const roleReady = () =>
-  waitFor(() => expect(screen.getByRole("group", { name: "Rol" })).toBeEnabled());
+  waitFor(() =>
+    expect(screen.queryByRole("combobox", { name: "Rol" }) ?? screen.getByRole("group", { name: "Rol" })).toBeEnabled(),
+  );
 const pressEscape = () => fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
 const closeButton = () => screen.queryByRole("button", { name: "Close" });
 const clickOutside = () => {
@@ -131,7 +133,7 @@ describe("UserModal — guardado pendiente", () => {
     const { onClose, onUserSaved } = renderModal(USER_A);
     await roleReady();
 
-    fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
 
     const saving = await screen.findByRole("button", { name: "Guardando..." });
     expect(saving).toBeDisabled();
@@ -159,7 +161,7 @@ describe("UserModal — guardado pendiente", () => {
     const { onClose, onUserSaved } = renderModal(USER_A);
     await roleReady();
 
-    fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await screen.findByRole("button", { name: "Guardando..." });
 
     rejecters[0]({ response: { data: { message: "Error de ms-auth" } } });
@@ -167,7 +169,7 @@ describe("UserModal — guardado pendiente", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Error de ms-auth"));
     expect(onUserSaved).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Actualizar Usuario" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
     pressEscape();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -176,14 +178,14 @@ describe("UserModal — guardado pendiente", () => {
     const { resolvers } = pendingUpdates();
     const { onClose, onUserSaved, rerender } = renderModal(USER_A);
     await roleReady();
-    fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await screen.findByRole("button", { name: "Guardando..." });
 
     rerender(<UserModal open user={USER_B} onClose={onClose} onUserSaved={onUserSaved} />);
 
     await waitFor(() => expect(screen.getByLabelText("Nombre")).toHaveValue("Luis"));
     await roleReady();
-    expect(screen.getByRole("button", { name: "Actualizar Usuario" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
     expect(closeButton()).toBeInTheDocument();
 
     resolvers[0]({});
@@ -191,7 +193,7 @@ describe("UserModal — guardado pendiente", () => {
     await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Usuario actualizado exitosamente"));
     expect(onUserSaved).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Nombre")).toHaveValue("Luis");
-    expect(screen.getByRole("button", { name: "Actualizar Usuario" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
 
     pressEscape();
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -201,14 +203,14 @@ describe("UserModal — guardado pendiente", () => {
     const { resolvers } = pendingUpdates();
     const { onClose, onUserSaved, rerender } = renderModal(USER_A);
     await roleReady();
-    fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await screen.findByRole("button", { name: "Guardando..." });
 
     rerender(<UserModal open={false} user={USER_A} onClose={onClose} onUserSaved={onUserSaved} />);
     rerender(<UserModal open user={USER_A} onClose={onClose} onUserSaved={onUserSaved} />);
 
     await roleReady();
-    expect(screen.getByRole("button", { name: "Actualizar Usuario" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
     expect(closeButton()).toBeInTheDocument();
 
     resolvers[0]({});
@@ -231,7 +233,7 @@ describe("UserModal — guardado pendiente", () => {
     await roleReady();
     expect(closeButton()).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await screen.findByRole("button", { name: "Guardando..." });
     expect(closeButton()).not.toBeInTheDocument();
     pressEscape();
@@ -250,14 +252,14 @@ describe("UserModal — guardado pendiente", () => {
     const { resolvers } = pendingUpdates();
     const { onClose, onUserSaved, rerender } = renderModal(USER_A);
     await roleReady();
-    fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await screen.findByRole("button", { name: "Guardando..." });
 
     rerender(<UserModal open user={USER_B} onClose={onClose} onUserSaved={onUserSaved} />);
     await waitFor(() => expect(screen.getByLabelText("Nombre")).toHaveValue("Luis"));
     await roleReady();
 
-    fireEvent.click(screen.getByRole("button", { name: "Actualizar Usuario" }));
+    fireEvent.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await screen.findByRole("button", { name: "Guardando..." });
     expect(closeButton()).not.toBeInTheDocument();
 

@@ -72,11 +72,23 @@ beforeEach(() => {
   ]);
 });
 
-const roleGroup = () => screen.getByRole("group", { name: "Rol" });
-const roleOptions = () => within(roleGroup()).queryAllByRole("radio") as HTMLInputElement[];
-const selectedRole = () => roleOptions().find((o) => o.checked)?.value ?? "";
-const chooseRole = (value: string) =>
-  fireEvent.click(roleOptions().find((o) => o.value === value) as HTMLInputElement);
+const roleSelect = () => screen.queryByRole("combobox", { name: "Rol" }) as HTMLSelectElement | null;
+const roleGroup = () => roleSelect() ?? screen.getByRole("group", { name: "Rol" });
+const roleOptions = (): Array<HTMLInputElement | HTMLOptionElement> => {
+  const select = roleSelect();
+  if (select) return Array.from(select.options).filter((o) => o.value !== "");
+  return within(roleGroup()).queryAllByRole("radio") as HTMLInputElement[];
+};
+const selectedRole = () => {
+  const select = roleSelect();
+  if (select) return select.value;
+  return (roleOptions() as HTMLInputElement[]).find((o) => o.checked)?.value ?? "";
+};
+const chooseRole = (value: string) => {
+  const select = roleSelect();
+  if (select) fireEvent.change(select, { target: { value } });
+  else fireEvent.click(roleOptions().find((o) => o.value === value) as HTMLInputElement);
+};
 const departmentSelect = () => screen.getAllByRole("combobox", { name: "select" })[0] as HTMLSelectElement;
 const passwordInput = () => screen.getByLabelText(/^Contraseña/);
 const submitForm = (name: string) =>
@@ -97,9 +109,9 @@ const EXISTING_USER: User = {
 function fillNewUser({ password = "clave123", ...overrides }: Partial<Record<string, string>> = {}) {
   const values = {
     Nombre: "Ana",
-    Apellido: "Torres",
-    "Correo electrónico": "ana@empresa.com",
-    "Documento de Identidad": "12345678",
+    Apellidos: "Torres",
+    Email: "ana@empresa.com",
+    "DNI / Documento": "12345678",
     ...overrides,
   };
   for (const [label, value] of Object.entries(values)) {
@@ -116,15 +128,15 @@ describe("UserForm — validación de campos", () => {
     await waitFor(() => expect(roleGroup()).toBeEnabled());
     fillNewUser({
       Nombre: "  Ana ",
-      Apellido: " Torres  ",
-      "Correo electrónico": " ana@empresa.com ",
-      "Documento de Identidad": " 12345678 ",
+      Apellidos: " Torres  ",
+      Email: " ana@empresa.com ",
+      "DNI / Documento": " 12345678 ",
       password: " clave123 ",
     });
     fireEvent.change(screen.getByLabelText("Teléfono"), { target: { value: " 912345678 " } });
-    fireEvent.change(screen.getByLabelText("Dirección exacta / Referencia"), { target: { value: " Av. Lima 1 " } });
+    fireEvent.change(screen.getByLabelText("Dirección"), { target: { value: " Av. Lima 1 " } });
 
-    submitForm("Crear Usuario");
+    submitForm("Crear usuario");
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     expect(mockCreate.mock.calls[0][1]).toMatchObject({
@@ -141,12 +153,12 @@ describe("UserForm — validación de campos", () => {
   it("rechaza obligatorios que quedan vacíos tras recortar", async () => {
     render(<UserForm user={null} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await waitFor(() => expect(roleGroup()).toBeEnabled());
-    fillNewUser({ Nombre: "   ", "Documento de Identidad": "  " });
+    fillNewUser({ Nombre: "   ", "DNI / Documento": "  " });
 
-    submitForm("Crear Usuario");
+    submitForm("Crear usuario");
 
     expect(toast.error).toHaveBeenCalledWith(
-      "Completá los campos obligatorios: Nombre, Documento de Identidad",
+      "Completá los campos obligatorios: Nombre, DNI / Documento",
     );
     expect(mockCreate).not.toHaveBeenCalled();
   });
@@ -154,11 +166,11 @@ describe("UserForm — validación de campos", () => {
   it("al editar rechaza nombre vacío tras recortar", async () => {
     render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await waitFor(() => expect(roleGroup()).toBeEnabled());
-    fireEvent.change(screen.getByLabelText("Apellido"), { target: { value: "  " } });
+    fireEvent.change(screen.getByLabelText("Apellidos"), { target: { value: "  " } });
 
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
-    expect(toast.error).toHaveBeenCalledWith("Completá los campos obligatorios: Apellido");
+    expect(toast.error).toHaveBeenCalledWith("Completá los campos obligatorios: Apellidos");
     expect(mockUpdate).not.toHaveBeenCalled();
   });
 
@@ -169,7 +181,7 @@ describe("UserForm — validación de campos", () => {
       await waitFor(() => expect(roleGroup()).toBeEnabled());
       fillNewUser({ password });
 
-      submitForm("Crear Usuario");
+      submitForm("Crear usuario");
 
       expect(toast.error).toHaveBeenCalledWith(
         "La contraseña debe tener al menos 6 caracteres, una letra minúscula y un número.",
@@ -184,11 +196,11 @@ describe("UserForm — validación de campos", () => {
     await waitFor(() => expect(roleGroup()).toBeEnabled());
 
     fireEvent.change(passwordInput(), { target: { value: "corta" } });
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
     expect(mockUpdate).not.toHaveBeenCalled();
 
     fireEvent.change(passwordInput(), { target: { value: "" } });
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty("password");
@@ -217,7 +229,7 @@ describe("UserForm — rol propio", () => {
     expect(roleGroup()).toBeDisabled();
     expect(selectedRole()).toBe("ADMINISTRADOR");
 
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate.mock.calls[0][1]).toMatchObject({ roleName: "ADMINISTRADOR" });
@@ -228,7 +240,7 @@ describe("UserForm — rol propio", () => {
     await waitFor(() => expect(roleOptions()).toHaveLength(3));
 
     chooseRole("VENTAS");
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     expect(toast.error).toHaveBeenCalledWith("No podés cambiar tu propio rol");
     expect(mockUpdate).not.toHaveBeenCalled();
@@ -241,7 +253,7 @@ describe("UserForm — rol propio", () => {
     expect(screen.queryByText("No podés cambiar tu propio rol.")).not.toBeInTheDocument();
 
     chooseRole("OPERACIONES");
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate.mock.calls[0][1]).toMatchObject({ roleName: "OPERACIONES" });
@@ -258,7 +270,7 @@ describe("UserForm — ubicación", () => {
 
     expect(departmentSelect().value).toBe("Lima");
 
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate.mock.calls[0][1]).toMatchObject({ city: "Lima", province: "Lima", district: "Ate" });
@@ -282,7 +294,7 @@ describe("UserForm — ubicación", () => {
     render(<UserForm user={EXISTING_USER} onUserSaved={jest.fn()} onCancel={jest.fn()} />);
     await waitFor(() => expect(roleGroup()).toBeEnabled());
 
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate.mock.calls[0][1]).not.toHaveProperty("city");
@@ -295,7 +307,7 @@ describe("UserForm — ubicación", () => {
     fillNewUser();
     fireEvent.change(departmentSelect(), { target: { value: "Lima" } });
 
-    submitForm("Crear Usuario");
+    submitForm("Crear usuario");
 
     await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1));
     expect(mockCreate.mock.calls[0][1]).toMatchObject({ department: "Lima" });
@@ -313,9 +325,9 @@ describe("UserForm — sin sesión", () => {
     );
     expect(mockGetRoles).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Reintentar" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Crear Usuario" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Crear usuario" })).toBeDisabled();
 
-    submitForm("Crear Usuario");
+    submitForm("Crear usuario");
     expect(mockCreate).not.toHaveBeenCalled();
   });
 });
@@ -336,7 +348,7 @@ describe("UserForm — carga de roles", () => {
     pending[0]([]);
     await waitFor(() => expect(roleOptions().map((o) => o.value)).toEqual(["VENTAS"]));
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Crear Usuario" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Crear usuario" })).toBeEnabled();
   });
 });
 
@@ -356,7 +368,7 @@ describe("UserForm — guardado pendiente", () => {
     );
     await waitFor(() => expect(roleGroup()).toBeEnabled());
 
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
     submitForm("Guardando...");
 
     expect(mockUpdate).toHaveBeenCalledTimes(1);
@@ -383,13 +395,13 @@ describe("UserForm — guardado pendiente", () => {
     );
     await waitFor(() => expect(roleGroup()).toBeEnabled());
 
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Error de ms-auth"));
     expect(onSavingChange).toHaveBeenLastCalledWith(false);
     expect(onSaved).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Actualizar Usuario" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeEnabled();
   });
 
   it("si se desmonta durante el guardado, libera su bloqueo una vez y no llama a callbacks después", async () => {
@@ -406,7 +418,7 @@ describe("UserForm — guardado pendiente", () => {
       />,
     );
     await waitFor(() => expect(roleGroup()).toBeEnabled());
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
     expect(onSavingChange).toHaveBeenCalledTimes(1);
 
     unmount();
@@ -446,7 +458,7 @@ describe("UserForm — guardado pendiente", () => {
     );
     const { rerender } = render(renderForm());
     await waitFor(() => expect(roleGroup()).toBeEnabled());
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     rerender(renderForm());
     rerender(renderForm());
@@ -472,9 +484,9 @@ describe("UserForm — edición propia sin rol", () => {
     expect(screen.queryByText("No podés cambiar tu propio rol.")).not.toBeInTheDocument();
     expect(roleGroup()).toBeDisabled();
     expect(selectedRole()).toBe("");
-    expect(screen.getByRole("button", { name: "Actualizar Usuario" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Guardar cambios" })).toBeDisabled();
 
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     expect(toast.error).toHaveBeenCalledWith(MESSAGE);
     expect(mockUpdate).not.toHaveBeenCalled();
@@ -485,7 +497,7 @@ describe("UserForm — edición propia sin rol", () => {
     await waitFor(() => expect(roleOptions()).toHaveLength(2));
 
     chooseRole("VENTAS");
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     expect(toast.error).toHaveBeenCalledWith(MESSAGE);
     expect(mockUpdate).not.toHaveBeenCalled();
@@ -498,7 +510,7 @@ describe("UserForm — edición propia sin rol", () => {
     expect(screen.queryByText(MESSAGE)).not.toBeInTheDocument();
 
     chooseRole("VENTAS");
-    submitForm("Actualizar Usuario");
+    submitForm("Guardar cambios");
 
     await waitFor(() => expect(mockUpdate).toHaveBeenCalledTimes(1));
     expect(mockUpdate.mock.calls[0][1]).toMatchObject({ roleName: "VENTAS" });
