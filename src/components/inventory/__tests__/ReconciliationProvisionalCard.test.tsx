@@ -241,6 +241,14 @@ beforeEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('ReconciliationProvisionalCard', () => {
+  describe('canal (FEAT-17 Anexo D)', () => {
+    it('muestra el chip de canal con su etiqueta, no el texto plano de la fuente', () => {
+      renderCard({ task: makeTask({ items: [makeItem({ source: 'shopify' })] }) });
+      expect(screen.getByText('Shopify')).toBeInTheDocument();
+      expect(screen.queryByText('shopify')).not.toBeInTheDocument();
+    });
+  });
+
   describe('sin sugerencias', () => {
     it('muestra "Confirmar como nuevo" (sin el bloque "¿Es la misma?") y lo clickea llama a onConfirmNew', async () => {
       const onConfirmNew = jest.fn();

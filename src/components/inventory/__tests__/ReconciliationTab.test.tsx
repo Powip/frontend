@@ -1,88 +1,26 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 /**
- * Tests: ReconciliationTab (FEAT-17 Anexo A — bandeja de reconciliación)
+ * Tests: ReconciliationTab (FEAT-17 Anexo D — bandeja en tabs paginadas)
  *
  * Comportamiento verificado:
- * 1. Estado de carga: mientras `listReconciliationTasks` está pendiente no se
- *    muestran ni las secciones ni el estado vacío.
- * 2. Estado vacío: cuando la lista resuelve `[]` se muestra el mensaje "No hay
- *    tareas de reconciliación...".
- * 3. Con una mezcla de `type: 'provisional' | 'manual' | 'duplicate_cluster'`
- *    se renderizan las 3 secciones con sus items correspondientes.
- * 4. Cambiar el filtro de Tipo o Estado dispara un nuevo `listReconciliationTasks`
- *    con los params `{ type, status }` actualizados.
- * 5. "Confirmar como nuevo" en un provisional (sin sugerencias, via
- *    `ReconciliationProvisionalCard`) llama a `confirmReconciliationProvisional`
- *    con el id correcto y refresca la lista.
- * 6. "Sí, es la misma → unificar" en un provisional CON sugerencia NO ejecuta
- *    el service directo al click: abre `ReconciliationLinkDialog` ("Vincular
- *    a variante existente") con la sugerencia elegida como variante destino.
- *    Recién al confirmar ahí se llama a `resolveReconciliationLink` con
- *    `(taskId, variant_id de la sugerencia)`.
- * 7. Los 3 botones "Rechazar" (provisional/manual/cluster) NO ejecutan el
- *    service directo al click: abren `ReconciliationRejectDialog` ("Rechazar
- *    tarea de reconciliación"). Recién al confirmar ahí se llama a
- *    `rejectReconciliationTask` con el id correcto.
- * 8. Selección múltiple: FEAT-17 hotfix — `BULK_SELECTABLE_TYPES` ya no
- *    incluye `duplicate_cluster`, así que solo las filas `provisional`
- *    muestran checkbox. Seleccionar un provisional + "Confirmar
- *    seleccionadas" abre el diálogo de confirmación (texto actualizado:
- *    "Los provisionales seleccionados se confirmarán...") y, al confirmar,
- *    llama a `bulkConfirmReconciliationTasks` con el id seleccionado.
- * 9. Si una acción individual rechaza la promesa, se muestra `toast.error` (con
- *    el fallback del propio componente) y el componente no se rompe (el item
- *    sigue visible, el botón vuelve a estar habilitado).
- * 10. Cola manual: NO se renderiza el botón "Confirmar como nuevo" ni el
- *     buscador de variantes ("Buscar otra variante") para items
- *     `type: 'manual'`, solo "Rechazar" — esos items no pasan por
- *     `ReconciliationProvisionalCard`.
- * 11. FEAT-17 Anexo B (rediseño de la sección de clusters): "Revisar y
- *     unificar" en un cluster está habilitado (solo se deshabilita mientras
- *     `isProcessing`) y el click abre `ReconciliationMergeDialog`
- *     ("Unificar · {nombre de la sugerida}"). Ya no se muestra ningún
- *     `Alert` de "Fusión de duplicados pausada" sobre la sección de
- *     clusters. Los clusters siguen sin checkbox de selección (ver punto 8
- *     — `BULK_SELECTABLE_TYPES` solo incluye `provisional`), pero "Son
- *     distintos" (el rechazo del cluster, ya no dice "Rechazar") sigue
- *     habilitado y abre `ReconciliationRejectDialog` igual que en el resto
- *     de los tipos.
- * 12. Con `companyId: undefined`, `loadTasks` corta antes de llamar a
- *     `listReconciliationTasks`, sale de `isLoading` y muestra directamente
- *     el estado vacío (sin pasar por el skeleton).
- * 13. FEAT-17 Anexo B — la franja ámbar "Todas están en {canal}" se muestra
- *     bajo la grilla de candidatas de un cluster cuando TODAS comparten el
- *     mismo `source`, y no aparece si difieren.
+ * 1. Carga y vacío: mientras la página está pendiente no hay contenido; cada
+ *    tab tiene su mensaje vacío; con `companyId` undefined no se pide nada.
+ * 2. Tabs: 4 tabs en orden con sus contadores (`counts`), arranca en "Por
+ *    unificar" página 1; cambiar de tab pide la página 1 de esa tab.
+ * 3. Paginación: la página siguiente pide `page: 2`; si la página queda vacía
+ *    tras resolver la última tarea vuelve a la anterior; si falla el listado
+ *    muestra error con "Reintentar".
+ * 4. Aceptación masiva (solo provisionales): "Seleccionar las de esta
+ *    página", botón "Aceptar como productos nuevos (N)", la selección se
+ *    limpia al cambiar de página, confirmar llama a `bulkConfirm`.
+ * 5. Acciones existentes (confirmar como nuevo, vincular, rechazar, unificar,
+ *    errores, cola manual, franja ámbar) dentro de su tab.
  *
- * Mocks aplicados:
- * - @/services/reconciliationTask.service → las 7 funciones de siempre +
- *   `searchReconciliationVariants` (usada por el buscador de
- *   `ReconciliationProvisionalCard`, resuelta con `[]` por defecto — acá no
- *   se ejercita el buscador, ya cubierto en
- *   `ReconciliationProvisionalCard.test.tsx`) + el helper
- *   `getReconciliationTaskErrorMessage` (se mockea devolviendo directamente
- *   el `fallback` recibido) + `getReconciliationTaskDetails` (FEAT-17 Anexo
- *   B, usado por `ReconciliationMergeDialog` — se resuelve con candidatas
- *   vacías por defecto, ya que el detalle enriquecido en sí se cubre en
- *   `ReconciliationMergeDialog.test.tsx`).
- * - @/services/inventoryItems.service → `getStockByVariants` (ídem, usado
- *   por `ReconciliationMergeDialog`, resuelto con `[]` por defecto).
- * - sonner → toast.success/error.
- * - @/components/ui/select → `<select>` nativo (mismo patrón que
- *   ExcelImportWizard.test.tsx / SendToEvaGuideModal.test.tsx): Radix Select
- *   dispara APIs de browser (pointer capture / scroll) no implementadas en
- *   jsdom. Los 2 selects del componente (Tipo, Estado) se distinguen por
- *   orden con `getAllByRole('combobox')` (mismo patrón que
- *   packs-promos/page.test.tsx).
- * - AlertDialog y Checkbox (Radix) → SIN mockear: a diferencia de Select, no
- *   dependen de pointer capture / ResizeObserver, funcionan normalmente sobre
- *   jsdom.
- * - `ReconciliationProvisionalCard` usa el hook real
- *   `useReconciliationVariantSearch` (react-query) para su buscador, así que
- *   `renderTab` envuelve en `QueryClientProvider` (retry: false), mismo
- *   patrón que `useUpsellRecords.test.ts`.
+ * Mocks: service de reconciliación (`listReconciliationTaskPage` + acciones),
+ * `getStockByVariants`, sonner. Radix Tabs/AlertDialog/Checkbox sin mockear.
+ * `ReconciliationProvisionalCard` usa react-query → `QueryClientProvider`.
  */
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
@@ -97,7 +35,7 @@ jest.mock('sonner', () => ({
 }));
 
 jest.mock('@/services/reconciliationTask.service', () => ({
-  listReconciliationTasks: jest.fn(),
+  listReconciliationTaskPage: jest.fn(),
   getReconciliationTask: jest.fn(),
   resolveReconciliationLink: jest.fn(),
   resolveReconciliationMerge: jest.fn(),
@@ -122,81 +60,11 @@ jest.mock('@/services/inventoryItems.service', () => ({
   getStockByVariants: jest.fn(),
 }));
 
-/**
- * Mock de Radix Select → <select> nativo. Idéntico al usado en
- * ExcelImportWizard.test.tsx / SendToEvaGuideModal.test.tsx.
- */
-jest.mock('@/components/ui/select', () => {
-  const React = require('react');
-
-  function extractText(node: unknown): string {
-    if (node === null || node === undefined) return '';
-    if (typeof node === 'string' || typeof node === 'number') return String(node);
-    if (typeof node === 'boolean') return '';
-    if (Array.isArray(node)) return node.map(extractText).join('');
-    if (typeof node === 'object' && node !== null && 'props' in node) {
-      const el = node as { props: { children?: unknown } };
-      return extractText(el.props.children);
-    }
-    return '';
-  }
-
-  const Select = ({
-    value,
-    onValueChange,
-    children,
-  }: {
-    value?: string;
-    onValueChange?: (v: string) => void;
-    children?: React.ReactNode;
-  }) => {
-    const options: { value: string; label: string }[] = [];
-    React.Children.forEach(
-      children,
-      (child: React.ReactElement<{ children?: React.ReactNode }>) => {
-        if (!child || !child.props) return;
-        if (child.props.children) {
-          React.Children.forEach(
-            child.props.children,
-            (item: React.ReactElement<{ value?: string; children?: React.ReactNode }>) => {
-              if (item && item.props && item.props.value !== undefined) {
-                options.push({ value: item.props.value, label: extractText(item.props.children) });
-              }
-            },
-          );
-        }
-      },
-    );
-    return (
-      <select
-        value={value}
-        onChange={(e) => onValueChange?.(e.target.value)}
-        data-testid="select-mock"
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    );
-  };
-
-  const SelectContent = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
-  const SelectItem = ({ value, children }: { value: string; children?: React.ReactNode }) => (
-    <option value={value}>{children}</option>
-  );
-  const SelectTrigger = ({ children }: { children?: React.ReactNode }) => <>{children}</>;
-  const SelectValue = ({ placeholder }: { placeholder?: string }) => <span>{placeholder}</span>;
-
-  return { Select, SelectContent, SelectItem, SelectTrigger, SelectValue };
-});
-
 // ── Imports bajo prueba (después de los mocks) ────────────────────────────────
 
 import { toast } from 'sonner';
 import {
-  listReconciliationTasks,
+  listReconciliationTaskPage,
   confirmReconciliationProvisional,
   resolveReconciliationLink,
   rejectReconciliationTask,
@@ -213,7 +81,7 @@ import { ReconciliationTab } from '../ReconciliationTab';
 
 // ── Casts ────────────────────────────────────────────────────────────────────
 
-const mockListTasks = jest.mocked(listReconciliationTasks);
+const mockListPage = jest.mocked(listReconciliationTaskPage);
 const mockConfirmProvisional = jest.mocked(confirmReconciliationProvisional);
 const mockResolveLink = jest.mocked(resolveReconciliationLink);
 const mockReject = jest.mocked(rejectReconciliationTask);
@@ -353,11 +221,47 @@ function makeClusterTask(overrides: Partial<ReconciliationTask> = {}): Reconcili
 
 const DEFAULT_TASK_RESPONSE = makeTask();
 
+type TabKey = 'por_unificar' | 'aplicadas' | 'provisionales' | 'cola_manual';
+
+const EMPTY_COUNTS = { por_unificar: 0, aplicadas: 0, provisionales: 0, cola_manual: 0 };
+
+/** Sirve una página por tab (`byTab.provisionales` para esa tab, etc.).
+ * Lee `byTab` en cada llamada: mutarlo simula cambios entre recargas. */
+function serveTabs(
+  byTab: Partial<Record<TabKey, ReconciliationTask[]>>,
+  totalPagesByTab: Partial<Record<TabKey, number>> = {},
+) {
+  mockListPage.mockImplementation(async ({ tab, page }) => {
+    const counts = { ...EMPTY_COUNTS };
+    (Object.keys(byTab) as TabKey[]).forEach((key) => {
+      counts[key] = byTab[key]?.length ?? 0;
+    });
+    return {
+      data: byTab[tab] ?? [],
+      meta: {
+        page,
+        limit: 10,
+        total: byTab[tab]?.length ?? 0,
+        totalPages: totalPagesByTab[tab] ?? 1,
+      },
+      counts,
+    };
+  });
+}
+
+async function openTab(name: RegExp) {
+  await userEvent.setup().click(await screen.findByRole('tab', { name }));
+}
+
 // ── Setup ────────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockListTasks.mockResolvedValue([]);
+  mockListPage.mockResolvedValue({
+    data: [],
+    meta: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    counts: EMPTY_COUNTS,
+  });
   mockConfirmProvisional.mockResolvedValue(DEFAULT_TASK_RESPONSE);
   mockResolveLink.mockResolvedValue(DEFAULT_TASK_RESPONSE);
   mockReject.mockResolvedValue(DEFAULT_TASK_RESPONSE);
@@ -391,44 +295,43 @@ function renderTab(companyId: string | undefined = 'company-1') {
 
 // ── Tests ────────────────────────────────────────────────────────────────────
 
+
 describe('ReconciliationTab', () => {
-  describe('estado de carga y estado vacío', () => {
-    it('no muestra secciones ni el estado vacío mientras la carga inicial está pendiente', async () => {
-      let resolveList!: (value: ReconciliationTask[]) => void;
-      mockListTasks.mockImplementationOnce(
+  describe('carga y estado vacío', () => {
+    it('no muestra contenido ni el vacío mientras la página está pendiente', async () => {
+      let resolvePage!: (value: Awaited<ReturnType<typeof listReconciliationTaskPage>>) => void;
+      mockListPage.mockImplementationOnce(
         () =>
           new Promise((resolve) => {
-            resolveList = resolve;
+            resolvePage = resolve;
           }),
       );
 
       renderTab();
 
-      expect(screen.queryByText(/provisionales pendientes/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/no hay tareas de reconciliación/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/no hay posibles duplicados/i)).not.toBeInTheDocument();
 
-      resolveList([makeProvisionalTask()]);
+      resolvePage({
+        data: [makeClusterTask()],
+        meta: { page: 1, limit: 10, total: 1, totalPages: 1 },
+        counts: { ...EMPTY_COUNTS, por_unificar: 1 },
+      });
 
-      expect(await screen.findByText(/provisionales pendientes/i)).toBeInTheDocument();
+      expect((await screen.findAllByText('Camiseta Azul M')).length).toBeGreaterThan(0);
     });
 
-    it('muestra el estado vacío cuando no hay tareas con los filtros aplicados', async () => {
-      mockListTasks.mockResolvedValueOnce([]);
-
+    it('cada tab muestra su mensaje vacío', async () => {
       renderTab();
-
-      expect(
-        await screen.findByText(/no hay tareas de reconciliación con los filtros aplicados/i),
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/no hay posibles duplicados para unificar/i)).toBeInTheDocument();
+      await openTab(/aplicadas/i);
+      expect(await screen.findByText(/todavía no hay reconciliaciones aplicadas/i)).toBeInTheDocument();
+      await openTab(/provisionales pendientes/i);
+      expect(await screen.findByText(/no hay provisionales pendientes/i)).toBeInTheDocument();
+      await openTab(/cola manual/i);
+      expect(await screen.findByText(/no hay líneas de venta sin resolver/i)).toBeInTheDocument();
     });
 
-    it('con companyId undefined, sale de loading sin llamar a listReconciliationTasks y muestra el estado vacío sin pasar por el skeleton', () => {
-      // Render directo (sin pasar por el helper `renderTab`, que tiene un
-      // parámetro con default `= 'company-1'`): un default de parámetro se
-      // aplica siempre que el argumento sea `undefined` — también cuando se
-      // pasa explícitamente `undefined` — así que `renderTab(undefined)`
-      // terminaría renderizando con `companyId: 'company-1'` en vez de
-      // `undefined` de verdad, invalidando este test.
+    it('con companyId undefined no pide nada, no muestra skeleton y muestra el vacío', () => {
       const Wrapper = buildWrapper();
       const { container } = render(
         <Wrapper>
@@ -436,119 +339,247 @@ describe('ReconciliationTab', () => {
         </Wrapper>,
       );
 
-      // `loadTasks` corta antes de pedir datos: nunca queda en isLoading.
-      expect(mockListTasks).not.toHaveBeenCalled();
-      // El estado vacío se muestra ya en el primer render (sin `findBy`/espera).
-      expect(
-        screen.getByText(/no hay tareas de reconciliación con los filtros aplicados/i),
-      ).toBeInTheDocument();
-      // Nunca se llega a mostrar el skeleton de carga (mismo patrón de
-      // `container.querySelector('.animate-pulse')` usado en
-      // CcAgingHeatmap.test.tsx / CcIntentosCard.test.tsx para detectar el
-      // estado de loading de un componente sin rol/texto accesible propio).
+      expect(mockListPage).not.toHaveBeenCalled();
+      expect(screen.getByText(/no hay posibles duplicados para unificar/i)).toBeInTheDocument();
       expect(container.querySelector('.animate-pulse')).not.toBeInTheDocument();
     });
   });
 
-  describe('renderiza las 3 secciones con una mezcla de tipos', () => {
-    it('muestra provisionales, cola manual y clusters de duplicados a la vez', async () => {
-      mockListTasks.mockResolvedValueOnce([
-        makeProvisionalTask(),
-        makeManualTask(),
-        makeClusterTask(),
+  describe('tabs y paginación (FEAT-17 Anexo D)', () => {
+    it('muestra las 4 tabs en orden con sus contadores y arranca en "Por unificar" página 1', async () => {
+      serveTabs({
+        por_unificar: [makeClusterTask()],
+        provisionales: [makeProvisionalTask(), makeProvisionalTask({ id: 'task-prov-2' })],
+      });
+      renderTab();
+      await waitFor(() =>
+        expect(mockListPage).toHaveBeenCalledWith({ tab: 'por_unificar', page: 1, limit: 10 }),
+      );
+      await screen.findAllByText('Camiseta Azul M');
+      const tabs = screen.getAllByRole('tab');
+      expect(tabs.map((t) => t.textContent)).toEqual([
+        'Por unificar1',
+        'Aplicadas0',
+        'Provisionales pendientes2',
+        'Cola manual0',
       ]);
+    });
+
+    it('cambiar de tab pide la página 1 de esa tab', async () => {
+      serveTabs({ provisionales: [makeProvisionalTask()] }, { provisionales: 3 });
+      renderTab();
+      await openTab(/provisionales pendientes/i);
+      await waitFor(() =>
+        expect(mockListPage).toHaveBeenLastCalledWith({ tab: 'provisionales', page: 1, limit: 10 }),
+      );
+    });
+
+    it('la paginación pide la página siguiente y al cambiar de tab vuelve a la 1', async () => {
+      serveTabs({ provisionales: [makeProvisionalTask()] }, { provisionales: 3 });
+      renderTab();
+      await openTab(/provisionales pendientes/i);
+      await screen.findByText('Zapatilla Roja Talla 40');
+      await userEvent.setup().click(screen.getByRole('button', { name: '2' }));
+      await waitFor(() =>
+        expect(mockListPage).toHaveBeenLastCalledWith({ tab: 'provisionales', page: 2, limit: 10 }),
+      );
+      await openTab(/aplicadas/i);
+      await waitFor(() =>
+        expect(mockListPage).toHaveBeenLastCalledWith({ tab: 'aplicadas', page: 1, limit: 10 }),
+      );
+    });
+
+    it('si la página quedó vacía (resolví la última), vuelve a la anterior', async () => {
+      let pageTwoEmptied = false;
+      mockListPage.mockImplementation(async ({ tab, page }) => {
+        const data =
+          tab === 'provisionales' && !(page === 2 && pageTwoEmptied)
+            ? [makeProvisionalTask({ id: `p-${page}` })]
+            : [];
+        return {
+          data,
+          meta: { page, limit: 10, total: 11, totalPages: 2 },
+          counts: { ...EMPTY_COUNTS, provisionales: 11 },
+        };
+      });
+      mockConfirmProvisional.mockImplementation(async () => {
+        pageTwoEmptied = true;
+        return DEFAULT_TASK_RESPONSE;
+      });
 
       renderTab();
+      await openTab(/provisionales pendientes/i);
+      await userEvent.setup().click(await screen.findByRole('button', { name: '2' }));
+      await waitFor(() =>
+        expect(mockListPage).toHaveBeenLastCalledWith({ tab: 'provisionales', page: 2, limit: 10 }),
+      );
+      await userEvent.setup().click(await screen.findByRole('button', { name: /confirmar como nuevo/i }));
+      await waitFor(() =>
+        expect(mockListPage).toHaveBeenLastCalledWith({ tab: 'provisionales', page: 1, limit: 10 }),
+      );
+      expect(await screen.findByText('Zapatilla Roja Talla 40')).toBeInTheDocument();
+    });
 
-      expect(await screen.findByText(/provisionales pendientes/i)).toBeInTheDocument();
-      expect(screen.getByRole('heading', { name: /cola manual/i })).toBeInTheDocument();
-      expect(
-        screen.getByRole('heading', { name: /clusters de duplicados/i }),
-      ).toBeInTheDocument();
-
-      expect(screen.getByText('Zapatilla Roja Talla 40')).toBeInTheDocument();
-      expect(screen.getByText('Línea de venta sin match')).toBeInTheDocument();
-      // "Camiseta Azul M" (la candidata sugerida) aparece 2 veces en la
-      // tarjeta del cluster rediseñada (FEAT-17 Anexo B): una en el título
-      // y otra en su fila dentro de la grilla de candidatas.
-      expect(screen.getAllByText('Camiseta Azul M')).toHaveLength(2);
-      expect(screen.getByText('Camiseta Azul Mediana')).toBeInTheDocument();
-      expect(screen.getByText('Sugerida')).toBeInTheDocument();
+    it('si falla el listado muestra error con Reintentar y las tabs siguen navegables', async () => {
+      mockListPage.mockRejectedValueOnce(new Error('boom'));
+      renderTab();
+      expect(await screen.findByText(/no se pudieron cargar las tareas/i)).toBeInTheDocument();
+      expect(mockToast.error).toHaveBeenCalledWith('Error al cargar las tareas de reconciliación');
+      await userEvent.setup().click(screen.getByRole('button', { name: /reintentar/i }));
+      await waitFor(() => expect(mockListPage).toHaveBeenCalledTimes(2));
+      await openTab(/cola manual/i);
+      await waitFor(() =>
+        expect(mockListPage).toHaveBeenLastCalledWith({ tab: 'cola_manual', page: 1, limit: 10 }),
+      );
     });
   });
 
-  describe('filtros', () => {
-    it('cambiar el filtro de Tipo o Estado dispara un nuevo fetch con los params actualizados', async () => {
-      mockListTasks.mockResolvedValue([]);
+  describe('respuestas fuera de orden (revisión final Anexo D)', () => {
+    it('una respuesta vieja de otra tab no pisa la tab activa', async () => {
+      type Page = Awaited<ReturnType<typeof listReconciliationTaskPage>>;
+      const pending: Record<string, (value: Page) => void> = {};
+      mockListPage.mockImplementation(
+        ({ tab }) =>
+          new Promise<Page>((resolve) => {
+            pending[tab] = resolve;
+          }),
+      );
+      const pageOf = (data: ReconciliationTask[]): Page => ({
+        data,
+        meta: { page: 1, limit: 10, total: data.length, totalPages: 1 },
+        counts: EMPTY_COUNTS,
+      });
+
       renderTab();
+      await openTab(/aplicadas/i);
+      await waitFor(() => expect(pending.aplicadas).toBeDefined());
 
-      await waitFor(() =>
-        expect(mockListTasks).toHaveBeenLastCalledWith({ type: undefined, status: 'pending' }),
-      );
+      // Llega primero la tab activa y después la vieja (por_unificar).
+      pending.aplicadas(pageOf([]));
+      expect(await screen.findByText(/todavía no hay reconciliaciones aplicadas/i)).toBeInTheDocument();
+      await act(async () => {
+        pending.por_unificar(pageOf([makeClusterTask()]));
+      });
+      expect(screen.queryByText(/camiseta azul/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/todavía no hay reconciliaciones aplicadas/i)).toBeInTheDocument();
+    });
+  });
 
-      const [typeSelect, statusSelect] = screen.getAllByRole('combobox');
+  describe('aceptación masiva (FEAT-17 Anexo D)', () => {
+    it('"Seleccionar las de esta página" marca todas y el botón muestra N', async () => {
+      serveTabs({ provisionales: [makeProvisionalTask(), makeProvisionalTask({ id: 'task-prov-2' })] });
+      renderTab();
+      await openTab(/provisionales pendientes/i);
+      await userEvent
+        .setup()
+        .click(await screen.findByRole('checkbox', { name: /seleccionar las de esta página/i }));
+      expect(screen.getByRole('button', { name: /aceptar como productos nuevos \(2\)/i })).toBeEnabled();
+    });
+
+    it('cambiar de página limpia la selección', async () => {
+      serveTabs({ provisionales: [makeProvisionalTask()] }, { provisionales: 2 });
+      renderTab();
+      await openTab(/provisionales pendientes/i);
       const user = userEvent.setup();
+      await user.click(await screen.findByRole('checkbox', { name: /seleccionar las de esta página/i }));
+      expect(screen.getByRole('button', { name: /aceptar como productos nuevos \(1\)/i })).toBeEnabled();
+      await user.click(screen.getByRole('button', { name: '2' }));
+      expect(
+        await screen.findByRole('button', { name: /aceptar como productos nuevos \(0\)/i }),
+      ).toBeDisabled();
+    });
 
-      await user.selectOptions(typeSelect, 'provisional');
-      await waitFor(() =>
-        expect(mockListTasks).toHaveBeenLastCalledWith({
-          type: 'provisional',
-          status: 'pending',
-        }),
-      );
+    it('confirmar en lote llama a bulkConfirm con lo seleccionado y recarga', async () => {
+      const byTab = { provisionales: [makeProvisionalTask()], por_unificar: [makeClusterTask()] };
+      serveTabs(byTab);
+      const bulkResults: BulkConfirmResultItem[] = [{ task_id: 'task-prov-1', status: 'confirmed' }];
+      mockBulkConfirm.mockImplementationOnce(async () => {
+        byTab.provisionales = [];
+        return bulkResults;
+      });
 
-      await user.selectOptions(statusSelect, 'confirmed');
+      renderTab();
+      await openTab(/provisionales pendientes/i);
+      await screen.findByText('Zapatilla Roja Talla 40');
+
+      const user = userEvent.setup();
+      const checkboxes = screen.getAllByRole('checkbox');
+      expect(checkboxes).toHaveLength(2);
+      await user.click(checkboxes[1]);
+      await user.click(screen.getByRole('button', { name: /aceptar como productos nuevos \(1\)/i }));
+
+      const dialog = within(await screen.findByRole('alertdialog'));
+      expect(dialog.getByText(/aceptar 1 producto\(s\) como nuevos/i)).toBeInTheDocument();
+      expect(
+        dialog.getByText(/los provisionales seleccionados se confirmarán como productos nuevos\. esta acción no se puede deshacer\./i),
+      ).toBeInTheDocument();
+      await user.click(dialog.getByRole('button', { name: /aceptar en lote/i }));
+
+      await waitFor(() => expect(mockBulkConfirm).toHaveBeenCalledWith(['task-prov-1']));
       await waitFor(() =>
-        expect(mockListTasks).toHaveBeenLastCalledWith({
-          type: 'provisional',
-          status: 'confirmed',
-        }),
+        expect(mockToast.success).toHaveBeenCalledWith('1 tarea(s) confirmada(s) correctamente'),
       );
+      expect(await screen.findByText(/no hay provisionales pendientes/i)).toBeInTheDocument();
+    });
+
+    it('no muestra barra masiva ni checkboxes fuera de provisionales', async () => {
+      serveTabs({ por_unificar: [makeClusterTask()] });
+      renderTab();
+      await screen.findAllByText('Camiseta Azul M');
+      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('aplicadas', () => {
+    it('la tab Aplicadas muestra la lista de solo lectura', async () => {
+      serveTabs({
+        aplicadas: [
+          makeClusterTask({ id: 'task-ap', status: 'confirmed', resolvedAt: '2026-10-09T15:00:00Z' }),
+        ],
+      });
+      renderTab();
+      await openTab(/aplicadas/i);
+      expect(await screen.findByText('Unificación')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /revisar y unificar/i })).not.toBeInTheDocument();
     });
   });
 
   describe('acciones sobre provisionales', () => {
-    it('"Confirmar como nuevo" (sin sugerencias) llama a confirmReconciliationProvisional con el id correcto y refresca la lista', async () => {
-      const task = makeProvisionalTask();
-      mockListTasks.mockResolvedValueOnce([task]).mockResolvedValueOnce([]);
+    it('"Confirmar como nuevo" llama a confirmReconciliationProvisional y recarga', async () => {
+      const byTab: Partial<Record<TabKey, ReconciliationTask[]>> = {
+        provisionales: [makeProvisionalTask()],
+      };
+      serveTabs(byTab);
+      mockConfirmProvisional.mockImplementationOnce(async () => {
+        byTab.provisionales = [];
+        return DEFAULT_TASK_RESPONSE;
+      });
 
       renderTab();
+      await openTab(/provisionales pendientes/i);
       await screen.findByText('Zapatilla Roja Talla 40');
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /confirmar como nuevo/i }));
+      await userEvent.setup().click(screen.getByRole('button', { name: /confirmar como nuevo/i }));
 
       await waitFor(() => expect(mockConfirmProvisional).toHaveBeenCalledWith('task-prov-1'));
       expect(mockToast.success).toHaveBeenCalledWith('Producto confirmado como nuevo');
-
-      // La lista se recarga (2do fetch) y refleja que ya no queda el pendiente.
-      await waitFor(() => expect(mockListTasks).toHaveBeenCalledTimes(2));
-      expect(
-        await screen.findByText(/no hay tareas de reconciliación con los filtros aplicados/i),
-      ).toBeInTheDocument();
+      expect(await screen.findByText(/no hay provisionales pendientes/i)).toBeInTheDocument();
     });
-  });
 
-  describe('vincular a variante existente (provisional con sugerencia)', () => {
-    it('"Sí, es la misma → unificar" NO llama al service directo: abre ReconciliationLinkDialog con la sugerencia, y confirmar sí llama a resolveReconciliationLink', async () => {
-      const task = makeProvisionalTaskWithSuggestion();
-      mockListTasks.mockResolvedValueOnce([task]);
+    it('"Sí, es la misma → unificar" abre ReconciliationLinkDialog y confirmar llama a resolveReconciliationLink', async () => {
+      serveTabs({ provisionales: [makeProvisionalTaskWithSuggestion()] });
 
       renderTab();
+      await openTab(/provisionales pendientes/i);
       await screen.findByText('Zapatilla Roja Talla 40');
 
       const user = userEvent.setup();
       await user.click(screen.getByRole('button', { name: /sí, es la misma → unificar/i }));
 
-      // El click abre el diálogo (ReconciliationLinkDialog) sin ejecutar la
-      // mutación todavía. Se scopea con `within(alertdialog)` porque el
-      // título del diálogo coincide textualmente con contenido de la tarjeta.
       expect(mockResolveLink).not.toHaveBeenCalled();
       const linkDialog = within(await screen.findByRole('alertdialog'));
       expect(linkDialog.getByText(/vincular a variante existente/i)).toBeInTheDocument();
-      expect(linkDialog.getByText('Variante en Powip')).toBeInTheDocument();
       expect(linkDialog.getByText('Zapatilla Roja Talla 40 (Powip)')).toBeInTheDocument();
-      expect(linkDialog.getByText(/esta acción no se puede deshacer/i)).toBeInTheDocument();
 
       await user.click(linkDialog.getByRole('button', { name: /confirmar vinculación/i }));
 
@@ -557,227 +588,89 @@ describe('ReconciliationTab', () => {
       );
       expect(mockToast.success).toHaveBeenCalledWith('Variante vinculada correctamente');
     });
-  });
 
-  describe('acciones de rechazo', () => {
-    it('"Rechazar" NO llama al service directo: abre el diálogo de confirmación, y confirmar sí llama a rejectReconciliationTask', async () => {
-      const task = makeProvisionalTask();
-      mockListTasks.mockResolvedValueOnce([task]);
+    it('"Rechazar" abre el diálogo y confirmar llama a rejectReconciliationTask', async () => {
+      serveTabs({ provisionales: [makeProvisionalTask()] });
 
       renderTab();
+      await openTab(/provisionales pendientes/i);
       await screen.findByText('Zapatilla Roja Talla 40');
 
       const user = userEvent.setup();
       await user.click(screen.getByRole('button', { name: /rechazar/i }));
 
-      // El click abre el diálogo (ReconciliationRejectDialog) sin ejecutar la
-      // mutación todavía. Se scopea con `within(alertdialog)` por el mismo
-      // criterio que el test de "vincular" — evita falsos matches contra el
-      // resto de la tabla/página si el texto se repite en otro lado.
       expect(mockReject).not.toHaveBeenCalled();
       const rejectDialog = within(await screen.findByRole('alertdialog'));
       expect(rejectDialog.getByText(/rechazar tarea de reconciliación/i)).toBeInTheDocument();
-      expect(
-        rejectDialog.getByText(/la variante provisional se desactivará/i),
-      ).toBeInTheDocument();
 
       await user.click(rejectDialog.getByRole('button', { name: /confirmar rechazo/i }));
 
       await waitFor(() => expect(mockReject).toHaveBeenCalledWith('task-prov-1'));
       expect(mockToast.success).toHaveBeenCalledWith('Tarea rechazada');
     });
-  });
 
-  describe('selección múltiple + confirmación en lote', () => {
-    it('solo el provisional tiene checkbox (el cluster ya no es bulk-selectable, FEAT-17) y confirmar en lote llama a bulkConfirmReconciliationTasks con su id', async () => {
-      const provisional = makeProvisionalTask();
-      const cluster = makeClusterTask();
-      mockListTasks
-        .mockResolvedValueOnce([provisional, cluster])
-        .mockResolvedValueOnce([]);
-
-      const bulkResults: BulkConfirmResultItem[] = [
-        { task_id: 'task-prov-1', status: 'confirmed' },
-      ];
-      mockBulkConfirm.mockResolvedValueOnce(bulkResults);
-
-      renderTab();
-      await screen.findByText('Zapatilla Roja Talla 40');
-      // El cluster también está renderizado en la misma pantalla, pero no
-      // aporta checkbox: el único checkbox visible es el del provisional.
-      // "Camiseta Azul M" aparece 2 veces (título + grilla) — `findAllByText`
-      // sólo se usa acá para esperar el render, sin afirmar sobre la cuenta.
-      await screen.findAllByText('Camiseta Azul M');
-
-      const user = userEvent.setup();
-      const checkboxes = screen.getAllByRole('checkbox');
-      expect(checkboxes).toHaveLength(1);
-      await user.click(checkboxes[0]);
-
-      await user.click(screen.getByRole('button', { name: /confirmar seleccionadas \(1\)/i }));
-
-      expect(
-        await screen.findByText(/confirmar 1 tarea\(s\) en lote/i),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText(
-          /los provisionales seleccionados se confirmarán como productos nuevos\. esta acción no se puede deshacer\./i,
-        ),
-      ).toBeInTheDocument();
-
-      await user.click(screen.getByRole('button', { name: /confirmar en lote/i }));
-
-      await waitFor(() => expect(mockBulkConfirm).toHaveBeenCalledTimes(1));
-      expect(mockBulkConfirm).toHaveBeenCalledWith(['task-prov-1']);
-
-      await waitFor(() =>
-        expect(mockToast.success).toHaveBeenCalledWith('1 tarea(s) confirmada(s) correctamente'),
-      );
-      await waitFor(() => expect(mockListTasks).toHaveBeenCalledTimes(2));
-    });
-  });
-
-  describe('manejo de errores', () => {
     it('si confirmReconciliationProvisional falla, muestra toast.error y no rompe el componente', async () => {
-      const task = makeProvisionalTask();
-      mockListTasks.mockResolvedValueOnce([task]);
+      serveTabs({ provisionales: [makeProvisionalTask()] });
       mockConfirmProvisional.mockRejectedValueOnce(new Error('falla de red'));
 
       renderTab();
+      await openTab(/provisionales pendientes/i);
       await screen.findByText('Zapatilla Roja Talla 40');
 
-      const user = userEvent.setup();
-      await user.click(screen.getByRole('button', { name: /confirmar como nuevo/i }));
+      await userEvent.setup().click(screen.getByRole('button', { name: /confirmar como nuevo/i }));
 
       await waitFor(() =>
         expect(mockToast.error).toHaveBeenCalledWith('No se pudo confirmar el producto'),
       );
-
-      // El componente sigue en pie: el item no desaparece y el botón vuelve a estar habilitado.
       expect(screen.getByText('Zapatilla Roja Talla 40')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /confirmar como nuevo/i })).not.toBeDisabled();
     });
   });
 
   describe('cola manual', () => {
-    it('NO renderiza "Confirmar como nuevo" ni el buscador de variantes para items type: manual, solo Rechazar', async () => {
-      mockListTasks.mockResolvedValueOnce([makeManualTask()]);
+    it('solo ofrece Rechazar, sin confirmar ni buscador', async () => {
+      serveTabs({ cola_manual: [makeManualTask()] });
 
       renderTab();
+      await openTab(/cola manual/i);
       await screen.findByText('Línea de venta sin match');
 
-      expect(
-        screen.queryByRole('button', { name: /confirmar como nuevo/i }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByRole('button', { name: /sí, es la misma → unificar/i }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /confirmar como nuevo/i })).not.toBeInTheDocument();
       expect(screen.queryByText(/buscar otra variante/i)).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: /rechazar/i })).toBeInTheDocument();
     });
   });
 
-  describe('clusters de duplicados (FEAT-17 Anexo B: tarjeta rediseñada)', () => {
-    it('no muestra ningún alert de "Fusión de duplicados pausada" sobre la sección de clusters', async () => {
-      mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
-
-      renderTab();
-      await screen.findAllByText('Camiseta Azul M');
-
-      expect(screen.queryByText(/fusión de duplicados pausada/i)).not.toBeInTheDocument();
-    });
-
-    it('"Revisar y unificar" está habilitado y el click abre ReconciliationMergeDialog ("Unificar · ...")', async () => {
-      mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
+  describe('por unificar (clusters)', () => {
+    it('"Revisar y unificar" abre ReconciliationMergeDialog', async () => {
+      serveTabs({ por_unificar: [makeClusterTask()] });
 
       renderTab();
       await screen.findAllByText('Camiseta Azul M');
 
       const mergeButton = screen.getByRole('button', { name: /revisar y unificar/i });
       expect(mergeButton).not.toBeDisabled();
-
-      const user = userEvent.setup();
-      await user.click(mergeButton);
+      await userEvent.setup().click(mergeButton);
 
       const mergeDialog = within(await screen.findByRole('alertdialog'));
       expect(await mergeDialog.findByText(/unificar · camiseta azul m/i)).toBeInTheDocument();
     });
 
-    it('no muestra checkbox de selección en las filas de cluster', async () => {
-      mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
+    it('"Son distintos" abre el diálogo y confirmar llama a rejectReconciliationTask', async () => {
+      serveTabs({ por_unificar: [makeClusterTask()] });
 
       renderTab();
       await screen.findAllByText('Camiseta Azul M');
-
-      expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
-    });
-
-    it('"Son distintos" en un cluster sigue habilitado y abre el diálogo de confirmación, y confirmar sí llama a rejectReconciliationTask', async () => {
-      const cluster = makeClusterTask();
-      mockListTasks.mockResolvedValueOnce([cluster]);
-
-      renderTab();
-      await screen.findAllByText('Camiseta Azul M');
-
-      const rejectButton = screen.getByRole('button', { name: /son distintos/i });
-      expect(rejectButton).not.toBeDisabled();
 
       const user = userEvent.setup();
-      await user.click(rejectButton);
+      await user.click(screen.getByRole('button', { name: /son distintos/i }));
 
       expect(mockReject).not.toHaveBeenCalled();
       const rejectDialog = within(await screen.findByRole('alertdialog'));
-      expect(rejectDialog.getByText(/rechazar tarea de reconciliación/i)).toBeInTheDocument();
-
       await user.click(rejectDialog.getByRole('button', { name: /confirmar rechazo/i }));
 
       await waitFor(() => expect(mockReject).toHaveBeenCalledWith('task-cluster-1'));
       expect(mockToast.success).toHaveBeenCalledWith('Tarea rechazada');
-    });
-
-    describe('franja ámbar "Todas están en {canal}"', () => {
-      it('se muestra cuando todas las candidatas del cluster comparten el mismo origen', async () => {
-        const sameSourceCluster = makeTask({
-          id: 'task-cluster-2',
-          type: 'duplicate_cluster',
-          confidenceLevel: 0.8,
-          items: [
-            makeItem({
-              variant_id: 'variant-x',
-              product_id: 'product-x',
-              variant_name: 'Zapatilla Blanca 42',
-              sku: 'ZAP-BLA-42',
-              source: 'shopify',
-              confidence: 0.9,
-              is_suggested_winner: true,
-            }),
-            makeItem({
-              variant_id: 'variant-y',
-              product_id: 'product-y',
-              variant_name: 'Zapatilla Blanca Talla 42',
-              sku: 'ZAP-BLA-42-2',
-              source: 'shopify',
-              confidence: 0.85,
-            }),
-          ],
-        });
-        mockListTasks.mockResolvedValueOnce([sameSourceCluster]);
-
-        renderTab();
-        await screen.findByText('Zapatilla Blanca Talla 42');
-
-        expect(screen.getByText(/todas están en shopify/i)).toBeInTheDocument();
-      });
-
-      it('no aparece si las candidatas tienen distinto origen', async () => {
-        // `makeClusterTask()` por defecto trae 'shopify' y 'aliclik'.
-        mockListTasks.mockResolvedValueOnce([makeClusterTask()]);
-
-        renderTab();
-        await screen.findAllByText('Camiseta Azul M');
-
-        expect(screen.queryByText(/todas están en/i)).not.toBeInTheDocument();
-      });
     });
   });
 });

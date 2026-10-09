@@ -102,9 +102,21 @@ export interface BulkConfirmResultItem {
   message?: string;
 }
 
-export interface ListReconciliationTasksParams {
-  type?: ReconciliationTaskType;
-  status?: ReconciliationTaskStatus;
+// FEAT-17 Anexo D — bandeja paginada por tab (ms-products
+// `GET /reconciliation-tasks?tab&page&limit`). Las rechazadas no aparecen en
+// ninguna tab ni contador.
+export type ReconciliationTabKey =
+  | "por_unificar"
+  | "aplicadas"
+  | "provisionales"
+  | "cola_manual";
+
+export type ReconciliationTaskCounts = Record<ReconciliationTabKey, number>;
+
+export interface ReconciliationTaskPage {
+  data: ReconciliationTask[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+  counts: ReconciliationTaskCounts;
 }
 
 interface ReconciliationTaskApiErrorBody {
@@ -133,11 +145,13 @@ export function getReconciliationTaskErrorMessage(
   return fallback;
 }
 
-export async function listReconciliationTasks(
-  params?: ListReconciliationTasksParams,
-): Promise<ReconciliationTask[]> {
-  const res = await axiosAuth.get<ReconciliationTask[]>(BASE_URL, {
-    params,
+export async function listReconciliationTaskPage(params: {
+  tab: ReconciliationTabKey;
+  page: number;
+  limit?: number;
+}): Promise<ReconciliationTaskPage> {
+  const res = await axiosAuth.get<ReconciliationTaskPage>(BASE_URL, {
+    params: { tab: params.tab, page: params.page, limit: params.limit ?? 10 },
   });
   return res.data;
 }
