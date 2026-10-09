@@ -20,7 +20,7 @@
  * `ReconciliationProvisionalCard` usa react-query → `QueryClientProvider`.
  */
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import React from 'react';
@@ -431,6 +431,37 @@ describe('ReconciliationTab', () => {
       await waitFor(() =>
         expect(mockListPage).toHaveBeenLastCalledWith({ tab: 'cola_manual', page: 1, limit: 10 }),
       );
+    });
+  });
+
+  describe('respuestas fuera de orden (revisión final Anexo D)', () => {
+    it('una respuesta vieja de otra tab no pisa la tab activa', async () => {
+      type Page = Awaited<ReturnType<typeof listReconciliationTaskPage>>;
+      const pending: Record<string, (value: Page) => void> = {};
+      mockListPage.mockImplementation(
+        ({ tab }) =>
+          new Promise<Page>((resolve) => {
+            pending[tab] = resolve;
+          }),
+      );
+      const pageOf = (data: ReconciliationTask[]): Page => ({
+        data,
+        meta: { page: 1, limit: 10, total: data.length, totalPages: 1 },
+        counts: EMPTY_COUNTS,
+      });
+
+      renderTab();
+      await openTab(/aplicadas/i);
+      await waitFor(() => expect(pending.aplicadas).toBeDefined());
+
+      // Llega primero la tab activa y después la vieja (por_unificar).
+      pending.aplicadas(pageOf([]));
+      expect(await screen.findByText(/todavía no hay reconciliaciones aplicadas/i)).toBeInTheDocument();
+      await act(async () => {
+        pending.por_unificar(pageOf([makeClusterTask()]));
+      });
+      expect(screen.queryByText(/camiseta azul/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/todavía no hay reconciliaciones aplicadas/i)).toBeInTheDocument();
     });
   });
 

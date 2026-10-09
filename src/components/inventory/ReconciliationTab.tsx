@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CheckCheck, GitMerge, Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -110,7 +110,14 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
     null,
   );
 
+  // Cada carga se numera: solo la última puede tocar el estado. Evita que
+  // una respuesta lenta de otra tab/página pise la que se está viendo.
+  const latestRequestId = useRef(0);
+
   const loadTasks = useCallback(async () => {
+    const requestId = ++latestRequestId.current;
+    const isStale = () => requestId !== latestRequestId.current;
+
     if (!companyId) {
       // Sin companyId (auth todavía cargando) no hay nada que pedir: se corta
       // acá para no dejar isLoading en true para siempre.
@@ -127,6 +134,7 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
         page,
         limit: RECONCILIATION_PAGE_SIZE,
       });
+      if (isStale()) return;
       // Se resolvió la última tarea de una página > 1: volver a la anterior
       // en vez de mostrar una página vacía (el cambio de `page` recarga).
       if (result.data.length === 0 && page > 1) {
@@ -138,6 +146,7 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
       setTotal(result.meta.total);
       setTotalPages(result.meta.totalPages);
     } catch (error) {
+      if (isStale()) return;
       setLoadError(true);
       toast.error(
         getReconciliationTaskErrorMessage(
@@ -146,7 +155,7 @@ export function ReconciliationTab({ companyId }: ReconciliationTabProps) {
         ),
       );
     } finally {
-      setIsLoading(false);
+      if (!isStale()) setIsLoading(false);
     }
   }, [companyId, activeTab, page]);
 
