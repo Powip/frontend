@@ -2,9 +2,9 @@
  * Tests: reconciliationTask.service (FEAT-17 Fase 5 — bandeja de reconciliación)
  *
  * Comportamiento verificado:
- * 1. listReconciliationTasks — GET a `{API_PRODUCTOS}/reconciliation-tasks` con
- *    `{ params }` tal cual se le pasan (incluido `undefined` cuando no se
- *    filtra), y devuelve `res.data` sin transformar.
+ * 1. listReconciliationTaskPage (FEAT-17 Anexo D) — GET a
+ *    `{API_PRODUCTOS}/reconciliation-tasks` con `{ tab, page, limit }` (limit
+ *    10 por defecto), y devuelve la página `{ data, meta, counts }` tal cual.
  * 2. getReconciliationTask — GET a `.../reconciliation-tasks/:id`, devuelve `res.data`.
  * 3. resolveReconciliationLink — POST a `.../:id/resolve-link` con body
  *    `{ target_variant_id }`.
@@ -58,7 +58,7 @@ import type {
 
 type ServiceModule = typeof import('@/services/reconciliationTask.service');
 
-let listReconciliationTasks: ServiceModule['listReconciliationTasks'];
+let listReconciliationTaskPage: ServiceModule['listReconciliationTaskPage'];
 let getReconciliationTask: ServiceModule['getReconciliationTask'];
 let resolveReconciliationLink: ServiceModule['resolveReconciliationLink'];
 let resolveReconciliationMerge: ServiceModule['resolveReconciliationMerge'];
@@ -75,7 +75,7 @@ beforeAll(() => {
   jest.isolateModules(() => {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const mod = require('@/services/reconciliationTask.service') as ServiceModule;
-    listReconciliationTasks = mod.listReconciliationTasks;
+    listReconciliationTaskPage = mod.listReconciliationTaskPage;
     getReconciliationTask = mod.getReconciliationTask;
     resolveReconciliationLink = mod.resolveReconciliationLink;
     resolveReconciliationMerge = mod.resolveReconciliationMerge;
@@ -133,28 +133,21 @@ beforeEach(() => {
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 describe('reconciliationTask.service', () => {
-  describe('listReconciliationTasks', () => {
-    it('hace GET a la URL base con los params tal cual se pasan y devuelve res.data', async () => {
-      const tasks = [makeTask(), makeTask({ id: 'task-2' })];
-      mockGet.mockResolvedValueOnce({ data: tasks });
+  describe('listReconciliationTaskPage', () => {
+    it('hace GET con tab, page y limit (default 10) y devuelve la página tal cual', async () => {
+      const page = {
+        data: [makeTask()],
+        meta: { page: 2, limit: 10, total: 11, totalPages: 2 },
+        counts: { por_unificar: 1, aplicadas: 2, provisionales: 11, cola_manual: 0 },
+      };
+      mockGet.mockResolvedValueOnce({ data: page });
 
-      const result = await listReconciliationTasks({
-        type: 'provisional',
-        status: 'pending',
-      });
+      const result = await listReconciliationTaskPage({ tab: 'provisionales', page: 2 });
 
       expect(mockGet).toHaveBeenCalledWith(BASE_URL, {
-        params: { type: 'provisional', status: 'pending' },
+        params: { tab: 'provisionales', page: 2, limit: 10 },
       });
-      expect(result).toEqual(tasks);
-    });
-
-    it('sin params, llama con params: undefined (no filtra nada)', async () => {
-      mockGet.mockResolvedValueOnce({ data: [] });
-
-      await listReconciliationTasks();
-
-      expect(mockGet).toHaveBeenCalledWith(BASE_URL, { params: undefined });
+      expect(result).toBe(page);
     });
   });
 
