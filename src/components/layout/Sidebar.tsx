@@ -66,6 +66,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
 import PowipLogoMini from "./logo-mini";
 import PowipLogo from "./logo";
 
@@ -239,6 +240,13 @@ export function Sidebar({ className }: SidebarProps) {
         children: [
           { name: "Usuarios", href: "/usuarios", icon: UserCog },
           { name: "Configuración", href: "/configuracion", icon: Settings },
+          {
+            name: "WhatsApp",
+            href: "/configuracion/whatsapp",
+            icon: WhatsAppIcon,
+            badge: "Nuevo",
+            badgeUntil: "2026-12-08",
+          },
         ],
       },
       {
