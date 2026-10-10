@@ -1,5 +1,7 @@
 "use client";
 
+import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
+
 /**
  * Resumen Anual y Metas — §15 doc técnica.
  *
@@ -119,6 +121,10 @@ export default function ResumenAnualPage() {
 
   return (
     <div className="p-8 space-y-6">
+      <AdvertisingCompanySpend from={`${anioActual}-01-01`} to={`${anioActual}-12-31`} />
+      <p className="text-sm text-muted-foreground">
+        Estos indicadores usan registros manuales por conciliar.
+      </p>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-lg font-bold">Resumen Anual {anioActual}</h2>
@@ -335,7 +341,7 @@ function VistaKpis({ meses, metas, inversionMensual }: { meses: MesPnlReal[]; me
   return (
     <div className="space-y-4">
       <div className="rounded-lg border bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 p-3.5 text-sm text-blue-800 dark:text-blue-300">
-        💡 Ventas, COGS, margen y profit son reales. CPV y ROAS salen de la inversión registrada en Pauta por canal (guardada en este dispositivo) — un mes sin inversión registrada aparece en &quot;—&quot;. Las metas las pones tú.
+        Las metas las defines tú.
       </div>
       <Card>
         <CardContent className="pt-5 overflow-x-auto">
@@ -356,9 +362,9 @@ function VistaKpis({ meses, metas, inversionMensual }: { meses: MesPnlReal[]; me
               <FilaKpi label="Profit" valores={meses.map((m) => (m.tieneDatos ? fmtMoney(m.profit) : "—"))} />
               <FilaKpi label="🎯 Meta profit (÷12)" valores={meses.map(() => fmtMoney(metas.profitAnual / 12))} destacado />
               <FilaKpi label="Margen neto %" valores={meses.map((m) => (m.margenNetoPct != null ? fmtPct(m.margenNetoPct) : "—"))} />
-              <FilaKpi label="Inversión ADS" valores={meses.map((_, i) => (inversionMensual[i] > 0 ? fmtMoney(inversionMensual[i]) : "—"))} />
+              <FilaKpi label="Inversión manual" valores={meses.map((_, i) => (inversionMensual[i] > 0 ? fmtMoney(inversionMensual[i]) : "—"))} />
               <FilaKpi label="CPV neto" valores={meses.map((m, i) => (inversionMensual[i] > 0 && m.unidades > 0 ? fmtMoney(inversionMensual[i] / m.unidades, 2) : "—"))} />
-              <FilaKpi label="ROAS" valores={meses.map((m, i) => (inversionMensual[i] > 0 ? `${(m.ventas / inversionMensual[i]).toFixed(1)}×` : "—"))} />
+              <FilaKpi label="Ventas / inversión manual" valores={meses.map((m, i) => (inversionMensual[i] > 0 ? `${(m.ventas / inversionMensual[i]).toFixed(1)}×` : "—"))} />
             </TableBody>
           </Table>
         </CardContent>
@@ -395,7 +401,7 @@ function VistaMensual({ meses, metas, inversionMensual }: { meses: MesPnlReal[];
     { label: "COGS", valor: fmtMoney(mes.cogs), tone: "purple" },
     { label: "GROSS PROFIT %", valor: fmtPct(mes.utilidadBrutaPct), tone: "green" },
     { label: "CPV", valor: cpvMes != null ? fmtMoney(cpvMes, 2) : "—" },
-    { label: "ROAS", valor: roasMes != null ? `${roasMes.toFixed(1)}×` : "—" },
+    { label: "Ventas / inversión manual", valor: roasMes != null ? `${roasMes.toFixed(1)}×` : "—" },
   ];
   const TONE_BG: Record<string, string> = {
     amber: "bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30",

@@ -266,7 +266,7 @@ export function Sidebar({ className }: SidebarProps) {
             href: "/administracion/canales",
             icon: Building2,
           },
-          { name: "Pauta por canal", href: "/administracion/pauta", icon: Megaphone },
+          { name: "Inversión publicitaria", href: "/administracion/pauta", icon: Megaphone },
           {
             name: "Punto de Equilibrio",
             href: "/administracion/equilibrio",

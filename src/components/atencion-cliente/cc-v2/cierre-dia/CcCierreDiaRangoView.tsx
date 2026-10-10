@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { CcCierreDiaAdvertisingScope } from "./CcCierreDiaAdvertisingScope";
 import { DateRange } from "react-day-picker";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -110,6 +111,7 @@ export function CcCierreDiaRangoView({ storeId, range, onRegularizar }: Props) {
 
   return (
     <div className="space-y-4">
+      {startDate && endDate && <CcCierreDiaAdvertisingScope from={startDate} to={endDate} />}
       <CcCierreDiaInnerTabs tabs={TABS} active={tab} onChange={setTab} />
 
       {tab === "resumen" && (

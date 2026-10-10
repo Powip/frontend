@@ -1,5 +1,7 @@
 "use client";
 
+import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
+
 /**
  * Flujo de Caja vs P&L y adelantos COD — §12 doc técnica.
  *
@@ -101,13 +103,14 @@ export default function FlujoDeCajaPage() {
 
   return (
     <div className="p-8 space-y-6">
+      <AdvertisingCompanySpend from={`${anio}-01-01`} to={`${anio}-12-31`} />
       <div>
         <h2 className="text-lg font-bold">Flujo de Caja</h2>
-        <p className="text-xs text-muted-foreground mt-0.5">Ventas entregadas, COGS y gastos reales por mes — {anio}</p>
+        <p className="text-xs text-muted-foreground mt-0.5">Ventas entregadas, COGS y gastos por mes — {anio}</p>
       </div>
 
       <div className="rounded-lg border bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/30 p-3.5 text-xs text-amber-800 dark:text-amber-300">
-        ⚠️ Publicidad sale de lo registrado en Pauta por canal (guardado en este dispositivo). Esta tabla no incluye IGV/comisión POWIP/merma mes a mes (sí están en Resumen y Gastos) — es un flujo simplificado.
+        Publicidad manual estimada; no confirma pagos. No incluye impuestos, comisión Powip ni merma mensual.
       </div>
 
       <Card className="bg-amber-50/40 dark:bg-amber-500/5 border-amber-200 dark:border-amber-500/20">
@@ -132,7 +135,7 @@ export default function FlujoDeCajaPage() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-sm">Flujo {anio} — Ingresos vs Egresos (real)</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-sm">Flujo {anio} — estimación de ingresos y egresos</CardTitle></CardHeader>
         <CardContent className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -166,7 +169,7 @@ export default function FlujoDeCajaPage() {
                 {egresosCourier.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v > 0 && "text-destructive")}>{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
               </TableRow>
               <TableRow>
-                <TableCell className="text-muted-foreground">Publicidad</TableCell>
+                <TableCell className="text-muted-foreground">Publicidad manual estimada</TableCell>
                 {egresosPublicidad.map((v, i) => <TableCell key={i} className={cn("text-right font-mono", v > 0 && "text-destructive")}>{v === 0 ? "—" : fmtMoney(v)}</TableCell>)}
               </TableRow>
               <TableRow className="bg-muted/40 font-bold">

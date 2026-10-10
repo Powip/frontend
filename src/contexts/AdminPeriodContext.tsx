@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useContext, useState, ReactNode } from "react";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { endOfMonth, format, startOfMonth } from "date-fns";
+import { createContext, type ReactNode, useCallback, useContext, useState } from "react";
 
 interface AdminPeriodContextValue {
   fromDate: string;
@@ -16,10 +16,10 @@ export function AdminPeriodProvider({ children }: { children: ReactNode }) {
   const [fromDate, setFromDate] = useState(format(startOfMonth(now), "yyyy-MM-dd"));
   const [toDate, setToDate] = useState(format(endOfMonth(now), "yyyy-MM-dd"));
 
-  const setPeriod = (from: string, to: string) => {
+  const setPeriod = useCallback((from: string, to: string) => {
     setFromDate(from);
     setToDate(to);
-  };
+  }, []);
 
   return (
     <AdminPeriodContext.Provider value={{ fromDate, toDate, setPeriod }}>
