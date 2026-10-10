@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import type { AxiosError } from "axios";
 import axios from "axios";
 import { type ReactNode, StrictMode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import AdvertisingCallbackPage from "@/app/configuracion/integraciones/publicidad/callback/page";
 import LoginForm from "@/components/forms/LoginForm";
 import AppContainer from "@/components/layout/AppContainer";
@@ -22,7 +23,21 @@ jest.mock("@/components/modals/forgotPasswortModal", () => ({
   __esModule: true,
   default: () => null,
 }));
-jest.mock("axios");
+jest.mock("axios", () => {
+  const actual = jest.requireActual("axios");
+  return {
+    ...actual,
+    __esModule: true,
+    // LoginForm also imports the optional Partners lookup. Keep a real Axios
+    // instance factory so its interceptor setup works without any HTTP calls.
+    default: {
+      ...actual.default,
+      post: jest.fn(),
+      get: jest.fn(),
+      isAxiosError: jest.fn(),
+    },
+  };
+});
 
 const post = jest.mocked(axios.post);
 const get = jest.mocked(axios.get);
@@ -61,6 +76,7 @@ let callbackStatus: number | null = null;
 let releaseRefresh: (() => void) | null = null;
 let pendingRefresh: Promise<void> | null = null;
 let storageWrites: jest.SpyInstance;
+let queryClients: QueryClient[] = [];
 
 function callbackRequests() {
   return post.mock.calls.filter(([url]) => url === CALLBACK_ENDPOINT);
@@ -68,11 +84,15 @@ function callbackRequests() {
 
 function renderApplication(path: string, children: ReactNode = <AdvertisingCallbackPage />) {
   window.history.replaceState(null, "", path);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  queryClients.push(queryClient);
   return render(
     <StrictMode>
-      <AuthProvider>
-        <AppContainer>{children}</AppContainer>
-      </AuthProvider>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <AppContainer>{children}</AppContainer>
+        </AuthProvider>
+      </QueryClientProvider>
     </StrictMode>,
   );
 }
@@ -132,6 +152,8 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  for (const queryClient of queryClients) queryClient.clear();
+  queryClients = [];
   storageWrites.mockRestore();
 });
 

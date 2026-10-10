@@ -47,6 +47,9 @@ export const ROUTE_PERMISSIONS: Record<string, string[]> = {
   "/couriers": [],
   "/atencion-cliente": [],
   "/facturacion": [],
+  "/partners/admin/solicitudes": ["PARTNERS_VIEW"],
+  "/partners/admin": ["__SUPERADMIN__"],
+  "/partners": [],
   // Métricas: accesibles para cualquier usuario autenticado
   "/metricas/ventas": [],
   "/metricas/inventario": [],
@@ -87,6 +90,8 @@ export const SIDEBAR_ITEMS_PERMISSIONS: Record<string, string> = {
   Configuración: "",
   "Atención al cliente": "",
   Facturación: "",
+  Partners: "",
+  "Partners Admin": "VIEW_PARTNERS_ADMIN",
   "Super Admin": "VIEW_SUPER_ADMIN",
 };
 
@@ -120,4 +125,18 @@ export const getRoutePermissions = (pathname: string): string[] => {
     (route) => pathname === route || pathname.startsWith(route + "/"),
   );
   return route ? ROUTE_PERMISSIONS[route] : [];
+};
+
+export interface RouteAccessUser {
+  email?: string;
+  role?: string;
+  permissions?: string[];
+}
+
+export const hasRouteAccess = (pathname: string, user: RouteAccessUser | undefined): boolean => {
+  if (isSuperadmin(user?.email)) return true;
+  const requiredPermissions = getRoutePermissions(pathname);
+  return requiredPermissions.includes("__ADMIN_ROLE__")
+    ? hasAdminAccess(user?.role)
+    : hasAnyPermission(user?.permissions, requiredPermissions);
 };

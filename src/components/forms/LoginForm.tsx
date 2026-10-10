@@ -2,13 +2,18 @@
 
 import axios from "axios";
 import { useRouter } from "next/navigation";
-import { postLoginRoute } from "@/lib/subscriptionGate";
+import { PAYWALL_ROUTE, postLoginRoute } from "@/lib/subscriptionGate";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Eye, EyeOff, ArrowRight } from "lucide-react";
 
 import { Input } from "../ui/input";
 import { useAuth } from "@/contexts/AuthContext";
+import { API } from "@/lib/api";
+import {
+  getPartnerLoginStatus,
+  type PartnerLoginStatus,
+} from "@/features/partners/services/get-partner-login-status";
 import ForgotPassword from "../modals/forgotPasswortModal";
 import { Label } from "../ui/label";
 
@@ -19,6 +24,25 @@ interface LoginData {
 
 interface LoginFormProps {
   onAuthenticated?: () => void;
+}
+
+async function resolveLoginPartnerStatus(accessToken: string): Promise<PartnerLoginStatus> {
+  // Missing configuration cannot turn a relative /me response into confirmation.
+  if (!API.partners) return "unknown";
+  let deadline: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      getPartnerLoginStatus(accessToken),
+      new Promise<PartnerLoginStatus>((resolve) => {
+        deadline = setTimeout(() => resolve("unknown"), 5_000);
+      }),
+    ]);
+  } catch {
+    // Auth succeeded: this optional lookup is not an invalid-password error.
+    return "unknown";
+  } finally {
+    if (deadline !== undefined) clearTimeout(deadline);
+  }
 }
 
 export default function LoginForm({ onAuthenticated }: LoginFormProps = {}) {
@@ -81,12 +105,16 @@ export default function LoginForm({ onAuthenticated }: LoginFormProps = {}) {
 
       // Con empresa (dueño o staff) → dashboard. Sin empresa: con plan vigente →
       // crear empresa; sin plan → elegir y pagar plan (FEAT-11, lib/subscriptionGate).
-      router.push(
-        postLoginRoute(
-          !!authResult.company || !!authResult.user?.companyId,
-          authResult.subscription?.status,
-        ),
+      const destination = postLoginRoute(
+        !!authResult.company || !!authResult.user?.companyId,
+        authResult.subscription?.status,
       );
+      if (destination === PAYWALL_ROUTE &&
+          (await resolveLoginPartnerStatus(authResult.accessToken)) === "partner") {
+        router.push("/partners");
+        return;
+      }
+      router.push(destination);
     } catch (error: any) {
       console.error("Login Error:", error.response?.data || error.message);
       const errorMessage =

@@ -6,14 +6,17 @@ import {
   useEffect,
   useState,
   useCallback,
+  useRef,
   ReactNode,
 } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { decodeToken, isExpired } from "@/lib/jwt";
 import { fetchUserCompany, fetchCompanyById } from "@/services/companyService";
 import { fetchUserSubscription } from "@/services/fetchUserSubscription";
 import axios from "axios";
 import { isSuperadmin } from "@/config/permissions.config";
 import { tokenStore } from "@/lib/tokenStore";
+import { partnersKeys } from "@/features/partners/keys/partners.keys";
 
 // Configurar axios para enviar cookies automáticamente (httpOnly cookies)
 axios.defaults.withCredentials = true;
@@ -104,13 +107,33 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const STORE_PREFERENCE_KEY = "selectedStoreId";
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const queryClient = useQueryClient();
   const [auth, setAuth] = useState<AuthData | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedStoreId, setSelectedStore] = useState<string | null>(null);
   const [inventories, setInventories] = useState<Inventory[]>([]);
+  const currentUserId = useRef<string | null>(null);
+  const sessionVersion = useRef(0);
+
+  const setSession = useCallback((nextAuth: AuthData | null, clearPartners = false) => {
+    const nextUserId = nextAuth?.user.id ?? null;
+    if (clearPartners || currentUserId.current !== nextUserId) {
+      void queryClient.cancelQueries({ queryKey: partnersKeys.all });
+      queryClient.removeQueries({ queryKey: partnersKeys.all });
+      const mutationCache = queryClient.getMutationCache();
+      mutationCache.findAll({ mutationKey: partnersKeys.all }).forEach((mutation) => {
+        mutationCache.remove(mutation);
+      });
+    }
+    currentUserId.current = nextUserId;
+    // Publish the bearer before any query can render with the new user's key.
+    tokenStore.set(nextAuth?.accessToken ?? null);
+    setAuth(nextAuth);
+  }, [queryClient]);
 
   // ---- SILENT REFRESH: Intenta recuperar sesión usando httpOnly cookie ----
   const silentRefresh = useCallback(async (): Promise<boolean> => {
+    const refreshingSession = ++sessionVersion.current;
     try {
       // Llamar al endpoint de refresh - el refreshToken viene en httpOnly cookie
       const response = await axios.post(
@@ -154,7 +177,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         const defaultStore = company?.stores?.[0]?.id || null;
 
-        setAuth({
+        if (refreshingSession !== sessionVersion.current) return false;
+
+        setSession({
           accessToken: response.data.accessToken,
           user,
           company,
@@ -173,7 +198,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       console.log("No hay sesión activa");
     }
     return false;
-  }, []);
+  }, [setSession]);
 
   // ---- INICIALIZACIÓN: Intentar recuperar sesión al cargar ----
   useEffect(() => {
@@ -184,11 +209,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
     initAuth();
   }, [silentRefresh]);
-
-  // ---- TOKEN STORE: Sincronizar token para uso en servicios HTTP ----
-  useEffect(() => {
-    tokenStore.set(auth?.accessToken ?? null);
-  }, [auth?.accessToken]);
 
   // ---- INVENTORIES ----
   const fetchInventories = useCallback(async () => {
@@ -221,6 +241,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }): Promise<AuthData | null> => {
     const decoded = decodeToken(accessToken);
     if (!decoded) return null;
+    const loggingInSession = ++sessionVersion.current;
 
     const user = {
       email: decoded.email,
@@ -249,7 +270,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       exp: decoded.exp,
     };
 
-    setAuth(newAuth);
+    if (loggingInSession !== sessionVersion.current) return null;
+
+    setSession(newAuth, true);
     setSelectedStore(defaultStore);
 
     // Solo guardamos preferencia de tienda (no sensible)
@@ -269,6 +292,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   // ---- LOGOUT ----
   const logout = async () => {
+    ++sessionVersion.current;
+    setSession(null, true);
+    setSelectedStore(null);
+    setInventories([]);
+    try {
+      localStorage.removeItem(STORE_PREFERENCE_KEY);
+    } catch {
+      // A blocked preference store must not prevent server-side logout.
+    }
+
     try {
       // Llamar al backend para borrar la cookie httpOnly
       await axios.post(
@@ -281,18 +314,28 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Error en logout:", error);
     }
-
-    setAuth(null);
-    setSelectedStore(null);
-    setInventories([]);
-    localStorage.removeItem(STORE_PREFERENCE_KEY);
   };
 
   // ---- REFRESH SUBSCRIPTION ----
   const refreshSubscription = useCallback(async () => {
     if (!auth?.accessToken) return;
-    const subscription = await fetchUserSubscription(auth.user.id, auth.accessToken);
-    setAuth((prev) => (prev ? { ...prev, subscription } : prev));
+    const userId = auth.user.id;
+    const accessToken = auth.accessToken;
+    const refreshingSession = sessionVersion.current;
+    if (currentUserId.current !== userId || tokenStore.get() !== accessToken) return;
+
+    const subscription = await fetchUserSubscription(userId, accessToken);
+    setAuth((prev) => {
+      // A retained callback or late response must not modify another session.
+      if (
+        refreshingSession !== sessionVersion.current ||
+        tokenStore.get() !== accessToken ||
+        !prev ||
+        prev.user.id !== userId ||
+        prev.accessToken !== accessToken
+      ) return prev;
+      return { ...prev, subscription };
+    });
   }, [auth?.accessToken, auth?.user.id]);
 
   // ---- CHECK PERMISSION ----

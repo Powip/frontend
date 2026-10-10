@@ -1,0 +1,66 @@
+import type { PartnerReferral } from "../models/partner-referral";
+
+export const PARTNER_REFERRALS_MOCK: PartnerReferral[] = [
+  {
+    id: "ref-livii-moda",
+    businessName: "Livii Moda SAC",
+    origin: "link",
+    status: "pagando",
+    registeredAt: "2026-08-02",
+    planName: "Standard",
+    firstMonthCommission: 68.04,
+    recurringCommission: 11.34,
+  },
+  {
+    id: "ref-techperu-store",
+    businessName: "TechPeru Store",
+    origin: "codigo",
+    status: "pagando",
+    registeredAt: "2026-08-07",
+    planName: "Full",
+    firstMonthCommission: 96.84,
+    recurringCommission: 16.14,
+  },
+  {
+    id: "ref-kunca-deco",
+    businessName: "Kunca Deco",
+    origin: "manual",
+    status: "activo_sin_pago",
+    registeredAt: "2026-08-05",
+    planName: "Standard",
+    firstMonthCommission: null,
+    recurringCommission: null,
+  },
+  {
+    id: "ref-zapateria-andes",
+    businessName: "Zapatería Andes",
+    origin: "link",
+    status: "en_revision",
+    registeredAt: "2026-08-09",
+    planName: null,
+    firstMonthCommission: null,
+    recurringCommission: null,
+  },
+  {
+    id: "ref-bazar-central",
+    businessName: "Bazar Central",
+    origin: "link",
+    status: "correo_enviado",
+    registeredAt: "2026-08-12",
+    planName: null,
+    firstMonthCommission: null,
+    recurringCommission: null,
+  },
+  {
+    id: "ref-moda-urbana",
+    businessName: "Moda Urbana EIRL",
+    origin: "manual",
+    status: "cancelado",
+    registeredAt: "2026-08-14",
+    planName: "Basic",
+    firstMonthCommission: 0,
+    recurringCommission: 0,
+  },
+];
+
+export const EMPTY_PARTNER_REFERRALS: PartnerReferral[] = [];
