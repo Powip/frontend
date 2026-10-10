@@ -37,7 +37,7 @@ beforeEach(() => {
     auth: { user: { id: "actor" }, company: { id: "company" } },
     loading: false,
     hasPermission: (permission: string) => permission === "VIEW_FINANCES",
-  } as ReturnType<typeof useAuth>);
+  } as unknown as ReturnType<typeof useAuth>);
 });
 afterEach(() => jest.useRealTimers());
 
@@ -78,7 +78,7 @@ it("does not mount financial content without VIEW_FINANCES", () => {
     auth: { user: { role: "ADMIN" } },
     loading: false,
     hasPermission: () => false,
-  } as ReturnType<typeof useAuth>);
+  } as unknown as ReturnType<typeof useAuth>);
   render(
     <AdvertisingModuleShell>
       <p>Importe privado</p>
