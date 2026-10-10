@@ -29,6 +29,7 @@ import {
   useSaveCierreDia,
 } from "@/hooks/useCierreDia";
 import { CierreDiaFormInput } from "@/interfaces/ICierreDia";
+import { CcCierreDiaAdvertisingScope } from "./CcCierreDiaAdvertisingScope";
 import {
   EMPTY_FUNNEL,
   formatCurrency,
@@ -269,6 +270,8 @@ export function CcCierreDiaModal({
             )}
           </div>
         </DialogHeader>
+
+        {date && <CcCierreDiaAdvertisingScope from={date} to={date} />}
 
         {isLoadingAuto ? (
           <div className="flex items-center gap-2 rounded-lg bg-muted/60 border px-3 py-2 text-xs text-muted-foreground">

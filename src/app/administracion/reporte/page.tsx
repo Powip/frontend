@@ -1,5 +1,7 @@
 "use client";
 
+import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
+
 /**
  * Reporte rápido — §16 doc técnica.
  *
@@ -330,7 +332,7 @@ export default function ReporteRapidoPage() {
       list.push({
         nivel: "ambar",
         texto:
-          "No has registrado inversión de pauta este mes — Publicidad, CPA y ROAS de este reporte están en S/ 0.",
+          "No has registrado inversión manual este mes. La publicidad y sus métricas manuales no confirman el consumo del proveedor.",
       });
     }
     if (proyeccion.metaPeriodo > 0 && proyeccion.estVentas >= proyeccion.metaPeriodo) {
@@ -349,7 +351,7 @@ export default function ReporteRapidoPage() {
     return list;
   }, [orders, publicidadMes, proyeccion.metaPeriodo, proyeccion.estVentas]);
 
-  const shareText = `📊 REPORTE ${label.toUpperCase()}\n\nVenta total: ${fmtMoney(data.ventaTotal)}\nProducto: ${fmtMoney(data.producto)}\nPublicidad: ${fmtMoney(data.publicidad)}\nEnvíos: ${fmtMoney(data.envios)}\nCPA por pedido: ${fmtMoney(cpa, 2)}\nGANANCIA: ${fmtMoney(ganancia)}\n\nUnidades: ${data.unidades} · Pedidos: ${data.pedidos} · ROAS: ${data.publicidad > 0 ? roas.toFixed(1) + "×" : "—"}\n— vía POWIP`;
+  const shareText = `📊 REPORTE ${label.toUpperCase()}\n\nVenta total: ${fmtMoney(data.ventaTotal)}\nProducto: ${fmtMoney(data.producto)}\nPublicidad manual por conciliar: ${fmtMoney(data.publicidad)}\nEnvíos: ${fmtMoney(data.envios)}\nCPA por pedido (manual): ${fmtMoney(cpa, 2)}\nGANANCIA: ${fmtMoney(ganancia)}\n\nUnidades: ${data.unidades} · Pedidos: ${data.pedidos} · Ventas / inversión manual: ${data.publicidad > 0 ? roas.toFixed(1) + "×" : "—"}\n— vía POWIP`;
 
   const handleCopy = async () => {
     try {
@@ -372,6 +374,10 @@ export default function ReporteRapidoPage() {
 
   return (
     <div className="p-8 space-y-6">
+      <AdvertisingCompanySpend from={fromDate} to={toDate} />
+      <p className="text-sm text-muted-foreground">
+        Estos indicadores usan registros manuales por conciliar.
+      </p>
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <p className="text-[10px] font-bold text-primary uppercase tracking-[0.2em]">
@@ -404,11 +410,11 @@ export default function ReporteRapidoPage() {
               />
               <ReporteRow label="PRODUCTO" valor={fmtMoney(data.producto)} />
               <ReporteRow
-                label="PUBLICIDAD"
+                label="PUBLICIDAD MANUAL"
                 valor={fmtMoney(data.publicidad)}
               />
               <ReporteRow label="ENVÍOS" valor={fmtMoney(data.envios)} />
-              <ReporteRow label="CPA por pedido" valor={fmtMoney(cpa, 2)} />
+              <ReporteRow label="CPA por pedido (manual)" valor={fmtMoney(cpa, 2)} />
               <div className="flex justify-between items-center bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-bold px-4 py-3 rounded-b-lg -mx-6 -mb-6 mt-2">
                 <span>GANANCIA</span>
                 <span className="font-mono">{fmtMoney(ganancia)}</span>
@@ -423,7 +429,7 @@ export default function ReporteRapidoPage() {
                   <b className="text-foreground">{fmtNum(data.pedidos)}</b>
                 </span>
                 <span>
-                  ROAS:{" "}
+                  Ventas / inversión manual:{" "}
                   <b className="text-foreground">
                     {data.publicidad > 0 ? `${roas.toFixed(1)}×` : "—"}
                   </b>
@@ -431,8 +437,8 @@ export default function ReporteRapidoPage() {
               </div>
               {data.publicidad === 0 && (
                 <p className="text-[10px] text-muted-foreground mt-2">
-                  Sin inversión registrada en Pauta por canal para este periodo
-                  — Publicidad, CPA y ROAS quedan en S/ 0 / &quot;—&quot;.
+                  Sin inversión manual registrada para este periodo. Sus métricas
+                  quedan en S/ 0 / &quot;—&quot; y no confirman el consumo del proveedor.
                 </p>
               )}
             </CardContent>
@@ -545,7 +551,7 @@ export default function ReporteRapidoPage() {
               </div>
               <div className="space-y-1.5">
                 <Label className="text-xs">
-                  Inversión en ADS{" "}
+                  Inversión manual en ADS{" "}
                   <b>
                     {deltaAds > 0 ? "+" : ""}
                     {deltaAds}%
@@ -622,9 +628,9 @@ export default function ReporteRapidoPage() {
               bold
             />
             <ReporteRow label="PRODUCTO" valor={fmtMoney(data.producto)} />
-            <ReporteRow label="PUBLICIDAD" valor={fmtMoney(data.publicidad)} />
+            <ReporteRow label="PUBLICIDAD MANUAL" valor={fmtMoney(data.publicidad)} />
             <ReporteRow label="ENVÍOS" valor={fmtMoney(data.envios)} />
-            <ReporteRow label="CPA por pedido" valor={fmtMoney(cpa, 2)} />
+            <ReporteRow label="CPA por pedido (manual)" valor={fmtMoney(cpa, 2)} />
             <div className="flex justify-between font-bold text-emerald-700 dark:text-emerald-300 pt-2">
               <span>GANANCIA</span>
               <span className="font-mono">{fmtMoney(ganancia)}</span>

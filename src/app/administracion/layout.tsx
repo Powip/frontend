@@ -16,7 +16,7 @@ const TABS = [
   { label: "Gastos & Costos", href: "/administracion/gastos" },
   { label: "Utilidad & Margen", href: "/administracion/utilidad" },
   { label: "Canales & Marketplaces", href: "/administracion/canales" },
-  { label: "Pauta por canal", href: "/administracion/pauta", isNew: true },
+  { label: "Inversión publicitaria", href: "/administracion/pauta", isNew: true },
   { label: "Punto de Equilibrio", href: "/administracion/equilibrio" },
   { label: "Margen x Producto", href: "/administracion/margen-producto" },
   { label: "Merma", href: "/administracion/merma" },
@@ -43,10 +43,10 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   if (loading || !auth || !hasPermission("VIEW_FINANCES")) return null;
 
   return (
-    <div className="h-full flex flex-col bg-background">
+    <div className="h-full min-w-0 max-w-full flex flex-col bg-background">
       <Header />
 
-      <div className="px-8 py-4 flex items-center justify-between border-b border-border bg-card shadow-sm">
+      <div className="px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-4 border-b border-border bg-card shadow-sm">
         <div>
           <h1 className="text-xl font-black text-foreground tracking-tight">
             ADMINISTRACIÓN
@@ -55,16 +55,17 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             Gestión Financiera
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-3 sm:w-auto">
           <QuickPeriodButtons />
           <PeriodSelector
+            className="w-full min-w-0 sm:w-auto"
             value={{ from: fromDate, to: toDate }}
             onPeriodChange={setPeriod}
           />
         </div>
       </div>
 
-      <div className="flex border-b border-border px-8 overflow-x-auto bg-background">
+      <nav aria-label="Secciones de administración" className="flex min-w-0 shrink-0 border-b border-border px-4 sm:px-6 lg:px-8 overflow-x-auto bg-background">
         {TABS.map((tab) => (
           <button
             key={tab.href}
@@ -84,9 +85,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             )}
           </button>
         ))}
-      </div>
+      </nav>
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 min-w-0 overflow-auto">
         {children}
       </div>
     </div>
