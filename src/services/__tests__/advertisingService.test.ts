@@ -13,6 +13,7 @@ import {
   completeAdvertisingAuthorization,
   discoverAdvertisingAccounts,
   getAdvertisingSnapshot,
+  importAdvertisingHistory,
   importAdvertisingManualRecords,
   pauseAdvertisingUpdates,
   previewAdvertisingManualImport,
@@ -264,15 +265,26 @@ describe("advertising service", () => {
       `${ROOT}/tiktok/accounts`,
       expect.objectContaining({ headers: { Authorization: `Bearer ${TOKEN}` } }),
     );
-    const selection = { externalIds: ["advertiser-1"], syncFrom: "2026-10-01" };
-    put.mockResolvedValue({ data: { selectedCount: 1 } });
+    const selection = { externalIds: ["advertiser-1"] };
+    put.mockResolvedValue({ data: { selectedCount: 1, imports: [] } });
     await expect(
       selectAdvertisingAccounts(TOKEN, COMPANY_ID, "tiktok", selection),
-    ).resolves.toEqual({ selectedCount: 1 });
+    ).resolves.toEqual({ selectedCount: 1, imports: [] });
     expect(put).toHaveBeenCalledWith(
       `${ROOT}/tiktok/accounts`,
       selection,
       expect.objectContaining({ headers: { Authorization: `Bearer ${TOKEN}` } }),
+    );
+  });
+
+  it("requests automatic history import without sending the display period", async () => {
+    const imports = [{ id: "job-id", accountId: "account-id", status: "queued" }];
+    post.mockResolvedValue({ data: { imports } });
+    await expect(importAdvertisingHistory(TOKEN, COMPANY_ID, "meta")).resolves.toEqual({ imports });
+    expect(post).toHaveBeenCalledWith(
+      `${ROOT}/meta/history-import`,
+      {},
+      expect.objectContaining({ headers: { Authorization: `Bearer ${TOKEN}` }, timeout: 30_000 }),
     );
   });
 

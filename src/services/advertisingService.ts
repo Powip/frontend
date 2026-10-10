@@ -8,6 +8,20 @@ export type AdvertisingConnectionStatusWire =
   | "needs-auth"
   | "paused";
 
+export interface AdvertisingHistoryImportState {
+  id: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "paused";
+  availableFrom: string | null;
+  availableTo: string | null;
+  completedWindows: number;
+  totalWindows: number | null;
+  errorCode: string | null;
+}
+
+export interface AdvertisingHistoryImport extends AdvertisingHistoryImportState {
+  accountId: string;
+}
+
 export type AdvertisingManualStatusWire =
   | "pending"
   | "represented"
@@ -29,6 +43,7 @@ export interface AdvertisingAccountWire {
   lastAttemptAt: string | null;
   lastSuccessfulAt: string | null;
   updatedAt: string | null;
+  historyImport?: AdvertisingHistoryImportState | null;
 }
 
 export interface AdvertisingDayWire {
@@ -138,7 +153,6 @@ export interface AdvertisingDiscoveredAccount {
 
 export interface AdvertisingSelectionPayload {
   externalIds: string[];
-  syncFrom?: string;
 }
 
 export interface AdvertisingSyncRun {
@@ -263,10 +277,23 @@ export async function selectAdvertisingAccounts(
   companyId: string,
   provider: AdvertisingProviderWire,
   payload: AdvertisingSelectionPayload,
-): Promise<{ selectedCount: number }> {
-  const response = await axios.put<{ selectedCount: number }>(
+): Promise<{ selectedCount: number; imports: AdvertisingHistoryImport[] }> {
+  const response = await axios.put<{ selectedCount: number; imports: AdvertisingHistoryImport[] }>(
     `${providerUrl(companyId, provider)}/accounts`,
-    payload,
+    { externalIds: payload.externalIds },
+    requestOptions(token),
+  );
+  return response.data;
+}
+
+export async function importAdvertisingHistory(
+  token: string,
+  companyId: string,
+  provider: AdvertisingProviderWire,
+): Promise<{ imports: AdvertisingHistoryImport[] }> {
+  const response = await axios.post<{ imports: AdvertisingHistoryImport[] }>(
+    `${providerUrl(companyId, provider)}/history-import`,
+    {},
     requestOptions(token),
   );
   return response.data;

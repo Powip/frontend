@@ -35,6 +35,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { AdvertisingAccountHistory } from "./AdvertisingAccountHistory";
 import { AdvertisingManualReview } from "./AdvertisingManualReview";
 import {
   type AdvertisingProvider,
@@ -117,6 +118,16 @@ export function AdvertisingConnections({
                     ? `${enabled.length} ${enabled.length === 1 ? "cuenta activa" : "cuentas activas"} · ${accounts.length} con datos guardados`
                     : "Consulta el gasto de tus anuncios en Powip."}
                 </p>
+                {accounts.some((account) => account.historyImport) ? (
+                  <section
+                    className="space-y-3 border-t pt-3"
+                    aria-label="Importación del historial"
+                  >
+                    {accounts.map((account) => (
+                      <AdvertisingAccountHistory key={account.id} account={account} />
+                    ))}
+                  </section>
+                ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
@@ -251,6 +262,23 @@ export function AdvertisingDashboard({
 
         <TabsContent value="investment" className="min-w-0 space-y-6">
           {effectiveContent}
+          {summary.accounts.some(({ account }) => account.historyImport) ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Importación del historial</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {summary.accounts.map(({ account }) => (
+                  <AdvertisingAccountHistory
+                    key={account.id}
+                    account={account}
+                    from={from}
+                    to={to}
+                  />
+                ))}
+              </CardContent>
+            </Card>
+          ) : null}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <div className="min-w-0 space-y-1.5">
               <Label htmlFor={`${id}-provider`}>Plataforma</Label>

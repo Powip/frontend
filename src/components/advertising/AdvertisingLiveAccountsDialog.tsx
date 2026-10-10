@@ -12,7 +12,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import type {
@@ -31,8 +30,6 @@ interface Props {
   companyId: string;
   companyName: string;
   token: string;
-  from: string;
-  today: string;
   initialSelectedIds: string[];
   busy: boolean;
   error: string | null;
@@ -45,8 +42,6 @@ export function AdvertisingLiveAccountsDialog({
   companyId,
   companyName,
   token,
-  from,
-  today,
   initialSelectedIds,
   busy,
   error,
@@ -56,7 +51,6 @@ export function AdvertisingLiveAccountsDialog({
   const id = useId();
   const [accounts, setAccounts] = useState<AdvertisingDiscoveredAccount[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
-  const [syncFrom, setSyncFrom] = useState(from <= today ? from : today);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -73,7 +67,6 @@ export function AdvertisingLiveAccountsDialog({
     setAccounts([]);
     setSelected([]);
     setReview(false);
-    setSyncFrom(from <= today ? from : today);
     discoverAdvertisingAccounts(token, companyId, provider, controller.signal)
       .then(({ accounts: available }) => {
         if (!active) return;
@@ -95,11 +88,10 @@ export function AdvertisingLiveAccountsDialog({
       active = false;
       controller.abort();
     };
-  }, [provider, companyId, token, from, today, selectionKey, attempt]);
+  }, [provider, companyId, token, selectionKey, attempt]);
 
-  const validDate = /^\d{4}-\d{2}-\d{2}$/.test(syncFrom) && syncFrom <= today;
   const chosen = accounts.filter((account) => selected.includes(account.externalId));
-  const canContinue = !loading && !loadError && validDate && !busy;
+  const canContinue = !loading && !loadError && !busy;
 
   return (
     <Dialog
@@ -149,7 +141,9 @@ export function AdvertisingLiveAccountsDialog({
               <p className="text-sm">Las cuentas dejarán de actualizarse.</p>
             )}
             {chosen.length > 0 && (
-              <p className="text-sm text-muted-foreground">Consultar desde {syncFrom}.</p>
+              <p className="text-sm text-muted-foreground">
+                Importaremos todo el historial disponible.
+              </p>
             )}
           </div>
         ) : (
@@ -186,19 +180,6 @@ export function AdvertisingLiveAccountsDialog({
                 </Label>
               ))}
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`${id}-from`}>Consultar desde</Label>
-              <Input
-                id={`${id}-from`}
-                type="date"
-                value={syncFrom}
-                max={today}
-                disabled={busy}
-                aria-invalid={!validDate}
-                onChange={(event) => setSyncFrom(event.target.value)}
-              />
-              {!validDate && <p className="text-xs text-destructive">Elige una fecha hasta hoy.</p>}
-            </div>
             {initialSelectedIds.length > 0 && (
               <p className="text-xs text-muted-foreground">
                 Al quitar una cuenta, sus gastos anteriores siguen visibles.
@@ -223,7 +204,7 @@ export function AdvertisingLiveAccountsDialog({
             <Button
               disabled={!canContinue || (selected.length === 0 && initialSelectedIds.length === 0)}
               onClick={() => {
-                if (review) void onSave({ externalIds: selected, syncFrom });
+                if (review) void onSave({ externalIds: selected });
                 else setReview(true);
               }}
             >

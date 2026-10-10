@@ -12,19 +12,19 @@ import { useAdvertisingSnapshot } from "@/hooks/useAdvertisingSnapshot";
 import type {
   AdvertisingProviderWire,
   AdvertisingSelectionPayload,
-  AdvertisingSyncRun,
 } from "@/services/advertisingService";
 import {
   advertisingErrorMessage,
+  importAdvertisingHistory,
   pauseAdvertisingUpdates,
   selectAdvertisingAccounts,
   startAdvertisingAuthorization,
-  syncAdvertisingSpend,
 } from "@/services/advertisingService";
 import { AdvertisingConnections, AdvertisingDashboard } from "./AdvertisingDashboard";
 import { AdvertisingEffectiveSpend } from "./AdvertisingEffectiveSpend";
 import { AdvertisingLiveAccountsDialog } from "./AdvertisingLiveAccountsDialog";
 import { AdvertisingManualReview } from "./AdvertisingManualReview";
+import { advertisingHistoryNotice } from "./advertising-history";
 import { snapshotFromWire } from "./advertising-model";
 
 interface Props {
@@ -59,15 +59,6 @@ export function validatedAdvertisingAuthorizationUrl(
   return url.toString();
 }
 
-function syncNotice(runs: AdvertisingSyncRun[]): string {
-  if (runs.some((run) => run.status === "failed"))
-    return "Algunas cuentas no se actualizaron. Revisa el estado de los datos.";
-  if (runs.some((run) => run.status === "busy")) return "La actualización ya está en curso.";
-  if (runs.some((run) => run.status === "paused"))
-    return "Hay cuentas con actualizaciones pausadas.";
-  return runs.length ? "Datos actualizados." : "No hay cuentas activas para actualizar.";
-}
-
 export function AdvertisingLivePanel({
   companyId,
   actorId,
@@ -94,6 +85,7 @@ export function AdvertisingLivePanel({
     };
   }, []);
   const wire = query.data;
+  const historyNoticeSnapshot = useRef(wire);
   const parsed = useMemo(() => {
     if (!wire) return { snapshot: null, invalid: false };
     try {
@@ -103,6 +95,14 @@ export function AdvertisingLivePanel({
     }
   }, [wire]);
   const snapshot = parsed.snapshot;
+  useEffect(() => {
+    if (!wire || wire === historyNoticeSnapshot.current || notice !== "Importando historial…")
+      return;
+    const imports = wire.accounts.flatMap((account) =>
+      account.historyImport ? [account.historyImport] : [],
+    );
+    if (imports.length > 0) setNotice(advertisingHistoryNotice(imports));
+  }, [wire, notice]);
   const initialSelectedIds = useMemo(
     () =>
       wire?.accounts
@@ -171,16 +171,15 @@ export function AdvertisingLivePanel({
     try {
       const result = await selectAdvertisingAccounts(token, companyId, provider, payload);
       selected = true;
-      if (mounted.current) setDialogProvider(null);
-      const syncFrom = payload.syncFrom ?? from;
-      const syncTo = to <= wire.today ? to : wire.today;
-      if (result.selectedCount > 0 && syncFrom <= syncTo) {
-        const { runs } = await syncAdvertisingSpend(token, companyId, provider, {
-          from: syncFrom,
-          to: syncTo,
-        });
-        if (mounted.current) setNotice(syncNotice(runs));
-      } else if (mounted.current) setNotice("Cuentas guardadas.");
+      if (mounted.current) {
+        setDialogProvider(null);
+        historyNoticeSnapshot.current = wire;
+        setNotice(
+          result.selectedCount > 0
+            ? advertisingHistoryNotice(result.imports)
+            : "Cuentas guardadas.",
+        );
+      }
     } catch (failure: unknown) {
       if (mounted.current) setError(advertisingErrorMessage(failure));
     } finally {
@@ -193,25 +192,6 @@ export function AdvertisingLivePanel({
 
   async function refresh() {
     if (!token || !companyId || !wire || pending) return;
-    const syncTo = to <= wire.today ? to : wire.today;
-    if (from > syncTo) {
-      setError("Elige un periodo hasta hoy para actualizar.");
-      return;
-    }
-    const activeAccounts = wire.accounts.filter(
-      (account) =>
-        account.enabled &&
-        wire.providers[account.provider].available &&
-        wire.providers[account.provider].status === "connected",
-    );
-    if (
-      activeAccounts.length > 0 &&
-      activeAccounts.every((account) => account.syncFrom !== null && account.syncFrom > syncTo)
-    ) {
-      setError("Este periodo es anterior a «Consultar desde». Cambia la fecha en Elegir cuentas.");
-      setNotice(null);
-      return;
-    }
     setPending("sync");
     setError(null);
     setNotice(null);
@@ -223,11 +203,16 @@ export function AdvertisingLivePanel({
           wire.accounts.some((account) => account.provider === provider && account.enabled),
       );
       const results = await Promise.all(
-        providers.map((provider) =>
-          syncAdvertisingSpend(token, companyId, provider, { from, to: syncTo }),
-        ),
+        providers.map((provider) => importAdvertisingHistory(token, companyId, provider)),
       );
-      if (mounted.current) setNotice(syncNotice(results.flatMap((result) => result.runs)));
+      if (mounted.current) {
+        historyNoticeSnapshot.current = wire;
+        setNotice(
+          providers.length
+            ? advertisingHistoryNotice(results.flatMap((result) => result.imports))
+            : "No hay cuentas activas para actualizar.",
+        );
+      }
     } catch (failure: unknown) {
       if (mounted.current) setError(advertisingErrorMessage(failure));
     } finally {
@@ -383,8 +368,6 @@ export function AdvertisingLivePanel({
         companyId={companyId}
         companyName={companyName}
         token={token}
-        from={from}
-        today={wire.today}
         initialSelectedIds={initialSelectedIds}
         busy={pending === "save"}
         error={error}
