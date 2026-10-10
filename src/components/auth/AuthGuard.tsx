@@ -30,7 +30,12 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const pathname = usePathname();
 
   // Verificar si es una ruta pública
-  const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route)) ||
+  // El retorno OAuth debe conservar sus parámetros en memoria mientras se
+  // recupera la sesión. La API sigue exigiendo sesión, permisos y state válido.
+  const isAdvertisingCallback =
+    pathname === "/configuracion/integraciones/publicidad/callback";
+  const isPublicRoute =
+    isAdvertisingCallback || PUBLIC_ROUTES.some(route => pathname?.startsWith(route)) ||
     pathname === "/partners/solicitud";
   // Only skip the Company/plan gate. Session, route permissions and the portal's
   // live /me authorization still apply; a similar prefix is not a Partners route.

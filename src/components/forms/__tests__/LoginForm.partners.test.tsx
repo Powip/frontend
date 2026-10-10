@@ -107,6 +107,23 @@ function useRealPartnerLookup() {
 }
 
 describe("LoginForm · partners sin Company", () => {
+  it("la recuperación inline conserva el callback de main sin consultar Partners ni navegar", async () => {
+    setupLogin({ company: null, subscription: null });
+    mockGetPartnerLoginStatus.mockResolvedValue("partner");
+    const onAuthenticated = jest.fn();
+    const user = userEvent.setup();
+    render(<LoginForm onAuthenticated={onAuthenticated} />);
+    await user.type(screen.getByLabelText(/correo electrónico/i), "partner@fixture.invalid");
+    await user.type(screen.getByLabelText(/^contraseña$/i), "synthetic-only");
+    await user.keyboard("{Enter}");
+
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(1));
+    expect(mockLogin).toHaveBeenCalledTimes(1);
+    expect(mockGetPartnerLoginStatus).not.toHaveBeenCalled();
+    expect(mockPush).not.toHaveBeenCalled();
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("con Company va al inicio y no consulta Partners", async () => {
     setupLogin({ company: { id: "c1" }, subscription: null });
     mockGetPartnerLoginStatus.mockResolvedValue("unknown");
