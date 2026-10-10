@@ -17,8 +17,12 @@ interface LoginData {
   password: string;
 }
 
-export default function LoginForm() {
-  const { auth, login, inventories } = useAuth();
+interface LoginFormProps {
+  onAuthenticated?: () => void;
+}
+
+export default function LoginForm({ onAuthenticated }: LoginFormProps = {}) {
+  const { login } = useAuth();
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [loginData, setLoginData] = useState<LoginData>({
@@ -69,6 +73,12 @@ export default function LoginForm() {
         return;
       }
 
+      // Un flujo que recupera sesión puede continuar en esta misma página.
+      if (onAuthenticated) {
+        onAuthenticated();
+        return;
+      }
+
       // Con empresa (dueño o staff) → dashboard. Sin empresa: con plan vigente →
       // crear empresa; sin plan → elegir y pagar plan (FEAT-11, lib/subscriptionGate).
       router.push(
@@ -90,7 +100,7 @@ export default function LoginForm() {
 
   return (
     <div>
-      <form className="flex flex-col gap-5">
+      <form className="flex flex-col gap-5" onSubmit={handleOnLogin}>
         <div>
           <Label htmlFor="email">Correo electrónico</Label>
           <Input
@@ -151,7 +161,6 @@ export default function LoginForm() {
         </div>
         <button
           type="submit"
-          onClick={(e) => handleOnLogin(e)}
           disabled={isLoading}
           className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-70 mt-1"
           style={{ background: "#4F3A96" }}

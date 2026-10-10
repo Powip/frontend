@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import LoginForm from "@/components/forms/LoginForm";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,8 +71,11 @@ export default function AdvertisingCallbackPage() {
       setError("No pudimos completar la conexión. Vuelve a iniciarla.");
       return;
     }
-    if (!auth?.accessToken || !auth.company?.id) {
-      setError("Inicia sesión y vuelve a conectar la cuenta.");
+    // Conservar el retorno en memoria si el navegador no recuperó la sesión.
+    // El login se completa aquí y el mismo efecto continúa con la sesión nueva.
+    if (!auth?.accessToken) return;
+    if (!auth.company?.id) {
+      setError("No pudimos cargar tu empresa. Vuelve a iniciar la conexión.");
       return;
     }
     attempted.current = true;
@@ -93,6 +97,16 @@ export default function AdvertisingCallbackPage() {
       });
   }, [ready, loading, auth, router]);
 
+  const needsLogin =
+    ready &&
+    !loading &&
+    !auth?.accessToken &&
+    !error &&
+    !!captured.current?.provider &&
+    !!captured.current?.code &&
+    !!captured.current?.state &&
+    !captured.current?.error;
+
   return (
     <main className="mx-auto min-w-0 max-w-xl p-4 sm:p-6 lg:p-8">
       <Card>
@@ -104,9 +118,16 @@ export default function AdvertisingCallbackPage() {
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
+          ) : needsLogin ? (
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Inicia sesión con tu misma cuenta de Powip para terminar la conexión.
+              </p>
+              <LoginForm onAuthenticated={() => setError(null)} />
+            </div>
           ) : (
             <p role="status" className="text-sm text-muted-foreground">
-              Completando la conexión…
+              {loading ? "Recuperando tu sesión…" : "Completando la conexión…"}
             </p>
           )}
           {error && (
