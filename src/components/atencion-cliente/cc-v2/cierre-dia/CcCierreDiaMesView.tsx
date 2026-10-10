@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { CcCierreDiaAdvertisingScope } from "./CcCierreDiaAdvertisingScope";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -112,6 +113,8 @@ export function CcCierreDiaMesView({ storeId, monthStr, onRegularizar, onVerDia 
       <h3 className="text-base font-extrabold">
         Resumen Mensual · <span className="text-teal-600 dark:text-teal-400">{mesLabel}</span>
       </h3>
+
+      <CcCierreDiaAdvertisingScope from={startDate} to={endDate} />
 
       <CcCierreDiaInnerTabs tabs={TABS} active={tab} onChange={setTab} />
 

@@ -10,6 +10,7 @@ import { CcCierreDiaProductTable } from "./CcCierreDiaProductTable";
 import { CcCierreDiaUpsellCards } from "./CcCierreDiaUpsellCards";
 import { CcCierreDiaCpvCard, CpvValues } from "./CcCierreDiaCpvCard";
 import { CcCierreDiaEstadoBadge } from "./CcCierreDiaEstadoBadge";
+import { CcCierreDiaAdvertisingScope } from "./CcCierreDiaAdvertisingScope";
 import {
   computeMetrics,
   EMPTY_PRODUCT_TOTALS,
@@ -34,11 +35,15 @@ export function CcCierreDiaDayView({ storeId, date, onRegularizar }: Props) {
   const { data: manualRecord, isLoading: isLoadingManual } = useCierreDiaDay(storeId, date, isToday);
   const { data: closingData, isLoading: isLoadingProductos, isError: isErrorProductos } =
     useCierreDiaClosingDataDay(storeId, date, isToday);
+  const advertisingScope = <CcCierreDiaAdvertisingScope from={date} to={date} />;
 
   if (isLoadingManual || isLoadingProductos) {
     return (
-      <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center text-gray-400 dark:text-slate-500 text-sm">
-        Cargando cierre del día...
+      <div className="space-y-4">
+        {advertisingScope}
+        <div className="bg-white dark:bg-slate-800 rounded-lg p-8 text-center text-gray-400 dark:text-slate-500 text-sm">
+          Cargando cierre del día...
+        </div>
       </div>
     );
   }
@@ -48,35 +53,41 @@ export function CcCierreDiaDayView({ storeId, date, onRegularizar }: Props) {
 
   if (!record) {
     return (
-      <Card className="border-2 border-dashed">
-        <CardContent className="py-10 text-center">
-          <PackageSearch className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
-          <p className="text-sm font-bold mb-1">Sin datos para este día</p>
-          <p className="text-xs text-muted-foreground mb-4">
-            No hay pedidos COD registrados ni un cierre guardado para esta fecha. Puedes
-            regularizarlo ingresando los datos manualmente.
-          </p>
-          <Button onClick={() => onRegularizar(date)}>
-            + Regularizar datos de este día
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        {advertisingScope}
+        <Card className="border-2 border-dashed">
+          <CardContent className="py-10 text-center">
+            <PackageSearch className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
+            <p className="text-sm font-bold mb-1">Sin datos para este día</p>
+            <p className="text-xs text-muted-foreground mb-4">
+              No hay pedidos COD registrados ni un cierre guardado para esta fecha. Puedes
+              regularizarlo ingresando los datos manualmente.
+            </p>
+            <Button onClick={() => onRegularizar(date)}>
+              + Regularizar datos de este día
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   const m = computeMetrics(record);
 
   return (
-    <CcCierreDiaDayContent
-      storeId={storeId}
-      date={date}
-      record={record}
-      metrics={m}
-      closingData={closingData}
-      isLoadingProductos={isLoadingProductos}
-      isErrorProductos={isErrorProductos}
-      onRegularizar={onRegularizar}
-    />
+    <div className="space-y-4">
+      {advertisingScope}
+      <CcCierreDiaDayContent
+        storeId={storeId}
+        date={date}
+        record={record}
+        metrics={m}
+        closingData={closingData}
+        isLoadingProductos={isLoadingProductos}
+        isErrorProductos={isErrorProductos}
+        onRegularizar={onRegularizar}
+      />
+    </div>
   );
 }
 
@@ -265,7 +276,7 @@ function CcCierreDiaDayContent({
           <CardContent className="space-y-1.5">
             <Row label="💵 Ingreso bruto" value={formatCurrency(record.ingreso)} />
             <Row label="📦 Costo de producto" value={`− ${formatCurrency(record.costo)}`} tone="rd" />
-            <Row label="📣 Gasto publicidad" value={`− ${formatCurrency(publiLive)}`} tone="rd" />
+            <Row label="📣 Publicidad manual" value={`− ${formatCurrency(publiLive)}`} tone="rd" />
             <Row label="Margen bruto (sin publi)" value={`${formatCurrency(margenBrutoLive)} · ${formatPct(record.ingreso ? (margenBrutoLive / record.ingreso) * 100 : 0)}`} tone="g" />
             <div className="pt-2 mt-1 border-t border-white/20 flex items-center justify-between">
               <span className="text-sm font-bold">✅ Margen neto real</span>

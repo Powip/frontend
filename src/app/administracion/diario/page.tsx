@@ -1,5 +1,7 @@
 "use client";
 
+import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
+
 /**
  * Control diario de pauta — §9 doc técnica.
  *
@@ -147,6 +149,7 @@ export default function ControlDiarioPage() {
 
   return (
     <div className="p-8 space-y-6">
+      <AdvertisingCompanySpend from={fromDate} to={toDate} />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <p className="text-[10px] font-bold text-primary uppercase tracking-[0.2em]">Órdenes reales · inversión guardada en este dispositivo</p>
@@ -159,7 +162,7 @@ export default function ControlDiarioPage() {
       </div>
 
       <div className="rounded-lg border bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 p-3.5 text-xs text-blue-800 dark:text-blue-300">
-        ℹ️ Órdenes/Unidades/Venta son reales. Inversión/CPO/CPV/ROAS salen de lo que registres en Pauta por canal, guardado en este dispositivo — si un día no tiene inversión registrada, aparece en S/ 0.
+        Estos indicadores usan registros manuales por conciliar.
       </div>
 
       {!mismoMes && (
@@ -198,13 +201,13 @@ export default function ControlDiarioPage() {
             <KpiCard label="T.Prom" valor={tPromMes != null ? tPromMes.toFixed(2) : "—"} sub="unidades ÷ órdenes" />
             <KpiCard label="Venta del mes" valor={fmtMoney(totales.venta)} sub={canalActual.nombre} />
             <KpiCard label="CPV del mes" valor={cpvMes != null ? fmtMoney(cpvMes, 2) : "—"} sub="inversión ÷ unidades" />
-            <KpiCard label="ROAS del mes" valor={roasMes != null ? `${roasMes.toFixed(1)}×` : "—"} sub="venta ÷ inversión" />
+            <KpiCard label="Ventas / inversión manual del mes" valor={roasMes != null ? `${roasMes.toFixed(1)}×` : "—"} sub="venta ÷ asignación manual" />
           </div>
 
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">
-                Seguimiento diario — {canalActual.nombre} <span className="text-xs font-normal text-muted-foreground">Órdenes · Unidades · T.Prom · Venta · Inversión · CPO · CPV · ROAS</span>
+                Seguimiento diario — {canalActual.nombre} <span className="text-xs font-normal text-muted-foreground">Órdenes · Unidades · T.Prom · Venta · Inversión · CPO · CPV · Ventas / inversión manual</span>
               </CardTitle>
             </CardHeader>
             <CardContent className="overflow-x-auto">
@@ -219,7 +222,7 @@ export default function ControlDiarioPage() {
                     <TableHead className="text-right">Inversión</TableHead>
                     <TableHead className="text-right">CPO</TableHead>
                     <TableHead className="text-right">CPV</TableHead>
-                    <TableHead className="text-right">ROAS</TableHead>
+                    <TableHead className="text-right">Ventas / inversión manual</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -329,7 +332,7 @@ export default function ControlDiarioPage() {
                   <TableHead className="text-right">Unidades</TableHead>
                   <TableHead className="text-right">Venta</TableHead>
                   <TableHead className="text-right">Inversión</TableHead>
-                  <TableHead className="text-right">ROAS</TableHead>
+                  <TableHead className="text-right">Ventas / inversión manual</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
