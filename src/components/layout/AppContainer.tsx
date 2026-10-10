@@ -20,7 +20,9 @@ export default function AppContainer({
     "/onboarding",
   ];
 
-  const hideSidebar = noSidebarRoutes.some((r) => pathname.startsWith(r));
+  const hideSidebar =
+    pathname === "/configuracion/integraciones/publicidad/callback" ||
+    noSidebarRoutes.some((r) => pathname.startsWith(r));
 
   return (
     <AuthGuard>
