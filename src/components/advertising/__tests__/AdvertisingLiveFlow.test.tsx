@@ -55,8 +55,6 @@ describe("live advertising connection flow", () => {
         companyId="company-id"
         companyName="Empresa"
         token="test-access-token"
-        from="2026-10-01"
-        today="2026-10-09"
         initialSelectedIds={[]}
         busy={false}
         error={null}
@@ -72,18 +70,17 @@ describe("live advertising connection flow", () => {
     expect(screen.getByRole("heading", { name: "Revisa las cuentas" })).toBeVisible();
     expect(onSave).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Guardar cuentas" }));
-    expect(onSave).toHaveBeenCalledWith({ externalIds: ["123"], syncFrom: "2026-10-01" });
+    expect(onSave).toHaveBeenCalledWith({ externalIds: ["123"] });
+    expect(screen.getByText("Importaremos todo el historial disponible.")).toBeVisible();
   });
 
-  it("preserves only previous enabled selections and blocks future dates", async () => {
+  it("preserves only previous enabled selections without asking for an import date", async () => {
     render(
       <AdvertisingLiveAccountsDialog
         provider="meta"
         companyId="company-id"
         companyName="Empresa"
         token="test-access-token"
-        from="2026-10-01"
-        today="2026-10-09"
         initialSelectedIds={["123", "unavailable-account"]}
         busy={false}
         error={null}
@@ -92,9 +89,8 @@ describe("live advertising connection flow", () => {
       />,
     );
     expect(await screen.findByRole("checkbox", { name: /Cuenta Lima/ })).toBeChecked();
-    fireEvent.change(screen.getByLabelText("Consultar desde"), { target: { value: "2026-10-10" } });
-    expect(screen.getByRole("button", { name: /Continuar con 1 cuenta/ })).toBeDisabled();
-    expect(screen.getByText("Elige una fecha hasta hoy.")).toBeVisible();
+    expect(screen.queryByLabelText("Consultar desde")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Continuar con 1 cuenta/ })).toBeEnabled();
   });
 
   it.each([

@@ -9,6 +9,7 @@ export interface AdvertisingAccount {
   timeZone: string;
   enabled: boolean;
   updatedAt: string | null;
+  historyImport?: AdvertisingHistoryImportState | null;
 }
 
 export interface AdvertisingDay {
@@ -243,6 +244,13 @@ export function formatAdvertisingMoney(
 }
 
 export function snapshotFromWire(wire: AdvertisingSnapshotWire): AdvertisingSnapshot {
+  if (
+    wire.accounts.some(
+      (account) =>
+        account.historyImport != null && !isAdvertisingHistoryImport(account.historyImport),
+    )
+  )
+    throw new Error("No pudimos leer el estado de importación.");
   const currencies = new Map(wire.accounts.map((account) => [account.id, account.currency]));
   return {
     accounts: wire.accounts,
@@ -324,6 +332,7 @@ export const EMPTY_ADVERTISING_SNAPSHOT: AdvertisingSnapshot = {
 };
 
 import type {
+  AdvertisingHistoryImportState,
   AdvertisingManualRecordWire,
   AdvertisingSnapshotWire,
 } from "@/services/advertisingService";
@@ -332,3 +341,4 @@ import {
   formatAdvertisingDecimal,
   sumAdvertisingDecimals,
 } from "./advertising-decimal";
+import { isAdvertisingHistoryImport } from "./advertising-history";

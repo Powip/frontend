@@ -12,19 +12,20 @@ import { useAdvertisingSnapshot } from "@/hooks/useAdvertisingSnapshot";
 import type {
   AdvertisingProviderWire,
   AdvertisingSelectionPayload,
-  AdvertisingSyncRun,
 } from "@/services/advertisingService";
 import {
   advertisingErrorMessage,
+  importAdvertisingHistory,
   pauseAdvertisingUpdates,
   selectAdvertisingAccounts,
   startAdvertisingAuthorization,
-  syncAdvertisingSpend,
 } from "@/services/advertisingService";
 import { AdvertisingConnections, AdvertisingDashboard } from "./AdvertisingDashboard";
 import { AdvertisingEffectiveSpend } from "./AdvertisingEffectiveSpend";
 import { AdvertisingLiveAccountsDialog } from "./AdvertisingLiveAccountsDialog";
 import { AdvertisingManualReview } from "./AdvertisingManualReview";
+import { AdvertisingModuleSummary } from "./AdvertisingModuleSummary";
+import { advertisingHistoryNotice } from "./advertising-history";
 import { snapshotFromWire } from "./advertising-model";
 
 interface Props {
@@ -37,6 +38,7 @@ interface Props {
   manualContent?: ReactNode;
   connectionsOnly?: boolean;
   storeIds?: string[];
+  presentation?: "legacy" | "module";
 }
 
 const EMPTY_STORE_IDS: string[] = [];
@@ -59,15 +61,6 @@ export function validatedAdvertisingAuthorizationUrl(
   return url.toString();
 }
 
-function syncNotice(runs: AdvertisingSyncRun[]): string {
-  if (runs.some((run) => run.status === "failed"))
-    return "Algunas cuentas no se actualizaron. Revisa el estado de los datos.";
-  if (runs.some((run) => run.status === "busy")) return "La actualización ya está en curso.";
-  if (runs.some((run) => run.status === "paused"))
-    return "Hay cuentas con actualizaciones pausadas.";
-  return runs.length ? "Datos actualizados." : "No hay cuentas activas para actualizar.";
-}
-
 export function AdvertisingLivePanel({
   companyId,
   actorId,
@@ -78,6 +71,7 @@ export function AdvertisingLivePanel({
   manualContent,
   connectionsOnly = false,
   storeIds = EMPTY_STORE_IDS,
+  presentation = "legacy",
 }: Props) {
   const queryClient = useQueryClient();
   const query = useAdvertisingSnapshot({ token, actorId, companyId, from, to });
@@ -94,6 +88,7 @@ export function AdvertisingLivePanel({
     };
   }, []);
   const wire = query.data;
+  const historyNoticeSnapshot = useRef(wire);
   const parsed = useMemo(() => {
     if (!wire) return { snapshot: null, invalid: false };
     try {
@@ -103,6 +98,14 @@ export function AdvertisingLivePanel({
     }
   }, [wire]);
   const snapshot = parsed.snapshot;
+  useEffect(() => {
+    if (!wire || wire === historyNoticeSnapshot.current || notice !== "Importando historial…")
+      return;
+    const imports = wire.accounts.flatMap((account) =>
+      account.historyImport ? [account.historyImport] : [],
+    );
+    if (imports.length > 0) setNotice(advertisingHistoryNotice(imports));
+  }, [wire, notice]);
   const initialSelectedIds = useMemo(
     () =>
       wire?.accounts
@@ -171,15 +174,15 @@ export function AdvertisingLivePanel({
     try {
       const result = await selectAdvertisingAccounts(token, companyId, provider, payload);
       selected = true;
-      if (mounted.current) setDialogProvider(null);
-      const syncTo = to <= wire.today ? to : wire.today;
-      if (result.selectedCount > 0 && from <= syncTo) {
-        const { runs } = await syncAdvertisingSpend(token, companyId, provider, {
-          from,
-          to: syncTo,
-        });
-        if (mounted.current) setNotice(syncNotice(runs));
-      } else if (mounted.current) setNotice("Cuentas guardadas.");
+      if (mounted.current) {
+        setDialogProvider(null);
+        historyNoticeSnapshot.current = wire;
+        setNotice(
+          result.selectedCount > 0
+            ? advertisingHistoryNotice(result.imports)
+            : "Cuentas guardadas.",
+        );
+      }
     } catch (failure: unknown) {
       if (mounted.current) setError(advertisingErrorMessage(failure));
     } finally {
@@ -192,11 +195,6 @@ export function AdvertisingLivePanel({
 
   async function refresh() {
     if (!token || !companyId || !wire || pending) return;
-    const syncTo = to <= wire.today ? to : wire.today;
-    if (from > syncTo) {
-      setError("Elige un periodo hasta hoy para actualizar.");
-      return;
-    }
     setPending("sync");
     setError(null);
     setNotice(null);
@@ -208,11 +206,16 @@ export function AdvertisingLivePanel({
           wire.accounts.some((account) => account.provider === provider && account.enabled),
       );
       const results = await Promise.all(
-        providers.map((provider) =>
-          syncAdvertisingSpend(token, companyId, provider, { from, to: syncTo }),
-        ),
+        providers.map((provider) => importAdvertisingHistory(token, companyId, provider)),
       );
-      if (mounted.current) setNotice(syncNotice(results.flatMap((result) => result.runs)));
+      if (mounted.current) {
+        historyNoticeSnapshot.current = wire;
+        setNotice(
+          providers.length
+            ? advertisingHistoryNotice(results.flatMap((result) => result.imports))
+            : "No hay cuentas activas para actualizar.",
+        );
+      }
     } catch (failure: unknown) {
       if (mounted.current) setError(advertisingErrorMessage(failure));
     } finally {
@@ -275,6 +278,40 @@ export function AdvertisingLivePanel({
           onPause: (provider: AdvertisingProviderWire) => void pause(provider),
         }
       : {};
+  const effectiveContent = wire.effective ? (
+    <AdvertisingEffectiveSpend effective={wire.effective} from={from} to={to} />
+  ) : undefined;
+  const manualReviewContent = (
+    <div className="space-y-4">
+      <AdvertisingManualReview
+        snapshot={snapshot}
+        isDemo={false}
+        live={{
+          wire,
+          companyId,
+          token,
+          storeIds,
+          canReconcile: wire.capabilities.canReconcile,
+          onChanged: async () => {
+            await queryClient.invalidateQueries({
+              queryKey: ["advertising-snapshot", actorId, companyId],
+            });
+          },
+        }}
+      />
+      {manualContent && (
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer p-4 text-sm font-medium">
+            Registros originales de este navegador
+          </summary>
+          <p className="px-4 pb-3 text-xs text-muted-foreground">
+            Esta asignación manual se conserva. Se revisa antes de usarla como consumo de anuncios.
+          </p>
+          {manualContent}
+        </details>
+      )}
+    </div>
+  );
   return (
     <div className="min-w-0 space-y-4">
       <div className={connectionsOnly ? "space-y-3" : "space-y-3 px-4 pt-4 sm:px-6 lg:px-8"}>
@@ -315,7 +352,22 @@ export function AdvertisingLivePanel({
         )}
       </div>
       {connectionsOnly ? (
-        <AdvertisingConnections snapshot={snapshot} {...actions} />
+        <AdvertisingConnections
+          snapshot={snapshot}
+          showAccounts={presentation === "module"}
+          from={from}
+          to={to}
+          {...actions}
+        />
+      ) : presentation === "module" ? (
+        <AdvertisingModuleSummary
+          companyName={companyName}
+          from={from}
+          to={to}
+          snapshot={snapshot}
+          effectiveContent={effectiveContent}
+          manualReviewContent={manualReviewContent}
+        />
       ) : (
         <AdvertisingDashboard
           companyName={companyName}
@@ -323,43 +375,8 @@ export function AdvertisingLivePanel({
           to={to}
           snapshot={snapshot}
           manualContent={manualContent}
-          effectiveContent={
-            wire.effective ? (
-              <AdvertisingEffectiveSpend effective={wire.effective} from={from} to={to} />
-            ) : undefined
-          }
-          manualReviewContent={
-            <div className="space-y-4">
-              <AdvertisingManualReview
-                snapshot={snapshot}
-                isDemo={false}
-                live={{
-                  wire,
-                  companyId,
-                  token,
-                  storeIds,
-                  canReconcile: wire.capabilities.canReconcile,
-                  onChanged: async () => {
-                    await queryClient.invalidateQueries({
-                      queryKey: ["advertising-snapshot", actorId, companyId],
-                    });
-                  },
-                }}
-              />
-              {manualContent && (
-                <details className="rounded-lg border border-border">
-                  <summary className="cursor-pointer p-4 text-sm font-medium">
-                    Registros originales de este navegador
-                  </summary>
-                  <p className="px-4 pb-3 text-xs text-muted-foreground">
-                    Esta asignación manual se conserva. Se revisa antes de usarla como consumo de
-                    anuncios.
-                  </p>
-                  {manualContent}
-                </details>
-              )}
-            </div>
-          }
+          effectiveContent={effectiveContent}
+          manualReviewContent={manualReviewContent}
           {...actions}
         />
       )}
@@ -368,8 +385,6 @@ export function AdvertisingLivePanel({
         companyId={companyId}
         companyName={companyName}
         token={token}
-        from={from}
-        today={wire.today}
         initialSelectedIds={initialSelectedIds}
         busy={pending === "save"}
         error={error}

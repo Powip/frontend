@@ -11,10 +11,20 @@ interface AdminPeriodContextValue {
 
 const AdminPeriodContext = createContext<AdminPeriodContextValue | null>(null);
 
-export function AdminPeriodProvider({ children }: { children: ReactNode }) {
+export function AdminPeriodProvider({
+  children,
+  initialRange,
+}: {
+  children: ReactNode;
+  initialRange?: { from: string; to: string };
+}) {
   const now = new Date();
-  const [fromDate, setFromDate] = useState(format(startOfMonth(now), "yyyy-MM-dd"));
-  const [toDate, setToDate] = useState(format(endOfMonth(now), "yyyy-MM-dd"));
+  const [fromDate, setFromDate] = useState(
+    () => initialRange?.from ?? format(startOfMonth(now), "yyyy-MM-dd"),
+  );
+  const [toDate, setToDate] = useState(
+    () => initialRange?.to ?? format(endOfMonth(now), "yyyy-MM-dd"),
+  );
 
   const setPeriod = useCallback((from: string, to: string) => {
     setFromDate(from);
