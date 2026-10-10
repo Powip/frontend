@@ -29,7 +29,7 @@ export function EmptyState({
     >
       {Icon && (
         <div className="p-3 bg-white dark:bg-gray-800 rounded-full shadow-sm mb-4">
-          <Icon className="h-8 w-8 text-gray-400" />
+          <Icon aria-hidden="true" className="h-8 w-8 text-gray-400" />
         </div>
       )}
       <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -44,7 +44,7 @@ export function EmptyState({
           variant="outline"
           className="mt-6 gap-2 bg-white dark:bg-gray-800 shadow-sm border-gray-200 dark:border-gray-700"
         >
-          <RefreshCw className="h-4 w-4" />
+          <RefreshCw aria-hidden="true" className="h-4 w-4" />
           {actionLabel}
         </Button>
       )}

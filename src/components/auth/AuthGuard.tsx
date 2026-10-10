@@ -30,7 +30,11 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   const pathname = usePathname();
 
   // Verificar si es una ruta pública
-  const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route));
+  const isPublicRoute = PUBLIC_ROUTES.some(route => pathname?.startsWith(route)) ||
+    pathname === "/partners/solicitud";
+  // Only skip the Company/plan gate. Session, route permissions and the portal's
+  // live /me authorization still apply; a similar prefix is not a Partners route.
+  const isPartnersRoute = /^\/partners(?:\/|$)/.test(pathname ?? "");
 
   // Obtener permisos requeridos para la ruta actual
   const requiredPermissions = pathname ? getRoutePermissions(pathname) : [];
@@ -48,7 +52,7 @@ export default function AuthGuard({ children }: AuthGuardProps) {
   // Sin pago no se entra (FEAT-11): usuarios sin empresa van a elegir/pagar un
   // plan o, si ya pagaron, a crear su empresa. Ver lib/subscriptionGate.ts.
   const gateRedirect =
-    !loading && auth && !isPublicRoute && pathname
+    !loading && auth && !isPublicRoute && !isPartnersRoute && pathname
       ? resolveSubscriptionRedirect({
           pathname,
           isSuperadmin: isSuperadmin(auth.user?.email),
