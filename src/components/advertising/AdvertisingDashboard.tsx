@@ -43,6 +43,7 @@ import {
   formatAdvertisingDate,
   formatAdvertisingMoney,
   getAdvertisingSummary,
+  hasAdvertisingAmount,
   isAdvertisingZero,
   providerLabel,
 } from "./advertising-model";
@@ -86,8 +87,26 @@ export function AdvertisingConnections({
   onManage,
   onReconnect,
   onPause,
-}: { snapshot: AdvertisingSnapshot } & AdvertisingActions) {
+  showAccounts = false,
+  from,
+  to,
+}: {
+  snapshot: AdvertisingSnapshot;
+  showAccounts?: boolean;
+  from?: string;
+  to?: string;
+} & AdvertisingActions) {
   const [pauseProvider, setPauseProvider] = useState<AdvertisingProvider | null>(null);
+  const summary =
+    showAccounts && from && to
+      ? getAdvertisingSummary(snapshot, {
+          from,
+          to,
+          provider: "all",
+          accountId: "all",
+          currency: "all",
+        })
+      : null;
 
   return (
     <>
@@ -118,7 +137,7 @@ export function AdvertisingConnections({
                     ? `${enabled.length} ${enabled.length === 1 ? "cuenta activa" : "cuentas activas"} · ${accounts.length} con datos guardados`
                     : "Consulta el gasto de tus anuncios en Powip."}
                 </p>
-                {accounts.some((account) => account.historyImport) ? (
+                {!showAccounts && accounts.some((account) => account.historyImport) ? (
                   <section
                     className="space-y-3 border-t pt-3"
                     aria-label="Importación del historial"
@@ -127,6 +146,79 @@ export function AdvertisingConnections({
                       <AdvertisingAccountHistory key={account.id} account={account} />
                     ))}
                   </section>
+                ) : null}
+                {showAccounts && accounts.length > 0 ? (
+                  <div className="space-y-3">
+                    {accounts.map((account) => {
+                      const spend = summary?.accounts.find(
+                        (item) => item.account.id === account.id,
+                      );
+                      return (
+                        <section
+                          key={account.id}
+                          className="space-y-3 rounded-lg border border-border p-4"
+                          aria-label={`Cuenta ${account.name}`}
+                        >
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div className="min-w-0 space-y-1">
+                              <h3 className="break-words text-sm font-semibold">{account.name}</h3>
+                              <p className="break-all text-xs text-muted-foreground">
+                                ID {account.externalId}
+                              </p>
+                            </div>
+                            <Badge variant="outline">
+                              {needsAuth
+                                ? "Reconectar"
+                                : account.enabled
+                                  ? "Actualizaciones activas"
+                                  : "Actualizaciones pausadas"}
+                            </Badge>
+                          </div>
+                          <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                            <div>
+                              <dt className="text-xs text-muted-foreground">Moneda</dt>
+                              <dd>{account.currency}</dd>
+                            </div>
+                            <div>
+                              <dt className="text-xs text-muted-foreground">Zona horaria</dt>
+                              <dd className="break-all">{account.timeZone}</dd>
+                            </div>
+                            {spend && from && to ? (
+                              <div className="space-y-1 sm:col-span-2">
+                                <dt className="text-xs text-muted-foreground">
+                                  Gasto del {formatAdvertisingDate(from)} {from.slice(0, 4)} al{" "}
+                                  {formatAdvertisingDate(to)} {to.slice(0, 4)}
+                                </dt>
+                                <dd className="flex flex-wrap items-center gap-2">
+                                  <span className="font-mono font-medium">
+                                    {formatAdvertisingMoney(
+                                      spend.amountMinor,
+                                      account.currency,
+                                      spend.amountDecimal,
+                                    )}
+                                  </span>
+                                  <Badge variant="outline">
+                                    {spend.complete
+                                      ? "Datos completos"
+                                      : !hasAdvertisingAmount(spend)
+                                        ? "Datos pendientes"
+                                        : "Datos parciales"}
+                                  </Badge>
+                                </dd>
+                              </div>
+                            ) : null}
+                          </dl>
+                          <AdvertisingAccountHistory
+                            account={account}
+                            showName={false}
+                            from={from}
+                            to={to}
+                            hasStoredData={spend ? hasAdvertisingAmount(spend) : undefined}
+                          />
+                        </section>
+                      );
+                    })}
+                  </div>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -268,12 +360,13 @@ export function AdvertisingDashboard({
                 <CardTitle className="text-base">Importación del historial</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {summary.accounts.map(({ account }) => (
+                {summary.accounts.map((item) => (
                   <AdvertisingAccountHistory
-                    key={account.id}
-                    account={account}
+                    key={item.account.id}
+                    account={item.account}
                     from={from}
                     to={to}
+                    hasStoredData={hasAdvertisingAmount(item)}
                   />
                 ))}
               </CardContent>

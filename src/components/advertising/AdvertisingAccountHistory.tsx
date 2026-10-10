@@ -17,10 +17,15 @@ export function AdvertisingAccountHistory({
   account,
   from,
   to,
+  showName = true,
+  hasStoredData,
 }: {
   account: AdvertisingAccount;
   from?: string;
   to?: string;
+  showName?: boolean;
+  /** Presence of a stored amount in the requested period, independent of provider availability. */
+  hasStoredData?: boolean;
 }) {
   const job = account.historyImport;
   if (!job) return null;
@@ -29,10 +34,12 @@ export function AdvertisingAccountHistory({
     job.totalWindows !== null && job.totalWindows > 0
       ? (job.completedWindows / job.totalWindows) * 100
       : null;
-  const beforeAvailable = Boolean(to && job.availableFrom && to < job.availableFrom);
+  const beforeAvailable = Boolean(
+    hasStoredData === false && to && job.availableFrom && to < job.availableFrom,
+  );
   return (
     <div className="space-y-2" aria-live="polite">
-      <p className="text-sm font-medium">{account.name}</p>
+      {showName ? <p className="text-sm font-medium">{account.name}</p> : null}
       <div className="flex flex-wrap gap-2">
         <Badge variant="outline">{LABELS[job.status]}</Badge>
         {beforeAvailable ? <Badge variant="outline">Historial no disponible</Badge> : null}
@@ -46,7 +53,7 @@ export function AdvertisingAccountHistory({
           aria-valuenow={progress}
         />
       ) : null}
-      {job.availableFrom && (!from || from < job.availableFrom) ? (
+      {job.availableFrom && (!from || (from < job.availableFrom && hasStoredData !== true)) ? (
         <p className="text-xs text-muted-foreground">
           Disponible desde {formatAdvertisingDate(job.availableFrom)}{" "}
           {job.availableFrom.slice(0, 4)}.

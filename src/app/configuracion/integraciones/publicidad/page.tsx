@@ -27,8 +27,8 @@ export default function AdvertisingIntegrationsPage() {
         </div>
         {hasPermission("VIEW_FINANCES") ? (
           <Button size="sm" variant="outline" asChild>
-            <Link href="/administracion/pauta">
-              Ver inversión
+            <Link href="/publicidad">
+              Ver publicidad
               <ArrowUpRight aria-hidden="true" />
             </Link>
           </Button>

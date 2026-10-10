@@ -24,6 +24,7 @@ import { AdvertisingConnections, AdvertisingDashboard } from "./AdvertisingDashb
 import { AdvertisingEffectiveSpend } from "./AdvertisingEffectiveSpend";
 import { AdvertisingLiveAccountsDialog } from "./AdvertisingLiveAccountsDialog";
 import { AdvertisingManualReview } from "./AdvertisingManualReview";
+import { AdvertisingModuleSummary } from "./AdvertisingModuleSummary";
 import { advertisingHistoryNotice } from "./advertising-history";
 import { snapshotFromWire } from "./advertising-model";
 
@@ -37,6 +38,7 @@ interface Props {
   manualContent?: ReactNode;
   connectionsOnly?: boolean;
   storeIds?: string[];
+  presentation?: "legacy" | "module";
 }
 
 const EMPTY_STORE_IDS: string[] = [];
@@ -69,6 +71,7 @@ export function AdvertisingLivePanel({
   manualContent,
   connectionsOnly = false,
   storeIds = EMPTY_STORE_IDS,
+  presentation = "legacy",
 }: Props) {
   const queryClient = useQueryClient();
   const query = useAdvertisingSnapshot({ token, actorId, companyId, from, to });
@@ -275,6 +278,40 @@ export function AdvertisingLivePanel({
           onPause: (provider: AdvertisingProviderWire) => void pause(provider),
         }
       : {};
+  const effectiveContent = wire.effective ? (
+    <AdvertisingEffectiveSpend effective={wire.effective} from={from} to={to} />
+  ) : undefined;
+  const manualReviewContent = (
+    <div className="space-y-4">
+      <AdvertisingManualReview
+        snapshot={snapshot}
+        isDemo={false}
+        live={{
+          wire,
+          companyId,
+          token,
+          storeIds,
+          canReconcile: wire.capabilities.canReconcile,
+          onChanged: async () => {
+            await queryClient.invalidateQueries({
+              queryKey: ["advertising-snapshot", actorId, companyId],
+            });
+          },
+        }}
+      />
+      {manualContent && (
+        <details className="rounded-lg border border-border">
+          <summary className="cursor-pointer p-4 text-sm font-medium">
+            Registros originales de este navegador
+          </summary>
+          <p className="px-4 pb-3 text-xs text-muted-foreground">
+            Esta asignación manual se conserva. Se revisa antes de usarla como consumo de anuncios.
+          </p>
+          {manualContent}
+        </details>
+      )}
+    </div>
+  );
   return (
     <div className="min-w-0 space-y-4">
       <div className={connectionsOnly ? "space-y-3" : "space-y-3 px-4 pt-4 sm:px-6 lg:px-8"}>
@@ -315,7 +352,22 @@ export function AdvertisingLivePanel({
         )}
       </div>
       {connectionsOnly ? (
-        <AdvertisingConnections snapshot={snapshot} {...actions} />
+        <AdvertisingConnections
+          snapshot={snapshot}
+          showAccounts={presentation === "module"}
+          from={from}
+          to={to}
+          {...actions}
+        />
+      ) : presentation === "module" ? (
+        <AdvertisingModuleSummary
+          companyName={companyName}
+          from={from}
+          to={to}
+          snapshot={snapshot}
+          effectiveContent={effectiveContent}
+          manualReviewContent={manualReviewContent}
+        />
       ) : (
         <AdvertisingDashboard
           companyName={companyName}
@@ -323,43 +375,8 @@ export function AdvertisingLivePanel({
           to={to}
           snapshot={snapshot}
           manualContent={manualContent}
-          effectiveContent={
-            wire.effective ? (
-              <AdvertisingEffectiveSpend effective={wire.effective} from={from} to={to} />
-            ) : undefined
-          }
-          manualReviewContent={
-            <div className="space-y-4">
-              <AdvertisingManualReview
-                snapshot={snapshot}
-                isDemo={false}
-                live={{
-                  wire,
-                  companyId,
-                  token,
-                  storeIds,
-                  canReconcile: wire.capabilities.canReconcile,
-                  onChanged: async () => {
-                    await queryClient.invalidateQueries({
-                      queryKey: ["advertising-snapshot", actorId, companyId],
-                    });
-                  },
-                }}
-              />
-              {manualContent && (
-                <details className="rounded-lg border border-border">
-                  <summary className="cursor-pointer p-4 text-sm font-medium">
-                    Registros originales de este navegador
-                  </summary>
-                  <p className="px-4 pb-3 text-xs text-muted-foreground">
-                    Esta asignación manual se conserva. Se revisa antes de usarla como consumo de
-                    anuncios.
-                  </p>
-                  {manualContent}
-                </details>
-              )}
-            </div>
-          }
+          effectiveContent={effectiveContent}
+          manualReviewContent={manualReviewContent}
           {...actions}
         />
       )}

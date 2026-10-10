@@ -110,6 +110,28 @@ export function AdvertisingLiveAccountsDialog({
             {provider ? providerLabel(provider) : "Publicidad"} · {companyName}
           </DialogDescription>
         </DialogHeader>
+        <ol className="grid grid-cols-2 gap-2 text-xs" aria-label="Pasos para elegir cuentas">
+          <li
+            className={
+              !review
+                ? "rounded-lg bg-primary/10 px-3 py-2 font-medium text-primary"
+                : "rounded-lg bg-muted px-3 py-2 font-medium"
+            }
+            aria-current={!review ? "step" : undefined}
+          >
+            1. Elegir cuentas
+          </li>
+          <li
+            className={
+              review
+                ? "rounded-lg bg-primary/10 px-3 py-2 font-medium text-primary"
+                : "rounded-lg bg-muted px-3 py-2 text-muted-foreground"
+            }
+            aria-current={review ? "step" : undefined}
+          >
+            2. Revisar
+          </li>
+        </ol>
         {loading ? (
           <div className="space-y-3" role="status" aria-label="Cargando cuentas">
             <Skeleton className="h-20" />

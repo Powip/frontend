@@ -42,6 +42,7 @@ import {
   CalendarRange,
   Handshake,
   LayoutList,
+  Plug,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -283,6 +284,14 @@ export function Sidebar({ className }: SidebarProps) {
           { name: "Liquidaciones", href: "/administracion/liquidaciones", icon: Truck },
           { name: "Capital & ROI", href: "/administracion/capital", icon: PiggyBank },
           { name: "Resumen Anual", href: "/administracion/anual", icon: CalendarRange },
+        ],
+      },
+      {
+        name: "Publicidad",
+        icon: Megaphone,
+        children: [
+          { name: "Resumen", href: "/publicidad", icon: BarChart },
+          { name: "Conexiones", href: "/publicidad/conexiones", icon: Plug },
         ],
       },
       {
