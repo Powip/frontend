@@ -172,10 +172,11 @@ export function AdvertisingLivePanel({
       const result = await selectAdvertisingAccounts(token, companyId, provider, payload);
       selected = true;
       if (mounted.current) setDialogProvider(null);
+      const syncFrom = payload.syncFrom ?? from;
       const syncTo = to <= wire.today ? to : wire.today;
-      if (result.selectedCount > 0 && from <= syncTo) {
+      if (result.selectedCount > 0 && syncFrom <= syncTo) {
         const { runs } = await syncAdvertisingSpend(token, companyId, provider, {
-          from,
+          from: syncFrom,
           to: syncTo,
         });
         if (mounted.current) setNotice(syncNotice(runs));
@@ -195,6 +196,20 @@ export function AdvertisingLivePanel({
     const syncTo = to <= wire.today ? to : wire.today;
     if (from > syncTo) {
       setError("Elige un periodo hasta hoy para actualizar.");
+      return;
+    }
+    const activeAccounts = wire.accounts.filter(
+      (account) =>
+        account.enabled &&
+        wire.providers[account.provider].available &&
+        wire.providers[account.provider].status === "connected",
+    );
+    if (
+      activeAccounts.length > 0 &&
+      activeAccounts.every((account) => account.syncFrom !== null && account.syncFrom > syncTo)
+    ) {
+      setError("Este periodo es anterior a «Consultar desde». Cambia la fecha en Elegir cuentas.");
+      setNotice(null);
       return;
     }
     setPending("sync");
