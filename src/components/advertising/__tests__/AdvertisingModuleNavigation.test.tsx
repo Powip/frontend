@@ -3,13 +3,22 @@ import userEvent from "@testing-library/user-event";
 import { getRoutePermissions } from "@/config/permissions.config";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { AdvertisingModulePage } from "../AdvertisingModulePage";
 import { AdvertisingModuleShell } from "../AdvertisingModuleShell";
 
 const replace = jest.fn();
 let mockPathname = "/publicidad";
+let mockQueryString = "";
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
   useRouter: () => ({ replace }),
+  useSearchParams: () => new URLSearchParams(mockQueryString),
+}));
+jest.mock("next/dynamic", () => ({
+  __esModule: true,
+  default: () => (props: Record<string, unknown>) => (
+    <output aria-label="Panel de publicidad">{JSON.stringify(props)}</output>
+  ),
 }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
 jest.mock("@/components/header/Header", () => ({
@@ -33,6 +42,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.useFakeTimers().setSystemTime(new Date("2026-10-10T12:00:00Z"));
   mockPathname = "/publicidad";
+  mockQueryString = "";
   jest.mocked(useAuth).mockReturnValue({
     auth: { user: { id: "actor" }, company: { id: "company" } },
     loading: false,
@@ -87,4 +97,39 @@ it("does not mount financial content without VIEW_FINANCES", () => {
   expect(screen.queryByText("Importe privado")).not.toBeInTheDocument();
   expect(replace).toHaveBeenCalledWith("/dashboard");
   expect(getRoutePermissions("/publicidad/conexiones")).toEqual(["VIEW_FINANCES"]);
+});
+
+it("preserves the linked ad and account while applying the URL period before mounting its reader", () => {
+  mockPathname = "/publicidad/anuncios";
+  mockQueryString = "from=2026-10-01&to=2026-10-02&accountId=account&adId=456";
+  const view = render(
+    <AdvertisingModuleShell>
+      <AdvertisingModulePage view="ads" />
+    </AdvertisingModuleShell>,
+  );
+  expect(JSON.parse(screen.getByLabelText("Panel de publicidad").textContent ?? "{}")).toEqual(
+    expect.objectContaining({
+      actorId: "actor",
+      companyId: "company",
+      from: "2026-10-01",
+      to: "2026-10-02",
+      initialAccountId: "account",
+      initialAdId: "456",
+      level: "ad",
+    }),
+  );
+  mockQueryString = "from=2026-10-03&to=2026-10-04&accountId=account&adId=789";
+  view.rerender(
+    <AdvertisingModuleShell>
+      <AdvertisingModulePage view="ads" />
+    </AdvertisingModuleShell>,
+  );
+  expect(JSON.parse(screen.getByLabelText("Panel de publicidad").textContent ?? "{}")).toEqual(
+    expect.objectContaining({
+      from: "2026-10-03",
+      to: "2026-10-04",
+      initialAccountId: "account",
+      initialAdId: "789",
+    }),
+  );
 });

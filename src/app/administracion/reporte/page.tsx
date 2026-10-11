@@ -1,6 +1,7 @@
 "use client";
 
 import { AdvertisingCompanySpend } from "@/components/advertising/AdvertisingCompanySpend";
+import { AdvertisingAssignedSpend } from "@/components/advertising/AdvertisingAssignedSpend";
 
 /**
  * Reporte rápido — §16 doc técnica.
@@ -375,6 +376,7 @@ export default function ReporteRapidoPage() {
   return (
     <div className="p-8 space-y-6">
       <AdvertisingCompanySpend from={fromDate} to={toDate} />
+      <AdvertisingAssignedSpend from={fromDate} to={toDate} />
       <p className="text-sm text-muted-foreground">
         Estos indicadores usan registros manuales por conciliar.
       </p>

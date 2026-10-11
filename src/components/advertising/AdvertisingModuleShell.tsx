@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import Header from "@/components/header/Header";
 import { AdminPeriodProvider, useAdminPeriod } from "@/contexts/AdminPeriodContext";
@@ -12,11 +12,7 @@ import {
   AdvertisingQuickPeriodButtons,
   advertisingQuickRange,
 } from "./AdvertisingQuickPeriodButtons";
-
-const SECTIONS = [
-  { label: "Resumen", href: "/publicidad" },
-  { label: "Conexiones", href: "/publicidad/conexiones" },
-];
+import { ADVERTISING_SECTIONS, advertisingSectionActive } from "./advertising-sections";
 
 function AdvertisingShell({ children }: { children: ReactNode }) {
   const { auth, loading, hasPermission } = useAuth();
@@ -24,10 +20,22 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const { fromDate, toDate, setPeriod } = useAdminPeriod();
   const canView = !!auth && hasPermission("VIEW_FINANCES");
+  const navigationRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!loading && !canView) router.replace("/dashboard");
   }, [loading, canView, router]);
+  useEffect(() => {
+    if (
+      !canView ||
+      !ADVERTISING_SECTIONS.some(({ href }) => advertisingSectionActive(pathname, href))
+    )
+      return;
+    navigationRef.current?.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView?.({
+      block: "nearest",
+      inline: "nearest",
+    });
+  }, [pathname, canView]);
 
   if (loading || !canView) return null;
   const connections = pathname === "/publicidad/conexiones";
@@ -41,7 +49,7 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
           <p className="text-sm text-muted-foreground">
             {connections
               ? "Conecta tus cuentas y consulta su historial."
-              : "Consulta el gasto de publicidad de tu empresa."}
+              : "Consulta la publicidad de tu empresa."}
           </p>
         </div>
         {!connections && (
@@ -56,17 +64,18 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
         )}
       </div>
       <nav
+        ref={navigationRef}
         aria-label="Secciones de publicidad"
         className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4 sm:px-6 lg:px-8"
       >
-        {SECTIONS.map(({ label, href }) => (
+        {ADVERTISING_SECTIONS.map(({ label, href }) => (
           <Link
             key={href}
             href={href}
-            aria-current={pathname === href ? "page" : undefined}
+            aria-current={advertisingSectionActive(pathname, href) ? "page" : undefined}
             className={cn(
               "border-b-2 px-4 py-3 text-sm whitespace-nowrap transition-colors",
-              pathname === href
+              advertisingSectionActive(pathname, href)
                 ? "border-primary font-semibold text-primary"
                 : "border-transparent text-muted-foreground hover:text-foreground",
             )}

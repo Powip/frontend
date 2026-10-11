@@ -15,12 +15,47 @@ const ManualAdvertisingPage = dynamic(
     loading: () => <Skeleton className="h-48 w-full" />,
   },
 );
+const MetaCatalogPanel = dynamic(
+  () =>
+    import("./AdvertisingMetaCatalogPanel").then((module) => module.AdvertisingMetaCatalogPanel),
+  { loading: () => <Skeleton className="m-4 h-64" /> },
+);
+const WorkspacePanel = dynamic(
+  () => import("./AdvertisingWorkspacePanel").then((module) => module.AdvertisingWorkspacePanel),
+  { loading: () => <Skeleton className="m-4 h-64" /> },
+);
+const OrdersPanel = dynamic(
+  () => import("./AdvertisingOrdersPanel").then((module) => module.AdvertisingOrdersPanel),
+  { loading: () => <Skeleton className="m-4 h-64" /> },
+);
+const BusinessAnalyticsPanel = dynamic(
+  () =>
+    import("./AdvertisingBusinessAnalyticsPanel").then(
+      (module) => module.AdvertisingBusinessAnalyticsPanel,
+    ),
+  { loading: () => <Skeleton className="m-4 h-64" /> },
+);
 
-function AdvertisingPageContent({ connectionsOnly = false }: { connectionsOnly?: boolean }) {
+interface PageProps {
+  connectionsOnly?: boolean;
+  view?:
+    | "campaigns"
+    | "ads"
+    | "assignments"
+    | "alerts"
+    | "planner"
+    | "orders"
+    | "quality"
+    | "products"
+    | "zones"
+    | "results";
+}
+
+function AdvertisingPageContent({ connectionsOnly = false, view }: PageProps) {
   const { auth } = useAuth();
   const { fromDate, toDate, setPeriod } = useAdminPeriod();
   const queryString = useSearchParams().toString();
-  const [ready, setReady] = useState(false);
+  const [readyQuery, setReadyQuery] = useState<string | null>(null);
   const storeIds = useMemo(
     () => auth?.company?.stores?.map((store) => store.id) ?? [],
     [auth?.company?.stores],
@@ -29,10 +64,71 @@ function AdvertisingPageContent({ connectionsOnly = false }: { connectionsOnly?:
   useEffect(() => {
     const period = advertisingPeriodFromParams(new URLSearchParams(queryString));
     if (period) setPeriod(period.from, period.to);
-    setReady(true);
+    setReadyQuery(queryString);
   }, [queryString, setPeriod]);
 
-  if (!ready) return <Skeleton className="m-4 h-48" aria-label="Cargando periodo de publicidad" />;
+  if (readyQuery !== queryString)
+    return <Skeleton className="m-4 h-48" aria-label="Cargando periodo de publicidad" />;
+  if (view === "orders") {
+    return (
+      <OrdersPanel
+        key={`${auth?.user.id}:${auth?.company?.id}:${view}:${fromDate}:${toDate}`}
+        companyId={auth?.company?.id}
+        actorId={auth?.user.id}
+        token={auth?.accessToken}
+        from={fromDate}
+        to={toDate}
+      />
+    );
+  }
+  if (view === "quality" || view === "products" || view === "zones" || view === "results") {
+    return (
+      <BusinessAnalyticsPanel
+        key={`${auth?.user.id}:${auth?.company?.id}:${view}:${fromDate}:${toDate}`}
+        companyId={auth?.company?.id}
+        actorId={auth?.user.id}
+        token={auth?.accessToken}
+        from={fromDate}
+        to={toDate}
+        view={view}
+      />
+    );
+  }
+  if (view === "assignments" || view === "alerts" || view === "planner") {
+    return (
+      <WorkspacePanel
+        key={`${auth?.user.id}:${auth?.company?.id}:${view}:${fromDate}:${toDate}`}
+        companyId={auth?.company?.id}
+        actorId={auth?.user.id}
+        token={auth?.accessToken}
+        from={fromDate}
+        to={toDate}
+        view={view}
+      />
+    );
+  }
+  if (view) {
+    const params = new URLSearchParams(queryString);
+    const campaignId = params.get("campaignId") ?? undefined;
+    const adsetId = params.get("adsetId") ?? undefined;
+    const accountId = params.get("accountId") ?? undefined;
+    const adId = params.get("adId") ?? undefined;
+    return (
+      <MetaCatalogPanel
+        key={`${auth?.user.id}:${auth?.company?.id}:${view}:${campaignId}:${adsetId}:${accountId}:${adId}:${fromDate}:${toDate}`}
+        companyId={auth?.company?.id}
+        actorId={auth?.user.id}
+        token={auth?.accessToken}
+        from={fromDate}
+        to={toDate}
+        level={view === "ads" ? "ad" : campaignId ? "adset" : "campaign"}
+        campaignId={campaignId}
+        adsetId={adsetId}
+        initialAccountId={accountId}
+        initialAdId={adId}
+      />
+    );
+  }
   return (
     <div className={connectionsOnly ? "p-4 sm:p-6 lg:p-8" : undefined}>
       <AdvertisingLivePanel
@@ -52,10 +148,10 @@ function AdvertisingPageContent({ connectionsOnly = false }: { connectionsOnly?:
   );
 }
 
-export function AdvertisingModulePage({ connectionsOnly = false }: { connectionsOnly?: boolean }) {
+export function AdvertisingModulePage({ connectionsOnly = false, view }: PageProps) {
   return (
     <Suspense fallback={<Skeleton className="m-4 h-48" />}>
-      <AdvertisingPageContent connectionsOnly={connectionsOnly} />
+      <AdvertisingPageContent connectionsOnly={connectionsOnly} view={view} />
     </Suspense>
   );
 }

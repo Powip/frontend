@@ -3,7 +3,7 @@ import { usePautaEntries, type PautaEntry } from "../../_lib/pautaStorage";
 import ManualAdvertisingPage from "../ManualAdvertisingPage";
 
 jest.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ auth: { company: { id: "company-a" } } }),
+  useAuth: () => ({ auth: { user: { id: "actor" }, company: { id: "company-a" } } }),
 }));
 jest.mock("@/contexts/AdminPeriodContext", () => ({
   useAdminPeriod: () => ({ fromDate: "2026-10-01", toDate: "2026-10-31" }),

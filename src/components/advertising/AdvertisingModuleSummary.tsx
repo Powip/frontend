@@ -36,6 +36,7 @@ import {
   hasAdvertisingAmount,
   providerLabel,
 } from "./advertising-model";
+import { advertisingSectionHref } from "./advertising-sections";
 
 const SpendChart = dynamic(() => import("./AdvertisingSpendChart"), {
   ssr: false,
@@ -143,12 +144,24 @@ export function AdvertisingModuleSummary({
             {formatAdvertisingDate(to)} {to.slice(0, 4)}
           </p>
         </div>
-        <Button size="sm" variant="outline" asChild>
-          <Link href="/publicidad/conexiones">
-            <Plug aria-hidden="true" />
-            Ver cuentas
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" asChild>
+            <Link href={advertisingSectionHref("/publicidad/campanas", from, to)}>
+              Ver campañas
+            </Link>
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link href={advertisingSectionHref("/publicidad/anuncios", from, to)}>
+              Ver anuncios
+            </Link>
+          </Button>
+          <Button size="sm" variant="outline" asChild>
+            <Link href={advertisingSectionHref("/publicidad/conexiones", from, to)}>
+              <Plug aria-hidden="true" />
+              Ver cuentas
+            </Link>
+          </Button>
+        </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="space-y-1.5">
