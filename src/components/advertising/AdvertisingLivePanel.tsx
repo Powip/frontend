@@ -365,6 +365,7 @@ export function AdvertisingLivePanel({
           from={from}
           to={to}
           snapshot={snapshot}
+          canManage={manage}
           effectiveContent={effectiveContent}
           manualReviewContent={manualReviewContent}
         />
