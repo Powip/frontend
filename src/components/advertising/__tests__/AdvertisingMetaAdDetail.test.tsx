@@ -104,6 +104,7 @@ it("shows Meta events independently, preserves daily unknown/zero and keeps muta
     }),
   );
   expect(screen.getByText("Compras")).toBeVisible();
+  expect(screen.getByText("Último estado registrado:")).toBeVisible();
   expect(screen.getByText("Compras omnicanal")).toBeVisible();
   expect(screen.getByText(/no son pedidos entregados ni cobros de Powip/)).toBeVisible();
   expect(screen.getAllByText("No disponible")).toHaveLength(4);

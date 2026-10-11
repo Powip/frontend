@@ -438,7 +438,7 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
                             ? "Conjunto"
                             : "Anuncio"}
                       </TableHead>
-                      <TableHead>Estado Meta</TableHead>
+                      <TableHead>Último estado registrado</TableHead>
                       <TableHead className="text-right">Gasto Meta</TableHead>
                       <TableHead className="text-right">Impresiones</TableHead>
                       <TableHead className="text-right">Clics</TableHead>
