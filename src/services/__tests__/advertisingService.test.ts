@@ -7,8 +7,10 @@ import { advertisingSnapshotKey, useAdvertisingSnapshot } from "@/hooks/useAdver
 import type { AdvertisingLocalManualRecord, AdvertisingSnapshotWire } from "../advertisingService";
 import {
   AdvertisingApiError,
+  advertisingAccountSelectable,
   advertisingApiBase,
   advertisingErrorMessage,
+  advertisingSelectionConflictCode,
   batchAdvertisingManualRecords,
   completeAdvertisingAuthorization,
   discoverAdvertisingAccounts,
@@ -324,6 +326,76 @@ describe("advertising service", () => {
       expect(message).not.toContain(TOKEN);
     },
   );
+
+  it.each([
+    [
+      "ACCOUNT_ALREADY_LINKED",
+      "Esta cuenta ya está vinculada a otra empresa. Revisa la empresa seleccionada en Powip.",
+    ],
+    [
+      "ACCOUNT_METADATA_CHANGED",
+      "La moneda o la zona horaria de una cuenta cambió. Revisa las cuentas antes de guardar.",
+    ],
+    ["CONNECTION_CHANGED", "La conexión cambió. Revisa la conexión y vuelve a elegir las cuentas."],
+    ["ACCOUNT_SELECTION_CHANGED", "Las cuentas cambiaron. Vuelve a elegirlas antes de guardar."],
+    ["PROVIDER_AUTH", "Vuelve a conectar Meta para elegir las cuentas."],
+  ])("maps only the safe 409 code %s", (errorCode, message) => {
+    const failure = {
+      isAxiosError: true,
+      response: { status: 409, data: { errorCode, message: "private other-company token" } },
+    };
+    expect(advertisingSelectionConflictCode(failure)).toBe(errorCode);
+    expect(advertisingErrorMessage(failure)).toBe(message);
+    expect(
+      advertisingSelectionConflictCode({
+        ...failure,
+        response: { ...failure.response, status: 400 },
+      }),
+    ).toBeUndefined();
+    expect(
+      advertisingErrorMessage({ ...failure, response: { ...failure.response, status: 400 } }),
+    ).not.toBe(message);
+  });
+
+  it.each([
+    null,
+    "private text",
+    { errorCode: "private token" },
+    { code: "ACCOUNT_ALREADY_LINKED" },
+    { errorCode: "__proto__" },
+    { errorCode: ["ACCOUNT_ALREADY_LINKED"] },
+  ])("ignores malformed or unrecognized conflict details: %j", (data) => {
+    const failure = { isAxiosError: true, response: { status: 409, data } };
+    expect(advertisingSelectionConflictCode(failure)).toBeUndefined();
+    expect(advertisingErrorMessage(failure)).toBe(
+      "La configuración cambió. Actualiza e inténtalo de nuevo.",
+    );
+  });
+
+  it("supports legacy discovery and blocks a recognized reason even when selectable is true", () => {
+    const account = {
+      externalId: "123",
+      name: "Cuenta",
+      currency: "PEN",
+      timeZone: "America/Lima",
+    };
+    expect(advertisingAccountSelectable(account)).toBe(true);
+    expect(advertisingAccountSelectable({ ...account, selectable: false })).toBe(false);
+    expect(
+      advertisingAccountSelectable({
+        ...account,
+        selectable: true,
+        selectionBlockedReason: "linked-other-company",
+      }),
+    ).toBe(false);
+    expect(
+      advertisingAccountSelectable({
+        ...account,
+        selectable: true,
+        selectionBlockedReason: "metadata-changed",
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("advertising snapshot query isolation", () => {

@@ -93,6 +93,129 @@ describe("live advertising connection flow", () => {
     expect(screen.getByRole("button", { name: /Continuar con 1 cuenta/ })).toBeEnabled();
   });
 
+  it("disables blocked accounts and excludes them from restored choices and the saved selection", async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    discover.mockResolvedValueOnce({
+      accounts: [
+        {
+          externalId: "linked",
+          name: "Cuenta vinculada",
+          currency: "PEN",
+          timeZone: "America/Lima",
+          selectable: true,
+          selectionBlockedReason: "linked-other-company",
+        },
+        {
+          externalId: "changed",
+          name: "Cuenta por revisar",
+          currency: "PEN",
+          timeZone: "America/Lima",
+          selectable: true,
+          selectionBlockedReason: "metadata-changed",
+        },
+        { externalId: "123", name: "Cuenta Lima", currency: "PEN", timeZone: "America/Lima" },
+      ],
+    });
+    render(
+      <AdvertisingLiveAccountsDialog
+        provider="meta"
+        companyId="company-id"
+        companyName="Empresa"
+        token="test-access-token"
+        initialSelectedIds={["linked", "changed", "123"]}
+        busy={false}
+        error={null}
+        onClose={jest.fn()}
+        onSave={onSave}
+      />,
+    );
+    const linked = await screen.findByRole("checkbox", { name: /Cuenta vinculada/ });
+    expect(linked).toBeDisabled();
+    expect(linked).not.toBeChecked();
+    expect(screen.getByText("Vinculada a otra empresa")).toBeVisible();
+    const changed = screen.getByRole("checkbox", { name: /Cuenta por revisar/ });
+    expect(changed).toBeDisabled();
+    expect(changed).not.toBeChecked();
+    expect(screen.getByText("Moneda o zona horaria por revisar")).toBeVisible();
+    expect(screen.getByRole("checkbox", { name: /Cuenta Lima/ })).toBeChecked();
+    await user.click(linked);
+    await user.click(changed);
+    await user.click(screen.getByRole("button", { name: "Continuar con 1 cuenta" }));
+    expect(screen.queryByText("Cuenta vinculada")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Guardar cuentas" }));
+    expect(onSave).toHaveBeenCalledWith({ externalIds: ["123"] });
+  });
+
+  it("allows reviewing an empty selection to pause existing accounts when all available choices are blocked", async () => {
+    const user = userEvent.setup();
+    const onSave = jest.fn().mockResolvedValue(undefined);
+    discover.mockResolvedValueOnce({
+      accounts: [
+        {
+          externalId: "123",
+          name: "Cuenta Lima",
+          currency: "PEN",
+          timeZone: "America/Lima",
+          selectable: false,
+          selectionBlockedReason: "metadata-changed",
+        },
+      ],
+    });
+    render(
+      <AdvertisingLiveAccountsDialog
+        provider="meta"
+        companyId="company-id"
+        companyName="Empresa"
+        token="test-access-token"
+        initialSelectedIds={["123"]}
+        busy={false}
+        error={null}
+        onClose={jest.fn()}
+        onSave={onSave}
+      />,
+    );
+    expect(await screen.findByRole("checkbox", { name: /Cuenta Lima/ })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Continuar con 0 cuentas" }));
+    expect(screen.getByText("Las cuentas dejarán de actualizarse.")).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Guardar cuentas" }));
+    expect(onSave).toHaveBeenCalledWith({ externalIds: [] });
+  });
+
+  it.each(["company", "session"])(
+    "aborts discovery and hides old choices when the %s is lost or changed",
+    async (scope) => {
+      const onSave = jest.fn();
+      const props = {
+        provider: "meta" as const,
+        companyId: "company-id",
+        companyName: "Empresa",
+        token: "test-access-token",
+        initialSelectedIds: ["123"],
+        busy: false,
+        error: null,
+        onClose: jest.fn(),
+        onSave,
+      };
+      const view = render(<AdvertisingLiveAccountsDialog {...props} />);
+      expect(await screen.findByRole("checkbox", { name: /Cuenta Lima/ })).toBeChecked();
+      const previousSignal = discover.mock.calls[0][3];
+      discover.mockReturnValueOnce(new Promise(() => undefined));
+      view.rerender(
+        <AdvertisingLiveAccountsDialog
+          {...props}
+          companyId={scope === "company" ? "other-company" : props.companyId}
+          token={scope === "session" ? "" : props.token}
+        />,
+      );
+      expect(previousSignal?.aborted).toBe(true);
+      expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Guardar cuentas" })).not.toBeInTheDocument();
+      expect(onSave).not.toHaveBeenCalled();
+      expect(discover).toHaveBeenCalledTimes(scope === "session" ? 1 : 2);
+    },
+  );
+
   it.each([
     ["meta", "https://www.facebook.com.evil.test/v23.0/dialog/oauth"],
     ["meta", "http://www.facebook.com/v23.0/dialog/oauth"],

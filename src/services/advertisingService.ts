@@ -149,6 +149,16 @@ export interface AdvertisingDiscoveredAccount {
   currency: string;
   timeZone: string;
   enabled?: boolean;
+  selectable?: boolean;
+  selectionBlockedReason?: "linked-other-company" | "metadata-changed" | null;
+}
+
+export function advertisingAccountSelectable(account: AdvertisingDiscoveredAccount): boolean {
+  return (
+    account.selectable !== false &&
+    account.selectionBlockedReason !== "linked-other-company" &&
+    account.selectionBlockedReason !== "metadata-changed"
+  );
 }
 
 export interface AdvertisingSelectionPayload {
@@ -446,6 +456,28 @@ export function advertisingErrorStatus(failure: unknown): number | undefined {
   return axios.isAxiosError(failure) ? failure.response?.status : undefined;
 }
 
+const SELECTION_CONFLICT_MESSAGES = {
+  ACCOUNT_ALREADY_LINKED:
+    "Esta cuenta ya está vinculada a otra empresa. Revisa la empresa seleccionada en Powip.",
+  ACCOUNT_METADATA_CHANGED:
+    "La moneda o la zona horaria de una cuenta cambió. Revisa las cuentas antes de guardar.",
+  CONNECTION_CHANGED: "La conexión cambió. Revisa la conexión y vuelve a elegir las cuentas.",
+  ACCOUNT_SELECTION_CHANGED: "Las cuentas cambiaron. Vuelve a elegirlas antes de guardar.",
+  PROVIDER_AUTH: "Vuelve a conectar Meta para elegir las cuentas.",
+} as const;
+
+export function advertisingSelectionConflictCode(
+  failure: unknown,
+): keyof typeof SELECTION_CONFLICT_MESSAGES | undefined {
+  if (advertisingErrorStatus(failure) !== 409 || !axios.isAxiosError(failure)) return undefined;
+  const data: unknown = failure.response?.data;
+  if (!data || typeof data !== "object" || !("errorCode" in data)) return undefined;
+  const code = data.errorCode;
+  return typeof code === "string" && Object.hasOwn(SELECTION_CONFLICT_MESSAGES, code)
+    ? (code as keyof typeof SELECTION_CONFLICT_MESSAGES)
+    : undefined;
+}
+
 export function advertisingErrorMessage(failure: unknown): string {
   if (failure instanceof AdvertisingApiError) return failure.message;
   switch (advertisingErrorStatus(failure)) {
@@ -453,8 +485,12 @@ export function advertisingErrorMessage(failure: unknown): string {
       return "Vuelve a iniciar sesión para continuar.";
     case 403:
       return "No tienes permiso para continuar.";
-    case 409:
-      return "La configuración cambió. Actualiza e inténtalo de nuevo.";
+    case 409: {
+      const code = advertisingSelectionConflictCode(failure);
+      return code
+        ? SELECTION_CONFLICT_MESSAGES[code]
+        : "La configuración cambió. Actualiza e inténtalo de nuevo.";
+    }
     case 429:
       return "Espera un momento e inténtalo de nuevo.";
     case 503:

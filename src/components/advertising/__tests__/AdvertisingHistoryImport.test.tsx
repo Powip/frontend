@@ -27,6 +27,7 @@ let accounts: AdvertisingAccountWire[];
 let canManage: boolean;
 let denyStatus: number | null;
 let queryClients: QueryClient[];
+let connectionStatus: "connected" | "needs-auth" | undefined;
 
 function history(
   status: AdvertisingHistoryImportState["status"] = "queued",
@@ -55,7 +56,8 @@ function snapshot(): AdvertisingSnapshotWire {
     providers: {
       meta: {
         available: true,
-        status: accounts.some((item) => item.enabled) ? "connected" : "paused",
+        status:
+          connectionStatus ?? (accounts.some((item) => item.enabled) ? "connected" : "paused"),
       },
       tiktok: { available: false, status: "disconnected" },
     },
@@ -112,6 +114,7 @@ beforeEach(() => {
   ];
   canManage = true;
   denyStatus = null;
+  connectionStatus = undefined;
   queryClients = [];
   jest
     .mocked(axios.isAxiosError)
@@ -192,6 +195,112 @@ afterAll(() => {
 });
 
 describe("automatic advertising history import", () => {
+  it.each(["company", "session"])(
+    "ignores a late save conflict after losing the %s",
+    async (scope) => {
+      const user = userEvent.setup();
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      queryClients.push(client);
+      const panel = (companyId: string | undefined, loggedIn: boolean) => (
+        <QueryClientProvider client={client}>
+          {loggedIn ? (
+            <AdvertisingLivePanel
+              key={`${ACTOR_ID}:${companyId}`}
+              companyId={companyId}
+              actorId={ACTOR_ID}
+              token={TOKEN}
+              companyName="Empresa de prueba"
+              from="2026-10-01"
+              to="2026-10-10"
+              connectionsOnly
+            />
+          ) : (
+            <p>Sesión finalizada</p>
+          )}
+        </QueryClientProvider>
+      );
+      const view = render(panel(COMPANY_ID, true));
+      await user.click(await screen.findByRole("button", { name: "Elegir cuentas" }));
+      await screen.findByRole("checkbox", { name: /Cuenta Lima/ });
+      await user.click(screen.getByRole("button", { name: "Continuar con 1 cuenta" }));
+      let rejectSave!: (reason: unknown) => void;
+      const pendingSave = new Promise<never>((_resolve, reject) => {
+        rejectSave = reject;
+      });
+      put.mockReturnValueOnce(pendingSave);
+      await user.click(screen.getByRole("button", { name: "Guardar cuentas" }));
+      expect(put).toHaveBeenCalledTimes(1);
+      const before = snapshotCalls();
+      view.rerender(panel(scope === "company" ? undefined : COMPANY_ID, scope !== "session"));
+      await act(async () => {
+        rejectSave({
+          isAxiosError: true,
+          response: { status: 409, data: { errorCode: "CONNECTION_CHANGED" } },
+        });
+        await pendingSave.catch(() => undefined);
+      });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.queryByText(/La conexión cambió/)).not.toBeInTheDocument();
+      expect(snapshotCalls()).toBe(before);
+      expect(put).toHaveBeenCalledTimes(1);
+      expect(post).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    [
+      "ACCOUNT_ALREADY_LINKED",
+      "Esta cuenta ya está vinculada a otra empresa. Revisa la empresa seleccionada en Powip.",
+    ],
+    [
+      "ACCOUNT_METADATA_CHANGED",
+      "La moneda o la zona horaria de una cuenta cambió. Revisa las cuentas antes de guardar.",
+    ],
+    ["ACCOUNT_SELECTION_CHANGED", "Las cuentas cambiaron. Vuelve a elegirlas antes de guardar."],
+    ["CONNECTION_CHANGED", "La conexión cambió. Revisa la conexión y vuelve a elegir las cuentas."],
+    ["PROVIDER_AUTH", "Vuelve a conectar Meta para elegir las cuentas."],
+  ])(
+    "requires a new review after %s without repeating the save or authorizing automatically",
+    async (errorCode, message) => {
+      const user = userEvent.setup();
+      renderPanel();
+      await user.click(await screen.findByRole("button", { name: "Elegir cuentas" }));
+      await screen.findByRole("checkbox", { name: /Cuenta Lima/ });
+      await user.click(screen.getByRole("button", { name: "Continuar con 1 cuenta" }));
+      const before = snapshotCalls();
+      const needsAuth = errorCode === "CONNECTION_CHANGED" || errorCode === "PROVIDER_AUTH";
+      put.mockImplementationOnce(async () => {
+        if (needsAuth) connectionStatus = "needs-auth";
+        throw {
+          isAxiosError: true,
+          response: { status: 409, data: { errorCode, message: "private other company token" } },
+        };
+      });
+      await user.click(screen.getByRole("button", { name: "Guardar cuentas" }));
+      expect(await screen.findByText(message)).toBeVisible();
+      await waitFor(() => expect(snapshotCalls()).toBeGreaterThan(before));
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+      expect(screen.queryByText(/private other company token/)).not.toBeInTheDocument();
+      expect(put).toHaveBeenCalledTimes(1);
+      expect(post).not.toHaveBeenCalled();
+      expect(
+        await screen.findByRole("button", { name: needsAuth ? "Reconectar" : "Elegir cuentas" }),
+      ).toBeEnabled();
+      if (!needsAuth) {
+        const discoveryCalls = get.mock.calls.filter(
+          ([url]) => url === `${ROOT}/meta/accounts`,
+        ).length;
+        await user.click(screen.getByRole("button", { name: "Elegir cuentas" }));
+        await screen.findByRole("checkbox", { name: /Cuenta Lima/ });
+        expect(get.mock.calls.filter(([url]) => url === `${ROOT}/meta/accounts`)).toHaveLength(
+          discoveryCalls + 1,
+        );
+        expect(screen.getByRole("heading", { name: "Elige tus cuentas" })).toBeVisible();
+        expect(put).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
+
   it.each([
     { from: "2026-09-01", to: "2026-09-30" },
     { from: "2026-10-01", to: "2026-10-31" },
