@@ -55,6 +55,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { AdvertisingAssignedSpend } from "@/components/advertising/AdvertisingAssignedSpend";
 
 type GrupoFiltro = "todos" | CanalReal["grupo"];
 const STALE = 5 * 60 * 1000;
@@ -171,6 +172,7 @@ export default function PautaPorCanalPage() {
 
   return (
     <div className="space-y-6">
+      <AdvertisingAssignedSpend from={fromDate} to={toDate} />
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="text-base font-semibold">Gastos por canal</h3>
