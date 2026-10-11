@@ -52,8 +52,48 @@ interface Props {
   from: string;
   to: string;
   snapshot: AdvertisingSnapshot;
+  canManage?: boolean;
   effectiveContent?: ReactNode;
   manualReviewContent?: ReactNode;
+}
+
+function emptyAccountsMessage(
+  connection: AdvertisingSnapshot["providers"]["meta"],
+  canManage: boolean,
+) {
+  if (!connection.available)
+    return {
+      title: "Publicidad aún no disponible",
+      description: "La conexión con Meta aún no está habilitada.",
+    };
+
+  const connected = connection.status === "connected" || connection.status === "paused";
+  const needsAuth = connection.status === "needs-auth";
+  if (!canManage) {
+    const action = connected
+      ? "elegir las cuentas"
+      : needsAuth
+        ? "reconectar Meta y elegir las cuentas"
+        : "conectar Meta y elegir las cuentas";
+    return {
+      title: "Sin cuentas publicitarias",
+      description: `Quien gestiona publicidad debe ${action}.`,
+    };
+  }
+  if (connected)
+    return {
+      title: "Elige tus cuentas publicitarias",
+      description: "Importa todo el historial disponible de tus cuentas de Meta.",
+    };
+  if (needsAuth)
+    return {
+      title: "Reconecta Meta Ads",
+      description: "Vuelve a conectar Meta para importar el historial disponible.",
+    };
+  return {
+    title: "Conecta Meta Ads",
+    description: "Importa todo el historial disponible de tus cuentas publicitarias.",
+  };
 }
 
 export function AdvertisingModuleSummary({
@@ -61,6 +101,7 @@ export function AdvertisingModuleSummary({
   from,
   to,
   snapshot,
+  canManage = false,
   effectiveContent,
   manualReviewContent,
 }: Props) {
@@ -69,6 +110,7 @@ export function AdvertisingModuleSummary({
   const [currency, setCurrency] = useState("all");
   const [accountId, setAccountId] = useState("all");
   const [showManual, setShowManual] = useState(false);
+  const emptyMessage = emptyAccountsMessage(snapshot.providers.meta, canManage);
   const summary = useMemo(
     () => getAdvertisingSummary(snapshot, { from, to, provider, currency, accountId }),
     [snapshot, from, to, provider, currency, accountId],
@@ -172,14 +214,12 @@ export function AdvertisingModuleSummary({
           <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
             <Megaphone className="size-8 text-primary" aria-hidden="true" />
             <h3 className="font-semibold">
-              {snapshot.accounts.length
-                ? "Sin cuentas para estos filtros"
-                : "Conecta tu cuenta de publicidad"}
+              {snapshot.accounts.length ? "Sin cuentas para estos filtros" : emptyMessage.title}
             </h3>
             <p className="max-w-sm text-sm text-muted-foreground">
               {snapshot.accounts.length
                 ? "Cambia los filtros para consultar otras cuentas."
-                : "Elige tus cuentas de Meta para importar todo el historial disponible."}
+                : emptyMessage.description}
             </p>
             {snapshot.accounts.length ? (
               <Button
