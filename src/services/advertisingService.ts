@@ -44,6 +44,7 @@ export interface AdvertisingAccountWire {
   lastSuccessfulAt: string | null;
   updatedAt: string | null;
   historyImport?: AdvertisingHistoryImportState | null;
+  disconnectedAt?: string | null;
 }
 
 export interface AdvertisingDayWire {
@@ -129,7 +130,7 @@ export interface AdvertisingSnapshotWire {
       status: AdvertisingConnectionStatusWire;
     }
   >;
-  capabilities: { canManage: boolean; canReconcile: boolean };
+  capabilities: { canManage: boolean; canReconcile: boolean; canDisconnect?: boolean };
   today: string;
   effective?: EffectiveAdvertisingSpendWire;
 }
@@ -163,6 +164,29 @@ export function advertisingAccountSelectable(account: AdvertisingDiscoveredAccou
 
 export interface AdvertisingSelectionPayload {
   externalIds: string[];
+}
+
+export interface AdvertisingDisconnectCounts {
+  ledgerDays: number;
+  metaObjects: number;
+  metaAdDays: number;
+  metaCoverageDays: number;
+  metaCatalogStates: number;
+}
+
+export interface AdvertisingDisconnectPreview {
+  account: { id: string; name: string; provider: AdvertisingProviderWire };
+  alreadyDisconnected: boolean;
+  deleteCounts: AdvertisingDisconnectCounts;
+  preservedManualRecords: number;
+  previewVersion: string | null;
+  expiresAt: string | null;
+}
+
+export interface AdvertisingDisconnectResult {
+  disconnected: true;
+  alreadyDisconnected: boolean;
+  deletedCounts: AdvertisingDisconnectCounts | null;
 }
 
 export interface AdvertisingSyncRun {
@@ -280,6 +304,61 @@ export async function discoverAdvertisingAccounts(
     requestOptions(token, signal),
   );
   return response.data;
+}
+
+export async function previewAdvertisingAccountDisconnect(
+  token: string,
+  companyId: string,
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<AdvertisingDisconnectPreview> {
+  const response = await axios.post<AdvertisingDisconnectPreview>(
+    `${companyUrl(companyId)}/accounts/${encodeURIComponent(accountId)}/disconnect-preview`,
+    {},
+    requestOptions(token, signal),
+  );
+  return response.data;
+}
+
+export async function disconnectAdvertisingAccount(
+  token: string,
+  companyId: string,
+  accountId: string,
+  previewVersion: string,
+  signal?: AbortSignal,
+): Promise<AdvertisingDisconnectResult> {
+  const response = await axios.post<AdvertisingDisconnectResult>(
+    `${companyUrl(companyId)}/accounts/${encodeURIComponent(accountId)}/disconnect`,
+    { previewVersion, confirmed: true },
+    requestOptions(token, signal, 60_000),
+  );
+  return response.data;
+}
+
+export function advertisingDisconnectErrorMessage(failure: unknown): string {
+  switch (advertisingErrorStatus(failure)) {
+    case 401:
+      return "Vuelve a iniciar sesión para continuar.";
+    case 403:
+      return "No tienes permiso para desconectar esta cuenta.";
+    case 404:
+      return "Esta cuenta no está disponible en la empresa seleccionada.";
+    case 409: {
+      const data: unknown = axios.isAxiosError(failure) ? failure.response?.data : undefined;
+      if (
+        data &&
+        typeof data === "object" &&
+        "errorCode" in data &&
+        data.errorCode === "ACCOUNT_BUSY"
+      )
+        return "Esta cuenta se está actualizando. Espera y vuelve a revisar.";
+      return "Los datos cambiaron. Vuelve a revisar antes de desconectar.";
+    }
+    case 400:
+      return "Vuelve a revisar la cuenta y confirma la desconexión.";
+    default:
+      return "No pudimos desconectar la cuenta. Vuelve a revisar e inténtalo de nuevo.";
+  }
 }
 
 export async function selectAdvertisingAccounts(
