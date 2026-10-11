@@ -28,11 +28,12 @@ export function useAdvertisingWorkspace({
     retry: false,
   });
   const observedToken = useRef(token);
+  const refetch = query.refetch;
   useEffect(() => {
     if (observedToken.current === token) return;
     observedToken.current = token;
-    if (enabled) void query.refetch();
-  }, [token, enabled, query.refetch]);
+    if (enabled) void refetch();
+  }, [token, enabled, refetch]);
   const status = advertisingErrorStatus(query.error);
   const isAccessDenied = status === 401 || status === 403;
   return { ...query, data: enabled && !isAccessDenied ? query.data : undefined, isAccessDenied };

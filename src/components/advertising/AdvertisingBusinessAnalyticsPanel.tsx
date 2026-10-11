@@ -391,12 +391,13 @@ function BusinessResultsTable(
       return result;
     },
   });
+  const refetchMeta = meta.refetch;
   const observedToken = useRef(props.token);
   useEffect(() => {
     if (props.token === observedToken.current) return;
     observedToken.current = props.token;
-    if (enabled) void meta.refetch();
-  }, [props.token, enabled, meta.refetch]);
+    if (enabled) void refetchMeta();
+  }, [props.token, enabled, refetchMeta]);
   const denied = [401, 403].includes(advertisingErrorStatus(meta.error) ?? 0);
   return (
     <div className="space-y-3">
