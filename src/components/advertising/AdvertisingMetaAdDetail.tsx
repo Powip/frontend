@@ -80,6 +80,7 @@ export function AdvertisingMetaAdDetail({ selected, onClose, ...identity }: Prop
         ) : (
           <div className="min-w-0 space-y-5">
             <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-muted-foreground">Último estado registrado:</span>
               <Badge variant="outline">{metaStatusLabel(detail.row.effectiveStatus)}</Badge>
               <Badge variant="outline">{metaCoverageLabel(detail.row.insights.coverage)}</Badge>
               <span className="text-xs text-muted-foreground">

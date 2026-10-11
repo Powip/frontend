@@ -122,6 +122,8 @@ it("preserves missing values, explicit zero, exact counts and platform coverage 
   expect(screen.getByText("0")).toBeVisible();
   expect(screen.getByText("1,000,000,000,000,000,000")).toBeVisible();
   expect(screen.getByText("Estado no disponible")).toBeVisible();
+  expect(screen.getByRole("columnheader", { name: "Último estado registrado" })).toBeVisible();
+  expect(screen.queryByRole("columnheader", { name: "Estado Meta" })).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Importar historial" })).toBeDisabled();
   expect(screen.getByText(/no equivalen a pedidos/)).toBeVisible();
   expect(sync).not.toHaveBeenCalled();
