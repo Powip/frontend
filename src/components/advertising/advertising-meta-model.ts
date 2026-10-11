@@ -46,7 +46,26 @@ export function formatMetaSpend(value: string | null, currency: string) {
   }
 }
 
+export function metaSpendReconciled(coverage: MetaCoverage): boolean {
+  const reconciliation = coverage.reconciliation;
+  return (
+    coverage.status === "complete" &&
+    Number.isInteger(coverage.totalDays) &&
+    coverage.totalDays > 0 &&
+    coverage.coveredDays === coverage.totalDays &&
+    coverage.provisionalDays === 0 &&
+    reconciliation?.status === "matched" &&
+    reconciliation.comparedDays === reconciliation.totalDays &&
+    reconciliation.totalDays === coverage.totalDays &&
+    reconciliation.mismatchedDays === 0 &&
+    reconciliation.missingLedgerDays === 0 &&
+    reconciliation.provisionalDays === 0
+  );
+}
 export function metaCoverageLabel(coverage: MetaCoverage) {
+  if (coverage.reconciliation?.status === "mismatch") return "Gasto por revisar";
+  if (coverage.status === "complete" && !metaSpendReconciled(coverage))
+    return "Gasto por confirmar";
   return coverage.status === "complete"
     ? "Datos completos"
     : coverage.status === "partial"

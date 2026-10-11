@@ -9,6 +9,15 @@ export interface MetaCoverage {
   provisionalDays: number;
   lastSuccessfulAt: string | null;
   lastErrorCode: string | null;
+  reconciliation?: MetaSpendReconciliation;
+}
+export interface MetaSpendReconciliation {
+  status: "matched" | "mismatch" | "pending";
+  comparedDays: number;
+  mismatchedDays: number;
+  missingLedgerDays: number;
+  provisionalDays: number;
+  totalDays: number;
 }
 export interface MetaAction {
   actionType: string;
