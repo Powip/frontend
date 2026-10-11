@@ -449,7 +449,7 @@ function BusinessResultsTable(
                             ? "Costos pendientes"
                             : row.cancelledCount > 0
                               ? "Revisar pedidos anulados"
-                              : "Datos compatibles")}
+                              : "Cálculo disponible")}
                       </p>
                       {row.id && row.accountId && (
                         <Link

@@ -267,7 +267,9 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
                 : account.historyImport?.status === "paused"
                   ? "En pausa. Revisa la cuenta en Conexiones."
                   : account.historyImport?.status === "retrying"
-                    ? "Reintentando"
+                    ? account.historyImport.errorCode === "PROVIDER_RATE"
+                      ? "Esperando a Meta. Se reintentará automáticamente."
+                      : "Reintentando"
                     : account.historyImport?.status === "pending"
                       ? "Pendiente"
                       : "En curso"}

@@ -3,6 +3,7 @@ import type {
   AdvertisingBusinessAnalytics,
   AdvertisingBusinessRow,
 } from "@/services/advertisingOrdersService";
+import { metaSpendReconciled } from "./advertising-meta-model";
 
 function parse(value: string) {
   if (!/^-?\d+(?:\.\d+)?$/.test(value) || value.length > 1024) throw new Error("Importe inválido");
@@ -67,12 +68,18 @@ export function businessResult(
     return empty("Zonas horarias distintas");
   if (analytics.from !== meta.from || analytics.to !== meta.to) return empty("Periodos distintos");
   if (analytics.truncated) return empty("Hay grupos pendientes de cargar");
+  const reconciliation = ad.insights.coverage.reconciliation;
+  if (reconciliation?.status === "mismatch") return empty("Gasto por revisar");
+  const periodDays =
+    (Date.parse(`${meta.to}T00:00:00Z`) - Date.parse(`${meta.from}T00:00:00Z`)) / 86400000 + 1;
   if (
-    ad.insights.coverage.status !== "complete" ||
-    ad.insights.coverage.coveredDays !== ad.insights.coverage.totalDays ||
-    ad.insights.coverage.provisionalDays > 0
+    !Number.isInteger(periodDays) ||
+    periodDays < 1 ||
+    periodDays > 366 ||
+    ad.insights.coverage.totalDays !== periodDays
   )
-    return empty("Gasto de Meta incompleto");
+    return empty("Gasto por confirmar");
+  if (!metaSpendReconciled(ad.insights.coverage)) return empty("Gasto por confirmar");
   const spend = ad.insights.spend;
   const cpe =
     analytics.basis === "delivered" && row.deliveredCount > 0

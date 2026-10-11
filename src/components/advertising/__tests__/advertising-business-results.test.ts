@@ -8,6 +8,7 @@ import {
   divideOrderDecimals,
   subtractOrderDecimals,
 } from "../advertising-business-results";
+import { metaCoverageLabel } from "../advertising-meta-model";
 import { financeInputValue, formatOrderAmount } from "../advertising-orders-model";
 
 const row: AdvertisingBusinessRow = {
@@ -68,7 +69,20 @@ const meta = {
       timeZone: "America/Lima",
       insights: {
         spend: "20.00",
-        coverage: { status: "complete", coveredDays: 10, totalDays: 10, provisionalDays: 0 },
+        coverage: {
+          status: "complete",
+          coveredDays: 10,
+          totalDays: 10,
+          provisionalDays: 0,
+          reconciliation: {
+            status: "matched",
+            comparedDays: 10,
+            mismatchedDays: 0,
+            missingLedgerDays: 0,
+            provisionalDays: 0,
+            totalDays: 10,
+          },
+        },
         impressions: null,
         clicks: null,
         actions: null,
@@ -141,6 +155,143 @@ it("does not calculate with partial or provisional Meta coverage", () => {
     ],
   };
   expect(businessResult(row, analytics, provisional).paidRoas).toBeNull();
+});
+it.each(["mismatch", "pending", undefined] as const)(
+  "blocks financial metrics until account and ad spend match (%s)",
+  (status) => {
+    const data = {
+      ...meta,
+      rows: [
+        {
+          ...meta.rows[0],
+          insights: {
+            ...meta.rows[0].insights,
+            coverage: {
+              ...meta.rows[0].insights.coverage,
+              reconciliation: status
+                ? {
+                    status,
+                    comparedDays: 10,
+                    totalDays: 10,
+                    mismatchedDays: status === "mismatch" ? 1 : 0,
+                    missingLedgerDays: 0,
+                    provisionalDays: 0,
+                  }
+                : undefined,
+            },
+          },
+        },
+      ],
+    };
+    expect(businessResult(row, analytics, data)).toMatchObject({
+      spend: null,
+      cpe: null,
+      paidRoas: null,
+      contributionAfterAds: null,
+      reason: status === "mismatch" ? "Gasto por revisar" : "Gasto por confirmar",
+    });
+  },
+);
+it.each([
+  { comparedDays: 9 },
+  { totalDays: 9 },
+  { mismatchedDays: 1 },
+  { missingLedgerDays: 1 },
+  { provisionalDays: 1 },
+])("fails closed for inconsistent matched reconciliation counts (%j)", (override) => {
+  const coverage = meta.rows[0].insights.coverage;
+  const invalid = {
+    ...coverage,
+    reconciliation: {
+      status: "matched" as const,
+      comparedDays: 10,
+      mismatchedDays: 0,
+      missingLedgerDays: 0,
+      provisionalDays: 0,
+      totalDays: 10,
+      ...override,
+    },
+  };
+  const data = {
+    ...meta,
+    rows: [
+      {
+        ...meta.rows[0],
+        insights: {
+          ...meta.rows[0].insights,
+          coverage: invalid,
+        },
+      },
+    ],
+  };
+  expect(metaCoverageLabel(invalid)).toBe("Gasto por confirmar");
+  expect(businessResult(row, analytics, data)).toMatchObject({
+    spend: null,
+    cpe: null,
+    paidRoas: null,
+    contributionAfterAds: null,
+    reason: "Gasto por confirmar",
+  });
+});
+it("never reconciles zero days or a different inclusive reporting period", () => {
+  const coverage = meta.rows[0].insights.coverage;
+  const zero = {
+    ...coverage,
+    totalDays: 0,
+    coveredDays: 0,
+    reconciliation: {
+      status: "matched" as const,
+      comparedDays: 0,
+      totalDays: 0,
+      mismatchedDays: 0,
+      missingLedgerDays: 0,
+      provisionalDays: 0,
+    },
+  };
+  expect(metaCoverageLabel(zero)).toBe("Gasto por confirmar");
+  const differentPeriod = {
+    ...meta,
+    rows: [
+      {
+        ...meta.rows[0],
+        insights: {
+          ...meta.rows[0].insights,
+          coverage: {
+            ...coverage,
+            totalDays: 9,
+            coveredDays: 9,
+            reconciliation: {
+              status: "matched" as const,
+              comparedDays: 9,
+              totalDays: 9,
+              mismatchedDays: 0,
+              missingLedgerDays: 0,
+              provisionalDays: 0,
+            },
+          },
+        },
+      },
+    ],
+  };
+  expect(businessResult(row, analytics, differentPeriod).paidRoas).toBeNull();
+});
+it("shows review or pending labels without implying a completed financial check", () => {
+  const coverage = meta.rows[0].insights.coverage;
+  expect(metaCoverageLabel(coverage)).toBe("Datos completos");
+  expect(
+    metaCoverageLabel({
+      ...coverage,
+      reconciliation: {
+        status: "mismatch",
+        comparedDays: 10,
+        mismatchedDays: 1,
+        missingLedgerDays: 0,
+        provisionalDays: 0,
+        totalDays: 10,
+      },
+    }),
+  ).toBe("Gasto por revisar");
+  expect(metaCoverageLabel({ ...coverage, reconciliation: undefined })).toBe("Gasto por confirmar");
 });
 it("does not divide by zero or show profit for cancelled orders", () => {
   const zero = {

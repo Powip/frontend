@@ -129,6 +129,50 @@ it("preserves missing values, explicit zero, exact counts and platform coverage 
   expect(sync).not.toHaveBeenCalled();
 });
 
+it("shows a Meta rate backoff as waiting without implying an active provider call", () => {
+  const catalog = data();
+  catalog.accounts[0].historyImport = {
+    accountId: "account",
+    status: "retrying",
+    availableFrom: "2025-01-01",
+    availableTo: "2026-10-11",
+    nextTo: "2026-10-11",
+    completedWindows: 0,
+    totalWindows: 37,
+    retryCount: 1,
+    errorCode: "PROVIDER_RATE",
+    updatedAt: "2026-10-11T00:00:00Z",
+  };
+  mockCatalog(catalog);
+  mount();
+  expect(screen.getByText(/Esperando a Meta\. Se reintentará automáticamente\./)).toBeVisible();
+  expect(sync).not.toHaveBeenCalled();
+});
+
+it("shows a spend mismatch as review instead of complete data despite every day being imported", () => {
+  const catalog = data();
+  const mismatched = {
+    ...coverage,
+    status: "partial" as const,
+    coveredDays: 2,
+    reconciliation: {
+      status: "mismatch" as const,
+      comparedDays: 2,
+      mismatchedDays: 1,
+      missingLedgerDays: 0,
+      provisionalDays: 0,
+      totalDays: 2,
+    },
+  };
+  catalog.accounts[0].coverage = mismatched;
+  catalog.rows[0].insights.coverage = mismatched;
+  mockCatalog(catalog);
+  mount();
+  expect(screen.getAllByText("Gasto por revisar").length).toBeGreaterThan(0);
+  expect(screen.queryByText("Datos completos")).not.toBeInTheDocument();
+  expect(sync).not.toHaveBeenCalled();
+});
+
 it("uses server paging and desc ordering within the current actor and company", async () => {
   mount();
   await userEvent.setup().click(screen.getByRole("button", { name: "Siguiente" }));
