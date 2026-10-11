@@ -20,6 +20,7 @@ import type {
   AdvertisingSelectionPayload,
 } from "@/services/advertisingService";
 import {
+  advertisingAccountSelectable,
   advertisingErrorMessage,
   discoverAdvertisingAccounts,
 } from "@/services/advertisingService";
@@ -55,11 +56,16 @@ export function AdvertisingLiveAccountsDialog({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [review, setReview] = useState(false);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const selectionKey = JSON.stringify(initialSelectedIds);
+  const discoveryKey = JSON.stringify([provider, companyId, token, selectionKey, attempt]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: Changing attempt explicitly retries account discovery.
   useEffect(() => {
-    if (!provider) return;
+    if (!provider || !companyId || !token) {
+      setLoadedKey(null);
+      return;
+    }
     const controller = new AbortController();
     let active = true;
     setLoading(true);
@@ -74,7 +80,10 @@ export function AdvertisingLiveAccountsDialog({
         const previous = JSON.parse(selectionKey) as string[];
         setSelected(
           previous.filter((externalId) =>
-            available.some((account) => account.externalId === externalId),
+            available.some(
+              (account) =>
+                account.externalId === externalId && advertisingAccountSelectable(account),
+            ),
           ),
         );
       })
@@ -82,16 +91,25 @@ export function AdvertisingLiveAccountsDialog({
         if (active) setLoadError(advertisingErrorMessage(failure));
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) {
+          setLoadedKey(discoveryKey);
+          setLoading(false);
+        }
       });
     return () => {
       active = false;
       controller.abort();
     };
-  }, [provider, companyId, token, selectionKey, attempt]);
+  }, [provider, companyId, token, selectionKey, attempt, discoveryKey]);
 
-  const chosen = accounts.filter((account) => selected.includes(account.externalId));
-  const canContinue = !loading && !loadError && !busy;
+  const current = loadedKey === discoveryKey;
+  const visibleAccounts = current ? accounts : [];
+  const chosen = visibleAccounts.filter(
+    (account) => selected.includes(account.externalId) && advertisingAccountSelectable(account),
+  );
+  const selectedIds = chosen.map((account) => account.externalId);
+  const isLoading = loading || !current;
+  const canContinue = !!token && !!companyId && !isLoading && !loadError && !busy;
 
   return (
     <Dialog
@@ -132,7 +150,7 @@ export function AdvertisingLiveAccountsDialog({
             2. Revisar
           </li>
         </ol>
-        {loading ? (
+        {isLoading ? (
           <div className="space-y-3" role="status" aria-label="Cargando cuentas">
             <Skeleton className="h-20" />
             <Skeleton className="h-20" />
@@ -146,7 +164,7 @@ export function AdvertisingLiveAccountsDialog({
               </Button>
             </AlertDescription>
           </Alert>
-        ) : accounts.length === 0 ? (
+        ) : visibleAccounts.length === 0 ? (
           <p className="text-sm text-muted-foreground">No encontramos cuentas disponibles.</p>
         ) : review ? (
           <div className="space-y-3">
@@ -171,7 +189,7 @@ export function AdvertisingLiveAccountsDialog({
         ) : (
           <div className="space-y-4">
             <div className="space-y-2">
-              {accounts.map((account, index) => (
+              {visibleAccounts.map((account, index) => (
                 <Label
                   key={account.externalId}
                   htmlFor={`${id}-${index}`}
@@ -180,8 +198,8 @@ export function AdvertisingLiveAccountsDialog({
                   <Checkbox
                     id={`${id}-${index}`}
                     className="mt-0.5 size-5"
-                    checked={selected.includes(account.externalId)}
-                    disabled={busy}
+                    checked={selectedIds.includes(account.externalId)}
+                    disabled={busy || !advertisingAccountSelectable(account)}
                     onCheckedChange={(checked) =>
                       setSelected((previous) =>
                         checked === true
@@ -198,6 +216,15 @@ export function AdvertisingLiveAccountsDialog({
                     <span className="block break-all text-xs font-normal text-muted-foreground">
                       ID {account.externalId} · {account.currency} · {account.timeZone}
                     </span>
+                    {!advertisingAccountSelectable(account) && (
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {account.selectionBlockedReason === "linked-other-company"
+                          ? "Vinculada a otra empresa"
+                          : account.selectionBlockedReason === "metadata-changed"
+                            ? "Moneda o zona horaria por revisar"
+                            : "Cuenta no disponible"}
+                      </span>
+                    )}
                   </span>
                 </Label>
               ))}
@@ -222,11 +249,14 @@ export function AdvertisingLiveAccountsDialog({
           >
             {review ? "Cambiar cuentas" : "Cancelar"}
           </Button>
-          {!loading && !loadError && accounts.length > 0 && (
+          {!isLoading && !loadError && visibleAccounts.length > 0 && (
             <Button
-              disabled={!canContinue || (selected.length === 0 && initialSelectedIds.length === 0)}
+              disabled={
+                !canContinue || (selectedIds.length === 0 && initialSelectedIds.length === 0)
+              }
               onClick={() => {
-                if (review) void onSave({ externalIds: selected });
+                if (!canContinue) return;
+                if (review) void onSave({ externalIds: selectedIds });
                 else setReview(true);
               }}
             >
@@ -234,7 +264,7 @@ export function AdvertisingLiveAccountsDialog({
                 ? "Guardando…"
                 : review
                   ? "Guardar cuentas"
-                  : `Continuar con ${selected.length} ${selected.length === 1 ? "cuenta" : "cuentas"}`}
+                  : `Continuar con ${selectedIds.length} ${selectedIds.length === 1 ? "cuenta" : "cuentas"}`}
             </Button>
           )}
         </DialogFooter>

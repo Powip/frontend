@@ -15,6 +15,8 @@ import type {
 } from "@/services/advertisingService";
 import {
   advertisingErrorMessage,
+  advertisingErrorStatus,
+  advertisingSelectionConflictCode,
   importAdvertisingHistory,
   pauseAdvertisingUpdates,
   selectAdvertisingAccounts,
@@ -184,7 +186,18 @@ export function AdvertisingLivePanel({
         );
       }
     } catch (failure: unknown) {
-      if (mounted.current) setError(advertisingErrorMessage(failure));
+      if (mounted.current) {
+        setError(advertisingErrorMessage(failure));
+        const conflict = advertisingSelectionConflictCode(failure);
+        if (
+          conflict ||
+          advertisingErrorStatus(failure) === 401 ||
+          advertisingErrorStatus(failure) === 403
+        ) {
+          setDialogProvider(null);
+          await query.refetch();
+        }
+      }
     } finally {
       if (mounted.current) {
         if (selected) await query.refetch();
