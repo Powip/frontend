@@ -33,4 +33,55 @@ describe("Contexto de venta autorizado", () => {
       await expect(fetchSaleContext("company-a")).rejects.toThrow("No se pudo cargar");
     }
   });
+
+  it("permite un almacén de una tienda heredada autorizada sin ofrecerla como tienda de venta", async () => {
+    const data = {
+      companyId: "company-a",
+      stores: [{ id: "commercial", name: "Tienda comercial" }],
+      inventories: [{ id: "warehouse", name: "Almacén central", storeId: "legacy" }],
+      inventoryStoreIds: ["commercial", "legacy"],
+    };
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data });
+
+    await expect(fetchSaleContext("company-a")).resolves.toEqual(data);
+  });
+
+  it("rechaza un almacén ajeno a los propietarios autorizados aunque existan tiendas de venta", async () => {
+    jest.mocked(axiosAuth.get).mockResolvedValue({
+      data: {
+        companyId: "company-a",
+        stores: [{ id: "commercial", name: "Tienda comercial" }],
+        inventories: [{ id: "warehouse", name: "Almacén", storeId: "foreign" }],
+        inventoryStoreIds: ["commercial", "legacy"],
+      },
+    });
+
+    await expect(fetchSaleContext("company-a")).rejects.toThrow("No se pudo cargar");
+  });
+
+  it("rechaza propietarios de almacén malformados sin recurrir a las tiendas visibles", async () => {
+    for (const inventoryStoreIds of [null, "commercial", [null], [1], [""]]) {
+      jest.mocked(axiosAuth.get).mockResolvedValue({
+        data: {
+          companyId: "company-a",
+          stores: [{ id: "commercial", name: "Tienda comercial" }],
+          inventories: [{ id: "warehouse", name: "Almacén", storeId: "commercial" }],
+          inventoryStoreIds,
+        },
+      });
+
+      await expect(fetchSaleContext("company-a")).rejects.toThrow("No se pudo cargar");
+    }
+  });
+
+  it("conserva la compatibilidad con el contexto anterior sin propietarios separados", async () => {
+    const data = {
+      companyId: "company-a",
+      stores: [{ id: "commercial", name: "Tienda comercial" }],
+      inventories: [{ id: "warehouse", name: "Almacén", storeId: "commercial" }],
+    };
+    jest.mocked(axiosAuth.get).mockResolvedValue({ data });
+
+    await expect(fetchSaleContext("company-a")).resolves.toEqual(data);
+  });
 });

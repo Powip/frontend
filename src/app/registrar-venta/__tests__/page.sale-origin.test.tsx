@@ -95,7 +95,7 @@ const existingOrder = {
     quantity: 1, unitPrice: 100, discountAmount: 0, imageUrl: null }],
   payments: [{ id: "payment-1", status: "PAID", paymentMethod: "EFECTIVO", amount: 100, created_at: "2026-10-01T10:00:00.000Z" }],
 };
-let responseContext: typeof context;
+let responseContext: typeof context & { inventoryStoreIds?: string[] };
 let responseOrder: typeof existingOrder | (Omit<typeof existingOrder, "inventoryId" | "stockStoreId"> & { inventoryId: null; stockStoreId: null });
 let contextFails: boolean;
 let orderFails: boolean;
@@ -166,6 +166,51 @@ describe("Registrar venta — tienda comercial y almacén independientes", () =>
     expect(http.post.mock.calls[0][1]).not.toHaveProperty("companyId");
     expect(mockSetNavigationStore).not.toHaveBeenCalled();
     expect(jest.mocked(searchInventoryItems).mock.calls[0][0]).toEqual(expect.objectContaining({ inventoryId: "warehouse-a", companyId: "company-1" }));
+  }, 15000);
+
+  it("vende para una tienda comercial desde un almacén de tienda legacy autorizada sin ofrecer legacy como tienda de venta", async () => {
+    responseContext = {
+      ...context,
+      inventories: [
+        { id: "warehouse-a", name: "Almacén compartido A", storeId: "store-legacy" },
+        { id: "warehouse-b", name: "Almacén B", storeId: "store-a" },
+      ],
+      inventoryStoreIds: ["store-legacy", "store-a"],
+    };
+    mountPage();
+
+    const warehouse = field(/almacén de salida/i).getByRole("combobox");
+    const store = field(/tienda de la venta/i).getByRole("combobox");
+    await waitFor(() => expect(warehouse).toBeEnabled());
+    expect(store).toBeEnabled();
+    expect(within(store).getAllByRole("option").map((option) => (option as HTMLOptionElement).value))
+      .toEqual(["", "store-a", "store-b"]);
+
+    const user = userEvent.setup();
+    await user.selectOptions(warehouse, "warehouse-a");
+    await user.selectOptions(store, "store-b");
+    await fillRequired();
+    expect(store).toHaveValue("store-b");
+    expect(warehouse).toHaveValue("warehouse-a");
+    expect(screen.queryByText(/no se pudieron cargar las tiendas y los almacenes/i)).not.toBeInTheDocument();
+
+    const submit = screen.getByRole("button", { name: /confirmar venta/i });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
+    await waitFor(() => expect(http.post).toHaveBeenCalledWith(
+      expect.stringMatching(/\/order-header\/manual$/),
+      expect.objectContaining({
+        storeId: "store-b",
+        inventoryId: "warehouse-a",
+        items: [expect.objectContaining({ productVariantId: "variant-1", quantity: 1 })],
+      }),
+    ));
+    expect(http.post.mock.calls[0][1]).not.toHaveProperty("stockStoreId");
+    expect(mockSetNavigationStore).not.toHaveBeenCalled();
+    expect(jest.mocked(searchInventoryItems)).toHaveBeenCalledWith(
+      expect.objectContaining({ inventoryId: "warehouse-a", companyId: "company-1" }),
+      expect.anything(),
+    );
   }, 15000);
 
   it("con varias tiendas no adopta navbar A; falta elegir tienda y bloquea una venta válida en lo demás", async () => {
