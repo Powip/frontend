@@ -7,6 +7,7 @@ import { useAdminReviewQueue } from "@/features/partners/hooks/use-admin-review-
 import type { AdminReviewQueueOrigin } from "@/features/partners/models/admin-review-queue";
 import { AdminReadAccessDenied, AdminReadError } from "../../_components/admin-read-error";
 import { ReferralRejectionControls } from "./referral-rejection-controls";
+import { InvitationQueueSection } from "./invitation-queue-section";
 
 export function ColaPageContent() {
   const [origin, setOrigin] = useState<AdminReviewQueueOrigin | null>(null);
@@ -93,6 +94,7 @@ export function ColaPageContent() {
           Cargar más referidos
         </Button>
       )}
+      <InvitationQueueSection />
     </div>
   );
 }

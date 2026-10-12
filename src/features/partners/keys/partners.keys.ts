@@ -75,6 +75,9 @@ export const partnersKeys = {
 
   unopenedInvitations: () => [...partnersKeys.all, "unopened-invitations"] as const,
 
+  adminInvitations: (userId?: string | null, epoch = 0, limit = 20, state = "ALL") =>
+    [...partnersKeys.adminRead(userId), "session", epoch, "invitations", state, limit] as const,
+
   adminLiquidations: () => [...partnersKeys.all, "admin-liquidations"] as const,
 
   adminClawbacks: () => [...partnersKeys.all, "admin-clawbacks"] as const,

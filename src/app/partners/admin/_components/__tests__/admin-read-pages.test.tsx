@@ -1,4 +1,5 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, cleanup, render as renderComponent, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import userEvent from "@testing-library/user-event";
 import type { AdminPage, AdminPartner } from "@/features/partners/models/admin-partner";
 import type { AdminPartnerActivity } from "@/features/partners/models/admin-partner-activity";
@@ -20,6 +21,19 @@ import {
 import { PartnersListPageContent } from "../../partners/_components/partners-list-page-content";
 import { PartnerDetailPageContent } from "../../partners/[partnerId]/_components/partner-detail-page-content";
 import { DashboardPageContent } from "../dashboard-page-content";
+
+const clients: QueryClient[] = [];
+function render(component: React.ReactNode) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  clients.push(client);
+  return renderComponent(component, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
 
 function query<T>(data: T | undefined) {
   return {
@@ -77,6 +91,8 @@ beforeEach(() => {
   mockSummary = query(buildAdminSummary());
 });
 afterEach(() => {
+  cleanup();
+  clients.splice(0).forEach((client) => client.clear());
   clearAdminReadDenial();
 });
 

@@ -23,6 +23,7 @@ import {
 } from "../utils/admin-read-session-state";
 
 export type AdminPartnersCapability =
+  | "PARTNERS_APPROVE"
   | "PARTNERS_CONFIGURE_POLICY"
   | "PARTNERS_MANAGE_RESOURCES"
   | "PARTNERS_MANAGE_PARTNERS"
@@ -30,7 +31,7 @@ export type AdminPartnersCapability =
 
 export function useAdminCapabilitySession(
   capability: AdminPartnersCapability,
-  family: "policy" | "resources" | "partners" | "reviews",
+  family: "policy" | "resources" | "partners" | "reviews" | "invitations",
 ) {
   const { auth } = useAuth();
   const client = useQueryClient();
@@ -103,12 +104,14 @@ export function useAdminCapabilitySession(
           denyAdminCapability("resources", userId as string, epoch, failure);
           denyAdminCapability("partners", userId as string, epoch, failure);
           denyAdminCapability("reviews", userId as string, epoch, failure);
+          denyAdminCapability("invitations", userId as string, epoch, failure);
           for (const key of [
             partnersKeys.adminRead(userId),
             [...partnersKeys.user(userId), "admin-policy-v1"],
             [...partnersKeys.user(userId), "admin-resources-v1"],
             [...partnersKeys.user(userId), "admin-partners-v1"],
             [...partnersKeys.user(userId), "admin-reviews-v1"],
+            [...partnersKeys.user(userId), "admin-invitations-v1"],
           ]) {
             void client.cancelQueries({ queryKey: key });
             client.removeQueries({ queryKey: key });
