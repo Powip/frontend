@@ -125,3 +125,48 @@ it("does not request a catalog without tenant identity or while the period is di
   unmount();
   client.clear();
 });
+
+it("keeps conversion and global cost ordering in the request and query identity", async () => {
+  get.mockImplementation(async (_url, config) => ({
+    data: {
+      source: "meta",
+      accounts: [],
+      rows: [{ id: config?.params.resultType }],
+    },
+  }));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const { result, rerender, unmount } = renderHook(
+    ({ resultType }: { resultType: "messages" | "webPurchases" }) =>
+      useAdvertisingMetaCatalog({
+        token: "token",
+        actorId: "actor",
+        companyId: "company",
+        ...filters,
+        resultType,
+        sortBy: "costPerResult",
+        sortOrder: "asc",
+      }),
+    { wrapper, initialProps: { resultType: "messages" } },
+  );
+  await waitFor(() => expect(result.current.data?.rows[0].id).toBe("messages"));
+  rerender({ resultType: "webPurchases" });
+  await waitFor(() => expect(result.current.data?.rows[0].id).toBe("webPurchases"));
+  expect(get).toHaveBeenLastCalledWith(
+    `${root}/catalog`,
+    expect.objectContaining({
+      params: expect.objectContaining({
+        resultType: "webPurchases",
+        sortBy: "costPerResult",
+        sortOrder: "asc",
+        page: 2,
+        currency: "PEN",
+      }),
+    }),
+  );
+  expect(post).not.toHaveBeenCalled();
+  unmount();
+  client.clear();
+});

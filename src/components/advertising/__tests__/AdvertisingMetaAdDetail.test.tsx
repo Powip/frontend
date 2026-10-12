@@ -1,11 +1,11 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { useAdvertisingMetaAd } from "@/hooks/useAdvertisingMeta";
 import type { MetaAdDetailResponse } from "@/services/advertisingMetaService";
 import { AdvertisingMetaAdDetail } from "../AdvertisingMetaAdDetail";
 
 jest.mock("@/hooks/useAdvertisingMeta", () => ({ useAdvertisingMetaAd: jest.fn() }));
 const read = jest.mocked(useAdvertisingMetaAd);
-it("shows Meta events independently, preserves daily unknown/zero and keeps mutations disabled", () => {
+function data(): MetaAdDetailResponse {
   const coverage = {
     status: "partial" as const,
     coveredDays: 1,
@@ -14,7 +14,7 @@ it("shows Meta events independently, preserves daily unknown/zero and keeps muta
     lastSuccessfulAt: null,
     lastErrorCode: null,
   };
-  const detail: MetaAdDetailResponse = {
+  return {
     source: "meta",
     from: "2026-10-01",
     to: "2026-10-02",
@@ -81,9 +81,17 @@ it("shows Meta events independently, preserves daily unknown/zero and keeps muta
       },
     ],
   };
+}
+
+function mockDetail(detail: MetaAdDetailResponse) {
   read.mockReturnValue({ data: detail, isError: false } as unknown as ReturnType<
     typeof useAdvertisingMetaAd
   >);
+}
+
+it("shows Meta events independently, preserves daily unknown/zero and keeps mutations disabled", () => {
+  const detail = data();
+  mockDetail(detail);
   render(
     <AdvertisingMetaAdDetail
       token="token"
@@ -107,7 +115,7 @@ it("shows Meta events independently, preserves daily unknown/zero and keeps muta
   expect(screen.getByText("Último estado registrado:")).toBeVisible();
   expect(screen.getByText("Compras omnicanal")).toBeVisible();
   expect(screen.getByText(/no son pedidos entregados ni cobros de Powip/)).toBeVisible();
-  expect(screen.getAllByText("No disponible")).toHaveLength(4);
+  expect(screen.getAllByText("No disponible")).toHaveLength(10);
   expect(screen.getByText("Pendientes")).toBeVisible();
   expect(screen.getByText("Provisionales")).toBeVisible();
   expect(screen.getByRole("button", { name: "Pausar anuncio" })).toBeDisabled();
@@ -115,5 +123,43 @@ it("shows Meta events independently, preserves daily unknown/zero and keeps muta
   expect(screen.getByRole("link", { name: /Abrir Meta Ads Manager/ })).toHaveAttribute(
     "href",
     "https://adsmanager.facebook.com/adsmanager/manage/ads?act=123",
+  );
+});
+
+it("keeps the selected web conversion and its daily cost separate from message and general purchase events", () => {
+  const detail = data();
+  detail.row.insights.resultMetrics = {
+    messages: { count: "20", costPerResult: "3.25", status: "complete" },
+    webPurchases: { count: "2", costPerResult: "32.50", status: "complete" },
+  };
+  detail.daily[0].resultMetrics = {
+    messages: { count: "20", costPerResult: "3.25", status: "complete" },
+    webPurchases: { count: "2", costPerResult: "32.50", status: "complete" },
+  };
+  detail.daily[1].resultMetrics = {
+    messages: { count: "0", costPerResult: null, status: "complete" },
+    webPurchases: { count: "0", costPerResult: null, status: "complete" },
+  };
+  mockDetail(detail);
+  render(
+    <AdvertisingMetaAdDetail
+      token="token"
+      actorId="actor"
+      companyId="company"
+      from={detail.from}
+      to={detail.to}
+      selected={detail.row}
+      resultType="webPurchases"
+      onClose={jest.fn()}
+    />,
+  );
+  expect(screen.getAllByText(/32\.50/)).toHaveLength(2);
+  expect(screen.queryByText(/3\.25/)).not.toBeInTheDocument();
+  expect(screen.getByText("Compras en el sitio web")).toBeVisible();
+  const table = screen.getByRole("table", { name: "Resultados diarios del anuncio" });
+  expect(within(table).getByRole("columnheader", { name: "Compras por web" })).toBeVisible();
+  expect(within(table).getByText("—")).toBeVisible();
+  expect(read).toHaveBeenLastCalledWith(
+    expect.objectContaining({ accountId: "account", adId: "456" }),
   );
 });
