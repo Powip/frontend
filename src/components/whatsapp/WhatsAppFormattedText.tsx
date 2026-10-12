@@ -38,7 +38,7 @@ export function WhatsAppFormattedText({
               key={key}
               className={cn(
                 styleClassName,
-                "rounded border border-dashed border-amber-500 px-0.5 font-mono text-[0.85em] text-amber-700 dark:text-amber-300",
+                "rounded border border-dashed border-wa-amber px-0.5 font-wa-mono text-[0.85em] text-wa-amber",
               )}
               title={`Sin valor para {{${segment.name}}}`}
             >
@@ -49,7 +49,11 @@ export function WhatsAppFormattedText({
         return (
           <span
             key={key}
-            className={cn(styleClassName, highlightVariables && "rounded bg-emerald-500/20 px-0.5")}
+            className={cn(
+              styleClassName,
+              highlightVariables &&
+                "rounded-[4px] bg-[color-mix(in_srgb,var(--wa-whatsapp)_18%,transparent)] px-0.5",
+            )}
           >
             {segment.value}
           </span>

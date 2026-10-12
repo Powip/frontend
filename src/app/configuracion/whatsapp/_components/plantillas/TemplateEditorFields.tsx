@@ -14,7 +14,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -25,6 +24,19 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { WaInput } from "@/components/whatsapp/ui/WaInput";
+import { WaPill } from "@/components/whatsapp/ui/WaPill";
+import {
+  waButton,
+  waCheckbox,
+  waField,
+  waHint,
+  waInput,
+  waLabel,
+  waSelectTrigger,
+  waSwitch,
+  waTextarea,
+} from "@/components/whatsapp/ui/wa-classes";
 import {
   getTemplateUsageDefinition,
   WHATSAPP_TEMPLATE_CATEGORY_OPTIONS,
@@ -47,6 +59,7 @@ import {
   insertTextAtSelection,
   toVariableToken,
 } from "@/features/whatsapp/utils/template-variables.util";
+import { cn } from "@/lib/utils";
 import { TemplateSegmentedChoice } from "./TemplateSegmentedChoice";
 import { TemplateVariableChips } from "./TemplateVariableChips";
 
@@ -63,9 +76,9 @@ interface TemplateEditorFieldsProps {
 
 export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
   const form = useFormContext<TemplateEditorValues>();
-  const [usage, displayName, headerType, abEnabled, body] = useWatch({
+  const [usage, displayName, headerType, abEnabled, body, buttonText] = useWatch({
     control: form.control,
-    name: ["usage", "displayName", "headerType", "abEnabled", "body"],
+    name: ["usage", "displayName", "headerType", "abEnabled", "body", "buttonText"],
   });
   const [messageTarget, setMessageTarget] = useState<MessageField>("body");
   const messageRefs = useRef<Record<MessageField, HTMLTextAreaElement | null>>({
@@ -132,8 +145,13 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
       control={form.control}
       name={name}
       render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
+        <FormItem className={waField}>
+          <div className="flex items-center justify-between gap-3">
+            <FormLabel className={waLabel}>{label}</FormLabel>
+            <span className="wa-num text-xs text-wa-muted" aria-hidden="true">
+              {field.value.length} / {WHATSAPP_TEMPLATE_LIMITS.body}
+            </span>
+          </div>
           <FormControl>
             <Textarea
               {...field}
@@ -144,39 +162,48 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
               rows={name === "body" ? 6 : 4}
               readOnly={readOnly}
               maxLength={WHATSAPP_TEMPLATE_LIMITS.body * 2}
-              className="min-h-28 resize-y"
+              className={cn(waTextarea, name === "bodyB" && "min-h-[90px]")}
               onFocus={() => setMessageTarget(name)}
             />
           </FormControl>
-          <FormDescription>
-            {hint} {field.value.length} / {WHATSAPP_TEMPLATE_LIMITS.body} caracteres.
+          <FormDescription className={waHint}>
+            {hint}
+            <span className="sr-only">
+              {" "}
+              {field.value.length} / {WHATSAPP_TEMPLATE_LIMITS.body} caracteres.
+            </span>
           </FormDescription>
-          <FormMessage />
+          <FormMessage className="text-xs text-wa-red" />
         </FormItem>
       )}
     />
   );
 
   return (
-    <fieldset disabled={readOnly} className="min-w-0 space-y-5">
+    <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-col gap-3.5 border-0 p-0">
       <legend className="sr-only">Datos de la plantilla</legend>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 min-[900px]:grid-cols-2">
         <FormField
           control={form.control}
           name="displayName"
           render={({ field }) => (
-            <FormItem className="min-w-0">
-              <FormLabel>Nombre interno</FormLabel>
+            <FormItem className={waField}>
+              <FormLabel className={waLabel}>Nombre interno</FormLabel>
               <FormControl>
-                <Input {...field} placeholder="Ej. Pedido en camino" autoComplete="off" />
+                <WaInput
+                  {...field}
+                  placeholder="Ej. Pedido en camino"
+                  autoComplete="off"
+                  className={waInput}
+                />
               </FormControl>
-              <FormDescription className="break-all">
+              <FormDescription className={cn(waHint, "break-all")}>
                 Se guarda como{" "}
-                <code className="font-mono text-foreground">{technicalName || "—"}</code>. Es el
+                <code className="font-wa-mono text-wa-fg">{technicalName || "—"}</code>. Es el
                 nombre que recibe Meta.
               </FormDescription>
-              <FormMessage />
+              <FormMessage className="text-xs text-wa-red" />
             </FormItem>
           )}
         />
@@ -185,8 +212,8 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
           control={form.control}
           name="usage"
           render={({ field }) => (
-            <FormItem className="min-w-0">
-              <FormLabel>Se usa en</FormLabel>
+            <FormItem className={waField}>
+              <FormLabel className={waLabel}>Se usa en</FormLabel>
               <Select
                 value={field.value}
                 onValueChange={(value) => {
@@ -196,7 +223,7 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
                 disabled={readOnly}
               >
                 <FormControl>
-                  <SelectTrigger className="w-full" onBlur={field.onBlur}>
+                  <SelectTrigger className={waSelectTrigger} onBlur={field.onBlur}>
                     <SelectValue />
                   </SelectTrigger>
                 </FormControl>
@@ -208,18 +235,18 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
                   ))}
                 </SelectContent>
               </Select>
-              <FormMessage />
+              <FormMessage className="text-xs text-wa-red" />
             </FormItem>
           )}
         />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3.5 min-[900px]:grid-cols-2">
         <FormField
           control={form.control}
           name="category"
           render={({ field }) => (
-            <FormItem className="min-w-0">
+            <FormItem className={waField}>
               <FormControl>
                 <TemplateSegmentedChoice
                   legend="Categoría"
@@ -232,11 +259,11 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
                   }
                 />
               </FormControl>
-              <FormDescription>
+              <FormDescription className={waHint}>
                 {WHATSAPP_TEMPLATE_CATEGORY_OPTIONS.find((option) => option.value === field.value)
                   ?.hint ?? ""}
               </FormDescription>
-              <FormMessage />
+              <FormMessage className="text-xs text-wa-red" />
             </FormItem>
           )}
         />
@@ -245,8 +272,8 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
           control={form.control}
           name="language"
           render={({ field }) => (
-            <FormItem className="min-w-0">
-              <FormLabel>Idioma</FormLabel>
+            <FormItem className={waField}>
+              <FormLabel className={waLabel}>Idioma</FormLabel>
               <Select
                 value={field.value}
                 onValueChange={(value) => {
@@ -255,7 +282,7 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
                 disabled={readOnly}
               >
                 <FormControl>
-                  <SelectTrigger className="w-full" onBlur={field.onBlur}>
+                  <SelectTrigger className={waSelectTrigger} onBlur={field.onBlur}>
                     <SelectValue />
                   </SelectTrigger>
                 </FormControl>
@@ -267,18 +294,18 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
                   ))}
                 </SelectContent>
               </Select>
-              <FormMessage />
+              <FormMessage className="text-xs text-wa-red" />
             </FormItem>
           )}
         />
       </div>
 
-      <div className="space-y-3">
+      <div className="flex flex-col gap-2">
         <FormField
           control={form.control}
           name="headerType"
           render={({ field }) => (
-            <FormItem>
+            <FormItem className={waField}>
               <FormControl>
                 <TemplateSegmentedChoice
                   legend="Encabezado (opcional)"
@@ -299,12 +326,12 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
                   }
                 />
               </FormControl>
-              <FormDescription>
+              <FormDescription className={waHint}>
                 {allowsDocumentHeader
                   ? "El PDF del comprobante lo adjunta POWIP en cada envío; aquí no se sube ningún archivo."
                   : "El encabezado Documento PDF solo está disponible para «Comprobante emitido»."}
               </FormDescription>
-              <FormMessage />
+              <FormMessage className="text-xs text-wa-red" />
             </FormItem>
           )}
         />
@@ -314,31 +341,40 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
             control={form.control}
             name="headerText"
             render={({ field }) => (
-              <FormItem>
-                <FormLabel>Texto del encabezado</FormLabel>
+              <FormItem className={waField}>
+                <FormLabel className="sr-only">Texto del encabezado</FormLabel>
                 <FormControl>
-                  <Input
+                  <WaInput
                     {...field}
                     placeholder="Ej. 📦 Tu pedido va en camino"
                     maxLength={WHATSAPP_TEMPLATE_LIMITS.headerText * 2}
+                    className={waInput}
                   />
                 </FormControl>
-                <FormDescription>
+                <FormDescription className={waHint}>
                   Admite una variable. {field.value.length} / {WHATSAPP_TEMPLATE_LIMITS.headerText}{" "}
                   caracteres.
                 </FormDescription>
-                <FormMessage />
+                <FormMessage className="text-xs text-wa-red" />
               </FormItem>
             )}
           />
         )}
       </div>
 
-      <div className="space-y-3">
-        {messageField("body", "Mensaje", "Admite *negrita* y _cursiva_.")}
+      <div className="flex flex-col gap-2">
+        {messageField(
+          "body",
+          "Mensaje",
+          "Usa *asteriscos* para negrita y _guiones bajos_ para cursiva.",
+        )}
         {!readOnly && usageDefinition?.suggestion && !body.trim() && (
-          <Button type="button" variant="outline" size="sm" onClick={applySuggestion}>
-            <Wand2 className="h-4 w-4" aria-hidden="true" />
+          <Button
+            type="button"
+            className={cn(waButton({ size: "sm" }), "self-start")}
+            onClick={applySuggestion}
+          >
+            <Wand2 aria-hidden="true" />
             Usar texto sugerido para «{usageDefinition.label}»
           </Button>
         )}
@@ -354,52 +390,69 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
         control={form.control}
         name="footer"
         render={({ field }) => (
-          <FormItem>
-            <FormLabel>Pie de mensaje (opcional)</FormLabel>
+          <FormItem className={waField}>
+            <FormLabel className={waLabel}>
+              Pie de mensaje <span className="text-xs font-normal text-wa-muted">(opcional)</span>
+            </FormLabel>
             <FormControl>
-              <Input {...field} maxLength={WHATSAPP_TEMPLATE_LIMITS.footer * 2} />
+              <WaInput
+                {...field}
+                maxLength={WHATSAPP_TEMPLATE_LIMITS.footer * 2}
+                className={waInput}
+              />
             </FormControl>
-            <FormDescription>
+            <FormDescription className={waHint}>
               Sin variables. {field.value.length} / {WHATSAPP_TEMPLATE_LIMITS.footer} caracteres.
             </FormDescription>
-            <FormMessage />
+            <FormMessage className="text-xs text-wa-red" />
           </FormItem>
         )}
       />
 
-      <fieldset className="min-w-0 space-y-3 rounded-lg border p-3">
-        <legend className="px-1 text-sm font-medium">Botones</legend>
-        <div className="grid gap-3 sm:grid-cols-2">
+      <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+        <legend className={cn(waLabel, "mb-1.5 p-0")}>Botones</legend>
+        <div className="grid grid-cols-1 items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_auto]">
           <FormField
             control={form.control}
             name="buttonText"
             render={({ field }) => (
-              <FormItem className="min-w-0">
-                <FormLabel>Texto del botón de enlace</FormLabel>
+              <FormItem className="min-w-0 gap-1 space-y-0">
+                <FormLabel className="sr-only">Texto del botón de enlace</FormLabel>
                 <FormControl>
-                  <Input {...field} maxLength={WHATSAPP_TEMPLATE_LIMITS.buttonText * 2} />
+                  <WaInput
+                    {...field}
+                    maxLength={WHATSAPP_TEMPLATE_LIMITS.buttonText * 2}
+                    className={waInput}
+                  />
                 </FormControl>
-                <FormDescription>
-                  {field.value.length} / {WHATSAPP_TEMPLATE_LIMITS.buttonText} caracteres.
-                </FormDescription>
-                <FormMessage />
+                <FormMessage className="text-xs text-wa-red" />
               </FormItem>
             )}
           />
-          <div className="min-w-0 space-y-2">
-            <Label htmlFor="template-button-url">Enlace del botón</Label>
-            <Input
+          <div className="min-w-0">
+            <Label htmlFor="template-button-url" className="sr-only">
+              Enlace del botón
+            </Label>
+            <WaInput
               id="template-button-url"
               value={WHATSAPP_TEMPLATE_TRACKING_URL_LABEL}
               readOnly
               disabled
               aria-describedby="template-button-url-hint"
+              className={waInput}
             />
-            <p id="template-button-url-hint" className="text-sm text-muted-foreground">
-              Fijo: rastreo POWIP. No se puede editar.
-            </p>
           </div>
+          <WaPill tone="ok" className="justify-self-start">
+            Rastreo POWIP
+          </WaPill>
         </div>
+        <p className={cn(waHint, "m-0")}>
+          Abrir enlace · {buttonText.length} / {WHATSAPP_TEMPLATE_LIMITS.buttonText} caracteres en
+          el texto del botón.{" "}
+          <span id="template-button-url-hint">
+            El enlace es fijo: rastreo POWIP. No se puede editar.
+          </span>
+        </p>
         <FormField
           control={form.control}
           name="quickReply"
@@ -407,11 +460,12 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
             <FormItem className="flex flex-row items-center gap-2 space-y-0">
               <FormControl>
                 <Checkbox
+                  className={waCheckbox}
                   checked={field.value}
                   onCheckedChange={(checked) => setFieldValue("quickReply", checked === true)}
                 />
               </FormControl>
-              <FormLabel className="font-normal">
+              <FormLabel className="text-xs font-normal text-wa-fg">
                 Agregar botón de respuesta «{WHATSAPP_TEMPLATE_QUICK_REPLY_TEXT}»
               </FormLabel>
             </FormItem>
@@ -419,21 +473,24 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
         />
       </fieldset>
 
-      <div className="space-y-3 rounded-lg border p-3">
+      <div className="flex flex-col gap-2">
         <FormField
           control={form.control}
           name="abEnabled"
           render={({ field }) => (
-            <FormItem className="flex flex-row items-start justify-between gap-3 space-y-0">
-              <div className="min-w-0 space-y-1">
-                <FormLabel>Probar dos versiones (A/B)</FormLabel>
-                <FormDescription>
+            <FormItem className="flex flex-row items-center justify-between gap-3 space-y-0">
+              <div className="min-w-0">
+                <FormLabel className="text-sm font-medium text-wa-fg">
+                  Probar dos versiones (A/B)
+                </FormLabel>
+                <FormDescription className={waHint}>
                   La mitad de los pedidos recibe cada versión. POWIP elige la ganadora con los
                   envíos reales; aquí no se muestran resultados.
                 </FormDescription>
               </div>
               <FormControl>
                 <Switch
+                  className={waSwitch}
                   checked={field.value}
                   onCheckedChange={(checked) => {
                     setFieldValue("abEnabled", checked);
@@ -451,12 +508,27 @@ export function TemplateEditorFields({ readOnly }: TemplateEditorFieldsProps) {
               control={form.control}
               name="abMinSendsPerVariant"
               render={({ field }) => (
-                <FormItem className="max-w-xs">
-                  <FormLabel>Elegir ganadora después de (envíos por versión)</FormLabel>
-                  <FormControl>
-                    <Input {...field} inputMode="numeric" pattern="[0-9]*" />
-                  </FormControl>
-                  <FormMessage />
+                <FormItem className="flex flex-col gap-1 space-y-0">
+                  <div className="flex flex-wrap items-center gap-2.5 text-xs">
+                    <span className="text-wa-muted" aria-hidden="true">
+                      Elegir ganadora después de
+                    </span>
+                    <FormLabel className="sr-only">
+                      Elegir ganadora después de (envíos por versión)
+                    </FormLabel>
+                    <FormControl>
+                      <WaInput
+                        {...field}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        className={cn(waInput, "wa-num w-[70px] px-2 py-[5px] text-center")}
+                      />
+                    </FormControl>
+                    <span className="text-wa-muted" aria-hidden="true">
+                      envíos por versión
+                    </span>
+                  </div>
+                  <FormMessage className="text-xs text-wa-red" />
                 </FormItem>
               )}
             />

@@ -75,7 +75,9 @@ describe("Sin backend", () => {
     expect(screen.getByText("Registro pendiente de integración")).toBeInTheDocument();
     const permissions = section("Permisos");
     expect(within(permissions).getAllByText("Sin confirmar")).toHaveLength(8);
-    expect(within(permissions).queryByRole("checkbox")).not.toBeInTheDocument();
+    const documented = within(permissions).getAllByRole("checkbox");
+    expect(documented.length).toBeGreaterThan(0);
+    for (const checkbox of documented) expect(checkbox).toBeDisabled();
     expect(within(permissions).getByText(/no está guardada ni se aplica/)).toBeInTheDocument();
   });
 });
@@ -226,7 +228,7 @@ describe("Alertas", () => {
     const user = userEvent.setup({ delay: null });
     const props = withData();
     render(<SettingsView {...props} />);
-    const alerts = section("Alertas de salud");
+    const alerts = section("Últimas alertas");
     await user.click(within(alerts).getByRole("button", { name: "Ver en Conversaciones" }));
     expect(props.onOpenTab).toHaveBeenCalledWith("conversaciones");
     expect(within(alerts).getByText("Sin pestaña relacionada")).toBeInTheDocument();
@@ -303,7 +305,9 @@ describe("Permisos", () => {
 
   it("sin permiso de configuración la matriz es de solo lectura", () => {
     render(<SettingsView {...withData({ canManage: false })} />);
-    expect(within(section("Permisos")).queryByRole("checkbox")).not.toBeInTheDocument();
+    const readOnly = within(section("Permisos")).getAllByRole("checkbox");
+    expect(readOnly.length).toBeGreaterThan(0);
+    for (const checkbox of readOnly) expect(checkbox).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Agregar número" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Reactivar/ })).not.toBeInTheDocument();
   });

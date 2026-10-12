@@ -8,6 +8,7 @@ import {
 import { isWhatsAppContractAvailable } from "@/features/whatsapp/constants/whatsapp-contracts";
 import { useWhatsAppScopeCatalogs } from "@/features/whatsapp/hooks/use-whatsapp-scope-catalogs";
 import { RULE_LINK_PARAMS, resolveRuleLink } from "@/features/whatsapp/utils/rule-link.util";
+import type { WhatsAppNavigate } from "@/features/whatsapp/utils/whatsapp-tab.util";
 import { SchedulingView } from "./SchedulingView";
 
 const PENDING = { kind: "pending-integration" } as const;
@@ -16,7 +17,7 @@ interface SchedulingTabProps {
   canManage: boolean;
   businessName: string;
   search: string;
-  onNavigate: (search: string) => void;
+  onNavigate: WhatsAppNavigate;
 }
 
 function SchedulingTabContent({ canManage, businessName, search, onNavigate }: SchedulingTabProps) {
@@ -28,7 +29,7 @@ function SchedulingTabContent({ canManage, businessName, search, onNavigate }: S
     const params = new URLSearchParams(search);
     params.delete(RULE_LINK_PARAMS.rule);
     params.delete(RULE_LINK_PARAMS.template);
-    onNavigate(params.toString());
+    onNavigate(params.toString(), { replace: true });
   };
 
   return (

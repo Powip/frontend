@@ -12,8 +12,20 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import { WaDialogClose } from "@/components/whatsapp/ui/WaDialogClose";
+import {
+  waButton,
+  waDialogBody,
+  waDialogContent,
+  waDialogFooter,
+  waDialogHeader,
+  waDialogTitle,
+  waLabel,
+  waTextarea,
+} from "@/components/whatsapp/ui/wa-classes";
 import { CONVERSATION_LIMITS } from "@/features/whatsapp/constants/whatsapp-conversation-catalog";
 import type { WhatsAppConversationDetail } from "@/features/whatsapp/models/conversation.model";
+import { cn } from "@/lib/utils";
 import { getConversationTitle } from "./ConversationCard";
 import {
   type ActionStatus,
@@ -54,15 +66,16 @@ export function OptOutDialog({ conversation, optOut, onClose }: OptOutDialogProp
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Dar de baja a este comprador</DialogTitle>
-          <DialogDescription>
+      <DialogContent showCloseButton={false} className={cn(waDialogContent, "sm:max-w-[480px]")}>
+        <DialogHeader className={waDialogHeader}>
+          <DialogTitle className={waDialogTitle}>Dar de baja a este comprador</DialogTitle>
+          <WaDialogClose />
+        </DialogHeader>
+        <div className={cn(waDialogBody, "flex flex-col gap-1.5")}>
+          <DialogDescription className="m-0 mb-2 text-sm text-wa-muted">
             {`${getConversationTitle(conversation)} (${conversation.phone}) no recibirá más avisos de ${conversation.storeName}. Solo se reactiva si el cliente lo pide.`}
           </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-1.5">
-          <label htmlFor={reasonId} className="text-sm font-medium">
+          <label htmlFor={reasonId} className={waLabel}>
             Motivo (opcional)
           </label>
           <Textarea
@@ -70,25 +83,31 @@ export function OptOutDialog({ conversation, optOut, onClose }: OptOutDialogProp
             value={reason}
             onChange={(event) => setReason(event.target.value)}
             rows={2}
+            className={cn(waTextarea, "min-h-[70px]")}
             aria-invalid={tooLong ? true : undefined}
           />
           {tooLong && (
-            <p className="text-xs font-medium text-destructive">
+            <p className="m-0 text-xs font-medium text-wa-red">
               Máximo {CONVERSATION_LIMITS.optOutReasonMaxLength} caracteres.
             </p>
           )}
           {status.kind === "error" && (
-            <p role="alert" className="text-xs font-medium text-red-700 dark:text-red-300">
+            <p role="alert" className="m-0 text-xs font-medium text-wa-red">
               {status.message}
             </p>
           )}
+          {!optOut && (
+            <p id={blockedId} className="m-0 text-xs text-wa-muted">
+              {CONVERSATION_PENDING_REASON}
+            </p>
+          )}
         </div>
-        <DialogFooter>
-          <Button type="button" variant="outline" onClick={onClose}>
+        <DialogFooter className={waDialogFooter}>
+          <Button type="button" className={waButton()} onClick={onClose}>
             Cancelar
           </Button>
           <BlockedActionButton
-            variant="destructive"
+            className={waButton({ variant: "solid-danger" })}
             blocked={!optOut || tooLong || status.kind === "pending"}
             blockedReasonId={blockedId}
             onClick={confirm}
@@ -96,11 +115,6 @@ export function OptOutDialog({ conversation, optOut, onClose }: OptOutDialogProp
             Dar de baja
           </BlockedActionButton>
         </DialogFooter>
-        {!optOut && (
-          <p id={blockedId} className="text-xs text-muted-foreground">
-            {CONVERSATION_PENDING_REASON}
-          </p>
-        )}
       </DialogContent>
     </Dialog>
   );

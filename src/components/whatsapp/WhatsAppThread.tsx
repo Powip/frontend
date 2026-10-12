@@ -89,14 +89,12 @@ const MEDIA_PRESENTATION: Record<WhatsAppMediaType, { label: string; icon: Lucid
 
 function NoteItem({ message }: { message: WhatsAppMessage }) {
   return (
-    <div className="flex max-w-[90%] items-start gap-1.5 self-center rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs text-amber-950 dark:bg-amber-500/15 dark:text-amber-100">
+    <div className="flex max-w-[90%] items-start gap-1.5 self-center rounded-[9px] bg-wa-amber-soft px-2.5 py-1.5 text-xs text-wa-fg">
       <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <p className="[overflow-wrap:anywhere]">
         <span className="sr-only">Nota interna: </span>
         {message.body}
-        {message.author && (
-          <span className="text-amber-800 dark:text-amber-200"> · {message.author.name}</span>
-        )}
+        {message.author && <span className="text-wa-muted"> · {message.author.name}</span>}
       </p>
     </div>
   );
@@ -110,7 +108,7 @@ function EvidenceItem({ message }: { message: WhatsAppMessage }) {
     .filter(Boolean)
     .join(" · ");
   return (
-    <div className="flex items-center gap-2.5 self-center rounded-lg border border-dashed border-slate-300 bg-white/80 px-3 py-2 text-xs dark:border-slate-600 dark:bg-slate-900/60">
+    <div className="flex items-center gap-2.5 self-center rounded-[10px] border border-dashed border-wa-border-strong bg-wa-surface-2 px-3 py-2 text-xs text-wa-fg">
       {evidence?.imageUrl ? (
         <Image
           src={evidence.imageUrl}
@@ -121,13 +119,13 @@ function EvidenceItem({ message }: { message: WhatsAppMessage }) {
           className="h-14 w-14 rounded-md object-cover"
         />
       ) : (
-        <span className="grid h-14 w-14 place-items-center rounded-md bg-slate-200 dark:bg-slate-700">
+        <span className="grid size-[54px] place-items-center rounded-lg bg-gradient-to-br from-[#D6E4E4] to-[#8FB9BA] text-[#10302F]">
           <Camera className="h-5 w-5" aria-hidden="true" />
         </span>
       )}
       <div>
         <p className="font-semibold">{title}</p>
-        <p className="text-muted-foreground">{presentation.detail}</p>
+        <p className="text-wa-muted">{presentation.detail}</p>
       </div>
     </div>
   );
@@ -137,18 +135,18 @@ function OutboundBubble({ message }: { message: WhatsAppMessage }) {
   const size = message.document ? formatFileSize(message.document.sizeBytes) : null;
   return (
     <div className="flex max-w-[85%] flex-col items-end gap-0.5 self-end">
-      <div className="w-full whitespace-pre-wrap break-words rounded-[10px_0_10px_10px] [overflow-wrap:anywhere] bg-[#D9FDD3] px-2.5 py-1.5 text-[13px] text-[#111B21] shadow-sm dark:bg-[#005C4B] dark:text-[#E9EDEF]">
+      <div className="w-full whitespace-pre-wrap break-words rounded-[10px_0_10px_10px] [overflow-wrap:anywhere] bg-[color-mix(in_srgb,var(--wa-whatsapp)_28%,var(--wa-bubble))] px-2.5 py-[7px] text-[13px] text-wa-bubble-fg shadow-[0_1px_0.5px_rgba(0,0,0,0.13)]">
         <p className="mb-0.5 text-[10.5px] font-semibold opacity-70">{getOutboundLabel(message)}</p>
         {message.document && (
-          <div className="mb-1 flex items-center gap-2 rounded-md bg-black/5 p-2 font-semibold dark:bg-white/10">
-            <FileText className="h-4 w-4 shrink-0" aria-hidden="true" />
+          <div className="mb-1 flex items-center gap-2 rounded-lg bg-[color-mix(in_srgb,var(--wa-bubble-fg)_6%,transparent)] p-2.5 font-semibold">
+            <FileText className="size-4 shrink-0" aria-hidden="true" />
             <span className="truncate">{message.document.fileName}</span>
             {size && <span className="shrink-0 text-[11px] font-normal opacity-70">{size}</span>}
           </div>
         )}
         <WhatsAppFormattedText text={message.body} />
         {message.buttonText && (
-          <span className="mt-1.5 flex items-center justify-center gap-1 border-t border-black/10 pt-1 text-[12.5px] font-medium text-sky-700 dark:border-white/10 dark:text-sky-300">
+          <span className="mt-1.5 flex items-center justify-center gap-1 border-t border-[color-mix(in_srgb,var(--wa-bubble-fg)_12%,transparent)] pt-[5px] text-[12.5px] font-medium text-[#00A5F4]">
             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
             {message.buttonText}
           </span>
@@ -161,10 +159,14 @@ function OutboundBubble({ message }: { message: WhatsAppMessage }) {
         </span>
       </div>
       {message.status && !isMetaTrackedStatus(message.status) && (
-        <span className="text-[11px]">
-          <MessageStatusTicks status={message.status} showDetail />
+        <span className="max-w-full text-right text-[11px]">
+          <MessageStatusTicks
+            status={message.status}
+            showDetail
+            className="max-w-full flex-wrap justify-end text-[11.5px]"
+          />
           {message.failureReason && (
-            <span className="block text-red-700 dark:text-red-300">{message.failureReason}</span>
+            <span className="block text-wa-red">{message.failureReason}</span>
           )}
         </span>
       )}
@@ -197,7 +199,7 @@ function InboundMedia({ media }: { media: WhatsAppMessageMedia }) {
 function InboundBubble({ message }: { message: WhatsAppMessage }) {
   const text = message.body || message.media?.caption || "";
   return (
-    <div className="max-w-[85%] self-start whitespace-pre-wrap break-words rounded-[0_10px_10px_10px] bg-white px-2.5 py-1.5 text-[13px] text-[#111B21] shadow-sm [overflow-wrap:anywhere] dark:bg-[#202C33] dark:text-[#E9EDEF]">
+    <div className="max-w-[85%] self-start whitespace-pre-wrap break-words rounded-[0_10px_10px_10px] bg-wa-bubble px-2.5 py-[7px] text-[13px] text-wa-bubble-fg shadow-[0_1px_0.5px_rgba(0,0,0,0.13)] [overflow-wrap:anywhere]">
       <span className="sr-only">Comprador: </span>
       {message.media && <InboundMedia media={message.media} />}
       {text}
@@ -229,9 +231,9 @@ export function WhatsAppThread({
   const ordered = [...messages].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
 
   return (
-    <div className={cn("rounded-xl bg-[#EFE7DD] p-3 dark:bg-[#0B141A]", className)}>
+    <div className={cn("rounded-xl bg-wa-chat-bg px-3 py-3.5", className)}>
       {ordered.length === 0 ? (
-        <p className="py-6 text-center text-sm text-slate-600 dark:text-slate-300">{emptyLabel}</p>
+        <p className="py-6 text-center text-sm text-wa-muted">{emptyLabel}</p>
       ) : (
         <ol className="flex flex-col gap-1.5" aria-label="Mensajes de la conversación">
           {ordered.map((message, index) => {
@@ -240,7 +242,7 @@ export function WhatsAppThread({
             return (
               <Fragment key={message.id}>
                 {startsDay && (
-                  <li className="my-1 self-center rounded-md bg-white px-2.5 py-0.5 text-[11px] font-medium uppercase text-slate-500 dark:bg-[#202C33] dark:text-slate-300">
+                  <li className="my-1 self-center rounded-[7px] bg-wa-bubble px-2.5 py-[3px] text-[11px] uppercase text-wa-muted">
                     {formatLimaDayLabel(message.createdAt, now)}
                   </li>
                 )}

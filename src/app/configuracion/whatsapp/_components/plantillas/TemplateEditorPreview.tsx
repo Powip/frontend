@@ -1,3 +1,5 @@
+import { WaPill } from "@/components/whatsapp/ui/WaPill";
+import { waCaps } from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppPhonePreview } from "@/components/whatsapp/WhatsAppPhonePreview";
 import {
   getTemplateSampleValues,
@@ -10,6 +12,7 @@ import {
   type WhatsAppAbVariant,
 } from "@/features/whatsapp/enums/whatsapp.enums";
 import type { TemplateEditorValues } from "@/features/whatsapp/schemas/template-editor.schema";
+import { cn } from "@/lib/utils";
 import { TemplateSegmentedChoice } from "./TemplateSegmentedChoice";
 
 const SAMPLE_VALUES = getTemplateSampleValues();
@@ -36,20 +39,14 @@ export function TemplateEditorPreview({
         : null;
 
   return (
-    <section aria-labelledby="template-preview-title" className="min-w-0 space-y-3">
-      <div className="space-y-1">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 id="template-preview-title" className="text-sm font-semibold">
-            Vista previa{values.abEnabled ? ` · versión ${showsB ? "B" : "A"}` : ""}
-          </h3>
-          <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
-            Datos de muestra
-          </span>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Las variables se reemplazan con valores de ejemplo, no con un pedido real. La vista previa
-          con pedidos reales está pendiente de integración.
-        </p>
+    <section aria-labelledby="template-preview-title" className="flex min-w-0 flex-col gap-3.5">
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <h3 id="template-preview-title" className={cn(waCaps, "m-0 text-center")}>
+          Vista previa{values.abEnabled ? ` · versión ${showsB ? "B" : "A"}` : ""}
+        </h3>
+        <WaPill tone="warn" className="text-[11px]">
+          Datos de muestra
+        </WaPill>
       </div>
 
       {values.abEnabled && (
@@ -76,6 +73,11 @@ export function TemplateEditorPreview({
         timeLabel="10:02"
         emptyBodyLabel={showsB ? "Escribe el mensaje de la versión B…" : "Escribe tu mensaje…"}
       />
+
+      <p className="m-0 text-center text-xs text-wa-muted">
+        Las variables se reemplazan con valores de ejemplo, no con un pedido real. La vista previa
+        con pedidos reales está pendiente de integración.
+      </p>
     </section>
   );
 }

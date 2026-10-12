@@ -2,6 +2,8 @@
 
 import { useId } from "react";
 import { Switch } from "@/components/ui/switch";
+import { WaCard, WaCardHeader } from "@/components/whatsapp/ui/WaCard";
+import { waChoice, waSwitch } from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
 import { FOREIGN_INBOUND_OPTIONS } from "@/features/whatsapp/constants/whatsapp-settings-catalog";
 import { useSettingsDraft } from "@/features/whatsapp/hooks/use-settings-draft";
@@ -28,17 +30,12 @@ function ForeignForm({
   const switchId = useId();
   const { draft, setDraft, isDirty, discard } = useSettingsDraft(source.values);
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-2">
       {source.note && <SuggestedValuesNote reason={source.note} />}
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">
-          Si escribe un número que no es de Perú (+51)
-        </legend>
+      <fieldset className="m-0 flex flex-col gap-2 border-0 p-0">
+        <legend className="sr-only">Si escribe un número que no es de Perú (+51)</legend>
         {FOREIGN_INBOUND_OPTIONS.map((option) => (
-          <label
-            key={option.value}
-            className="flex items-start gap-2 rounded-lg border p-3 text-sm"
-          >
+          <label key={option.value} className={waChoice}>
             <input
               type="radio"
               name="foreign-inbound"
@@ -46,21 +43,21 @@ function ForeignForm({
               checked={draft.foreignInbound === option.value}
               disabled={!canEdit}
               onChange={() => setDraft({ ...draft, foreignInbound: option.value })}
-              className="mt-0.5 h-4 w-4 accent-primary"
+              className="size-4 shrink-0 accent-wa-blue"
             />
-            <span>
-              <span className="font-medium">{option.label}</span>
+            <span className="min-w-0">
+              <span className="block font-semibold">{option.label}</span>
               {option.description && (
-                <span className="block text-muted-foreground">{option.description}</span>
+                <span className="block text-xs text-wa-muted">{option.description}</span>
               )}
             </span>
           </label>
         ))}
       </fieldset>
-      <div className="flex items-start justify-between gap-3 rounded-lg border p-3">
-        <label htmlFor={switchId} className="space-y-1 text-sm">
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <label htmlFor={switchId} className="min-w-0 text-xs">
           <span className="block">Permitir avisos automáticos a números extranjeros</span>
-          <span className="block text-xs text-muted-foreground">
+          <span className="block text-[11px] text-wa-muted">
             Apagado, los avisos solo salen a celulares de Perú (+51, 9 dígitos que empiezan en 9),
             la misma regla que muestra Programación en «Si al pedido le faltan datos». Encendido,
             esa regla deja de excluir números extranjeros; POWIP valida el número al encolar.
@@ -68,6 +65,7 @@ function ForeignForm({
         </label>
         <Switch
           id={switchId}
+          className={waSwitch}
           checked={draft.allowForeignOutbound}
           disabled={!canEdit}
           onCheckedChange={(checked) => setDraft({ ...draft, allowForeignOutbound: checked })}
@@ -104,15 +102,13 @@ export function ForeignNumbersSection({
 }: ForeignNumbersSectionProps) {
   const source = resolveSettingsSource(protection, toProtectionSettingsValues);
   return (
-    <section aria-labelledby="foreign-title" className="space-y-4 rounded-xl border p-4">
-      <div>
-        <h3 id="foreign-title" className="font-semibold">
-          Números extranjeros
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          Qué hacer con mensajes y avisos de números que no son de Perú.
-        </p>
-      </div>
+    <WaCard aria-labelledby="foreign-title">
+      <WaCardHeader
+        level={3}
+        titleId="foreign-title"
+        title="Números extranjeros"
+        description="Qué hacer si escribe un número que no es de Perú (+51)."
+      />
       {source ? (
         <ForeignForm
           key={storeKey}
@@ -132,6 +128,6 @@ export function ForeignNumbersSection({
           {() => null}
         </WhatsAppResourceState>
       )}
-    </section>
+    </WaCard>
   );
 }

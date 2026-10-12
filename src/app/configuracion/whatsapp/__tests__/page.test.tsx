@@ -4,10 +4,11 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 
 const mockReplace = jest.fn();
+const mockPush = jest.fn();
 let mockSearch = "";
 
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: jest.fn(), replace: mockReplace, back: jest.fn() }),
+  useRouter: () => ({ push: mockPush, replace: mockReplace, back: jest.fn() }),
   usePathname: () => "/configuracion/whatsapp",
   useSearchParams: () => new URLSearchParams(mockSearch),
 }));
@@ -71,6 +72,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   mockReplace.mockClear();
+  mockPush.mockClear();
   window.localStorage.clear();
   mockAuth("ADMINISTRADOR");
 });
@@ -114,17 +116,23 @@ describe("WhatsAppSettingsPage", () => {
     const user = userEvent.setup();
     await renderPage("tab=conexion&ref=menu");
     await user.click(screen.getByRole("tab", { name: "Plantillas" }));
-    expect(mockReplace).toHaveBeenCalledWith("/configuracion/whatsapp?tab=plantillas&ref=menu", {
+    expect(mockPush).toHaveBeenCalledWith("/configuracion/whatsapp?tab=plantillas&ref=menu", {
       scroll: false,
     });
     expect(window.localStorage.getItem(WHATSAPP_TAB_STORAGE_KEY)).toBe("plantillas");
   });
 
-  it("la pestaña conexion muestra su estado pendiente de integración", async () => {
+  it("la pestaña conexion queda pendiente sin conexiones, tarifas ni montos", async () => {
     await renderPage("tab=conexion");
-    const note = screen.getByRole("note");
-    expect(note).toHaveTextContent("Pendiente de integración");
-    expect(within(note).getByText("Número conectado")).toBeInTheDocument();
+    expect(screen.getByText("Estado de conexión pendiente de integración")).toBeInTheDocument();
+    expect(screen.getByText("Número pendiente de integración")).toBeInTheDocument();
+    expect(screen.getByText("Tarifas pendientes de integración")).toBeInTheDocument();
+    expect(screen.queryByText(/Conectado ·|S\/ \d|USD \d/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("radio")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Enviar prueba" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
   });
 
   it("el historial queda pendiente sin ceros, porcentajes ni filas", async () => {
@@ -203,7 +211,7 @@ describe("WhatsAppSettingsPage", () => {
     const user = userEvent.setup();
     await renderPage("tab=programacion&rule=pedido_en_camino&template=tpl-1&ref=menu");
     await user.click(screen.getByRole("tab", { name: "Plantillas" }));
-    expect(mockReplace).toHaveBeenCalledWith("/configuracion/whatsapp?tab=plantillas&ref=menu", {
+    expect(mockPush).toHaveBeenCalledWith("/configuracion/whatsapp?tab=plantillas&ref=menu", {
       scroll: false,
     });
   });
@@ -237,12 +245,23 @@ describe("WhatsAppSettingsPage", () => {
     expect(within(drawer).queryByRole("textbox")).not.toBeInTheDocument();
   });
 
+  it("volver y adelante siguen la pestaña de la URL", async () => {
+    await renderPage("tab=historial");
+    expect(selectedTabName()).toBe("Historial de envíos");
+    mockSearch = "tab=ajustes";
+    const { rerender } = render(<WhatsAppSettingsPage />);
+    rerender(<WhatsAppSettingsPage />);
+    expect(screen.getAllByRole("tab", { selected: true }).map((tab) => tab.textContent)).toContain(
+      "Bajas, alertas y permisos",
+    );
+  });
+
   it("fuera de Conversaciones no conserva la conversación de la URL", async () => {
     const user = userEvent.setup();
     await renderPage("tab=conexion&thread=t-1&ref=menu");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     await user.click(screen.getByRole("tab", { name: "Historial de envíos" }));
-    expect(mockReplace).toHaveBeenCalledWith("/configuracion/whatsapp?tab=historial&ref=menu", {
+    expect(mockPush).toHaveBeenCalledWith("/configuracion/whatsapp?tab=historial&ref=menu", {
       scroll: false,
     });
   });
@@ -260,14 +279,13 @@ describe("WhatsAppSettingsPage", () => {
   it("lista las tiendas reales de la empresa con estado pendiente", async () => {
     await renderPage("tab=conexion");
     const list = screen.getByRole("list", { name: "Tiendas de tu empresa" });
-    expect(
-      within(list)
-        .getAllByRole("listitem")
-        .map((item) => item.textContent),
-    ).toEqual([
-      "LIVIIEstado de WhatsApp pendiente de integración",
-      "KUNCAEstado de WhatsApp pendiente de integración",
-    ]);
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+    for (const [index, name] of ["LIVII", "KUNCA"].entries()) {
+      expect(items[index]).toHaveTextContent(name);
+      expect(items[index]).toHaveTextContent("Estado de WhatsApp pendiente de integración");
+    }
+    expect(within(list).queryByRole("button", { name: /Conectar número/ })).not.toBeInTheDocument();
   });
 
   it("indica cómo crear una tienda si la empresa no tiene", async () => {

@@ -354,3 +354,52 @@ export const WHATSAPP_PERMISSION_CODES = {
 
 export type WhatsAppPermissionCode =
   (typeof WHATSAPP_PERMISSION_CODES)[keyof typeof WHATSAPP_PERMISSION_CODES];
+
+export const WHATSAPP_CONNECTION_TYPES = {
+  API: "api",
+  COEXISTENCE: "coex",
+  APP_MANUAL: "app_manual",
+} as const;
+
+export type WhatsAppConnectionType =
+  (typeof WHATSAPP_CONNECTION_TYPES)[keyof typeof WHATSAPP_CONNECTION_TYPES];
+
+export const WHATSAPP_CONNECTION_STATES = {
+  CONNECTED: "connected",
+  NAME_IN_REVIEW: "name_in_review",
+  RESTRICTED: "restricted",
+  DISCONNECTED: "disconnected",
+  NOT_CONNECTED: "not_connected",
+} as const;
+
+export type WhatsAppConnectionState =
+  (typeof WHATSAPP_CONNECTION_STATES)[keyof typeof WHATSAPP_CONNECTION_STATES];
+
+export const WHATSAPP_QUALITY_RATINGS = {
+  GREEN: "GREEN",
+  YELLOW: "YELLOW",
+  RED: "RED",
+  UNKNOWN: "UNKNOWN",
+} as const;
+
+export type WhatsAppQualityRating =
+  (typeof WHATSAPP_QUALITY_RATINGS)[keyof typeof WHATSAPP_QUALITY_RATINGS];
+
+export const WHATSAPP_NAME_STATUSES = {
+  APPROVED: "approved",
+  IN_REVIEW: "in_review",
+  REJECTED: "rejected",
+} as const;
+
+export type WhatsAppNameStatus =
+  (typeof WHATSAPP_NAME_STATUSES)[keyof typeof WHATSAPP_NAME_STATUSES];
+
+export const WHATSAPP_ASSISTED_STATUSES = {
+  PENDING: "pending",
+  OPENED: "opened",
+  MARKED_SENT: "marked_sent",
+  DISCARDED: "discarded",
+} as const;
+
+export type WhatsAppAssistedStatus =
+  (typeof WHATSAPP_ASSISTED_STATUSES)[keyof typeof WHATSAPP_ASSISTED_STATUSES];

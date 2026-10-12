@@ -15,6 +15,7 @@ Cada documento cubre una página o pestaña y tiene una sección identificable p
 | [08-indicador-ultimo-aviso.md](08-indicador-ultimo-aviso.md) | Indicador del último aviso en botones WhatsApp |
 | [09-pagina-publica-rastreo.md](09-pagina-publica-rastreo.md) | Página pública del pedido y acortador |
 | [10-seccion-local-operaciones-guias.md](10-seccion-local-operaciones-guias.md) | Sección local actual en Operaciones › Guías |
+| [11-notificaciones-whatsapp.md](11-notificaciones-whatsapp.md) | Alertas de WhatsApp dentro de POWIP (campanita) |
 
 ## Estado de implementación (etapas 2 y 3)
 
@@ -27,7 +28,7 @@ Cada documento cubre una página o pestaña y tiene una sección identificable p
 | PG-1.2 | No implementado | Sin datos por tienda; Conexión lista las tiendas reales (D-36) |
 | PG-1.3 | Implementado sin contadores | `?tab` + preferencia; los contadores esperan C-12 y C-01/C-22.2 |
 | PG-1.4 | No se implementa | D-18 |
-| T1 | Estado pendiente | Descripción y `PendingIntegrationNotice` con sus secciones; nota de acceso para no administradores |
+| T1 | Frontend completo (etapa 7) | Todas las secciones, modales y acciones; en la app, pendiente de C-01..C-11 y de la configuración de Meta. Detalle en [01-conexion.md](01-conexion.md) |
 | T2 | Frontend completo (etapa 3) | Listado con estados, filtros, tabla, edición, duplicación y editor completo; todo lo persistente pendiente de C-12/C-13/C-14. Detalle en [02-plantillas.md](02-plantillas.md) |
 | T2.S1 | Implementado; datos pendientes | En la app muestra "Listado de plantillas pendiente de integración"; con datos (stories) muestra tabla y filtros |
 | T2.A1 | Implementado sin persistencia | Abre el editor "Duplicar plantilla" (D-40) |
@@ -51,9 +52,13 @@ Cada documento cubre una página o pestaña y tiene una sección identificable p
 | T6.S1, T6.M1, T6.M2 | Implementado sin persistencia | Bajas, alta manual y reactivación auditada |
 | T6.S2, T6.S3, T6.S4 | Implementado sin persistencia | Alertas, últimas alertas y números extranjeros |
 | T6.S5, T6.S6 | Implementado; datos pendientes | Registro de solo lectura; permisos efectivos y matriz |
-| T1.S4 | Parcial | Tiendas reales (C-E1) con "Estado de WhatsApp pendiente de integración"; sin número, estado ni botones |
+| T1.S1-S7, T1.M1-M3, T1.A1-A3 | Implementado sin persistencia | Tipo con confirmación, número, prueba, tiendas, Embedded Signup bloqueado (D-71), contingencia, bandeja asistida (D-72), costos |
 | Resto de secciones, modales y cajón | No implementado | Etapas 4 a 7 |
-| X1 a X5 | No implementado | Etapas 8 y 9; `WhatsAppNotificationsSection` sin cambios |
+| X1 | Montado, pendiente de C-22.7 | Ficha › Seguimiento. [07](07-ficha-pedido-seguimiento.md) |
+| X2 | Montado, sin dato no se ve | Ventas, Operaciones, Gestión CC. [08](08-indicador-ultimo-aviso.md) |
+| X3 | Componentes + ruta `/p/[token]` pendiente | Alojamiento final D-06. [09](09-pagina-publica-rastreo.md) |
+| X4 | Reemplazado | Tarjeta hacia Configuración › WhatsApp. [10](10-seccion-local-operaciones-guias.md) |
+| X5 | Componente listo, sin montar | Falta C-31. [11](11-notificaciones-whatsapp.md) |
 
 Componentes compartidos listos para las etapas siguientes: `WhatsAppPhonePreview` (T2.M1, T3.A1, T4.M1), `WhatsAppThread` (T4.C1, X1), `MessageStatusTicks` (T4, T5, X2), `PendingIntegrationNotice` (todas), `WhatsAppResourceState` (todas las listas, desde la etapa 3).
 

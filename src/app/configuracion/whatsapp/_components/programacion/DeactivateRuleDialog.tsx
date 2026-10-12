@@ -8,7 +8,16 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import {
+  waButton,
+  waDialogBody,
+  waDialogContent,
+  waDialogFooter,
+  waDialogHeader,
+  waDialogTitle,
+} from "@/components/whatsapp/ui/wa-classes";
 import type { WhatsAppRule } from "@/features/whatsapp/models/rule.model";
+import { cn } from "@/lib/utils";
 
 const DEACTIVATION_BLOCKED_ID = "deactivate-rule-blocked";
 
@@ -28,26 +37,30 @@ export function DeactivateRuleDialog({
   const blocked = !canPersist || !onDeactivate;
   return (
     <AlertDialog open={!!rule} onOpenChange={(open) => !open && onClose()}>
-      <AlertDialogContent>
+      <AlertDialogContent className={cn(waDialogContent, "sm:max-w-[440px]")}>
         {rule && (
           <>
-            <AlertDialogHeader>
-              <AlertDialogTitle>¿Desactivar «{rule.label}»?</AlertDialogTitle>
-              <AlertDialogDescription>
+            <AlertDialogHeader className={waDialogHeader}>
+              <AlertDialogTitle className={waDialogTitle}>
+                ¿Desactivar «{rule.label}»?
+              </AlertDialogTitle>
+            </AlertDialogHeader>
+            <div className={cn(waDialogBody, "space-y-3")}>
+              <AlertDialogDescription className="m-0 text-sm text-wa-muted">
                 Dejarán de enviarse estos avisos. Qué pasa con los mensajes ya encolados lo define
                 el servicio de avisos.
               </AlertDialogDescription>
-            </AlertDialogHeader>
-            {blocked && (
-              <p id={DEACTIVATION_BLOCKED_ID} className="text-sm text-muted-foreground">
-                La desactivación estará disponible cuando se conecte el servicio de avisos
-                automáticos. El aviso sigue como estaba.
-              </p>
-            )}
-            <AlertDialogFooter>
-              <AlertDialogCancel>Cancelar</AlertDialogCancel>
+              {blocked && (
+                <p id={DEACTIVATION_BLOCKED_ID} className="m-0 text-xs text-wa-muted">
+                  La desactivación estará disponible cuando se conecte el servicio de avisos
+                  automáticos. El aviso sigue como estaba.
+                </p>
+              )}
+            </div>
+            <AlertDialogFooter className={waDialogFooter}>
+              <AlertDialogCancel className={waButton()}>Cancelar</AlertDialogCancel>
               <BlockedActionButton
-                variant="destructive"
+                className={waButton({ variant: "solid-danger" })}
                 blocked={blocked}
                 blockedReasonId={DEACTIVATION_BLOCKED_ID}
                 onClick={() => onDeactivate?.(rule)}

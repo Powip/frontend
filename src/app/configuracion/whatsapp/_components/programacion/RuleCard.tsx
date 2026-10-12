@@ -24,7 +24,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -34,6 +33,22 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import { WaCallout } from "@/components/whatsapp/ui/WaCallout";
+import { WaInput } from "@/components/whatsapp/ui/WaInput";
+import {
+  waButton,
+  waCheckbox,
+  waDialogBody,
+  waDialogContent,
+  waDialogFooter,
+  waDialogHeader,
+  waDialogTitle,
+  waField,
+  waInput,
+  waLabel,
+  waSelectTrigger,
+  waSwitch,
+} from "@/components/whatsapp/ui/wa-classes";
 import {
   getRuleDefinition,
   WHATSAPP_RULE_WHEN_MODE_LABELS,
@@ -56,6 +71,7 @@ import {
 import { describeRuleScope, describeRuleWhen } from "@/features/whatsapp/utils/rule-summary.util";
 import { cn } from "@/lib/utils";
 import { RuleScopeFields } from "./RuleScopeFields";
+import { RULE_ICONS } from "./rule-icons";
 import { buildScopeLabels } from "./scope-labels";
 
 const WHEN_VALUE_DEFAULTS: Partial<
@@ -197,6 +213,7 @@ export function RuleCard({
     }
   };
 
+  const RuleIcon = RULE_ICONS[rule.key] ?? Clock3;
   const stats = rule.stats;
   const monthlyCost = stats?.estimatedMonthly?.pen ?? null;
 
@@ -205,22 +222,39 @@ export function RuleCard({
       ref={containerRef}
       aria-labelledby={headingId}
       data-rule-key={rule.key}
+      data-highlighted={highlighted ? "true" : undefined}
       className={cn(
-        "flex min-w-0 flex-col gap-3 rounded-xl border bg-card p-4 shadow-sm",
-        rule.active && "border-emerald-300 dark:border-emerald-500/40",
-        highlighted && "ring-2 ring-primary ring-offset-2 ring-offset-background",
+        "flex min-w-0 flex-col gap-3 rounded-[14px] border border-wa-border bg-wa-surface px-[18px] py-4 transition-[border-color]",
+        rule.active && "border-[color-mix(in_srgb,var(--wa-whatsapp)_45%,var(--wa-border))]",
+        highlighted && "outline-2 outline-solid outline-offset-2 outline-wa-primary",
       )}
     >
       <div className="flex items-start gap-3">
+        <span
+          className={cn(
+            "grid size-9 shrink-0 place-items-center rounded-[10px]",
+            rule.active
+              ? "bg-wa-whatsapp-soft text-wa-whatsapp-dark"
+              : "bg-wa-surface-2 text-wa-muted",
+          )}
+        >
+          <RuleIcon className="size-[18px]" aria-hidden="true" />
+        </span>
         <div className="min-w-0 flex-1">
-          <h4 id={headingId} ref={headingRef} tabIndex={-1} className="font-semibold outline-none">
+          <h4
+            id={headingId}
+            ref={headingRef}
+            tabIndex={-1}
+            className="m-0 text-[15px] font-semibold outline-none"
+          >
             {rule.label}
           </h4>
           {rule.triggerLabel && (
-            <p className="text-xs text-muted-foreground">Se dispara: {rule.triggerLabel}</p>
+            <p className="m-0 text-xs text-wa-muted">Se dispara: {rule.triggerLabel}</p>
           )}
         </div>
         <Switch
+          className={waSwitch}
           checked={rule.active}
           disabled={readOnly || (!rule.active && !!blockedMessage)}
           aria-label={`${rule.active ? "Desactivar" : "Activar"} aviso ${rule.label}`}
@@ -232,36 +266,41 @@ export function RuleCard({
       </div>
 
       {blockedMessage && (
-        <p className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-2.5 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
-          <Clock3 className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+        <WaCallout tone="amber" icon={Clock3} compact>
           {blockedMessage}
-        </p>
+        </WaCallout>
       )}
 
       {keepsApprovedVersion && selectedTemplate && (
-        <p className="rounded-lg border bg-muted/40 p-2.5 text-xs">
+        <WaCallout compact>
           Meta está revisando cambios de {selectedTemplate.name}; mientras tanto se sigue enviando
           la versión aprobada.
-        </p>
+        </WaCallout>
       )}
 
       {preselectedNote && (
-        <p role="status" className="rounded-lg border bg-muted/40 p-2.5 text-xs">
-          Plantilla preseleccionada desde Plantillas. Todavía no se guardó ni se activó.
-        </p>
+        <div role="status">
+          <WaCallout tone="teal" compact>
+            Plantilla preseleccionada desde Plantillas. Todavía no se guardó ni se activó.
+          </WaCallout>
+        </div>
       )}
 
       <Form {...form}>
-        <form noValidate className="space-y-3" onSubmit={(event) => event.preventDefault()}>
-          <fieldset disabled={readOnly} className="min-w-0 space-y-3">
+        <form
+          noValidate
+          className="flex flex-col gap-3"
+          onSubmit={(event) => event.preventDefault()}
+        >
+          <fieldset disabled={readOnly} className="m-0 flex min-w-0 flex-col gap-3 border-0 p-0">
             <legend className="sr-only">Configuración del aviso {rule.label}</legend>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
               <FormField
                 control={form.control}
                 name="templateId"
                 render={({ field }) => (
-                  <FormItem className="min-w-0">
-                    <FormLabel>Plantilla</FormLabel>
+                  <FormItem className={waField}>
+                    <FormLabel className={waLabel}>Plantilla</FormLabel>
                     <Select
                       value={field.value || undefined}
                       onValueChange={(value) => {
@@ -272,7 +311,7 @@ export function RuleCard({
                       disabled={readOnly || templates.kind !== "ready"}
                     >
                       <FormControl>
-                        <SelectTrigger className="w-full" onBlur={field.onBlur}>
+                        <SelectTrigger className={waSelectTrigger} onBlur={field.onBlur}>
                           <SelectValue
                             placeholder={
                               templates.kind === "ready"
@@ -296,7 +335,7 @@ export function RuleCard({
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-wa-red" />
                   </FormItem>
                 )}
               />
@@ -304,8 +343,8 @@ export function RuleCard({
                 control={form.control}
                 name="whenMode"
                 render={({ field }) => (
-                  <FormItem className="min-w-0">
-                    <FormLabel>Cuándo enviar</FormLabel>
+                  <FormItem className={waField}>
+                    <FormLabel className={waLabel}>Cuándo enviar</FormLabel>
                     <Select
                       value={field.value}
                       onValueChange={(value) => {
@@ -315,7 +354,7 @@ export function RuleCard({
                       disabled={readOnly}
                     >
                       <FormControl>
-                        <SelectTrigger className="w-full" onBlur={field.onBlur}>
+                        <SelectTrigger className={waSelectTrigger} onBlur={field.onBlur}>
                           <SelectValue />
                         </SelectTrigger>
                       </FormControl>
@@ -327,7 +366,7 @@ export function RuleCard({
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-wa-red" />
                   </FormItem>
                 )}
               />
@@ -338,12 +377,12 @@ export function RuleCard({
                 control={form.control}
                 name="delayMinutes"
                 render={({ field }) => (
-                  <FormItem className="max-w-xs">
-                    <FormLabel>Minutos después</FormLabel>
+                  <FormItem className={cn(waField, "sm:w-[calc(50%-5px)]")}>
+                    <FormLabel className={waLabel}>Minutos después</FormLabel>
                     <FormControl>
-                      <Input {...field} inputMode="numeric" />
+                      <WaInput {...field} inputMode="numeric" className={cn(waInput, "wa-num")} />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-wa-red" />
                   </FormItem>
                 )}
               />
@@ -353,12 +392,12 @@ export function RuleCard({
                 control={form.control}
                 name="fixedTime"
                 render={({ field }) => (
-                  <FormItem className="max-w-xs">
-                    <FormLabel>Hora (Lima)</FormLabel>
+                  <FormItem className={cn(waField, "sm:w-[calc(50%-5px)]")}>
+                    <FormLabel className={waLabel}>Hora (Lima)</FormLabel>
                     <FormControl>
-                      <Input {...field} type="time" />
+                      <WaInput {...field} type="time" className={cn(waInput, "wa-num")} />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-wa-red" />
                   </FormItem>
                 )}
               />
@@ -368,26 +407,27 @@ export function RuleCard({
                 control={form.control}
                 name="hoursBefore"
                 render={({ field }) => (
-                  <FormItem className="max-w-xs">
-                    <FormLabel>Horas antes de la entrega estimada</FormLabel>
+                  <FormItem className={cn(waField, "sm:w-[calc(50%-5px)]")}>
+                    <FormLabel className={waLabel}>Horas antes de la entrega estimada</FormLabel>
                     <FormControl>
-                      <Input {...field} inputMode="numeric" />
+                      <WaInput {...field} inputMode="numeric" className={cn(waInput, "wa-num")} />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-wa-red" />
                   </FormItem>
                 )}
               />
             )}
 
             {supportsReminder && (
-              <div className="flex flex-wrap items-start gap-3">
+              <div className="flex flex-wrap items-center gap-2 text-xs">
                 <FormField
                   control={form.control}
                   name="reminderEnabled"
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-center gap-2 space-y-0 pt-2">
+                    <FormItem className="flex flex-row items-center gap-2 space-y-0">
                       <FormControl>
                         <Checkbox
+                          className={waCheckbox}
                           checked={field.value}
                           onCheckedChange={(checked) =>
                             form.setValue("reminderEnabled", checked === true, {
@@ -396,7 +436,9 @@ export function RuleCard({
                           }
                         />
                       </FormControl>
-                      <FormLabel className="font-normal">Recordar si no lo recoge</FormLabel>
+                      <FormLabel className="text-xs font-normal text-wa-fg">
+                        Recordar si no lo recoge
+                      </FormLabel>
                     </FormItem>
                   )}
                 />
@@ -405,12 +447,20 @@ export function RuleCard({
                     control={form.control}
                     name="reminderHours"
                     render={({ field }) => (
-                      <FormItem className="w-40">
-                        <FormLabel>Después de (horas)</FormLabel>
-                        <FormControl>
-                          <Input {...field} inputMode="numeric" />
-                        </FormControl>
-                        <FormMessage />
+                      <FormItem className="flex flex-col gap-1 space-y-0">
+                        <span className="flex items-center gap-1.5">
+                          <span aria-hidden="true">en</span>
+                          <FormLabel className="sr-only">Después de (horas)</FormLabel>
+                          <FormControl>
+                            <WaInput
+                              {...field}
+                              inputMode="numeric"
+                              className={cn(waInput, "wa-num w-14 px-2 py-1 text-center")}
+                            />
+                          </FormControl>
+                          <span aria-hidden="true">horas</span>
+                        </span>
+                        <FormMessage className="text-xs text-wa-red" />
                       </FormItem>
                     )}
                   />
@@ -426,9 +476,9 @@ export function RuleCard({
             />
           </fieldset>
 
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed pt-3 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-wa-border pt-2.5 text-xs text-wa-muted">
             <span>{describeRuleWhen(toWhen(values))} · respeta horario</span>
-            <span className="tabular-nums">
+            <span className="wa-num">
               {rule.active
                 ? [
                     stats?.sentToday !== null && stats?.sentToday !== undefined
@@ -442,8 +492,7 @@ export function RuleCard({
             </span>
             <Button
               type="button"
-              variant="ghost"
-              size="sm"
+              className={waButton({ variant: "ghost", size: "sm" })}
               disabled={!selectedTemplate}
               onClick={() => selectedTemplate && onPreviewTemplate(selectedTemplate)}
             >
@@ -455,14 +504,13 @@ export function RuleCard({
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               <Button
                 type="button"
-                variant="outline"
-                size="sm"
+                className={waButton({ size: "sm" })}
                 onClick={() => setConfirmDiscardOpen(true)}
               >
                 Descartar cambios
               </Button>
               <BlockedActionButton
-                size="sm"
+                className={waButton({ variant: "primary", size: "sm" })}
                 blocked={!canPersist}
                 blockedReasonId={persistenceNoteId}
                 onClick={() => undefined}
@@ -475,16 +523,21 @@ export function RuleCard({
       </Form>
 
       <AlertDialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Descartar los cambios de «{rule.label}»?</AlertDialogTitle>
-            <AlertDialogDescription>
+        <AlertDialogContent className={cn(waDialogContent, "sm:max-w-[440px]")}>
+          <AlertDialogHeader className={waDialogHeader}>
+            <AlertDialogTitle className={waDialogTitle}>
+              ¿Descartar los cambios de «{rule.label}»?
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className={waDialogBody}>
+            <AlertDialogDescription className="m-0 text-sm text-wa-muted">
               Volverás a la configuración guardada de este aviso.
             </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+          </div>
+          <AlertDialogFooter className={waDialogFooter}>
+            <AlertDialogCancel className={waButton()}>Seguir editando</AlertDialogCancel>
             <AlertDialogAction
+              className={waButton({ variant: "solid-danger" })}
               onClick={() => {
                 form.reset(toRuleConfigValues(rule));
                 setPreselectedNote(false);

@@ -151,6 +151,7 @@ export interface OrderPayment {
 ----------------------------------------- */
 export interface OrderHeader {
   id: string;
+  waLastNotice?: unknown;
   receiptType: ReceiptType;
   orderType: OrderType;
   orderNumber: string;

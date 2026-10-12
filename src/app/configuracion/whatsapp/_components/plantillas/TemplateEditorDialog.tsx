@@ -24,6 +24,14 @@ import {
 } from "@/components/ui/dialog";
 import { Form } from "@/components/ui/form";
 import {
+  waButton,
+  waDialogBody,
+  waDialogContent,
+  waDialogFooter,
+  waDialogHeader,
+  waDialogTitle,
+} from "@/components/whatsapp/ui/wa-classes";
+import {
   WHATSAPP_AB_VARIANTS,
   WHATSAPP_TEMPLATE_HEADER_TYPES,
   WHATSAPP_TEMPLATE_STATUSES,
@@ -143,25 +151,26 @@ export function TemplateEditorDialog({
       >
         <DialogContent
           showCloseButton={false}
-          className="flex max-h-[calc(100dvh-2rem)] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl"
+          className={cn(
+            waDialogContent,
+            "flex max-h-[calc(100dvh-2rem)] w-full flex-col sm:max-w-[1080px]",
+          )}
         >
-          <DialogHeader className="flex-row items-start justify-between gap-3 border-b px-4 py-3 text-left sm:px-6 sm:py-4">
-            <div className="min-w-0 space-y-1">
-              <DialogTitle>{getTitle(mode, readOnly)}</DialogTitle>
-              <DialogDescription>
+          <DialogHeader className={waDialogHeader}>
+            <div className="min-w-0">
+              <DialogTitle className={waDialogTitle}>{getTitle(mode, readOnly)}</DialogTitle>
+              <DialogDescription className="sr-only">
                 Meta revisa cada plantilla antes de que puedas usarla. Normalmente tarda de unos
                 minutos a 24 horas.
               </DialogDescription>
             </div>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
+              className={cn(waButton({ variant: "ghost", size: "icon" }), "-my-1.5 -mr-2")}
               aria-label="Cerrar ventana"
               onClick={requestClose}
             >
-              <X className="h-4 w-4" aria-hidden="true" />
+              <X aria-hidden="true" />
             </Button>
           </DialogHeader>
 
@@ -171,9 +180,21 @@ export function TemplateEditorDialog({
               className="flex min-h-0 flex-1 flex-col"
               onSubmit={(event) => event.preventDefault()}
             >
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
-                <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.9fr)]">
-                  <div className="min-w-0 space-y-5">
+              <div
+                className={cn(waDialogBody, "min-h-0 flex-1 overflow-y-auto overscroll-contain")}
+              >
+                <div className="grid min-w-0 grid-cols-1 items-start gap-6 min-[1050px]:grid-cols-[minmax(0,1.35fr)_minmax(280px,0.9fr)]">
+                  <div className="flex min-w-0 flex-col gap-3.5">
+                    {!readOnly && !canPersist && (
+                      <p
+                        id={PENDING_PERSISTENCE_ID}
+                        className="m-0 rounded-xl border border-dashed border-wa-border-strong bg-wa-surface-2 px-3 py-2.5 text-xs text-wa-muted"
+                      >
+                        Guardar y enviar a revisión de Meta estarán disponibles cuando se conecte el
+                        servicio de plantillas. Puedes completar y revisar el mensaje, pero todavía
+                        no se guarda nada.
+                      </p>
+                    )}
                     {sourceTemplate && (
                       <TemplateStatusNotice
                         template={sourceTemplate}
@@ -182,7 +203,7 @@ export function TemplateEditorDialog({
                       />
                     )}
                     {!canManage && (
-                      <p className="rounded-lg border bg-muted/40 p-3 text-sm">
+                      <p className="m-0 rounded-xl border border-wa-border bg-wa-surface-2 px-3.5 py-3 text-[13px]">
                         Solo un administrador puede crear o editar plantillas.
                       </p>
                     )}
@@ -191,7 +212,7 @@ export function TemplateEditorDialog({
                       <TemplatePromotionalWarning terms={promotionalTerms} />
                     )}
                   </div>
-                  <div className="min-w-0 lg:sticky lg:top-0 lg:self-start">
+                  <div className="min-w-0 min-[1050px]:sticky min-[1050px]:top-0">
                     <TemplateEditorPreview
                       values={watched}
                       businessName={businessName}
@@ -202,26 +223,18 @@ export function TemplateEditorDialog({
                 </div>
               </div>
 
-              <div className="space-y-3 border-t px-4 py-3 sm:px-6">
-                {!readOnly && !canPersist && (
-                  <p id={PENDING_PERSISTENCE_ID} className="text-sm text-muted-foreground">
-                    Guardar y enviar a revisión de Meta estarán disponibles cuando se conecte el
-                    servicio de plantillas. Puedes completar y revisar el mensaje, pero todavía no
-                    se guarda nada.
-                  </p>
-                )}
-                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                  <Button type="button" variant="outline" onClick={requestClose}>
+              <div className={cn(waDialogFooter, "static")}>
+                <div className="grid grid-cols-2 gap-2.5 sm:flex sm:justify-end [&>*]:whitespace-normal [&>*:last-child]:col-span-2">
+                  <Button type="button" className={waButton()} onClick={requestClose}>
                     {readOnly ? "Cerrar" : "Cancelar"}
                   </Button>
                   {!readOnly && (
                     <>
                       <Button
                         type="button"
-                        variant="outline"
                         aria-disabled={!saveEnabled}
                         aria-describedby={saveEnabled ? undefined : PENDING_PERSISTENCE_ID}
-                        className={cn(!saveEnabled && "cursor-not-allowed opacity-50")}
+                        className={waButton()}
                         onClick={() => runIfEnabled(saveEnabled, onSaveDraft)}
                       >
                         Guardar borrador
@@ -230,10 +243,10 @@ export function TemplateEditorDialog({
                         type="button"
                         aria-disabled={!submitEnabled}
                         aria-describedby={submitEnabled ? undefined : PENDING_PERSISTENCE_ID}
-                        className={cn(!submitEnabled && "cursor-not-allowed opacity-50")}
+                        className={waButton({ variant: "primary" })}
                         onClick={() => runIfEnabled(submitEnabled, onSubmitForReview)}
                       >
-                        <Send className="h-4 w-4" aria-hidden="true" />
+                        <Send aria-hidden="true" />
                         {resubmits ? "Guardar y reenviar a revisión" : "Enviar a revisión de Meta"}
                       </Button>
                     </>
@@ -246,16 +259,19 @@ export function TemplateEditorDialog({
       </Dialog>
 
       <AlertDialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Descartar los cambios?</AlertDialogTitle>
-            <AlertDialogDescription>
+        <AlertDialogContent className={cn(waDialogContent, "sm:max-w-[440px]")}>
+          <AlertDialogHeader className={waDialogHeader}>
+            <AlertDialogTitle className={waDialogTitle}>¿Descartar los cambios?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className={waDialogBody}>
+            <AlertDialogDescription className="m-0 text-sm text-wa-muted">
               Los cambios de esta plantilla no se guardaron y se perderán al cerrar.
             </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+          </div>
+          <AlertDialogFooter className={waDialogFooter}>
+            <AlertDialogCancel className={waButton()}>Seguir editando</AlertDialogCancel>
             <AlertDialogAction
+              className={waButton({ variant: "solid-danger" })}
               onClick={() => {
                 setConfirmDiscardOpen(false);
                 onClose();

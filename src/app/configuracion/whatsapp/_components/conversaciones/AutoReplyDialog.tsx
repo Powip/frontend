@@ -34,6 +34,19 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import {
+  waButton,
+  waDialogBody,
+  waDialogContent,
+  waDialogFooter,
+  waDialogHeader,
+  waDialogTitle,
+  waField,
+  waHint,
+  waLabel,
+  waSwitch,
+  waTextarea,
+} from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppPhonePreview } from "@/components/whatsapp/WhatsAppPhonePreview";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
 import {
@@ -51,6 +64,7 @@ import {
   insertTextAtSelection,
   toVariableToken,
 } from "@/features/whatsapp/utils/template-variables.util";
+import { cn } from "@/lib/utils";
 import { TemplateSegmentedChoice } from "../plantillas/TemplateSegmentedChoice";
 
 const AUTO_REPLY_BLOCKED_ID = "auto-reply-blocked";
@@ -103,10 +117,10 @@ function VariableTextField({
   };
 
   return (
-    <FormItem>
+    <FormItem className={waField}>
       <div className="flex items-center justify-between gap-2">
-        <FormLabel>{label}</FormLabel>
-        <span className="text-xs text-muted-foreground tabular-nums">
+        <FormLabel className={waLabel}>{label}</FormLabel>
+        <span className="wa-num text-xs text-wa-muted">
           {field.value.length}/{CONVERSATION_LIMITS.autoReplyMaxLength}
         </span>
       </div>
@@ -118,7 +132,7 @@ function VariableTextField({
             field.ref(element);
           }}
           rows={3}
-          className="min-h-20 resize-y"
+          className={cn(waTextarea, "min-h-20")}
         />
       </FormControl>
       <div className="flex flex-wrap gap-1.5">
@@ -126,9 +140,7 @@ function VariableTextField({
           <Button
             key={variable.key}
             type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 rounded-full font-mono text-xs"
+            className="h-auto rounded-[7px] border border-wa-border bg-wa-surface-2 px-[9px] py-1 font-wa-mono text-xs font-semibold text-wa-teal shadow-none hover:border-wa-teal hover:bg-wa-teal-soft hover:text-wa-teal focus-visible:border-wa-border focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-wa-primary"
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => insertVariable(variable.key)}
           >
@@ -137,8 +149,8 @@ function VariableTextField({
           </Button>
         ))}
       </div>
-      <FormDescription>{description}</FormDescription>
-      <FormMessage />
+      <FormDescription className={waHint}>{description}</FormDescription>
+      <FormMessage className="text-xs text-wa-red" />
     </FormItem>
   );
 }
@@ -202,10 +214,10 @@ function AutoReplyForm({
           if (!blocked) onSave?.(submitted);
         })}
       >
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+        <div className={cn(waDialogBody, "flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto")}>
           {settings === null && (
-            <p className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-              <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <p className="m-0 flex items-start gap-2 rounded-xl border border-dashed border-wa-border-strong bg-wa-surface-2 px-3 py-2.5 text-xs text-wa-muted">
+              <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
               Valores sugeridos para una configuración nueva. No es una configuración guardada.
             </p>
           )}
@@ -213,13 +225,14 @@ function AutoReplyForm({
             control={form.control}
             name="enabled"
             render={({ field }) => (
-              <FormItem className="flex items-center justify-between gap-3 space-y-0 rounded-lg border p-3">
-                <FormLabel htmlFor={switchId} className="font-medium">
+              <FormItem className="flex flex-row items-center justify-between gap-3 space-y-0">
+                <FormLabel htmlFor={switchId} className="text-sm font-medium text-wa-fg">
                   Responder automáticamente cuando el cliente escribe
                 </FormLabel>
                 <FormControl>
                   <Switch
                     id={switchId}
+                    className={waSwitch}
                     checked={field.value}
                     onCheckedChange={(checked) => field.onChange(checked)}
                   />
@@ -249,12 +262,12 @@ function AutoReplyForm({
               />
             )}
           />
-          <p className="text-xs text-muted-foreground">
+          <p className="m-0 text-xs text-wa-muted">
             Solo puedes usar {"{{cliente}}"} y {"{{link_rastreo}}"}. Se envía una sola vez por
             ventana de 24 h en cada conversación. El servicio de POWIP decide cuándo enviarla y qué
             texto usar según el horario; esta pantalla no envía nada.
           </p>
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2.5">
             <TemplateSegmentedChoice
               legend="Vista previa"
               name="auto-reply-preview"
@@ -268,17 +281,18 @@ function AutoReplyForm({
               values={SAMPLE_VALUES}
               emptyBodyLabel="Escribe el mensaje…"
             />
-            <p className="text-center text-xs text-muted-foreground">
+            <p className="m-0 text-center text-xs text-wa-muted">
               Muestra con datos de ejemplo («Lucía», «powip.lat/r/EJEMPLO»). No es un mensaje real.
             </p>
           </div>
         </div>
-        <div className="shrink-0 space-y-2 border-t px-4 py-3 sm:px-6">
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" onClick={onRequestClose}>
+        <div className={cn(waDialogFooter, "static flex-col items-stretch gap-2.5")}>
+          <div className="flex flex-wrap justify-end gap-2.5">
+            <Button type="button" className={waButton()} onClick={onRequestClose}>
               Cancelar
             </Button>
             <BlockedActionButton
+              className={waButton({ variant: "primary" })}
               type={blocked ? "button" : "submit"}
               blocked={blocked}
               blockedReasonId={AUTO_REPLY_BLOCKED_ID}
@@ -287,7 +301,7 @@ function AutoReplyForm({
             </BlockedActionButton>
           </div>
           {blocked && (
-            <p id={AUTO_REPLY_BLOCKED_ID} className="text-xs text-muted-foreground">
+            <p id={AUTO_REPLY_BLOCKED_ID} className="m-0 text-xs text-wa-muted sm:text-right">
               Pendiente de integración: todavía no se puede guardar la respuesta automática. No se
               guardó nada.
             </p>
@@ -329,28 +343,29 @@ export function AutoReplyDialog({
       <Dialog open onOpenChange={(open) => !open && requestClose()}>
         <DialogContent
           showCloseButton={false}
-          className="flex max-h-[calc(100dvh-2rem)] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
+          className={cn(
+            waDialogContent,
+            "flex max-h-[calc(100dvh-2rem)] w-full flex-col sm:max-w-[540px]",
+          )}
         >
-          <DialogHeader className="flex-row items-start justify-between gap-3 border-b px-4 py-3 text-left sm:px-6">
-            <div className="min-w-0 space-y-1">
-              <DialogTitle>Respuesta automática</DialogTitle>
-              <DialogDescription>
+          <DialogHeader className={waDialogHeader}>
+            <div className="min-w-0">
+              <DialogTitle className={waDialogTitle}>Respuesta automática</DialogTitle>
+              <DialogDescription className="sr-only">
                 Mensaje que recibe el comprador cuando escribe al número de la tienda.
               </DialogDescription>
             </div>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
+              className={cn(waButton({ variant: "ghost", size: "icon" }), "-my-1.5 -mr-2")}
               aria-label="Cerrar ventana"
               onClick={requestClose}
             >
-              <X className="h-4 w-4" aria-hidden="true" />
+              <X aria-hidden="true" />
             </Button>
           </DialogHeader>
           {formSettings === undefined ? (
-            <div className="px-4 py-4 sm:px-6">
+            <div className={waDialogBody}>
               <WhatsAppResourceState
                 state={settings}
                 pendingTitle=""
@@ -374,14 +389,22 @@ export function AutoReplyDialog({
         </DialogContent>
       </Dialog>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Descartar los cambios de la respuesta automática?</AlertDialogTitle>
-            <AlertDialogDescription>Los cambios no guardados se perderán.</AlertDialogDescription>
+        <AlertDialogContent className={cn(waDialogContent, "sm:max-w-[440px]")}>
+          <AlertDialogHeader className={waDialogHeader}>
+            <AlertDialogTitle className={waDialogTitle}>
+              ¿Descartar los cambios de la respuesta automática?
+            </AlertDialogTitle>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
-            <AlertDialogAction onClick={onClose}>Descartar cambios</AlertDialogAction>
+          <div className={waDialogBody}>
+            <AlertDialogDescription className="m-0 text-sm text-wa-muted">
+              Los cambios no guardados se perderán.
+            </AlertDialogDescription>
+          </div>
+          <AlertDialogFooter className={waDialogFooter}>
+            <AlertDialogCancel className={waButton()}>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction className={waButton({ variant: "solid-danger" })} onClick={onClose}>
+              Descartar cambios
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

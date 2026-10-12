@@ -1,15 +1,9 @@
-import { ChevronDown, SlidersHorizontal } from "lucide-react";
+import { ChevronDown, Search, SlidersHorizontal } from "lucide-react";
 import { useId } from "react";
 import { useFormContext, useWatch } from "react-hook-form";
-import {
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { WaInput } from "@/components/whatsapp/ui/WaInput";
+import { waButton, waInput } from "@/components/whatsapp/ui/wa-classes";
 import { WHATSAPP_SCHEDULING_LIMITS } from "@/features/whatsapp/constants/whatsapp-scheduling-catalog";
 import {
   WHATSAPP_RULE_DATE_MODES,
@@ -17,8 +11,9 @@ import {
 } from "@/features/whatsapp/enums/whatsapp.enums";
 import type { WhatsAppScopeCatalogs } from "@/features/whatsapp/models/scope-catalog.model";
 import type { RuleConfigValues } from "@/features/whatsapp/schemas/rule-config.schema";
+import { cn } from "@/lib/utils";
 import { TemplateSegmentedChoice } from "../plantillas/TemplateSegmentedChoice";
-import { ScopeChipGroup } from "./ScopeChipGroup";
+import { SCOPE_ROW, SCOPE_ROW_LABEL, ScopeChipGroup } from "./ScopeChipGroup";
 
 interface RuleScopeFieldsProps {
   catalogs: WhatsAppScopeCatalogs;
@@ -26,6 +21,8 @@ interface RuleScopeFieldsProps {
   readOnly: boolean;
   onRequestCount?: () => void;
 }
+
+const SMALL_INPUT = cn(waInput, "px-2 py-1 text-[12.5px]");
 
 export function RuleScopeFields({
   catalogs,
@@ -43,92 +40,126 @@ export function RuleScopeFields({
   ) => form.setValue(name, value, { shouldDirty: true });
 
   return (
-    <details className="group rounded-lg border bg-muted/30">
-      <summary className="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
-        <SlidersHorizontal className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="font-medium">A qué pedidos</span>
-        <span id={summaryId} className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+    <details className="group rounded-[10px] border border-wa-border bg-wa-surface-2">
+      <summary className="flex cursor-pointer list-none items-center gap-2 rounded-[10px] px-3 py-[9px] text-[12.5px] outline-none group-open:rounded-b-none group-open:border-b group-open:border-wa-border focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-wa-primary [&::-webkit-details-marker]:hidden">
+        <SlidersHorizontal className="size-[15px] shrink-0" aria-hidden="true" />
+        <b className="font-semibold">A qué pedidos</b>
+        <span id={summaryId} className="min-w-0 flex-1 truncate text-wa-muted">
           {summary}
         </span>
         <ChevronDown
-          className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180"
+          className="size-3.5 shrink-0 transition-transform group-open:rotate-180"
           aria-hidden="true"
         />
       </summary>
-      <div className="space-y-4 border-t p-3">
-        <p className="text-xs text-muted-foreground">Resumen: {summary}</p>
+      <div className="flex flex-col gap-3 p-3">
+        <p className="sr-only">Resumen: {summary}</p>
         <FormField
           control={form.control}
           name="dateMode"
           render={({ field }) => (
-            <FormItem>
-              <FormControl>
-                <TemplateSegmentedChoice
-                  legend="Fechas"
-                  name={`${summaryId}-date-mode`}
-                  value={field.value}
-                  readOnly={readOnly}
-                  options={[
-                    {
-                      value: WHATSAPP_RULE_DATE_MODES.SINCE_ACTIVATION,
-                      label: "Desde que se activa",
-                    },
-                    { value: WHATSAPP_RULE_DATE_MODES.RANGE, label: "Entre dos fechas" },
-                  ]}
-                  onValueChange={(value: WhatsAppRuleDateMode) =>
-                    form.setValue("dateMode", value, { shouldDirty: true })
-                  }
-                />
-              </FormControl>
-              <FormDescription>Fecha de creación del pedido.</FormDescription>
+            <FormItem className="space-y-0">
+              <div className={SCOPE_ROW}>
+                <span className={SCOPE_ROW_LABEL} aria-hidden="true">
+                  Fechas
+                </span>
+                <div className="flex min-w-0 flex-col gap-1.5">
+                  <FormControl>
+                    <TemplateSegmentedChoice
+                      legend="Fechas"
+                      className="[&>legend]:sr-only"
+                      name={`${summaryId}-date-mode`}
+                      value={field.value}
+                      readOnly={readOnly}
+                      options={[
+                        {
+                          value: WHATSAPP_RULE_DATE_MODES.SINCE_ACTIVATION,
+                          label: "Creados desde que se activa",
+                        },
+                        { value: WHATSAPP_RULE_DATE_MODES.RANGE, label: "Entre dos fechas" },
+                      ]}
+                      onValueChange={(value: WhatsAppRuleDateMode) =>
+                        form.setValue("dateMode", value, { shouldDirty: true })
+                      }
+                    />
+                  </FormControl>
+                  {dateMode === WHATSAPP_RULE_DATE_MODES.RANGE && (
+                    <div className="flex flex-wrap items-start gap-1.5">
+                      <FormField
+                        control={form.control}
+                        name="from"
+                        render={({ field: from }) => (
+                          <FormItem className="gap-1 space-y-0">
+                            <FormLabel className="sr-only">Desde</FormLabel>
+                            <FormControl>
+                              <WaInput
+                                type="date"
+                                {...from}
+                                readOnly={readOnly}
+                                className={cn(SMALL_INPUT, "wa-num w-auto")}
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs text-wa-red" />
+                          </FormItem>
+                        )}
+                      />
+                      <span className="pt-1.5 text-wa-muted">al</span>
+                      <FormField
+                        control={form.control}
+                        name="to"
+                        render={({ field: to }) => (
+                          <FormItem className="gap-1 space-y-0">
+                            <FormLabel className="sr-only">Hasta (opcional)</FormLabel>
+                            <FormControl>
+                              <WaInput
+                                type="date"
+                                {...to}
+                                readOnly={readOnly}
+                                className={cn(SMALL_INPUT, "wa-num w-auto")}
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs text-wa-red" />
+                          </FormItem>
+                        )}
+                      />
+                      <span className="pt-1.5 text-xs text-wa-muted">vacío = sin fin</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             </FormItem>
           )}
         />
-        {dateMode === WHATSAPP_RULE_DATE_MODES.RANGE && (
-          <div className="grid gap-3 sm:grid-cols-2">
-            <FormField
-              control={form.control}
-              name="from"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Desde</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} readOnly={readOnly} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="to"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Hasta (opcional)</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} readOnly={readOnly} />
-                  </FormControl>
-                  <FormDescription>Vacío = sin fin.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          </div>
-        )}
         <FormField
           control={form.control}
           name="maxOrderAgeDays"
           render={({ field }) => (
-            <FormItem className="max-w-xs">
-              <FormLabel>No avisar pedidos con más de (días)</FormLabel>
-              <FormControl>
-                <Input {...field} inputMode="numeric" readOnly={readOnly} />
-              </FormControl>
-              <FormDescription>
-                Entre {WHATSAPP_SCHEDULING_LIMITS.maxOrderAgeDays.min} y{" "}
-                {WHATSAPP_SCHEDULING_LIMITS.maxOrderAgeDays.max} días.
-              </FormDescription>
-              <FormMessage />
+            <FormItem className="space-y-0">
+              <div className={SCOPE_ROW}>
+                <span className={SCOPE_ROW_LABEL} aria-hidden="true">
+                  Antigüedad
+                </span>
+                <div className="flex flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span aria-hidden="true">No avisar pedidos con más de</span>
+                    <FormLabel className="sr-only">No avisar pedidos con más de (días)</FormLabel>
+                    <FormControl>
+                      <WaInput
+                        {...field}
+                        inputMode="numeric"
+                        readOnly={readOnly}
+                        className={cn(SMALL_INPUT, "wa-num w-16 text-center")}
+                      />
+                    </FormControl>
+                    <span aria-hidden="true">días</span>
+                  </div>
+                  <span className="text-xs text-wa-muted">
+                    Entre {WHATSAPP_SCHEDULING_LIMITS.maxOrderAgeDays.min} y{" "}
+                    {WHATSAPP_SCHEDULING_LIMITS.maxOrderAgeDays.max} días.
+                  </span>
+                  <FormMessage className="text-xs text-wa-red" />
+                </div>
+              </div>
             </FormItem>
           )}
         />
@@ -171,9 +202,13 @@ export function RuleScopeFields({
         {onRequestCount && (
           <button
             type="button"
-            className="text-sm font-medium text-primary underline-offset-2 hover:underline"
+            className={cn(
+              waButton({ size: "sm" }),
+              "max-w-full self-start whitespace-normal text-left",
+            )}
             onClick={onRequestCount}
           >
+            <Search aria-hidden="true" />
             Ver a cuántos pedidos actuales aplica
           </button>
         )}

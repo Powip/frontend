@@ -1,7 +1,7 @@
 # Notificaciones por WhatsApp — Hito 1 (frontend)
 
 Última actualización: 2026-10-08 · Rama: `feat/whatsapp-notificaciones` (creada desde `main` @ `a898173`, igual a `origin/main`).
-Fuentes: `POWIP_Hito1_Notificaciones_WhatsApp_v2.docx.pdf` (v2.0, 7 oct 2026, 38 páginas) y `POWIP WhatsApp Notificaciones (Copy).html`. Si se contradicen, manda el PDF.
+Fuentes: `POWIP_Hito1_Notificaciones_WhatsApp_v2.docx.pdf` (v2.0, 7 oct 2026, 38 páginas) y `POWIP WhatsApp Notificaciones (Copy).html`. Si se contradicen en reglas, manda el PDF; el mockup es la referencia visual y se conserva su apariencia siempre que sea compatible con esas reglas ([fidelidad-visual.md](fidelidad-visual.md)).
 
 ## Alcance
 
@@ -19,9 +19,11 @@ Fuentes: `POWIP_Hito1_Notificaciones_WhatsApp_v2.docx.pdf` (v2.0, 7 oct 2026, 38
 | Etapa 4 · pestaña Programación (frontend completo) | **Hecha** (ver [Etapa 4](#implementado-en-la-etapa-4-programación)). Persistencia, conteos, cola y campañas pendientes de C-16/C-18/C-20/C-21/C-24 |
 | Etapa 5 · pestaña Conversaciones (frontend completo) | **Hecha** (ver [Etapa 5](#implementado-en-la-etapa-5-conversaciones)). Datos, envíos, contadores y tiempo real pendientes de C-22/C-22.2/C-18/C-25/C-28/C-00.9 |
 | Etapa 6 · Historial de envíos y Bajas, alertas y permisos (frontend completo) | **Hecha** (ver [Etapa 6](#implementado-en-la-etapa-6-historial-y-bajas-alertas-y-permisos)). Datos, exportación, guardado y permisos efectivos pendientes de C-18/C-24/C-25/C-26/C-27/C-28 |
+| Etapas 7 a 9 · Conexión, integraciones en pedidos, alertas y página pública | **Hechas** (ver [Etapas 7 a 9](#implementado-en-las-etapas-7-a-9-conexión-e-integraciones) y [entrega-final.md](entrega-final.md)). Pendientes de C-01..C-11, C-22.7, C-29, C-30, C-31, configuración de Meta y alojamiento público |
+| Fidelidad visual con el mockup | **Hecha en Storybook** (ver [fidelidad-visual.md](fidelidad-visual.md)): tokens y medidas del mockup, las seis pestañas, modales y cajón, con 28 diferencias intencionales registradas. La ruta real con login no se pudo abrir |
 | Contratos de backend de WhatsApp | **Ninguno existe.** Todos los `/wa/...` son propuestas; el código no los llama ni declara una URL de backend. Una guarda impide usar contratos no confirmados (D-45) |
 | Contratos existentes reutilizables | 8 confirmados (tiendas, couriers, canales, asesoras, evidencia, asesora del pedido, link de rastreo actual y tipos de envío, este último agregado en la etapa 4), registrados como disponibles en `whatsapp-contracts.ts` |
-| Decisiones | D-01 a D-68: 32 de la revisión, 6 de la etapa 2, 8 de la etapa 3, 8 de la etapa 4, 8 de la etapa 5 y 6 de la etapa 6. Varias siguen pendientes; en particular **D-55 (Atendida) es provisional, difiere del PDF §8.2 y no está aprobada por producto**. De la etapa 6 dependen de otros D-63 (base del rastreo), D-64 (export), D-65 (permisos no definidos), D-66 (extranjeros en bajas) y D-68 (configuración por tienda) |
+| Decisiones | D-01 a D-76 (D-76 en la revisión visual; 7 nuevas en las etapas 7 a 9). Varias siguen pendientes; en particular **D-55 (Atendida), D-63 (base del rastreo) y D-67 (alcance de indicadores) son provisionales y pendientes de producto**. De la etapa 6 dependen de otros D-63 (base del rastreo), D-64 (export), D-65 (permisos no definidos), D-66 (extranjeros en bajas) y D-68 (configuración por tienda) |
 
 ## Documentos
 
@@ -29,7 +31,9 @@ Fuentes: `POWIP_Hito1_Notificaciones_WhatsApp_v2.docx.pdf` (v2.0, 7 oct 2026, 38
 |---|---|
 | [frontend-plan.md](frontend-plan.md) | Principios, piezas reutilizables, archivos definitivos, componentes, caché y polling, revisión sin backend, validaciones, permisos, etapas y alcance del siguiente bloque |
 | [backend-contract.md](backend-contract.md) | Reglas transversales (C-00) y cada contrato con método, ruta, parámetros, payload, respuesta, errores y estado |
-| [decisiones-y-contradicciones.md](decisiones-y-contradicciones.md) | D-01 a D-68 |
+| [decisiones-y-contradicciones.md](decisiones-y-contradicciones.md) | D-01 a D-76 |
+| [entrega-final.md](entrega-final.md) | Resumen de entrega, matriz final por elemento y qué falta para usarlo con datos reales |
+| [fidelidad-visual.md](fidelidad-visual.md) | Comparación con el mockup, base visual, correcciones por pantalla, diferencias intencionales (V-01 a V-28) y pantallas verificadas y pendientes. Capturas en [fidelidad/](fidelidad/) |
 | [screens/README.md](screens/README.md) | Inventario completo y una ficha por pantalla, pestaña, sección, modal, cajón y acción, con su estado de implementación |
 
 ## Implementado en la etapa 2
@@ -108,17 +112,19 @@ Ficha completa: [screens/04-conversaciones.md](screens/04-conversaciones.md).
 
 Fichas: [screens/05-historial-de-envios.md](screens/05-historial-de-envios.md) y [screens/06-bajas-alertas-permisos.md](screens/06-bajas-alertas-permisos.md).
 
-## Qué falta para completar el frontend
+## Implementado en las etapas 7 a 9 (Conexión e integraciones)
 
-| Bloque | Qué falta | Depende de |
-|---|---|---|
-| Etapa 7 · Conexión (T1) | Tipo de conexión y su cambio, número conectado (calidad, límite, actualizar desde Meta, desconectar), mensaje de prueba, números por tienda con Embedded Signup, número de contingencia, bandeja de envío asistido (abrir / ya lo envié / descartar), costos. Hoy solo lista las tiendas reales | C-01 a C-11, configuración de la app de Meta (D-03), D-04, D-05 |
-| Etapa 8 · Integraciones en pedidos | X1: `WhatsAppThread` en la ficha del pedido › Seguimiento con "Abrir conversación" (`CustomerServiceModal`, sin tocar todavía). X2: indicador del último aviso en los botones de WhatsApp de Ventas, Operaciones y Gestión CC. X4: reemplazar la configuración local falsa de Operaciones › Guías (D-22) | C-22.7, C-29 |
-| Campanita (X5) | Notificaciones dentro de POWIP para las alertas. No existe en el frontend | C-31 |
-| Etapa 9 · Página pública (X3) | Página de rastreo con token y acortador `powip.lat/r`; dónde se aloja | D-06, C-30, equipo landing |
-| Etapa 10 · Integración real | Por contrato: confirmar en el registro, crear `api/`, servicios, hooks de TanStack Query, invalidaciones y pasar estados y manejadores reales a cada pestaña; permisos efectivos `WA_*`; tiempo real o polling; criterios §14 con datos reales | Servicio y URL base (C-00.1), todos los `/wa`, C-28, C-00.9 |
-| Revisión visual | Desktop, mobile, 320 px, teclado y modo oscuro de todas las pestañas | Navegador |
-| Decisiones abiertas | Entre otras: D-55 (Atendida, difiere del PDF), D-56, D-58, D-60, D-63, D-64, D-65, D-66, D-12, D-27 | Producto y backend |
+| Pieza | Estado |
+|---|---|
+| Conexión | Selector de tienda, estado (C-01), tipo de conexión con confirmación (sin cambio local), número conectado con datos de Meta ("Sin dato" nunca es desconectado ni cero), actualizar y desconectar con confirmación, mensaje de prueba con estados reales que termina en Entregado sin esperar Leído para siempre, números por tienda, Embedded Signup bloqueado sin SDK ni IDs (D-71), contingencia, bandeja asistida con confirmación explícita (D-72), costos solo con fuente y vigencia |
+| Ficha del pedido (X1) | "Mensajes de WhatsApp" en Seguimiento con estados y acceso a la conversación real; evidencia por tipo |
+| Indicador (X2) | En Ventas, Operaciones › Pedidos y Gestión CC, dentro del botón actual; solo con `waLastNotice` válido (D-73) |
+| Guías (X4) | Configuración local reemplazada por una tarjeta que lleva a Configuración › WhatsApp |
+| Alertas (X5) | Componente listo, sin montar (D-75) |
+| Página pública (X3) | Componentes y ruta `/p/[token]` en estado pendiente, sin datos privados ni consultas (D-74) |
+| Navegación | Volver/adelante recorre pestañas y conversaciones (D-70) |
+
+Resumen de entrega, matriz final y qué falta para usarlo con datos reales: [entrega-final.md](entrega-final.md).
 
 ## Orden de implementación
 
@@ -130,10 +136,10 @@ Fichas: [screens/05-historial-de-envios.md](screens/05-historial-de-envios.md) y
 | 4 | Programación | Solo para guardar | Hecha |
 | 5 | Conversaciones | Para datos | Hecha |
 | 6 | Historial; Bajas, alertas y permisos | Para datos | Hecha |
-| **7 (siguiente)** | Conexión y Embedded Signup | Sí (y Meta) | — |
-| 8 | Ficha del pedido, indicador, reemplazo de la sección local | Sí | — |
-| 9 | Página pública | Decisión D-06 | — |
-| 10 | Integración contrato por contrato y criterios §14 | Sí | — |
+| 7 | Conexión y Embedded Signup | Sí (y Meta) | Hecha (frontend) |
+| 8 | Ficha del pedido, indicador, reemplazo de la sección local, componente de alertas | Sí | Hecha (frontend) |
+| 9 | Página pública | Decisión D-06 | Componentes y ruta pendiente |
+| **10 (fase posterior)** | Integración contrato por contrato y criterios §14 | Sí | — |
 
 Detalle en [frontend-plan.md §10-16](frontend-plan.md#10-etapas).
 
@@ -154,6 +160,39 @@ Sin cambios respecto de la etapa 1: servicio y URL base (C-00.1), todos los cont
 9. **No hay campanita de notificaciones** (C-31).
 
 ## Verificaciones y limitaciones
+
+### Fidelidad visual (2026-10-10)
+
+| Verificación | Resultado |
+|---|---|
+| `npx tsc --noEmit` | Sin errores |
+| `npx biome check` (módulo, componentes de WhatsApp y `whatsapp.css`) | Sin errores |
+| `npx eslint` (`configuracion/whatsapp`, `components/whatsapp`) | 0 errores, 0 advertencias |
+| `npx jest` del módulo y componentes | Módulo WhatsApp, componentes, modales y Operaciones: 41 suites, 463 tests pasan. Se ajustaron cinco aserciones por cambios de estructura del mockup, sin quitar lo que verifican: filtros de Plantillas visibles y deshabilitados en pendiente, resaltado de la regla por `data-highlighted` en lugar de una clase, «Respondió · sin atender» y porcentajes con negrita leídos por el texto completo del elemento, y «Ver» de alertas buscado en la tarjeta «Últimas alertas» |
+| `npx jest` (suite completa) | 135 suites, 1811 tests, todos pasan (49 s). Una corrida anterior, hecha mientras Playwright capturaba evidencias en paralelo, tuvo 1 fallo en `inventario/__tests__/page.test.tsx` (archivo sin cambios en esta entrega); ese archivo pasa solo (9 de 9) y la suite completa pasó al repetirla sin carga en paralelo |
+| `npx storybook build` | Compila; 166 stories bajo "WhatsApp/" (12 nuevas en `WhatsApp/Pagina`). Se agregó `.storybook/preview-head.html` para cargar Poppins y Montserrat como en la app |
+| `npm run build` (producción) | Compila (exit 0). `/configuracion/whatsapp` 92.8 kB (antes 90.5 kB), `/p/[token]` 491 B |
+| Comparación con el mockup | Playwright 1.63 + Chromium. Mockup y Storybook con el mismo viewport (1280, 375, 320 y 375 oscuro) para las seis pestañas, cinco modales, el cajón en dos estados y la lista de conversaciones: 112 capturas en [fidelidad/](fidelidad/). Correcciones y diferencias en [fidelidad-visual.md](fidelidad-visual.md) |
+| Revisión automática | Sobre el build final, las 166 stories de "WhatsApp/" en 1280, 375 y 320 px: 0 desbordes de página, 0 elementos fuera de pantalla sin contenedor con scroll, 0 errores de consola. Las corridas previas encontraron y se corrigieron: el botón «Ver a cuántos pedidos actuales aplica» sin partir a 320 px, el segmentado Tablero/Lista tapado, filas altísimas en el historial, el pie del editor fuera del modal a 320 px y el estado «No enviado» cortado en el cajón |
+| Teclado | Panel de conversación: foco atrapado (0 de 25 tabulaciones fuera), foco visible y Escape cierra; con borrador, Escape pide confirmar y el foco pasa a «Seguir escribiendo». Conectar número a 320 px: foco dentro, botón alcanzable con explicación. Respuesta automática: foco atrapado y visible. Historial: Enter expande la línea de tiempo |
+| No verificado | La ruta `/configuracion/whatsapp` dentro del shell real (necesita login contra el backend) y los modales que ninguna story abre (Desconectar, Dar de baja, Agregar a bajas, Reactivar, Descartar aviso asistido, Desactivar regla, Resultados). Ver [fidelidad-visual.md › Verificado y pendiente](fidelidad-visual.md#verificado-y-pendiente) |
+
+### Etapas 7 a 9 y revisión final (2026-10-10)
+
+| Verificación | Resultado |
+|---|---|
+| `npx tsc --noEmit` | Sin errores |
+| `npx biome check` (módulo, componentes nuevos y ruta pública) | Sin errores |
+| `npx eslint` en archivos nuevos y modificados | 0 errores en los 56 archivos nuevos y modificados. Las advertencias que aparecen están en líneas previas de `ventas/page.tsx` y `CustomerServiceModal.tsx`; ninguna sale de las líneas agregadas |
+| `npx jest` relevantes | Módulo WhatsApp, componentes de integración, modales y Operaciones: 41 suites, 463 tests pasan. La única salida en consola es el `console.error` esperado del test de error de `PaymentVerificationModal`, que no se tocó |
+| `npx jest` (suite completa) | 135 suites, 1811 tests, todos pasan (79 s). No se comparó con `main` |
+| `npx storybook build` | Compila; 154 stories bajo "WhatsApp/" (39 nuevas: Conexión 15, Integraciones 17, Público 7) |
+| `npm run build` (producción) | Compila (exit 0). Rutas `/configuracion/whatsapp` (90.5 kB) y `/p/[token]` (dinámica, 491 B). Advertencias de ESLint solo en archivos que no tocó esta entrega |
+| Revisión visual (stories) | Playwright 1.63 + Chromium sobre el Storybook compilado: las 154 stories de "WhatsApp/" en 1280, 375 y 320 px (462 revisiones). Automático: 0 desbordes de página, 0 elementos fuera de pantalla sin contenedor con scroll, 0 errores de consola. Se miraron capturas en claro y oscuro de Conexión, Conversaciones (tablero), Plantillas, Historial, Ajustes, Programación, hilo del pedido, alertas e indicador, y la página pública |
+| Problemas encontrados y corregidos | (1) Plantillas y tablero de Conversaciones desbordaban la página en 375 y 320 px: los textos `sr-only` (posición absoluta) escapaban del contenedor con scroll horizontal. Se agregó `relative` a los contenedores `overflow-x-auto` de siete tablas o tableros. (2) Números por tienda en 320 px dejaba el texto en una columna de 4 a 5 palabras por el botón: el texto ahora tiene un ancho mínimo y el botón baja a la línea siguiente |
+| Teclado | Panel de conversación: foco atrapado (0 de 25 tabulaciones fuera), foco visible en todos y Escape cierra. Con borrador, Escape pide confirmar y el foco pasa a "Seguir escribiendo". Modal de Embedded Signup en 320 px: foco dentro, "Continuar con Facebook" alcanzable con `aria-disabled` y explicación asociada. Respuesta automática: foco atrapado y visible. Historial: Enter expande la línea de tiempo (`aria-expanded=true`). Página pública: el único elemento enfocable es "Descargar boleta (PDF)", con foco visible |
+| Revisión visual (app) | Solo `/p/[token]` se puede abrir sin sesión. Con `next start` sobre el build de producción, `/p/token-de-prueba` en 1280, 375, 320 px y oscuro: responde 200, sin menú lateral, `noindex, nofollow`, sin desborde. La consola muestra un 401 de `auth/refresh`, que viene del `AuthProvider` global y no de la página (también ocurre en `/login`); queda como bloqueo para publicar el enlace ([09](screens/09-pagina-publica-rastreo.md#montaje-pendiente), punto 5) |
+| No verificado | Las rutas autenticadas (`/configuracion/whatsapp`, Ventas, Operaciones, Gestión CC, ficha del pedido) necesitan login contra el backend real y no se abrieron en la app. Comprobación manual pendiente: (a) pestañas de `/configuracion/whatsapp` con atrás y adelante del navegador; (b) indicador del último aviso dentro de los botones de fila de Ventas, Operaciones (Atención, En camino, Por despachar) y Gestión CC, sin tapar el texto del botón en 320 px; (c) bloque "Mensajes de WhatsApp" en Atención al cliente › Seguimiento (con `orderId` muestra una línea de pendiente); (d) tarjeta de Guías y que tarifas y couriers no cambiaron; (e) modo oscuro y teclado en esas pantallas |
 
 ### Etapa 6 (2026-10-09)
 

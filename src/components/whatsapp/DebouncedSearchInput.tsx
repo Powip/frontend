@@ -2,13 +2,14 @@
 
 import { Search } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
-import { Input } from "@/components/ui/input";
+import { WaInput } from "@/components/whatsapp/ui/WaInput";
 import {
   CONVERSATION_SEARCH_DEBOUNCE_MS,
   CONVERSATION_SEARCH_MIN_LENGTH,
   isSearchTooShort,
 } from "@/features/whatsapp/utils/conversation-filters.util";
 import { cn } from "@/lib/utils";
+import { waInput } from "./ui/wa-classes";
 
 interface DebouncedSearchInputProps {
   value: string;
@@ -53,21 +54,21 @@ export function DebouncedSearchInput({
       </label>
       <div className="relative">
         <Search
-          className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute top-1/2 left-[11px] size-4 -translate-y-1/2 text-wa-muted-2"
           aria-hidden="true"
         />
-        <Input
+        <WaInput
           id={inputId}
           type="search"
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder={label}
-          className="pl-8"
+          className={cn(waInput, "pl-[34px]")}
           aria-describedby={tooShort ? hintId : undefined}
         />
       </div>
       {tooShort && (
-        <p id={hintId} className="mt-1 text-xs text-muted-foreground">
+        <p id={hintId} className="mt-1 mb-0 text-xs text-wa-muted">
           Escribe al menos {CONVERSATION_SEARCH_MIN_LENGTH} caracteres para buscar.
         </p>
       )}

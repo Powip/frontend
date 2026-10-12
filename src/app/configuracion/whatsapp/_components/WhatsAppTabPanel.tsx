@@ -4,23 +4,24 @@ import type { WhatsAppTabDefinition } from "@/features/whatsapp/constants/whatsa
 import { WHATSAPP_TABS } from "@/features/whatsapp/enums/whatsapp.enums";
 import { buildActivateRuleSearch } from "@/features/whatsapp/utils/rule-link.util";
 import type { WhatsAppAccess } from "@/features/whatsapp/utils/whatsapp-access.util";
+import type { WhatsAppNavigate } from "@/features/whatsapp/utils/whatsapp-tab.util";
 import { SettingsTab } from "./ajustes/SettingsTab";
+import { ConnectionTab } from "./conexion/ConnectionTab";
 import { ConversationsTab } from "./conversaciones/ConversationsTab";
 import { HistoryTab } from "./historial/HistoryTab";
 import { TemplatesTab } from "./plantillas/TemplatesTab";
 import { SchedulingTab } from "./programacion/SchedulingTab";
-import { WhatsAppStoresPendingList } from "./WhatsAppStoresPendingList";
 
 interface WhatsAppTabPanelProps {
   definition: WhatsAppTabDefinition;
   access: WhatsAppAccess;
-  stores: { id: string; name: string }[];
   businessName: string;
   search: string;
-  onNavigate: (search: string) => void;
+  onNavigate: WhatsAppNavigate;
 }
 
 const TABS_WITH_OWN_CONTENT: string[] = [
+  WHATSAPP_TABS.CONNECTION,
   WHATSAPP_TABS.TEMPLATES,
   WHATSAPP_TABS.SCHEDULING,
   WHATSAPP_TABS.CONVERSATIONS,
@@ -31,7 +32,6 @@ const TABS_WITH_OWN_CONTENT: string[] = [
 export function WhatsAppTabPanel({
   definition,
   access,
-  stores,
   businessName,
   search,
   onNavigate,
@@ -39,14 +39,7 @@ export function WhatsAppTabPanel({
   const hasOwnContent = TABS_WITH_OWN_CONTENT.includes(definition.key);
 
   return (
-    <section aria-labelledby={`whatsapp-tab-${definition.key}`} className="space-y-4">
-      <div>
-        <h2 id={`whatsapp-tab-${definition.key}`} className="text-lg font-semibold">
-          {definition.label}
-        </h2>
-        <p className="text-sm text-muted-foreground">{definition.description}</p>
-      </div>
-
+    <div className="flex min-w-0 flex-col gap-5">
       {!hasOwnContent && (
         <PendingIntegrationNotice
           title="Pendiente de integración"
@@ -56,8 +49,8 @@ export function WhatsAppTabPanel({
       )}
 
       {definition.managedByAdministrators && !access.canManageConfiguration && (
-        <p className="flex items-start gap-2 text-sm text-muted-foreground">
-          <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <p className="flex items-start gap-2 text-[13px] text-wa-muted">
+          <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           Solo un administrador podrá cambiar esta configuración. Los permisos de Supervisor CC y
           Asesora todavía no están definidos.
         </p>
@@ -99,7 +92,9 @@ export function WhatsAppTabPanel({
         />
       )}
 
-      {definition.key === WHATSAPP_TABS.CONNECTION && <WhatsAppStoresPendingList stores={stores} />}
-    </section>
+      {definition.key === WHATSAPP_TABS.CONNECTION && (
+        <ConnectionTab canManage={access.canManageConfiguration} />
+      )}
+    </div>
   );
 }

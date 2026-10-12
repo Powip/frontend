@@ -4,6 +4,9 @@ import { CalendarClock, Pause, Pencil, Play, Repeat } from "lucide-react";
 import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import { WaCard, WaCardHeader } from "@/components/whatsapp/ui/WaCard";
+import { WaPill, type WaTone } from "@/components/whatsapp/ui/WaPill";
+import { waButton } from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
 import {
   WHATSAPP_CAMPAIGN_DESTINATION_OPTIONS,
@@ -25,23 +28,43 @@ import type { WhatsAppScopeCatalogs } from "@/features/whatsapp/models/scope-cat
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
 import type { CampaignValues } from "@/features/whatsapp/schemas/campaign.schema";
 import { formatDateKey } from "@/features/whatsapp/utils/lima-time.util";
-import { cn } from "@/lib/utils";
 import { CampaignDialog, type CampaignDialogMode } from "./CampaignDialog";
 import { CampaignResultsDialog } from "./CampaignResultsDialog";
 import { buildScopeLabels } from "./scope-labels";
 
 const CAMPAIGNS_NOTE_ID = "campaigns-persistence-note";
 
-const STATUS_CLASSNAMES: Record<WhatsAppCampaignStatus, string> = {
-  [WHATSAPP_CAMPAIGN_STATUSES.SCHEDULED]:
-    "border-sky-200 bg-sky-50 text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200",
-  [WHATSAPP_CAMPAIGN_STATUSES.ACTIVE]:
-    "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200",
-  [WHATSAPP_CAMPAIGN_STATUSES.PAUSED]:
-    "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200",
-  [WHATSAPP_CAMPAIGN_STATUSES.COMPLETED]:
-    "border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-200",
+const STATUS_TONES: Record<WhatsAppCampaignStatus, WaTone> = {
+  [WHATSAPP_CAMPAIGN_STATUSES.SCHEDULED]: "info",
+  [WHATSAPP_CAMPAIGN_STATUSES.ACTIVE]: "ok",
+  [WHATSAPP_CAMPAIGN_STATUSES.PAUSED]: "warn",
+  [WHATSAPP_CAMPAIGN_STATUSES.COMPLETED]: "neutral",
 };
+
+const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Set", "Oct", "Nov", "Dic"];
+
+function WhenBox({ campaign }: { campaign: WhatsAppCampaign }) {
+  const recurring = campaign.schedule.type === WHATSAPP_CAMPAIGN_SCHEDULE_TYPES.RECURRING;
+  const [, month, day] = campaign.schedule.date?.split("-") ?? [];
+  const monthLabel = month ? MONTHS[Number(month) - 1] : null;
+  return (
+    <span
+      aria-hidden="true"
+      className="w-[58px] shrink-0 overflow-hidden rounded-[10px] border border-wa-border text-center"
+    >
+      <b className="block bg-wa-primary-soft py-0.5 text-[10.5px] font-bold uppercase tracking-[0.06em] text-wa-primary">
+        {recurring ? "Repite" : (monthLabel ?? "—")}
+      </b>
+      <span className="wa-num flex h-[33px] items-center justify-center text-lg font-bold">
+        {recurring ? (
+          <Repeat className="size-[18px]" />
+        ) : (
+          (day ?? <CalendarClock className="size-[18px]" />)
+        )}
+      </span>
+    </span>
+  );
+}
 
 interface CampaignsSectionProps {
   campaigns: ResourceState<WhatsAppCampaign[]>;
@@ -118,30 +141,27 @@ export function CampaignsSection({
   };
 
   return (
-    <section
-      aria-labelledby="campaigns-title"
-      className="space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-5"
-    >
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h3 id="campaigns-title" className="font-semibold">
-            Envíos programados
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Mensajes que tú decides cuándo mandar a un grupo de pedidos, una vez o de forma
-            recurrente.
-          </p>
-        </div>
-        {canManage && (
-          <Button type="button" className="shrink-0" onClick={() => openDialog({ kind: "new" })}>
-            <CalendarClock className="h-4 w-4" aria-hidden="true" />
-            Programar envío
-          </Button>
-        )}
-      </div>
+    <WaCard aria-labelledby="campaigns-title">
+      <WaCardHeader
+        titleId="campaigns-title"
+        title="Envíos programados"
+        description="Mensajes que tú decides cuándo mandar a un grupo de pedidos, una vez o de forma recurrente."
+        actions={
+          canManage && (
+            <Button
+              type="button"
+              className={waButton({ variant: "primary" })}
+              onClick={() => openDialog({ kind: "new" })}
+            >
+              <CalendarClock aria-hidden="true" />
+              Programar envío
+            </Button>
+          )
+        }
+      />
 
       {!canPersist && campaigns.kind === "ready" && campaigns.data.length > 0 && (
-        <p id={CAMPAIGNS_NOTE_ID} className="text-sm text-muted-foreground">
+        <p id={CAMPAIGNS_NOTE_ID} className="m-0 mb-3 text-xs text-wa-muted">
           Pausar, reanudar y editar envíos estarán disponibles cuando se conecte el servicio de
           envíos programados.
         </p>
@@ -155,51 +175,36 @@ export function CampaignsSection({
         errorTitle="No se pudieron cargar los envíos programados"
         onRetry={onRetry}
         isEmpty={(data) => data.length === 0}
-        empty={<p className="text-sm text-muted-foreground">No tienes envíos programados.</p>}
+        empty={<p className="m-0 text-[13px] text-wa-muted">No tienes envíos programados.</p>}
       >
         {(data) => (
-          <ul className="divide-y" aria-label="Envíos programados">
+          <ul className="m-0 list-none p-0" aria-label="Envíos programados">
             {data.map((campaign) => {
               const completed = campaign.status === WHATSAPP_CAMPAIGN_STATUSES.COMPLETED;
               const paused = campaign.status === WHATSAPP_CAMPAIGN_STATUSES.PAUSED;
               return (
-                <li key={campaign.id} className="flex flex-wrap items-center gap-3 py-3">
-                  <span
-                    aria-hidden="true"
-                    className="grid h-12 w-12 shrink-0 place-items-center rounded-lg border bg-muted/40"
-                  >
-                    {campaign.schedule.type === WHATSAPP_CAMPAIGN_SCHEDULE_TYPES.RECURRING ? (
-                      <Repeat className="h-5 w-5" />
-                    ) : (
-                      <CalendarClock className="h-5 w-5" />
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1 basis-56">
-                    <p className="font-semibold">{campaign.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      <span className="break-all font-mono">{campaign.templateName}</span> ·{" "}
-                      {describeSegment(campaign, catalogs)}
+                <li
+                  key={campaign.id}
+                  className="flex flex-wrap items-center gap-3.5 border-t border-wa-border py-3.5 first:border-t-0 first:pt-0 last:pb-0"
+                >
+                  <WhenBox campaign={campaign} />
+                  <div className="min-w-[200px] flex-1">
+                    <p className="m-0 font-semibold">{campaign.name}</p>
+                    <p className="m-0 text-xs text-wa-muted [overflow-wrap:anywhere]">
+                      {campaign.templateName} · {describeSegment(campaign, catalogs)}
                     </p>
-                    <p className="text-xs text-muted-foreground">{describeSchedule(campaign)}</p>
+                    <p className="wa-num m-0 text-xs text-wa-muted">{describeSchedule(campaign)}</p>
                   </div>
-                  <span className="text-xs tabular-nums text-muted-foreground">
-                    {describeVolume(campaign)}
-                  </span>
-                  <span
-                    className={cn(
-                      "rounded-full border px-2.5 py-0.5 text-xs font-semibold",
-                      STATUS_CLASSNAMES[campaign.status],
-                    )}
-                  >
+                  <span className="wa-num min-w-[120px] text-xs">{describeVolume(campaign)}</span>
+                  <WaPill tone={STATUS_TONES[campaign.status]}>
                     {WHATSAPP_CAMPAIGN_STATUS_LABELS[campaign.status]}
                     {campaign.pausedReason === "quality_red" && " por calidad"}
-                  </span>
+                  </WaPill>
                   <div className="flex items-center gap-1">
                     {completed ? (
                       <Button
                         type="button"
-                        size="sm"
-                        variant="outline"
+                        className={waButton({ size: "sm" })}
                         onClick={() => setResultsCampaign(campaign)}
                       >
                         Ver resultados
@@ -208,29 +213,21 @@ export function CampaignsSection({
                       canManage && (
                         <>
                           <BlockedActionButton
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8"
+                            className={waButton({ variant: "ghost", size: "icon" })}
                             blocked={!canPersist}
                             blockedReasonId={CAMPAIGNS_NOTE_ID}
                             aria-label={`${paused ? "Reanudar" : "Pausar"} ${campaign.name}`}
                             onClick={() => undefined}
                           >
-                            {paused ? (
-                              <Play className="h-4 w-4" aria-hidden="true" />
-                            ) : (
-                              <Pause className="h-4 w-4" aria-hidden="true" />
-                            )}
+                            {paused ? <Play aria-hidden="true" /> : <Pause aria-hidden="true" />}
                           </BlockedActionButton>
                           <Button
                             type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8"
+                            className={waButton({ variant: "ghost", size: "icon" })}
                             aria-label={`Editar ${campaign.name}`}
                             onClick={() => openDialog({ kind: "edit", campaign })}
                           >
-                            <Pencil className="h-4 w-4" aria-hidden="true" />
+                            <Pencil aria-hidden="true" />
                           </Button>
                         </>
                       )
@@ -256,6 +253,6 @@ export function CampaignsSection({
         />
       )}
       <CampaignResultsDialog campaign={resultsCampaign} onClose={() => setResultsCampaign(null)} />
-    </section>
+    </WaCard>
   );
 }

@@ -1,12 +1,4 @@
-import {
-  Ban,
-  Check,
-  CheckCheck,
-  Clock,
-  type LucideIcon,
-  TriangleAlert,
-  UserRound,
-} from "lucide-react";
+import { Ban, Clock, TriangleAlert, UserRound } from "lucide-react";
 import {
   WHATSAPP_MESSAGE_STATUSES,
   type WhatsAppMessageStatus,
@@ -17,29 +9,63 @@ import {
 } from "@/features/whatsapp/utils/message-status.util";
 import { cn } from "@/lib/utils";
 
-const STATUS_STYLES: Record<WhatsAppMessageStatus, { icon: LucideIcon; className: string }> = {
-  [WHATSAPP_MESSAGE_STATUSES.QUEUED]: { icon: Clock, className: "text-muted-foreground" },
-  [WHATSAPP_MESSAGE_STATUSES.SENT]: {
-    icon: Check,
-    className: "text-slate-500 dark:text-slate-400",
-  },
-  [WHATSAPP_MESSAGE_STATUSES.DELIVERED]: {
-    icon: CheckCheck,
-    className: "text-slate-500 dark:text-slate-400",
-  },
-  [WHATSAPP_MESSAGE_STATUSES.READ]: {
-    icon: CheckCheck,
-    className: "text-sky-500 dark:text-sky-400",
-  },
-  [WHATSAPP_MESSAGE_STATUSES.FAILED]: {
-    icon: TriangleAlert,
-    className: "text-red-600 dark:text-red-400",
-  },
-  [WHATSAPP_MESSAGE_STATUSES.SKIPPED]: { icon: Ban, className: "text-red-600 dark:text-red-400" },
-  [WHATSAPP_MESSAGE_STATUSES.ASSISTED]: {
-    icon: UserRound,
-    className: "text-amber-700 dark:text-amber-400",
-  },
+export function SingleTick({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 18 12" aria-hidden="true" className={cn("h-3 w-[18px] shrink-0", className)}>
+      <path
+        d="M3 6.5 6.5 10 14 2.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function DoubleTick({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 18 12" aria-hidden="true" className={cn("h-3 w-[18px] shrink-0", className)}>
+      <path
+        d="M1 6.5 4.5 10 12 2.5M8.2 9.2l.8.8L16.5 2.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function StatusIcon({ status }: { status: WhatsAppMessageStatus }) {
+  switch (status) {
+    case WHATSAPP_MESSAGE_STATUSES.SENT:
+      return <SingleTick className="text-wa-tick" />;
+    case WHATSAPP_MESSAGE_STATUSES.DELIVERED:
+      return <DoubleTick className="text-wa-tick" />;
+    case WHATSAPP_MESSAGE_STATUSES.READ:
+      return <DoubleTick className="text-wa-tick-read" />;
+    case WHATSAPP_MESSAGE_STATUSES.FAILED:
+      return <TriangleAlert className="size-[15px] shrink-0" aria-hidden="true" />;
+    case WHATSAPP_MESSAGE_STATUSES.SKIPPED:
+      return <Ban className="size-[15px] shrink-0" aria-hidden="true" />;
+    case WHATSAPP_MESSAGE_STATUSES.ASSISTED:
+      return <UserRound className="size-[15px] shrink-0" aria-hidden="true" />;
+    case WHATSAPP_MESSAGE_STATUSES.QUEUED:
+      return <Clock className="size-[15px] shrink-0" aria-hidden="true" />;
+  }
+}
+
+const TONE: Record<WhatsAppMessageStatus, string> = {
+  [WHATSAPP_MESSAGE_STATUSES.QUEUED]: "text-wa-muted",
+  [WHATSAPP_MESSAGE_STATUSES.SENT]: "",
+  [WHATSAPP_MESSAGE_STATUSES.DELIVERED]: "",
+  [WHATSAPP_MESSAGE_STATUSES.READ]: "",
+  [WHATSAPP_MESSAGE_STATUSES.FAILED]: "text-wa-red",
+  [WHATSAPP_MESSAGE_STATUSES.SKIPPED]: "text-wa-red",
+  [WHATSAPP_MESSAGE_STATUSES.ASSISTED]: "text-wa-muted",
 };
 
 interface MessageStatusTicksProps {
@@ -55,26 +81,26 @@ export function MessageStatusTicks({
   showDetail = false,
   className,
 }: MessageStatusTicksProps) {
-  const { icon: Icon, className: toneClassName } = STATUS_STYLES[status];
   const { label, detail } = MESSAGE_STATUS_PRESENTATION[status];
   const accessibleLabel = getMessageStatusAccessibleLabel(status);
   const visibleDetail = showLabel && showDetail ? detail : null;
 
   return (
     <span
-      className={cn("inline-flex items-center gap-1.5 text-xs font-medium", className)}
+      className={cn(
+        "inline-flex items-center gap-1.5 text-[13px] font-medium",
+        !visibleDetail && "whitespace-nowrap",
+        TONE[status],
+        className,
+      )}
       data-status={status}
     >
-      <Icon className={cn("h-3.5 w-3.5 shrink-0", toneClassName)} aria-hidden="true" />
+      <StatusIcon status={status} />
       {showLabel ? (
-        <span
-          className={cn(
-            status === WHATSAPP_MESSAGE_STATUSES.READ ? "text-foreground" : toneClassName,
-          )}
-        >
+        <span>
           {label}
           {visibleDetail ? (
-            <span className="font-normal text-muted-foreground"> · {visibleDetail}</span>
+            <span className="font-normal text-wa-muted"> · {visibleDetail}</span>
           ) : (
             detail && <span className="sr-only">: {detail}</span>
           )}

@@ -43,7 +43,7 @@ export function SettingsDraftFooter({
   };
 
   return (
-    <div className="space-y-2 border-t pt-3">
+    <div className="space-y-2 border-t border-dashed border-wa-border pt-3">
       <FormDraftActions
         isDirty
         blocked={blocked}
@@ -56,19 +56,19 @@ export function SettingsDraftFooter({
       {blockedReason && (
         <p
           id={reasonId}
-          className="flex items-start gap-1.5 text-xs text-muted-foreground sm:justify-end"
+          className="m-0 flex items-start gap-1.5 text-xs text-wa-muted sm:justify-end sm:text-right"
         >
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+          <Info className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           {blockedReason}
         </p>
       )}
       {status.kind === "pending" && (
-        <p role="status" className="text-xs text-muted-foreground sm:text-right">
+        <p role="status" className="m-0 text-xs text-wa-muted sm:text-right">
           Guardando…
         </p>
       )}
       {status.kind === "error" && (
-        <p role="alert" className="text-xs text-red-700 dark:text-red-300 sm:text-right">
+        <p role="alert" className="m-0 text-xs text-wa-red sm:text-right">
           {status.message} Tus cambios se conservan.
         </p>
       )}
@@ -78,8 +78,8 @@ export function SettingsDraftFooter({
 
 export function SuggestedValuesNote({ reason }: { reason: "pending" | "not-configured" }) {
   return (
-    <p className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-      <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+    <p className="m-0 flex items-start gap-2 rounded-xl border border-dashed border-wa-border-strong bg-wa-surface-2 px-3 py-2.5 text-xs text-wa-muted">
+      <Info className="mt-px size-3.5 shrink-0" aria-hidden="true" />
       {reason === "pending"
         ? "Valores sugeridos del documento para una configuración nueva. No son la configuración guardada: todavía no se puede leer ni guardar."
         : "Todavía no hay una configuración guardada. Estos son valores sugeridos para empezar."}

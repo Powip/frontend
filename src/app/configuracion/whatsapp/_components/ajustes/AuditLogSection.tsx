@@ -10,6 +10,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { WaCard, WaCardHeader } from "@/components/whatsapp/ui/WaCard";
+import { WaMini } from "@/components/whatsapp/ui/WaPill";
+import { waButton, waSelectTriggerSm } from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
 import { AUDIT_ENTITY_LABELS } from "@/features/whatsapp/constants/whatsapp-settings-catalog";
 import type { WhatsAppAuditEntity } from "@/features/whatsapp/enums/whatsapp.enums";
@@ -62,25 +65,25 @@ function ChangeValue({ text, sensitive }: { text: string; sensitive: boolean }) 
 
 function ChangesTable({ changes }: { changes: AuditChange[] }) {
   if (changes.length === 0) {
-    return <p className="text-sm text-muted-foreground">POWIP no informó el detalle del cambio.</p>;
+    return <p className="m-0 text-xs text-wa-muted">POWIP no informó el detalle del cambio.</p>;
   }
   return (
-    <dl className="space-y-2 text-sm">
+    <dl className="m-0 flex flex-col gap-1.5 text-xs">
       {changes.map((change) => (
         <div
           key={change.key}
-          className="grid gap-1 rounded-md bg-muted/40 p-2 sm:grid-cols-[10rem_1fr]"
+          className="grid gap-1 rounded-lg bg-wa-surface-2 px-2.5 py-2 sm:grid-cols-[9rem_1fr]"
         >
-          <dt className="font-mono text-xs text-muted-foreground [overflow-wrap:anywhere]">
+          <dt className="font-wa-mono text-[11px] text-wa-muted [overflow-wrap:anywhere]">
             {change.key}
           </dt>
           <dd className="space-y-0.5">
             <span className="block">
-              <span className="text-xs text-muted-foreground">Antes: </span>
+              <span className="text-wa-muted">Antes: </span>
               <ChangeValue text={change.before} sensitive={change.sensitive} />
             </span>
             <span className="block">
-              <span className="text-xs text-muted-foreground">Después: </span>
+              <span className="text-wa-muted">Después: </span>
               <ChangeValue text={change.after} sensitive={change.sensitive} />
             </span>
           </dd>
@@ -95,34 +98,32 @@ function AuditRow({ entry }: { entry: WhatsAppAuditEntry }) {
   const [open, setOpen] = useState(false);
   const changes = buildAuditChanges(entry.before, entry.after);
   return (
-    <li className="space-y-2 p-3 text-sm">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1 space-y-0.5">
-          <p>
-            <time
-              className="mr-2 text-xs text-muted-foreground"
-              dateTime={entry.createdAt.toISOString()}
-            >
-              {formatLimaDateTime(entry.createdAt)}
-            </time>
-            <span className="font-medium">{entry.user?.name ?? "Usuario sin informar"}</span>{" "}
+    <li className="flex flex-col gap-2 border-t border-wa-border py-3 first:border-t-0 first:pt-0">
+      <div className="flex flex-wrap items-start gap-3">
+        <WaMini className="wa-num mt-0.5">
+          <time dateTime={entry.createdAt.toISOString()}>
+            {formatLimaDateTime(entry.createdAt)}
+          </time>
+        </WaMini>
+        <div className="min-w-[180px] flex-1 text-[13px]">
+          <p className="m-0">
+            <b className="font-semibold">{entry.user?.name ?? "Usuario sin informar"}</b>{" "}
             <span className="[overflow-wrap:anywhere]">{entry.action}</span>
           </p>
-          <p className="text-xs text-muted-foreground">
+          <p className="m-0 text-xs text-wa-muted">
             {AUDIT_ENTITY_LABELS[entry.entity]}
             {entry.summary ? ` · ${entry.summary}` : ""}
           </p>
         </div>
         <Button
           type="button"
-          variant="ghost"
-          size="sm"
+          className={waButton({ variant: "ghost", size: "sm" })}
           aria-expanded={open}
           aria-controls={detailId}
           onClick={() => setOpen(!open)}
         >
           <ChevronDown
-            className={cn("h-4 w-4 transition-transform", open && "rotate-180")}
+            className={cn("size-4 transition-transform", open && "rotate-180")}
             aria-hidden="true"
           />
           {open ? "Ocultar detalle" : "Ver antes y después"}
@@ -160,16 +161,14 @@ export function AuditLogSection({
   const filtered = filters.entity !== null || filters.userId !== null;
 
   return (
-    <section aria-labelledby="audit-title" className="space-y-4 rounded-xl border p-4">
-      <div>
-        <h3 id="audit-title" className="font-semibold">
-          Registro de cambios
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          Quién cambió qué y cuándo. Lo registra POWIP y no se puede editar ni borrar.
-        </p>
-      </div>
-      <div className="flex flex-col gap-2 sm:flex-row">
+    <WaCard aria-labelledby="audit-title">
+      <WaCardHeader
+        level={3}
+        titleId="audit-title"
+        title="Registro de cambios"
+        description="Quién cambió qué y cuándo. Lo registra POWIP y no se puede borrar."
+      />
+      <div className="mb-3.5 flex flex-wrap items-start gap-2">
         <Select
           value={filters.entity ?? ALL}
           onValueChange={(value) => {
@@ -178,7 +177,7 @@ export function AuditLogSection({
             if (entity !== filters.entity) onFiltersChange({ ...filters, entity });
           }}
         >
-          <SelectTrigger className="w-full sm:w-52" aria-label="Tipo de cambio">
+          <SelectTrigger className={waSelectTriggerSm} aria-label="Tipo de cambio">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -190,7 +189,7 @@ export function AuditLogSection({
             ))}
           </SelectContent>
         </Select>
-        <div className="space-y-1">
+        <div className="flex flex-col gap-1">
           <Select
             value={filters.userId ?? ALL}
             disabled={!users}
@@ -201,7 +200,7 @@ export function AuditLogSection({
             }}
           >
             <SelectTrigger
-              className="w-full sm:w-52"
+              className={waSelectTriggerSm}
               aria-label="Usuario"
               aria-describedby={users ? undefined : userReasonId}
             >
@@ -217,7 +216,7 @@ export function AuditLogSection({
             </SelectContent>
           </Select>
           {!users && (
-            <p id={userReasonId} className="text-xs text-muted-foreground">
+            <p id={userReasonId} className="m-0 max-w-64 text-[11px] text-wa-muted">
               El filtro por usuario se habilita cuando POWIP informe quiénes hicieron cambios.
             </p>
           )}
@@ -232,14 +231,14 @@ export function AuditLogSection({
         onRetry={onRetry}
         isEmpty={(data) => data.items.length === 0 && data.page === 1}
         empty={
-          <p className="text-sm text-muted-foreground">
+          <p className="m-0 text-[13px] text-wa-muted">
             {filtered ? "No hay cambios con estos filtros." : "Todavía no hay cambios registrados."}
           </p>
         }
       >
         {(data) => (
-          <div className="space-y-3">
-            <ul className="divide-y rounded-lg border" aria-label="Cambios registrados">
+          <div className="flex flex-col gap-3">
+            <ul className="m-0 list-none p-0" aria-label="Cambios registrados">
               {data.items.map((entry) => (
                 <AuditRow key={entry.id} entry={entry} />
               ))}
@@ -247,9 +246,9 @@ export function AuditLogSection({
             {(data.page > 1 || data.hasMore) && (
               <nav
                 aria-label="Paginación del registro"
-                className="flex items-center justify-between gap-2 text-sm"
+                className="flex items-center justify-between gap-2 text-[13px]"
               >
-                <span className="text-muted-foreground">Página {data.page}</span>
+                <span className="text-wa-muted">Página {data.page}</span>
                 <span className="flex gap-2">
                   {[
                     { label: "Anterior", enabled: data.page > 1, target: data.page - 1 },
@@ -258,8 +257,7 @@ export function AuditLogSection({
                     <Button
                       key={control.label}
                       type="button"
-                      variant="outline"
-                      size="sm"
+                      className={waButton({ size: "sm" })}
                       disabled={!control.enabled}
                       aria-disabled={!onPageChange && control.enabled ? true : undefined}
                       aria-describedby={
@@ -274,13 +272,13 @@ export function AuditLogSection({
               </nav>
             )}
             {!onPageChange && (data.page > 1 || data.hasMore) && (
-              <p id={paginationReasonId} className="text-xs text-muted-foreground">
+              <p id={paginationReasonId} className="m-0 text-xs text-wa-muted">
                 {paginationBlockedReason}
               </p>
             )}
           </div>
         )}
       </WhatsAppResourceState>
-    </section>
+    </WaCard>
   );
 }

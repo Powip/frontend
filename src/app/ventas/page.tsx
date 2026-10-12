@@ -57,6 +57,11 @@ import {
 } from "@/components/orders/OrderDetailModal";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
+import {
+  parseWhatsAppLastNotice,
+  type WhatsAppLastNotice,
+} from "@/features/whatsapp/utils/last-notice.util";
 import { getPendingPayment } from "@/app/centro-envios/components/shipmentUtils";
 import CreateGuideModal, {
   CreateGuideData,
@@ -147,6 +152,7 @@ const ALL_STATUSES: OrderStatus[] = [
 
 export interface Sale {
   id: string;
+  waLastNotice?: WhatsAppLastNotice | null;
   customerId: string;
   orderNumber: string;
   clientName: string;
@@ -222,6 +228,7 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    waLastNotice: parseWhatsAppLastNotice(order.waLastNotice),
     customerId: order.customer.id,
     orderNumber: order.orderNumber,
     clientName: order.customer.fullName,
@@ -1305,7 +1312,7 @@ Estado: ${sale.status}
                       <Button
                         size="icon"
                         variant="outline"
-                        className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                        className="relative bg-green-500 hover:bg-green-600 text-white border-green-600"
                         title="WhatsApp"
                         onClick={() =>
                           handleWhatsApp(
@@ -1316,6 +1323,7 @@ Estado: ${sale.status}
                         }
                       >
                         <WhatsAppIcon className="h-4 w-4" />
+                        <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} />
                       </Button>
                       <Button
                         size="icon"
@@ -1535,7 +1543,7 @@ Estado: ${sale.status}
                       <Button
                         size="icon"
                         variant="outline"
-                        className="bg-green-500 hover:bg-green-600 text-white border-green-600"
+                        className="relative bg-green-500 hover:bg-green-600 text-white border-green-600"
                         title="WhatsApp"
                         onClick={() =>
                           handleWhatsApp(
@@ -1546,6 +1554,7 @@ Estado: ${sale.status}
                         }
                       >
                         <WhatsAppIcon className="h-4 w-4" />
+                        <WhatsAppLastNoticeIndicator notice={sale.waLastNotice} />
                       </Button>
                       <Button
                         size="icon"

@@ -8,13 +8,25 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { MessageStatusTicks } from "@/components/whatsapp/MessageStatusTicks";
+import { WaPill } from "@/components/whatsapp/ui/WaPill";
+import {
+  waButton,
+  waTable,
+  waTableWrap,
+  waTd,
+  waTemplateName,
+  waTh,
+  waTr,
+  waTrClickable,
+} from "@/components/whatsapp/ui/wa-classes";
 import { WHATSAPP_THREAD_COLUMNS } from "@/features/whatsapp/enums/whatsapp.enums";
 import type {
   WhatsAppConversationListPage,
   WhatsAppConversationSummary,
 } from "@/features/whatsapp/models/conversation.model";
 import { getConversationColumn } from "@/features/whatsapp/utils/conversation-state.util";
-import { formatConversationTime, getConversationTitle } from "./ConversationCard";
+import { cn } from "@/lib/utils";
+import { AssigneeAvatar, formatConversationTime, getConversationTitle } from "./ConversationCard";
 import { ConversationTags } from "./ConversationTags";
 import { CONVERSATION_PENDING_REASON } from "./conversation-types";
 
@@ -24,15 +36,11 @@ function StatusCell({ conversation }: { conversation: WhatsAppConversationSummar
   const column = getConversationColumn(conversation);
   return (
     <div className="flex flex-col items-start gap-1">
-      {column === WHATSAPP_THREAD_COLUMNS.REPLIED && (
-        <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white dark:bg-red-500">
-          Respondió
-        </span>
-      )}
+      {column === WHATSAPP_THREAD_COLUMNS.REPLIED && <WaPill tone="err">Respondió</WaPill>}
       {conversation.lastOutbound ? (
         <MessageStatusTicks status={conversation.lastOutbound.status} />
       ) : (
-        <span className="text-xs text-muted-foreground">Sin aviso saliente</span>
+        <span className="text-xs text-wa-muted">Sin aviso saliente</span>
       )}
       <ConversationTags conversation={conversation} />
     </div>
@@ -55,39 +63,37 @@ export function ConversationsTable({ page, now, onOpen, onPageChange }: Conversa
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-xl border">
-        <Table>
+      <div className={waTableWrap}>
+        <Table className={waTable}>
           <TableHeader>
-            <TableRow>
-              <TableHead>Último mensaje</TableHead>
-              <TableHead>Pedido</TableHead>
-              <TableHead>Cliente</TableHead>
-              <TableHead>Plantilla</TableHead>
-              <TableHead>Estado</TableHead>
-              <TableHead>Asesora</TableHead>
-              <TableHead>Rastreo</TableHead>
+            <TableRow className={waTr}>
+              <TableHead className={waTh}>Último mensaje</TableHead>
+              <TableHead className={waTh}>Pedido</TableHead>
+              <TableHead className={waTh}>Cliente</TableHead>
+              <TableHead className={waTh}>Plantilla</TableHead>
+              <TableHead className={waTh}>Estado</TableHead>
+              <TableHead className={waTh}>Asesora</TableHead>
+              <TableHead className={waTh}>Rastreo</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {page.items.map((conversation) => (
               <TableRow
                 key={conversation.id}
-                className="cursor-pointer"
+                className={cn(waTr, waTrClickable)}
                 onClick={() => onOpen(conversation.id)}
               >
-                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                <TableCell className={cn(waTd, "wa-num whitespace-nowrap")}>
                   {formatConversationTime(conversation.lastMessageAt, now) ?? "—"}
                 </TableCell>
-                <TableCell className="whitespace-nowrap">
-                  {conversation.orderNumber ?? "Sin pedido"}
-                  <span className="block text-xs text-muted-foreground">
-                    {conversation.storeName}
-                  </span>
+                <TableCell className={cn(waTd, "whitespace-nowrap")}>
+                  <b className="font-semibold">{conversation.orderNumber ?? "Sin pedido"}</b>
+                  <span className="block text-xs text-wa-muted">{conversation.storeName}</span>
                 </TableCell>
-                <TableCell className="min-w-44">
+                <TableCell className={cn(waTd, "min-w-44")}>
                   <button
                     type="button"
-                    className="text-left font-medium underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="cursor-pointer text-left underline-offset-2 outline-none hover:underline focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-wa-primary"
                     onClick={(event) => {
                       event.stopPropagation();
                       onOpen(conversation.id);
@@ -96,19 +102,22 @@ export function ConversationsTable({ page, now, onOpen, onPageChange }: Conversa
                     {getConversationTitle(conversation)}
                     <span className="sr-only">, abrir conversación</span>
                   </button>
-                  <span className="block text-xs text-muted-foreground">{conversation.phone}</span>
+                  <span className="wa-num block text-xs text-wa-muted">{conversation.phone}</span>
                 </TableCell>
-                <TableCell className="font-mono text-xs">
+                <TableCell className={cn(waTd, waTemplateName, "font-medium")}>
                   {conversation.lastOutbound?.templateName ?? "—"}
                 </TableCell>
-                <TableCell>
+                <TableCell className={waTd}>
                   <StatusCell conversation={conversation} />
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-sm">
-                  {conversation.assignee?.name ?? "Sin asignar"}
+                <TableCell className={cn(waTd, "whitespace-nowrap")}>
+                  <span className="inline-flex items-center gap-1.5">
+                    <AssigneeAvatar name={conversation.assignee?.name ?? null} />
+                    <span aria-hidden="true">{conversation.assignee?.name ?? "Sin asignar"}</span>
+                  </span>
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-sm">
-                  {conversation.trackingOpened ? "Abrió" : "—"}
+                <TableCell className={cn(waTd, "whitespace-nowrap")}>
+                  {conversation.trackingOpened ? <WaPill tone="teal">Abrió</WaPill> : "—"}
                 </TableCell>
               </TableRow>
             ))}
@@ -117,16 +126,15 @@ export function ConversationsTable({ page, now, onOpen, onPageChange }: Conversa
       </div>
       <nav
         aria-label="Paginación de conversaciones"
-        className="flex flex-wrap items-center justify-between gap-2 text-sm"
+        className="flex flex-wrap items-center justify-between gap-2 text-[13px]"
       >
-        <span className="text-muted-foreground">
+        <span className="text-wa-muted">
           {totalPages === null ? `Página ${page.page}` : `Página ${page.page} de ${totalPages}`}
         </span>
         <span className="flex gap-2">
           <Button
             type="button"
-            variant="outline"
-            size="sm"
+            className={waButton({ size: "sm" })}
             disabled={!canGoBack}
             aria-disabled={paginationBlocked && canGoBack ? true : undefined}
             aria-describedby={paginationBlocked && canGoBack ? PAGINATION_BLOCKED_ID : undefined}
@@ -136,8 +144,7 @@ export function ConversationsTable({ page, now, onOpen, onPageChange }: Conversa
           </Button>
           <Button
             type="button"
-            variant="outline"
-            size="sm"
+            className={waButton({ size: "sm" })}
             disabled={!canGoForward}
             aria-disabled={paginationBlocked && canGoForward ? true : undefined}
             aria-describedby={paginationBlocked && canGoForward ? PAGINATION_BLOCKED_ID : undefined}
@@ -148,7 +155,7 @@ export function ConversationsTable({ page, now, onOpen, onPageChange }: Conversa
         </span>
       </nav>
       {paginationBlocked && (canGoBack || canGoForward) && (
-        <p id={PAGINATION_BLOCKED_ID} className="text-xs text-muted-foreground">
+        <p id={PAGINATION_BLOCKED_ID} className="m-0 text-xs text-wa-muted">
           {CONVERSATION_PENDING_REASON}
         </p>
       )}

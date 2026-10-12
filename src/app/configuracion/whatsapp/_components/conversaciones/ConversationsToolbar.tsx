@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, KanbanSquare, List, UserRound } from "lucide-react";
+import { Bot, Columns3, List, UserRound } from "lucide-react";
 import { useId, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +13,12 @@ import {
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
 import { DebouncedSearchInput } from "@/components/whatsapp/DebouncedSearchInput";
 import {
+  waFilterChip,
+  waSegmented,
+  waSegmentedItem,
+  waSelectTrigger,
+} from "@/components/whatsapp/ui/wa-classes";
+import {
   WHATSAPP_CONVERSATION_VIEWS,
   type WhatsAppConversationView,
 } from "@/features/whatsapp/enums/whatsapp.enums";
@@ -22,7 +28,7 @@ import { cn } from "@/lib/utils";
 const ALL_STORES = "all";
 
 const VIEW_OPTIONS = [
-  { value: WHATSAPP_CONVERSATION_VIEWS.BOARD, label: "Tablero", icon: KanbanSquare },
+  { value: WHATSAPP_CONVERSATION_VIEWS.BOARD, label: "Tablero", icon: Columns3 },
   { value: WHATSAPP_CONVERSATION_VIEWS.LIST, label: "Lista", icon: List },
 ];
 
@@ -52,13 +58,13 @@ export function ConversationsToolbar({
   filtersRef.current = filters;
 
   return (
-    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-      <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-start">
+    <div className="flex flex-wrap items-start justify-between gap-2.5">
+      <div className="flex w-full min-w-0 flex-wrap items-start gap-2.5 min-[900px]:w-auto min-[900px]:flex-1">
         <DebouncedSearchInput
           value={filters.search}
           onValueChange={(search) => onFiltersChange({ ...filtersRef.current, search })}
           label="Buscar pedido, cliente o teléfono"
-          className="flex-1 sm:max-w-sm"
+          className="min-w-[200px] flex-1 sm:max-w-[320px]"
         />
         <Select
           value={filters.storeId ?? ALL_STORES}
@@ -68,7 +74,7 @@ export function ConversationsToolbar({
             if (storeId !== filters.storeId) onFiltersChange({ ...filters, storeId });
           }}
         >
-          <SelectTrigger className="w-full sm:w-52" aria-label="Tienda">
+          <SelectTrigger className={cn(waSelectTrigger, "w-auto min-w-40")} aria-label="Tienda">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -82,29 +88,38 @@ export function ConversationsToolbar({
         </Select>
         <div>
           <BlockedActionButton
-            variant={filters.assignedToMe ? "default" : "outline"}
+            className={cn(waFilterChip, "h-auto shadow-none")}
             aria-pressed={filters.assignedToMe}
             blocked={!currentUserId}
             blockedReasonId={mineReasonId}
             onClick={() => onFiltersChange({ ...filters, assignedToMe: !filters.assignedToMe })}
           >
-            <UserRound className="h-4 w-4" aria-hidden="true" />
+            <span
+              aria-hidden="true"
+              className="grid size-5 place-items-center rounded-full bg-wa-primary-soft text-wa-primary"
+            >
+              <UserRound className="size-3" />
+            </span>
             Asignadas a mí
           </BlockedActionButton>
           {!currentUserId && (
-            <p id={mineReasonId} className="mt-1 text-xs text-muted-foreground">
+            <p id={mineReasonId} className="mt-1 mb-0 text-xs text-wa-muted">
               No se pudo identificar tu usuario.
             </p>
           )}
         </div>
         {canConfigureAutoReply && (
-          <Button type="button" variant="outline" onClick={onOpenAutoReply}>
-            <Bot className="h-4 w-4" aria-hidden="true" />
+          <Button
+            type="button"
+            className={cn(waFilterChip, "h-auto shadow-none")}
+            onClick={onOpenAutoReply}
+          >
+            <Bot className="size-[15px]" aria-hidden="true" />
             Respuesta automática
           </Button>
         )}
       </div>
-      <fieldset className="flex shrink-0 gap-1 rounded-lg border bg-muted/50 p-1">
+      <fieldset className={cn(waSegmented, "m-0 shrink-0")}>
         <legend className="sr-only">Vista</legend>
         {VIEW_OPTIONS.map((option) => {
           const Icon = option.icon;
@@ -115,12 +130,9 @@ export function ConversationsToolbar({
               type="button"
               aria-pressed={selected}
               onClick={() => onViewChange(option.value)}
-              className={cn(
-                "inline-flex min-h-8 items-center gap-1.5 rounded-md px-3 text-sm font-medium text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                selected && "bg-background text-foreground shadow-sm",
-              )}
+              className={cn(waSegmentedItem, "inline-flex items-center gap-1.5")}
             >
-              <Icon className="h-4 w-4" aria-hidden="true" />
+              <Icon className="size-[15px]" aria-hidden="true" />
               {option.label}
             </button>
           );

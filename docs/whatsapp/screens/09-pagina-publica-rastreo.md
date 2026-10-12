@@ -1,50 +1,50 @@
 # 09 · Página pública del pedido y acortador (X3)
 
-Referencias: PDF §2 (POWIP Link, link de rastreo), §5.1, §5.2, §6.3.1 (incidencia y comprobante en la página), §6.4.4 (evidencia), §9.2 (`link_token`), §10.3 (`GET /p/:token`, `GET /r/:codigo`), §13 caso 22, §15 FAQ. El capítulo 7 del PDF, que debería describir la página, **no está** (D-23). El mockup no la dibuja.
+Referencias: PDF §2, §5.1-5.2, §6.3.1, §6.4.4, §9.2, §10.3, §13 caso 22. El capítulo 7 del PDF (la página) no está (D-23); el mockup no la dibuja.
 
-## Qué muestra en el Hito 1
-
-Rastreo (estado, courier, código de guía, agencia y horario si aplica, fecha estimada, eventos), motivo de incidencia si existe, foto de entrega y comprobante (PDF) si SUNAT lo aceptó. Sin login. En el Hito 2 se suman confirmar y pagar: fuera de alcance.
-
-## Situación actual en el código
-
-| Hecho | Evidencia |
-|---|---|
-| El link que hoy reciben los compradores apunta a la landing: `${NEXT_PUBLIC_LANDING_URL}/rastreo/${orderNumber}` | `src/components/modals/CustomerServiceModal.tsx:586`, `src/app/operaciones/pedidos/_components/types.ts:226`, `src/app/ventas/page.tsx:937`, `src/app/finanzas/page.tsx:423`, `src/components/modals/GuideDetailsModal.tsx:581`, `src/components/modals/orderReceiptModal.tsx:109`, `src/app/centro-envios/components/shipmentUtils.tsx:59` |
-| Usa el número de pedido, adivinable; el PDF exige token largo no adivinable (caso 22) | — |
-| `/rastreo` figura como ruta pública y sin menú en este repo, pero no hay `src/app/rastreo/` | `src/components/auth/AuthGuard.tsx:15-21`, `src/components/layout/AppContainer.tsx:14-21` |
-| El layout raíz envuelve todo con `AuthProvider` y `AppContainer` (cliente) | `src/app/layout.tsx` |
-| Vistas de rastreo internas reutilizables existen: `ShalomOrderTrackingView`, `AliclikOrderTrackingView`, `CourierTrackingView` | `src/components/tracking/`, `src/components/couriers/CourierTrackingView.tsx` |
-
-## Opciones de alojamiento (D-06, pendiente)
-
-| Opción | A favor | En contra |
-|---|---|---|
-| A. Landing (repo aparte, ya tiene `/rastreo`) | Ya es pública, ya la conocen los compradores, no carga la sesión del panel | Repo no disponible aquí; hay que migrar de `orderNumber` a token y sumar evidencia y comprobante |
-| B. Este repo, ruta `src/app/p/[token]/page.tsx` | Reusa componentes de rastreo y evidencia; un solo equipo | El layout raíz monta `AuthProvider` (intenta refrescar sesión) y `AppContainer`; habría que agregar `/p` a `PUBLIC_ROUTES` y `noSidebarRoutes`, o reorganizar con grupos de rutas y layouts separados. Subdominio `{tienda}.powip.lat` requiere reescritura por host en `middleware.ts` (hoy solo protege `/api/superadmin`) y dominio comodín en Vercel |
-| C. App nueva liviana | Aislada, rápida, SEO controlado | Otro despliegue |
-
-Recomendación del frontend: decidir A o C; B solo si se acepta separar el layout público. En cualquier caso, los **componentes presentacionales** (línea de tiempo, tarjeta de evidencia, tarjeta de comprobante) se diseñan sin dependencias de `AuthContext` para poder llevarlos a cualquiera de las tres.
-
-## Ficha de la página (independiente de la opción)
+**Estado (etapa 9, 2026-10-10):** componentes completos y montaje pendiente en `/p/[token]` dentro de este repo.
 
 | Campo | Detalle |
 |---|---|
-| Ruta | `https://{tienda}.powip.lat/p/{token}` (PDF); acortador `https://powip.lat/r/{codigo}` → 302 |
-| Disparador | Botón del aviso de WhatsApp ("Rastrear mi pedido", "Ver guía y dirección", "Ver mi pedido") |
-| Lecturas | `GET /p/:token` (C-30.1) sin autenticación |
-| Estados | Carga: skeleton. Token inválido o vencido: "No encontramos este pedido" (sin revelar si existe). Error: "No pudimos cargar tu pedido" + Reintentar. Sin evidencia ni comprobante: secciones ocultas. Pedido anulado: estado claro (SIN DEFINIR el texto) |
-| Datos y privacidad | Mostrar solo lo necesario: nombre de pila, número de pedido, productos, estado, agencia. Dirección y teléfono completos: SIN DEFINIR (riesgo si el link se reenvía) |
-| Comprobante | Botón "Descargar boleta/factura" con `pdfUrl` (vigencia de la URL firmada: SIN DEFINIR) |
-| Evidencia | Imagen con texto alternativo "Foto de entrega del {fecha}" (D-15) |
-| SEO | `noindex, nofollow`; sin previsualización con datos personales en Open Graph |
-| Rendimiento | Página liviana, móvil primero (llega desde WhatsApp) |
-| Medición | El clic se registra en `/r/:codigo` (backend); la página no necesita analítica propia para el Hito 1 |
-| Garantías BE | Token largo y no adivinable; rate limit; no exponer IDs internos |
-| Criterios de aceptación | §14.6: la foto de entrega aparece en la página; caso 22: funciona desde otro celular; incidencia muestra el motivo del courier; comprobante disponible tras SUNAT aceptado |
-| Contrato | C-30 SPEC; alojamiento SIN DEFINIR |
+| Componentes | `src/components/public-tracking/PublicTrackingPage.tsx`: identidad de la tienda, estado, línea de tiempo, envío (courier, guía, agencia y horario o domicilio con distrito, fecha estimada), fotos por tipo, comprobante aceptado y productos. Sin dependencias de `AuthContext`, móvil primero, modo oscuro |
+| Ruta montada | `src/app/p/[token]/page.tsx`: muestra "Seguimiento no disponible todavía", no lee el token, no consulta APIs, `robots: noindex, nofollow` y sin Open Graph. `/p/` agregado a `PUBLIC_ROUTES` (`AuthGuard.tsx`) y a las rutas sin menú (`AppContainer.tsx`), igual que `/rastreo` (D-74) |
+| No cambia | El rastreo actual de la landing (`/rastreo/{orderNumber}`) y los botones que lo arman. No se afirma que el dominio esté conectado |
+| Estados | Pendiente, carga, enlace inválido o vencido (mismo mensaje para ambos: "No encontramos este pedido… Pide a la tienda un enlace nuevo", sin revelar si existe), error con Reintentar, datos incompletos (se ocultan las secciones sin datos) |
+| Evidencia | "Foto de entrega"; "Foto del despacho" y "Foto de la preparación" con "no confirma la entrega" (D-56) |
+| Comprobante | Solo si backend envía un comprobante aceptado por SUNAT con `pdfUrl` (vigencia de la URL firmada: backend) |
+| Fuera de alcance | Confirmación COD, pagos y Pau (Hito 2, D-01) |
 
-## Cambios en el panel que dependen de esto
+## DTO público mínimo (C-30.1, propuesto)
 
-- C-30.3: el detalle del pedido debe exponer el link nuevo para que la ficha y los botones dejen de armar `/rastreo/{orderNumber}`.
-- La variable `{{link_rastreo}}` de las plantillas la resuelve backend con el acortador; el frontend solo la muestra en vistas previas.
+`GET /p/:token` (sin autenticación, solo token largo no adivinable; rate limit; nunca por número de pedido):
+
+```json
+{
+  "store": { "name": "LIVII Store", "logoUrl": null },
+  "order": { "number": "ORD-149880", "createdAt": "…", "customerFirstName": "Jorge", "items": [{ "name": "…", "quantity": 1 }] },
+  "status": { "label": "Entregado", "description": "…", "tone": "progress | delivered | incident | cancelled", "incidentReason": null },
+  "timeline": [{ "label": "En camino", "at": "…", "done": true }],
+  "shipping": { "courierName": "Shalom", "trackingCode": "…", "deliveryMode": "agency | home", "estimatedDate": "2026-10-08", "district": "Miraflores", "agency": { "name": "…", "address": "…", "hours": "…" } },
+  "evidence": [{ "type": "PREPARATION | DISPATCH | DELIVERY", "imageUrl": "…", "takenAt": "…" }],
+  "invoice": { "label": "Boleta", "seriesNumber": "B001-000482", "pdfUrl": "…" },
+  "updatedAt": "…"
+}
+```
+
+No incluir: DNI, teléfono, correo, dirección completa (solo distrito), apellidos, notas internas, asesora, montos, pagos, IDs internos. Respuestas: `404` para token inválido o vencido (la página muestra el mismo mensaje), `429`, `5xx`.
+
+## Acortador `/r/:codigo` (C-30.2)
+
+Lo resuelve backend: registra el clic (dato del Historial) y redirige `302` a la página con token. El frontend no implementa `/r`.
+
+## Montaje pendiente
+
+1. Decidir alojamiento (D-06): este repo (ya montado como pendiente), la landing u otra app liviana. Para la landing: copiar `PublicTrackingPage.tsx` y `public-tracking.model.ts` (dependen solo de `lima-time.util`, enums de evidencia, `Button`, `next/image` y `lucide-react`).
+2. Subdominio `{tienda}.powip.lat`: reescritura por host en `middleware.ts` y dominio comodín en Vercel (o la plataforma que se use).
+3. Reemplazar el estado pendiente de la ruta por la lectura de `GET /p/:token` (server component o fetch del cliente) mapeando al DTO.
+4. C-30.3: que el detalle del pedido exponga el link con token para que la ficha y los botones dejen de armar `/rastreo/{orderNumber}`.
+5. Sacar la página del `AuthProvider` global. Hoy `src/app/layout.tsx` envuelve todas las rutas con `AuthProvider`, que al cargar hace `POST {API_AUTH}/api/v1/auth/refresh` con cookies (`withCredentials`). En `/p/token-de-prueba` sin sesión responde 401, igual que en `/login`; la página no lo usa ni lo muestra. Si el comprador tiene una sesión de POWIP en ese navegador, el proveedor además pide la empresa del usuario. Antes de publicar el enlace al comprador hay que montar `/p` en un grupo de rutas con su propio layout raíz o excluirlo del refresh silencioso. No se cambió en esta entrega porque afecta la autenticación de todo el sitio.
+
+## Criterios de aceptación
+
+Con datos: la foto de entrega aparece en la página (§14.6); funciona desde otro celular (caso 22); la incidencia muestra el motivo; el comprobante aparece tras SUNAT aceptado. Sin datos (tests): ningún dato privado en pantalla, enlace inválido y vencido indistinguibles, evidencia de despacho nunca presentada como entrega.

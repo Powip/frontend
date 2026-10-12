@@ -323,7 +323,9 @@ describe("Panel de la conversación", () => {
     const attend = screen.getByRole("button", { name: "Marcar atendida" });
     expect(attend).toHaveAttribute("aria-disabled", "true");
     await user.click(attend);
-    expect(screen.getByText("Respondió · sin atender")).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => element?.textContent === "Respondió · sin atender"),
+    ).toBeInTheDocument();
     expect(
       screen.getByText("Marcar atendida no indica que el comprador leyó un mensaje."),
     ).toBeInTheDocument();

@@ -1,6 +1,6 @@
 "use client";
 
-import { Ban, CheckCircle2, Clock, ExternalLink, RotateCw, TriangleAlert } from "lucide-react";
+import { Check, Pencil, RotateCw, TriangleAlert } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/select";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
 import { MessageStatusTicks } from "@/components/whatsapp/MessageStatusTicks";
+import { WaDot, WaMini, WaPill } from "@/components/whatsapp/ui/WaPill";
+import { waButton, waSelectTriggerSm } from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppThread } from "@/components/whatsapp/WhatsAppThread";
 import { CONVERSATION_WINDOW_TICK_MS } from "@/features/whatsapp/constants/whatsapp-conversation-catalog";
 import { useTickingNow } from "@/features/whatsapp/hooks/use-ticking-now";
@@ -33,7 +35,7 @@ import {
   resolveReplyWindow,
 } from "@/features/whatsapp/utils/reply-window.util";
 import { cn } from "@/lib/utils";
-import { describeConversationContext } from "./ConversationCard";
+import { AssigneeAvatar } from "./ConversationCard";
 import { ConversationComposer } from "./ConversationComposer";
 import { ConversationTags } from "./ConversationTags";
 import {
@@ -64,29 +66,30 @@ interface ConversationPanelProps {
   onDirtyChange: (dirty: boolean) => void;
 }
 
-function WindowBanner({ window }: { window: ReplyWindowStatus }) {
+function WindowBar({ window }: { window: ReplyWindowStatus }) {
   const { title, detail } = describeReplyWindow(window);
   return (
-    <p
-      role="status"
-      className={cn(
-        "flex items-start gap-2 rounded-lg px-3 py-2 text-sm",
-        window.state === "open" &&
-          "bg-emerald-50 text-emerald-900 dark:bg-emerald-500/10 dark:text-emerald-200",
-        window.state === "closed" &&
-          "bg-amber-50 text-amber-950 dark:bg-amber-500/10 dark:text-amber-100",
-        window.state === "unknown" && "bg-muted text-muted-foreground",
+    <p role="status" className="m-0 flex items-start gap-2 text-xs">
+      {window.state === "open" ? (
+        <>
+          <WaDot className="mt-[5px] size-[7px]" />
+          <span className="min-w-0">
+            <span className="font-semibold">{title}</span> · {detail}
+          </span>
+        </>
+      ) : (
+        <>
+          <WaMini tone={window.state === "closed" ? "neutral" : "warn"} className="shrink-0">
+            {title}
+          </WaMini>
+          <span className="min-w-0 text-wa-muted">{detail}</span>
+        </>
       )}
-    >
-      <Clock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-      <span>
-        <span className="font-semibold">{title}</span> · {detail}
-      </span>
     </p>
   );
 }
 
-function AssignmentSection({
+function useAssignmentControl({
   conversation,
   capabilities,
   mutations,
@@ -100,7 +103,7 @@ function AssignmentSection({
   const canChange = capabilities.reassign && !!mutations.reassign;
   const agents = useStoreAgents(conversation.storeId, canChange);
   const [status, setStatus] = useState<ActionStatus>(IDLE);
-  const assigneeName = conversation.assignee?.name ?? "Sin asignar";
+  const assigneeName = conversation.assignee?.name ?? null;
   const assignedToSomeoneElse =
     !!conversation.assignee && conversation.assignee.id !== currentUserId;
 
@@ -119,72 +122,68 @@ function AssignmentSection({
     }
   };
 
-  return (
-    <div className="space-y-1.5 text-sm">
-      {canChange && agents.kind === "ready" ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-muted-foreground">Asignada a</span>
-          <Select
-            value={conversation.assignee?.id}
-            disabled={status.kind === "pending"}
-            onValueChange={(value) => {
-              if (value) void reassign(value);
-            }}
-          >
-            <SelectTrigger className="h-8 w-56" aria-label="Asignada a">
-              <SelectValue placeholder="Sin asignar" />
-            </SelectTrigger>
-            <SelectContent>
-              {agents.data.map((agent) => (
-                <SelectItem key={agent.id} value={agent.id}>
-                  {agent.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+  return {
+    control:
+      canChange && agents.kind === "ready" ? (
+        <Select
+          value={conversation.assignee?.id}
+          disabled={status.kind === "pending"}
+          onValueChange={(value) => {
+            if (value) void reassign(value);
+          }}
+        >
+          <SelectTrigger className={cn(waSelectTriggerSm, "ml-auto")} aria-label="Asignada a">
+            <SelectValue placeholder="Sin asignar" />
+          </SelectTrigger>
+          <SelectContent>
+            {agents.data.map((agent) => (
+              <SelectItem key={agent.id} value={agent.id}>
+                {agent.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          <span>
-            <span className="text-muted-foreground">Asignada a </span>
-            <span className="font-medium">{assigneeName}</span>
-          </span>
+        <span className="ml-auto flex items-center gap-1.5 text-xs">
+          <AssigneeAvatar name={assigneeName} />
+          <span aria-hidden="true">{assigneeName ?? "Sin asignar"}</span>
           {capabilities.reassign && (
             <BlockedActionButton
-              variant="outline"
-              size="sm"
-              className="h-7"
+              className={waButton({ variant: "ghost", size: "sm" })}
               blocked
               blockedReasonId={blockedId}
             >
               Reasignar
             </BlockedActionButton>
           )}
-        </div>
-      )}
-      {capabilities.reassign && !canChange && (
-        <p id={blockedId} className="text-xs text-muted-foreground">
-          {CONVERSATION_PENDING_REASON}
-        </p>
-      )}
-      {canChange && agents.kind === "loading" && (
-        <p className="text-xs text-muted-foreground">Cargando asesoras…</p>
-      )}
-      {canChange && agents.kind === "error" && (
-        <p className="text-xs text-red-700 dark:text-red-300">{agents.message}</p>
-      )}
-      {status.kind === "error" && (
-        <p role="alert" className="text-xs font-medium text-red-700 dark:text-red-300">
-          {status.message}
-        </p>
-      )}
-      {assignedToSomeoneElse && capabilities.reply && (
-        <p className="text-xs text-muted-foreground">
-          La asignación no te impide responder: los demás verán tu mensaje en el hilo.
-        </p>
-      )}
-    </div>
-  );
+        </span>
+      ),
+    notes: (
+      <>
+        {capabilities.reassign && !canChange && (
+          <p id={blockedId} className="m-0 text-[11px] text-wa-muted">
+            Reasignar: {CONVERSATION_PENDING_REASON}
+          </p>
+        )}
+        {canChange && agents.kind === "loading" && (
+          <p className="m-0 text-[11px] text-wa-muted">Cargando asesoras…</p>
+        )}
+        {canChange && agents.kind === "error" && (
+          <p className="m-0 text-[11px] text-wa-red">{agents.message}</p>
+        )}
+        {status.kind === "error" && (
+          <p role="alert" className="m-0 text-xs font-medium text-wa-red">
+            {status.message}
+          </p>
+        )}
+        {assignedToSomeoneElse && capabilities.reply && (
+          <p className="m-0 text-[11px] text-wa-muted">
+            La asignación no te impide responder: los demás verán tu mensaje en el hilo.
+          </p>
+        )}
+      </>
+    ),
+  };
 }
 
 function FailedNotice({
@@ -226,51 +225,50 @@ function FailedNotice({
   return (
     <section
       aria-label="Aviso no enviado"
-      className="space-y-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-950 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-100"
+      className="flex flex-col gap-2 rounded-[10px] bg-wa-red-soft px-3 py-2.5 text-xs text-wa-fg"
     >
-      <p className="flex items-start gap-2 font-medium">
-        <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <p className="m-0 flex items-start gap-2 font-medium">
+        <TriangleAlert className="mt-px size-4 shrink-0 text-wa-red" aria-hidden="true" />
         <span className="[overflow-wrap:anywhere]">
           No enviado: {lastOutbound.failureReason ?? "motivo sin informar"}
         </span>
       </p>
       <div className="flex flex-wrap gap-2">
         <BlockedActionButton
-          variant="outline"
-          size="sm"
+          className={waButton({ variant: "primary", size: "sm" })}
           blocked={!conversation.orderId}
           blockedReasonId={correctBlockedId}
           onClick={() => conversation.orderId && onOpenOrder(conversation.orderId)}
         >
+          <Pencil aria-hidden="true" />
           Corregir en el pedido
         </BlockedActionButton>
         <BlockedActionButton
-          variant="outline"
-          size="sm"
+          className={waButton({ size: "sm" })}
           blocked={retryReason !== null || status.kind === "pending"}
           blockedReasonId={retryBlockedId}
           onClick={runRetry}
         >
-          <RotateCw className="h-4 w-4" aria-hidden="true" />
+          <RotateCw aria-hidden="true" />
           Reintentar
         </BlockedActionButton>
       </div>
       {!conversation.orderId && (
-        <p id={correctBlockedId} className="text-xs">
+        <p id={correctBlockedId} className="m-0 text-[11px] text-wa-muted">
           {NO_ORDER_REASON}
         </p>
       )}
       {retryReason && (
-        <p id={retryBlockedId} className="text-xs">
+        <p id={retryBlockedId} className="m-0 text-[11px] text-wa-muted">
           {retryReason}
         </p>
       )}
       {status.kind === "error" && (
-        <p role="alert" className="text-xs font-medium">
+        <p role="alert" className="m-0 font-medium text-wa-red">
           {status.message}
         </p>
       )}
-      <p className="text-xs">
+      <p className="m-0 text-[11px] text-wa-muted">
         Cuando corrijas el dato, el aviso sale solo si el pedido sigue en el mismo estado.
       </p>
     </section>
@@ -303,6 +301,13 @@ export function ConversationPanel({
   const window = resolveReplyWindow(conversation.replyWindow, now);
   const waiting = describeWaiting(conversation, now);
   const messageCount = conversation.messages.length;
+  const assignment = useAssignmentControl({
+    conversation,
+    capabilities,
+    mutations,
+    currentUserId,
+    useStoreAgents,
+  });
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -311,6 +316,7 @@ export function ConversationPanel({
   }, [messageCount]);
 
   const attendReason = !mutations.markAttended ? CONVERSATION_PENDING_REASON : null;
+  const showAttend = canMarkAttended(conversation) && capabilities.reply;
 
   const markAttended = async () => {
     if (attendReason || !mutations.markAttended || attendStatus.kind === "pending") return;
@@ -328,132 +334,45 @@ export function ConversationPanel({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div ref={scrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
-          <dt className="text-muted-foreground">Teléfono</dt>
-          <dd className="font-medium">{conversation.phone}</dd>
-          <dt className="text-muted-foreground">Pedido</dt>
-          <dd className="min-w-0 [overflow-wrap:anywhere]">
-            {describeConversationContext(conversation)}
-          </dd>
-          <dt className="text-muted-foreground">Último aviso</dt>
-          <dd className="flex flex-wrap items-center gap-2">
-            {conversation.lastOutbound ? (
-              <>
-                <MessageStatusTicks status={conversation.lastOutbound.status} showDetail />
-                {conversation.lastOutbound.templateName && (
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {conversation.lastOutbound.templateName}
-                  </span>
-                )}
-              </>
-            ) : (
-              <span className="text-muted-foreground">Sin aviso saliente</span>
-            )}
-          </dd>
-          <dt className="text-muted-foreground">Atención</dt>
-          <dd className="flex flex-wrap items-center gap-2">
-            {conversation.attention.pendingReply ? (
-              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold text-white dark:bg-red-500">
-                Respondió · sin atender
-              </span>
-            ) : conversation.attention.attended ? null : (
-              <span className="text-muted-foreground">Sin respuestas pendientes</span>
-            )}
-            {waiting && (
-              <span
-                className={cn(
-                  "text-xs font-medium",
-                  waiting.overdue
-                    ? "text-red-700 dark:text-red-300"
-                    : "text-amber-700 dark:text-amber-300",
-                )}
-              >
-                {waiting.text}
-              </span>
-            )}
-            <ConversationTags conversation={conversation} />
-          </dd>
-        </dl>
-
-        <AssignmentSection
-          conversation={conversation}
-          capabilities={capabilities}
-          mutations={mutations}
-          currentUserId={currentUserId}
-          useStoreAgents={useStoreAgents}
-        />
-
-        <div className="flex flex-wrap gap-2">
-          <BlockedActionButton
-            variant="outline"
-            size="sm"
-            blocked={!conversation.orderId}
-            blockedReasonId={viewOrderBlockedId}
-            onClick={() => conversation.orderId && onOpenOrder(conversation.orderId)}
-          >
-            <ExternalLink className="h-4 w-4" aria-hidden="true" />
-            Ver pedido
-          </BlockedActionButton>
-          {canMarkAttended(conversation) && capabilities.reply && (
-            <BlockedActionButton
-              variant="outline"
-              size="sm"
-              blocked={attendReason !== null || attendStatus.kind === "pending"}
-              blockedReasonId={attendBlockedId}
-              onClick={markAttended}
-            >
-              <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
-              Marcar atendida
-            </BlockedActionButton>
+      <div className="flex shrink-0 flex-col gap-2 border-b border-wa-border px-[18px] pb-4">
+        <div className="flex flex-wrap items-center gap-2">
+          {conversation.attention.pendingReply ? (
+            <WaPill tone="err">
+              Respondió<span className="sr-only"> · sin atender</span>
+            </WaPill>
+          ) : conversation.lastOutbound ? (
+            <MessageStatusTicks status={conversation.lastOutbound.status} showDetail />
+          ) : (
+            <span className="text-xs text-wa-muted">Sin aviso saliente</span>
           )}
-          {capabilities.manageOptOuts && !conversation.optedOut && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="text-red-700 dark:text-red-300"
-              onClick={() => setOptOutOpen(true)}
-            >
-              <Ban className="h-4 w-4" aria-hidden="true" />
-              Dar de baja
-            </Button>
-          )}
+          <ConversationTags conversation={conversation} />
+          {waiting && <WaMini tone={waiting.overdue ? "err" : "warn"}>{waiting.text}</WaMini>}
+          {assignment.control}
         </div>
-        {!conversation.orderId && (
-          <p id={viewOrderBlockedId} className="text-xs text-muted-foreground">
-            {NO_ORDER_REASON}
-          </p>
-        )}
-        {canMarkAttended(conversation) && capabilities.reply && attendReason && (
-          <p id={attendBlockedId} className="text-xs text-muted-foreground">
-            {attendReason}
-          </p>
-        )}
-        {attendStatus.kind === "error" && (
-          <p role="alert" className="text-xs font-medium text-red-700 dark:text-red-300">
-            {attendStatus.message}
-          </p>
-        )}
-        {canMarkAttended(conversation) && (
-          <p className="text-xs text-muted-foreground">
-            Marcar atendida no indica que el comprador leyó un mensaje.
-          </p>
-        )}
+        <WindowBar window={window} />
+      </div>
 
-        <WindowBanner window={window} />
-
+      <div
+        ref={scrollRef}
+        className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto bg-wa-chat-bg px-3 py-3.5"
+      >
+        <span className="self-center rounded-[7px] bg-wa-bubble px-2.5 py-[3px] text-[11px] uppercase text-wa-muted">
+          Conversación del pedido
+        </span>
         <FailedNotice
           conversation={conversation}
           canRetry={capabilities.reply}
           retry={mutations.retry}
           onOpenOrder={onOpenOrder}
         />
-
-        <WhatsAppThread messages={conversation.messages} now={now} />
+        <WhatsAppThread
+          messages={conversation.messages}
+          now={now}
+          className="rounded-none bg-transparent p-0"
+        />
       </div>
 
-      <div className="max-h-[55dvh] shrink-0 overflow-y-auto border-t bg-background px-4 py-3">
+      <div className="flex max-h-[55dvh] shrink-0 flex-col gap-2 overflow-y-auto border-t border-wa-border px-3.5 pt-3 pb-[calc(12px+env(safe-area-inset-bottom,0px))]">
         <ConversationComposer
           conversation={conversation}
           window={window}
@@ -462,6 +381,59 @@ export function ConversationPanel({
           mutations={mutations}
           onDirtyChange={onDirtyChange}
         />
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <BlockedActionButton
+              className={waButton({ size: "sm" })}
+              blocked={!conversation.orderId}
+              blockedReasonId={viewOrderBlockedId}
+              onClick={() => conversation.orderId && onOpenOrder(conversation.orderId)}
+            >
+              Ver pedido
+            </BlockedActionButton>
+            {capabilities.manageOptOuts && !conversation.optedOut && (
+              <Button
+                type="button"
+                className={waButton({ variant: "ghost-danger", size: "sm" })}
+                onClick={() => setOptOutOpen(true)}
+              >
+                Dar de baja
+              </Button>
+            )}
+          </div>
+          {showAttend && (
+            <BlockedActionButton
+              className={waButton({ variant: "primary", size: "sm" })}
+              blocked={attendReason !== null || attendStatus.kind === "pending"}
+              blockedReasonId={attendBlockedId}
+              onClick={markAttended}
+            >
+              <Check aria-hidden="true" />
+              Marcar atendida
+            </BlockedActionButton>
+          )}
+        </div>
+        {!conversation.orderId && (
+          <p id={viewOrderBlockedId} className="m-0 text-[11px] text-wa-muted">
+            {NO_ORDER_REASON}
+          </p>
+        )}
+        {showAttend && attendReason && (
+          <p id={attendBlockedId} className="m-0 text-[11px] text-wa-muted">
+            Marcar atendida: {attendReason}
+          </p>
+        )}
+        {attendStatus.kind === "error" && (
+          <p role="alert" className="m-0 text-xs font-medium text-wa-red">
+            {attendStatus.message}
+          </p>
+        )}
+        {canMarkAttended(conversation) && (
+          <p className="m-0 text-[11px] text-wa-muted">
+            Marcar atendida no indica que el comprador leyó un mensaje.
+          </p>
+        )}
+        {assignment.notes}
       </div>
 
       {optOutOpen && (

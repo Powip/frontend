@@ -109,8 +109,12 @@ describe("Indicadores", () => {
     renderView();
     const region = kpis();
     expect(within(region).getByText("1,284")).toBeInTheDocument();
-    expect(within(region).getByText("97.4% de los enviados")).toBeInTheDocument();
-    expect(within(region).getByText("81.4% de los entregados")).toBeInTheDocument();
+    const ratio = (text: string) =>
+      within(region).getByText(
+        (_, element) => element?.tagName === "DD" && element.textContent === text,
+      );
+    expect(ratio("97.4% de los enviados")).toBeInTheDocument();
+    expect(ratio("81.4% de los entregados")).toBeInTheDocument();
     expect(within(region).getByText("21 sin WhatsApp · 12 otros")).toBeInTheDocument();
     expect(
       within(region).getByText("No cuentan como enviados, entregados ni leídos."),

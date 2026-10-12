@@ -231,6 +231,17 @@ El frontend **no** escribe tarifas en código. Si la respuesta falta o `verified
 Abrir `wa.me` **no prueba** que el mensaje salió (ver **D-02**). El historial muestra `assisted` como "Asistido · marcado por {asesora}", nunca como entregado. El único dato medible es el clic en el link de rastreo (C-30.2).
 El mockup menciona una tabla `wa_assisted_queue`; el PDF guarda el estado `assisted` en `wa_messages`. Lo decide backend.
 
+### Notas de la etapa 7 (C-01 a C-11)
+
+Frontend listo, sin llamadas; detalle en [screens/01-conexion.md](screens/01-conexion.md).
+
+- Todo campo de C-01/C-02 puede llegar `null` y el frontend lo muestra como "Sin dato" (nunca "desconectado" ni "0"): `state`, `qualityRating`, `messagingLimitLabel`, `webhook`, `usageToday.{uniqueContacts,limit,resetsAt}`, `messagesThisMonth`, `lastSyncedAt`. `resetsAt` vencido se muestra "Reinicio pendiente de confirmar por Meta": backend debe enviar el próximo reinicio.
+- C-07: el estado de la prueba debe incluir `sentAt`, `deliveredAt`, `readAt`, `failedAt` y `errorMessage`; el frontend termina la prueba en Entregado tras 2 min sin Leído.
+- C-06: `startSignup` resuelve solo con la respuesta de `POST /wa/signup/complete` (D-71).
+- C-10: `backupAccount` (número de respaldo), `sender.type: "all_agents" | "user"`, `active: boolean | null`, `activatedAt`, `reason`.
+- C-11: `pendingTotal` global (no el largo de la página), `openedBy`; `waMeUrl` lo genera backend con el texto y el link con token; `mark-sent` es la única transición a enviado (D-72).
+- C-08/C-09: costo y tarifas siempre con fuente, vigencia, fecha de verificación y tipo de cambio con su fecha.
+
 ---
 
 ## Plantillas
@@ -439,6 +450,13 @@ Agregar a las respuestas de lista de pedidos que ya usan Ventas, Operaciones ›
 - **C-30.2** `GET /r/:codigo` → registra clic y responde `302` al POWIP Link. No lo consume el frontend autenticado.
 - **C-30.3** `linkToken` / `trackingShortUrl` en el detalle del pedido autenticado, para que la ficha y los botones usen el link nuevo en vez de `/rastreo/{orderNumber}`.
 Dónde se aloja la página: **SIN DEFINIR** (ver **D-06** y [screens/09-pagina-publica-rastreo.md](screens/09-pagina-publica-rastreo.md)).
+
+### Notas de las etapas 8 y 9 (C-29 a C-31)
+
+- **C-29:** `waLastNotice: { status, templateName, at, reason } | null` en cada pedido de las listas de Ventas, Operaciones › Pedidos y Gestión CC, y en el detalle del pedido. Montado en el frontend (`OrderHeader.waLastNotice`, D-73); ver [screens/08-indicador-ultimo-aviso.md](screens/08-indicador-ultimo-aviso.md).
+- **C-22.7:** conversaciones por pedido para la ficha › Seguimiento; ver [screens/07-ficha-pedido-seguimiento.md](screens/07-ficha-pedido-seguimiento.md).
+- **C-30.1:** DTO público mínimo en [screens/09-pagina-publica-rastreo.md](screens/09-pagina-publica-rastreo.md); ruta `/p/[token]` montada como pendiente (D-74). El acortador `/r` es solo de backend.
+- **C-31:** forma propuesta y punto de montaje en [screens/11-notificaciones-whatsapp.md](screens/11-notificaciones-whatsapp.md) (D-75).
 
 ### C-31 · Notificaciones in-app (campanita) — SIN DEFINIR
 

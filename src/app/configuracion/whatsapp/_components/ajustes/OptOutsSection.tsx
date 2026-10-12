@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, UserX } from "lucide-react";
+import { Ban, Plus, UserX } from "lucide-react";
 import { useId, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -13,6 +13,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { DebouncedSearchInput } from "@/components/whatsapp/DebouncedSearchInput";
+import { WaCard, WaCardHeader } from "@/components/whatsapp/ui/WaCard";
+import {
+  waButton,
+  waSwitch,
+  waTable,
+  waTableWrap,
+  waTd,
+  waTh,
+  waTr,
+} from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
 import {
   OPT_OUT_ORIGIN_LABELS,
@@ -31,6 +41,7 @@ import {
 } from "@/features/whatsapp/schemas/settings-tab.schema";
 import { normalizeConversationSearch } from "@/features/whatsapp/utils/conversation-filters.util";
 import { formatLimaDateTime } from "@/features/whatsapp/utils/lima-time.util";
+import { cn } from "@/lib/utils";
 import { AddOptOutDialog } from "./AddOptOutDialog";
 import { ReactivateOptOutDialog } from "./ReactivateOptOutDialog";
 import { SettingsDraftFooter, SuggestedValuesNote } from "./SettingsDraftFooter";
@@ -70,15 +81,17 @@ function KeywordForm({
   const switchId = useId();
   const { draft, setDraft, isDirty, discard } = useSettingsDraft(source.values);
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-2.5">
       {source.note && <SuggestedValuesNote reason={source.note} />}
-      <div className="flex items-start justify-between gap-3 rounded-lg border p-3">
-        <label htmlFor={switchId} className="text-sm">
-          Dar de baja solo si el cliente escribe STOP, BAJA o NO MÁS, y confirmarle que ya no
-          recibirá avisos
+      <div className="flex items-center gap-3 rounded-xl border border-wa-border bg-wa-surface px-4 py-[13px] text-[13px]">
+        <Ban className="size-[18px] shrink-0 text-wa-muted" aria-hidden="true" />
+        <label htmlFor={switchId} className="min-w-0 flex-1">
+          Dar de baja solo si el cliente escribe <b>STOP</b>, <b>BAJA</b> o <b>NO MÁS</b>, y
+          confirmarle que ya no recibirá avisos
         </label>
         <Switch
           id={switchId}
+          className={waSwitch}
           checked={draft.optOutByKeyword}
           disabled={!canEdit}
           onCheckedChange={(checked) => setDraft({ ...draft, optOutByKeyword: checked })}
@@ -122,23 +135,25 @@ export function OptOutsSection({
   const searching = normalizeConversationSearch(search) !== null;
 
   return (
-    <section aria-labelledby="opt-outs-title" className="space-y-4 rounded-xl border p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h3 id="opt-outs-title" className="font-semibold">
-            Clientes que no quieren avisos
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            A estos números no se les envía nada: ni avisos automáticos ni envíos programados.
-          </p>
-        </div>
-        {canEdit && (
-          <Button type="button" variant="outline" onClick={() => setAdding(true)}>
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Agregar número
-          </Button>
-        )}
-      </div>
+    <WaCard aria-labelledby="opt-outs-title" className="flex flex-col gap-3.5">
+      <WaCardHeader
+        className="mb-0"
+        titleId="opt-outs-title"
+        title="Clientes que no quieren avisos"
+        description="A estos números no se les envía nada: ni avisos automáticos ni envíos programados."
+        actions={
+          canEdit && (
+            <Button
+              type="button"
+              className={waButton({ size: "sm" })}
+              onClick={() => setAdding(true)}
+            >
+              <Plus aria-hidden="true" />
+              Agregar número
+            </Button>
+          )
+        }
+      />
 
       {source ? (
         <KeywordForm
@@ -164,7 +179,7 @@ export function OptOutsSection({
         value={search}
         onValueChange={onSearchChange}
         label="Buscar por nombre o teléfono"
-        className="sm:max-w-sm"
+        className="sm:max-w-[320px]"
       />
 
       <WhatsAppResourceState
@@ -176,58 +191,61 @@ export function OptOutsSection({
         onRetry={onRetry}
         isEmpty={(data) => data.items.length === 0 && data.page === 1}
         empty={
-          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed p-6 text-center">
-            <UserX className="h-6 w-6 text-muted-foreground" aria-hidden="true" />
-            <p className="text-sm font-medium">
+          <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-wa-border-strong p-6 text-center">
+            <UserX className="size-6 text-wa-muted" aria-hidden="true" />
+            <p className="m-0 text-sm font-medium">
               {searching ? "Ningún número coincide con la búsqueda." : "Nadie se dio de baja."}
             </p>
           </div>
         }
       >
         {(data) => (
-          <div className="space-y-3">
-            <div className="overflow-x-auto rounded-lg border">
-              <Table>
+          <div className="flex flex-col gap-3">
+            <div className={waTableWrap}>
+              <Table className={waTable}>
                 <TableHeader>
-                  <TableRow>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>Teléfono</TableHead>
-                    <TableHead>Tienda</TableHead>
-                    <TableHead>Cómo se dio de baja</TableHead>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead>
+                  <TableRow className={waTr}>
+                    <TableHead className={waTh}>Cliente</TableHead>
+                    <TableHead className={waTh}>Teléfono</TableHead>
+                    <TableHead className={waTh}>Tienda</TableHead>
+                    <TableHead className={waTh}>Cómo se dio de baja</TableHead>
+                    <TableHead className={waTh}>Fecha</TableHead>
+                    <TableHead className={waTh}>
                       <span className="sr-only">Acciones</span>
                     </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.items.map((optOut) => (
-                    <TableRow key={optOut.id}>
-                      <TableCell className="min-w-36 [overflow-wrap:anywhere]">
+                    <TableRow key={optOut.id} className={waTr}>
+                      <TableCell className={cn(waTd, "min-w-36 [overflow-wrap:anywhere]")}>
                         {optOut.customerName ?? "Sin nombre"}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">{optOut.phone}</TableCell>
-                      <TableCell className="whitespace-nowrap">
-                        {optOut.storeName ??
-                          (optOut.storeId === null ? "Todas las tiendas" : "Tienda sin informar")}
+                      <TableCell className={cn(waTd, "wa-num whitespace-nowrap")}>
+                        {optOut.phone}
                       </TableCell>
-                      <TableCell className="min-w-40">
+                      <TableCell className={cn(waTd, "whitespace-nowrap")}>
+                        <span className="rounded-md border border-wa-border px-2 py-0.5 text-[11px]">
+                          {optOut.storeName ??
+                            (optOut.storeId === null ? "Todas las tiendas" : "Tienda sin informar")}
+                        </span>
+                      </TableCell>
+                      <TableCell className={cn(waTd, "min-w-40")}>
                         {originLabel(optOut)}
                         {optOut.createdBy && (
-                          <span className="block text-xs text-muted-foreground">
+                          <span className="block text-xs text-wa-muted">
                             Registró: {optOut.createdBy.name}
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-sm">
+                      <TableCell className={cn(waTd, "wa-num whitespace-nowrap")}>
                         {formatLimaDateTime(optOut.createdAt)}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className={cn(waTd, "text-right")}>
                         {canEdit && (
                           <Button
                             type="button"
-                            variant="ghost"
-                            size="sm"
+                            className={waButton({ size: "sm" })}
                             onClick={() => setReactivating(optOut)}
                           >
                             Reactivar
@@ -243,9 +261,9 @@ export function OptOutsSection({
             {(data.page > 1 || data.hasMore) && (
               <nav
                 aria-label="Paginación de bajas"
-                className="flex items-center justify-between gap-2 text-sm"
+                className="flex items-center justify-between gap-2 text-[13px]"
               >
-                <span className="text-muted-foreground">
+                <span className="text-wa-muted">
                   Página {data.page}
                   {data.total !== null && ` · ${data.total.toLocaleString("es-PE")} números`}
                 </span>
@@ -257,8 +275,7 @@ export function OptOutsSection({
                     <Button
                       key={control.label}
                       type="button"
-                      variant="outline"
-                      size="sm"
+                      className={waButton({ size: "sm" })}
                       disabled={!control.enabled}
                       aria-disabled={!onPageChange && control.enabled ? true : undefined}
                       aria-describedby={
@@ -273,7 +290,7 @@ export function OptOutsSection({
               </nav>
             )}
             {!onPageChange && (data.page > 1 || data.hasMore) && (
-              <p id={paginationReasonId} className="text-xs text-muted-foreground">
+              <p id={paginationReasonId} className="m-0 text-xs text-wa-muted">
                 {optOutsBlockedReason}
               </p>
             )}
@@ -298,6 +315,6 @@ export function OptOutsSection({
           onClose={() => setReactivating(null)}
         />
       )}
-    </section>
+    </WaCard>
   );
 }

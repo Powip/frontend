@@ -12,8 +12,24 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { WaCard, WaCardHeader } from "@/components/whatsapp/ui/WaCard";
+import { WaInput } from "@/components/whatsapp/ui/WaInput";
+import {
+  waField,
+  waHint,
+  waInput,
+  waLabel,
+  waSelectTrigger,
+  waSwitch,
+} from "@/components/whatsapp/ui/wa-classes";
 import {
   WHATSAPP_OUT_OF_HOURS_OPTIONS,
   WHATSAPP_SCHEDULING_LIMITS,
@@ -28,7 +44,6 @@ import {
   sendingScheduleSchema,
 } from "@/features/whatsapp/schemas/sending-schedule.schema";
 import { cn } from "@/lib/utils";
-import { TemplateSegmentedChoice } from "../plantillas/TemplateSegmentedChoice";
 import { FormDraftActions } from "./FormDraftActions";
 import { SettingsStateGate } from "./SettingsStateGate";
 
@@ -63,38 +78,40 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
   };
 
   return (
-    <section
-      aria-labelledby="sending-hours-title"
-      className="space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-5"
-    >
-      <div>
-        <h3 id="sending-hours-title" className="font-semibold">
-          Horario permitido
-        </h3>
-        <p className="text-sm text-muted-foreground">
-          Fuera de este horario no se envía nada a tus clientes. Zona horaria fija: Lima (GMT-5).
-        </p>
-      </div>
+    <WaCard aria-labelledby="sending-hours-title">
+      <WaCardHeader
+        level={3}
+        titleId="sending-hours-title"
+        title="Horario permitido"
+        description="Fuera de este horario no se envía nada a tus clientes."
+      />
 
       <SettingsStateGate settings={settings}>
         {() => (
           <Form {...form}>
-            <form noValidate className="space-y-4" onSubmit={(event) => event.preventDefault()}>
+            <form
+              noValidate
+              className="flex flex-col gap-3.5"
+              onSubmit={(event) => event.preventDefault()}
+            >
               {settings.kind === "pending-integration" && (
-                <p className="text-xs text-muted-foreground">
+                <p className="m-0 text-xs text-wa-muted">
                   Valores iniciales sugeridos por el documento (Lun–Sáb, 08:00–21:00, máximo 3
                   avisos). No son la configuración guardada de la tienda.
                 </p>
               )}
-              <fieldset disabled={!canManage} className="min-w-0 space-y-4">
+              <fieldset
+                disabled={!canManage}
+                className="m-0 flex min-w-0 flex-col gap-3.5 border-0 p-0"
+              >
                 <legend className="sr-only">Horario y límites de envío</legend>
                 <FormField
                   control={form.control}
                   name="days"
                   render={() => (
-                    <FormItem>
-                      <fieldset className="space-y-2">
-                        <legend className="text-sm font-medium">Días</legend>
+                    <FormItem className="space-y-0">
+                      <fieldset className="m-0 border-0 p-0">
+                        <legend className="sr-only">Días</legend>
                         <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-7">
                           {WHATSAPP_WEEKDAY_OPTIONS.map((day) => {
                             const selected = days.includes(day.value);
@@ -106,9 +123,8 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
                                 aria-label={day.label}
                                 onClick={() => toggleDay(day.value)}
                                 className={cn(
-                                  "min-h-9 rounded-md border px-2 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
-                                  selected &&
-                                    "border-teal-600 bg-teal-50 text-teal-800 dark:border-teal-400 dark:bg-teal-500/15 dark:text-teal-200",
+                                  "cursor-pointer rounded-[9px] border border-wa-border bg-wa-surface px-1 py-2 text-center text-xs font-medium outline-none focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-wa-primary disabled:cursor-not-allowed disabled:opacity-50",
+                                  selected && "border-wa-teal bg-wa-teal-soft text-wa-teal",
                                 )}
                               >
                                 {day.short}
@@ -117,21 +133,21 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
                           })}
                         </div>
                       </fieldset>
-                      <FormMessage />
+                      <FormMessage className="mt-1 text-xs text-wa-red" />
                     </FormItem>
                   )}
                 />
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   <FormField
                     control={form.control}
                     name="from"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Desde</FormLabel>
+                      <FormItem className={waField}>
+                        <FormLabel className={waLabel}>Desde</FormLabel>
                         <FormControl>
-                          <Input type="time" {...field} />
+                          <WaInput type="time" {...field} className={cn(waInput, "wa-num")} />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage className="text-xs text-wa-red" />
                       </FormItem>
                     )}
                   />
@@ -139,12 +155,12 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
                     control={form.control}
                     name="to"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Hasta</FormLabel>
+                      <FormItem className={waField}>
+                        <FormLabel className={waLabel}>Hasta</FormLabel>
                         <FormControl>
-                          <Input type="time" {...field} />
+                          <WaInput type="time" {...field} className={cn(waInput, "wa-num")} />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage className="text-xs text-wa-red" />
                       </FormItem>
                     )}
                   />
@@ -153,19 +169,31 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
                   control={form.control}
                   name="outOfHours"
                   render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <TemplateSegmentedChoice
-                          legend="Si un aviso cae fuera del horario"
-                          name="sending-out-of-hours"
-                          value={field.value}
-                          options={WHATSAPP_OUT_OF_HOURS_OPTIONS}
-                          readOnly={!canManage}
-                          onValueChange={(value: WhatsAppOutOfHoursPolicy) =>
-                            form.setValue("outOfHours", value, { shouldDirty: true })
-                          }
-                        />
-                      </FormControl>
+                    <FormItem className={waField}>
+                      <FormLabel className={waLabel}>Si un aviso cae fuera del horario</FormLabel>
+                      <Select
+                        value={field.value}
+                        disabled={!canManage}
+                        onValueChange={(value) => {
+                          if (!value || value === field.value) return;
+                          form.setValue("outOfHours", value as WhatsAppOutOfHoursPolicy, {
+                            shouldDirty: true,
+                          });
+                        }}
+                      >
+                        <FormControl>
+                          <SelectTrigger className={waSelectTrigger} onBlur={field.onBlur}>
+                            <SelectValue />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {WHATSAPP_OUT_OF_HOURS_OPTIONS.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </FormItem>
                   )}
                 />
@@ -173,16 +201,19 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
                   control={form.control}
                   name="dedupe"
                   render={({ field }) => (
-                    <FormItem className="flex flex-row items-start justify-between gap-3 space-y-0">
-                      <div className="space-y-1">
-                        <FormLabel>No repetir el mismo aviso en un pedido</FormLabel>
-                        <FormDescription>
+                    <FormItem className="flex flex-row items-center justify-between gap-3 space-y-0">
+                      <div className="min-w-0">
+                        <FormLabel className="text-sm font-medium text-wa-fg">
+                          No repetir el mismo aviso en un pedido
+                        </FormLabel>
+                        <FormDescription className={waHint}>
                           Si el courier reenvía un estado, el cliente no recibe el mensaje dos
                           veces.
                         </FormDescription>
                       </div>
                       <FormControl>
                         <Switch
+                          className={waSwitch}
                           checked={field.value}
                           onCheckedChange={(checked) =>
                             form.setValue("dedupe", checked, { shouldDirty: true })
@@ -196,23 +227,35 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
                   control={form.control}
                   name="maxPerOrderPerDay"
                   render={({ field }) => (
-                    <FormItem className="max-w-xs">
-                      <FormLabel>Máximo de avisos por pedido al día</FormLabel>
-                      <FormControl>
-                        <Input {...field} inputMode="numeric" />
-                      </FormControl>
-                      <FormDescription>
-                        Entre {WHATSAPP_SCHEDULING_LIMITS.maxPerOrderPerDay.min} y{" "}
-                        {WHATSAPP_SCHEDULING_LIMITS.maxPerOrderPerDay.max}. Comprobante e incidencia
-                        tienen prioridad.
-                      </FormDescription>
-                      <FormMessage />
+                    <FormItem className="flex flex-col gap-1 space-y-0">
+                      <div className="flex flex-row items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <FormLabel className="text-sm font-medium text-wa-fg">
+                            Máximo de avisos por pedido al día
+                          </FormLabel>
+                          <FormDescription className={waHint}>
+                            Evita que el cliente se sature y bloquee tu número. Entre{" "}
+                            {WHATSAPP_SCHEDULING_LIMITS.maxPerOrderPerDay.min} y{" "}
+                            {WHATSAPP_SCHEDULING_LIMITS.maxPerOrderPerDay.max}; comprobante e
+                            incidencia tienen prioridad.
+                          </FormDescription>
+                        </div>
+                        <FormControl>
+                          <WaInput
+                            {...field}
+                            inputMode="numeric"
+                            className={cn(waInput, "wa-num w-[70px] shrink-0 text-center")}
+                          />
+                        </FormControl>
+                      </div>
+                      <FormMessage className="text-xs text-wa-red" />
                     </FormItem>
                   )}
                 />
+                <p className="m-0 text-xs text-wa-muted">Zona horaria: Lima (GMT-5)</p>
               </fieldset>
               {!canPersist && isDirty && (
-                <p id={SENDING_HOURS_NOTE_ID} className="text-xs text-muted-foreground">
+                <p id={SENDING_HOURS_NOTE_ID} className="m-0 text-xs text-wa-muted">
                   Guardar estará disponible cuando se conecte el servicio de configuración.
                 </p>
               )}
@@ -228,6 +271,6 @@ export function SendingHoursSection({ settings, canManage, canPersist }: Sending
           </Form>
         )}
       </SettingsStateGate>
-    </section>
+    </WaCard>
   );
 }

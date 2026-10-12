@@ -23,6 +23,9 @@ export function resolveEffectivePermissions(
 export const UNKNOWN_PERMISSION_REASON =
   "Tus permisos de WhatsApp todavía no están confirmados por POWIP, así que esta acción queda bloqueada.";
 
+export const UNDEFINED_PERMISSION_REASON =
+  "El permiso para hacer este cambio todavía no está definido en POWIP.";
+
 export function getPermissionBlockReason(
   effective: WhatsAppEffectivePermissions,
   code: WhatsAppPermissionCode,

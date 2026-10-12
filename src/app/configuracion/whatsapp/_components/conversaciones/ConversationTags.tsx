@@ -1,22 +1,9 @@
-import { Ban, CheckCircle2, Flag, MousePointerClick, UserRound } from "lucide-react";
 import type { ReactNode } from "react";
+import { WaMini, type WaTone } from "@/components/whatsapp/ui/WaPill";
 import { WHATSAPP_MESSAGE_STATUSES } from "@/features/whatsapp/enums/whatsapp.enums";
 import type { WhatsAppConversationSummary } from "@/features/whatsapp/models/conversation.model";
 import { isShownAsAttended } from "@/features/whatsapp/utils/conversation-state.util";
 import { cn } from "@/lib/utils";
-
-function Tag({ className, children }: { className: string; children: ReactNode }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium [&>svg]:h-3 [&>svg]:w-3",
-        className,
-      )}
-    >
-      {children}
-    </span>
-  );
-}
 
 export function ConversationTags({
   conversation,
@@ -25,56 +12,30 @@ export function ConversationTags({
   conversation: WhatsAppConversationSummary;
   className?: string;
 }) {
-  const tags: ReactNode[] = [];
-  if (isShownAsAttended(conversation)) {
-    tags.push(
-      <Tag
-        key="attended"
-        className="bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
-      >
-        <CheckCircle2 aria-hidden="true" />
-        Atendida
-      </Tag>,
-    );
-  }
+  const tags: { key: string; tone: WaTone; label: ReactNode }[] = [];
   if (conversation.trackingOpened) {
-    tags.push(
-      <Tag key="tracking" className="bg-sky-100 text-sky-800 dark:bg-sky-500/15 dark:text-sky-300">
-        <MousePointerClick aria-hidden="true" />
-        Abrió rastreo
-      </Tag>,
-    );
+    tags.push({ key: "tracking", tone: "teal", label: "Abrió rastreo" });
+  }
+  if (isShownAsAttended(conversation)) {
+    tags.push({ key: "attended", tone: "ok", label: "Atendida" });
   }
   if (conversation.lastOutbound?.status === WHATSAPP_MESSAGE_STATUSES.ASSISTED) {
-    tags.push(
-      <Tag
-        key="assisted"
-        className="bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-300"
-      >
-        <UserRound aria-hidden="true" />
-        Asistido
-      </Tag>,
-    );
+    tags.push({ key: "assisted", tone: "warn", label: "Asistido" });
   }
   if (conversation.flaggedForReview) {
-    tags.push(
-      <Tag
-        key="review"
-        className="bg-orange-100 text-orange-900 dark:bg-orange-500/15 dark:text-orange-300"
-      >
-        <Flag aria-hidden="true" />
-        Revisar
-      </Tag>,
-    );
+    tags.push({ key: "review", tone: "warn", label: "Revisar" });
   }
   if (conversation.optedOut) {
-    tags.push(
-      <Tag key="opted-out" className="bg-muted text-muted-foreground">
-        <Ban aria-hidden="true" />
-        Dado de baja
-      </Tag>,
-    );
+    tags.push({ key: "opted-out", tone: "neutral", label: "Dado de baja" });
   }
   if (tags.length === 0) return null;
-  return <span className={cn("flex flex-wrap gap-1", className)}>{tags}</span>;
+  return (
+    <span className={cn("flex flex-wrap items-center gap-1.5", className)}>
+      {tags.map((tag) => (
+        <WaMini key={tag.key} tone={tag.tone}>
+          {tag.label}
+        </WaMini>
+      ))}
+    </span>
+  );
 }

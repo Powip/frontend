@@ -264,7 +264,7 @@ describe("Enlace desde Plantillas", () => {
     );
     expect(screen.getByText(/Abrimos «Pedido en camino»/)).toBeInTheDocument();
     const card = ruleCard("Pedido en camino");
-    expect(card.className).toMatch(/ring-2/);
+    expect(card).toHaveAttribute("data-highlighted", "true");
     expect(
       within(card).getByText(
         /Plantilla preseleccionada desde Plantillas. Todavía no se guardó ni se activó/,

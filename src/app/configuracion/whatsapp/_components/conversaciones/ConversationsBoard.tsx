@@ -1,4 +1,8 @@
+import { MessageSquare, TriangleAlert } from "lucide-react";
+import type { ReactNode } from "react";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import { DoubleTick, SingleTick } from "@/components/whatsapp/MessageStatusTicks";
+import { waButton } from "@/components/whatsapp/ui/wa-classes";
 import {
   WHATSAPP_THREAD_COLUMNS,
   type WhatsAppThreadColumn,
@@ -15,6 +19,27 @@ import { CONVERSATION_PENDING_REASON } from "./conversation-types";
 
 const LOAD_MORE_BLOCKED_ID = "conversations-load-more-blocked";
 
+export const COLUMN_ICONS: Record<WhatsAppThreadColumn, ReactNode> = {
+  [WHATSAPP_THREAD_COLUMNS.SENT]: <SingleTick className="text-wa-tick" />,
+  [WHATSAPP_THREAD_COLUMNS.DELIVERED]: <DoubleTick className="text-wa-tick" />,
+  [WHATSAPP_THREAD_COLUMNS.READ]: <DoubleTick className="text-wa-tick-read" />,
+  [WHATSAPP_THREAD_COLUMNS.REPLIED]: (
+    <MessageSquare className="size-4 shrink-0 text-wa-red" aria-hidden="true" />
+  ),
+  [WHATSAPP_THREAD_COLUMNS.FAILED]: (
+    <TriangleAlert className="size-4 shrink-0 text-wa-red" aria-hidden="true" />
+  ),
+};
+
+export const BOARD_GRID =
+  "relative grid snap-x auto-cols-[minmax(200px,85%)] grid-flow-col gap-3 overflow-x-auto pb-1.5 sm:auto-cols-[minmax(200px,1fr)]";
+
+export const COLUMN_CLASS =
+  "flex min-h-60 min-w-0 snap-start flex-col gap-2 rounded-[14px] border border-wa-border bg-wa-surface-2 p-2.5";
+
+export const HOT_COLUMN_CLASS =
+  "border-[color-mix(in_srgb,var(--wa-red)_40%,var(--wa-border))] bg-[color-mix(in_srgb,var(--wa-red-soft)_45%,var(--wa-surface-2))]";
+
 interface ConversationsBoardProps {
   board: WhatsAppConversationBoard;
   now: Date;
@@ -28,33 +53,31 @@ export function ConversationsBoard({ board, now, onOpen, onLoadMore }: Conversat
 
   return (
     <div className="space-y-2">
-      <div className="grid snap-x auto-cols-[minmax(15rem,85%)] grid-flow-col gap-3 overflow-x-auto pb-2 sm:auto-cols-[minmax(15rem,1fr)]">
+      <div className={BOARD_GRID}>
         {CONVERSATION_COLUMN_ORDER.map((column) => {
           const items = grouped[column];
           const total = board[column].total;
-          const isReplied = column === WHATSAPP_THREAD_COLUMNS.REPLIED;
+          const hot = column === WHATSAPP_THREAD_COLUMNS.REPLIED && (total ?? items.length) > 0;
           const headingId = `conversations-column-${column}`;
           return (
             <section
               key={column}
               aria-labelledby={headingId}
-              className={cn(
-                "flex min-w-0 snap-start flex-col gap-2 rounded-xl border bg-muted/40 p-2",
-                isReplied && "border-red-200 bg-red-50 dark:border-red-500/30 dark:bg-red-500/10",
-              )}
+              className={cn(COLUMN_CLASS, hot && HOT_COLUMN_CLASS)}
             >
               <h3
                 id={headingId}
-                className="flex items-center justify-between gap-2 px-1 text-sm font-semibold"
+                className="m-0 flex items-center gap-2 px-1 pt-0.5 pb-1.5 text-[13px] font-semibold"
               >
+                {COLUMN_ICONS[column]}
                 <span>{THREAD_COLUMN_LABELS[column]}</span>
                 {total !== null && (
                   <span
                     className={cn(
-                      "rounded-full px-2 py-0.5 text-xs font-semibold",
-                      isReplied
-                        ? "bg-red-600 text-white dark:bg-red-500"
-                        : "bg-background text-muted-foreground",
+                      "wa-num ml-auto rounded-full border px-2 text-[11px] font-semibold",
+                      hot
+                        ? "border-wa-red bg-wa-red text-white"
+                        : "border-wa-border bg-wa-surface text-wa-muted",
                     )}
                   >
                     {total}
@@ -63,9 +86,9 @@ export function ConversationsBoard({ board, now, onOpen, onLoadMore }: Conversat
                 )}
               </h3>
               {items.length === 0 ? (
-                <p className="px-1 py-4 text-center text-xs text-muted-foreground">Nada por aquí</p>
+                <p className="m-0 p-1 text-xs text-wa-muted">Nada por aquí</p>
               ) : (
-                <ul className="flex flex-col gap-2">
+                <ul className="m-0 flex list-none flex-col gap-2 p-0">
                   {items.map((conversation) => (
                     <li key={conversation.id}>
                       <ConversationCard
@@ -80,8 +103,7 @@ export function ConversationsBoard({ board, now, onOpen, onLoadMore }: Conversat
               )}
               {board[column].hasMore && (
                 <BlockedActionButton
-                  variant="ghost"
-                  size="sm"
+                  className={waButton({ variant: "ghost", size: "sm" })}
                   blocked={!onLoadMore}
                   blockedReasonId={LOAD_MORE_BLOCKED_ID}
                   onClick={() => onLoadMore?.(column)}
@@ -94,7 +116,7 @@ export function ConversationsBoard({ board, now, onOpen, onLoadMore }: Conversat
         })}
       </div>
       {anyHasMore && !onLoadMore && (
-        <p id={LOAD_MORE_BLOCKED_ID} className="text-xs text-muted-foreground">
+        <p id={LOAD_MORE_BLOCKED_ID} className="m-0 text-xs text-wa-muted">
           {CONVERSATION_PENDING_REASON}
         </p>
       )}

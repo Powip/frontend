@@ -1,36 +1,31 @@
 # 08 · Indicador del último aviso en botones WhatsApp (X2)
 
-Referencias: PDF §1.3 ("El botón de WhatsApp de cada pedido muestra el último estado del aviso"), §6.5.1 ("Así se ve en Ventas"), §9.2 (`pedidos.wa_last_status`, "Ventas y Gestión CC"); mockup `.wa-act`, `.mini-ventas`.
+Referencias: PDF §1.3, §6.5.1 ("Así se ve en Ventas"), §9.2 (`pedidos.wa_last_status`); mockup `.wa-act`, `.mini-ventas`.
 
-## X2 · Mini indicador
+**Estado (etapa 8, 2026-10-10):** implementado en los botones de WhatsApp de cada fila. Hoy no se ve en ninguna lista porque el dato no existe (C-29); cuando backend lo envíe en las listas, aparece sin más cambios.
 
 | Campo | Detalle |
 |---|---|
-| Qué es | Una marca pequeña sobre el botón verde de WhatsApp de cada pedido: ticks gris (enviado/entregado), ticks azul (leído), botón rojo si no se envió. Tooltip "Último aviso: {plantilla} · {estado} · {hora}" y motivo si falló |
-| Qué no es | No cambia lo que hace el clic (sigue abriendo `wa.me`); no refleja los clics manuales en ese botón (D-02) |
-| Componente | Propuesto: `WhatsAppNoticeButton` (`src/components/whatsapp/`) que envuelve el botón actual o agrega el indicador como hijo posicionado; `MessageStatusTicks` en tamaño mini |
-| Datos | `waLastNotice: { status, templateName, at, reason } | null` en cada fila (C-29). `null` → sin indicador |
-| Estados | Sin contrato o campo ausente → sin indicador (no se infiere nada). `queued` → reloj gris. `failed`/`skipped` → botón rojo + tooltip con motivo. `assisted` → ícono de persona |
-| Accesibilidad | El nombre accesible del botón suma el estado: "WhatsApp, último aviso leído" |
-| Lecturas | Ninguna nueva: el dato viaja en las listas que ya cargan esas pantallas (evita N+1) |
-| Actualización | La de cada lista (sus propios refetch) |
-| Permisos | Visible para quien ve la lista; no requiere `WA_VIEW` (PROPUESTA) |
-| Criterios de aceptación | El estado coincide con el del Historial para ese pedido; filas sin aviso no muestran marca |
-| Contrato | C-29 SPEC (campo), ruta de lista existente en ms-ventas a extender |
+| Componente compartido | `WhatsAppLastNoticeIndicator` (`src/components/whatsapp/`); parser `parseWhatsAppLastNotice` (`src/features/whatsapp/utils/last-notice.util.ts`) |
+| Dato | Campo opcional `OrderHeader.waLastNotice` (`src/interfaces/IOrder.ts`) con forma `{ status, templateName, at (ISO), reason }`. El parser exige un estado conocido y una fecha válida; ausente o inválido → no se muestra nada (ausencia no es fallo, D-73) |
+| Presentación | Marca sobre el botón: ticks gris (enviado/entregado), azul (leído), reloj (en cola), persona (asistido), rojo (no enviado). El nombre accesible del botón suma "Último aviso {plantilla}: {estado} · {fecha} · {motivo}" |
+| Lo que no cambia | El `onClick` (abre `wa.me` como hoy), validaciones de teléfono, permisos y los envíos masivos. Clic manual en el botón no se registra (D-02) |
+| Rendimiento | Sin peticiones: se lee del objeto de la fila |
 
-## Lugares donde aplicar
+## Dónde está montado
 
-Prioridad según el PDF (Ventas, Gestión CC, Operaciones › Pedidos):
-
-| Pantalla | Archivo | Botón actual |
+| Pantalla | Archivo | Cambio |
 |---|---|---|
-| Comercial › Ventas | `src/app/ventas/page.tsx` (filas, p. ej. `:1305-1316`; masivos `:1850`, `:1938`, `:2035` quedan sin indicador) | `handleWhatsApp(phone, orderNumber, clientName)` |
-| Atención al cliente › Gestión CC | `src/components/atencion-cliente/cc-v2/CcPedidosTable.tsx` (`onWhatsApp`, `:70`, `:333`) | Callback del padre |
-| Operaciones › Pedidos | `src/app/operaciones/pedidos/_components/AtencionTab.tsx` (`:267`, `:426`), `EnCaminoTab.tsx` (`:294`, `:405`), `PorDespacharTab.tsx`, `PedidosContent.tsx` | `openWhatsApp` (`types.ts:232`) |
-| Ficha del pedido | `src/components/modals/CustomerServiceModal.tsx` (`:1268`, `:2897`) | `handleWhatsApp` (`:581`) |
+| Ventas (dos tablas) | `src/app/ventas/page.tsx` | `Sale.waLastNotice` desde el mapper + indicador en los dos botones de fila |
+| Gestión CC | `src/components/atencion-cliente/cc-v2/CcPedidosTable.tsx` | Indicador con `parseWhatsAppLastNotice(order.waLastNotice)` |
+| Operaciones › Pedidos | `src/app/operaciones/pedidos/_components/types.ts` (`Sale.waLastNotice` en `mapOrderToSale`), `AtencionTab.tsx`, `EnCaminoTab.tsx`, `PorDespacharTab.tsx` | Indicador en el botón de fila |
 
-Fuera de alcance (no son pedidos con avisos de envío o son acciones masivas): Clientes, Finanzas (cobranza), Facturación (envío de comprobante por `wa.me`), Shalom (documento y envío), Planificación de guías, barra de Gestión CC (WhatsApp masivo).
+Fuera de alcance: botones masivos, Clientes, Finanzas, Facturación, Shalom, Planificación y la barra masiva de Gestión CC.
 
-## Dependencia de backend
+## Contrato (C-29, propuesto)
 
-Las respuestas de lista de pedidos de ms-ventas que usan esas pantallas deben incluir `waLastNotice`. **SIN DEFINIR** cuáles endpoints exactamente (las pantallas usan `useVentas`, `useCcPedidos`, servicios de Operaciones); backend debe agregarlo a todos para no hacer consultas por fila.
+Agregar `waLastNotice: { status: "queued|sent|delivered|read|failed|skipped|assisted", templateName, at, reason } | null` a cada pedido en las respuestas de lista que ya usan esas pantallas (ms-ventas: listado de ventas, pedidos de Operaciones, pedidos de Gestión CC). Sin consultas por fila. Debe coincidir con el último mensaje del Historial (C-24) para ese pedido.
+
+## Criterios de aceptación
+
+Con datos: el estado coincide con el Historial; filas sin aviso no muestran marca. Sin datos (tests): el botón queda idéntico y su clic sigue funcionando. La vista "Así se ve en las listas de pedidos" del Historial muestra un ejemplo ilustrativo sin pedidos ni fechas.

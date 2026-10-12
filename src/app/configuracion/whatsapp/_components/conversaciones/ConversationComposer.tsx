@@ -12,6 +12,8 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import { WaCallout } from "@/components/whatsapp/ui/WaCallout";
+import { waButton, waSelectTrigger, waTextarea } from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
 import {
   CONVERSATION_LIMITS,
@@ -28,6 +30,7 @@ import {
   validateReplyText,
 } from "@/features/whatsapp/utils/conversation-composer.util";
 import type { ReplyWindowStatus } from "@/features/whatsapp/utils/reply-window.util";
+import { cn } from "@/lib/utils";
 import { TemplateSegmentedChoice } from "../plantillas/TemplateSegmentedChoice";
 import {
   type ActionStatus,
@@ -62,14 +65,14 @@ interface ConversationComposerProps {
 function StatusMessage({ status, suffix }: { status: ActionStatus; suffix?: string }) {
   if (status.kind === "pending") {
     return (
-      <p role="status" className="text-xs text-muted-foreground">
+      <p role="status" className="m-0 text-xs text-wa-muted">
         Enviando…
       </p>
     );
   }
   if (status.kind === "error") {
     return (
-      <p role="alert" className="text-xs font-medium text-red-700 dark:text-red-300">
+      <p role="alert" className="m-0 text-xs font-medium text-wa-red">
         {status.message}
         {suffix && ` ${suffix}`}
       </p>
@@ -80,7 +83,7 @@ function StatusMessage({ status, suffix }: { status: ActionStatus; suffix?: stri
 
 function CharacterCount({ value, max }: { value: string; max: number }) {
   return (
-    <span className="text-xs text-muted-foreground tabular-nums">
+    <span className="wa-num text-[11px] text-wa-muted">
       {value.length.toLocaleString("es-PE")}/{max.toLocaleString("es-PE")}
     </span>
   );
@@ -121,8 +124,8 @@ export function ConversationComposer({
 
   if (!canReply) {
     return (
-      <p className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3 text-sm text-muted-foreground">
-        <Lock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <p className="m-0 flex items-start gap-2 rounded-xl border border-wa-border bg-wa-surface-2 px-3.5 py-3 text-[13px] text-wa-muted">
+        <Lock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
         No tienes permiso para responder ni dejar notas en esta conversación.
       </p>
     );
@@ -225,48 +228,43 @@ export function ConversationComposer({
   const showTemplatePicker = !optedOut && window.state !== "open";
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-2">
       <TemplateSegmentedChoice
         legend="Qué quieres escribir"
         name={`composer-mode-${conversation.id}`}
         value={mode}
         options={MODE_OPTIONS}
         onValueChange={setMode}
-        className="[&>legend]:sr-only"
+        className="[&>div]:w-fit [&>legend]:sr-only [&_label]:px-2.5 [&_label]:py-1 [&_label]:text-xs"
       />
 
       {mode === "reply" && (
-        <div className="space-y-3">
+        <div className="flex flex-col gap-2">
           {optedOut && (
-            <p className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
-              <Ban className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+            <WaCallout tone="red" icon={Ban} compact>
               {OPTED_OUT_REASON}
-            </p>
+            </WaCallout>
           )}
 
           {!optedOut && window.state === "closed" && replyDraft.trim().length > 0 && (
-            <p
-              role="status"
-              className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100"
-            >
-              <Clock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-              La ventana de 24 h se cerró. Tu texto se conserva, pero ya no se puede enviar como
-              texto libre: envía una plantilla aprobada.
-            </p>
+            <div role="status">
+              <WaCallout tone="amber" icon={Clock} compact>
+                La ventana de 24 h se cerró. Tu texto se conserva, pero ya no se puede enviar como
+                texto libre: envía una plantilla aprobada.
+              </WaCallout>
+            </div>
           )}
 
           {!optedOut && windowOpen && (
-            <div className="space-y-1">
-              <p className="text-xs font-medium text-muted-foreground">Respuestas rápidas</p>
+            <div className="flex flex-col gap-1">
+              <p className="sr-only">Respuestas rápidas</p>
               <div className="flex flex-wrap gap-1.5">
                 {WHATSAPP_QUICK_REPLIES.map((reply) => {
                   const available = isQuickReplyAvailable(reply, quickReplyContext);
                   return (
                     <BlockedActionButton
                       key={reply.id}
-                      variant="outline"
-                      size="sm"
-                      className="h-7 rounded-full text-xs"
+                      className="h-auto rounded-full border border-wa-border bg-wa-surface-2 px-2.5 py-[5px] text-xs font-normal text-wa-fg shadow-none hover:border-wa-teal hover:bg-wa-surface-2 hover:text-wa-teal focus-visible:border-wa-border focus-visible:ring-0 focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-wa-primary"
                       blocked={!available}
                       blockedReasonId={quickReplyBlockedId}
                       onClick={() => {
@@ -279,11 +277,11 @@ export function ConversationComposer({
                   );
                 })}
               </div>
-              <p className="text-xs text-muted-foreground">
+              <p className="m-0 text-[11px] text-wa-muted">
                 Completan el cuadro de texto; no envían nada ni cambian el pedido.
               </p>
               {!conversation.trackingUrl && (
-                <p id={quickReplyBlockedId} className="text-xs text-muted-foreground">
+                <p id={quickReplyBlockedId} className="m-0 text-[11px] text-wa-muted">
                   {NO_TRACKING_REASON}
                 </p>
               )}
@@ -291,54 +289,58 @@ export function ConversationComposer({
           )}
 
           {(windowOpen || window.state === "unknown" || replyDraft.length > 0) && (
-            <div className="space-y-1.5">
+            <div className="flex flex-col gap-1">
               <div className="flex items-center justify-between gap-2">
-                <label htmlFor={replyId} className="text-sm font-medium">
+                <label htmlFor={replyId} className="sr-only">
                   Mensaje al comprador
                 </label>
                 <CharacterCount value={replyDraft} max={CONVERSATION_LIMITS.replyMaxLength} />
               </div>
-              <Textarea
-                id={replyId}
-                ref={textareaRef}
-                value={replyDraft}
-                readOnly={optedOut || window.state === "closed"}
-                onChange={(event) => {
-                  setReplyDraft(event.target.value);
-                  if (replyError) setReplyError(null);
-                }}
-                rows={3}
-                className="max-h-48 min-h-20 resize-y"
-                placeholder="Escribe tu respuesta"
-                aria-invalid={replyError ? true : undefined}
-                aria-describedby={replyError ? `${replyId}-error` : undefined}
-              />
-              {replyError && (
-                <p id={`${replyId}-error`} className="text-xs font-medium text-destructive">
-                  {replyError}
-                </p>
-              )}
-              <StatusMessage status={replyStatus} suffix="Tu texto se conserva." />
-              <div className="flex flex-wrap items-center justify-end gap-2">
-                {window.state === "closed" && replyDraft.length > 0 && (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setReplyDraft("")}>
-                    Descartar texto
-                  </Button>
-                )}
+              <div className="flex items-end gap-2.5">
+                <Textarea
+                  id={replyId}
+                  ref={textareaRef}
+                  value={replyDraft}
+                  readOnly={optedOut || window.state === "closed"}
+                  onChange={(event) => {
+                    setReplyDraft(event.target.value);
+                    if (replyError) setReplyError(null);
+                  }}
+                  rows={1}
+                  className={cn(waTextarea, "h-11 max-h-40 min-h-11 flex-1")}
+                  placeholder="Escribe una respuesta…"
+                  aria-invalid={replyError ? true : undefined}
+                  aria-describedby={replyError ? `${replyId}-error` : undefined}
+                />
                 {window.state !== "closed" && (
                   <BlockedActionButton
-                    size="sm"
+                    aria-label="Enviar"
+                    className={waButton({ variant: "whatsapp", size: "icon-lg" })}
                     blocked={replyBlocked}
                     blockedReasonId={replyBlockedId}
                     onClick={submitReply}
                   >
-                    <Send className="h-4 w-4" aria-hidden="true" />
-                    Enviar
+                    <Send aria-hidden="true" />
                   </BlockedActionButton>
                 )}
               </div>
+              {replyError && (
+                <p id={`${replyId}-error`} className="m-0 text-xs font-medium text-wa-red">
+                  {replyError}
+                </p>
+              )}
+              <StatusMessage status={replyStatus} suffix="Tu texto se conserva." />
+              {window.state === "closed" && replyDraft.length > 0 && (
+                <Button
+                  type="button"
+                  className={cn(waButton({ variant: "ghost", size: "sm" }), "self-end")}
+                  onClick={() => setReplyDraft("")}
+                >
+                  Descartar texto
+                </Button>
+              )}
               {replyBlockedReason && window.state !== "closed" && (
-                <p id={replyBlockedId} className="text-xs text-muted-foreground">
+                <p id={replyBlockedId} className="m-0 text-xs text-wa-muted">
                   {replyBlockedReason}
                 </p>
               )}
@@ -346,8 +348,7 @@ export function ConversationComposer({
           )}
 
           {showTemplatePicker && (
-            <div className="space-y-2 rounded-lg border p-3">
-              <p className="text-sm font-medium">Enviar una plantilla aprobada</p>
+            <div className="flex flex-col gap-2">
               <WhatsAppResourceState
                 state={templates}
                 pendingTitle="Plantillas pendientes de integración"
@@ -359,7 +360,7 @@ export function ConversationComposer({
                   const sendable = getSendableTemplates(data, conversation.storeId);
                   if (sendable.length === 0) {
                     return (
-                      <p className="text-sm text-muted-foreground">
+                      <p className="m-0 text-[13px] text-wa-muted">
                         No hay plantillas aprobadas para esta tienda.
                       </p>
                     );
@@ -367,7 +368,7 @@ export function ConversationComposer({
                   const selected = sendable.find((template) => template.id === templateId);
                   const selectedBody = selected?.approvedVersion?.body ?? selected?.body ?? null;
                   return (
-                    <div className="space-y-2">
+                    <div className="flex flex-col gap-2">
                       <Select
                         value={templateId || undefined}
                         onValueChange={(value) => {
@@ -376,7 +377,7 @@ export function ConversationComposer({
                           if (templateStatus.kind === "error") setTemplateStatus(IDLE);
                         }}
                       >
-                        <SelectTrigger className="w-full" aria-label="Plantilla aprobada">
+                        <SelectTrigger className={waSelectTrigger} aria-label="Plantilla aprobada">
                           <SelectValue placeholder="Elige una plantilla" />
                         </SelectTrigger>
                         <SelectContent>
@@ -388,7 +389,7 @@ export function ConversationComposer({
                         </SelectContent>
                       </Select>
                       {selectedBody && (
-                        <p className="whitespace-pre-wrap rounded-md bg-muted/60 p-2 text-xs [overflow-wrap:anywhere]">
+                        <p className="m-0 max-h-24 overflow-y-auto whitespace-pre-wrap rounded-lg bg-wa-surface-2 px-2.5 py-2 text-xs [overflow-wrap:anywhere]">
                           {selectedBody}
                         </p>
                       )}
@@ -397,19 +398,17 @@ export function ConversationComposer({
                 }}
               </WhatsAppResourceState>
               <StatusMessage status={templateStatus} />
-              <div className="flex justify-end">
-                <BlockedActionButton
-                  size="sm"
-                  blocked={templateBlockedReason !== null || templateStatus.kind === "pending"}
-                  blockedReasonId={templateBlockedId}
-                  onClick={submitTemplate}
-                >
-                  <Send className="h-4 w-4" aria-hidden="true" />
-                  Enviar plantilla
-                </BlockedActionButton>
-              </div>
+              <BlockedActionButton
+                className={cn(waButton({ variant: "whatsapp" }), "self-end")}
+                blocked={templateBlockedReason !== null || templateStatus.kind === "pending"}
+                blockedReasonId={templateBlockedId}
+                onClick={submitTemplate}
+              >
+                <Send aria-hidden="true" />
+                Enviar plantilla
+              </BlockedActionButton>
               {templateBlockedReason && (
-                <p id={templateBlockedId} className="text-xs text-muted-foreground">
+                <p id={templateBlockedId} className="m-0 text-xs text-wa-muted">
                   {templateBlockedReason}
                 </p>
               )}
@@ -419,10 +418,10 @@ export function ConversationComposer({
       )}
 
       {mode === "note" && (
-        <div className="space-y-1.5">
+        <div className="flex flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
-            <label htmlFor={noteId} className="flex items-center gap-1.5 text-sm font-medium">
-              <StickyNote className="h-4 w-4" aria-hidden="true" />
+            <label htmlFor={noteId} className="flex items-center gap-1.5 text-[13px] font-medium">
+              <StickyNote className="size-4 text-wa-amber" aria-hidden="true" />
               Nota interna
             </label>
             <CharacterCount value={noteDraft} max={CONVERSATION_LIMITS.noteMaxLength} />
@@ -434,34 +433,31 @@ export function ConversationComposer({
               setNoteDraft(event.target.value);
               if (noteError) setNoteError(null);
             }}
-            rows={3}
-            className="max-h-48 min-h-20 resize-y"
+            rows={2}
+            className={cn(waTextarea, "max-h-40 min-h-16 bg-wa-amber-soft/40")}
             placeholder="Solo la ve tu equipo"
             aria-invalid={noteError ? true : undefined}
             aria-describedby={`${noteId}-hint${noteError ? ` ${noteId}-error` : ""}`}
           />
-          <p id={`${noteId}-hint`} className="text-xs text-muted-foreground">
+          <p id={`${noteId}-hint`} className="m-0 text-[11px] text-wa-muted">
             No se envía al comprador y no cambia el pedido.
           </p>
           {noteError && (
-            <p id={`${noteId}-error`} className="text-xs font-medium text-destructive">
+            <p id={`${noteId}-error`} className="m-0 text-xs font-medium text-wa-red">
               {noteError}
             </p>
           )}
           <StatusMessage status={noteStatus} suffix="Tu nota se conserva." />
-          <div className="flex justify-end">
-            <BlockedActionButton
-              size="sm"
-              variant="secondary"
-              blocked={noteBlockedReason !== null || noteStatus.kind === "pending"}
-              blockedReasonId={noteBlockedId}
-              onClick={submitNote}
-            >
-              Guardar nota
-            </BlockedActionButton>
-          </div>
+          <BlockedActionButton
+            className={cn(waButton({ size: "sm" }), "self-end")}
+            blocked={noteBlockedReason !== null || noteStatus.kind === "pending"}
+            blockedReasonId={noteBlockedId}
+            onClick={submitNote}
+          >
+            Guardar nota
+          </BlockedActionButton>
           {noteBlockedReason && (
-            <p id={noteBlockedId} className="text-xs text-muted-foreground">
+            <p id={noteBlockedId} className="m-0 text-xs text-wa-muted">
               {noteBlockedReason}
             </p>
           )}

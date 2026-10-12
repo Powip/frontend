@@ -313,10 +313,10 @@ Numeración alineada con el encargo: la etapa 1 fue la revisión.
 | 4 | Programación: tarjetas de regla, alcance, modal de activación, datos faltantes, horario, próximas 24 h, envíos programados y su modal | C-16, C-18, C-20, C-21, C-24 | Formularios validan en app; stories con datos | Hecha (§13) |
 | 5 | Conversaciones: barra, tablero, lista, cajón con hilo y pies, respuesta automática | C-22, C-18, C-25 | Stories cubren ventana abierta/cerrada/no enviado/atendida | Hecha (§14) |
 | 6 | Historial y Bajas/alertas/permisos | C-24, C-25, C-26, C-27, C-28 | Stories; export según D-17 | Hecha (§15) |
-| 7 | Conexión: tipos, número, prueba, números por tienda, contingencia, bandeja asistida, costos, Embedded Signup | C-01..C-11 y configuración de Meta | Conexión real en tienda de prueba (§14.1) | Siguiente (§16) |
-| 8 | Ficha del pedido (X1), indicador (X2), reemplazo de la sección local (X4) | C-22.7, C-29 | Ver screens/07, 08 y 10 | — |
-| 9 | Página pública (X3) | D-06, C-30 | Según decisión | — |
-| 10 | Integración contrato por contrato y criterios §14 del PDF con datos reales | Todo | Checklist §14 completo | — |
+| 7 | Conexión: tipos, número, prueba, números por tienda, contingencia, bandeja asistida, costos, Embedded Signup | C-01..C-11 y configuración de Meta | Conexión real en tienda de prueba (§14.1) | Hecha en frontend (§16) |
+| 8 | Ficha del pedido (X1), indicador (X2), reemplazo de la sección local (X4) | C-22.7, C-29 | Ver screens/07, 08 y 10 | Hecha en frontend (§16) |
+| 9 | Página pública (X3) | D-06, C-30 | Según decisión | Componentes y ruta pendiente (§16) |
+| 10 | Integración contrato por contrato y criterios §14 del PDF con datos reales | Todo | Checklist §14 completo | Fase posterior |
 
 Las etapas 3 a 6 pueden avanzar en paralelo con backend: cada contrato que backend entrega se activa en el registro y se prueba con su story.
 
@@ -448,10 +448,32 @@ API, DTO, servicio y hooks de C-22 (tablero por columna, lista, detalle, respond
 
 C-24 (métricas, mensajes, reenvío, export), C-25 (bajas), C-18 (protección), C-26 (alertas), C-27 (registro) y C-28 (matriz y permisos efectivos). Cuando existan: `api/` con la guarda de contratos, hooks de TanStack Query con claves por empresa y tienda, manejadores en `HistoryTab` y `SettingsTab`, e invalidación del registro tras cada mutación. Decisiones abiertas: D-12, D-55, D-63 a D-68.
 
-## 16. Siguiente bloque (etapa 7): Conexión
+## 16. Etapas 7 a 9: Conexión, integraciones y página pública
 
-**Entra:** tipo de conexión (con confirmación de cambio, D-04), número conectado (calidad, límite, nombre, actualizar, desconectar con confirmación), mensaje de prueba con estados reales, números por tienda y modal de Embedded Signup (pasos y estados, sin intercambiar tokens en el frontend), número de contingencia, bandeja de envío asistido (abrir en WhatsApp ≠ enviado, D-02), costos solo con datos (D-05). Todo con estados pendiente, carga, error, vacío y contenido; mutaciones bloqueadas; stories y tests; ficha `01-conexion.md`.
+### 16.1 Archivos
 
-**No entra:** integraciones en pedidos (etapa 8), página pública (etapa 9), llamadas reales a `/wa` ni a Meta.
+| Capa | Archivos |
+|---|---|
+| Dominio | `models/connection.model.ts`, `models/public-tracking.model.ts`, `constants/whatsapp-connection-catalog.ts`, `utils/connection.util.ts`, `utils/last-notice.util.ts`, `schemas/connection.schema.ts`; enums de conexión; `WhatsAppNavigate` en `whatsapp-tab.util.ts`; `UNDEFINED_PERMISSION_REASON` en `whatsapp-permissions.util.ts` |
+| Conexión | `_components/conexion/`: `ConnectionTab`, `ConnectionView`, `ConnectionTypeSection`, `ConnectedNumberSection`, `TestMessageSection`, `StoreNumbersSection`, `ConnectNumberDialog`, `ContingencySection`, `AssistedQueueSection`, `MessagingCostSection`, `connection-types.ts`. Se eliminó `WhatsAppStoresPendingList` (reemplazado) |
+| Historial | `HistoryListPreview` ("Así se ve en las listas de pedidos") |
+| Compartidos | `OrderWhatsAppMessages`, `WhatsAppLastNoticeIndicator`, `WhatsAppNotificationsPanel` (`src/components/whatsapp/`); `PublicTrackingPage` (`src/components/public-tracking/`) |
+| Montajes en pantallas existentes | `CustomerServiceModal` (Seguimiento), `ventas/page.tsx`, `CcPedidosTable`, `operaciones/pedidos/_components/{types,AtencionTab,EnCaminoTab,PorDespacharTab}`, `IOrder.ts` (`waLastNotice?`), `WhatsAppNotificationsSection` (Guías), `AuthGuard` y `AppContainer` (`/p/`), `src/app/p/[token]/page.tsx` |
+| Navegación | `WhatsAppTabs` usa `push`/`replace` (D-70); se quitó la prop `stores` sin uso |
+| Fixtures, stories y tests | `whatsapp-connection.fixtures.ts`, `whatsapp-integrations.fixtures.ts`; stories `WhatsApp/Conexion`, `WhatsApp/Integraciones`, `WhatsApp/Publico`; `connection-utils.test.ts`, `ConnectionView.test.tsx`, `integrations.test.tsx`, casos nuevos en `page.test.tsx` |
 
-**Verificación esperada:** typecheck, Biome y ESLint de archivos afectados, Jest del módulo y completo, Storybook y revisión visual si hay navegador.
+### 16.2 Fase posterior: integración real
+
+Ver [entrega-final.md](entrega-final.md#qué-falta-para-usarlo-con-datos-reales). Patrón por contrato: confirmarlo en `whatsapp-contracts.ts` con evidencia, crear `api/` con `assertWhatsAppContractAvailable`, hooks de TanStack Query con `whatsappKeys`, pasar estado y `mutations` al `*View` desde su `*Tab`, invalidar y verificar los criterios §14 con datos reales.
+
+## 17. Fidelidad visual con el mockup
+
+| Pieza | Archivos |
+|---|---|
+| Tokens y utilidades `wa-*` | `src/styles/whatsapp.css` (importado en `src/styles/globals.css`) |
+| Clases y componentes visuales | `src/components/whatsapp/ui/` (`wa-classes.ts`, `WaCard`, `WaPill`, `WaCallout`, `WaDialogClose`, `WaChipRadioGroup`, `WaInput`, `WhatsAppGlyph`) |
+| Marco de la página | `_components/WhatsAppPageLayout.tsx` (usado por `WhatsAppSettingsContent` y `WhatsAppTabs`) |
+| Story de página completa | `_components/WhatsAppPage.stories.tsx` (`WhatsApp/Pagina`, con datos y pendiente por pestaña) |
+| Fuentes en Storybook | `.storybook/preview-head.html` |
+
+Reglas para pantallas nuevas del módulo: usar `WaCard`/`WaCardHeader` para secciones, `waButton` sobre `Button` de shadcn, `WaInput` en lugar de `Input` (este último envuelve el campo en un contenedor de ancho completo), `waSelectTrigger` en los `Select`, `WaPill`/`WaMini` para estados y `WaCallout` o `PendingIntegrationNotice` para avisos. Detalle en [fidelidad-visual.md](fidelidad-visual.md).

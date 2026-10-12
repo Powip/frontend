@@ -36,9 +36,8 @@ describe("TemplatesListView", () => {
     );
     expect(screen.queryByText("Todavía no tienes plantillas")).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("group", { name: "Filtrar por estado en Meta" }),
-    ).not.toBeInTheDocument();
+    const filters = screen.getByRole("group", { name: "Filtrar por estado en Meta" });
+    for (const filter of within(filters).getAllByRole("button")) expect(filter).toBeDisabled();
     expect(screen.getByRole("button", { name: "Nueva plantilla" })).toBeEnabled();
   });
 

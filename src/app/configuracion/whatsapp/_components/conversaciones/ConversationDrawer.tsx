@@ -3,9 +3,11 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { waButton } from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
 import type { WhatsAppConversationDetail } from "@/features/whatsapp/models/conversation.model";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
+import { cn } from "@/lib/utils";
 import { describeConversationContext, getConversationTitle } from "./ConversationCard";
 import { ConversationPanel } from "./ConversationPanel";
 
@@ -36,33 +38,33 @@ export function ConversationDrawer({
       }}
     >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
-        <DialogPrimitive.Content className="fixed inset-y-0 right-0 z-50 flex h-dvh w-full flex-col bg-background shadow-xl outline-none data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right sm:max-w-[480px] sm:border-l">
-          <div className="flex shrink-0 items-start justify-between gap-3 border-b px-4 py-3">
-            <div className="min-w-0 space-y-0.5">
-              <DialogPrimitive.Title className="truncate text-base font-semibold">
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[rgba(10,12,16,0.35)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content className="wa-ui fixed inset-y-0 right-0 z-50 flex h-dvh w-full flex-col border-wa-border bg-wa-surface text-wa-fg shadow-[-20px_0_50px_rgba(0,0,0,0.2)] outline-none data-[state=closed]:animate-out data-[state=closed]:slide-out-to-right data-[state=open]:animate-in data-[state=open]:slide-in-from-right sm:max-w-[440px] sm:border-l">
+          <div className="flex shrink-0 items-start justify-between gap-3 px-[18px] pt-4 pb-2">
+            <div className="min-w-0">
+              <DialogPrimitive.Title className="m-0 truncate text-base font-semibold">
                 {title}
               </DialogPrimitive.Title>
-              <DialogPrimitive.Description className="truncate text-xs text-muted-foreground">
-                {ready ? describeConversationContext(ready) : "Detalle de la conversación"}
+              <DialogPrimitive.Description className="wa-num m-0 text-xs text-wa-muted [overflow-wrap:anywhere]">
+                {ready
+                  ? `${ready.phone} · ${describeConversationContext(ready)}`
+                  : "Detalle de la conversación"}
               </DialogPrimitive.Description>
             </div>
             <DialogPrimitive.Close asChild>
               <Button
                 type="button"
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 shrink-0"
+                className={cn(waButton({ variant: "ghost", size: "icon" }), "-mr-2 -mt-1")}
                 aria-label="Cerrar conversación"
               >
-                <X className="h-4 w-4" aria-hidden="true" />
+                <X aria-hidden="true" />
               </Button>
             </DialogPrimitive.Close>
           </div>
           {ready ? (
             <ConversationPanel key={ready.id} conversation={ready} {...panelProps} />
           ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto border-t border-wa-border p-[18px]">
               <WhatsAppResourceState
                 state={detail}
                 pendingTitle="Conversación pendiente de integración"

@@ -5,6 +5,8 @@ import {
 } from "../constants/whatsapp-tabs";
 import type { WhatsAppTab } from "../enums/whatsapp.enums";
 
+export type WhatsAppNavigate = (search: string, options?: { replace?: boolean }) => void;
+
 type ReadableStorage = Pick<Storage, "getItem">;
 type WritableStorage = Pick<Storage, "setItem">;
 

@@ -18,6 +18,7 @@ const PUBLIC_ROUTES = [
   "/subscriptions",
   "/rastreo",
   "/onboarding",
+  "/p/",
 ];
 
 /**

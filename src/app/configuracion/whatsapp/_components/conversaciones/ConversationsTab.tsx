@@ -17,6 +17,7 @@ import {
   readStoredConversationView,
   writeStoredConversationView,
 } from "@/features/whatsapp/utils/conversation-preferences.util";
+import type { WhatsAppNavigate } from "@/features/whatsapp/utils/whatsapp-tab.util";
 import { ConversationsView } from "./ConversationsView";
 
 const PENDING = { kind: "pending-integration" } as const;
@@ -28,7 +29,7 @@ interface ConversationsTabProps {
   canManage: boolean;
   businessName: string;
   search: string;
-  onNavigate: (search: string) => void;
+  onNavigate: WhatsAppNavigate;
 }
 
 function ConversationsTabContent({
@@ -64,7 +65,7 @@ function ConversationsTabContent({
     const params = new URLSearchParams(search);
     if (conversationId) params.set(CONVERSATION_THREAD_PARAM, conversationId);
     else params.delete(CONVERSATION_THREAD_PARAM);
-    onNavigate(params.toString());
+    onNavigate(params.toString(), { replace: conversationId === null });
   };
 
   return (

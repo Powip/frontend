@@ -66,7 +66,7 @@ Referencias: PDF §6 (introducción), §1.5; mockup `.side`, `.page-head`, `.tab
 | Actualización | Polling 30 s con la página visible; invalidada por conectar/desconectar/cambiar tipo/contingencia |
 | Criterios de aceptación | El texto cambia solo con datos de backend (no al tocar las tarjetas de tipo, D-04); los colores tienen texto, no solo color |
 | Contrato | C-01 PROPUESTA |
-| Estado (etapa 2) | Reemplazado por un aviso fijo "Integración pendiente" (D-36) |
+| Estado (etapa 7) | En la cabecera sigue el aviso fijo "Integración pendiente" (D-36), porque el estado es por tienda. La etiqueta real de C-01 está en la pestaña Conexión, junto a su selector de tienda ("Estado de conexión pendiente de integración" sin contrato) |
 
 ## PG-1.2 · Selector de tienda
 
@@ -83,7 +83,7 @@ Referencias: PDF §6 (introducción), §1.5; mockup `.side`, `.page-head`, `.tab
 | Alcance | Aplica a Conexión (número, tipo, contingencia, bandeja, costo), Programación (si D-07 se resuelve por tienda), Plantillas (si son por WABA/tienda). Conversaciones, Historial y Bajas tienen su propio filtro de tienda con opción "Todas" |
 | Criterios de aceptación | Cambiar de tienda refresca las secciones dependientes y conserva la pestaña |
 | Contrato | C-E1 CONFIRMADO |
-| Estado (etapa 2) | No implementado (D-36) |
+| Estado (etapa 7) | Sin selector global: cada pestaña resuelve su tienda (D-69). Conexión tiene selector propio; Bajas/alertas usan la tienda activa; Conversaciones e Historial filtran por tienda |
 
 ## PG-1.3 · Pestañas y contadores
 
@@ -101,7 +101,7 @@ Referencias: PDF §6 (introducción), §1.5; mockup `.side`, `.page-head`, `.tab
 | Actualización | Contador de Conversaciones: polling 30 s (C-01) |
 | Criterios de aceptación | Recargar con `?tab=historial` abre Historial; sin `?tab` abre la última usada; un valor inválido abre Conexión |
 | Contrato | C-12 SPEC, C-01/C-22.2 PROPUESTA |
-| Estado (etapa 2) | Implementado en `WhatsAppTabs.tsx` sin contadores. Un `?tab` inválido usa la preferencia guardada y, si no hay, Conexión (D-35). Cubierto por `src/app/configuracion/whatsapp/__tests__/page.test.tsx` |
+| Estado (etapa 7) | Implementado en `WhatsAppTabs.tsx` sin contadores (esperan C-12 y C-22.2). Cambiar de pestaña usa `router.push`, así volver/adelante recorre las pestañas (D-70). Un `?tab` inválido usa la preferencia guardada y, si no hay, Conexión (D-35). Cubierto por `src/app/configuracion/whatsapp/__tests__/page.test.tsx` |
 
 ## PG-1.4 · "Notas para devs"
 

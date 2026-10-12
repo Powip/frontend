@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { WhatsAppTab } from "@/features/whatsapp/enums/whatsapp.enums";
 import type { WhatsAppAuditFilters } from "@/features/whatsapp/models/settings-tab.model";
 import { resolveEffectivePermissions } from "@/features/whatsapp/utils/whatsapp-permissions.util";
+import type { WhatsAppNavigate } from "@/features/whatsapp/utils/whatsapp-tab.util";
 import { SettingsView } from "./SettingsView";
 
 const PENDING = { kind: "pending-integration" } as const;
@@ -13,7 +14,7 @@ const NO_MUTATIONS = {};
 interface SettingsTabProps {
   canManage: boolean;
   search: string;
-  onNavigate: (search: string) => void;
+  onNavigate: WhatsAppNavigate;
 }
 
 export function SettingsTab({ canManage, search, onNavigate }: SettingsTabProps) {

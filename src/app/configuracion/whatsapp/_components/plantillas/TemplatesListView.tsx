@@ -3,12 +3,13 @@
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { WaCard, WaCardHeader } from "@/components/whatsapp/ui/WaCard";
+import { waButton, waFilterChip } from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
 import { WHATSAPP_TEMPLATE_STATUS_FILTERS } from "@/features/whatsapp/constants/whatsapp-template-catalog";
 import type { WhatsAppTemplateStatus } from "@/features/whatsapp/enums/whatsapp.enums";
 import type { WhatsAppResourceState as ResourceState } from "@/features/whatsapp/models/resource-state.model";
 import type { WhatsAppTemplate } from "@/features/whatsapp/models/template.model";
-import { cn } from "@/lib/utils";
 import { TemplateApprovedBanner } from "./TemplateApprovedBanner";
 import { TemplatesTable } from "./TemplatesTable";
 
@@ -31,6 +32,34 @@ interface TemplatesListViewProps {
 
 type StatusFilter = WhatsAppTemplateStatus | "all";
 
+function StatusFilters({
+  value,
+  disabled,
+  onChange,
+}: {
+  value: StatusFilter;
+  disabled: boolean;
+  onChange: (value: StatusFilter) => void;
+}) {
+  return (
+    <fieldset className="m-0 mb-3.5 flex min-w-0 flex-wrap items-center gap-2.5 border-0 p-0">
+      <legend className="sr-only">Filtrar por estado en Meta</legend>
+      {WHATSAPP_TEMPLATE_STATUS_FILTERS.map((filter) => (
+        <button
+          key={filter.value}
+          type="button"
+          disabled={disabled}
+          aria-pressed={value === filter.value}
+          className={waFilterChip}
+          onClick={() => onChange(filter.value)}
+        >
+          {filter.label}
+        </button>
+      ))}
+    </fieldset>
+  );
+}
+
 export function TemplatesListView({
   state,
   canManage,
@@ -43,24 +72,28 @@ export function TemplatesListView({
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <h3 className="font-semibold">Tus plantillas</h3>
-          <p className="text-sm text-muted-foreground">
-            Meta revisa cada plantilla antes de que puedas usarla. Normalmente tarda de unos minutos
-            a 24 horas.
-          </p>
-        </div>
-        {canManage && (
-          <Button type="button" className="shrink-0" onClick={onCreate}>
-            <Plus className="h-4 w-4" aria-hidden="true" />
-            Nueva plantilla
-          </Button>
-        )}
-      </div>
+    <WaCard aria-labelledby="templates-title">
+      <WaCardHeader
+        titleId="templates-title"
+        title="Tus plantillas"
+        description="Meta revisa cada plantilla antes de que puedas usarla. Normalmente tarda de unos minutos a 24 horas."
+        actions={
+          canManage && (
+            <Button type="button" className={waButton({ variant: "primary" })} onClick={onCreate}>
+              <Plus aria-hidden="true" />
+              Nueva plantilla
+            </Button>
+          )
+        }
+      />
 
-      {approvedNotice && <TemplateApprovedBanner {...approvedNotice} />}
+      {approvedNotice && (
+        <div className="mb-3.5">
+          <TemplateApprovedBanner {...approvedNotice} />
+        </div>
+      )}
+
+      {state.kind !== "ready" && <StatusFilters value="all" disabled onChange={() => undefined} />}
 
       <WhatsAppResourceState
         state={state}
@@ -71,9 +104,9 @@ export function TemplatesListView({
         onRetry={onRetry}
         isEmpty={(templates) => templates.length === 0}
         empty={
-          <div className="rounded-lg border border-dashed p-6 text-center">
-            <p className="font-medium">Todavía no tienes plantillas</p>
-            <p className="text-sm text-muted-foreground">
+          <div className="rounded-xl border border-dashed border-wa-border-strong p-[30px] text-center">
+            <p className="m-0 font-semibold">Todavía no tienes plantillas</p>
+            <p className="m-0 text-[13px] text-wa-muted">
               Crea la primera para empezar a avisar a tus clientes.
             </p>
           </div>
@@ -85,27 +118,10 @@ export function TemplatesListView({
               ? templates
               : templates.filter((template) => template.status === statusFilter);
           return (
-            <div className="space-y-3">
-              <fieldset className="flex min-w-0 flex-wrap gap-2">
-                <legend className="sr-only">Filtrar por estado en Meta</legend>
-                {WHATSAPP_TEMPLATE_STATUS_FILTERS.map((filter) => (
-                  <Button
-                    key={filter.value}
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    aria-pressed={statusFilter === filter.value}
-                    className={cn(
-                      statusFilter === filter.value && "border-foreground bg-muted font-semibold",
-                    )}
-                    onClick={() => setStatusFilter(filter.value)}
-                  >
-                    {filter.label}
-                  </Button>
-                ))}
-              </fieldset>
+            <>
+              <StatusFilters value={statusFilter} disabled={false} onChange={setStatusFilter} />
               {visible.length === 0 ? (
-                <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                <p className="m-0 rounded-xl border border-wa-border p-[30px] text-center text-[13px] text-wa-muted">
                   No hay plantillas con este estado.
                 </p>
               ) : (
@@ -116,10 +132,10 @@ export function TemplatesListView({
                   onDuplicate={onDuplicate}
                 />
               )}
-            </div>
+            </>
           );
         }}
       </WhatsAppResourceState>
-    </div>
+    </WaCard>
   );
 }

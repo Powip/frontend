@@ -31,7 +31,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -40,6 +39,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import { WaCallout } from "@/components/whatsapp/ui/WaCallout";
+import { WaInput } from "@/components/whatsapp/ui/WaInput";
+import {
+  waButton,
+  waCaps,
+  waDialogBody,
+  waDialogContent,
+  waDialogFooter,
+  waDialogHeader,
+  waDialogTitle,
+  waField,
+  waHint,
+  waInput,
+  waLabel,
+  waSelectTrigger,
+} from "@/components/whatsapp/ui/wa-classes";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
 import {
   WHATSAPP_CAMPAIGN_DESTINATION_OPTIONS,
@@ -65,6 +80,7 @@ import {
   createCampaignSchema,
 } from "@/features/whatsapp/schemas/campaign.schema";
 import { formatLimaDateTime } from "@/features/whatsapp/utils/lima-time.util";
+import { cn } from "@/lib/utils";
 import { TemplateSegmentedChoice } from "../plantillas/TemplateSegmentedChoice";
 
 const CAMPAIGN_BLOCKED_ID = "campaign-dialog-blocked";
@@ -104,8 +120,8 @@ function SelectField({
       control={form.control}
       name={name}
       render={({ field }) => (
-        <FormItem className="min-w-0">
-          <FormLabel>{label}</FormLabel>
+        <FormItem className={waField}>
+          <FormLabel className={waLabel}>{label}</FormLabel>
           <Select
             value={field.value || undefined}
             onValueChange={(value) => {
@@ -114,7 +130,7 @@ function SelectField({
             disabled={disabled}
           >
             <FormControl>
-              <SelectTrigger className="w-full" onBlur={field.onBlur}>
+              <SelectTrigger className={waSelectTrigger} onBlur={field.onBlur}>
                 <SelectValue placeholder={placeholder} />
               </SelectTrigger>
             </FormControl>
@@ -126,8 +142,8 @@ function SelectField({
               ))}
             </SelectContent>
           </Select>
-          {description && <FormDescription>{description}</FormDescription>}
-          <FormMessage />
+          {description && <FormDescription className={waHint}>{description}</FormDescription>}
+          <FormMessage className="text-xs text-wa-red" />
         </FormItem>
       )}
     />
@@ -194,24 +210,27 @@ export function CampaignDialog({
       <Dialog open onOpenChange={(open) => !open && requestClose()}>
         <DialogContent
           showCloseButton={false}
-          className="flex max-h-[calc(100dvh-2rem)] w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl"
+          className={cn(
+            waDialogContent,
+            "flex max-h-[calc(100dvh-2rem)] w-full flex-col sm:max-w-[560px]",
+          )}
         >
-          <DialogHeader className="flex-row items-start justify-between gap-3 border-b px-4 py-3 text-left sm:px-6">
-            <div className="min-w-0 space-y-1">
-              <DialogTitle>{campaign ? "Editar envío programado" : "Programar envío"}</DialogTitle>
-              <DialogDescription>
+          <DialogHeader className={waDialogHeader}>
+            <div className="min-w-0">
+              <DialogTitle className={waDialogTitle}>
+                {campaign ? "Editar envío programado" : "Programar envío"}
+              </DialogTitle>
+              <DialogDescription className="sr-only">
                 Mensaje a un grupo de pedidos, una vez o de forma recurrente.
               </DialogDescription>
             </div>
             <Button
               type="button"
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 shrink-0"
+              className={cn(waButton({ variant: "ghost", size: "icon" }), "-my-1.5 -mr-2")}
               aria-label="Cerrar ventana"
               onClick={requestClose}
             >
-              <X className="h-4 w-4" aria-hidden="true" />
+              <X aria-hidden="true" />
             </Button>
           </DialogHeader>
 
@@ -221,17 +240,23 @@ export function CampaignDialog({
               className="flex min-h-0 flex-1 flex-col"
               onSubmit={(event) => event.preventDefault()}
             >
-              <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6">
+              <div
+                className={cn(waDialogBody, "flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto")}
+              >
                 <FormField
                   control={form.control}
                   name="name"
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Nombre del envío</FormLabel>
+                    <FormItem className={waField}>
+                      <FormLabel className={waLabel}>Nombre del envío</FormLabel>
                       <FormControl>
-                        <Input {...field} placeholder="Ej. Aviso de retraso por feriado" />
+                        <WaInput
+                          {...field}
+                          placeholder="Ej. Aviso de retraso por feriado"
+                          className={waInput}
+                        />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className="text-xs text-wa-red" />
                     </FormItem>
                   )}
                 />
@@ -249,11 +274,9 @@ export function CampaignDialog({
                   description="Solo aparecen plantillas aprobadas por Meta."
                 />
 
-                <fieldset className="min-w-0 space-y-3">
-                  <legend className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    A quién se envía
-                  </legend>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                <fieldset className="m-0 min-w-0 border-0 p-0">
+                  <legend className={cn(waCaps, "mt-1 mb-3.5 p-0")}>A quién se envía</legend>
+                  <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                     <SelectField
                       form={form}
                       name="stage"
@@ -304,13 +327,17 @@ export function CampaignDialog({
                   errorTitle="No se pudo calcular la cantidad de pedidos"
                 >
                   {(data) => (
-                    <p role="status" className="rounded-lg border bg-muted/40 p-3 text-sm">
-                      Hoy esto incluye{" "}
-                      <strong>{data.matchingToday.toLocaleString("es-PE")} pedidos</strong>{" "}
-                      (calculado el {formatLimaDateTime(data.computedAt)}). La lista se vuelve a
-                      calcular justo antes de enviar: los pedidos que cambien de estado entran o
-                      salen solos.
-                    </p>
+                    <div role="status">
+                      <WaCallout>
+                        Hoy esto incluye{" "}
+                        <strong className="wa-num">
+                          {data.matchingToday.toLocaleString("es-PE")} pedidos
+                        </strong>{" "}
+                        (calculado el {formatLimaDateTime(data.computedAt)}). La lista se vuelve a
+                        calcular justo antes de enviar: los pedidos que cambien de estado entran o
+                        salen solos.
+                      </WaCallout>
+                    </div>
                   )}
                 </WhatsAppResourceState>
 
@@ -318,10 +345,11 @@ export function CampaignDialog({
                   control={form.control}
                   name="scheduleType"
                   render={({ field }) => (
-                    <FormItem>
+                    <FormItem className="space-y-0">
                       <FormControl>
                         <TemplateSegmentedChoice
                           legend="Cuándo"
+                          className="[&>legend]:mt-1 [&>legend]:mb-3.5 [&>legend]:text-[11px] [&>legend]:font-semibold [&>legend]:uppercase [&>legend]:tracking-[0.06em] [&>legend]:text-wa-muted [&>div]:w-full"
                           name="campaign-schedule-type"
                           value={field.value}
                           options={[
@@ -339,18 +367,18 @@ export function CampaignDialog({
                     </FormItem>
                   )}
                 />
-                <div className="grid gap-3 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
                   {values.scheduleType === WHATSAPP_CAMPAIGN_SCHEDULE_TYPES.ONCE ? (
                     <FormField
                       control={form.control}
                       name="date"
                       render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Fecha</FormLabel>
+                        <FormItem className={waField}>
+                          <FormLabel className={waLabel}>Fecha</FormLabel>
                           <FormControl>
-                            <Input type="date" {...field} />
+                            <WaInput type="date" {...field} className={cn(waInput, "wa-num")} />
                           </FormControl>
-                          <FormMessage />
+                          <FormMessage className="text-xs text-wa-red" />
                         </FormItem>
                       )}
                     />
@@ -367,35 +395,36 @@ export function CampaignDialog({
                     control={form.control}
                     name="time"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Hora (Lima)</FormLabel>
+                      <FormItem className={waField}>
+                        <FormLabel className={waLabel}>Hora (Lima)</FormLabel>
                         <FormControl>
-                          <Input type="time" {...field} />
+                          <WaInput type="time" {...field} className={cn(waInput, "wa-num")} />
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage className="text-xs text-wa-red" />
                       </FormItem>
                     )}
                   />
                 </div>
               </div>
 
-              <div className="space-y-3 border-t px-4 py-3 sm:px-6">
+              <div className={cn(waDialogFooter, "static flex-col items-stretch gap-2.5")}>
                 {blocked && (
-                  <p id={CAMPAIGN_BLOCKED_ID} className="text-sm text-muted-foreground">
+                  <p id={CAMPAIGN_BLOCKED_ID} className="m-0 text-xs text-wa-muted sm:text-right">
                     Programar y guardar envíos estarán disponibles cuando se conecte el servicio de
                     envíos programados. Puedes completar y revisar el formulario; no se guarda nada.
                   </p>
                 )}
-                <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                  <Button type="button" variant="outline" onClick={requestClose}>
+                <div className="flex flex-wrap justify-end gap-2.5">
+                  <Button type="button" className={waButton()} onClick={requestClose}>
                     Cancelar
                   </Button>
                   <BlockedActionButton
+                    className={waButton({ variant: "primary" })}
                     blocked={blocked}
                     blockedReasonId={CAMPAIGN_BLOCKED_ID}
                     onClick={() => onSave && void form.handleSubmit(onSave)()}
                   >
-                    <CalendarClock className="h-4 w-4" aria-hidden="true" />
+                    <CalendarClock aria-hidden="true" />
                     {campaign ? "Guardar cambios" : "Programar"}
                   </BlockedActionButton>
                 </div>
@@ -406,16 +435,19 @@ export function CampaignDialog({
       </Dialog>
 
       <AlertDialog open={confirmDiscardOpen} onOpenChange={setConfirmDiscardOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Descartar los cambios?</AlertDialogTitle>
-            <AlertDialogDescription>
+        <AlertDialogContent className={cn(waDialogContent, "sm:max-w-[440px]")}>
+          <AlertDialogHeader className={waDialogHeader}>
+            <AlertDialogTitle className={waDialogTitle}>¿Descartar los cambios?</AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className={waDialogBody}>
+            <AlertDialogDescription className="m-0 text-sm text-wa-muted">
               Los cambios de este envío no se guardaron y se perderán al cerrar.
             </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
+          </div>
+          <AlertDialogFooter className={waDialogFooter}>
+            <AlertDialogCancel className={waButton()}>Seguir editando</AlertDialogCancel>
             <AlertDialogAction
+              className={waButton({ variant: "solid-danger" })}
               onClick={() => {
                 setConfirmDiscardOpen(false);
                 onClose();

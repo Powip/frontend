@@ -5,6 +5,8 @@ import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { OrderDetailButton } from "@/components/orders/OrderDetailModal";
 import { WhatsAppIcon } from "@/components/shared/WhatsAppIcon";
+import { WhatsAppLastNoticeIndicator } from "@/components/whatsapp/WhatsAppLastNoticeIndicator";
+import { parseWhatsAppLastNotice } from "@/features/whatsapp/utils/last-notice.util";
 import {
   Table,
   TableBody,
@@ -329,11 +331,12 @@ export function CcPedidosTable({
                     <Button
                       size="icon"
                       variant="outline"
-                      className="h-7 w-7 bg-green-500 hover:bg-green-600 text-white border-green-600"
+                      className="relative h-7 w-7 bg-green-500 hover:bg-green-600 text-white border-green-600"
                       onClick={() => onWhatsApp(order)}
                       title="WhatsApp"
                     >
                       <WhatsAppIcon className="h-3.5 w-3.5" />
+                      <WhatsAppLastNoticeIndicator notice={parseWhatsAppLastNotice(order.waLastNotice)} />
                     </Button>
                     {order.subEstadoCc === "anulado_cc" && onRecuperar && (
                       <Button

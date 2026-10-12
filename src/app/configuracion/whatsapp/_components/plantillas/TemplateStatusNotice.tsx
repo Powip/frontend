@@ -39,11 +39,11 @@ function ApprovedVersionPreview({
   businessName: string;
 }) {
   return (
-    <details className="group rounded-md border bg-background/60 p-2">
-      <summary className="cursor-pointer text-sm font-medium">
+    <details className="group rounded-lg border border-wa-border bg-wa-surface p-2.5">
+      <summary className="cursor-pointer text-[13px] font-medium">
         Ver la versión aprobada que se sigue enviando
       </summary>
-      <p className="mt-2 text-xs text-muted-foreground">
+      <p className="m-0 mt-2 text-xs text-wa-muted">
         Aprobada el {formatLimaDateTime(version.approvedAt)} (hora de Lima). Vista previa con datos
         de muestra.
       </p>
@@ -80,11 +80,11 @@ export function TemplateStatusNotice({
 }: TemplateStatusNoticeProps) {
   if (isDuplicate) {
     return (
-      <div className="flex gap-2.5 rounded-lg border bg-muted/40 p-3 text-sm">
-        <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-        <p className="min-w-0">
+      <div className="flex gap-2.5 rounded-xl bg-wa-primary-soft px-4 py-3.5 text-[13px]">
+        <Info className="mt-px size-[18px] shrink-0 text-wa-primary" aria-hidden="true" />
+        <p className="m-0 min-w-0">
           Estás creando una copia de{" "}
-          <span className="break-all font-mono font-semibold">{template.name}</span>. La copia es
+          <span className="break-all font-wa-mono font-semibold">{template.name}</span>. La copia es
           una plantilla nueva y Meta la revisa desde cero.
         </p>
       </div>
@@ -101,20 +101,20 @@ export function TemplateStatusNotice({
       template.status === WHATSAPP_TEMPLATE_STATUSES.REJECTED);
 
   return (
-    <div className="space-y-2 rounded-lg border bg-muted/40 p-3 text-sm">
+    <div className="flex flex-col gap-2 rounded-xl border border-wa-border bg-wa-surface-2 px-4 py-3.5 text-[13px]">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium">Estado en Meta:</span>
         <TemplateStatusBadge status={template.status} />
       </div>
-      <p>{getStatusMessage(template)}</p>
+      <p className="m-0">{getStatusMessage(template)}</p>
       {showsReason && (
-        <p className="text-red-700 dark:text-red-300">
+        <p className="m-0 text-wa-red">
           <span className="font-medium">Motivo informado por Meta:</span> {template.metaReason}
         </p>
       )}
       {showsApprovedVersion && template.approvedVersion && (
         <>
-          <p className="text-muted-foreground">
+          <p className="m-0 text-wa-muted">
             Mientras tanto se sigue enviando la versión aprobada anterior.
           </p>
           <ApprovedVersionPreview version={template.approvedVersion} businessName={businessName} />

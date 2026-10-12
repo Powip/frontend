@@ -13,6 +13,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import {
+  waButton,
+  waDialogBody,
+  waDialogContent,
+  waDialogFooter,
+  waDialogHeader,
+  waDialogTitle,
+} from "@/components/whatsapp/ui/wa-classes";
+import { cn } from "@/lib/utils";
 
 interface FormDraftActionsProps {
   isDirty: boolean;
@@ -38,11 +47,15 @@ export function FormDraftActions({
   return (
     <>
       <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-        <Button type="button" variant="outline" size="sm" onClick={() => setConfirmOpen(true)}>
+        <Button
+          type="button"
+          className={waButton({ size: "sm" })}
+          onClick={() => setConfirmOpen(true)}
+        >
           Descartar cambios
         </Button>
         <BlockedActionButton
-          size="sm"
+          className={waButton({ variant: "primary", size: "sm" })}
           blocked={blocked || !onSave}
           blockedReasonId={blockedReasonId}
           onClick={() => onSave?.()}
@@ -51,14 +64,23 @@ export function FormDraftActions({
         </BlockedActionButton>
       </div>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{discardTitle}</AlertDialogTitle>
-            <AlertDialogDescription>Los cambios no guardados se perderán.</AlertDialogDescription>
+        <AlertDialogContent className={cn(waDialogContent, "sm:max-w-[440px]")}>
+          <AlertDialogHeader className={waDialogHeader}>
+            <AlertDialogTitle className={waDialogTitle}>{discardTitle}</AlertDialogTitle>
           </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirmDiscard}>Descartar cambios</AlertDialogAction>
+          <div className={waDialogBody}>
+            <AlertDialogDescription className="m-0 text-sm text-wa-muted">
+              Los cambios no guardados se perderán.
+            </AlertDialogDescription>
+          </div>
+          <AlertDialogFooter className={waDialogFooter}>
+            <AlertDialogCancel className={waButton()}>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction
+              className={waButton({ variant: "solid-danger" })}
+              onClick={onConfirmDiscard}
+            >
+              Descartar cambios
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

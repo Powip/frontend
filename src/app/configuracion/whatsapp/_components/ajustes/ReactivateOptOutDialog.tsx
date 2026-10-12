@@ -24,11 +24,26 @@ import {
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import { WaDialogClose } from "@/components/whatsapp/ui/WaDialogClose";
+import {
+  waButton,
+  waCheckbox,
+  waDialogBody,
+  waDialogContent,
+  waDialogFooter,
+  waDialogHeader,
+  waDialogTitle,
+  waField,
+  waHint,
+  waLabel,
+  waTextarea,
+} from "@/components/whatsapp/ui/wa-classes";
 import type { WhatsAppOptOut } from "@/features/whatsapp/models/settings-tab.model";
 import {
   type ReactivateOptOutValues,
   reactivateOptOutSchema,
 } from "@/features/whatsapp/schemas/settings-tab.schema";
+import { cn } from "@/lib/utils";
 import type { SettingsMutations } from "./settings-types";
 
 interface ReactivateOptOutDialogProps {
@@ -73,15 +88,23 @@ export function ReactivateOptOutDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Reactivar avisos</DialogTitle>
-          <DialogDescription>
-            {`${who} volverá a recibir avisos de ${optOut.storeName ?? "la tienda"}. Solo se reactiva si el comprador lo pidió; quedará registrado quién lo hizo, cuándo y por qué.`}
-          </DialogDescription>
+      <DialogContent
+        showCloseButton={false}
+        className={cn(waDialogContent, "flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-[480px]")}
+      >
+        <DialogHeader className={waDialogHeader}>
+          <DialogTitle className={waDialogTitle}>Reactivar avisos</DialogTitle>
+          <WaDialogClose />
         </DialogHeader>
         <Form {...form}>
-          <form noValidate className="space-y-4" onSubmit={submit}>
+          <form
+            noValidate
+            className={cn(waDialogBody, "flex min-h-0 flex-col gap-3.5 overflow-y-auto")}
+            onSubmit={submit}
+          >
+            <DialogDescription className="m-0 text-sm text-wa-muted">
+              {`${who} volverá a recibir avisos de ${optOut.storeName ?? "la tienda"}. Solo se reactiva si el comprador lo pidió; quedará registrado quién lo hizo, cuándo y por qué.`}
+            </DialogDescription>
             <FormField
               control={form.control}
               name="customerRequested"
@@ -89,15 +112,16 @@ export function ReactivateOptOutDialog({
                 <FormItem className="flex flex-row items-start gap-2 space-y-0">
                   <FormControl>
                     <Checkbox
+                      className={cn(waCheckbox, "mt-0.5")}
                       checked={field.value}
                       onCheckedChange={(checked) => field.onChange(checked === true)}
                     />
                   </FormControl>
                   <div className="space-y-1">
-                    <FormLabel className="font-normal">
+                    <FormLabel className="text-[13px] font-normal text-wa-fg">
                       El comprador pidió volver a recibir avisos
                     </FormLabel>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-wa-red" />
                   </div>
                 </FormItem>
               )}
@@ -106,26 +130,29 @@ export function ReactivateOptOutDialog({
               control={form.control}
               name="note"
               render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Cómo lo pidió</FormLabel>
+                <FormItem className={waField}>
+                  <FormLabel className={waLabel}>Cómo lo pidió</FormLabel>
                   <FormControl>
-                    <Textarea {...field} rows={2} />
+                    <Textarea {...field} rows={2} className={cn(waTextarea, "min-h-[70px]")} />
                   </FormControl>
-                  <FormDescription>Queda en el registro de cambios.</FormDescription>
-                  <FormMessage />
+                  <FormDescription className={waHint}>
+                    Queda en el registro de cambios.
+                  </FormDescription>
+                  <FormMessage className="text-xs text-wa-red" />
                 </FormItem>
               )}
             />
             {status.kind === "error" && (
-              <p role="alert" className="text-sm text-red-700 dark:text-red-300">
+              <p role="alert" className="m-0 text-[13px] text-wa-red">
                 {status.message}
               </p>
             )}
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose}>
+            <DialogFooter className={cn(waDialogFooter, "-mx-[22px] -mb-[22px] mt-1.5")}>
+              <Button type="button" className={waButton()} onClick={onClose}>
                 Cancelar
               </Button>
               <BlockedActionButton
+                className={waButton({ variant: "primary" })}
                 type={blocked ? "button" : "submit"}
                 blocked={blocked}
                 blockedReasonId={reasonId}
@@ -134,7 +161,7 @@ export function ReactivateOptOutDialog({
               </BlockedActionButton>
             </DialogFooter>
             {blockedReason && (
-              <p id={reasonId} className="text-xs text-muted-foreground">
+              <p id={reasonId} className="m-0 text-xs text-wa-muted">
                 {blockedReason}
               </p>
             )}

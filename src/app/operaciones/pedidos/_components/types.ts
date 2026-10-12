@@ -1,3 +1,7 @@
+import {
+  parseWhatsAppLastNotice,
+  type WhatsAppLastNotice,
+} from "@/features/whatsapp/utils/last-notice.util";
 import { OrderHeader, OrderStatus } from "@/interfaces/IOrder";
 import type { OpsPermission } from "@/config/operationsPermissions";
 import { ORDER_STATUS_FLOW, getStatusLabel } from "@/utils/domain/orders-status-flow";
@@ -14,6 +18,7 @@ import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 ------------------------------------------------------------------------ */
 export interface Sale {
   id: string;
+  waLastNotice?: WhatsAppLastNotice | null;
   customerId: string;
   orderNumber: string;
   clientName: string;
@@ -91,6 +96,7 @@ export function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    waLastNotice: parseWhatsAppLastNotice(order.waLastNotice),
     customerId: order.customer?.id,
     orderNumber: order.orderNumber,
     clientName: order.customer?.fullName ?? "—",

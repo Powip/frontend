@@ -1,5 +1,6 @@
 import { Info, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { waButton } from "@/components/whatsapp/ui/wa-classes";
 import { getRuleDefinition } from "@/features/whatsapp/constants/whatsapp-scheduling-catalog";
 import type { WhatsAppResourceState } from "@/features/whatsapp/models/resource-state.model";
 import type { WhatsAppRulesData } from "@/features/whatsapp/models/rule.model";
@@ -48,19 +49,17 @@ export function RuleLinkNotice({ onDismiss, ...props }: RuleLinkNoticeProps) {
   return (
     <div
       role="status"
-      className="flex items-start gap-2.5 rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-950 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-100"
+      className="flex items-start gap-3 rounded-xl bg-wa-primary-soft px-4 py-3 text-[13px] text-wa-fg"
     >
-      <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-      <p className="min-w-0 flex-1">{message}</p>
+      <Info className="mt-px size-[18px] shrink-0 text-wa-primary" aria-hidden="true" />
+      <p className="m-0 min-w-0 flex-1">{message}</p>
       <Button
         type="button"
-        variant="ghost"
-        size="icon"
-        className="h-7 w-7"
+        className={waButton({ variant: "ghost", size: "icon" })}
         aria-label="Cerrar aviso"
         onClick={onDismiss}
       >
-        <X className="h-4 w-4" aria-hidden="true" />
+        <X aria-hidden="true" />
       </Button>
     </div>
   );

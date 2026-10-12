@@ -1,4 +1,5 @@
 import type { ComponentProps } from "react";
+import { waLabel } from "@/components/whatsapp/ui/wa-classes";
 import { cn } from "@/lib/utils";
 
 export interface SegmentedChoiceOption<T extends string> {
@@ -28,9 +29,9 @@ export function TemplateSegmentedChoice<T extends string>({
   ...fieldsetProps
 }: TemplateSegmentedChoiceProps<T>) {
   return (
-    <fieldset className={cn("min-w-0 space-y-2", className)} {...fieldsetProps}>
-      <legend className="text-sm font-medium">{legend}</legend>
-      <div className="flex flex-wrap gap-1 rounded-lg border bg-muted/50 p-1">
+    <fieldset className={cn("m-0 min-w-0 border-0 p-0", className)} {...fieldsetProps}>
+      <legend className={cn(waLabel, "mb-1.5 p-0")}>{legend}</legend>
+      <div className="flex w-full flex-wrap gap-[3px] rounded-[10px] border border-wa-border bg-wa-surface-2 p-[3px]">
         {options.map((option) => {
           const checked = option.value === value;
           const disabled = readOnly || option.disabled;
@@ -38,8 +39,8 @@ export function TemplateSegmentedChoice<T extends string>({
             <label
               key={option.value}
               className={cn(
-                "relative inline-flex min-h-8 cursor-pointer items-center rounded-md px-3 py-1 text-sm font-medium text-muted-foreground transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
-                checked && "bg-background text-foreground shadow-sm",
+                "relative inline-flex cursor-pointer items-center rounded-[7px] px-3 py-1.5 text-[13px] font-medium text-wa-muted transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-solid has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-wa-primary",
+                checked && "bg-wa-surface text-wa-fg shadow-wa",
                 disabled && "cursor-not-allowed opacity-50",
               )}
             >

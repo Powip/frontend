@@ -71,12 +71,19 @@ Cada punto tiene un estado:
 | D-60 | Mensaje entrante con varios pedidos del mismo teléfono | Pendiente (backend + producto) |
 | D-61 | Filtros, preferencias y borradores | Decidido para el frontend (etapa 5) |
 | D-62 | Ventana desconocida bloquea también plantillas | Decidido para el frontend (etapa 5) |
-| D-63 | Rastreo: base del porcentaje y clic sin lectura | Decidido para el frontend (etapa 6); difiere del PDF §6.5.1 |
+| D-63 | Rastreo: base del porcentaje y clic sin lectura | **Pendiente (producto).** Provisional; difiere del PDF §6.5.1 |
 | D-64 | Exportar todos los resultados filtrados | Propuesta (etapa 6); pendiente de backend |
 | D-65 | Acciones sin permiso definido en el PDF | Decidido para el frontend (etapa 6); pendiente de C-28 |
 | D-66 | Teléfonos en bajas manuales | Decidido para el frontend (etapa 6); extranjeros pendientes |
-| D-67 | Alcance de indicadores frente al filtro de estado | Decidido para el frontend (etapa 6) |
+| D-67 | Alcance de indicadores frente al filtro de estado | **Pendiente (producto).** Provisional del frontend |
 | D-68 | Configuración por tienda activa | Decidido para el frontend (etapa 6); confirmar con backend |
+| D-69 | Selector de tienda por pestaña en lugar de global | Decidido para el frontend (etapa 7); difiere del mockup |
+| D-70 | Historial del navegador en la página | Decidido para el frontend (etapa 7) |
+| D-71 | Embedded Signup sin SDK ni IDs en el frontend | Decidido para el frontend (etapa 7); configuración de Meta pendiente |
+| D-72 | Confirmación explícita del envío asistido | Decidido para el frontend (etapa 7); difiere del PDF §6.1.5 |
+| D-73 | Indicador del último aviso solo con dato de la lista | Decidido para el frontend (etapa 8); campo de backend pendiente |
+| D-74 | Página pública montada como pendiente en `/p/[token]` | Decidido para el frontend (etapa 9); alojamiento final pendiente (D-06) |
+| D-75 | Notificaciones de WhatsApp sin campanita global | Decidido para el frontend (etapa 8); infraestructura C-31 pendiente |
 
 ---
 
@@ -473,6 +480,8 @@ Meta permite plantillas fuera de la ventana, pero con la ventana desconocida tam
 
 ## D-63 · Rastreo: base del porcentaje y clic sin lectura
 
+**Estado: pendiente de producto.** Comportamiento provisional; difiere del PDF.
+
 El PDF §6.5.1 calcula "Abrieron el rastreo" como abrieron / leídos. Un clic en el link no prueba que el comprador leyó en WhatsApp (puede tener apagadas las confirmaciones de lectura), así que ese cociente puede superar el 100%. El frontend usa abrieron / **enviados** (igual que el embudo) y lo rotula; en la tabla, el clic se muestra en la columna Rastreo y en la línea de tiempo, nunca cambia el estado a Leído. Pendiente de producto si prefiere otra base.
 
 ## D-64 · Exportar todos los resultados filtrados
@@ -489,8 +498,42 @@ El alta manual valida y normaliza con `toWhatsAppNumber` (D-29): solo celulares 
 
 ## D-67 · Alcance de indicadores frente al filtro de estado
 
+**Estado: pendiente de producto.** Comportamiento provisional.
+
 Indicadores, embudo, tabla y exportación comparten periodo, tienda y búsqueda. El filtro de estado solo acota tabla y exportación: si filtrara los indicadores, "Entregados / Enviados" perdería sentido. Los filtros de estado no muestran contadores para no mezclar acumulados (los indicadores cuentan entregados que luego se leyeron) con estados actuales.
 
 ## D-68 · Configuración por tienda activa
 
 Bajas automáticas, alertas y números extranjeros se guardan por tienda (`tienda_id`, §9.1). La pestaña usa la tienda activa de POWIP (`selectedStoreId`) y lo dice en el encabezado; la lista de bajas y el registro aceptan filtrar por tienda en backend. Confirmar con backend si alguna de estas configuraciones es por empresa.
+
+## D-69 · Selector de tienda por pestaña en lugar de global
+
+El mockup tiene un selector de tienda en la cabecera (PG-1.2). En el frontend cada pestaña resuelve la tienda donde la necesita: Conexión tiene su propio selector (y "Ver detalle" en Números por tienda), Bajas/alertas/números extranjeros usan la tienda activa de POWIP (D-68), y Conversaciones e Historial filtran por tienda. Un selector global obligaría a decidir qué pasa con borradores abiertos en otras pestañas. Pendiente de producto si se quiere el selector global.
+
+## D-70 · Historial del navegador en la página
+
+Cambiar de pestaña, abrir una conversación, ir de Plantillas a Programación y "Ver" en alertas usan `router.push` (volver/adelante funciona). Cerrar una conversación y descartar el aviso del enlace usan `router.replace`. El estado visible se deriva siempre de la URL (`tab`, `thread`, `rule`, `template`).
+
+## D-71 · Embedded Signup sin SDK ni IDs en el frontend
+
+El modal muestra requisitos, los tres pasos (aclarando que 2 y 3 ocurren en la ventana de Meta), espera, éxito solo confirmado por POWIP y error. No carga el SDK de Facebook, no tiene `app_id`/`config_id`, no pide credenciales ni códigos SMS y no guarda tokens. "Continuar con Facebook" queda bloqueado hasta que exista C-06 y la configuración de Meta (Tech Provider, `config_id`, dominio permitido). Cuando exista, `startSignup` debe: pedir la sesión a backend, cargar el SDK con esos datos, esperar el evento `WA_EMBEDDED_SIGNUP`, enviar `code`, `wabaId` y `phoneNumberId` a backend y resolver solo con su respuesta.
+
+## D-72 · Confirmación explícita del envío asistido
+
+El PDF dice que al tocar "Abrir en WhatsApp" la fila pasa a "Enviado por asesora" y baja el contador. Abrir `wa.me` no prueba el envío (D-02). El frontend: "Abrir en WhatsApp" solo abre el enlace que generó backend y registra `opened` si hay contrato; la fila cambia y el contador baja solo con "Ya lo envié" confirmado por backend (`mark-sent`); "Descartar" pide motivo. Pendiente de producto confirmar este paso extra.
+
+## D-73 · Indicador del último aviso solo con dato de la lista
+
+`OrderHeader.waLastNotice` (opcional, C-29) se valida con `parseWhatsAppLastNotice`: estado conocido y fecha válida; si falta o es inválido, no se muestra nada (ausencia no es fallo). El indicador va dentro del botón actual (se suma al nombre accesible) sin cambiar su `onClick`, permisos ni validaciones. No hay consultas por fila: el dato debe venir en las listas que ya cargan Ventas, Operaciones › Pedidos y Gestión CC.
+
+## D-74 · Página pública montada como pendiente en `/p/[token]`
+
+Montar la ruta solo requirió agregar `/p/` (con barra final, para no tocar `/pagos` ni `/productos`) a las rutas públicas de `AuthGuard` y a las rutas sin menú de `AppContainer`, igual que `/rastreo`. La página muestra "Seguimiento no disponible todavía", no lee el token, no consulta APIs y no indexa (`robots: noindex, nofollow`). Los componentes (`src/components/public-tracking/`) no dependen de `AuthContext` y se pueden llevar a la landing u otra app. Pendientes: dónde se aloja en producción y el subdominio `{tienda}.powip.lat` (D-06), el endpoint público `GET /p/:token` (C-30) y el acortador `/r` (backend). El `AuthProvider` del layout raíz sigue intentando leer la sesión también en esta ruta, como en `/rastreo`.
+
+## D-75 · Notificaciones de WhatsApp sin campanita global
+
+No existe una campanita ni un sistema de notificaciones en el shell (`Sidebar` y `AppContainer`). `WhatsAppNotificationsList` y `WhatsAppNotificationsButton` (`src/components/whatsapp/WhatsAppNotificationsPanel.tsx`) quedan listos con sus estados y "Ver" a la pestaña relacionada, pero **no se montan**. Punto de montaje propuesto: la cabecera del `Sidebar` (junto al nombre de la empresa) cuando exista C-31; el contador solo con `unreadTotal` de backend.
+
+## D-76 · Apariencia del mockup con reglas del PDF
+
+El mockup es la referencia visual y el PDF define las reglas. La interfaz reproduce los tokens, medidas y composición del mockup (`src/styles/whatsapp.css`, `src/components/whatsapp/ui/`). Donde el mockup muestra datos que no existen (contadores, estado «Conectado», montos, pedidos de ejemplo) o le faltan controles que pide el PDF (envío asistido confirmado, notas internas, estados de Meta, asistidos), se conserva la composición, se muestra el estado real o pendiente y se suma el control en el lugar más cercano. Las 28 diferencias resultantes están en [fidelidad-visual.md](fidelidad-visual.md#diferencias-intencionales) (V-01 a V-28); ninguna se aprobó con producto.

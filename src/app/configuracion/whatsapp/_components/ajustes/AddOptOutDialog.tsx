@@ -31,7 +31,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -41,6 +40,22 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { BlockedActionButton } from "@/components/whatsapp/BlockedActionButton";
+import { WaDialogClose } from "@/components/whatsapp/ui/WaDialogClose";
+import { WaInput } from "@/components/whatsapp/ui/WaInput";
+import {
+  waButton,
+  waDialogBody,
+  waDialogContent,
+  waDialogFooter,
+  waDialogHeader,
+  waDialogTitle,
+  waField,
+  waHint,
+  waInput,
+  waLabel,
+  waSelectTrigger,
+  waTextarea,
+} from "@/components/whatsapp/ui/wa-classes";
 import {
   type AddOptOutValues,
   addOptOutSchema,
@@ -49,6 +64,7 @@ import {
   formatPeruWhatsAppNumber,
   normalizeOptOutPhone,
 } from "@/features/whatsapp/utils/opt-out-phone.util";
+import { cn } from "@/lib/utils";
 import type { SettingsMutations } from "./settings-types";
 
 interface AddOptOutDialogProps {
@@ -125,35 +141,47 @@ export function AddOptOutDialog({
   return (
     <>
       <Dialog open onOpenChange={(open) => !open && requestClose()}>
-        <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Agregar número a bajas</DialogTitle>
-            <DialogDescription>
-              Este número dejará de recibir avisos automáticos y envíos programados de la tienda.
-            </DialogDescription>
+        <DialogContent
+          showCloseButton={false}
+          className={cn(
+            waDialogContent,
+            "flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-[480px]",
+          )}
+        >
+          <DialogHeader className={waDialogHeader}>
+            <DialogTitle className={waDialogTitle}>Agregar número a bajas</DialogTitle>
+            <WaDialogClose onClick={requestClose} />
           </DialogHeader>
           <Form {...form}>
-            <form noValidate className="space-y-4" onSubmit={submit}>
+            <form
+              noValidate
+              className={cn(waDialogBody, "flex min-h-0 flex-col gap-3.5 overflow-y-auto")}
+              onSubmit={submit}
+            >
+              <DialogDescription className="m-0 text-sm text-wa-muted">
+                Este número dejará de recibir avisos automáticos y envíos programados de la tienda.
+              </DialogDescription>
               <FormField
                 control={form.control}
                 name="phone"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Teléfono</FormLabel>
+                  <FormItem className={waField}>
+                    <FormLabel className={waLabel}>Teléfono</FormLabel>
                     <FormControl>
-                      <Input
+                      <WaInput
                         {...field}
                         inputMode="tel"
                         autoComplete="off"
                         placeholder="987 654 321"
+                        className={cn(waInput, "wa-num")}
                       />
                     </FormControl>
-                    <FormDescription>
+                    <FormDescription className={waHint}>
                       {normalized
                         ? `Se guardará como ${formatPeruWhatsAppNumber(normalized)}`
                         : "Celular de Perú: 9 dígitos que empiezan en 9, con o sin +51."}
                     </FormDescription>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-wa-red" />
                   </FormItem>
                 )}
               />
@@ -161,12 +189,12 @@ export function AddOptOutDialog({
                 control={form.control}
                 name="customerName"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nombre (opcional)</FormLabel>
+                  <FormItem className={waField}>
+                    <FormLabel className={waLabel}>Nombre (opcional)</FormLabel>
                     <FormControl>
-                      <Input {...field} autoComplete="off" />
+                      <WaInput {...field} autoComplete="off" className={waInput} />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-wa-red" />
                   </FormItem>
                 )}
               />
@@ -174,8 +202,8 @@ export function AddOptOutDialog({
                 control={form.control}
                 name="storeId"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Tienda</FormLabel>
+                  <FormItem className={waField}>
+                    <FormLabel className={waLabel}>Tienda</FormLabel>
                     <Select
                       value={field.value || undefined}
                       onValueChange={(value) => {
@@ -183,7 +211,7 @@ export function AddOptOutDialog({
                       }}
                     >
                       <FormControl>
-                        <SelectTrigger className="w-full" onBlur={field.onBlur}>
+                        <SelectTrigger className={waSelectTrigger} onBlur={field.onBlur}>
                           <SelectValue placeholder="Elige la tienda" />
                         </SelectTrigger>
                       </FormControl>
@@ -195,10 +223,10 @@ export function AddOptOutDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    <FormDescription>
+                    <FormDescription className={waHint}>
                       Si la baja aplica a todas las tiendas todavía no está definido.
                     </FormDescription>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-wa-red" />
                   </FormItem>
                 )}
               />
@@ -206,25 +234,26 @@ export function AddOptOutDialog({
                 control={form.control}
                 name="note"
                 render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Nota (opcional)</FormLabel>
+                  <FormItem className={waField}>
+                    <FormLabel className={waLabel}>Nota (opcional)</FormLabel>
                     <FormControl>
-                      <Textarea {...field} rows={2} />
+                      <Textarea {...field} rows={2} className={cn(waTextarea, "min-h-[70px]")} />
                     </FormControl>
-                    <FormMessage />
+                    <FormMessage className="text-xs text-wa-red" />
                   </FormItem>
                 )}
               />
               {status.kind === "error" && (
-                <p role="alert" className="text-sm text-red-700 dark:text-red-300">
+                <p role="alert" className="m-0 text-[13px] text-wa-red">
                   {status.message}
                 </p>
               )}
-              <DialogFooter>
-                <Button type="button" variant="outline" onClick={requestClose}>
+              <DialogFooter className={cn(waDialogFooter, "-mx-[22px] -mb-[22px] mt-1.5")}>
+                <Button type="button" className={waButton()} onClick={requestClose}>
                   Cancelar
                 </Button>
                 <BlockedActionButton
+                  className={waButton({ variant: "primary" })}
                   type={blocked ? "button" : "submit"}
                   blocked={blocked}
                   blockedReasonId={reasonId}
@@ -233,7 +262,7 @@ export function AddOptOutDialog({
                 </BlockedActionButton>
               </DialogFooter>
               {blockedReason && (
-                <p id={reasonId} className="text-xs text-muted-foreground">
+                <p id={reasonId} className="m-0 text-xs text-wa-muted">
                   {blockedReason}
                 </p>
               )}
@@ -242,16 +271,22 @@ export function AddOptOutDialog({
         </DialogContent>
       </Dialog>
       <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Descartar el número que estabas agregando?</AlertDialogTitle>
-            <AlertDialogDescription>
+        <AlertDialogContent className={cn(waDialogContent, "sm:max-w-[440px]")}>
+          <AlertDialogHeader className={waDialogHeader}>
+            <AlertDialogTitle className={waDialogTitle}>
+              ¿Descartar el número que estabas agregando?
+            </AlertDialogTitle>
+          </AlertDialogHeader>
+          <div className={waDialogBody}>
+            <AlertDialogDescription className="m-0 text-sm text-wa-muted">
               Lo que escribiste se perderá. No se guardó nada.
             </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Seguir editando</AlertDialogCancel>
-            <AlertDialogAction onClick={onClose}>Descartar</AlertDialogAction>
+          </div>
+          <AlertDialogFooter className={waDialogFooter}>
+            <AlertDialogCancel className={waButton()}>Seguir editando</AlertDialogCancel>
+            <AlertDialogAction className={waButton({ variant: "solid-danger" })} onClick={onClose}>
+              Descartar
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

@@ -1,3 +1,5 @@
+import { WaCard, WaCardHeader } from "@/components/whatsapp/ui/WaCard";
+import { WaPill } from "@/components/whatsapp/ui/WaPill";
 import { WhatsAppResourceState } from "@/components/whatsapp/WhatsAppResourceState";
 import { WHATSAPP_QUEUE_SOURCE_LABELS } from "@/features/whatsapp/constants/whatsapp-scheduling-catalog";
 import type { WhatsAppUpcomingQueue } from "@/features/whatsapp/models/queue.model";
@@ -13,25 +15,18 @@ interface UpcomingQueueSectionProps {
 
 export function UpcomingQueueSection({ queue, now, onRetry }: UpcomingQueueSectionProps) {
   return (
-    <section
-      aria-labelledby="upcoming-queue-title"
-      className="space-y-4 rounded-xl border bg-card p-4 shadow-sm sm:p-5"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 id="upcoming-queue-title" className="font-semibold">
-            Próximas 24 horas
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Avisos ya calculados por el servicio y esperando su hora de salida.
-          </p>
-        </div>
-        {queue.kind === "ready" && (
-          <span className="rounded-full border px-2.5 py-1 text-xs font-semibold tabular-nums">
-            {queue.data.total.toLocaleString("es-PE")} en cola
-          </span>
-        )}
-      </div>
+    <WaCard aria-labelledby="upcoming-queue-title">
+      <WaCardHeader
+        level={3}
+        titleId="upcoming-queue-title"
+        title="Próximas 24 horas"
+        description="Avisos ya calculados por el servicio y esperando su hora de salida."
+        actions={
+          queue.kind === "ready" && (
+            <WaPill className="wa-num">{queue.data.total.toLocaleString("es-PE")} en cola</WaPill>
+          )
+        }
+      />
       <WhatsAppResourceState
         state={queue}
         pendingTitle="Cola pendiente de integración"
@@ -41,45 +36,48 @@ export function UpcomingQueueSection({ queue, now, onRetry }: UpcomingQueueSecti
         onRetry={onRetry}
         isEmpty={(data) => data.groups.length === 0}
         empty={
-          <p className="text-sm text-muted-foreground">
+          <p className="m-0 text-[13px] text-wa-muted">
             No hay avisos programados para las próximas 24 horas.
           </p>
         }
       >
         {(data) => (
-          <ol className="divide-y" aria-label="Avisos en cola">
+          <ol className="m-0 flex list-none flex-col p-0" aria-label="Avisos en cola">
             {data.groups.map((group) => (
               <li
                 key={group.id}
-                className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 py-2.5 text-sm sm:grid-cols-[4.5rem_minmax(0,1fr)_auto]"
+                className="grid grid-cols-[52px_14px_minmax(0,1fr)] items-center gap-x-2.5 gap-y-0.5 py-2 text-[13px] sm:grid-cols-[52px_14px_minmax(0,1fr)_auto]"
               >
                 <time
                   dateTime={group.sendAt.toISOString()}
-                  className="font-medium tabular-nums text-muted-foreground"
+                  className="wa-num font-medium text-wa-muted"
                 >
                   {formatLimaTime(group.sendAt)}
-                  <span className="block text-[11px] font-normal">
+                  <span className="block text-[10.5px] font-normal">
                     {formatLimaDayLabel(group.sendAt, now)}
                   </span>
                 </time>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "size-2.5 justify-self-center rounded-full",
+                    group.deferred ? "bg-wa-amber" : "bg-wa-whatsapp",
+                  )}
+                />
                 <span className="min-w-0">
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "mr-2 inline-block h-2.5 w-2.5 rounded-full",
-                      group.deferred ? "bg-amber-500" : "bg-emerald-500",
-                    )}
-                  />
-                  <span className="break-all font-mono font-semibold">{group.name}</span> ·{" "}
-                  {group.orders.toLocaleString("es-PE")} {group.orders === 1 ? "pedido" : "pedidos"}
-                  <span className="block text-xs text-muted-foreground">
+                  <b className="font-semibold [overflow-wrap:anywhere]">{group.name}</b> ·{" "}
+                  <span className="wa-num">
+                    {group.orders.toLocaleString("es-PE")}{" "}
+                    {group.orders === 1 ? "pedido" : "pedidos"}
+                  </span>
+                  <span className="block text-xs text-wa-muted">
                     {WHATSAPP_QUEUE_SOURCE_LABELS[group.source]} · {group.sourceLabel}
                   </span>
                 </span>
                 <span
                   className={cn(
-                    "col-span-2 text-xs sm:col-span-1 sm:text-right",
-                    group.deferred ? "text-amber-700 dark:text-amber-300" : "text-muted-foreground",
+                    "col-start-3 text-xs sm:col-start-auto sm:text-right",
+                    group.deferred ? "text-wa-amber" : "text-wa-muted",
                   )}
                 >
                   {group.deferred && group.deferredTo
@@ -92,6 +90,6 @@ export function UpcomingQueueSection({ queue, now, onRetry }: UpcomingQueueSecti
           </ol>
         )}
       </WhatsAppResourceState>
-    </section>
+    </WaCard>
   );
 }

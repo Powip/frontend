@@ -18,6 +18,7 @@ export default function AppContainer({
     "/subscriptions",
     "/rastreo",
     "/onboarding",
+    "/p/",
   ];
 
   const hideSidebar = noSidebarRoutes.some((r) => pathname.startsWith(r));
