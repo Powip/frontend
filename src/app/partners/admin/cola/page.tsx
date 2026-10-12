@@ -3,7 +3,7 @@ import { ColaPageContent } from "./_components/cola-page-content";
 
 export const metadata: Metadata = {
   title: "Cola de referidos",
-  description: "Revisión de conflictos de atribución, alertas anti-fraude y confirmación de pagos.",
+  description: "Cola persistida de referidos manuales y CODE, de solo lectura.",
 };
 
 export default function PartnersAdminColaPage() {

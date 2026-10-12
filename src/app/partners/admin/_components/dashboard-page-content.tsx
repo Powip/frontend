@@ -1,67 +1,66 @@
 "use client";
 
-import { PartnerSectionError } from "@/components/partners/partner-section-error";
+import Link from "next/link";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAdminDashboardSummary } from "@/features/partners/hooks/use-admin-dashboard-summary";
-import { useAdminPartners } from "@/features/partners/hooks/use-admin-partners";
+import { useAdminReadAccess } from "@/features/partners/hooks/use-admin-read-session";
 import { AdminDashboardKpiRow } from "./admin-dashboard-kpi-row";
-import { MrrByMonthChart } from "./mrr-by-month-chart";
-import { ProgramFunnel } from "./program-funnel";
-import { ReferralsByOriginChart } from "./referrals-by-origin-chart";
-import { TopPartnersTable } from "./top-partners-table";
+import { AdminReadAccessDenied, AdminReadError } from "./admin-read-error";
 
 export function DashboardPageContent() {
+  const access = useAdminReadAccess();
   const summaryQuery = useAdminDashboardSummary();
-  const partnersQuery = useAdminPartners();
+  if (access.denied)
+    return (
+      <div className="p-6">
+        <AdminReadError
+          error={access.denied}
+          message="No pudimos verificar tu acceso a Partners."
+        />
+      </div>
+    );
+  if (!access.canView)
+    return (
+      <div className="p-6">
+        <AdminReadAccessDenied />
+      </div>
+    );
 
   return (
     <div className="space-y-5 p-6">
-      <h2 className="sr-only">Dashboard</h2>
-
+      <h2 className="text-xl font-semibold">Dashboard operativo</h2>
+      <Link href="/partners/admin/pagos-verificados" className="inline-block text-sm underline">
+        Consultar evidencia de Billing · solo lectura
+      </Link>
       {summaryQuery.isError ? (
-        <PartnerSectionError
+        <AdminReadError
           message="No pudimos cargar el resumen del programa."
-          onRetry={() => summaryQuery.refetch()}
           error={summaryQuery.error}
+          onRetry={() => summaryQuery.refetch()}
         />
       ) : (
         <>
           <AdminDashboardKpiRow summary={summaryQuery.data} isLoading={summaryQuery.isLoading} />
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            <MrrByMonthChart
-              monthlyMrr={summaryQuery.data?.monthlyMrr}
-              isLoading={summaryQuery.isLoading}
-            />
-            <ReferralsByOriginChart
-              referralsByOrigin={summaryQuery.data?.referralsByOrigin}
-              clickToPayConversionPct={summaryQuery.data?.clickToPayConversionPct}
-              isLoading={summaryQuery.isLoading}
-            />
-          </div>
+          {summaryQuery.data ? (
+            <p className="text-xs text-muted-foreground">
+              Datos al {new Date(summaryQuery.data.asOf).toLocaleString("es-PE")}. Los referidos y
+              las atribuciones LINK se cuentan por separado; una atribución no confirma un pago.
+            </p>
+          ) : null}
         </>
       )}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        {partnersQuery.isError ? (
-          <PartnerSectionError
-            message="No pudimos cargar los partners."
-            onRetry={() => partnersQuery.refetch()}
-            error={partnersQuery.error}
-          />
-        ) : (
-          <TopPartnersTable partners={partnersQuery.data} isLoading={partnersQuery.isLoading} />
-        )}
-
-        {summaryQuery.isError ? (
-          <PartnerSectionError
-            message="No pudimos cargar el embudo del programa."
-            onRetry={() => summaryQuery.refetch()}
-            error={summaryQuery.error}
-          />
-        ) : (
-          <ProgramFunnel funnel={summaryQuery.data?.funnel} isLoading={summaryQuery.isLoading} />
-        )}
-      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle>Métricas financieras</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p role="status" className="text-sm text-muted-foreground">
+            Métricas monetarias todavía no disponibles: MRR, costo del canal, LTV y ROI. Los
+            cálculos registrados y el libro contable se consultan por separado; no confirman
+            liquidaciones ni pagos.
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }

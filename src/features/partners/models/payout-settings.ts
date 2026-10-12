@@ -4,5 +4,6 @@ export interface PayoutSettings {
   method: PayoutMethodType;
   accountNumber: string;
   accountHolder: string;
-  minimumThreshold: number;
+  version: number;
+  updatedAt: string;
 }

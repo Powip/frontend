@@ -126,7 +126,9 @@ export function ProgramRulesCard({ settings, isLoading }: ProgramRulesCardProps)
             min={0}
             className="w-28"
             defaultValue={programRules.minimumPayoutThreshold}
-            onBlur={(event) => updateRules({ minimumPayoutThreshold: Number(event.target.value) || 0 })}
+            onBlur={(event) =>
+              updateRules({ minimumPayoutThreshold: Number(event.target.value) || 0 })
+            }
           />
         </div>
       </CardContent>

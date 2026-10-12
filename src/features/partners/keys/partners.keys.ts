@@ -18,21 +18,49 @@ export const partnersKeys = {
 
   payoutHistory: () => [...partnersKeys.all, "payout-history"] as const,
 
-  payoutSettings: () => [...partnersKeys.all, "payout-settings"] as const,
+  payoutSettings: (userId?: string | null, epoch = 0) =>
+    [...partnersKeys.user(userId), "payout-settings-v2", "session", epoch] as const,
 
   link: () => [...partnersKeys.all, "link"] as const,
 
-  resources: () => [...partnersKeys.all, "resources"] as const,
+  resources: (userId?: string | null, epoch = 0) =>
+    [...partnersKeys.all, "resources-v2", userId ?? "anonymous", "session", epoch] as const,
 
   commissionOptions: () => [...partnersKeys.all, "commission-options"] as const,
 
-  adminDashboardSummary: () => [...partnersKeys.all, "admin-dashboard-summary"] as const,
+  adminRead: (userId?: string | null) => [...partnersKeys.user(userId), "admin-read-v1"] as const,
 
-  adminPartners: () => [...partnersKeys.all, "admin-partners"] as const,
+  adminDashboardSummary: (userId?: string | null, epoch = 0) =>
+    [...partnersKeys.adminRead(userId), "session", epoch, "dashboard-summary"] as const,
 
-  adminPartner: (id: string) => [...partnersKeys.all, "admin-partners", id] as const,
+  adminPartners: (userId?: string | null, status?: string | null, limit?: number, epoch = 0) =>
+    [
+      ...partnersKeys.adminRead(userId),
+      "session",
+      epoch,
+      "partners",
+      status ?? null,
+      limit ?? 20,
+    ] as const,
 
-  adminPartnerReferrals: (id: string) => [...partnersKeys.all, "admin-partners", id, "referrals"] as const,
+  adminPartner: (id: string, userId?: string | null, epoch = 0) =>
+    [...partnersKeys.adminRead(userId), "session", epoch, "partner", id] as const,
+
+  adminPartnerReferrals: (id: string, userId?: string | null, limit?: number, epoch = 0) =>
+    [...partnersKeys.adminPartner(id, userId, epoch), "referrals", limit ?? 20] as const,
+
+  adminPartnerActivity: (id: string, userId?: string | null, limit?: number, epoch = 0) =>
+    [...partnersKeys.adminPartner(id, userId, epoch), "activity", limit ?? 20] as const,
+
+  adminReviewQueue: (userId?: string | null, origin?: string | null, limit = 20, epoch = 0) =>
+    [
+      ...partnersKeys.adminRead(userId),
+      "session",
+      epoch,
+      "review-queue",
+      origin ?? null,
+      limit,
+    ] as const,
 
   adminApplicationsAll: (userId?: string | null) =>
     [...partnersKeys.user(userId), "admin-applications"] as const,
@@ -40,9 +68,10 @@ export const partnersKeys = {
   adminApplications: (status: string | null, userId?: string | null) =>
     [...partnersKeys.adminApplicationsAll(userId), status] as const,
 
-  reviewQueue: () =>[...partnersKeys.all, "review-queue"] as const,
+  reviewQueue: () => [...partnersKeys.all, "review-queue"] as const,
 
-  pendingPaymentConfirmations: () => [...partnersKeys.all, "pending-payment-confirmations"] as const,
+  pendingPaymentConfirmations: () =>
+    [...partnersKeys.all, "pending-payment-confirmations"] as const,
 
   unopenedInvitations: () => [...partnersKeys.all, "unopened-invitations"] as const,
 

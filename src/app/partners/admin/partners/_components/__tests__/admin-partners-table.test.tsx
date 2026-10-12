@@ -10,10 +10,10 @@
 import React from "react";
 import { render, screen } from "@testing-library/react";
 import { AdminPartnersTable } from "../admin-partners-table";
-import { ADMIN_PARTNERS_MOCK } from "@/features/partners/mocks/admin-partners.mock";
+import { buildAdminPartner } from "@/features/partners/test-utils/admin-partners.fixture";
 
-const POR_APROBAR = ADMIN_PARTNERS_MOCK.find((p) => p.status === "por_aprobar")!;
-const ACTIVO = ADMIN_PARTNERS_MOCK.find((p) => p.status === "activo")!;
+const POR_APROBAR = buildAdminPartner({ status: "APPLIED", referralCode: null, activatedAt: null });
+const ACTIVO = buildAdminPartner();
 
 describe("AdminPartnersTable", () => {
   it('un partner simulado "por_aprobar" no muestra el botón Aprobar', () => {
@@ -36,5 +36,12 @@ describe("AdminPartnersTable", () => {
   it("muestra el empty state con una lista vacía", () => {
     render(<AdminPartnersTable partners={[]} isLoading={false} />);
     expect(screen.getByText(/todavía no hay partners/i)).toBeInTheDocument();
+  });
+
+  it.each(["ACTIVE", "SUSPENDED", "APPLIED", "REJECTED"] as const)("renders persisted status %s without invented tiers or finances", (status) => {
+    render(<AdminPartnersTable partners={[buildAdminPartner({ status })]} isLoading={false} />);
+    expect(screen.getByText("Referidos manuales")).toBeInTheDocument();
+    expect(screen.getByText("Atribuciones LINK")).toBeInTheDocument();
+    expect(screen.queryByText(/Bronce|Oro|Plata|MRR|S\//i)).not.toBeInTheDocument();
   });
 });

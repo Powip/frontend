@@ -1,4 +1,4 @@
-import type { AdminPartnerReferral } from "../models/admin-partner-referral";
+import type { LegacyAdminPartnerReferral as AdminPartnerReferral } from "./legacy-admin-fixture.types";
 
 export const ADMIN_PARTNER_REFERRALS_MOCK: Record<string, AdminPartnerReferral[]> = {
   "partner-maria-torres": [

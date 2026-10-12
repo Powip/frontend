@@ -1,6 +1,8 @@
-import type { AdminPartner } from "../models/admin-partner";
-import { unavailablePartnersFeature } from "../utils/unavailable-partners-feature";
+import { type AdminPageRequest, requestAdminPartners } from "../api/admin-partners.api";
+import type { PartnerApprovalStatus } from "../models/admin-partner";
 
-export async function getAdminPartners(): Promise<AdminPartner[]> {
-  return unavailablePartnersFeature("Consultar el listado de partners");
+export function getAdminPartners(
+  request: AdminPageRequest & { status?: PartnerApprovalStatus | null },
+) {
+  return requestAdminPartners(request);
 }

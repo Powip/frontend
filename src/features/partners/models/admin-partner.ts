@@ -1,25 +1,27 @@
-import type { PartnerTierLevel } from "./partner-tier";
-
-export type PartnerProfile = "agencia" | "dev" | "creador";
-
-export type PartnerApprovalStatus = "activo" | "por_aprobar" | "rechazado";
+export type PartnerApprovalStatus = "APPLIED" | "ACTIVE" | "SUSPENDED" | "REJECTED";
 
 export interface AdminPartner {
   id: string;
-  name: string;
-  handle: string | null;
-  code: string | null;
-  profile: PartnerProfile;
-  commissionOptionCode: "A" | "B" | "C" | null;
+  displayName: string;
+  country: string;
+  currency: string;
   status: PartnerApprovalStatus;
-  tierLevel: PartnerTierLevel;
-  joinedAt: string | null;
-  payoutMethodLabel: string | null;
-  referralsCount: number;
-  activeReferralsCount: number;
-  mrr: number;
-  ticketPromedio: number;
-  conversionPct: number;
-  ltvEstimado: number;
-  recurringCommissionMonthly: number;
+  version: number;
+  applicationReference: string;
+  appliedAt: string;
+  activatedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  referralCode: string | null;
+  manualReferralsCount: number;
+  linkAttributionsCount: number;
 }
+
+export interface AdminPage<T> {
+  items: T[];
+  nextCursor: string | null;
+  hasMore: boolean;
+  limit: number;
+}
+
+export type AdminPartnerPage = AdminPage<AdminPartner>;

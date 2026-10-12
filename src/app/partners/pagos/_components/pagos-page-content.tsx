@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { NextPayoutCard } from "@/components/partners/next-payout-card";
 import { PartnerSectionError } from "@/components/partners/partner-section-error";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePartnerSummary } from "@/features/partners/hooks/use-partner-summary";
 import { usePayoutHistory } from "@/features/partners/hooks/use-payout-history";
 import { usePayoutSettings } from "@/features/partners/hooks/use-payout-settings";
@@ -66,15 +66,13 @@ export function PagosPageContent() {
               isLoading={settingsQuery.isLoading}
               onEdit={() => setIsEditOpen(true)}
             />
-            <MinimumThresholdCard
-              settings={settingsQuery.data}
-              isLoading={settingsQuery.isLoading}
-            />
+            <MinimumThresholdCard />
           </>
         )}
       </div>
 
       <EditPayoutSettingsDialog
+        key={`${settingsQuery.session.userId ?? "anonymous"}:${settingsQuery.session.epoch}`}
         isOpen={isEditOpen}
         onClose={() => setIsEditOpen(false)}
         currentSettings={settingsQuery.data}

@@ -1,12 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { partnersKeys } from "../keys/partners.keys";
-import type { AdminPartner } from "../models/admin-partner";
 import { getAdminPartner } from "../services/get-admin-partner";
+import { useAdminReadSession } from "./use-admin-read-session";
 
 export function useAdminPartner(id: string) {
-  return useQuery<AdminPartner | null, Error>({
-    queryKey: [...partnersKeys.adminPartner(id), "permanent-unavailable-v1"],
-    queryFn: () => getAdminPartner(id),
+  const session = useAdminReadSession(Boolean(id));
+  return useQuery({
+    queryKey: partnersKeys.adminPartner(id, session.userId, session.epoch),
+    queryFn: ({ signal }) =>
+      session.read(signal, (accessToken) =>
+        getAdminPartner({ accessToken, partnerId: id, signal }),
+      ),
+    enabled: session.enabled,
     retry: false,
   });
 }

@@ -3,7 +3,7 @@ import { ReglasPageContent } from "./_components/reglas-page-content";
 
 export const metadata: Metadata = {
   title: "Reglas & Comisiones",
-  description: "Editor de comisiones por opción, niveles, descuentos y reglas del programa.",
+  description: "Versiones DRAFT de políticas de comisiones, sin activación financiera.",
 };
 
 export default function PartnersAdminReglasPage() {

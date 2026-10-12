@@ -14,7 +14,7 @@ export function useInviteAdminPartner() {
 
     onSuccess: (partner) => {
       queryClient.invalidateQueries({ queryKey: partnersKeys.adminPartners() });
-      toast.success(`Invitación enviada a ${partner.name}`);
+      toast.success(`Invitación enviada a ${partner.displayName}`);
     },
 
     onError: (error) => {

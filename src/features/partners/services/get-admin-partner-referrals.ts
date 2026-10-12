@@ -1,7 +1,8 @@
-import type { AdminPartnerReferral } from "../models/admin-partner-referral";
-import { unavailablePartnersFeature } from "../utils/unavailable-partners-feature";
+import {
+  type AdminPartnerPageRequest,
+  requestAdminPartnerReferrals,
+} from "../api/admin-partners.api";
 
-export async function getAdminPartnerReferrals(partnerId: string): Promise<AdminPartnerReferral[]> {
-  void partnerId;
-  return unavailablePartnersFeature("Consultar referidos de otro partner");
+export function getAdminPartnerReferrals(request: AdminPartnerPageRequest) {
+  return requestAdminPartnerReferrals(request);
 }

@@ -1,11 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { PAYOUT_METHOD_OPTIONS } from "@/features/partners/schemas/update-payout-settings.schema";
 import type { PayoutSettings } from "@/features/partners/models/payout-settings";
+import { PAYOUT_METHOD_OPTIONS } from "@/features/partners/schemas/update-payout-settings.schema";
 
 interface PayoutSettingsCardProps {
-  settings: PayoutSettings | undefined;
+  settings: PayoutSettings | null | undefined;
   isLoading: boolean;
   onEdit: () => void;
 }
@@ -17,11 +17,15 @@ export function PayoutSettingsCard({ settings, isLoading, onEdit }: PayoutSettin
         <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Datos de cobro
         </p>
-        {isLoading || !settings ? (
+        {isLoading || settings === undefined ? (
           <div className="mt-3 space-y-2">
             <Skeleton className="h-4 w-40" />
             <Skeleton className="h-4 w-32" />
           </div>
+        ) : settings === null ? (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Todavía no registraste datos de cobro.
+          </p>
         ) : (
           <div className="mt-2 space-y-1 text-sm text-foreground">
             <p>
@@ -40,9 +44,9 @@ export function PayoutSettingsCard({ settings, isLoading, onEdit }: PayoutSettin
           size="sm"
           className="mt-4 w-full"
           onClick={onEdit}
-          disabled={isLoading}
+          disabled={isLoading || settings === undefined}
         >
-          Editar datos de cobro
+          {settings === null ? "Registrar datos de cobro" : "Editar datos de cobro"}
         </Button>
       </CardContent>
     </Card>
