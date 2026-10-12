@@ -25,10 +25,10 @@ export async function searchInventoryItems(params: {
   brandId?: string;
   categoryId?: string;
   subcategoryId?: string;
-}): Promise<SearchInventoryItemsResponse> {
+}, signal?: AbortSignal): Promise<SearchInventoryItemsResponse> {
   const res = await axiosAuth.get<SearchInventoryItemsResponse>(
     `${API_INVENTORY}/inventory-item/search`,
-    { params },
+    { params, signal },
   );
 
   return res.data;
