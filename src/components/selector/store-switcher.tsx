@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,18 +28,11 @@ export function StoreSwitcher() {
     [auth?.company?.stores]
   );
 
-  const currentStore =
-    stores.find((s) => s.id === selectedStoreId) || stores[0];
+  const currentStore = stores.find((s) => s.id === selectedStoreId);
 
   const [isOpen, setIsOpen] = useState(false);
 
-  useEffect(() => {
-    if (!selectedStoreId && stores.length > 0) {
-      setSelectedStore(stores[0].id);
-    }
-  }, [stores, selectedStoreId, setSelectedStore]);
-
-  if (stores.length === 0) return null;
+  if (!currentStore) return null;
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
