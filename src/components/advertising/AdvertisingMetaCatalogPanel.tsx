@@ -30,13 +30,19 @@ import { useAdvertisingMetaCatalog } from "@/hooks/useAdvertisingMeta";
 import {
   type MetaCatalogLevel,
   type MetaCatalogRow,
+  type MetaCatalogSort,
+  type MetaResultType,
   syncMetaModule,
 } from "@/services/advertisingMetaService";
 import { advertisingErrorMessage, advertisingErrorStatus } from "@/services/advertisingService";
 import {
+  formatMetaCostPerResult,
   formatMetaNumber,
+  formatMetaResultCount,
   formatMetaSpend,
   metaCoverageLabel,
+  metaResultDescription,
+  metaResultLabel,
   metaStatusLabel,
   validMetaPeriod,
 } from "./advertising-meta-model";
@@ -62,16 +68,25 @@ interface Props {
   initialAdId?: string;
   campaignId?: string;
   adsetId?: string;
+  initialResultType?: MetaResultType;
+  presentation?: "results";
 }
 
-export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...props }: Props) {
+export function AdvertisingMetaCatalogPanel({
+  initialAccountId,
+  initialAdId,
+  initialResultType,
+  presentation,
+  ...props
+}: Props) {
   const id = useId();
   const queryClient = useQueryClient();
   const [accountId, setAccountId] = useState(initialAccountId ?? "all");
   const [focusedAdId, setFocusedAdId] = useState(initialAdId);
   const [focusedDetailClosed, setFocusedDetailClosed] = useState(false);
   const [currency, setCurrency] = useState("all");
-  const [sortBy, setSortBy] = useState<"spend" | "clicks" | "impressions">("impressions");
+  const [resultType, setResultType] = useState<MetaResultType>(initialResultType ?? "messages");
+  const [sortBy, setSortBy] = useState<MetaCatalogSort>("results");
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<MetaCatalogRow | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -91,8 +106,9 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
     accountId: accountId === "all" ? undefined : accountId,
     currency: currency === "all" ? undefined : currency,
     adId: props.level === "ad" ? focusedAdId : undefined,
+    resultType,
     sortBy,
-    sortOrder: "desc",
+    sortOrder: sortBy === "costPerResult" ? "asc" : "desc",
     page,
     pageSize: 50,
   });
@@ -117,7 +133,7 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
         ["pending", "running", "retrying"].includes(account.historyImport.status),
     ) ?? [];
   const currencies = [...new Set(catalog?.accounts.map((account) => account.currency) ?? [])];
-  const canRankSpend = currency !== "all" || accountId !== "all" || currencies.length <= 1;
+  const canRankMoney = currency !== "all" || accountId !== "all" || currencies.length === 1;
   const syncAllowed =
     catalog?.capabilities.canSync &&
     catalog.accounts.some(
@@ -187,11 +203,15 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
   return (
     <section
       className="min-w-0 space-y-5 p-4 sm:p-6 lg:p-8"
-      aria-label={`${TITLES[props.level]} de Meta`}
+      aria-label={
+        presentation === "results" ? "Resultados de Meta" : `${TITLES[props.level]} de Meta`
+      }
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h2 className="font-semibold">{TITLES[props.level]}</h2>
+          <h2 className="font-semibold">
+            {presentation === "results" ? "Resultados de Meta" : TITLES[props.level]}
+          </h2>
           <p className="text-xs text-muted-foreground">
             Resultados de Meta · {formatAdvertisingDate(props.from)} {props.from.slice(0, 4)} al{" "}
             {formatAdvertisingDate(props.to)} {props.to.slice(0, 4)}
@@ -294,7 +314,27 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
         <Skeleton className="h-64" aria-label="Cargando resultados de Meta" />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label htmlFor={`${id}-conversion`}>Conversión</Label>
+              <Select
+                value={resultType}
+                onValueChange={(value) => {
+                  if (value !== "messages" && value !== "webPurchases") return;
+                  setResultType(value);
+                  setPage(1);
+                }}
+              >
+                <SelectTrigger id={`${id}-conversion`} className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="messages">Mensajes</SelectItem>
+                  <SelectItem value="webPurchases">Compras por web</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">{metaResultDescription(resultType)}</p>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor={`${id}-account`}>Cuenta Meta</Label>
               <Select
@@ -304,7 +344,7 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
                   setFocusedAdId(undefined);
                   setSelected(null);
                   setPage(1);
-                  if (sortBy === "spend") setSortBy("impressions");
+                  if (sortBy === "spend" || sortBy === "costPerResult") setSortBy("results");
                 }}
               >
                 <SelectTrigger id={`${id}-account`} className="w-full">
@@ -327,7 +367,8 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
                 onValueChange={(value) => {
                   setCurrency(value);
                   setPage(1);
-                  if (value === "all" && sortBy === "spend") setSortBy("impressions");
+                  if (value === "all" && (sortBy === "spend" || sortBy === "costPerResult"))
+                    setSortBy("results");
                 }}
               >
                 <SelectTrigger id={`${id}-currency`} className="w-full">
@@ -351,8 +392,16 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
                   if (
                     value === "clicks" ||
                     value === "impressions" ||
-                    (value === "spend" && canRankSpend)
+                    value === "results" ||
+                    ((value === "spend" || value === "costPerResult") && canRankMoney)
                   ) {
+                    // Keep money sorting explicitly scoped if another currency is linked later.
+                    if (
+                      (value === "spend" || value === "costPerResult") &&
+                      accountId === "all" &&
+                      currency === "all"
+                    )
+                      setCurrency(currencies[0]);
                     setSortBy(value);
                     setPage(1);
                   }
@@ -362,16 +411,20 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="costPerResult" disabled={!canRankMoney}>
+                    Menor costo por resultado
+                  </SelectItem>
+                  <SelectItem value="results">Más resultados</SelectItem>
                   <SelectItem value="impressions">Más impresiones Meta</SelectItem>
                   <SelectItem value="clicks">Más clics Meta</SelectItem>
-                  <SelectItem value="spend" disabled={!canRankSpend}>
+                  <SelectItem value="spend" disabled={!canRankMoney}>
                     Mayor gasto Meta
                   </SelectItem>
                 </SelectContent>
               </Select>
-              {!canRankSpend ? (
+              {!canRankMoney ? (
                 <p className="text-xs text-muted-foreground">
-                  Elige una moneda o cuenta para ordenar por gasto.
+                  Elige una moneda o cuenta para comparar costos.
                 </p>
               ) : null}
             </div>
@@ -395,7 +448,11 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
           {catalog.accounts.length ? (
             <div className="flex flex-wrap gap-2">
               {catalog.accounts
-                .filter((account) => accountId === "all" || account.id === accountId)
+                .filter(
+                  (account) =>
+                    (accountId === "all" || account.id === accountId) &&
+                    (currency === "all" || account.currency === currency),
+                )
                 .map((account) => (
                   <Badge key={account.id} variant="outline">
                     {account.name} · {metaCoverageLabel(account.coverage)}
@@ -440,8 +497,11 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
                             ? "Conjunto"
                             : "Anuncio"}
                       </TableHead>
-                      <TableHead>Último estado registrado</TableHead>
+                      <TableHead className="text-right">Costo por resultado</TableHead>
+                      <TableHead className="text-right">Resultados</TableHead>
+                      <TableHead>Conversión</TableHead>
                       <TableHead className="text-right">Gasto Meta</TableHead>
+                      <TableHead>Último estado registrado</TableHead>
                       <TableHead className="text-right">Impresiones</TableHead>
                       <TableHead className="text-right">Clics</TableHead>
                       <TableHead>Datos</TableHead>
@@ -459,10 +519,22 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
                             ID {row.id} · {row.currency}
                           </p>
                         </TableCell>
-                        <TableCell>{metaStatusLabel(row.effectiveStatus)}</TableCell>
+                        <TableCell className="whitespace-nowrap text-right font-mono font-semibold tabular-nums">
+                          {formatMetaCostPerResult(
+                            row.insights.resultMetrics?.[resultType],
+                            row.currency,
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold tabular-nums">
+                          {formatMetaResultCount(row.insights.resultMetrics?.[resultType])}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap">
+                          {metaResultLabel(resultType)}
+                        </TableCell>
                         <TableCell className="whitespace-nowrap text-right font-mono tabular-nums">
                           {formatMetaSpend(row.insights.spend, row.currency)}
                         </TableCell>
+                        <TableCell>{metaStatusLabel(row.effectiveStatus)}</TableCell>
                         <TableCell className="text-right font-mono tabular-nums">
                           {formatMetaNumber(row.insights.impressions)}
                         </TableCell>
@@ -498,6 +570,7 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
                                     campaignId:
                                       props.level === "campaign" ? row.id : row.campaignId,
                                     adsetId: props.level === "adset" ? row.id : undefined,
+                                    resultType,
                                   },
                                 )}
                               >
@@ -537,6 +610,11 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
             </Card>
           )}
           <p className="text-xs text-muted-foreground">
+            Costo por resultado = gasto ÷{" "}
+            {resultType === "messages" ? "conversaciones iniciadas" : "compras por web"}. Solo se
+            muestra con datos completos. Sin resultados: —.
+          </p>
+          <p className="text-xs text-muted-foreground">
             Fuente: Meta · Atribución de 7 días por clic y 1 día por vista · Zona de cada cuenta.
             Sin conversión de moneda.
           </p>
@@ -545,6 +623,7 @@ export function AdvertisingMetaCatalogPanel({ initialAccountId, initialAdId, ...
       {detailRow ? (
         <AdDetail
           {...props}
+          resultType={resultType}
           selected={detailRow}
           onClose={() => {
             setSelected(null);

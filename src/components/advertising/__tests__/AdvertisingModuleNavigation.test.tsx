@@ -133,3 +133,56 @@ it("preserves the linked ad and account while applying the URL period before mou
     }),
   );
 });
+
+it("opens Meta results first and mounts existing Powip results only when that tab is selected", async () => {
+  mockPathname = "/publicidad/resultados";
+  mockQueryString = "from=2026-10-01&to=2026-10-02&accountId=account&resultType=webPurchases";
+  const view = render(
+    <AdvertisingModuleShell>
+      <AdvertisingModulePage view="results" />
+    </AdvertisingModuleShell>,
+  );
+  expect(screen.getByRole("link", { name: "Resultados" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("tab", { name: "Meta" })).toHaveAttribute("aria-selected", "true");
+  expect(screen.getAllByLabelText("Panel de publicidad")).toHaveLength(1);
+  expect(JSON.parse(screen.getByLabelText("Panel de publicidad").textContent ?? "{}")).toEqual(
+    expect.objectContaining({
+      actorId: "actor",
+      companyId: "company",
+      from: "2026-10-01",
+      to: "2026-10-02",
+      initialAccountId: "account",
+      initialResultType: "webPurchases",
+      level: "ad",
+      presentation: "results",
+    }),
+  );
+  await userEvent
+    .setup({ advanceTimers: jest.advanceTimersByTime })
+    .click(screen.getByRole("tab", { name: "Pedidos Powip" }));
+  expect(screen.getAllByLabelText("Panel de publicidad")).toHaveLength(1);
+  expect(JSON.parse(screen.getByLabelText("Panel de publicidad").textContent ?? "{}")).toEqual(
+    expect.objectContaining({
+      actorId: "actor",
+      companyId: "company",
+      from: "2026-10-01",
+      to: "2026-10-02",
+      view: "results",
+    }),
+  );
+  mockQueryString = "from=2026-10-03&to=2026-10-04";
+  view.rerender(
+    <AdvertisingModuleShell>
+      <AdvertisingModulePage view="results" />
+    </AdvertisingModuleShell>,
+  );
+  expect(screen.getByRole("tab", { name: "Meta" })).toHaveAttribute("aria-selected", "true");
+  expect(JSON.parse(screen.getByLabelText("Panel de publicidad").textContent ?? "{}")).toEqual(
+    expect.objectContaining({
+      from: "2026-10-03",
+      to: "2026-10-04",
+      initialResultType: "messages",
+      level: "ad",
+    }),
+  );
+});

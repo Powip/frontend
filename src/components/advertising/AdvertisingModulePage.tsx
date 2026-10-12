@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { AdvertisingLivePanel } from "./AdvertisingLivePanel";
@@ -69,6 +70,13 @@ function AdvertisingPageContent({ connectionsOnly = false, view }: PageProps) {
 
   if (readyQuery !== queryString)
     return <Skeleton className="m-4 h-48" aria-label="Cargando periodo de publicidad" />;
+  const params = new URLSearchParams(queryString);
+  const campaignId = params.get("campaignId") ?? undefined;
+  const adsetId = params.get("adsetId") ?? undefined;
+  const accountId = params.get("accountId") ?? undefined;
+  const adId = params.get("adId") ?? undefined;
+  const initialResultType =
+    params.get("resultType") === "webPurchases" ? "webPurchases" : "messages";
   if (view === "orders") {
     return (
       <OrdersPanel
@@ -81,7 +89,49 @@ function AdvertisingPageContent({ connectionsOnly = false, view }: PageProps) {
       />
     );
   }
-  if (view === "quality" || view === "products" || view === "zones" || view === "results") {
+  if (view === "results") {
+    return (
+      <Tabs
+        key={`${auth?.user.id}:${auth?.company?.id}:${queryString}:${fromDate}:${toDate}`}
+        defaultValue="meta"
+        className="gap-0"
+      >
+        <div className="px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8">
+          <TabsList aria-label="Fuente de resultados" className="grid w-full max-w-xs grid-cols-2">
+            <TabsTrigger value="meta">Meta</TabsTrigger>
+            <TabsTrigger value="powip">Pedidos Powip</TabsTrigger>
+          </TabsList>
+        </div>
+        <TabsContent value="meta">
+          <MetaCatalogPanel
+            companyId={auth?.company?.id}
+            actorId={auth?.user.id}
+            token={auth?.accessToken}
+            from={fromDate}
+            to={toDate}
+            level="ad"
+            presentation="results"
+            campaignId={campaignId}
+            adsetId={adsetId}
+            initialAccountId={accountId}
+            initialAdId={adId}
+            initialResultType={initialResultType}
+          />
+        </TabsContent>
+        <TabsContent value="powip">
+          <BusinessAnalyticsPanel
+            companyId={auth?.company?.id}
+            actorId={auth?.user.id}
+            token={auth?.accessToken}
+            from={fromDate}
+            to={toDate}
+            view="results"
+          />
+        </TabsContent>
+      </Tabs>
+    );
+  }
+  if (view === "quality" || view === "products" || view === "zones") {
     return (
       <BusinessAnalyticsPanel
         key={`${auth?.user.id}:${auth?.company?.id}:${view}:${fromDate}:${toDate}`}
@@ -108,14 +158,9 @@ function AdvertisingPageContent({ connectionsOnly = false, view }: PageProps) {
     );
   }
   if (view) {
-    const params = new URLSearchParams(queryString);
-    const campaignId = params.get("campaignId") ?? undefined;
-    const adsetId = params.get("adsetId") ?? undefined;
-    const accountId = params.get("accountId") ?? undefined;
-    const adId = params.get("adId") ?? undefined;
     return (
       <MetaCatalogPanel
-        key={`${auth?.user.id}:${auth?.company?.id}:${view}:${campaignId}:${adsetId}:${accountId}:${adId}:${fromDate}:${toDate}`}
+        key={`${auth?.user.id}:${auth?.company?.id}:${view}:${campaignId}:${adsetId}:${accountId}:${adId}:${initialResultType}:${fromDate}:${toDate}`}
         companyId={auth?.company?.id}
         actorId={auth?.user.id}
         token={auth?.accessToken}
@@ -126,6 +171,7 @@ function AdvertisingPageContent({ connectionsOnly = false, view }: PageProps) {
         adsetId={adsetId}
         initialAccountId={accountId}
         initialAdId={adId}
+        initialResultType={initialResultType}
       />
     );
   }

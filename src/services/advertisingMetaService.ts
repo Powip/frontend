@@ -2,6 +2,14 @@ import axios from "axios";
 import { AdvertisingApiError, advertisingApiBase } from "./advertisingService";
 
 export type MetaCatalogLevel = "campaign" | "adset" | "ad";
+export type MetaResultType = "messages" | "webPurchases";
+export type MetaCatalogSort = "spend" | "clicks" | "impressions" | "results" | "costPerResult";
+export interface MetaResultMetric {
+  count: string | null;
+  costPerResult: string | null;
+  status: "complete" | "partial" | "unknown";
+}
+export type MetaResultMetrics = Record<MetaResultType, MetaResultMetric>;
 export interface MetaCoverage {
   status: "complete" | "partial" | "pending";
   coveredDays: number;
@@ -28,6 +36,7 @@ export interface MetaInsights {
   impressions: string | null;
   clicks: string | null;
   actions: MetaAction[] | null;
+  resultMetrics?: MetaResultMetrics;
   coverage: MetaCoverage;
 }
 export interface MetaCatalogRow {
@@ -98,7 +107,8 @@ export interface MetaCatalogFilters {
   adsetId?: string;
   adId?: string;
   currency?: string;
-  sortBy?: "spend" | "clicks" | "impressions";
+  resultType?: MetaResultType;
+  sortBy?: MetaCatalogSort;
   sortOrder?: "asc" | "desc";
   page: number;
   pageSize: number;
@@ -117,6 +127,7 @@ export interface MetaAdDetailResponse {
     impressions: string | null;
     clicks: string | null;
     actions: MetaAction[] | null;
+    resultMetrics?: MetaResultMetrics;
     provisional: boolean;
     coverage: "complete" | "pending";
   }>;
