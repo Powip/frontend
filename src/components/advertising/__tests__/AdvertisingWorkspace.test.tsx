@@ -172,3 +172,30 @@ it("calculates percentage basis points without binary rounding or unknown amount
   expect(advertisingInputDecimal("")).toBeNull();
   expect(advertisingInputDecimal("0")).toBe("0");
 });
+
+it("ofrece asignar tienda desde r9 y distingue el importe Meta del total efectivo", () => {
+  const data = workspace();
+  data.alerts = [
+    {
+      id: "r9:account:adset:PEN",
+      kind: "unassigned-store",
+      code: "UNASSIGNED_SPEND_OVER_24H",
+      accountId: "account",
+      adsetId: "adset",
+      title: "Gasto sin tienda",
+      message: "Asigna una tienda a este conjunto.",
+      currency: "PEN",
+      amount: "12.50",
+      amountSource: "meta-imported",
+    },
+  ];
+  render(
+    <AdvertisingAlerts workspace={data} busy={false} onSave={jest.fn()} onEvaluate={jest.fn()} />,
+  );
+  expect(screen.getByRole("link", { name: "Asignar tienda" })).toHaveAttribute(
+    "href",
+    "/publicidad/asignaciones?from=2026-10-01&to=2026-10-02&accountId=account&storeId=all",
+  );
+  expect(screen.getByText(/Gasto importado de Meta:/)).toBeVisible();
+  expect(screen.queryByRole("button", { name: "Reconectar" })).not.toBeInTheDocument();
+});

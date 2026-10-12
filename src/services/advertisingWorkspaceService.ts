@@ -58,7 +58,10 @@ export interface AdvertisingWorkspace {
   rules: AdvertisingRule[];
   alerts: Array<{
     id: string;
-    kind: "coverage" | "auth" | "threshold";
+    kind: "coverage" | "auth" | "threshold" | "unassigned-store";
+    code?: "UNASSIGNED_SPEND_OVER_24H" | string;
+    adsetId?: string | null;
+    amountSource?: "meta-imported";
     accountId: string | null;
     title: string;
     message: string;

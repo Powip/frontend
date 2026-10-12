@@ -44,6 +44,63 @@ export interface AdvertisingBusinessResult {
   contributionAfterAds: string | null;
   reason: string | null;
 }
+export function businessCountAvailable(
+  row: AdvertisingBusinessRow,
+  analytics: AdvertisingBusinessAnalytics,
+  meta: MetaCatalogResponse | null,
+  storeId: string,
+): boolean {
+  const level =
+    analytics.groupBy === "ad" ? "ad" : analytics.groupBy === "campaign" ? "campaign" : null;
+  if (
+    !level ||
+    !row.id ||
+    !row.accountId ||
+    !meta ||
+    meta.source !== "meta" ||
+    analytics.source !== "powip-orders" ||
+    storeId === "none" ||
+    (analytics.storeId ?? "all") !== storeId ||
+    (analytics.channelId ?? "all") !== "all" ||
+    analytics.truncated ||
+    analytics.from !== meta.from ||
+    analytics.to !== meta.to
+  )
+    return false;
+  const matches = meta.rows.filter(
+    (item) => item.id === row.id && item.accountId === row.accountId && item.level === level,
+  );
+  if (matches.length !== 1) return false;
+  const entity = matches[0];
+  if (
+    !row.currency ||
+    row.currency !== entity.currency ||
+    row.adCurrency !== entity.currency ||
+    row.adTimeZone !== entity.timeZone ||
+    analytics.timeZone !== entity.timeZone
+  )
+    return false;
+  const cohort = analytics.cohortCoverage;
+  if (cohort?.basis !== analytics.basis || cohort.complete !== true) return false;
+  const missing =
+    analytics.basis === "delivered"
+      ? cohort.missingDeliveredDateCount
+      : analytics.basis === "paid"
+        ? cohort.missingPaidDateCount
+        : 0;
+  const legacyMissing =
+    analytics.basis === "delivered"
+      ? analytics.quality?.missingDeliveredDateCount
+      : analytics.basis === "paid"
+        ? analytics.quality?.missingPaidDateCount
+        : 0;
+  return (
+    Number.isSafeInteger(missing) &&
+    missing === 0 &&
+    Number.isSafeInteger(legacyMissing) &&
+    legacyMissing === 0
+  );
+}
 export function businessResult(
   row: AdvertisingBusinessRow,
   analytics: AdvertisingBusinessAnalytics,
@@ -58,9 +115,12 @@ export function businessResult(
   });
   if (!row.id || !row.accountId) return empty("Sin anuncio confirmado");
   if (!meta) return empty("Gasto de Meta pendiente");
-  const ad: MetaCatalogRow | undefined = meta.rows.find(
-    (item) => item.id === row.id && item.accountId === row.accountId && item.level === "ad",
+  const level =
+    analytics.groupBy === "campaign" ? "campaign" : analytics.groupBy === "ad" ? "ad" : null;
+  const entities = meta.rows.filter(
+    (item) => item.id === row.id && item.accountId === row.accountId && item.level === level,
   );
+  const ad: MetaCatalogRow | undefined = entities.length === 1 ? entities[0] : undefined;
   if (!ad || ad.insights.spend === null) return empty("Gasto de Meta pendiente");
   if (!row.currency || row.currency !== ad.currency || row.adCurrency !== ad.currency)
     return empty("Monedas distintas o sin confirmar");
@@ -81,6 +141,47 @@ export function businessResult(
     return empty("Gasto por confirmar");
   if (!metaSpendReconciled(ad.insights.coverage)) return empty("Gasto por confirmar");
   const spend = ad.insights.spend;
+  const cohort = analytics.cohortCoverage;
+  if (
+    analytics.basis !== "created" &&
+    (cohort?.basis !== analytics.basis ||
+      cohort.complete !== true ||
+      !Number.isSafeInteger(
+        analytics.basis === "delivered"
+          ? cohort.missingDeliveredDateCount
+          : cohort.missingPaidDateCount,
+      ) ||
+      (analytics.basis === "delivered"
+        ? cohort.missingDeliveredDateCount
+        : cohort.missingPaidDateCount) !== 0)
+  )
+    return {
+      spend,
+      cpe: null,
+      paidRoas: null,
+      contributionAfterAds: null,
+      reason:
+        analytics.basis === "paid"
+          ? "Fechas de cobro por completar"
+          : "Fechas de entrega por completar",
+    };
+  const missingDateCount =
+    analytics.basis === "delivered"
+      ? analytics.quality?.missingDeliveredDateCount
+      : analytics.basis === "paid"
+        ? analytics.quality?.missingPaidDateCount
+        : 0;
+  if (!Number.isSafeInteger(missingDateCount) || missingDateCount !== 0)
+    return {
+      spend,
+      cpe: null,
+      paidRoas: null,
+      contributionAfterAds: null,
+      reason:
+        analytics.basis === "paid"
+          ? "Fechas de cobro por completar"
+          : "Fechas de entrega por completar",
+    };
   const cpe =
     analytics.basis === "delivered" && row.deliveredCount > 0
       ? divideOrderDecimals(spend, String(row.deliveredCount))

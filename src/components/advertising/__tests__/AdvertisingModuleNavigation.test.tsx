@@ -3,8 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { getRoutePermissions } from "@/config/permissions.config";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { useAuth } from "@/contexts/AuthContext";
+import { useAdvertisingAssignmentsV11 } from "@/hooks/useAdvertisingV11";
 import { AdvertisingModulePage } from "../AdvertisingModulePage";
 import { AdvertisingModuleShell } from "../AdvertisingModuleShell";
+import { useAdvertisingStoreFilter } from "../AdvertisingStoreFilterContext";
 
 const replace = jest.fn();
 let mockPathname = "/publicidad";
@@ -21,6 +23,7 @@ jest.mock("next/dynamic", () => ({
   ),
 }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
+jest.mock("@/hooks/useAdvertisingV11", () => ({ useAdvertisingAssignmentsV11: jest.fn() }));
 jest.mock("@/components/header/Header", () => ({
   __esModule: true,
   default: () => <div>Cabecera Powip</div>,
@@ -43,6 +46,10 @@ beforeEach(() => {
   jest.useFakeTimers().setSystemTime(new Date("2026-10-10T12:00:00Z"));
   mockPathname = "/publicidad";
   mockQueryString = "";
+  window.history.replaceState({}, "", "/publicidad");
+  jest
+    .mocked(useAdvertisingAssignmentsV11)
+    .mockReturnValue({ data: undefined } as ReturnType<typeof useAdvertisingAssignmentsV11>);
   jest.mocked(useAuth).mockReturnValue({
     auth: { user: { id: "actor" }, company: { id: "company" } },
     loading: false,
@@ -61,7 +68,7 @@ it("opens Publicidad with its own navigation and a shared 30-day period", async 
   expect(screen.getByRole("link", { name: "Resumen" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Conexiones" })).toHaveAttribute(
     "href",
-    "/publicidad/conexiones",
+    "/publicidad/conexiones?from=2026-09-11&to=2026-10-10&storeId=all",
   );
   expect(screen.getByText("2026-09-11 / 2026-10-10")).toBeVisible();
   expect(screen.getByRole("group", { name: "Periodo seleccionado" })).toHaveTextContent(
@@ -213,4 +220,60 @@ it("opens Meta results first and mounts existing Powip results only when that ta
       level: "ad",
     }),
   );
+});
+
+function StoreEvidence() {
+  return <output aria-label="Tienda activa">{useAdvertisingStoreFilter().storeId}</output>;
+}
+it("usa la tienda comercial seleccionada y da prioridad al filtro explícito de la URL", () => {
+  jest.mocked(useAuth).mockReturnValue({
+    auth: {
+      user: { id: "actor" },
+      company: {
+        id: "company",
+        stores: [
+          { id: "norte", name: "Norte" },
+          { id: "legacy", name: "Anterior", is_legacy: true },
+          { id: "inactive", name: "Inactiva", is_active: false },
+        ],
+      },
+    },
+    selectedStoreId: "norte",
+    loading: false,
+    hasPermission: () => true,
+  } as unknown as ReturnType<typeof useAuth>);
+  const view = render(
+    <AdvertisingModuleShell>
+      <StoreEvidence />
+      <AdvertisingModulePage view="ads" />
+    </AdvertisingModuleShell>,
+  );
+  expect(screen.getByLabelText("Tienda activa")).toHaveTextContent("norte");
+  expect(screen.getByRole("link", { name: "Resumen" })).toHaveAttribute(
+    "href",
+    expect.stringContaining("storeId=norte"),
+  );
+  mockQueryString = "storeId=all";
+  view.rerender(
+    <AdvertisingModuleShell>
+      <StoreEvidence />
+      <AdvertisingModulePage view="ads" />
+    </AdvertisingModuleShell>,
+  );
+  expect(screen.getByLabelText("Tienda activa")).toHaveTextContent("all");
+});
+it("muestra el contador de conjuntos pendientes sin cambiar el nombre accesible de Asignaciones", () => {
+  jest
+    .mocked(useAdvertisingAssignmentsV11)
+    .mockReturnValue({ data: { pending: { adsetCount: 3 } } } as unknown as ReturnType<
+      typeof useAdvertisingAssignmentsV11
+    >);
+  render(
+    <AdvertisingModuleShell>
+      <p>Contenido</p>
+    </AdvertisingModuleShell>,
+  );
+  expect(
+    screen.getByRole("link", { name: "Asignaciones · 3 conjuntos sin tienda" }),
+  ).toHaveTextContent("3");
 });

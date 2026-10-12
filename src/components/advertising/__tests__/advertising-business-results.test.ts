@@ -51,6 +51,13 @@ const analytics: AdvertisingBusinessAnalytics = {
     partiallyPaidCount: 0,
     incompleteCostCount: 0,
   },
+  cohortCoverage: {
+    basis: "paid",
+    complete: true,
+    reasons: [],
+    missingDeliveredDateCount: 0,
+    missingPaidDateCount: 0,
+  },
   limitations: [],
   netProfit: null,
   roas: null,
@@ -98,7 +105,23 @@ it("compares confirmed paid orders and keeps delivery costs in the delivery basi
     contributionAfterAds: "40.00",
     cpe: null,
   });
-  expect(businessResult(row, { ...analytics, basis: "delivered" }, meta)).toMatchObject({
+  expect(
+    businessResult(
+      row,
+      {
+        ...analytics,
+        basis: "delivered",
+        cohortCoverage: {
+          basis: "delivered",
+          complete: true,
+          reasons: [],
+          missingDeliveredDateCount: 0,
+          missingPaidDateCount: 0,
+        },
+      },
+      meta,
+    ),
+  ).toMatchObject({
     cpe: "10.000000",
     paidRoas: null,
     contributionAfterAds: null,
@@ -303,7 +326,21 @@ it("does not divide by zero or show profit for cancelled orders", () => {
     businessResult({ ...row, cancelledCount: 1 }, analytics, meta).contributionAfterAds,
   ).toBeNull();
   expect(
-    businessResult({ ...row, deliveredCount: 0 }, { ...analytics, basis: "delivered" }, meta).cpe,
+    businessResult(
+      { ...row, deliveredCount: 0 },
+      {
+        ...analytics,
+        basis: "delivered",
+        cohortCoverage: {
+          basis: "delivered",
+          complete: true,
+          reasons: [],
+          missingDeliveredDateCount: 0,
+          missingPaidDateCount: 0,
+        },
+      },
+      meta,
+    ).cpe,
   ).toBeNull();
 });
 it("keeps decimal arithmetic exact for large amounts and negative results", () => {
@@ -316,4 +353,50 @@ it("distinguishes a blank review from a confirmed zero", () => {
   expect(financeInputValue("0")).toBe("0");
   expect(formatOrderAmount(null, "PEN")).toBe("Pendiente");
   expect(formatOrderAmount("0.00", null)).toBe("Sin moneda");
+});
+
+it("blocks delivered and paid ratios when canonical dates are missing or unverified", () => {
+  const delivered = {
+    ...analytics,
+    basis: "delivered" as const,
+    quality: { ...analytics.quality, missingDeliveredDateCount: 1 },
+  };
+  expect(businessResult(row, delivered, meta)).toMatchObject({
+    spend: "20.00",
+    cpe: null,
+    reason: "Fechas de entrega por completar",
+  });
+  const paid = { ...analytics, quality: { ...analytics.quality, missingPaidDateCount: 1 } };
+  expect(businessResult(row, paid, meta)).toMatchObject({
+    paidRoas: null,
+    contributionAfterAds: null,
+    reason: "Fechas de cobro por completar",
+  });
+  const unverified = {
+    ...analytics,
+    basis: "delivered" as const,
+    quality: undefined,
+  } as unknown as AdvertisingBusinessAnalytics;
+  expect(businessResult(row, unverified, meta).cpe).toBeNull();
+  expect(businessResult(row, { ...delivered, basis: "created" }, meta)).toMatchObject({
+    spend: "20.00",
+    reason: null,
+  });
+});
+
+it("does not confirm a delivered cohort from created-period quality alone", () => {
+  const delivered = {
+    ...analytics,
+    basis: "delivered" as const,
+    quality: { ...analytics.quality, missingDeliveredDateCount: 0 },
+    cohortCoverage: {
+      basis: "delivered" as const,
+      complete: false,
+      reasons: ["missing-delivered-date"],
+      missingDeliveredDateCount: 1,
+      missingPaidDateCount: 0,
+    },
+  };
+  expect(businessResult(row, delivered, meta).cpe).toBeNull();
+  expect(businessResult(row, { ...delivered, cohortCoverage: undefined }, meta).cpe).toBeNull();
 });

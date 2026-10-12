@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +49,7 @@ import {
 } from "@/services/advertisingOrdersService";
 import { advertisingErrorMessage, advertisingErrorStatus } from "@/services/advertisingService";
 import { AdvertisingOrderDateBasis } from "./AdvertisingOrderDateBasis";
+import { useAdvertisingStoreFilter } from "./AdvertisingStoreFilterContext";
 import { formatAdvertisingDate } from "./advertising-model";
 import {
   financeInputValue,
@@ -64,18 +65,38 @@ export interface AdvertisingOrdersPanelProps extends AdvertisingOrdersIdentity {
 }
 
 export function AdvertisingOrdersPanel(props: AdvertisingOrdersPanelProps) {
+  const { storeId } = useAdvertisingStoreFilter();
   const [basis, setBasis] = useState<AdvertisingOrderBasis>("created");
   const [page, setPage] = useState(1);
   const [orderId, setOrderId] = useState<string | null>(null);
-  const query = useAdvertisingOrders(props, {
-    from: props.from,
-    to: props.to,
-    basis,
-    timeZone: "America/Lima",
-    page,
-    limit: 50,
-  });
+  const observedStore = useRef(storeId);
+  useEffect(() => {
+    if (observedStore.current === storeId) return;
+    observedStore.current = storeId;
+    setPage(1);
+    setOrderId(null);
+  }, [storeId]);
+  const query = useAdvertisingOrders(
+    { ...props, enabled: props.enabled !== false && storeId !== "none" },
+    {
+      from: props.from,
+      to: props.to,
+      basis,
+      timeZone: "America/Lima",
+      page,
+      limit: 50,
+      storeId,
+      channelId: "all",
+    },
+  );
   const data = query.data;
+  if (storeId === "none")
+    return (
+      <p className="p-4 text-sm text-muted-foreground">
+        El gasto sin asignar no identifica la tienda de una venta. Elige una tienda para consultar
+        pedidos.
+      </p>
+    );
   return (
     <section className="space-y-5 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -170,7 +191,11 @@ export function AdvertisingOrdersPanel(props: AdvertisingOrdersPanelProps) {
                           <p className="max-w-56 truncate">
                             {row.attribution.adName ?? "Sin anuncio"}
                           </p>
-                          {row.attribution.source === "reference" && <p className="text-xs text-muted-foreground">Referencia original validada</p>}
+                          {row.attribution.source === "reference" && (
+                            <p className="text-xs text-muted-foreground">
+                              Referencia original validada
+                            </p>
+                          )}
                           {row.attribution.originalReferencePresent && !row.attribution.adId && (
                             <p className="text-xs text-muted-foreground">
                               Referencia original sin validar

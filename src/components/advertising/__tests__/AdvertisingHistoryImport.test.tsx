@@ -17,6 +17,7 @@ jest.mock("next/dynamic", () => ({ __esModule: true, default: () => () => null }
 const get = jest.mocked(axios.get);
 const put = jest.mocked(axios.put);
 const post = jest.mocked(axios.post);
+const accountsSelected = jest.fn();
 const BASE = "https://integrations.example.test";
 const COMPANY_ID = "b2222222-2222-4222-8222-222222222222";
 const ACTOR_ID = "a1111111-1111-4111-8111-111111111111";
@@ -82,6 +83,7 @@ function renderPanel(from = "2026-10-01", to = "2026-10-10", connectionsOnly = t
           from={from}
           to={to}
           connectionsOnly={connectionsOnly}
+          onAccountsSelected={accountsSelected}
         />
       </QueryClientProvider>
     </StrictMode>,
@@ -94,6 +96,7 @@ function snapshotCalls() {
 
 beforeEach(() => {
   jest.resetAllMocks();
+  accountsSelected.mockClear();
   window.history.replaceState(null, "", "/configuracion/integraciones/publicidad");
   process.env.NEXT_PUBLIC_API_INTEGRATIONS = BASE;
   accounts = [
@@ -329,6 +332,7 @@ describe("automatic advertising history import", () => {
         expect.objectContaining({ headers: { Authorization: `Bearer ${TOKEN}` } }),
       );
       expect(post).not.toHaveBeenCalled();
+      expect(accountsSelected).toHaveBeenCalledTimes(1);
       expect(get).toHaveBeenCalledWith(
         `${ROOT}/snapshot`,
         expect.objectContaining({ params: { from, to } }),
@@ -354,6 +358,7 @@ describe("automatic advertising history import", () => {
     );
     expect(post).not.toHaveBeenCalled();
     expect(screen.getByText("Importación pausada")).toBeVisible();
+    expect(accountsSelected).not.toHaveBeenCalled();
   });
 
   it("replaces the queued save notice with the worker result instead of keeping stale progress", async () => {

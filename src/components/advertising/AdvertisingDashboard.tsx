@@ -1,6 +1,13 @@
 "use client";
 
-import { CircleAlert, CircleCheck, Megaphone, Pause, Plug, RotateCw } from "lucide-react";
+import {
+  CircleAlert,
+  CircleCheck,
+  Megaphone,
+  Pause,
+  Plug,
+  RotateCw,
+} from "lucide-react";
 import dynamic from "next/dynamic";
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -92,13 +99,16 @@ export function AdvertisingConnections({
   showAccounts = false,
   from,
   to,
+  renderStore,
 }: {
   snapshot: AdvertisingSnapshot;
   showAccounts?: boolean;
   from?: string;
   to?: string;
+  renderStore?: (accountId: string) => ReactNode;
 } & AdvertisingActions) {
-  const [pauseProvider, setPauseProvider] = useState<AdvertisingProvider | null>(null);
+  const [pauseProvider, setPauseProvider] =
+    useState<AdvertisingProvider | null>(null);
   const summary =
     showAccounts && from && to
       ? getAdvertisingSummary(snapshot, {
@@ -116,22 +126,33 @@ export function AdvertisingConnections({
         {PROVIDERS.map((provider) => {
           const connection = snapshot.providers[provider];
           const accounts = snapshot.accounts.filter(
-            (account) => account.provider === provider && !account.disconnectedAt,
+            (account) =>
+              account.provider === provider && !account.disconnectedAt,
           );
           const enabled = accounts.filter((account) => account.enabled);
           const needsAuth = connection.status === "needs-auth";
-          const canManage = connection.status === "connected" || connection.status === "paused";
-          const action = needsAuth ? onReconnect : canManage ? onManage : onConnect;
+          const canManage =
+            connection.status === "connected" || connection.status === "paused";
+          const action = needsAuth
+            ? onReconnect
+            : canManage
+              ? onManage
+              : onConnect;
           return (
             <Card key={provider}>
               <CardHeader>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="flex items-center gap-2 text-base">
-                    <Megaphone className="size-4 text-primary" aria-hidden="true" />
+                    <Megaphone
+                      className="size-4 text-primary"
+                      aria-hidden="true"
+                    />
                     {providerLabel(provider)}
                   </CardTitle>
                   <Badge variant={canManage ? "secondary" : "outline"}>
-                    {connection.available ? STATUS_LABELS[connection.status] : "Próximamente"}
+                    {connection.available
+                      ? STATUS_LABELS[connection.status]
+                      : "Próximamente"}
                   </Badge>
                 </div>
               </CardHeader>
@@ -143,7 +164,8 @@ export function AdvertisingConnections({
                 </p>
                 {!showAccounts &&
                 accounts.length > 0 &&
-                (onDisconnect || accounts.some((account) => account.historyImport)) ? (
+                (onDisconnect ||
+                  accounts.some((account) => account.historyImport)) ? (
                   <section
                     className="space-y-3 border-t pt-3"
                     aria-label="Importación del historial"
@@ -181,7 +203,9 @@ export function AdvertisingConnections({
                         >
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div className="min-w-0 space-y-1">
-                              <h3 className="break-words text-sm font-semibold">{account.name}</h3>
+                              <h3 className="break-words text-sm font-semibold">
+                                {account.name}
+                              </h3>
                               <p className="break-all text-xs text-muted-foreground">
                                 ID {account.externalId}
                               </p>
@@ -196,17 +220,22 @@ export function AdvertisingConnections({
                           </div>
                           <dl className="grid gap-3 text-sm sm:grid-cols-2">
                             <div>
-                              <dt className="text-xs text-muted-foreground">Moneda</dt>
+                              <dt className="text-xs text-muted-foreground">
+                                Moneda
+                              </dt>
                               <dd>{account.currency}</dd>
                             </div>
                             <div>
-                              <dt className="text-xs text-muted-foreground">Zona horaria</dt>
+                              <dt className="text-xs text-muted-foreground">
+                                Zona horaria
+                              </dt>
                               <dd className="break-all">{account.timeZone}</dd>
                             </div>
                             {spend && from && to ? (
                               <div className="space-y-1 sm:col-span-2">
                                 <dt className="text-xs text-muted-foreground">
-                                  Gasto del {formatAdvertisingDate(from)} {from.slice(0, 4)} al{" "}
+                                  Gasto del {formatAdvertisingDate(from)}{" "}
+                                  {from.slice(0, 4)} al{" "}
                                   {formatAdvertisingDate(to)} {to.slice(0, 4)}
                                 </dt>
                                 <dd className="flex flex-wrap items-center gap-2">
@@ -228,12 +257,15 @@ export function AdvertisingConnections({
                               </div>
                             ) : null}
                           </dl>
+                          {renderStore?.(account.id)}
                           <AdvertisingAccountHistory
                             account={account}
                             showName={false}
                             from={from}
                             to={to}
-                            hasStoredData={spend ? hasAdvertisingAmount(spend) : undefined}
+                            hasStoredData={
+                              spend ? hasAdvertisingAmount(spend) : undefined
+                            }
                           />
                           {onDisconnect ? (
                             <Button
@@ -255,8 +287,16 @@ export function AdvertisingConnections({
                     disabled={!connection.available || !action}
                     onClick={() => action?.(provider)}
                   >
-                    {needsAuth ? <RotateCw aria-hidden="true" /> : <Plug aria-hidden="true" />}
-                    {needsAuth ? "Reconectar" : canManage ? "Elegir cuentas" : "Conectar"}
+                    {needsAuth ? (
+                      <RotateCw aria-hidden="true" />
+                    ) : (
+                      <Plug aria-hidden="true" />
+                    )}
+                    {needsAuth
+                      ? "Reconectar"
+                      : canManage
+                        ? "Elegir cuentas"
+                        : "Conectar"}
                   </Button>
                   {connection.available && enabled.length > 0 ? (
                     <Button
@@ -284,7 +324,8 @@ export function AdvertisingConnections({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Pausar {pauseProvider ? providerLabel(pauseProvider) : "actualizaciones"}
+              Pausar{" "}
+              {pauseProvider ? providerLabel(pauseProvider) : "actualizaciones"}
             </AlertDialogTitle>
             <AlertDialogDescription>
               Dejarás de recibir nuevos datos. Podrás ver los gastos anteriores.
@@ -327,10 +368,19 @@ export function AdvertisingDashboard({
   const [currency, setCurrency] = useState("all");
   const [showPending, setShowPending] = useState(false);
   const summary = useMemo(
-    () => getAdvertisingSummary(snapshot, { from, to, provider, accountId, currency }),
+    () =>
+      getAdvertisingSummary(snapshot, {
+        from,
+        to,
+        provider,
+        accountId,
+        currency,
+      }),
     [snapshot, from, to, provider, accountId, currency],
   );
-  const currencies = [...new Set(snapshot.accounts.map((account) => account.currency))];
+  const currencies = [
+    ...new Set(snapshot.accounts.map((account) => account.currency)),
+  ];
   const pending = summary.accounts.filter((item) => !item.complete);
   const reconnect = PROVIDERS.filter(
     (item) =>
@@ -338,7 +388,8 @@ export function AdvertisingDashboard({
       summary.accounts.some(({ account }) => account.provider === item),
   );
   const pendingManual = snapshot.manualRecords.filter(
-    (record) => record.status === "pending" && record.date >= from && record.date <= to,
+    (record) =>
+      record.status === "pending" && record.date >= from && record.date <= to,
   );
   const lastUpdate = summary.accounts
     .map(({ account }) => account.updatedAt)
@@ -353,7 +404,10 @@ export function AdvertisingDashboard({
   }
 
   return (
-    <section className="min-w-0 space-y-6 p-4 sm:p-6 lg:p-8" aria-label="Inversión publicitaria">
+    <section
+      className="min-w-0 space-y-6 p-4 sm:p-6 lg:p-8"
+      aria-label="Inversión publicitaria"
+    >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="space-y-1">
           <h2 className="text-lg font-bold">Inversión publicitaria</h2>
@@ -361,7 +415,11 @@ export function AdvertisingDashboard({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {isDemo ? <Badge variant="outline">Datos de ejemplo</Badge> : null}
-          <Button size="sm" variant="outline" onClick={() => setView("connections")}>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setView("connections")}
+          >
             <Plug aria-hidden="true" />
             Ver cuentas
           </Button>
@@ -369,11 +427,17 @@ export function AdvertisingDashboard({
       </div>
 
       <Tabs value={view} onValueChange={setView} className="gap-6">
-        <TabsList aria-label="Publicidad" className="grid h-auto w-full max-w-md grid-cols-3">
+        <TabsList
+          aria-label="Publicidad"
+          className="grid h-auto w-full max-w-md grid-cols-3"
+        >
           <TabsTrigger value="investment" className="min-h-9 whitespace-normal">
             Inversión
           </TabsTrigger>
-          <TabsTrigger value="connections" className="min-h-9 whitespace-normal">
+          <TabsTrigger
+            value="connections"
+            className="min-h-9 whitespace-normal"
+          >
             Conexiones
           </TabsTrigger>
           <TabsTrigger value="manual" className="min-h-9 whitespace-normal">
@@ -386,7 +450,9 @@ export function AdvertisingDashboard({
           {summary.accounts.some(({ account }) => account.historyImport) ? (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Importación del historial</CardTitle>
+                <CardTitle className="text-base">
+                  Importación del historial
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {summary.accounts.map((item) => (
@@ -407,7 +473,8 @@ export function AdvertisingDashboard({
               <Select
                 value={provider}
                 onValueChange={(value) => {
-                  if (value === "all" || value === "meta" || value === "tiktok") setProvider(value);
+                  if (value === "all" || value === "meta" || value === "tiktok")
+                    setProvider(value);
                   setAccountId("all");
                 }}
               >
@@ -434,7 +501,11 @@ export function AdvertisingDashboard({
                   <SelectItem value="all">Todas</SelectItem>
                   {currencies.map((item) => (
                     <SelectItem key={item} value={item}>
-                      {item === "PEN" ? "Soles (PEN)" : item === "USD" ? "Dólares (USD)" : item}
+                      {item === "PEN"
+                        ? "Soles (PEN)"
+                        : item === "USD"
+                          ? "Dólares (USD)"
+                          : item}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -449,7 +520,10 @@ export function AdvertisingDashboard({
                 <SelectContent>
                   <SelectItem value="all">Todas</SelectItem>
                   {snapshot.accounts
-                    .filter((account) => provider === "all" || account.provider === provider)
+                    .filter(
+                      (account) =>
+                        provider === "all" || account.provider === provider,
+                    )
                     .map((account) => (
                       <SelectItem key={account.id} value={account.id}>
                         {account.name}
@@ -479,7 +553,9 @@ export function AdvertisingDashboard({
           ) : summary.accounts.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center gap-4 py-8">
-                <p className="text-sm text-muted-foreground">Sin cuentas para estos filtros.</p>
+                <p className="text-sm text-muted-foreground">
+                  Sin cuentas para estos filtros.
+                </p>
                 <Button size="sm" variant="outline" onClick={clearFilters}>
                   Ver todas las cuentas
                 </Button>
@@ -487,13 +563,18 @@ export function AdvertisingDashboard({
             </Card>
           ) : (
             <>
-              <div className="grid gap-4 sm:grid-cols-2" aria-live="polite" aria-atomic="true">
+              <div
+                className="grid gap-4 sm:grid-cols-2"
+                aria-live="polite"
+                aria-atomic="true"
+              >
                 {summary.totals.map((total) => (
                   <Card key={total.currency}>
                     <CardContent className="space-y-3 pt-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <h3 className="text-sm font-semibold">
-                          {total.complete ? "Gasto" : "Gasto disponible"} · {total.currency}
+                          {total.complete ? "Gasto" : "Gasto disponible"} ·{" "}
+                          {total.currency}
                         </h3>
                         <Badge variant="outline">
                           {total.complete ? (
@@ -501,7 +582,9 @@ export function AdvertisingDashboard({
                           ) : (
                             <CircleAlert aria-hidden="true" />
                           )}
-                          {total.complete ? "Datos completos" : "Datos parciales"}
+                          {total.complete
+                            ? "Datos completos"
+                            : "Datos parciales"}
                         </Badge>
                       </div>
                       <p className="font-mono text-2xl font-bold tabular-nums">
@@ -512,8 +595,13 @@ export function AdvertisingDashboard({
                         )}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        {total.accountCount} {total.accountCount === 1 ? "cuenta" : "cuentas"}
-                        {total.complete && isAdvertisingZero(total.amountMinor, total.amountDecimal)
+                        {total.accountCount}{" "}
+                        {total.accountCount === 1 ? "cuenta" : "cuentas"}
+                        {total.complete &&
+                        isAdvertisingZero(
+                          total.amountMinor,
+                          total.amountDecimal,
+                        )
                           ? " · cero confirmado"
                           : ""}
                       </p>
@@ -528,7 +616,8 @@ export function AdvertisingDashboard({
                   <AlertDescription>
                     <div className="flex w-full flex-wrap items-center justify-between gap-2">
                       <p>
-                        Faltan datos de {pending.map(({ account }) => account.name).join(", ")}.
+                        Faltan datos de{" "}
+                        {pending.map(({ account }) => account.name).join(", ")}.
                       </p>
                       <Button
                         variant="outline"
@@ -543,7 +632,8 @@ export function AdvertisingDashboard({
                       <ul className="space-y-1">
                         {pending.map(({ account, missingDates }) => (
                           <li key={account.id}>
-                            {account.name}: {missingDates.map(formatAdvertisingDate).join(", ")}{" "}
+                            {account.name}:{" "}
+                            {missingDates.map(formatAdvertisingDate).join(", ")}{" "}
                             pendientes.
                           </li>
                         ))}
@@ -558,7 +648,10 @@ export function AdvertisingDashboard({
                   <RotateCw aria-hidden="true" />
                   <AlertDescription>
                     <div className="flex w-full flex-wrap items-center justify-between gap-2">
-                      <p>Reconecta {providerLabel(item)} para recibir nuevos datos.</p>
+                      <p>
+                        Reconecta {providerLabel(item)} para recibir nuevos
+                        datos.
+                      </p>
                       <Button
                         size="sm"
                         variant="outline"
@@ -589,7 +682,9 @@ export function AdvertisingDashboard({
                     · hora de Perú
                   </p>
                 ) : null}
-                {summary.totals.length > 1 ? <p>Las monedas se muestran por separado.</p> : null}
+                {summary.totals.length > 1 ? (
+                  <p>Las monedas se muestran por separado.</p>
+                ) : null}
               </div>
 
               {summary.totals.map((total) => (
@@ -603,12 +698,20 @@ export function AdvertisingDashboard({
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-base">Detalle por cuenta</CardTitle>
+                  <CardTitle className="text-base">
+                    Detalle por cuenta
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="min-w-0">
                   <div className="space-y-4 sm:hidden">
                     {summary.accounts.map(
-                      ({ account, amountMinor, amountDecimal, complete, missingDates }) => (
+                      ({
+                        account,
+                        amountMinor,
+                        amountDecimal,
+                        complete,
+                        missingDates,
+                      }) => (
                         <div
                           key={account.id}
                           className="space-y-2 border-b pb-4 last:border-0 last:pb-0"
@@ -618,11 +721,16 @@ export function AdvertisingDashboard({
                               {account.name}
                             </p>
                             <p className="shrink-0 font-mono text-sm font-semibold tabular-nums">
-                              {formatAdvertisingMoney(amountMinor, account.currency, amountDecimal)}
+                              {formatAdvertisingMoney(
+                                amountMinor,
+                                account.currency,
+                                amountDecimal,
+                              )}
                             </p>
                           </div>
                           <p className="break-words text-xs text-muted-foreground">
-                            {providerLabel(account.provider)} · ID {account.externalId}
+                            {providerLabel(account.provider)} · ID{" "}
+                            {account.externalId}
                             <br />
                             {account.currency} · {account.timeZone}
                           </p>
@@ -633,7 +741,8 @@ export function AdvertisingDashboard({
                                 : `${missingDates.length} ${missingDates.length === 1 ? "día pendiente" : "días pendientes"}`}
                             </Badge>
                             <span className="text-xs text-muted-foreground">
-                              {snapshot.providers[account.provider].status === "needs-auth"
+                              {snapshot.providers[account.provider].status ===
+                              "needs-auth"
                                 ? "Reconectar"
                                 : account.enabled
                                   ? "Actualizaciones activas"
@@ -656,12 +765,21 @@ export function AdvertisingDashboard({
                       </TableHeader>
                       <TableBody>
                         {summary.accounts.map(
-                          ({ account, amountMinor, amountDecimal, complete, missingDates }) => (
+                          ({
+                            account,
+                            amountMinor,
+                            amountDecimal,
+                            complete,
+                            missingDates,
+                          }) => (
                             <TableRow key={account.id}>
                               <TableCell>
-                                <span className="font-semibold">{account.name}</span>
+                                <span className="font-semibold">
+                                  {account.name}
+                                </span>
                                 <div className="text-xs text-muted-foreground">
-                                  {providerLabel(account.provider)} · ID {account.externalId}
+                                  {providerLabel(account.provider)} · ID{" "}
+                                  {account.externalId}
                                   <br />
                                   {account.currency} · {account.timeZone}
                                 </div>
@@ -679,7 +797,8 @@ export function AdvertisingDashboard({
                                   : `${missingDates.length} ${missingDates.length === 1 ? "día pendiente" : "días pendientes"}`}
                               </TableCell>
                               <TableCell>
-                                {snapshot.providers[account.provider].status === "needs-auth"
+                                {snapshot.providers[account.provider].status ===
+                                "needs-auth"
                                   ? "Reconectar"
                                   : account.enabled
                                     ? "Activas"
@@ -709,7 +828,11 @@ export function AdvertisingDashboard({
                       ? ". Aún no se suma al total."
                       : ". Aún no se suman al total."}
                   </p>
-                  <Button variant="outline" size="sm" onClick={() => setView("manual")}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setView("manual")}
+                  >
                     Revisar gastos
                   </Button>
                 </div>

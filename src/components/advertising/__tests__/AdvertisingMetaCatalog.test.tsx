@@ -253,7 +253,7 @@ it("keeps campaign drill-down tied to the same account and period", () => {
     }),
   ).toHaveAttribute(
     "href",
-    "/publicidad/campanas?from=2026-10-01&to=2026-10-02&accountId=account&campaignId=456&resultType=messages",
+    "/publicidad/campanas?from=2026-10-01&to=2026-10-02&accountId=account&campaignId=456&resultType=messages&storeId=all",
   );
 });
 
@@ -344,15 +344,15 @@ it("prioritizes server costs and switches conversion without mixing message and 
   expect(
     within(table)
       .getAllByRole("columnheader")
-      .slice(1, 4)
+      .slice(2, 5)
       .map((cell) => cell.textContent),
-  ).toEqual(["Costo por conversación", "Conversaciones", "Gasto"]);
+  ).toEqual(["Tipo de resultado", "Resultados", "Costo por resultado"]);
   expect(within(table).getByText(/3\.25/)).toBeVisible();
   expect(within(table).getByText("20")).toBeVisible();
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Siguiente" }));
   await user.click(screen.getByRole("button", { name: "Compras por web" }));
-  expect(within(table).getByRole("columnheader", { name: "Costo por compra" })).toBeVisible();
+  expect(within(table).getByRole("columnheader", { name: "Costo por resultado" })).toBeVisible();
   expect(within(table).getByText(/32\.50/)).toBeVisible();
   expect(within(table).getByText("2")).toBeVisible();
   expect(within(table).queryByText("99")).not.toBeInTheDocument();
@@ -462,8 +462,8 @@ it("uses conversion availability even when all spending is reconciled, and keeps
   expect(within(table).getByText("Parcial")).toBeVisible();
   expect(within(table).queryByText("Completo")).not.toBeInTheDocument();
   const mobile = screen.getByRole("list", { name: "Anuncios en móvil" });
-  expect(within(mobile).getByText("Costo por conversación")).toBeVisible();
-  expect(within(mobile).getByText("Conversaciones")).toBeVisible();
+  expect(within(mobile).getByText("Costo por resultado")).toBeVisible();
+  expect(within(mobile).getByText("Resultados")).toBeVisible();
   expect(within(mobile).getByText("15")).toBeVisible();
   await userEvent.setup().click(screen.getByRole("button", { name: "Compras por web" }));
   expect(within(table).getAllByText("No disponible")).toHaveLength(4);

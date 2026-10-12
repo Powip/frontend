@@ -15,7 +15,9 @@ export interface AdvertisingOrderFilters {
   timeZone?: string;
   page?: number;
   limit?: number;
-  groupBy?: "ad" | "product" | "zone";
+  groupBy?: "ad" | "campaign" | "product" | "zone" | "store" | "channel";
+  storeId?: string;
+  channelId?: string;
 }
 export interface AdvertisingOrderQuality {
   basis: "created";
@@ -126,12 +128,21 @@ export interface AdvertisingBusinessAnalytics {
   to: string;
   basis: AdvertisingOrderBasis;
   timeZone: string;
-  groupBy: "ad" | "product" | "zone";
+  groupBy: "ad" | "campaign" | "product" | "zone" | "store" | "channel";
+  storeId?: string;
+  channelId?: string;
   rows: AdvertisingBusinessRow[];
   currencies: string[];
   totalGroups: number;
   truncated: boolean;
   quality: AdvertisingOrderQuality;
+  cohortCoverage?: {
+    basis: AdvertisingOrderBasis;
+    complete: boolean;
+    reasons: string[];
+    missingDeliveredDateCount: number;
+    missingPaidDateCount: number;
+  };
   limitations: string[];
   netProfit: null;
   roas: null;

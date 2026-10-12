@@ -14,6 +14,7 @@ jest.mock("@/contexts/AuthContext", () => ({
     },
   }),
 }));
+jest.mock("../AdvertisingAssignedSpendV11", () => ({ AdvertisingAssignedSpendV11: () => null }));
 jest.mock("../AdvertisingLivePanel", () => ({
   AdvertisingLivePanel: ({
     from,
