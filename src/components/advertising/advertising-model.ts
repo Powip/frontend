@@ -10,6 +10,7 @@ export interface AdvertisingAccount {
   enabled: boolean;
   updatedAt: string | null;
   historyImport?: AdvertisingHistoryImportState | null;
+  disconnectedAt?: string | null;
 }
 
 export interface AdvertisingDay {
@@ -124,6 +125,7 @@ export function getAdvertisingSummary(
   // change whether an already imported amount exists.
   const selectedAccounts = snapshot.accounts.filter(
     (account) =>
+      !account.disconnectedAt &&
       (filters.provider === "all" || account.provider === filters.provider) &&
       (filters.accountId === "all" || account.id === filters.accountId) &&
       (filters.currency === "all" || account.currency === filters.currency),

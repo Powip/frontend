@@ -170,13 +170,18 @@ export function AdvertisingLiveManualReview({
   const allowedCurrencies = [
     ...new Set(
       wire.accounts
-        .filter((account) => !active?.currency || account.currency === active.currency)
+        .filter(
+          (account) =>
+            !account.disconnectedAt && (!active?.currency || account.currency === active.currency),
+        )
         .map((account) => account.currency),
     ),
   ];
   const accounts = wire.accounts.filter(
     (account) =>
-      account.currency === currency && (!active?.currency || account.currency === active.currency),
+      !account.disconnectedAt &&
+      account.currency === currency &&
+      (!active?.currency || account.currency === active.currency),
   );
   const validAmount = !!active && active.amount !== null && /^\d+(?:\.\d+)?$/.test(active.amount);
   const validChoice = consumption

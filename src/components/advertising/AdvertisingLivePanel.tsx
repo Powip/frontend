@@ -23,6 +23,7 @@ import {
   startAdvertisingAuthorization,
 } from "@/services/advertisingService";
 import { AdvertisingConnections, AdvertisingDashboard } from "./AdvertisingDashboard";
+import { AdvertisingDisconnectAccountDialog } from "./AdvertisingDisconnectAccountDialog";
 import { AdvertisingEffectiveSpend } from "./AdvertisingEffectiveSpend";
 import { AdvertisingLiveAccountsDialog } from "./AdvertisingLiveAccountsDialog";
 import { AdvertisingManualReview } from "./AdvertisingManualReview";
@@ -81,6 +82,7 @@ export function AdvertisingLivePanel({
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [disconnectAccountId, setDisconnectAccountId] = useState<string | null>(null);
   const mounted = useRef(true);
   const openedConnected = useRef(false);
   useEffect(() => {
@@ -100,6 +102,28 @@ export function AdvertisingLivePanel({
     }
   }, [wire]);
   const snapshot = parsed.snapshot;
+  const operationalSnapshot = useMemo(
+    () =>
+      snapshot
+        ? { ...snapshot, accounts: snapshot.accounts.filter((account) => !account.disconnectedAt) }
+        : null,
+    [snapshot],
+  );
+  const disconnectAccount = wire?.accounts.find(
+    (account) => account.id === disconnectAccountId && !account.disconnectedAt,
+  );
+  const canDisconnect =
+    wire?.capabilities.canDisconnect === true &&
+    wire.capabilities.canManage &&
+    wire.capabilities.canReconcile;
+  const currentIdentity = useRef({ actorId, companyId, token });
+  currentIdentity.current = { actorId, companyId, token };
+  useEffect(() => {
+    if (wire && disconnectAccountId && (!disconnectAccount || !canDisconnect)) {
+      setDisconnectAccountId(null);
+      setPending(null);
+    }
+  }, [wire, disconnectAccountId, disconnectAccount, canDisconnect]);
   useEffect(() => {
     if (!wire || wire === historyNoticeSnapshot.current || notice !== "Importando historial…")
       return;
@@ -111,7 +135,10 @@ export function AdvertisingLivePanel({
   const initialSelectedIds = useMemo(
     () =>
       wire?.accounts
-        .filter((account) => account.provider === dialogProvider && account.enabled)
+        .filter(
+          (account) =>
+            account.provider === dialogProvider && account.enabled && !account.disconnectedAt,
+        )
         .map((account) => account.externalId) ?? [],
     [wire?.accounts, dialogProvider],
   );
@@ -216,7 +243,10 @@ export function AdvertisingLivePanel({
         (provider) =>
           wire.providers[provider].available &&
           wire.providers[provider].status === "connected" &&
-          wire.accounts.some((account) => account.provider === provider && account.enabled),
+          wire.accounts.some(
+            (account) =>
+              account.provider === provider && account.enabled && !account.disconnectedAt,
+          ),
       );
       const results = await Promise.all(
         providers.map((provider) => importAdvertisingHistory(token, companyId, provider)),
@@ -237,6 +267,44 @@ export function AdvertisingLivePanel({
         setPending(null);
       }
     }
+  }
+
+  function closeDisconnect() {
+    setDisconnectAccountId(null);
+    setPending(null);
+  }
+
+  async function accountDisconnected(accountId: string) {
+    if (
+      !mounted.current ||
+      currentIdentity.current.actorId !== actorId ||
+      currentIdentity.current.companyId !== companyId ||
+      currentIdentity.current.token !== token ||
+      accountId !== disconnectAccountId
+    )
+      return;
+    closeDisconnect();
+    setNotice("Cuenta desconectada.");
+    const prefixes = new Set([
+      "advertising-snapshot",
+      "advertising-meta",
+      "advertising-workspace",
+      "advertising-orders",
+      "advertising-order-comparison",
+    ]);
+    const predicate = (query: { queryKey: readonly unknown[] }) =>
+      prefixes.has(String(query.queryKey[0])) &&
+      query.queryKey[1] === actorId &&
+      query.queryKey[2] === companyId;
+    await queryClient.cancelQueries({ predicate });
+    if (
+      !mounted.current ||
+      currentIdentity.current.actorId !== actorId ||
+      currentIdentity.current.companyId !== companyId ||
+      currentIdentity.current.token !== token
+    )
+      return;
+    await queryClient.resetQueries({ predicate });
   }
 
   if (!token || !actorId || !companyId)
@@ -270,7 +338,7 @@ export function AdvertisingLivePanel({
         )}
       </div>
     );
-  if (!wire || !snapshot)
+  if (!wire || !snapshot || !operationalSnapshot)
     return (
       <div className="space-y-4 p-4 sm:p-6 lg:p-8" role="status" aria-label="Cargando publicidad">
         <Skeleton className="h-24" />
@@ -289,6 +357,22 @@ export function AdvertisingLivePanel({
             setDialogProvider(provider);
           },
           onPause: (provider: AdvertisingProviderWire) => void pause(provider),
+          ...(canDisconnect
+            ? {
+                onDisconnect: (accountId: string) => {
+                  if (
+                    !wire.accounts.some(
+                      (account) => account.id === accountId && !account.disconnectedAt,
+                    )
+                  )
+                    return;
+                  setError(null);
+                  setNotice(null);
+                  setPending("disconnect");
+                  setDisconnectAccountId(accountId);
+                },
+              }
+            : {}),
         }
       : {};
   const effectiveContent = wire.effective ? (
@@ -338,7 +422,7 @@ export function AdvertisingLivePanel({
             {notice}
           </p>
         )}
-        {pending && (
+        {pending && pending !== "disconnect" && (
           <p role="status" className="text-sm text-muted-foreground">
             {pending === "connect"
               ? "Abriendo la conexión…"
@@ -347,7 +431,7 @@ export function AdvertisingLivePanel({
                 : "Actualizando datos…"}
           </p>
         )}
-        {manage && wire.accounts.some((account) => account.enabled) && (
+        {manage && wire.accounts.some((account) => account.enabled && !account.disconnectedAt) && (
           <Button
             variant="outline"
             size="sm"
@@ -366,7 +450,7 @@ export function AdvertisingLivePanel({
       </div>
       {connectionsOnly ? (
         <AdvertisingConnections
-          snapshot={snapshot}
+          snapshot={operationalSnapshot}
           showAccounts={presentation === "module"}
           from={from}
           to={to}
@@ -377,7 +461,7 @@ export function AdvertisingLivePanel({
           companyName={companyName}
           from={from}
           to={to}
-          snapshot={snapshot}
+          snapshot={operationalSnapshot}
           canManage={manage}
           effectiveContent={effectiveContent}
           manualReviewContent={manualReviewContent}
@@ -387,7 +471,7 @@ export function AdvertisingLivePanel({
           companyName={companyName}
           from={from}
           to={to}
-          snapshot={snapshot}
+          snapshot={operationalSnapshot}
           manualContent={manualContent}
           effectiveContent={effectiveContent}
           manualReviewContent={manualReviewContent}
@@ -405,6 +489,18 @@ export function AdvertisingLivePanel({
         onClose={() => setDialogProvider(null)}
         onSave={save}
       />
+      {disconnectAccount ? (
+        <AdvertisingDisconnectAccountDialog
+          key={`${actorId}:${companyId}:${disconnectAccount.id}`}
+          actorId={actorId}
+          companyId={companyId}
+          token={token}
+          account={disconnectAccount}
+          canDisconnect={canDisconnect}
+          onClose={closeDisconnect}
+          onDisconnected={accountDisconnected}
+        />
+      ) : null}
     </div>
   );
 }

@@ -58,6 +58,7 @@ export interface AdvertisingActions {
   onManage?: (provider: AdvertisingProvider) => void;
   onReconnect?: (provider: AdvertisingProvider) => void;
   onPause?: (provider: AdvertisingProvider) => void;
+  onDisconnect?: (accountId: string) => void;
 }
 
 interface AdvertisingDashboardProps extends AdvertisingActions {
@@ -87,6 +88,7 @@ export function AdvertisingConnections({
   onManage,
   onReconnect,
   onPause,
+  onDisconnect,
   showAccounts = false,
   from,
   to,
@@ -113,7 +115,9 @@ export function AdvertisingConnections({
       <div className="grid gap-4 sm:grid-cols-2">
         {PROVIDERS.map((provider) => {
           const connection = snapshot.providers[provider];
-          const accounts = snapshot.accounts.filter((account) => account.provider === provider);
+          const accounts = snapshot.accounts.filter(
+            (account) => account.provider === provider && !account.disconnectedAt,
+          );
           const enabled = accounts.filter((account) => account.enabled);
           const needsAuth = connection.status === "needs-auth";
           const canManage = connection.status === "connected" || connection.status === "paused";
@@ -137,13 +141,29 @@ export function AdvertisingConnections({
                     ? `${enabled.length} ${enabled.length === 1 ? "cuenta activa" : "cuentas activas"} · ${accounts.length} con datos guardados`
                     : "Consulta el gasto de tus anuncios en Powip."}
                 </p>
-                {!showAccounts && accounts.some((account) => account.historyImport) ? (
+                {!showAccounts &&
+                accounts.length > 0 &&
+                (onDisconnect || accounts.some((account) => account.historyImport)) ? (
                   <section
                     className="space-y-3 border-t pt-3"
                     aria-label="Importación del historial"
                   >
                     {accounts.map((account) => (
-                      <AdvertisingAccountHistory key={account.id} account={account} />
+                      <div key={account.id} className="space-y-2">
+                        {!account.historyImport ? (
+                          <p className="text-sm font-medium">{account.name}</p>
+                        ) : null}
+                        <AdvertisingAccountHistory account={account} />
+                        {onDisconnect ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => onDisconnect(account.id)}
+                          >
+                            Desconectar cuenta
+                          </Button>
+                        ) : null}
+                      </div>
                     ))}
                   </section>
                 ) : null}
@@ -215,6 +235,15 @@ export function AdvertisingConnections({
                             to={to}
                             hasStoredData={spend ? hasAdvertisingAmount(spend) : undefined}
                           />
+                          {onDisconnect ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onDisconnect(account.id)}
+                            >
+                              Desconectar cuenta
+                            </Button>
+                          ) : null}
                         </section>
                       );
                     })}
