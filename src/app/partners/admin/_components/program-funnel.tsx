@@ -1,10 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FunnelBars } from "@/components/partners/funnel-bars";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { AdminDashboardSummary } from "@/features/partners/models/admin-dashboard-summary";
 
 interface ProgramFunnelProps {
-  funnel: AdminDashboardSummary["funnel"] | undefined;
+  funnel: { label: string; count: number }[] | undefined;
   isLoading: boolean;
 }
 

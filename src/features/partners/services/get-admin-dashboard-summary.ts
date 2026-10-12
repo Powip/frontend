@@ -1,6 +1,5 @@
-import type { AdminDashboardSummary } from "../models/admin-dashboard-summary";
-import { unavailablePartnersFeature } from "../utils/unavailable-partners-feature";
+import { type AdminReadRequest, requestAdminDashboardSummary } from "../api/admin-partners.api";
 
-export async function getAdminDashboardSummary(): Promise<AdminDashboardSummary> {
-  return unavailablePartnersFeature("Consultar métricas administrativas");
+export function getAdminDashboardSummary(request: AdminReadRequest) {
+  return requestAdminDashboardSummary(request);
 }

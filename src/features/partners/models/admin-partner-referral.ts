@@ -1,17 +1,15 @@
-import type { ReferralOrigin } from "./referral-origin.enum";
-import type { ReferralStatus } from "./referral-status.enum";
-
-export type BillingCycle = "mensual" | "anual";
+import type { AdminPage } from "./admin-partner";
 
 export interface AdminPartnerReferral {
+  source: "MANUAL" | "CODE" | "LINK_LEGACY" | "LINK_ATTRIBUTION";
   id: string;
-  businessName: string;
-  origin: ReferralOrigin;
-  registeredAt: string;
-  planName: string | null;
-  price: number;
-  billingCycle: BillingCycle | null;
-  status: ReferralStatus;
-  firstMonthCommission: number | null;
-  recurringCommission: number | null;
+  companyId: string | null;
+  businessName: string | null;
+  origin: "MANUAL" | "CODE" | "LINK";
+  state: string;
+  capturedAt: string;
+  companyCreatedAt: string | null;
+  attributedAt: string | null;
 }
+
+export type AdminPartnerReferralPage = AdminPage<AdminPartnerReferral>;

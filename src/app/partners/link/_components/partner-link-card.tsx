@@ -1,18 +1,18 @@
 "use client";
 
-import { Copy, Gift } from "lucide-react";
+import { Copy } from "lucide-react";
 import { toast } from "sonner";
 import { PartnerSectionError } from "@/components/partners/partner-section-error";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { PartnerLink } from "@/features/partners/models/partner-link";
+import { getHttpStatus } from "@/features/partners/mappers/to-partner-identity-from-error";
+import type { PartnerReferralMetrics } from "@/features/partners/models/partner-referral-metrics";
 
 interface PartnerLinkCardProps {
   referralLink: string | null;
   referralCode: string | null;
-  metrics: PartnerLink | undefined;
+  metrics: PartnerReferralMetrics | undefined;
   isLoadingMetrics: boolean;
   isMetricsError: boolean;
   metricsError?: unknown;
@@ -96,28 +96,35 @@ export function PartnerLinkCard({
         <div className="space-y-4 border-t border-border pt-4">
           {isMetricsError ? (
             <PartnerSectionError
-              message="No pudimos cargar las métricas de tu link."
-              onRetry={onRetryMetrics}
+              message={
+                getHttpStatus(metricsError) === 401 || getHttpStatus(metricsError) === 403
+                  ? "No tenés acceso a los contadores de un Partner activo."
+                  : "No pudimos cargar los contadores de referido."
+              }
+              onRetry={
+                getHttpStatus(metricsError) === 401 || getHttpStatus(metricsError) === 403
+                  ? undefined
+                  : onRetryMetrics
+              }
               error={metricsError}
             />
           ) : isLoadingMetrics || !metrics ? (
             <Skeleton className="h-16 w-full" />
           ) : (
-            <>
-              <Alert>
-                <Gift aria-hidden="true" />
-                <AlertDescription>
-                  Tus referidos reciben <b>{metrics.discountPct}% de descuento el primer mes</b> —
-                  un beneficio exclusivo por venir de un partner.
-                </AlertDescription>
-              </Alert>
-
-              <div className="grid grid-cols-3 gap-4">
-                <Stat value={metrics.clicks} label="Clics link" />
-                <Stat value={metrics.codeUses} label="Usos del código" />
-                <Stat value={metrics.conversions} label="Cerraron" accent />
-              </div>
-            </>
+            <section aria-label="Contadores de referido" className="space-y-3">
+              <dl className="grid grid-cols-3 gap-4">
+                <Stat value={metrics.claimCaptures} label="Capturas de referido" />
+                <Stat value={metrics.attachedClaims} label="Claims vinculados" />
+                <Stat value={metrics.attributedCompanies} label="Empresas atribuidas" />
+              </dl>
+              <p className="text-xs text-muted-foreground">
+                Son registros de referido y atribución. No representan visitas de navegación, usos
+                de código, pagos ni comisiones.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Datos al <time dateTime={metrics.asOf}>{metrics.asOf}</time> (UTC).
+              </p>
+            </section>
           )}
         </div>
       </CardContent>
@@ -125,13 +132,11 @@ export function PartnerLinkCard({
   );
 }
 
-function Stat({ value, label, accent }: { value: number; label: string; accent?: boolean }) {
+function Stat({ value, label }: { value: number; label: string }) {
   return (
     <div className="text-center">
-      <div className={`text-2xl font-extrabold ${accent ? "text-primary" : "text-foreground"}`}>
-        {value}
-      </div>
-      <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
+      <dt className="mt-0.5 text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-2xl font-extrabold text-foreground">{value}</dd>
     </div>
   );
 }

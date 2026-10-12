@@ -13,9 +13,9 @@ import {
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useUpdateAdminCommissionSettings } from "@/features/partners/hooks/use-update-admin-commission-settings";
+import type { AdminCommissionSettings } from "@/features/partners/models/admin-commission-settings";
 import { estimateFirstMonthCommission } from "@/features/partners/utils/estimate-commission-earnings";
 import { formatSoles } from "@/features/partners/utils/format-currency";
-import type { AdminCommissionSettings } from "@/features/partners/models/admin-commission-settings";
 
 const REFERENCE_PLAN_PRICE = 189;
 
@@ -49,7 +49,8 @@ export function DiscountSettingsCard({ settings, isLoading }: DiscountSettingsCa
   const commissionCost = optionA
     ? estimateFirstMonthCommission(REFERENCE_PLAN_PRICE, optionA.firstMonthPct, discount.pct)
     : 0;
-  const discountCost = discount.assumedBy === "powip" ? REFERENCE_PLAN_PRICE * (discount.pct / 100) : 0;
+  const discountCost =
+    discount.assumedBy === "powip" ? REFERENCE_PLAN_PRICE * (discount.pct / 100) : 0;
   const totalCost = commissionCost + discountCost;
   const isUnprofitable = totalCost >= netReference;
 
@@ -68,7 +69,9 @@ export function DiscountSettingsCard({ settings, isLoading }: DiscountSettingsCa
             max={100}
             value={discount.pct}
             onChange={(event) =>
-              updateSettings.mutate({ update: { discount: { ...discount, pct: Number(event.target.value) || 0 } } })
+              updateSettings.mutate({
+                update: { discount: { ...discount, pct: Number(event.target.value) || 0 } },
+              })
             }
           />
         </div>
@@ -79,7 +82,12 @@ export function DiscountSettingsCard({ settings, isLoading }: DiscountSettingsCa
             value={discount.duration}
             onValueChange={(value) =>
               updateSettings.mutate({
-                update: { discount: { ...discount, duration: value as AdminCommissionSettings["discount"]["duration"] } },
+                update: {
+                  discount: {
+                    ...discount,
+                    duration: value as AdminCommissionSettings["discount"]["duration"],
+                  },
+                },
               })
             }
           >
@@ -102,7 +110,12 @@ export function DiscountSettingsCard({ settings, isLoading }: DiscountSettingsCa
             value={discount.assumedBy}
             onValueChange={(value) =>
               updateSettings.mutate({
-                update: { discount: { ...discount, assumedBy: value as AdminCommissionSettings["discount"]["assumedBy"] } },
+                update: {
+                  discount: {
+                    ...discount,
+                    assumedBy: value as AdminCommissionSettings["discount"]["assumedBy"],
+                  },
+                },
               })
             }
           >
@@ -130,9 +143,10 @@ export function DiscountSettingsCard({ settings, isLoading }: DiscountSettingsCa
           )}
           {isUnprofitable ? (
             <span>
-              <b>Alerta de rentabilidad:</b> en un plan de referencia de {formatSoles(REFERENCE_PLAN_PRICE)}, la
-              comisión 1er mes ({formatSoles(commissionCost)}) + descuento dejan el primer mes en negativo
-              (ingreso neto {formatSoles(netReference)}). Bajá el % o que lo asuma el partner.
+              <b>Alerta de rentabilidad:</b> en un plan de referencia de{" "}
+              {formatSoles(REFERENCE_PLAN_PRICE)}, la comisión 1er mes (
+              {formatSoles(commissionCost)}) + descuento dejan el primer mes en negativo (ingreso
+              neto {formatSoles(netReference)}). Bajá el % o que lo asuma el partner.
             </span>
           ) : (
             <span>

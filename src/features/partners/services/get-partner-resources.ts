@@ -1,6 +1,10 @@
+import { getPartnerResourcesApi } from "../api/partner-resources.api";
 import type { PartnerResource } from "../models/partner-resource";
-import { unavailablePartnersFeature } from "../utils/unavailable-partners-feature";
 
-export async function getPartnerResources(): Promise<PartnerResource[]> {
-  return unavailablePartnersFeature("Consultar recursos para partners");
+export async function getPartnerResources(
+  accessToken: string,
+  signal?: AbortSignal,
+): Promise<PartnerResource[]> {
+  const page = await getPartnerResourcesApi(accessToken, signal);
+  return page.items;
 }

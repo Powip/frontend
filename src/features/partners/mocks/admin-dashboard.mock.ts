@@ -1,4 +1,4 @@
-import type { AdminDashboardSummary } from "../models/admin-dashboard-summary";
+import type { LegacyAdminDashboardSummary as AdminDashboardSummary } from "./legacy-admin-fixture.types";
 
 export const ADMIN_DASHBOARD_SUMMARY_MOCK: AdminDashboardSummary = {
   referredMrr: 4230,

@@ -1,12 +1,16 @@
 "use client";
 
-import { PartnerSectionError } from "@/components/partners/partner-section-error";
+import { ProgramPreferencesCard } from "@/components/partners/program-preferences-card";
 
 export function PlanPageContent() {
   return (
     <div className="space-y-5 p-6">
       <h2 className="text-base font-semibold text-foreground">Mi plan</h2>
-      <PartnerSectionError message="Mi Plan todavía no está implementado: faltan el catálogo real y las condiciones aprobadas del programa. No se muestran precios, descuentos ni comisiones de ejemplo." />
+      <ProgramPreferencesCard />
+      <p className="text-sm text-muted-foreground">
+        MRR atribuido y nivel del programa: no disponibles. No se muestran precios ni ingresos
+        estimados.
+      </p>
     </div>
   );
 }

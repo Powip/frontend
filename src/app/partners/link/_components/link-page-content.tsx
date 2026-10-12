@@ -1,14 +1,15 @@
 "use client";
 
+import { ProgramPreferencesCard } from "@/components/partners/program-preferences-card";
 import { useCurrentPartner } from "@/features/partners/context/current-partner.context";
-import { usePartnerLink } from "@/features/partners/hooks/use-partner-link";
+import { usePartnerReferralMetrics } from "@/features/partners/hooks/use-partner-referral-metrics";
 import { usePartnerResources } from "@/features/partners/hooks/use-partner-resources";
 import { PartnerLinkCard } from "./partner-link-card";
 import { ShareKitCard } from "./share-kit-card";
 
 export function LinkPageContent() {
   const partner = useCurrentPartner();
-  const linkQuery = usePartnerLink();
+  const linkQuery = usePartnerReferralMetrics();
   const resourcesQuery = usePartnerResources();
 
   return (
@@ -34,6 +35,9 @@ export function LinkPageContent() {
         resourcesError={resourcesQuery.error}
         onRetryResources={() => resourcesQuery.refetch()}
       />
+      <div className="lg:col-span-2">
+        <ProgramPreferencesCard />
+      </div>
     </div>
   );
 }

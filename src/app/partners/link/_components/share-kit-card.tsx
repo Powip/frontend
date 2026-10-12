@@ -3,13 +3,13 @@
 import { saveAs } from "file-saver";
 import { FileArchive, Instagram, MessageCircle, QrCode } from "lucide-react";
 import { toast } from "sonner";
+import { PartnerSectionError } from "@/components/partners/partner-section-error";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useQRCode } from "@/hooks/useQrCode";
-import { PartnerSectionError } from "@/components/partners/partner-section-error";
 import type { PartnerResource } from "@/features/partners/models/partner-resource";
+import { useQRCode } from "@/hooks/useQrCode";
 
 interface ShareKitCardProps {
   referralLink: string | null;
@@ -57,10 +57,6 @@ export function ShareKitCard({
     saveAs(qrDataUrl, `powip-${referralCode ?? "partner"}.png`);
   }
 
-  function openResource(resource: PartnerResource) {
-    toast.info(`"${resource.title}" todavía no está disponible para descargar.`);
-  }
-
   return (
     <Card className="rounded-2xl">
       <CardHeader>
@@ -94,8 +90,8 @@ export function ShareKitCard({
             />
           ) : isLoadingResources || !resources ? (
             <div className="space-y-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-14 w-full" />
+              {["resource-loading-1", "resource-loading-2", "resource-loading-3"].map((key) => (
+                <Skeleton key={key} className="h-14 w-full" />
               ))}
             </div>
           ) : resources.length === 0 ? (
@@ -107,17 +103,26 @@ export function ShareKitCard({
           ) : (
             <div className="flex flex-col gap-2">
               {resources.map((resource) => (
-                <button
+                <div
                   key={resource.id}
-                  type="button"
-                  onClick={() => openResource(resource)}
                   className="flex items-center justify-between rounded-xl border border-border px-4 py-3 text-left text-sm transition-colors hover:bg-muted/50"
                 >
                   <div>
                     <div className="font-medium text-foreground">{resource.title}</div>
-                    <div className="text-xs text-muted-foreground">{resource.description}</div>
+                    {resource.description && (
+                      <div className="text-xs text-muted-foreground">{resource.description}</div>
+                    )}
                   </div>
-                </button>
+                  {resource.downloadUrl ? (
+                    <Button asChild variant="outline" size="sm">
+                      <a href={resource.downloadUrl} target="_blank" rel="noopener noreferrer">
+                        Abrir <span className="sr-only">{resource.title}</span>
+                      </a>
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Sin descarga disponible</span>
+                  )}
+                </div>
               ))}
             </div>
           )}

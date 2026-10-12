@@ -3,10 +3,9 @@
 import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { AdminDashboardSummary } from "@/features/partners/models/admin-dashboard-summary";
 
 interface ReferralsByOriginChartProps {
-  referralsByOrigin: AdminDashboardSummary["referralsByOrigin"] | undefined;
+  referralsByOrigin: { link: number; manual: number; codigo: number } | undefined;
   clickToPayConversionPct: number | undefined;
   isLoading: boolean;
 }

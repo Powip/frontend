@@ -1,4 +1,4 @@
-import type { AdminPartner } from "../models/admin-partner";
+import type { LegacyAdminPartner as AdminPartner } from "./legacy-admin-fixture.types";
 
 export const ADMIN_PARTNERS_MOCK: AdminPartner[] = [
   {

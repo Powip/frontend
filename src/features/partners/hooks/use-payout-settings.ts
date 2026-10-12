@@ -1,12 +1,22 @@
+"use client";
 import { useQuery } from "@tanstack/react-query";
-import { partnersKeys } from "../keys/partners.keys";
-import type { PayoutSettings } from "../models/payout-settings";
 import { getPayoutSettings } from "../services/get-payout-settings";
+import { usePayoutSettingsSession } from "./use-payout-settings-session";
 
 export function usePayoutSettings() {
-  return useQuery<PayoutSettings, Error>({
-    queryKey: [...partnersKeys.payoutSettings(), "permanent-unavailable-v1"],
-    queryFn: getPayoutSettings,
+  const session = usePayoutSettingsSession();
+  const query = useQuery({
+    queryKey: session.queryKey,
+    queryFn: ({ signal }) => session.read(signal, (token) => getPayoutSettings(token, signal)),
+    enabled: session.enabled,
     retry: false,
+    gcTime: 0,
   });
+  return {
+    ...query,
+    data: session.denied ? undefined : query.data,
+    error: session.denied ?? query.error,
+    isError: Boolean(session.denied || query.isError),
+    session,
+  };
 }

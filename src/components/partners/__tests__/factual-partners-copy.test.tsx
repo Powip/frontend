@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { PartnerHeroCard } from "@/app/partners/_components/partner-hero-card";
 import { AdminDashboardKpiRow } from "@/app/partners/admin/_components/admin-dashboard-kpi-row";
 import { ReferralDetailDrawer } from "@/app/partners/referidos/_components/referral-detail-drawer";
-import type { AdminDashboardSummary } from "@/features/partners/models/admin-dashboard-summary";
+import { buildAdminSummary } from "@/features/partners/test-utils/admin-partners.fixture";
 import type { PartnerReferral } from "@/features/partners/models/partner-referral";
 
 describe("Partners copy without unapproved financial promises", () => {
@@ -26,29 +26,18 @@ describe("Partners copy without unapproved financial promises", () => {
 
   it("shows only skeletons while admin totals load, without fixed discounts or formulas", () => {
     const { container } = render(<AdminDashboardKpiRow summary={undefined} isLoading />);
-    expect(container.querySelectorAll(".animate-pulse")).toHaveLength(6);
+    expect(container.querySelectorAll(".animate-pulse")).toHaveLength(11);
     expect(
       screen.queryByText(/10%|15 meses|LTV \/ costo|1er mes \+ recurrente/),
     ).not.toBeInTheDocument();
   });
 
-  it("labels supplied KPI values without inventing percentages, horizons or formulas", () => {
-    const summary: AdminDashboardSummary = {
-      referredMrr: 10,
-      monthlyCommissions: 20,
-      discountsGiven: 30,
-      channelCost: 40,
-      ltvBrought: 50,
-      channelRoiMultiplier: 2,
-      monthlyMrr: [],
-      referralsByOrigin: { link: 0, manual: 0, codigo: 0 },
-      clickToPayConversionPct: 0,
-      funnel: [],
-    };
+  it("labels actual operational counts without inferring financial values", () => {
+    const summary = buildAdminSummary();
     render(<AdminDashboardKpiRow summary={summary} isLoading={false} />);
-    expect(screen.getByText("Descuentos informados")).toBeInTheDocument();
-    expect(screen.getByText("LTV informado")).toBeInTheDocument();
-    expect(screen.getByText("ROI informado")).toBeInTheDocument();
+    expect(screen.getByText("Referidos manuales")).toBeInTheDocument();
+    expect(screen.getByText("Atribuciones LINK")).toBeInTheDocument();
+    expect(screen.queryByText(/S\/|MRR|ROI/)).not.toBeInTheDocument();
     expect(
       screen.queryByText(/10%|15 meses|LTV \/ costo|1er mes \+ recurrente/),
     ).not.toBeInTheDocument();

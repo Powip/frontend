@@ -1,7 +1,5 @@
-import type { AdminPartner } from "../models/admin-partner";
-import { unavailablePartnersFeature } from "../utils/unavailable-partners-feature";
+import { type AdminPartnerRequest, requestAdminPartner } from "../api/admin-partners.api";
 
-export async function getAdminPartner(id: string): Promise<AdminPartner | null> {
-  void id;
-  return unavailablePartnersFeature("Consultar la ficha del partner");
+export function getAdminPartner(request: AdminPartnerRequest) {
+  return requestAdminPartner(request);
 }

@@ -14,6 +14,10 @@ import { partnersKeys } from "@/features/partners/keys/partners.keys";
 import { PartnersFeatureUnavailableError } from "@/features/partners/utils/unavailable-partners-feature";
 
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
+jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "fixture-unavailable", user: { id: "fixture", permissions: ["PARTNERS_VIEW"] } } }) }));
+jest.mock("@/features/partners/hooks/use-admin-partners", () => ({
+  useAdminPartners: () => ({ isError: false, isLoading: false, data: { pages: [{ items: [] }] }, hasNextPage: false }),
+}));
 
 function renderWithQuery(component: React.ReactNode, seed?: (client: QueryClient) => void) {
   const client = new QueryClient({
@@ -49,9 +53,10 @@ describe("Partners pending UI functions fail closed", () => {
     expect(screen.getByRole("button", { name: /reintentar/i })).toBeEnabled();
   });
 
-  it("does not show a default plan catalog, discounts or estimated money", () => {
-    render(<PlanPageContent />);
-    expect(screen.getByRole("alert")).toHaveTextContent(/Mi Plan todavía no está implementado/);
+  it("does not show default effective plan terms or estimated money", () => {
+    renderWithQuery(<PlanPageContent />);
+    expect(screen.getByText(/Condiciones efectivas: no configuradas/)).toBeInTheDocument();
+    expect(screen.getByText(/MRR atribuido y nivel del programa: no disponibles/)).toBeInTheDocument();
     expect(screen.queryByText("Standard")).not.toBeInTheDocument();
     expect(screen.queryByText(/10%|S\/|Simulador de ingresos/)).not.toBeInTheDocument();
   });
@@ -96,7 +101,7 @@ describe("Partners pending UI functions fail closed", () => {
       "/partners/admin/solicitudes",
     );
     await waitFor(() =>
-      expect(screen.getByRole("alert")).toHaveTextContent(/todavía no está implementado/),
+      expect(screen.getByText(/Todavía no hay partners/)).toBeInTheDocument(),
     );
   });
 
@@ -121,7 +126,7 @@ describe("Partners pending UI functions fail closed", () => {
     });
     expect(screen.queryByText("OLD MOCK MUST NOT SHOW")).not.toBeInTheDocument();
     expect(screen.queryByText("Cómo se calcula")).not.toBeInTheDocument();
-    await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2));
+    expect(screen.getByRole("alert")).toHaveTextContent(/Resumen financiero no disponible/);
     expect(screen.queryByText("OLD MOCK MUST NOT SHOW")).not.toBeInTheDocument();
   });
 });

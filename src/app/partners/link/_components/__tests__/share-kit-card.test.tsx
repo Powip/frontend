@@ -10,17 +10,17 @@
  * 5. Mientras cargan los recursos, muestra skeletons (no la lista ni el empty state).
  * 6. Si falla la carga de recursos, muestra PartnerSectionError y "Reintentar" llama a onRetryResources.
  * 7. Con una lista vacía, muestra el EmptyState de recursos.
- * 8. Click en un recurso muestra un toast informativo con su título.
+ * 8. Los recursos publicados abren únicamente la URL devuelta por el backend.
+ * 9. Un recurso sin URL no ofrece una descarga ficticia.
  */
 
-import React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { saveAs } from "file-saver";
 import { toast } from "sonner";
-import { ShareKitCard } from "../share-kit-card";
-import { useQRCode } from "@/hooks/useQrCode";
 import type { PartnerResource } from "@/features/partners/models/partner-resource";
+import { useQRCode } from "@/hooks/useQrCode";
+import { ShareKitCard } from "../share-kit-card";
 
 jest.mock("file-saver", () => ({ saveAs: jest.fn() }));
 jest.mock("sonner", () => ({
@@ -35,10 +35,12 @@ const REFERRAL_LINK = "https://www.powip.tech/r/partner-demo-code";
 const REFERRAL_CODE = "PARTNERDEMO";
 
 const RESOURCE: PartnerResource = {
-  id: "res-1",
+  id: "55555555-5555-4555-8555-555555555555",
   title: "Logos POWIP",
   description: "PNG · SVG",
-  kind: "logos",
+  kind: "LOGOS",
+  category: "Brand",
+  downloadUrl: "https://assets.powip.tech/partners/logos.zip",
 };
 
 beforeEach(() => {
@@ -195,9 +197,8 @@ describe("ShareKitCard", () => {
     expect(screen.getByText(/sin recursos todavía/i)).toBeInTheDocument();
   });
 
-  it("click en un recurso muestra un toast informativo con su título", async () => {
+  it("un recurso publicado utiliza su URL real sin enviar bearer al host externo", () => {
     mockUseQRCode.mockReturnValue(null);
-    const user = userEvent.setup();
 
     render(
       <ShareKitCard
@@ -209,8 +210,28 @@ describe("ShareKitCard", () => {
         onRetryResources={jest.fn()}
       />,
     );
-    await user.click(screen.getByText(RESOURCE.title));
+    const link = screen.getByRole("link", { name: `Abrir ${RESOURCE.title}` });
+    expect(link).toHaveAttribute("href", RESOURCE.downloadUrl);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(toast.info).not.toHaveBeenCalled();
+  });
 
-    expect(toast.info).toHaveBeenCalledWith(expect.stringContaining(RESOURCE.title));
+  it("sin URL ni descripción no inventa una descarga o datos de catálogo", () => {
+    mockUseQRCode.mockReturnValue(null);
+    render(
+      <ShareKitCard
+        referralLink={null}
+        referralCode={null}
+        resources={[{ ...RESOURCE, description: null, downloadUrl: null }]}
+        isLoadingResources={false}
+        isResourcesError={false}
+        onRetryResources={jest.fn()}
+      />,
+    );
+    expect(screen.getByText(RESOURCE.title)).toBeInTheDocument();
+    expect(screen.getByText("Sin descarga disponible")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.queryByText("PNG · SVG")).not.toBeInTheDocument();
   });
 });

@@ -17,7 +17,8 @@ const SETTINGS: PayoutSettings = {
   method: "yape",
   accountNumber: "987 654 321",
   accountHolder: "Joel Coila",
-  minimumThreshold: 50,
+  version: 0,
+  updatedAt: "2026-10-01T00:00:00Z",
 };
 
 describe("PayoutSettingsCard", () => {

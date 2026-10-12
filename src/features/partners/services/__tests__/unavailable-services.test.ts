@@ -10,17 +10,12 @@ import { getAdminCommissionSettingsFromStore } from "../../mocks/admin-commissio
 import { listReviewQueue } from "../../mocks/review-queue.store";
 import { PartnersFeatureUnavailableError } from "../../utils/unavailable-partners-feature";
 import { getPendingPaymentConfirmations } from "../get-pending-payment-confirmations";
-import { getAdminPartnerReferrals } from "../get-admin-partner-referrals";
 import { getUnopenedInvitations } from "../get-unopened-invitations";
-import { getPartnerResources } from "../get-partner-resources";
 import { confirmPendingPayment } from "../confirm-pending-payment";
 import { getAdminLiquidations } from "../get-admin-liquidations";
 import { getAdminCommissionSettings } from "../get-admin-commission-settings";
 import { getCommissionLines } from "../get-commission-lines";
 import { inviteAdminPartner } from "../invite-admin-partner";
-import { getPayoutSettings } from "../get-payout-settings";
-import { getAdminPartner } from "../get-admin-partner";
-import { getAdminPartners } from "../get-admin-partners";
 import { getReviewQueue } from "../get-review-queue";
 import { getAdminClawbacks } from "../get-admin-clawbacks";
 import { getPartnerLink } from "../get-partner-link";
@@ -28,8 +23,6 @@ import { getPayoutHistory } from "../get-payout-history";
 import { getAdminThresholdQueue } from "../get-admin-threshold-queue";
 import { payAdminLiquidation } from "../pay-admin-liquidation";
 import { payAllAdminLiquidations } from "../pay-all-admin-liquidations";
-import { updatePayoutSettings } from "../update-payout-settings";
-import { getAdminDashboardSummary } from "../get-admin-dashboard-summary";
 import { updateAdminCommissionSettings } from "../update-admin-commission-settings";
 import { resolveReviewQueueItem } from "../resolve-review-queue-item";
 import { getCommissionOptions } from "../get-commission-options";
@@ -47,9 +40,7 @@ jest.mock("../../api/partners-mutations.client", () => ({
 
 const operations: ReadonlyArray<readonly [string, () => Promise<unknown>]> = [
   ["get-pending-payment-confirmations", () => getPendingPaymentConfirmations()],
-  ["get-admin-partner-referrals", () => getAdminPartnerReferrals("fixture-id")],
   ["get-unopened-invitations", () => getUnopenedInvitations()],
-  ["get-partner-resources", () => getPartnerResources()],
   ["confirm-pending-payment", () => confirmPendingPayment("fixture-id")],
   ["get-admin-liquidations", () => getAdminLiquidations()],
   ["get-admin-commission-settings", () => getAdminCommissionSettings()],
@@ -64,9 +55,6 @@ const operations: ReadonlyArray<readonly [string, () => Promise<unknown>]> = [
         suggestedOptionCode: "A",
       }),
   ],
-  ["get-payout-settings", () => getPayoutSettings()],
-  ["get-admin-partner", () => getAdminPartner("fixture-id")],
-  ["get-admin-partners", () => getAdminPartners()],
   ["get-review-queue", () => getReviewQueue()],
   ["get-admin-clawbacks", () => getAdminClawbacks()],
   ["get-partner-link", () => getPartnerLink()],
@@ -74,11 +62,6 @@ const operations: ReadonlyArray<readonly [string, () => Promise<unknown>]> = [
   ["get-admin-threshold-queue", () => getAdminThresholdQueue()],
   ["pay-admin-liquidation", () => payAdminLiquidation("fixture-id")],
   ["pay-all-admin-liquidations", () => payAllAdminLiquidations()],
-  [
-    "update-payout-settings",
-    () => updatePayoutSettings({ method: "yape", accountNumber: "fixture-account" }),
-  ],
-  ["get-admin-dashboard-summary", () => getAdminDashboardSummary()],
   ["update-admin-commission-settings", () => updateAdminCommissionSettings({})],
   ["resolve-review-queue-item", () => resolveReviewQueueItem("fixture-item", "aprobado")],
   ["get-commission-options", () => getCommissionOptions()],
