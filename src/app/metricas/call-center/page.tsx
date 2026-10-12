@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import { useState, useMemo } from "react";
+import { useMetricOrders } from "@/hooks/useMetricOrders";
+import { MetricDataError } from "@/components/metrics/MetricDataError";
 import {
   ResponsiveContainer,
   BarChart,
@@ -16,7 +16,7 @@ import {
   Pie,
 } from "recharts";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { format, differenceInDays } from "date-fns";
+import { parseISO, format, differenceInDays } from "date-fns";
 import { ChevronDown } from "lucide-react";
 
 /* ─────────────────── Constants ─────────────────── */
@@ -33,9 +33,7 @@ const DAY_LABELS = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 /* ─────────────────── Component ─────────────────── */
 
 export default function MetricasCallCenterPage() {
-  const { selectedStoreId } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [orders, setOrders] = useState<any[]>([]);
+  const { orders, loading, error, retry } = useMetricOrders();
 
   // Date range
   const [fromDate, setFromDate] = useState<string>("");
@@ -48,31 +46,12 @@ export default function MetricasCallCenterPage() {
 
   const periodDates = useMemo(() => {
     if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
-    const from = new Date(fromDate);
+    const from = parseISO(fromDate);
     from.setHours(0, 0, 0, 0);
-    const to = new Date(toDate);
+    const to = parseISO(toDate);
     to.setHours(23, 59, 59, 999);
     return { from, to };
   }, [fromDate, toDate]);
-
-  // Fetch
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
-        );
-        setOrders(res.data || []);
-      } catch (error) {
-        console.error("Error fetching call-center data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [selectedStoreId, fromDate, toDate]);
 
   // Orders that went through "LLAMADO" status (called)
   const calledOrders = useMemo(
@@ -88,9 +67,9 @@ export default function MetricasCallCenterPage() {
   );
 
   const todayOrders = useMemo(() => {
-    const today = new Date().toISOString().split("T")[0];
+    const today = format(new Date(), "yyyy-MM-dd");
     return orders.filter(
-      (o) => new Date(o.created_at).toISOString().split("T")[0] === today
+      (o) => format(new Date(o.created_at), "yyyy-MM-dd") === today
     );
   }, [orders]);
 
@@ -188,7 +167,7 @@ export default function MetricasCallCenterPage() {
     if (calledOrders.length === 0) return 0;
     
     // Count unique agents
-    const uniqueAgents = new Set(calledOrders.map((o) => o.sellerName || o.userId || "Agente")).size;
+    const uniqueAgents = new Set(calledOrders.map((o) => o.sellerName || o.sellerId || "Agente")).size;
     
     // Determine the number of days in the period
     const daysInPeriod = Math.max(1, differenceInDays(periodDates.to, periodDates.from) + 1);
@@ -272,14 +251,14 @@ export default function MetricasCallCenterPage() {
     for (let i = diff; i >= 0; i--) {
       const d = new Date(periodDates.to);
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split("T")[0];
+      const dateStr = format(d, "yyyy-MM-dd");
       const dayLabel = d.toLocaleDateString("es-PE", { day: "2-digit", month: "short" });
       data[dateStr] = { label: dayLabel, total: 0 };
     }
 
     calledOrders.forEach((o: any) => {
       if ((o.items?.length || 0) <= 1) return;
-      const dateStr = new Date(o.created_at).toISOString().split("T")[0];
+      const dateStr = format(new Date(o.created_at), "yyyy-MM-dd");
       if (data[dateStr]) {
         const extra = (o.items || []).slice(1).reduce(
           (s: number, i: any) => s + Number(i.subtotal || i.price || 0),
@@ -300,6 +279,8 @@ export default function MetricasCallCenterPage() {
     v >= 75 ? "text-emerald-500" : "text-amber-500";
   const upsellColor = (v: number) =>
     v >= 20 ? "text-emerald-500" : "text-amber-500";
+
+  if (error) return <MetricDataError retry={() => { void retry(); }} />;
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">
