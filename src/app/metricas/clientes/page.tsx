@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import { useState, useMemo } from "react";
+import { useMetricOrders } from "@/hooks/useMetricOrders";
+import { MetricDataError } from "@/components/metrics/MetricDataError";
 import {
   ResponsiveContainer,
   BarChart,
@@ -17,7 +17,7 @@ import {
   Cell,
 } from "recharts";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { format, differenceInDays, subMonths, startOfMonth, endOfMonth, isSameMonth } from "date-fns";
+import { parseISO, startOfMonth } from "date-fns";
 
 /* ─────────────────── Constants ─────────────────── */
 
@@ -31,9 +31,7 @@ const MONTH_NAMES = [
 /* ─────────────────── Component ─────────────────── */
 
 export default function MetricasClientesPage() {
-  const { selectedStoreId } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [orders, setOrders] = useState<any[]>([]);
+  const { orders, loading, error, retry } = useMetricOrders();
 
   // Date range
   const [fromDate, setFromDate] = useState<string>("");
@@ -46,30 +44,12 @@ export default function MetricasClientesPage() {
 
   const periodDates = useMemo(() => {
     if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
-    const from = new Date(fromDate);
+    const from = parseISO(fromDate);
     from.setHours(0, 0, 0, 0);
-    const to = new Date(toDate);
+    const to = parseISO(toDate);
     to.setHours(23, 59, 59, 999);
     return { from, to };
   }, [fromDate, toDate]);
-
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
-        );
-        setOrders(res.data || []);
-      } catch (error) {
-        console.error("Error fetching clientes data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [selectedStoreId, fromDate, toDate]);
 
   // Filter orders for the period
   const periodOrders = useMemo(
@@ -227,6 +207,8 @@ export default function MetricasClientesPage() {
         color: FREQ_COLORS[idx % FREQ_COLORS.length],
       }));
   }, [customerMap]);
+
+  if (error) return <MetricDataError retry={() => { void retry(); }} />;
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">

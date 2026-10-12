@@ -1,35 +1,13 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import { aggregateInventoryStock, fetchInventoryMetrics } from "@/services/inventoryMetricsService";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Tooltip,
-} from "recharts";
-import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { Skeleton } from "@/components/ui/skeleton";
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from "recharts";
 
 /* ─────────────────── Types ─────────────────── */
-
-interface InventoryItem {
-  inventoryItemId: string;
-  variantId: string;
-  productId: string;
-  productName: string;
-  sku: string;
-  availableStock: number;
-  physicalStock: number;
-  min_stock?: number;
-  price?: number;
-  priceVta?: number;
-  attributes?: Record<string, string>;
-  category?: string;
-}
 
 interface CategoryStock {
   name: string;
@@ -58,69 +36,30 @@ const CATEGORY_COLORS = [
 /* ─────────────────── Component ─────────────────── */
 
 export default function MetricasInventarioPage() {
-  const { inventories } = useAuth();
-
-  // Date range
-  const [fromDate, setFromDate] = useState<string>("");
-  const [toDate, setToDate] = useState<string>("");
-
-  const handlePeriodChange = (from: string, to: string) => {
-    setFromDate(from);
-    setToDate(to);
-  };
-
-  // Fetch all inventory items using React Query
-  const { data: items = [], isLoading: loading } = useQuery({
-    queryKey: ["inventory-metrics", inventories?.map((inv: any) => inv.id)],
-    queryFn: async () => {
-      if (!inventories || inventories.length === 0) return [];
-      
-      const allItems: InventoryItem[] = [];
-      const inventoryIds = inventories.map((inv: any) => inv.id);
-
-      // We'll process each inventory in parallel for better performance
-      const fetchPromises = inventoryIds.map(async (inventoryId: string) => {
-        let page = 1;
-        let hasMore = true;
-        const invItems: InventoryItem[] = [];
-
-        while (hasMore) {
-          const res = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
-            {
-              params: {
-                inventoryId,
-                page,
-                limit: 100,
-              },
-            }
-          );
-
-          const data = res.data?.data || [];
-          invItems.push(...data);
-
-          const meta = res.data?.meta;
-          if (meta && page < meta.totalPages) {
-            page++;
-          } else {
-            hasMore = false;
-          }
-        }
-        return invItems;
-      });
-
-      const results = await Promise.all(fetchPromises);
-      results.forEach(resItems => allItems.push(...resItems));
-      
-      return allItems;
-    },
-    enabled: !!inventories && inventories.length > 0,
-    staleTime: 5 * 60 * 1000, // 5 minutes cache
+  const { auth, loading: authLoading } = useAuth();
+  const { scope, storeIds, canFetch } = useDashboardScope();
+  const companyId = auth?.company?.id;
+  const accessToken = auth?.accessToken;
+  const enabled = Boolean(canFetch && companyId && accessToken);
+  const query = useQuery({
+    queryKey: ["inventory-metrics", auth?.user?.id, companyId, scope, storeIds],
+    queryFn: ({ signal }) =>
+      fetchInventoryMetrics({
+        companyId: companyId!,
+        accessToken: accessToken!,
+        scope,
+        storeIds,
+        signal,
+      }),
+    enabled,
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
+    retry: false,
   });
+  const loading = enabled && query.isPending;
+  const items = useMemo(() => aggregateInventoryStock(query.data || []), [query.data]);
 
   // KPIs
-  const totalSkus = items.length;
   const totalProducts = useMemo(() => {
     const products = new Set(items.map((i) => i.productId).filter(Boolean));
     return products.size;
@@ -128,7 +67,12 @@ export default function MetricasInventarioPage() {
 
   const totalStock = useMemo(
     () => items.reduce((sum, i) => sum + (i.availableStock || 0), 0),
-    [items]
+    [items],
+  );
+
+  const physicalStock = useMemo(
+    () => items.reduce((sum, item) => sum + item.physicalStock, 0),
+    [items],
   );
 
   // Rotation: we'll estimate based on average daily sales
@@ -150,8 +94,7 @@ export default function MetricasInventarioPage() {
   const diasCobertura = useMemo(() => {
     if (items.length === 0) return 0;
     // Estimate: average stock * 7 (assuming ~1 unit/day sell rate per SKU)
-    const avgStock =
-      items.reduce((sum, i) => sum + (i.availableStock || 0), 0) / items.length;
+    const avgStock = items.reduce((sum, i) => sum + (i.availableStock || 0), 0) / items.length;
     return Math.round(avgStock * 3);
   }, [items]);
 
@@ -215,202 +158,221 @@ export default function MetricasInventarioPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-foreground tracking-tight">
-            Inventario
-          </h1>
+          <h1 className="text-2xl font-black text-foreground tracking-tight">Inventario</h1>
           <p className="text-xs text-muted-foreground font-semibold tracking-[0.15em] uppercase mt-1">
-            Control de stock y rotación de productos
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <PeriodSelector onPeriodChange={handlePeriodChange} />
-        </div>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Productos */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
-            Total Productos
-          </p>
-          <p className="text-2xl font-black text-foreground">
-            {loading ? "—" : totalProducts.toLocaleString()}
-          </p>
-        </div>
-
-        {/* Rotación */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
-            Rotación
-          </p>
-          <p className="text-2xl font-black text-foreground">
-            {loading ? "—" : `${rotacion}x`}
-          </p>
-          <p className="text-xs text-emerald-500 font-semibold mt-0.5">
-            Saludable
-          </p>
-        </div>
-
-        {/* Stock-Out Rate */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
-            Stock-Out Rate
-          </p>
-          <p className="text-2xl font-black text-amber-500">
-            {loading ? "—" : `${stockOutRate}%`}
-          </p>
-          <p className="text-xs text-muted-foreground font-semibold mt-0.5">
-            Meta: &lt;3%
-          </p>
-        </div>
-
-        {/* Días de Cobertura */}
-        <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
-          <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
-            Días de Cobertura
-          </p>
-          <p className="text-2xl font-black text-amber-500">
-            {loading ? "—" : `${diasCobertura}d`}
-          </p>
-          <p className="text-xs text-muted-foreground font-semibold mt-0.5">
-            Óptimo: 20-30d
+            Stock actual y disponibilidad de productos
           </p>
         </div>
       </div>
 
-      {/* Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Stock por categoría - Donut */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
-            Stock por categoría
-          </h3>
+      {!enabled ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {authLoading
+            ? "Cargando inventario..."
+            : "Selecciona un negocio y una tienda para consultar el inventario."}
+        </p>
+      ) : query.isError ? (
+        <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm font-medium text-destructive">No se pudo cargar el inventario.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Verifica tu sesión y vuelve a intentarlo.
+          </p>
+          <button
+            type="button"
+            onClick={() => void query.refetch()}
+            disabled={query.isFetching}
+            className="mt-3 rounded-md border border-border bg-background px-3 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            {query.isFetching ? "Cargando..." : "Reintentar"}
+          </button>
+        </div>
+      ) : (
+        <>
           {loading ? (
-            <div className="h-[280px] flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-            </div>
-          ) : categoryData.length === 0 ? (
-            <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm font-medium">
-              Sin datos de categoría
-            </div>
+            <p role="status" className="text-sm text-muted-foreground">
+              Cargando inventario...
+            </p>
           ) : (
-            <div className="flex items-center gap-4">
-              <ResponsiveContainer width="60%" height={280}>
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={65}
-                    outerRadius={110}
-                    paddingAngle={3}
-                    dataKey="value"
-                    strokeWidth={0}
-                  >
-                    {categoryData.map((entry, idx) => (
-                      <Cell key={idx} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value: any, name: string) => [
-                      `${value} unidades`,
-                      name,
-                    ]}
-                    contentStyle={{
-                      background: "var(--card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "12px",
-                      boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                    }}
-                  />
-                </PieChart>
-              </ResponsiveContainer>
-              {/* Legend */}
-              <div className="flex flex-col gap-2 flex-1">
-                {categoryData.map((cat, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <div
-                      className="w-3 h-3 rounded-full flex-shrink-0"
-                      style={{ backgroundColor: cat.color }}
-                    />
-                    <span className="text-xs text-foreground font-medium truncate">
-                      {cat.name}
-                    </span>
-                    <span className="text-xs text-muted-foreground font-semibold ml-auto">
-                      {cat.value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <p role="status" className="text-sm text-muted-foreground">
+              {items.length === 0
+                ? "No hay productos de inventario en este alcance."
+                : `${totalStock.toLocaleString()} unidades disponibles · ${physicalStock.toLocaleString()} unidades físicas`}
+            </p>
           )}
-        </div>
+          {/* KPI Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Total Productos */}
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
+                Total Productos
+              </p>
+              <p className="text-2xl font-black text-foreground">
+                {loading ? "—" : totalProducts.toLocaleString()}
+              </p>
+            </div>
 
-        {/* Productos con stock bajo */}
-        <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
-          <h3 className="text-sm font-semibold text-muted-foreground mb-4">
-            Productos con stock bajo
-          </h3>
-          {loading ? (
-            <div className="h-[300px] flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            {/* Rotación */}
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
+                Rotación
+              </p>
+              <p className="text-2xl font-black text-foreground">
+                {loading ? "—" : `${rotacion}x`}
+              </p>
+              <p className="text-xs text-emerald-500 font-semibold mt-0.5">Saludable</p>
             </div>
-          ) : lowStockProducts.length === 0 ? (
-            <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
-              No hay productos con stock bajo
+
+            {/* Stock-Out Rate */}
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
+                Stock-Out Rate
+              </p>
+              <p className="text-2xl font-black text-amber-500">
+                {loading ? "—" : `${stockOutRate}%`}
+              </p>
+              <p className="text-xs text-muted-foreground font-semibold mt-0.5">Meta: &lt;3%</p>
             </div>
-          ) : (
-            <div className="overflow-auto max-h-[320px]">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-border">
-                    <th className="text-left text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pr-4">
-                      Producto
-                    </th>
-                    <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-3">
-                      Stock
-                    </th>
-                    <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-3">
-                      Cobertura
-                    </th>
-                    <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pl-3">
-                      Estado
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {lowStockProducts.map((product, idx) => (
-                    <tr
-                      key={idx}
-                      className="border-b border-border/50 last:border-0"
-                    >
-                      <td className="py-3 pr-4 text-sm font-medium text-foreground">
-                        {product.name}
-                      </td>
-                      <td className="py-3 px-3 text-center text-sm font-semibold text-muted-foreground">
-                        {product.stock}
-                      </td>
-                      <td className="py-3 px-3 text-center text-sm text-muted-foreground">
-                        {product.coverageDays}d
-                      </td>
-                      <td className="py-3 pl-3 text-center">
-                        <span
-                          className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${statusColor(product.status)}`}
-                        >
-                          {product.status}
+
+            {/* Días de Cobertura */}
+            <div className="bg-card border border-border rounded-xl p-4 shadow-sm">
+              <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
+                Días de Cobertura
+              </p>
+              <p className="text-2xl font-black text-amber-500">
+                {loading ? "—" : `${diasCobertura}d`}
+              </p>
+              <p className="text-xs text-muted-foreground font-semibold mt-0.5">Óptimo: 20-30d</p>
+            </div>
+          </div>
+
+          {/* Charts Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Stock por categoría - Donut */}
+            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-4">
+                Stock por categoría
+              </h3>
+              {loading ? (
+                <div className="h-[280px] flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                </div>
+              ) : categoryData.length === 0 ? (
+                <div className="h-[280px] flex items-center justify-center text-muted-foreground text-sm font-medium">
+                  Sin datos de categoría
+                </div>
+              ) : (
+                <div className="flex items-center gap-4">
+                  <ResponsiveContainer width="60%" height={280}>
+                    <PieChart>
+                      <Pie
+                        data={categoryData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={65}
+                        outerRadius={110}
+                        paddingAngle={3}
+                        dataKey="value"
+                        strokeWidth={0}
+                      >
+                        {categoryData.map((entry, idx) => (
+                          <Cell key={idx} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: any, name: string) => [`${value} unidades`, name]}
+                        contentStyle={{
+                          background: "var(--card)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "12px",
+                          boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  {/* Legend */}
+                  <div className="flex flex-col gap-2 flex-1">
+                    {categoryData.map((cat, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: cat.color }}
+                        />
+                        <span className="text-xs text-foreground font-medium truncate">
+                          {cat.name}
                         </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        <span className="text-xs text-muted-foreground font-semibold ml-auto">
+                          {cat.value}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
+
+            {/* Productos con stock bajo */}
+            <div className="bg-card border border-border rounded-xl p-5 shadow-sm">
+              <h3 className="text-sm font-semibold text-muted-foreground mb-4">
+                Productos con stock bajo
+              </h3>
+              {loading ? (
+                <div className="h-[300px] flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                </div>
+              ) : lowStockProducts.length === 0 ? (
+                <div className="h-[300px] flex items-center justify-center text-muted-foreground text-sm">
+                  No hay productos con stock bajo
+                </div>
+              ) : (
+                <div className="overflow-auto max-h-[320px]">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pr-4">
+                          Producto
+                        </th>
+                        <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-3">
+                          Stock
+                        </th>
+                        <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 px-3">
+                          Cobertura
+                        </th>
+                        <th className="text-center text-[10px] text-muted-foreground font-bold uppercase tracking-wider py-2 pl-3">
+                          Estado
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lowStockProducts.map((product, idx) => (
+                        <tr key={idx} className="border-b border-border/50 last:border-0">
+                          <td className="py-3 pr-4 text-sm font-medium text-foreground">
+                            {product.name}
+                          </td>
+                          <td className="py-3 px-3 text-center text-sm font-semibold text-muted-foreground">
+                            {product.stock}
+                          </td>
+                          <td className="py-3 px-3 text-center text-sm text-muted-foreground">
+                            {product.coverageDays}d
+                          </td>
+                          <td className="py-3 pl-3 text-center">
+                            <span
+                              className={`text-[10px] font-bold px-2.5 py-1 rounded-full ${statusColor(product.status)}`}
+                            >
+                              {product.status}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

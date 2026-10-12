@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import { useState, useMemo } from "react";
+import { useMetricOrders } from "@/hooks/useMetricOrders";
+import { MetricDataError } from "@/components/metrics/MetricDataError";
 import {
   ResponsiveContainer,
   BarChart,
@@ -15,6 +15,7 @@ import {
   PieChart,
   Pie,
 } from "recharts";
+import { parseISO } from "date-fns";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 import { HeadphonesIcon, TrendingUp, CheckCircle2 } from "lucide-react";
 
@@ -32,9 +33,7 @@ const UPSELL_COLORS = ["#3b82f6", "#8b5cf6", "#ec4899", "#10b981", "#f59e0b"];
 /* ─────────────────── Component ─────────────────── */
 
 export default function MetricasAtencionClientePage() {
-  const { selectedStoreId } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [orders, setOrders] = useState<any[]>([]);
+  const { orders, loading, error, retry } = useMetricOrders();
 
   // Date range
   const [fromDate, setFromDate] = useState<string>("");
@@ -47,31 +46,12 @@ export default function MetricasAtencionClientePage() {
 
   const periodDates = useMemo(() => {
     if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
-    const from = new Date(fromDate);
+    const from = parseISO(fromDate);
     from.setHours(0, 0, 0, 0);
-    const to = new Date(toDate);
+    const to = parseISO(toDate);
     to.setHours(23, 59, 59, 999);
     return { from, to };
   }, [fromDate, toDate]);
-
-  // Fetch
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-        );
-        setOrders(res.data || []);
-      } catch (error) {
-        console.error("Error fetching gestion pedidos data:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [selectedStoreId, fromDate, toDate]);
 
   // ── Data Memoization ──
 
@@ -154,7 +134,7 @@ export default function MetricasAtencionClientePage() {
       const items = o.items || [];
       // Assume the first is the main product, the rest are upsells
       for (let i = 1; i < items.length; i++) {
-        const name = items[i].name || items[i].title || "Producto Desconocido";
+        const name = items[i].productName || "Producto Desconocido";
         counts[name] = (counts[name] || 0) + 1;
       }
     });
@@ -181,7 +161,7 @@ export default function MetricasAtencionClientePage() {
     > = {};
 
     managedOrders.forEach((o) => {
-      const agent = o.sellerName || o.userId || "Agente Desconocido";
+      const agent = o.sellerName || o.sellerId || "Agente Desconocido";
       if (!map[agent]) {
         map[agent] = { total: 0, confirmed: 0, upsellCount: 0, upsellRev: 0 };
       }
@@ -216,6 +196,8 @@ export default function MetricasAtencionClientePage() {
       }))
       .sort((a, b) => b.confirmRate - a.confirmRate);
   }, [managedOrders]);
+
+  if (error) return <MetricDataError retry={() => { void retry(); }} />;
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">

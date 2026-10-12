@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
-import { fetchCouriers, Courier } from "@/services/courierService";
+import { useState, useMemo } from "react";
+import { useMetricOrders } from "@/hooks/useMetricOrders";
+import { MetricDataError } from "@/components/metrics/MetricDataError";
+import { useMetricGuides, useMetricCouriers } from "@/hooks/useMetricShipping";
 import {
   ResponsiveContainer,
   BarChart,
@@ -15,6 +15,7 @@ import {
   Tooltip,
   Legend,
 } from "recharts";
+import { parseISO } from "date-fns";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
 
 /* ─────────────────── Types ─────────────────── */
@@ -55,11 +56,15 @@ const COURIER_COLORS = [
 /* ─────────────────── Component ─────────────────── */
 
 export default function MetricasCouriersPage() {
-  const { auth, selectedStoreId } = useAuth();
-  const [loading, setLoading] = useState(true);
-  const [couriers, setCouriers] = useState<Courier[]>([]);
-  const [guides, setGuides] = useState<ShippingGuide[]>([]);
-  const [orders, setOrders] = useState<any[]>([]);
+  const orderData = useMetricOrders();
+  const guideData = useMetricGuides<ShippingGuide>();
+  const courierData = useMetricCouriers();
+  const { orders } = orderData;
+  const { guides } = guideData;
+  const { couriers } = courierData;
+  const loading = orderData.loading || guideData.loading || courierData.loading;
+  const error = orderData.error || guideData.error || courierData.error;
+  const retry = () => { void orderData.retry(); void guideData.retry(); void courierData.retry(); };
 
   // Date range
   const [fromDate, setFromDate] = useState<string>("");
@@ -72,38 +77,12 @@ export default function MetricasCouriersPage() {
 
   const periodDates = useMemo(() => {
     if (!fromDate || !toDate) return { from: new Date(), to: new Date() };
-    const from = new Date(fromDate);
+    const from = parseISO(fromDate);
     from.setHours(0, 0, 0, 0);
-    const to = new Date(toDate);
+    const to = parseISO(toDate);
     to.setHours(23, 59, 59, 999);
     return { from, to };
   }, [fromDate, toDate]);
-
-  useEffect(() => {
-    if (!selectedStoreId || !auth?.company?.id) return;
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const [couriersData, guidesRes, ordersRes] = await Promise.all([
-          fetchCouriers(auth.company!.id),
-          axios.get<ShippingGuide[]>(
-            `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`
-          ),
-          axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
-          ),
-        ]);
-        setCouriers(couriersData);
-        setGuides(guidesRes.data || []);
-        setOrders(ordersRes.data || []);
-      } catch (error) {
-        console.error("Error fetching courier metrics:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [selectedStoreId, auth?.company]);
 
   // Filter guides and orders for the period
   const periodGuides = useMemo(
@@ -276,6 +255,8 @@ export default function MetricasCouriersPage() {
   };
 
   const entregaColor = (v: number) => (v >= 85 ? "text-emerald-500" : v > 0 ? "text-slate-700" : "text-red-400");
+
+  if (error) return <MetricDataError retry={() => { void retry(); }} />;
 
   return (
     <div className="flex flex-col gap-6 p-6 bg-background min-h-screen">

@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
-import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import { useState, useMemo } from "react";
+import { useMetricOrders } from "@/hooks/useMetricOrders";
 import {
   ResponsiveContainer,
   LineChart,
@@ -17,7 +16,7 @@ import {
   Legend,
 } from "recharts";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { format, subDays, differenceInDays } from "date-fns";
+import { parseISO, subDays, differenceInDays } from "date-fns";
 
 /* ─────────────────── Types ─────────────────── */
 
@@ -64,25 +63,12 @@ const CHANNEL_COLORS: Record<string, string> = {
 /* ─────────────────── Component ─────────────────── */
 
 export default function MetricasVentasPage() {
-  const { selectedStoreId } = useAuth();
-  const [loading, setLoading] = useState(true);
+  const { orders, loading: ordersLoading, error, retry } = useMetricOrders();
 
   // Date range
   const [fromDate, setFromDate] = useState<string>("");
   const [toDate, setToDate] = useState<string>("");
-
-  // Data
-  const [kpi, setKpi] = useState<KpiData>({
-    ventasMes: 0,
-    totalOrdenes: 0,
-    ticketPromedio: 0,
-    crecimientoMes: 0,
-    tasaAnulacion: 0,
-    ventasMesAnterior: 0,
-    ticketAnterior: 0,
-  });
-  const [weeklyData, setWeeklyData] = useState<WeeklyChannelData[]>([]);
-  const [topProducts, setTopProducts] = useState<TopProduct[]>([]);
+  const loading = ordersLoading || !fromDate || !toDate;
 
   // Handle period change
   const handlePeriodChange = (from: string, to: string) => {
@@ -90,122 +76,118 @@ export default function MetricasVentasPage() {
     setToDate(to);
   };
 
-  // Fetch sales data
-  useEffect(() => {
-    if (!selectedStoreId || !fromDate || !toDate) return;
+  // Keep all scoped orders available for the previous-period comparison.
+  const { kpi, weeklyData, topProducts } = useMemo(() => {
+    if (!fromDate || !toDate) {
+      return {
+        kpi: {
+          ventasMes: 0,
+          totalOrdenes: 0,
+          ticketPromedio: 0,
+          crecimientoMes: 0,
+          tasaAnulacion: 0,
+          ventasMesAnterior: 0,
+          ticketAnterior: 0,
+        } satisfies KpiData,
+        weeklyData: [] as WeeklyChannelData[],
+        topProducts: [] as TopProduct[],
+      };
+    }
+    const start = parseISO(fromDate);
+    start.setHours(0, 0, 0, 0);
+    const end = parseISO(toDate);
+    end.setHours(23, 59, 59, 999);
 
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const res = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`
-        );
-        const orders = res.data || [];
+    // Filter orders for selected period
+    const periodOrders = orders.filter((o: any) => {
+      const d = new Date(o.created_at);
+      return d >= start && d <= end;
+    });
 
-        const start = new Date(fromDate);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(toDate);
-        end.setHours(23, 59, 59, 999);
+    // Previous period for comparison
+    const diffDays = differenceInDays(end, start) + 1;
+    const prevEnd = subDays(start, 1);
+    const prevStart = subDays(prevEnd, diffDays - 1);
+    prevEnd.setHours(23, 59, 59, 999);
+    prevStart.setHours(0, 0, 0, 0);
 
-        // Filter orders for selected period
-        const periodOrders = orders.filter((o: any) => {
-          const d = new Date(o.created_at);
-          return d >= start && d <= end;
-        });
+    const prevPeriodOrders = orders.filter((o: any) => {
+      const d = new Date(o.created_at);
+      return d >= prevStart && d <= prevEnd;
+    });
 
-        // Previous period for comparison
-        const diffDays = differenceInDays(end, start) + 1;
-        const prevEnd = subDays(start, 1);
-        const prevStart = subDays(prevEnd, diffDays - 1);
-        prevEnd.setHours(23, 59, 59, 999);
-        prevStart.setHours(0, 0, 0, 0);
+    // KPIs
+    const ventasMes = periodOrders.reduce(
+      (sum: number, o: any) => sum + Number(o.grandTotal || 0),
+      0
+    );
+    const ventasMesAnterior = prevPeriodOrders.reduce(
+      (sum: number, o: any) => sum + Number(o.grandTotal || 0),
+      0
+    );
+    const totalOrdenes = periodOrders.length;
+    const ticketPromedio = totalOrdenes > 0 ? ventasMes / totalOrdenes : 0;
+    const prevOrdenes = prevPeriodOrders.length;
+    const ticketAnterior = prevOrdenes > 0 ? ventasMesAnterior / prevOrdenes : 0;
 
-        const prevPeriodOrders = orders.filter((o: any) => {
-          const d = new Date(o.created_at);
-          return d >= prevStart && d <= prevEnd;
-        });
+    const crecimientoMes = ventasMesAnterior === 0
+      ? (ventasMes > 0 ? 100 : 0)
+      : Math.round(((ventasMes - ventasMesAnterior) / ventasMesAnterior) * 100);
 
-        // KPIs
-        const ventasMes = periodOrders.reduce(
-          (sum: number, o: any) => sum + Number(o.grandTotal || 0),
-          0
-        );
-        const ventasMesAnterior = prevPeriodOrders.reduce(
-          (sum: number, o: any) => sum + Number(o.grandTotal || 0),
-          0
-        );
-        const totalOrdenes = periodOrders.length;
-        const ticketPromedio = totalOrdenes > 0 ? ventasMes / totalOrdenes : 0;
-        const prevOrdenes = prevPeriodOrders.length;
-        const ticketAnterior = prevOrdenes > 0 ? ventasMesAnterior / prevOrdenes : 0;
+    const anuladas = periodOrders.filter((o: any) => o.status === "ANULADO").length;
+    const tasaAnulacion = totalOrdenes > 0 ? Math.round((anuladas / totalOrdenes) * 100) : 0;
 
-        const crecimientoMes = ventasMesAnterior === 0 
-          ? (ventasMes > 0 ? 100 : 0) 
-          : Math.round(((ventasMes - ventasMesAnterior) / ventasMesAnterior) * 100);
-
-        const anuladas = periodOrders.filter((o: any) => o.status === "ANULADO").length;
-        const tasaAnulacion = totalOrdenes > 0 ? Math.round((anuladas / totalOrdenes) * 100) : 0;
-
-        setKpi({
-          ventasMes,
-          totalOrdenes,
-          ticketPromedio,
-          crecimientoMes,
-          tasaAnulacion,
-          ventasMesAnterior,
-          ticketAnterior,
-        });
-
-        // Weekly channel breakdown
-        const channelMap: Record<string, number[]> = {};
-        periodOrders.forEach((o: any) => {
-          const d = new Date(o.created_at);
-          const dayDiff = differenceInDays(d, start);
-          const weekIdx = Math.min(Math.floor(dayDiff / 7), 3);
-          const channel = (o.salesChannel || "web").toLowerCase();
-          if (!channelMap[channel]) channelMap[channel] = [0, 0, 0, 0];
-          channelMap[channel][weekIdx] += Number(o.grandTotal || 0);
-        });
-
-        const weeks: WeeklyChannelData[] = [0, 1, 2, 3].map((i) => {
-          const row: WeeklyChannelData = { week: `Sem ${i + 1}` };
-          Object.entries(channelMap).forEach(([ch, vals]) => {
-            row[ch] = Math.round(vals[i]);
-          });
-          return row;
-        });
-        setWeeklyData(weeks);
-
-        // Top products
-        const productStats: Record<string, { quantity: number; revenue: number }> = {};
-        periodOrders.forEach((o: any) => {
-          (o.items || []).forEach((item: any) => {
-            const name = item.productName || item.name || "Producto";
-            if (!productStats[name]) productStats[name] = { quantity: 0, revenue: 0 };
-            productStats[name].quantity += Number(item.quantity || 1);
-            productStats[name].revenue += Number(item.subtotal || item.price || 0);
-          });
-        });
-
-        const sorted = Object.entries(productStats)
-          .sort(([, a], [, b]) => b.quantity - a.quantity)
-          .slice(0, 5)
-          .map(([name, stats], idx) => ({
-            name: name.length > 25 ? name.substring(0, 22) + "..." : name,
-            quantity: stats.quantity,
-            revenue: stats.revenue,
-            color: TOP_PRODUCT_COLORS[idx % TOP_PRODUCT_COLORS.length],
-          }));
-        setTopProducts(sorted);
-      } catch (error) {
-        console.error("Error fetching ventas metrics:", error);
-      } finally {
-        setLoading(false);
-      }
+    const kpi: KpiData = {
+      ventasMes,
+      totalOrdenes,
+      ticketPromedio,
+      crecimientoMes,
+      tasaAnulacion,
+      ventasMesAnterior,
+      ticketAnterior,
     };
 
-    fetchData();
-  }, [selectedStoreId, fromDate, toDate]);
+    // Weekly channel breakdown
+    const channelMap: Record<string, number[]> = {};
+    periodOrders.forEach((o: any) => {
+      const d = new Date(o.created_at);
+      const dayDiff = differenceInDays(d, start);
+      const weekIdx = Math.min(Math.floor(dayDiff / 7), 3);
+      const channel = (o.salesChannel || "web").toLowerCase();
+      if (!channelMap[channel]) channelMap[channel] = [0, 0, 0, 0];
+      channelMap[channel][weekIdx] += Number(o.grandTotal || 0);
+    });
+
+    const weeks: WeeklyChannelData[] = [0, 1, 2, 3].map((i) => {
+      const row: WeeklyChannelData = { week: `Sem ${i + 1}` };
+      Object.entries(channelMap).forEach(([ch, vals]) => {
+        row[ch] = Math.round(vals[i]);
+      });
+      return row;
+    });
+
+    // Top products
+    const productStats: Record<string, { quantity: number; revenue: number }> = {};
+    periodOrders.forEach((o: any) => {
+      (o.items || []).forEach((item: any) => {
+        const name = item.productName || item.name || "Producto";
+        if (!productStats[name]) productStats[name] = { quantity: 0, revenue: 0 };
+        productStats[name].quantity += Number(item.quantity || 1);
+        productStats[name].revenue += Number(item.subtotal || item.price || 0);
+      });
+    });
+
+    const sorted = Object.entries(productStats)
+      .sort(([, a], [, b]) => b.quantity - a.quantity)
+      .slice(0, 5)
+      .map(([name, stats], idx) => ({
+        name: name.length > 25 ? name.substring(0, 22) + "..." : name,
+        quantity: stats.quantity,
+        revenue: stats.revenue,
+        color: TOP_PRODUCT_COLORS[idx % TOP_PRODUCT_COLORS.length],
+      }));
+    return { kpi, weeklyData: weeks, topProducts: sorted };
+  }, [orders, fromDate, toDate]);
 
   // Percentage change helper
   const pctChange = (current: number, previous: number) => {
@@ -239,6 +221,15 @@ export default function MetricasVentasPage() {
         </div>
       </div>
 
+      {error ? (
+        <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+          <p className="text-sm text-destructive">No se pudieron cargar las métricas de ventas.</p>
+          <button type="button" onClick={retry} className="mt-2 text-sm font-semibold underline">
+            Reintentar
+          </button>
+        </div>
+      ) : (
+      <>
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Ventas del mes */}
@@ -247,7 +238,7 @@ export default function MetricasVentasPage() {
             <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Ventas del mes
             </p>
-            {ventasPct !== 0 && (
+            {!loading && ventasPct !== 0 && (
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   ventasPct > 0
@@ -261,10 +252,10 @@ export default function MetricasVentasPage() {
             )}
           </div>
           <p className="text-2xl font-black text-foreground">
-            S/ {kpi.ventasMes.toLocaleString("es-PE", { minimumFractionDigits: 0 })}
+            {loading ? "—" : `S/ ${kpi.ventasMes.toLocaleString("es-PE", { minimumFractionDigits: 0 })}`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">
-            {kpi.totalOrdenes} órdenes
+            {loading ? "Cargando pedidos…" : `${kpi.totalOrdenes} órdenes`}
           </p>
         </div>
 
@@ -274,7 +265,7 @@ export default function MetricasVentasPage() {
             <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider">
               Ticket promedio
             </p>
-            {ticketPct !== 0 && (
+            {!loading && ticketPct !== 0 && (
               <span
                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
                   ticketPct > 0
@@ -288,7 +279,7 @@ export default function MetricasVentasPage() {
             )}
           </div>
           <p className="text-2xl font-black text-foreground">
-            S/ {Math.round(kpi.ticketPromedio).toLocaleString("es-PE")}
+            {loading ? "—" : `S/ ${Math.round(kpi.ticketPromedio).toLocaleString("es-PE")}`}
           </p>
           <p className="text-xs text-emerald-500 font-semibold mt-0.5">Por orden</p>
         </div>
@@ -299,9 +290,9 @@ export default function MetricasVentasPage() {
             Crecimiento vs mes ant.
           </p>
           <p className={`text-2xl font-black ${kpi.crecimientoMes >= 0 ? "text-emerald-500" : "text-red-500"}`}>
-            {kpi.crecimientoMes > 0 ? "+" : ""}{kpi.crecimientoMes}%
+            {loading ? "—" : `${kpi.crecimientoMes > 0 ? "+" : ""}${kpi.crecimientoMes}%`}
           </p>
-          <p className="text-xs text-muted-foreground font-semibold mt-0.5">Ingresos vs {kpi.ventasMesAnterior === 0 ? "0" : `S/ ${kpi.ventasMesAnterior.toLocaleString("es-PE", { minimumFractionDigits: 0 })}`}</p>
+          <p className="text-xs text-muted-foreground font-semibold mt-0.5">{loading ? "Cargando comparación…" : `Ingresos vs ${kpi.ventasMesAnterior === 0 ? "0" : `S/ ${kpi.ventasMesAnterior.toLocaleString("es-PE", { minimumFractionDigits: 0 })}`}`}</p>
         </div>
 
         {/* Tasa Anulación */}
@@ -309,7 +300,7 @@ export default function MetricasVentasPage() {
           <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mb-1">
             Tasa de anulación
           </p>
-          <p className="text-2xl font-black text-amber-500">{kpi.tasaAnulacion}%</p>
+          <p className="text-2xl font-black text-amber-500">{loading ? "—" : `${kpi.tasaAnulacion}%`}</p>
           <p className="text-xs text-muted-foreground font-semibold mt-0.5">Meta: &lt;10%</p>
         </div>
       </div>
@@ -461,6 +452,8 @@ export default function MetricasVentasPage() {
           )}
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }
