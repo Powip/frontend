@@ -44,7 +44,7 @@ export function SaleOriginField({
   const text = name ?? (isStore ? "Tienda registrada" : "Almacén registrado");
 
   return (
-    <div className="space-y-1">
+    <div className="min-w-0 space-y-1">
       <Label htmlFor={id}>
         {label} {!readOnly && <span className="text-destructive">*</span>}
       </Label>
@@ -54,7 +54,7 @@ export function SaleOriginField({
           readOnly
           value={value ? text : isStore ? "Tienda no registrada" : "Almacén no registrado"}
           aria-describedby={hint ? `${id}-hint` : undefined}
-          className="bg-muted/30"
+          className="min-w-0 bg-muted/30"
         />
       ) : (
         <Select value={value} onValueChange={onChange} disabled={disabled || loading || !options.length}>
@@ -62,6 +62,7 @@ export function SaleOriginField({
             id={id}
             aria-required="true"
             aria-describedby={hint ? `${id}-hint` : undefined}
+            className="min-w-0 overflow-hidden text-left [&>[data-slot=select-value]]:min-w-0 [&>[data-slot=select-value]]:flex-1 [&>[data-slot=select-value]]:truncate"
           >
             <SelectValue placeholder={placeholder} />
           </SelectTrigger>
