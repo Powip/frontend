@@ -155,6 +155,9 @@ export interface OrderHeader {
   orderType: OrderType;
   orderNumber: string;
   storeId: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
+  stockVersion?: number;
   customer: Client;
   salesChannel: SalesChannel;
   closingChannel: SalesChannel;

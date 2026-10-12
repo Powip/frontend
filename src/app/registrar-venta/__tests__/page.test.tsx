@@ -28,9 +28,9 @@
  * varios subsistemas reales. Para mantener el test enfocado en el flujo de
  * pago se mockean:
  * - `@/lib/axiosAuth` (todas las llamadas HTTP del flujo de creación).
- * - `@/contexts/AuthContext` (useAuth) — company/store/inventories fijos;
- *   `inventories: []` evita que se dispare una búsqueda real de productos
- *   (`searchInventoryItems`) contra `selectedInventory`.
+ * - `@/contexts/AuthContext` (useAuth) — empresa y navegación fijas;
+ *   sale-context devuelve tiendas y un almacén compartido independiente.
+ *   El QueryClient real permite resolver las validaciones de origen.
  * - `@/services/clients.service` — se simula un cliente YA encontrado
  *   (`fetchClientByPhone` resuelve un cliente) para no tener que completar
  *   a mano el formulario de cliente nuevo (con sus Combobox de ubigeo).
@@ -77,6 +77,7 @@ import {
   fireEvent,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
@@ -315,6 +316,15 @@ const FOUND_CLIENT: Client = {
   isActive: true,
 };
 
+const SALE_CONTEXT = {
+  companyId: "company-1",
+  stores: [
+    { id: "store-1", name: "Tienda navegación" },
+    { id: "store-2", name: "Tienda de la venta" },
+  ],
+  inventories: [{ id: "warehouse-1", name: "Almacén compartido", storeId: "store-1" }],
+};
+
 const MOCK_AUTH = {
   auth: {
     user: {
@@ -325,7 +335,7 @@ const MOCK_AUTH = {
       role: "ADMIN",
       permissions: [],
     },
-    company: { id: "company-1", name: "Empresa Test", stores: [] },
+    company: { id: "company-1", name: "Empresa Test", stores: SALE_CONTEXT.stores },
     accessToken: "fake-token",
     subscription: null,
     exp: 9999999999,
@@ -344,12 +354,23 @@ const MOCK_AUTH = {
 beforeEach(() => {
   jest.clearAllMocks();
   mockUseAuth.mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
-  mockedAxiosAuth.get.mockResolvedValue({ data: [] });
+  mockedAxiosAuth.get.mockImplementation((url: string) => {
+    if (url.endsWith("/order-header/sale-context"))
+      return Promise.resolve({ data: SALE_CONTEXT });
+    if (url.endsWith("/inventory-item/search"))
+      return Promise.resolve({ data: { data: [], meta: { page: 1, total: 0, totalPages: 1 } } });
+    return Promise.resolve({ data: [] });
+  });
   mockFetchClientByPhone.mockResolvedValue(FOUND_CLIENT);
   mockUpdateClient.mockResolvedValue(FOUND_CLIENT);
 });
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+function renderPage() {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  return render(<QueryClientProvider client={queryClient}><RegistrarVentaPage /></QueryClientProvider>);
+}
 
 /** Ubica un <label> por su texto y devuelve su contenedor (div hermano del
  *  control), para poder escalar con `within(...)` — los Label de este form no
@@ -368,6 +389,11 @@ function fieldByLabel(labelText: RegExp): HTMLElement {
 /** Completa lo mínimo indispensable para que `canSubmit` sea true, sin tocar
  *  adelanto/comprobante (eso lo decide cada test). */
 async function fillCommonRequiredFields() {
+  await screen.findByDisplayValue("Almacén compartido");
+  await userEvent.selectOptions(
+    within(fieldByLabel(/tienda de la venta/i)).getByRole("combobox"),
+    "store-2",
+  );
   // Cliente: se busca por teléfono y se usa el cliente ya encontrado (evita
   // completar a mano el formulario de cliente nuevo).
   const phoneInput = screen.getByPlaceholderText("Número de teléfono");
@@ -413,7 +439,7 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
     });
     mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
 
-    const { container } = render(<RegistrarVentaPage />);
+    const { container } = renderPage();
 
     await fillCommonRequiredFields();
 
@@ -442,8 +468,10 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
 
     await waitFor(() => expect(mockedAxiosAuth.post).toHaveBeenCalled());
     expect(mockedAxiosAuth.post).toHaveBeenCalledWith(
-      expect.stringContaining("/order-header"),
+      expect.stringMatching(/\/order-header\/manual$/),
       expect.objectContaining({
+        storeId: "store-2",
+        inventoryId: "warehouse-1",
         payments: [
           expect.objectContaining({ paymentMethod: "EFECTIVO", amount: 50 }),
         ],
@@ -478,7 +506,7 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
       data: { id: "order-456", payments: [] },
     });
 
-    render(<RegistrarVentaPage />);
+    renderPage();
 
     await fillCommonRequiredFields();
 
@@ -502,7 +530,7 @@ describe("RegistrarVentaPage — creación de venta con adelanto (FIX aprobacion
       data: { id: "order-789", payments: [{ id: "payment-789" }] },
     });
 
-    render(<RegistrarVentaPage />);
+    renderPage();
 
     await fillCommonRequiredFields();
 
@@ -546,7 +574,7 @@ describe("RegistrarVentaPage — hasClientChanges (fix orden de claves province/
       data: { id: "order-no-changes", payments: [] },
     });
 
-    render(<RegistrarVentaPage />);
+    renderPage();
 
     await fillCommonRequiredFields();
 
@@ -575,7 +603,7 @@ describe("RegistrarVentaPage — hasClientChanges (fix orden de claves province/
       data: { id: "order-with-changes", payments: [] },
     });
 
-    render(<RegistrarVentaPage />);
+    renderPage();
 
     await fillCommonRequiredFields();
 
