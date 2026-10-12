@@ -10,6 +10,7 @@ import {
 } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   Plus,
@@ -20,7 +21,6 @@ import {
   ShoppingCart,
   ClipboardList,
   CreditCard,
-  Store,
   ChevronDown,
   Check,
   AlertTriangle,
@@ -72,6 +72,9 @@ import ProductSearchMatrix from "@/components/registrar-venta/ProductSearchMatri
 import CartLines from "@/components/registrar-venta/CartLines";
 import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
 import { GiftOption, Pack, VolumePack } from "@/interfaces/IPack";
+import { fetchSaleContext } from "@/services/saleContextService";
+import { SaleOriginField } from "@/components/registrar-venta/SaleOriginField";
+import { useSaleOrigin } from "@/components/registrar-venta/useSaleOrigin";
 
 type ClientSearchState = "idle" | "found" | "not_found" | "error";
 
@@ -268,7 +271,6 @@ function RegistrarVentaContent() {
     total: number;
     totalPages: number;
   } | null>(null);
-  const [selectedInventory, setSelectedInventory] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [productFrequencies, setProductFrequencies] = useState<
     Record<string, number>
@@ -364,14 +366,40 @@ function RegistrarVentaContent() {
 
   /* ---------------- Modal ---------------- */
   const [orderData, setOrderData] = useState<OrderHeader | null>(null);
+  const [orderLoadError, setOrderLoadError] = useState(false);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const orderRequest = useRef<AbortController | null>(null);
+  const productRequest = useRef<AbortController | null>(null);
 
   /* ---------------- Meta Publi ID ---------------- */
   const [metaPubliId, setMetaPubliId] = useState("");
 
-  const { auth, selectedStoreId, setSelectedStore, inventories } = useAuth();
+  const { auth } = useAuth();
 
   const companyId = auth?.company?.id;
-  const stores = auth?.company?.stores ?? [];
+  const saleContext = useQuery({
+    queryKey: ["sale-context", auth?.user.id, companyId],
+    queryFn: ({ signal }) => fetchSaleContext(companyId!, signal),
+    enabled: Boolean(auth?.accessToken && companyId),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const stores = saleContext.data?.stores ?? [];
+  const inventories = saleContext.data?.inventories ?? [];
+  const origin = useSaleOrigin({
+    scope: `${auth?.user.id ?? ""}:${companyId ?? ""}:${orderId ?? "new"}`,
+    editing: Boolean(orderId),
+    saved: orderData,
+    stores,
+    inventories,
+  });
+  const selectedInventory = origin.inventoryId;
+  const warehouseOptions = inventories.map((inventory) => ({
+    id: inventory.id,
+    name: inventories.some((other) => other.id !== inventory.id && other.name === inventory.name)
+      ? `${inventory.name} · ${stores.find((store) => store.id === inventory.storeId)?.name ?? "Almacén de la empresa"}`
+      : inventory.name,
+  }));
   const salesChannels = auth?.company?.sales_channels?.length
     ? auth.company.sales_channels
     : DEFAULT_SALES_CHANNELS;
@@ -402,23 +430,29 @@ function RegistrarVentaContent() {
   const formEnabled = !isIdle;
 
   const loadOrder = useCallback(async () => {
-    if (!orderId) {
-      setOrderData(null);
-      return;
-    }
+    orderRequest.current?.abort();
+    setOrderData(null);
+    setOrderLoadError(false);
+    if (!orderId || !companyId || !auth?.accessToken) return;
+    const request = new AbortController();
+    orderRequest.current = request;
+    setOrderLoading(true);
     try {
       const response = await axiosAuth.get(
-        `${GATEWAY.ventas}/order-header/${orderId}`,
+        `${GATEWAY.ventas}/order-header/manual/${orderId}`,
+        { signal: request.signal },
       );
-
-      setOrderData(response.data);
-    } catch (error) {
-      console.error("Error al obtener la Order", error);
+      if (!request.signal.aborted) setOrderData(response.data);
+    } catch {
+      if (!request.signal.aborted) setOrderLoadError(true);
+    } finally {
+      if (!request.signal.aborted) setOrderLoading(false);
     }
-  }, [orderId]);
+  }, [orderId, companyId, auth?.accessToken]);
 
   useEffect(() => {
-    loadOrder();
+    void loadOrder();
+    return () => orderRequest.current?.abort();
   }, [loadOrder]);
 
   useEffect(() => {
@@ -556,10 +590,12 @@ function RegistrarVentaContent() {
   }, [searchState, clientForm.phoneNumber]);
 
   useEffect(() => {
-    setSelectedInventory(inventories[0]?.id || "");
+    productRequest.current?.abort();
     setProducts([]);
     setProductsMeta(null);
-  }, [selectedStoreId, inventories]);
+    setProductsLoading(false);
+    return () => productRequest.current?.abort();
+  }, [selectedInventory]);
 
   useEffect(() => {
     setProductFrequencies(getProductFrequencies(companyId));
@@ -570,7 +606,9 @@ function RegistrarVentaContent() {
   const searchProducts = useCallback(
     async (page = 1) => {
       if (!selectedInventory) return;
-
+      productRequest.current?.abort();
+      const request = new AbortController();
+      productRequest.current = request;
       try {
         setProductsLoading(true);
 
@@ -580,7 +618,8 @@ function RegistrarVentaContent() {
           q: productQuery || undefined,
           page,
           limit: 12,
-        });
+        }, request.signal);
+        if (request.signal.aborted) return;
 
         if (page === 1) {
           setProducts(res.data);
@@ -594,12 +633,13 @@ function RegistrarVentaContent() {
         });
         setProductsPage(page);
       } catch (error) {
+        if (request.signal.aborted) return;
         // Falla silenciosa para el usuario (no bloquea la pantalla), pero se
         // loguea para poder diagnosticar búsquedas que antes fallaban sin
         // dejar ningún rastro (ni en UI ni en consola).
         console.error("Error al buscar productos", error);
       } finally {
-        setProductsLoading(false);
+        if (!request.signal.aborted) setProductsLoading(false);
       }
     },
     [selectedInventory, productQuery, companyId],
@@ -749,6 +789,7 @@ function RegistrarVentaContent() {
   };
 
   const resetForm = () => {
+    origin.reset();
     // Cliente
     setClientFound(null);
     setSearchState("idle");
@@ -910,6 +951,15 @@ function RegistrarVentaContent() {
   const handleConfirmSale = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
 
+    if (!saleContext.data || saleContext.isError || !origin.hasStore || !origin.hasInventory) {
+      toast.error(!origin.hasStore ? "Selecciona la tienda de la venta." : "Selecciona el almacén de salida.");
+      return;
+    }
+    if (orderId && !orderData) {
+      toast.error("La venta aún no se ha cargado.");
+      return;
+    }
+
     // Guard: prevent double-click submission
     if (isSubmittingRef.current) return;
     isSubmittingRef.current = true;
@@ -1053,7 +1103,8 @@ function RegistrarVentaContent() {
         orderType: orderDetails.orderType, // VENTA
 
         // --- Contexto ---
-        storeId: selectedStoreId,
+        storeId: origin.storeId,
+        ...(selectedInventory ? { inventoryId: selectedInventory } : {}),
 
         // --- Canales ---
         salesChannel: orderDetails.salesChannel,
@@ -1111,9 +1162,9 @@ function RegistrarVentaContent() {
           : null;
 
       try {
-        if (!orderData) {
+        if (!orderId) {
           const response = await axiosAuth.post(
-            `${GATEWAY.ventas}/order-header`,
+            `${GATEWAY.ventas}/order-header/manual`,
             payload,
           );
 
@@ -1206,6 +1257,7 @@ function RegistrarVentaContent() {
           setReceiptOpen(true);
           resetForm();
         } else {
+          if (!orderData) return;
           // Actualizar orden existente
           // El status solo se resetea a PENDIENTE si el usuario seleccionó manualmente el tipo CAMBIO
           const newStatus =
@@ -1270,7 +1322,7 @@ function RegistrarVentaContent() {
           };
 
           await axiosAuth.put(
-            `${GATEWAY.ventas}/order-header/${orderData.id}`,
+            `${GATEWAY.ventas}/order-header/manual/${orderData.id}/full`,
             updatePayload,
           );
 
@@ -1578,6 +1630,11 @@ function RegistrarVentaContent() {
     (!clientForm.documentType || !!clientForm.documentNumber.trim());
 
   const canSubmit =
+    !!saleContext.data &&
+    !saleContext.isError &&
+    origin.hasStore &&
+    origin.hasInventory &&
+    (!orderId || !!orderData) &&
     (!!clientFound || hasValidClientForNew) &&
     hasValidDocumentForRegion &&
     hasValidCart &&
@@ -1589,6 +1646,8 @@ function RegistrarVentaContent() {
     !packsEngine.pvsOpen;
 
   const checklist = [
+    { ok: origin.hasStore, msg: "Selecciona la tienda de la venta" },
+    { ok: origin.hasInventory, msg: "Selecciona el almacén de salida" },
     { ok: hasValidCart, msg: "Agrega al menos un producto al carrito" },
     {
       ok: !!clientFound || hasValidClientForNew,
@@ -1642,6 +1701,15 @@ function RegistrarVentaContent() {
                 guía; la guía no se genera automáticamente. Si tocás
                 &quot;Volver&quot; sin guardar, no se aplica ningún cambio.
               </span>
+            </div>
+          )}
+
+          {orderId && orderLoadError && (
+            <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 p-3 text-sm">
+              <span>No se pudo cargar la venta.</span>
+              <Button type="button" variant="outline" size="sm" onClick={() => void loadOrder()} disabled={orderLoading}>
+                Reintentar
+              </Button>
             </div>
           )}
 
@@ -2235,49 +2303,19 @@ function RegistrarVentaContent() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Contexto: tienda y almacén desde donde se vende */}
-                  <div className="flex flex-col gap-3 rounded-xl border bg-muted/20 p-3 sm:flex-row sm:items-center">
-                    <div className="flex shrink-0 items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                      <Store className="h-3.5 w-3.5" />
-                      Vendiendo desde
-                    </div>
-                    <div className="grid flex-1 gap-2 sm:grid-cols-2">
-                      <Select
-                        disabled={orderId !== null || isSubmitting}
-                        value={selectedStoreId ?? ""}
-                        onValueChange={(storeId) => setSelectedStore(storeId)}
-                      >
-                        <SelectTrigger className="h-9 bg-background">
-                          <SelectValue placeholder="Tienda" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {stores.map((store) => (
-                            <SelectItem key={store.id} value={store.id}>
-                              {store.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-
-                      <Select
-                        value={selectedInventory}
-                        disabled={!selectedStoreId || isSubmitting}
-                        onValueChange={(inventoryId) =>
-                          setSelectedInventory(inventoryId)
-                        }
-                      >
-                        <SelectTrigger className="h-9 bg-background">
-                          <SelectValue placeholder="Almacén" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {inventories.map((inv) => (
-                            <SelectItem key={inv.id} value={inv.id}>
-                              {inv.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="rounded-xl border bg-muted/20 p-3">
+                    <SaleOriginField
+                      label="Almacén de salida"
+                      options={warehouseOptions}
+                      value={selectedInventory}
+                      onChange={origin.chooseInventory}
+                      readOnly={Boolean(orderId)}
+                      disabled={isSubmitting || cart.length > 0 || saleContext.isError}
+                      loading={saleContext.isLoading}
+                      hint={!orderId && cart.length > 0 && inventories.length > 1
+                        ? "Vacía el carrito para cambiar de almacén."
+                        : undefined}
+                    />
                   </div>
 
                   {/* Buscador de productos */}
@@ -2286,6 +2324,7 @@ function RegistrarVentaContent() {
                       <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <Input
                         className="h-11 rounded-xl pl-10 pr-9 text-[15px] focus-visible:ring-4 focus-visible:ring-primary/10"
+                        disabled={!selectedInventory || isSubmitting}
                         placeholder='Buscar por modelo, color, talla o SKU — ej. "negro XL", "botines 39"...'
                         value={productQuery}
                         onChange={(e) => setProductQuery(e.target.value)}
@@ -2652,7 +2691,30 @@ function RegistrarVentaContent() {
                 </CardHeader>
 
                 <CardContent className="space-y-4">
+                  {saleContext.isError && (
+                    <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                      <span>No se pudieron cargar las tiendas y los almacenes.</span>
+                      <Button type="button" size="sm" variant="outline" onClick={() => void saleContext.refetch()} disabled={saleContext.isFetching}>
+                        Reintentar
+                      </Button>
+                    </div>
+                  )}
+                  {saleContext.data && !stores.length && !orderId && (
+                    <p role="alert" className="text-sm text-destructive">La empresa no tiene tiendas activas.</p>
+                  )}
+                  {saleContext.data && !inventories.length && !orderId && (
+                    <p role="alert" className="text-sm text-destructive">La empresa no tiene almacenes activos.</p>
+                  )}
                   <div className="grid md:grid-cols-2 gap-4">
+                    <SaleOriginField
+                      label="Tienda de la venta"
+                      options={stores}
+                      value={origin.storeId}
+                      onChange={origin.chooseStore}
+                      readOnly={Boolean(orderId)}
+                      disabled={isSubmitting || saleContext.isError}
+                      loading={saleContext.isLoading}
+                    />
                     {/* Tipo de orden */}
                     <div className="space-y-1">
                       <Label>
