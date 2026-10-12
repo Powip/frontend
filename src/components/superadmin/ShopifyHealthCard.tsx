@@ -26,6 +26,9 @@ const ISSUE_LABEL: Record<string, string> = {
 
 const shortShop = (url: string) => url.replace(/\.myshopify\.com$/, "");
 
+/** El chequeo corre cada hora: más de 2 h sin correr es un problema. */
+const AUDIT_STALE_MS = 2 * 60 * 60 * 1000;
+
 const fmt = (iso: string | null) =>
   iso
     ? new Date(iso).toLocaleString("es-PE", { timeZone: "America/Lima", dateStyle: "short", timeStyle: "short" })
@@ -34,8 +37,14 @@ const fmt = (iso: string | null) =>
 /** Contenido de la tarjeta (sin datos remotos), separado para poder testearlo. */
 export function ShopifyHealthContent({ report }: { report: ShopifyHealthReport }) {
   const s = report.summary;
-  const problems = s.error + s.token_revocado + s.plan_impago + s.desinstalada + s.openIssues + (s.dlq ?? 0);
-  const allOk = problems === 0 && report.shops.length === 0;
+  const failedShops = report.lastAuditFailedShops ?? 0;
+  const auditStale =
+    !!report.lastAuditAt &&
+    new Date(report.generatedAt).getTime() - new Date(report.lastAuditAt).getTime() > AUDIT_STALE_MS;
+  const problems =
+    s.error + s.token_revocado + s.plan_impago + s.desinstalada + s.openIssues + (s.dlq ?? 0) + failedShops;
+  // Sin dato de la cola no se puede afirmar que esté todo bien.
+  const allOk = problems === 0 && report.shops.length === 0 && s.dlq !== null && !auditStale;
 
   return (
     <div className="space-y-4">
@@ -53,6 +62,7 @@ export function ShopifyHealthContent({ report }: { report: ShopifyHealthReport }
           </>
         )}
         <span className="text-muted-foreground">DLQ: {s.dlq === null ? "sin dato" : s.dlq}</span>
+        {(s.retrying ?? 0) > 0 && <span className="text-muted-foreground">Reintentando: {s.retrying}</span>}
       </div>
 
       {report.shops.length > 0 && (
@@ -105,8 +115,8 @@ export function ShopifyHealthContent({ report }: { report: ShopifyHealthReport }
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {report.issues.map((issue) => (
-                  <TableRow key={`${issue.shopUrl}-${issue.orderName}-${issue.type}`}>
+                {report.issues.map((issue, i) => (
+                  <TableRow key={issue.id ?? `${issue.shopUrl}-${issue.orderName}-${issue.type}-${i}`}>
                     <TableCell>{shortShop(issue.shopUrl)}</TableCell>
                     <TableCell>{issue.orderName ?? "—"}</TableCell>
                     <TableCell>{issue.orderNumber ?? "—"}</TableCell>
@@ -121,8 +131,10 @@ export function ShopifyHealthContent({ report }: { report: ShopifyHealthReport }
         </div>
       )}
 
-      <p className="text-[10px] text-muted-foreground">
+      <p className={`text-[10px] ${auditStale || failedShops > 0 ? "text-red-600" : "text-muted-foreground"}`}>
         Último chequeo de pedidos: {report.lastAuditAt ? fmt(report.lastAuditAt) : "sin corridas todavía"}
+        {auditStale && " · atrasado"}
+        {failedShops > 0 && ` · ${failedShops} ${failedShops === 1 ? "tienda falló" : "tiendas fallaron"}`}
       </p>
     </div>
   );

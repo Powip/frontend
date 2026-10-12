@@ -5,6 +5,8 @@ import axios from "axios";
 export type ShopifyHealthReport = {
   generatedAt: string;
   lastAuditAt: string | null;
+  /** Tiendas que fallaron en la última corrida (opcional: el backend viejo no lo manda). */
+  lastAuditFailedShops?: number;
   summary: {
     ok: number;
     error: number;
@@ -25,6 +27,7 @@ export type ShopifyHealthReport = {
     needsReauthorization: boolean;
   }>;
   issues: Array<{
+    id?: string;
     shopUrl: string;
     orderName: string | null;
     orderNumber: string | null;
