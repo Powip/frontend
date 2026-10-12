@@ -17,14 +17,6 @@ import { buttonVariants } from "@/components/ui/buttonVariant";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import {
   ReconciliationTask,
@@ -36,9 +28,20 @@ import {
 import { VariantStock } from "@/services/inventoryItems.service";
 import { useReconciliationTaskDetails } from "@/hooks/useReconciliationTaskDetails";
 import { useReconciliationStockByVariants } from "@/hooks/useReconciliationStockByVariants";
+import {
+  formatMoney,
+  resolveMergeCost,
+  validateMergeStock,
+  type MergeCostChoice,
+  type MergeStockSides,
+} from "./mergeStockCost";
+import { ReconciliationMergeCompare } from "./ReconciliationMergeCompare";
+import { ReconciliationMergeStockCostStep } from "./ReconciliationMergeStockCostStep";
+import { ReconciliationSiblingVariantsTable } from "./ReconciliationSiblingVariantsTable";
 import { ReconciliationSourceChip } from "./ReconciliationSourceChip";
+import type { MergeStockMode } from "@/services/reconciliationTask.service";
 
-type MergeStep = "select" | "preview";
+type MergeStep = "select" | "review" | "final";
 
 interface ReconciliationMergeDialogProps {
   // Tarea `type: 'duplicate_cluster'` a resolver. `null` cierra el diálogo —
@@ -48,18 +51,6 @@ interface ReconciliationMergeDialogProps {
   task: ReconciliationTask | null;
   onClose: () => void;
   onSuccess: () => Promise<void> | void;
-}
-
-function formatMoney(value: number | null | undefined): string {
-  const numeric = Number(value);
-  if (value === null || value === undefined || Number.isNaN(numeric)) {
-    return "S/ 0.00";
-  }
-  return new Intl.NumberFormat("es-PE", {
-    style: "currency",
-    currency: "PEN",
-    minimumFractionDigits: 2,
-  }).format(numeric);
 }
 
 function getInitials(name: string): string {
@@ -259,59 +250,13 @@ function CandidateCard({
                 : ""}
             </span>
           </div>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="h-7 px-2 text-[10px]">
-                  Atributos
-                </TableHead>
-                <TableHead className="h-7 px-2 text-[10px]">SKU</TableHead>
-                <TableHead className="h-7 px-2 text-right text-[10px]">
-                  Precio
-                </TableHead>
-                <TableHead className="h-7 px-2 text-right text-[10px]">
-                  Stock
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {product.variants.map((variant) => {
-                const variantStock = stockByVariantId.get(variant.id);
-                const isThisVariant =
-                  variant.id === (detail?.variant.id ?? item.variant_id);
-                return (
-                  <TableRow
-                    key={variant.id}
-                    className={isThisVariant ? "bg-primary/5" : undefined}
-                  >
-                    <TableCell className="px-2 py-1 whitespace-normal">
-                      {Object.values(variant.attribute_values)
-                        .filter(Boolean)
-                        .join(" · ") || "—"}
-                      {isThisVariant && (
-                        <Badge variant="outline" className="ml-1 text-[9px]">
-                          Esta variante
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="px-2 py-1 font-mono">
-                      {variant.sku ?? variant.company_sku ?? "—"}
-                    </TableCell>
-                    <TableCell className="px-2 py-1 text-right">
-                      {formatMoney(variant.price)}
-                    </TableCell>
-                    <TableCell className="px-2 py-1 text-right">
-                      {isStockLoading
-                        ? "…"
-                        : isStockError
-                          ? "—"
-                          : (variantStock?.quantity ?? 0)}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+          <ReconciliationSiblingVariantsTable
+            variants={product.variants}
+            currentVariantId={detail?.variant.id ?? item.variant_id ?? ""}
+            stockByVariantId={stockByVariantId}
+            isStockLoading={isStockLoading}
+            isStockError={isStockError}
+          />
         </div>
       )}
     </div>
@@ -327,6 +272,11 @@ export function ReconciliationMergeDialog({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [step, setStep] = useState<MergeStep>("select");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // FEAT-17 Anexo E — paso 3 (solo pares). Stock sin preselección (D-E3).
+  const [stockMode, setStockMode] = useState<MergeStockMode | null>(null);
+  const [countedRaw, setCountedRaw] = useState("");
+  const [costChoice, setCostChoice] = useState<MergeCostChoice>("winner");
+  const [customCostRaw, setCustomCostRaw] = useState("");
 
   // Preselecciona la ganadora sugerida por el backend (heurística: origen
   // manual > variante más antigua). Si el cluster no trae ninguna marcada
@@ -345,6 +295,13 @@ export function ReconciliationMergeDialog({
     setStep("select");
     setExpandedIds(new Set());
   }, [task]);
+
+  useEffect(() => {
+    setStockMode(null);
+    setCountedRaw("");
+    setCostChoice("winner");
+    setCustomCostRaw("");
+  }, [task, selectedWinnerId]);
 
   const detailsQuery = useReconciliationTaskDetails(task?.id ?? null);
 
@@ -464,6 +421,31 @@ export function ReconciliationMergeDialog({
       }, 0)
     : null;
 
+  // D-E10: elegir stock y costo solo aplica a pares; 3+ conserva la suma.
+  const isPair = loserItems.length === 1;
+  const loserVariantId = isPair ? loserItems[0].variant_id : null;
+  const loserStock = loserVariantId ? stockByVariantId.get(loserVariantId) : undefined;
+  const loserDetail = loserVariantId ? candidateByVariantId.get(loserVariantId) : undefined;
+  const pairSides: MergeStockSides = {
+    winnerQuantity: winnerStock?.quantity ?? 0,
+    winnerReserved: winnerStock?.reserved_quantity ?? 0,
+    loserQuantity: loserStock?.quantity ?? 0,
+    loserReserved: loserStock?.reserved_quantity ?? 0,
+  };
+  const winnerCost = Number(winnerDetail?.variant.cost) || 0;
+  const loserCost = Number(loserDetail?.variant.cost) || 0;
+  const pairDataReady = hasFullStock && detailsQuery.isSuccess;
+  const pairDataFailed = stockQuery.isError || detailsQuery.isError;
+  const stockValidation = validateMergeStock(stockMode, pairSides, countedRaw);
+  const costResolution = resolveMergeCost(costChoice, winnerCost, loserCost, customCostRaw);
+  const showShopifyNotice = task.items.some((item) => item.source === "shopify");
+  const canApplyPair =
+    pairDataReady &&
+    stockMode !== null &&
+    stockValidation.finalQuantity !== null &&
+    stockValidation.error === null &&
+    costResolution.value !== null;
+
   const handleConfirm = async () => {
     if (!selectedWinnerId) return;
 
@@ -476,11 +458,17 @@ export function ReconciliationMergeDialog({
 
     setIsSubmitting(true);
     try {
-      await resolveReconciliationMerge(
-        task.id,
-        selectedWinnerId,
-        loserVariantIds,
-      );
+      if (isPair && stockMode && costResolution.value !== null) {
+        await resolveReconciliationMerge(task.id, selectedWinnerId, loserVariantIds, {
+          stockMode,
+          ...(stockMode === "count" && stockValidation.finalQuantity !== null
+            ? { countedQuantity: stockValidation.finalQuantity }
+            : {}),
+          priceBase: costResolution.value,
+        });
+      } else {
+        await resolveReconciliationMerge(task.id, selectedWinnerId, loserVariantIds);
+      }
       toast.success("Cluster de duplicados fusionado correctamente");
       await onSuccess();
       onClose();
@@ -499,7 +487,11 @@ export function ReconciliationMergeDialog({
   const subtitle =
     step === "select"
       ? "Elegí cuál queda en Powip. Nada se aplica hasta que confirmes."
-      : "Vista previa: así va a quedar. Todavía no se aplicó nada.";
+      : step === "review"
+        ? "Corroborá que son el mismo producto. Todavía no se aplicó nada."
+        : isPair
+          ? "Elegí con qué stock y costo queda. Todavía no se aplicó nada."
+          : "Vista previa: así va a quedar. Todavía no se aplicó nada.";
 
   return (
     <AlertDialog
@@ -576,6 +568,61 @@ export function ReconciliationMergeDialog({
                   })}
                 </div>
               )
+            ) : step === "review" ? (
+              <ReconciliationMergeCompare
+                items={task.items}
+                winnerId={selectedWinnerId}
+                candidateByVariantId={candidateByVariantId}
+                stockByVariantId={stockByVariantId}
+                isStockLoading={isCalculatingStock}
+                isStockError={stockQuery.isError}
+              />
+            ) : isPair ? (
+              <div className="space-y-4">
+                {pairDataFailed ? (
+                  <div className="space-y-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                    <p>No se pudieron cargar el stock o el costo. Sin esos datos no se puede unificar.</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        void detailsQuery.refetch();
+                        void stockQuery.refetch();
+                      }}
+                    >
+                      Reintentar
+                    </Button>
+                  </div>
+                ) : !pairDataReady ? (
+                  <p className="text-sm text-muted-foreground">Calculando…</p>
+                ) : (
+                  <ReconciliationMergeStockCostStep
+                    sides={pairSides}
+                    winnerCost={winnerCost}
+                    loserCost={loserCost}
+                    showShopifyNotice={showShopifyNotice}
+                    stockMode={stockMode}
+                    onStockModeChange={setStockMode}
+                    countedRaw={countedRaw}
+                    onCountedRawChange={setCountedRaw}
+                    costChoice={costChoice}
+                    onCostChoiceChange={setCostChoice}
+                    customCostRaw={customCostRaw}
+                    onCustomCostRawChange={setCustomCostRaw}
+                    stockValidation={stockValidation}
+                    cost={costResolution}
+                    disabled={isSubmitting}
+                  />
+                )}
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Las variantes que se fusionan quedan inactivas. Sus
+                  próximas ventas descuentan de la variante que queda.
+                </div>
+                <p className="text-sm font-semibold text-destructive">
+                  Esta acción no se puede deshacer.
+                </p>
+              </div>
             ) : (
               <div className="space-y-4">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -691,7 +738,25 @@ export function ReconciliationMergeDialog({
               <Button
                 type="button"
                 disabled={isSubmitting || !selectedWinnerId}
-                onClick={() => setStep("preview")}
+                onClick={() => setStep("review")}
+              >
+                Corroborar →
+              </Button>
+            </>
+          ) : step === "review" ? (
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={isSubmitting}
+                onClick={() => setStep("select")}
+              >
+                ← Volver
+              </Button>
+              <Button
+                type="button"
+                disabled={isSubmitting}
+                onClick={() => setStep("final")}
               >
                 Vista previa →
               </Button>
@@ -702,13 +767,13 @@ export function ReconciliationMergeDialog({
                 type="button"
                 variant="outline"
                 disabled={isSubmitting}
-                onClick={() => setStep("select")}
+                onClick={() => setStep("review")}
               >
                 ← Volver
               </Button>
               <AlertDialogAction
                 className={buttonVariants({ variant: "destructive" })}
-                disabled={isSubmitting || !selectedWinnerId}
+                disabled={isSubmitting || !selectedWinnerId || (isPair && !canApplyPair)}
                 onClick={(event) => {
                   // Mantiene el diálogo abierto (mostrando el spinner) hasta
                   // que la mutación termina, en vez del cierre inmediato por
