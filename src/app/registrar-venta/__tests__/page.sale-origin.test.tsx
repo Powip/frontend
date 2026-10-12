@@ -100,6 +100,8 @@ let responseContext: typeof context & { channels?: SaleSalesChannel[]; inventory
 let responseOrder: typeof existingOrder | (Omit<typeof existingOrder, "inventoryId" | "stockStoreId"> & { inventoryId: null; stockStoreId: null });
 let contextFails: boolean;
 let orderFails: boolean;
+let courierFails: boolean;
+let courierRecords: { id: string; name: string; companyId: string }[];
 
 beforeAll(() => {
   if (!globalThis.crypto.randomUUID) Object.defineProperty(globalThis.crypto, "randomUUID", { configurable: true, value: () => "fixture-cart-id" });
@@ -111,6 +113,8 @@ beforeEach(() => {
   responseOrder = existingOrder;
   contextFails = false;
   orderFails = false;
+  courierFails = false;
+  courierRecords = [];
   jest.mocked(useAuth).mockReturnValue({
     auth: { user: { id: "seller-1", name: "Vendedora", surname: "Ficticia", email: "fixture@example.test", role: "ADMIN", permissions: [] },
       company: { id: "company-1", name: "Empresa ficticia", stores: context.stores }, accessToken: "fixture-token", subscription: null, exp: 9999999999 },
@@ -122,6 +126,7 @@ beforeEach(() => {
   http.get.mockImplementation((url: string) => {
     if (url.endsWith("/order-header/sale-context")) return contextFails ? Promise.reject(new Error("Context unavailable")) : Promise.resolve({ data: responseContext });
     if (url.endsWith("/order-header/manual/order-existing")) return orderFails ? Promise.reject(new Error("Order unavailable")) : Promise.resolve({ data: responseOrder });
+    if (url.includes("/couriers/company/")) return courierFails ? Promise.reject(new Error("Couriers unavailable")) : Promise.resolve({ data: courierRecords });
     return Promise.resolve({ data: [] });
   });
   http.post.mockResolvedValue({ data: { id: "order-created", payments: [] } });
@@ -152,6 +157,18 @@ async function waitContext() {
 }
 
 describe("Registrar venta — tienda comercial y almacén independientes", () => {
+  it("recupera una carga fallida de métodos de envío y ofrece el courier real de la empresa", async () => {
+    courierFails = true;
+    mountPage();
+    expect(await screen.findByText("No se pudieron cargar los métodos de envío.")).toBeInTheDocument();
+    courierFails = false;
+    courierRecords = [{ id: "real-shalom-id", name: "Shalom", companyId: "company-1" }];
+    await userEvent.click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByRole("option", { name: "Shalom" })).toHaveValue("Shalom");
+    expect(screen.queryByText("No se pudieron cargar los métodos de envío.")).not.toBeInTheDocument();
+    expect(http.post).not.toHaveBeenCalled();
+  });
+
   it("navbar A y almacén A permiten vender para B; POST manual conserva ambos y no cambia navegación", async () => {
     mountPage();
     await waitContext();

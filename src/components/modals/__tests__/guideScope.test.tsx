@@ -6,6 +6,7 @@ import CreateGuideModal from '../CreateGuideModal';
 import AddToExistingGuideModal from '../AddToExistingGuideModal';
 import { useBusinessGuides } from '@/hooks/useBusinessGuides';
 import { useBusinessOrders } from '@/hooks/useBusinessOrders';
+import { fetchCouriers } from '@/services/courierService';
 
 jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { company: { id: 'company' }, accessToken: 'token' } }) }));
 jest.mock('@/services/courierService', () => ({ fetchCouriers: jest.fn().mockResolvedValue([{ id: 'courier-one', name: 'Courier One' }]) }));
@@ -29,6 +30,34 @@ beforeEach(() => {
 });
 
 describe('guide actions keep the selected orders source', () => {
+  it('shows a courier load failure and can retry to create a guide with the real Shalom ID', async () => {
+    jest.mocked(fetchCouriers).mockRejectedValueOnce(new Error('503')).mockResolvedValueOnce([
+      { id: 'real-shalom-id', name: 'Shalom', companyId: 'company', isActive: true, created_at: '2026-10-12T12:00:00Z' },
+    ]);
+    const confirm = jest.fn().mockResolvedValue(undefined);
+    render(<CreateGuideModal open onClose={jest.fn()} selectedOrders={[selected]} storeId="kunca" onConfirm={confirm} defaultCourierName=" SHALOM " />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudieron cargar los couriers.');
+    const submit = screen.getByRole('button', { name: /generar guía/i });
+    expect(submit).toBeDisabled();
+    await userEvent.click(screen.getByRole('button', { name: /reintentar/i }));
+    await waitFor(() => expect(submit).toBeEnabled());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await userEvent.click(submit);
+    expect(confirm).toHaveBeenCalledWith([expect.objectContaining({
+      storeId: 'web', courierId: 'real-shalom-id', courierName: 'Shalom',
+    })]);
+  });
+
+  it('retains the generic Otros method when the company has an empty courier catalogue', async () => {
+    jest.mocked(fetchCouriers).mockResolvedValueOnce([]);
+    const confirm = jest.fn().mockResolvedValue(undefined);
+    render(<CreateGuideModal open onClose={jest.fn()} selectedOrders={[selected]} storeId="kunca" onConfirm={confirm} defaultCourierName="OTROS" />);
+    const submit = screen.getByRole('button', { name: /generar guía/i });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await userEvent.click(submit);
+    expect(confirm).toHaveBeenCalledWith([expect.objectContaining({ courierName: 'Otros', courierId: undefined })]);
+  });
+
   it('creates a WEB guide even while KUNCA is selected as the global destination', async () => {
     const confirm = jest.fn().mockResolvedValue(undefined);
     render(<CreateGuideModal open onClose={jest.fn()} selectedOrders={[selected]} storeId="kunca" onConfirm={confirm} defaultCourierId="courier-one" />);

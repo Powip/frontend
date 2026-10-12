@@ -52,6 +52,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PacksProvider, usePacks } from "@/contexts/PacksContext";
 import { DeliveryType, OrderType, type SalesChannel } from "@/enum/Order.enum";
 import { usePacksEngine } from "@/hooks/usePacksEngine";
+import { useCompanyCouriers } from "@/hooks/useCompanyCouriers";
 import type { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
 import type { CartItem, OrderHeader } from "@/interfaces/IOrder";
 import type { GiftOption, Pack, VolumePack } from "@/interfaces/IPack";
@@ -383,20 +384,7 @@ function RegistrarVentaContent() {
   });
 
   /* ---------------- Couriers ---------------- */
-  const [couriers, setCouriers] = useState<{ id: string; name: string }[]>([]);
-  const [isLoadingCouriers, setIsLoadingCouriers] = useState(false);
-
-  useEffect(() => {
-    if (!companyId) return;
-    setIsLoadingCouriers(true);
-    axiosAuth
-      .get<{ id: string; name: string; companyId: string }[]>(
-        `${GATEWAY.courier}/couriers/company/${companyId}`,
-      )
-      .then((res) => setCouriers(res.data))
-      .catch(() => setCouriers([]))
-      .finally(() => setIsLoadingCouriers(false));
-  }, [companyId]);
+  const { couriers, loading: isLoadingCouriers, error: couriersError, retry: retryCouriers } = useCompanyCouriers();
 
   const isIdle = searchState === "idle";
   const isFound = searchState === "found";
@@ -911,6 +899,10 @@ function RegistrarVentaContent() {
     }
     if (orderId && !orderData) {
       toast.error("La venta aún no se ha cargado.");
+      return;
+    }
+    if (!hasValidDelivery) {
+      toast.error("Selecciona un método de envío disponible para esta empresa.");
       return;
     }
     if (!hasValidSalesChannel) {
@@ -1503,7 +1495,9 @@ function RegistrarVentaContent() {
 
   const hasValidDelivery =
     orderDetails.deliveryType === DeliveryType.RETIRO_TIENDA ||
-    (orderDetails.deliveryType && orderDetails.enviaPor);
+    (orderDetails.deliveryType === DeliveryType.DOMICILIO && Boolean(orderDetails.enviaPor) &&
+      (Boolean(orderId) || orderDetails.enviaPor === "OTROS" ||
+        couriers.some((courier) => courier.name === orderDetails.enviaPor)));
 
   const hasValidPayments = !!paymentMethod;
 
@@ -2662,6 +2656,14 @@ function RegistrarVentaContent() {
                             <SelectItem value="OTROS">Otros</SelectItem>
                           </SelectContent>
                         </Select>
+                        {couriersError && (
+                          <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
+                            <span>No se pudieron cargar los métodos de envío.</span>
+                            <Button type="button" variant="outline" size="sm" onClick={() => void retryCouriers()}>
+                              Reintentar
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
