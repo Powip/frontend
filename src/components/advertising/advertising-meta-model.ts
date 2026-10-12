@@ -59,6 +59,23 @@ export function metaResultDescription(type: MetaResultType) {
   return type === "messages" ? "Conversaciones iniciadas" : "Compras en el sitio web";
 }
 
+export function metaResultCostLabel(type: MetaResultType) {
+  return type === "messages" ? "Costo por conversación" : "Costo por compra";
+}
+
+export function metaResultCountLabel(type: MetaResultType) {
+  return type === "messages" ? "Conversaciones" : "Compras por web";
+}
+
+/** Conversion availability is independent of the account's spend coverage. */
+export function metaResultAvailabilityLabel(metric: MetaResultMetric | undefined) {
+  if (metric?.status === "complete")
+    return metric.count !== null && /^0+(?:\.0+)?$/.test(metric.count)
+      ? "Sin resultados"
+      : "Completo";
+  return metric?.status === "partial" ? "Parcial" : "No disponible";
+}
+
 /** Only server metrics preserve the completeness of each imported ad/day. */
 export function formatMetaResultCount(metric: MetaResultMetric | undefined) {
   return formatMetaNumber(metric?.count ?? null);

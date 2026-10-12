@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,8 +31,10 @@ import {
   metaActionLabel,
   metaAdsManagerUrl,
   metaCoverageLabel,
+  metaResultAvailabilityLabel,
+  metaResultCostLabel,
+  metaResultCountLabel,
   metaResultDescription,
-  metaResultLabel,
   metaStatusLabel,
 } from "./advertising-meta-model";
 import { formatAdvertisingDate } from "./advertising-model";
@@ -61,6 +63,13 @@ export function AdvertisingMetaAdDetail({
   });
   const detail = query.data;
   const manageUrl = detail ? metaAdsManagerUrl(detail.account.externalId) : null;
+  const metric = detail?.row.insights.resultMetrics?.[resultType];
+  const costLabel = metaResultCostLabel(resultType);
+  const countLabel = metaResultCountLabel(resultType);
+  const events =
+    detail?.row.insights.actions?.filter(
+      (action) => metaActionLabel(action.actionType) !== action.actionType,
+    ) ?? [];
   return (
     <Dialog
       open={selected !== null}
@@ -68,7 +77,7 @@ export function AdvertisingMetaAdDetail({
         if (!open) onClose();
       }}
     >
-      <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="max-h-[90dvh] min-w-0 overflow-y-auto sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>{selected?.name ?? "Detalle de anuncio"}</DialogTitle>
           <DialogDescription>
@@ -90,148 +99,155 @@ export function AdvertisingMetaAdDetail({
         ) : (
           <div className="min-w-0 space-y-5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-muted-foreground">Último estado registrado:</span>
-              <Badge variant="outline">{metaStatusLabel(detail.row.effectiveStatus)}</Badge>
-              <Badge variant="outline">{metaCoverageLabel(detail.row.insights.coverage)}</Badge>
               <span className="text-xs text-muted-foreground">
-                {detail.account.name} · {detail.row.currency} · {detail.row.timeZone}
+                {metaResultDescription(resultType)} · {detail.account.name} · {detail.row.currency}
               </span>
+              <Badge variant="outline">{metaResultAvailabilityLabel(metric)}</Badge>
             </div>
-            <p className="break-all text-xs text-muted-foreground">
-              ID {detail.row.id} · Campaña {detail.row.campaignId ?? "No disponible"} · Conjunto{" "}
-              {detail.row.adsetId ?? "No disponible"}
-            </p>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <section
+              className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+              aria-label="Resultados del anuncio"
+            >
               {[
-                [
-                  "Costo por resultado",
-                  formatMetaCostPerResult(
-                    detail.row.insights.resultMetrics?.[resultType],
-                    detail.row.currency,
-                  ),
-                ],
-                [
-                  "Resultados",
-                  formatMetaResultCount(detail.row.insights.resultMetrics?.[resultType]),
-                ],
-                ["Conversión", metaResultLabel(resultType)],
-              ].map(([label, value]) => (
-                <Card key={label}>
+                [costLabel, formatMetaCostPerResult(metric, detail.row.currency)],
+                [countLabel, formatMetaResultCount(metric)],
+                ["Gasto", formatMetaSpend(detail.row.insights.spend, detail.row.currency)],
+              ].map(([label, value], index) => (
+                <Card key={label} className={index === 0 ? "col-span-2 sm:col-span-1" : undefined}>
                   <CardContent className="space-y-2 pt-4">
                     <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="text-xl font-semibold tabular-nums">{value}</p>
-                    {label === "Conversión" ? (
-                      <p className="text-xs text-muted-foreground">
-                        {metaResultDescription(resultType)}
-                      </p>
-                    ) : null}
+                    <p className="break-words text-xl font-semibold tabular-nums">{value}</p>
                   </CardContent>
                 </Card>
               ))}
-            </div>
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                ["Gasto Meta", formatMetaSpend(detail.row.insights.spend, detail.row.currency)],
-                ["Impresiones Meta", formatMetaNumber(detail.row.insights.impressions)],
-                ["Clics Meta", formatMetaNumber(detail.row.insights.clicks)],
-              ].map(([label, value]) => (
-                <Card key={label}>
-                  <CardContent className="space-y-2 pt-4">
-                    <p className="text-xs text-muted-foreground">{label}</p>
-                    <p className="font-mono text-xl font-semibold tabular-nums">{value}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            <section className="space-y-3" aria-label="Eventos reportados por Meta">
-              <h3 className="text-sm font-semibold">Eventos reportados por Meta</h3>
-              <p className="text-xs text-muted-foreground">
-                Atribución: 7 días después del clic y 1 día después de la vista. Fecha de impresión.
-                Estos eventos no son pedidos entregados ni cobros de Powip.
-              </p>
-              {detail.row.insights.actions?.length ? (
-                <dl className="grid gap-3 sm:grid-cols-2">
-                  {detail.row.insights.actions.map((action) => (
-                    <div key={action.actionType} className="rounded-lg border border-border p-3">
-                      <dt className="text-sm">{metaActionLabel(action.actionType)}</dt>
-                      <dd className="font-mono font-semibold tabular-nums">
-                        {formatMetaNumber(action.value)}
-                      </dd>
-                      {metaActionLabel(action.actionType) !== action.actionType ? (
-                        <p className="mt-1 break-all text-xs text-muted-foreground">
-                          {action.actionType}
-                        </p>
-                      ) : null}
-                    </div>
-                  ))}
-                </dl>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No hay eventos disponibles en este periodo.
-                </p>
-              )}
             </section>
             <section className="min-w-0 space-y-3" aria-label="Resultados diarios de Meta">
               <h3 className="text-sm font-semibold">Detalle diario</h3>
-              <Table aria-label="Resultados diarios del anuncio">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Fecha</TableHead>
-                    <TableHead className="text-right">Costo por resultado</TableHead>
-                    <TableHead className="text-right">{metaResultLabel(resultType)}</TableHead>
-                    <TableHead className="text-right">Gasto Meta</TableHead>
-                    <TableHead className="text-right">Impresiones</TableHead>
-                    <TableHead className="text-right">Clics</TableHead>
-                    <TableHead>Datos</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {detail.daily.map((day) => (
-                    <TableRow key={day.date}>
-                      <TableCell className="whitespace-nowrap">
-                        {formatAdvertisingDate(day.date)} {day.date.slice(0, 4)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-semibold tabular-nums">
-                        {formatMetaCostPerResult(
-                          day.resultMetrics?.[resultType],
-                          detail.row.currency,
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right font-mono font-semibold tabular-nums">
-                        {formatMetaResultCount(day.resultMetrics?.[resultType])}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {formatMetaSpend(day.spend, detail.row.currency)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {formatMetaNumber(day.impressions)}
-                      </TableCell>
-                      <TableCell className="text-right font-mono tabular-nums">
-                        {formatMetaNumber(day.clicks)}
-                      </TableCell>
-                      <TableCell>
-                        {day.coverage === "pending"
-                          ? "Pendientes"
-                          : day.provisional
-                            ? "Provisionales"
-                            : "Completos"}
-                      </TableCell>
+              <ul className="space-y-2 sm:hidden" aria-label="Resultados diarios en móvil">
+                {detail.daily.map((day) => {
+                  const dayMetric = day.resultMetrics?.[resultType];
+                  return (
+                    <li key={day.date} className="space-y-3 rounded-lg border border-border p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-medium">
+                          {formatAdvertisingDate(day.date)} {day.date.slice(0, 4)}
+                        </p>
+                        <Badge variant="outline">{metaResultAvailabilityLabel(dayMetric)}</Badge>
+                      </div>
+                      <dl className="grid grid-cols-2 gap-3">
+                        <div>
+                          <dt className="min-h-8 text-xs text-muted-foreground">{costLabel}</dt>
+                          <dd className="break-words font-semibold tabular-nums">
+                            {formatMetaCostPerResult(dayMetric, detail.row.currency)}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="min-h-8 text-xs text-muted-foreground">{countLabel}</dt>
+                          <dd className="break-words font-semibold tabular-nums">
+                            {formatMetaResultCount(dayMetric)}
+                          </dd>
+                        </div>
+                        <div className="col-span-2 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2">
+                          <dt className="text-xs text-muted-foreground">Gasto</dt>
+                          <dd className="font-semibold tabular-nums">
+                            {formatMetaSpend(day.spend, detail.row.currency)}
+                          </dd>
+                        </div>
+                      </dl>
+                    </li>
+                  );
+                })}
+              </ul>
+              <div className="hidden sm:block">
+                <Table aria-label="Resultados diarios del anuncio">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead className="text-right">{costLabel}</TableHead>
+                      <TableHead className="text-right">{countLabel}</TableHead>
+                      <TableHead className="text-right">Gasto</TableHead>
+                      <TableHead>Disponibilidad</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {detail.daily.map((day) => (
+                      <TableRow key={day.date}>
+                        <TableCell className="whitespace-nowrap">
+                          {formatAdvertisingDate(day.date)} {day.date.slice(0, 4)}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold tabular-nums">
+                          {formatMetaCostPerResult(
+                            day.resultMetrics?.[resultType],
+                            detail.row.currency,
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right font-mono font-semibold tabular-nums">
+                          {formatMetaResultCount(day.resultMetrics?.[resultType])}
+                        </TableCell>
+                        <TableCell className="text-right font-mono tabular-nums">
+                          {formatMetaSpend(day.spend, detail.row.currency)}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant="outline">
+                            {metaResultAvailabilityLabel(day.resultMetrics?.[resultType])}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
             </section>
-            <section
-              className="space-y-3 border-t border-border pt-4"
-              aria-label="Gestión de anuncio"
-            >
+            <details className="group rounded-lg border border-border">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg p-4 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
+                Más información
+                <ChevronDown
+                  className="size-4 transition-transform group-open:rotate-180"
+                  aria-hidden="true"
+                />
+              </summary>
+              <div className="space-y-4 border-t border-border p-4">
+                <dl className="grid gap-3 sm:grid-cols-2">
+                  {[
+                    ["Impresiones", formatMetaNumber(detail.row.insights.impressions)],
+                    ["Clics", formatMetaNumber(detail.row.insights.clicks)],
+                    ["Último estado registrado", metaStatusLabel(detail.row.effectiveStatus)],
+                    ["Datos de gasto", metaCoverageLabel(detail.row.insights.coverage)],
+                  ].map(([label, value]) => (
+                    <div key={label}>
+                      <dt className="text-xs text-muted-foreground">{label}</dt>
+                      <dd className="text-sm font-medium tabular-nums">{value}</dd>
+                    </div>
+                  ))}
+                </dl>
+                <section className="space-y-3" aria-label="Eventos reportados por Meta">
+                  <h3 className="text-sm font-semibold">Eventos reportados por Meta</h3>
+                  {events.length ? (
+                    <dl className="grid gap-3 sm:grid-cols-2">
+                      {events.map((action) => (
+                        <div key={action.actionType}>
+                          <dt className="text-xs text-muted-foreground">
+                            {metaActionLabel(action.actionType)}
+                          </dt>
+                          <dd className="font-semibold tabular-nums">
+                            {formatMetaNumber(action.value)}
+                          </dd>
+                        </div>
+                      ))}
+                    </dl>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      No hay otros eventos disponibles.
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Estos eventos no son pedidos entregados ni cobros de Powip.
+                  </p>
+                </section>
+              </div>
+            </details>
+            <section className="space-y-3 border-t border-border pt-4" aria-label="Fuente de datos">
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" disabled>
-                  Pausar anuncio
-                </Button>
-                <Button size="sm" variant="outline" disabled>
-                  Cambiar presupuesto
-                </Button>
                 {manageUrl ? (
                   <Button size="sm" variant="outline" asChild>
                     <a href={manageUrl} target="_blank" rel="noopener noreferrer">
@@ -241,8 +257,8 @@ export function AdvertisingMetaAdDetail({
                 ) : null}
               </div>
               <p className="text-xs text-muted-foreground">
-                Powip tiene acceso de lectura. Los cambios de anuncios y presupuesto requieren
-                permisos de gestión de Meta.
+                Fuente: Meta · Atribución de 7 días por clic y 1 día por vista · Fecha de impresión.
+                Zona horaria: {detail.account.timeZone}.
               </p>
             </section>
           </div>

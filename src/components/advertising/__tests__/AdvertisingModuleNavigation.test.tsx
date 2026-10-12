@@ -57,18 +57,23 @@ it("opens Publicidad with its own navigation and a shared 30-day period", async 
       <PeriodEvidence />
     </AdvertisingModuleShell>,
   );
-  expect(screen.getByRole("heading", { name: "Publicidad" })).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Publicidad" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Resumen" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Conexiones" })).toHaveAttribute(
     "href",
     "/publicidad/conexiones",
   );
   expect(screen.getByText("2026-09-11 / 2026-10-10")).toBeVisible();
+  expect(screen.getByRole("group", { name: "Periodo seleccionado" })).toHaveTextContent(
+    "11 sep–10 oct",
+  );
+  expect(screen.queryByText("Consulta la publicidad de tu empresa.")).not.toBeInTheDocument();
   expect(screen.queryByText("ADMINISTRACIÓN")).not.toBeInTheDocument();
   await userEvent
     .setup({ advanceTimers: jest.advanceTimersByTime })
     .click(screen.getByRole("button", { name: "Ayer" }));
   expect(screen.getByText("2026-10-09 / 2026-10-09")).toBeVisible();
+  expect(screen.getByRole("group", { name: "Periodo seleccionado" })).toHaveTextContent("9 oct");
 });
 
 it("keeps Conexiones in the same module and hides period controls there", () => {
@@ -81,6 +86,7 @@ it("keeps Conexiones in the same module and hides period controls there", () => 
   expect(screen.getByRole("link", { name: "Conexiones" })).toHaveAttribute("aria-current", "page");
   expect(screen.queryByRole("button", { name: "30 días" })).not.toBeInTheDocument();
   expect(screen.queryByText("Selector de fechas")).not.toBeInTheDocument();
+  expect(screen.queryByRole("group", { name: "Periodo seleccionado" })).not.toBeInTheDocument();
 });
 
 it("does not mount financial content without VIEW_FINANCES", () => {
@@ -118,6 +124,7 @@ it("preserves the linked ad and account while applying the URL period before mou
       level: "ad",
     }),
   );
+  expect(screen.getByRole("group", { name: "Periodo seleccionado" })).toHaveTextContent("1–2 oct");
   mockQueryString = "from=2026-10-03&to=2026-10-04&accountId=account&adId=789";
   view.rerender(
     <AdvertisingModuleShell>
@@ -130,6 +137,27 @@ it("preserves the linked ad and account while applying the URL period before mou
       to: "2026-10-04",
       initialAccountId: "account",
       initialAdId: "789",
+    }),
+  );
+});
+
+it("keeps both years visible when a linked period crosses the year boundary", () => {
+  mockPathname = "/publicidad/anuncios";
+  mockQueryString = "from=2025-12-31&to=2026-01-01&accountId=account&adId=456";
+  render(
+    <AdvertisingModuleShell>
+      <AdvertisingModulePage view="ads" />
+    </AdvertisingModuleShell>,
+  );
+  expect(screen.getByRole("group", { name: "Periodo seleccionado" })).toHaveTextContent(
+    "31 dic 2025–1 ene 2026",
+  );
+  expect(JSON.parse(screen.getByLabelText("Panel de publicidad").textContent ?? "{}")).toEqual(
+    expect.objectContaining({
+      from: "2025-12-31",
+      to: "2026-01-01",
+      initialAccountId: "account",
+      initialAdId: "456",
     }),
   );
 });

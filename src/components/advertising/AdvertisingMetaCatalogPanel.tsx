@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronRight, RefreshCw } from "lucide-react";
+import { ChevronRight, RefreshCw, SlidersHorizontal } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
@@ -37,16 +37,14 @@ import {
 import { advertisingErrorMessage, advertisingErrorStatus } from "@/services/advertisingService";
 import {
   formatMetaCostPerResult,
-  formatMetaNumber,
   formatMetaResultCount,
   formatMetaSpend,
   metaCoverageLabel,
-  metaResultDescription,
-  metaResultLabel,
-  metaStatusLabel,
+  metaResultAvailabilityLabel,
+  metaResultCostLabel,
+  metaResultCountLabel,
   validMetaPeriod,
 } from "./advertising-meta-model";
-import { formatAdvertisingDate } from "./advertising-model";
 import { advertisingSectionHref } from "./advertising-sections";
 
 const AdDetail = dynamic(() =>
@@ -88,6 +86,7 @@ export function AdvertisingMetaCatalogPanel({
   const [resultType, setResultType] = useState<MetaResultType>(initialResultType ?? "messages");
   const [sortBy, setSortBy] = useState<MetaCatalogSort>("results");
   const [page, setPage] = useState(1);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<MetaCatalogRow | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -202,40 +201,12 @@ export function AdvertisingMetaCatalogPanel({
 
   return (
     <section
-      className="min-w-0 space-y-5 p-4 sm:p-6 lg:p-8"
+      className="min-w-0 space-y-3 p-4 sm:p-6 lg:p-8"
       aria-label={
         presentation === "results" ? "Resultados de Meta" : `${TITLES[props.level]} de Meta`
       }
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h2 className="font-semibold">
-            {presentation === "results" ? "Resultados de Meta" : TITLES[props.level]}
-          </h2>
-          <p className="text-xs text-muted-foreground">
-            Resultados de Meta · {formatAdvertisingDate(props.from)} {props.from.slice(0, 4)} al{" "}
-            {formatAdvertisingDate(props.to)} {props.to.slice(0, 4)}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" asChild>
-            <Link href={advertisingSectionHref("/publicidad/conexiones", props.from, props.to)}>
-              Ver conexiones
-            </Link>
-          </Button>
-          {catalog ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!syncAllowed || syncing || query.isFetching || activeImports.length > 0}
-              onClick={() => void sync()}
-            >
-              <RefreshCw aria-hidden="true" />
-              {syncing ? "Iniciando…" : "Importar historial"}
-            </Button>
-          ) : null}
-        </div>
-      </div>
+      {presentation !== "results" ? <h2 className="font-semibold">{TITLES[props.level]}</h2> : null}
       {props.campaignId ? (
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Link
@@ -245,19 +216,15 @@ export function AdvertisingMetaCatalogPanel({
             Todas las campañas
           </Link>
           <ChevronRight className="size-3" aria-hidden="true" />
-          <span className="break-all">Campaña {props.campaignId}</span>
+          <span>Campaña seleccionada</span>
           {props.adsetId ? (
             <>
               <ChevronRight className="size-3" aria-hidden="true" />
-              <span className="break-all">Conjunto {props.adsetId}</span>
+              <span>Conjunto seleccionado</span>
             </>
           ) : null}
         </div>
       ) : null}
-      <p className="text-xs text-muted-foreground">
-        Estos resultados no equivalen a pedidos, entregas o cobros de Powip. El gasto de anuncios no
-        se suma otra vez al Resumen.
-      </p>
       {notice ? (
         <p role="status" className="text-sm text-muted-foreground">
           {notice}
@@ -314,124 +281,163 @@ export function AdvertisingMetaCatalogPanel({
         <Skeleton className="h-64" aria-label="Cargando resultados de Meta" />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="space-y-1.5">
-              <Label htmlFor={`${id}-conversion`}>Conversión</Label>
-              <Select
-                value={resultType}
-                onValueChange={(value) => {
-                  if (value !== "messages" && value !== "webPurchases") return;
-                  setResultType(value);
-                  setPage(1);
-                }}
-              >
-                <SelectTrigger id={`${id}-conversion`} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="messages">Mensajes</SelectItem>
-                  <SelectItem value="webPurchases">Compras por web</SelectItem>
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">{metaResultDescription(resultType)}</p>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`${id}-account`}>Cuenta Meta</Label>
-              <Select
-                value={accountId}
-                onValueChange={(value) => {
-                  setAccountId(value);
-                  setFocusedAdId(undefined);
-                  setSelected(null);
-                  setPage(1);
-                  if (sortBy === "spend" || sortBy === "costPerResult") setSortBy("results");
-                }}
-              >
-                <SelectTrigger id={`${id}-account`} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las cuentas</SelectItem>
-                  {catalog.accounts.map((account) => (
-                    <SelectItem key={account.id} value={account.id}>
-                      {account.name} · {account.currency}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`${id}-currency`}>Moneda</Label>
-              <Select
-                value={currency}
-                onValueChange={(value) => {
-                  setCurrency(value);
-                  setPage(1);
-                  if (value === "all" && (sortBy === "spend" || sortBy === "costPerResult"))
-                    setSortBy("results");
-                }}
-              >
-                <SelectTrigger id={`${id}-currency`} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todas las monedas</SelectItem>
-                  {currencies.map((value) => (
-                    <SelectItem key={value} value={value}>
-                      {value}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor={`${id}-sort`}>Ordenar por</Label>
-              <Select
-                value={sortBy}
-                onValueChange={(value) => {
-                  if (
-                    value === "clicks" ||
-                    value === "impressions" ||
-                    value === "results" ||
-                    ((value === "spend" || value === "costPerResult") && canRankMoney)
-                  ) {
-                    // Keep money sorting explicitly scoped if another currency is linked later.
-                    if (
-                      (value === "spend" || value === "costPerResult") &&
-                      accountId === "all" &&
-                      currency === "all"
-                    )
-                      setCurrency(currencies[0]);
-                    setSortBy(value);
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <fieldset
+              aria-label="Conversión a consultar"
+              className="grid w-full min-w-0 grid-cols-2 gap-1 rounded-lg bg-muted p-1 sm:w-auto"
+            >
+              {(["messages", "webPurchases"] as const).map((type) => (
+                <Button
+                  key={type}
+                  size="sm"
+                  variant={resultType === type ? "default" : "ghost"}
+                  aria-pressed={resultType === type}
+                  onClick={() => {
+                    setResultType(type);
                     setPage(1);
-                  }
-                }}
-              >
-                <SelectTrigger id={`${id}-sort`} className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="costPerResult" disabled={!canRankMoney}>
-                    Menor costo por resultado
-                  </SelectItem>
-                  <SelectItem value="results">Más resultados</SelectItem>
-                  <SelectItem value="impressions">Más impresiones Meta</SelectItem>
-                  <SelectItem value="clicks">Más clics Meta</SelectItem>
-                  <SelectItem value="spend" disabled={!canRankMoney}>
-                    Mayor gasto Meta
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              {!canRankMoney ? (
-                <p className="text-xs text-muted-foreground">
-                  Elige una moneda o cuenta para comparar costos.
-                </p>
-              ) : null}
-            </div>
+                  }}
+                >
+                  {type === "messages" ? "Mensajes" : "Compras por web"}
+                </Button>
+              ))}
+            </fieldset>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-expanded={filtersOpen}
+              aria-controls={`${id}-filters`}
+              onClick={() => setFiltersOpen((value) => !value)}
+            >
+              <SlidersHorizontal aria-hidden="true" />
+              Filtros
+              {currency !== "all" ? ` · ${currency}` : accountId !== "all" ? " · 1 cuenta" : ""}
+            </Button>
           </div>
+          {filtersOpen ? (
+            <div
+              id={`${id}-filters`}
+              className="space-y-3 rounded-lg border border-border bg-card p-3"
+            >
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor={`${id}-account`}>Cuenta Meta</Label>
+                  <Select
+                    value={accountId}
+                    onValueChange={(value) => {
+                      setAccountId(value);
+                      setFocusedAdId(undefined);
+                      setSelected(null);
+                      setPage(1);
+                      if (sortBy === "spend" || sortBy === "costPerResult") setSortBy("results");
+                    }}
+                  >
+                    <SelectTrigger id={`${id}-account`} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las cuentas</SelectItem>
+                      {catalog.accounts.map((account) => (
+                        <SelectItem key={account.id} value={account.id}>
+                          {account.name} · {account.currency}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`${id}-currency`}>Moneda</Label>
+                  <Select
+                    value={currency}
+                    onValueChange={(value) => {
+                      setCurrency(value);
+                      setPage(1);
+                      if (value === "all" && (sortBy === "spend" || sortBy === "costPerResult"))
+                        setSortBy("results");
+                    }}
+                  >
+                    <SelectTrigger id={`${id}-currency`} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas las monedas</SelectItem>
+                      {currencies.map((value) => (
+                        <SelectItem key={value} value={value}>
+                          {value}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor={`${id}-sort`}>Ordenar por</Label>
+                  <Select
+                    value={sortBy}
+                    onValueChange={(value) => {
+                      if (
+                        value === "clicks" ||
+                        value === "impressions" ||
+                        value === "results" ||
+                        ((value === "spend" || value === "costPerResult") && canRankMoney)
+                      ) {
+                        // Keep money sorting explicitly scoped if another currency is linked later.
+                        if (
+                          (value === "spend" || value === "costPerResult") &&
+                          accountId === "all" &&
+                          currency === "all"
+                        )
+                          setCurrency(currencies[0]);
+                        setSortBy(value);
+                        setPage(1);
+                      }
+                    }}
+                  >
+                    <SelectTrigger id={`${id}-sort`} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="costPerResult" disabled={!canRankMoney}>
+                        Menor costo por resultado
+                      </SelectItem>
+                      <SelectItem value="results">Más resultados</SelectItem>
+                      <SelectItem value="impressions">Más impresiones Meta</SelectItem>
+                      <SelectItem value="clicks">Más clics Meta</SelectItem>
+                      <SelectItem value="spend" disabled={!canRankMoney}>
+                        Mayor gasto Meta
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {!canRankMoney ? (
+                    <p className="text-xs text-muted-foreground">
+                      Elige una moneda o cuenta para comparar costos.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button size="sm" variant="outline" asChild>
+                  <Link
+                    href={advertisingSectionHref("/publicidad/conexiones", props.from, props.to)}
+                  >
+                    Ver conexiones
+                  </Link>
+                </Button>
+                {syncAllowed ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={syncing || query.isFetching || activeImports.length > 0}
+                    onClick={() => void sync()}
+                  >
+                    <RefreshCw aria-hidden="true" />
+                    {syncing ? "Iniciando…" : "Importar historial"}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           {focusedAdId ? (
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>Anuncio {focusedAdId}</span>
+              <span>Anuncio seleccionado</span>
               <Button
                 size="sm"
                 variant="outline"
@@ -444,30 +450,6 @@ export function AdvertisingMetaCatalogPanel({
                 Ver todos los anuncios
               </Button>
             </div>
-          ) : null}
-          {catalog.accounts.length ? (
-            <div className="flex flex-wrap gap-2">
-              {catalog.accounts
-                .filter(
-                  (account) =>
-                    (accountId === "all" || account.id === accountId) &&
-                    (currency === "all" || account.currency === currency),
-                )
-                .map((account) => (
-                  <Badge key={account.id} variant="outline">
-                    {account.name} · {metaCoverageLabel(account.coverage)}
-                  </Badge>
-                ))}
-            </div>
-          ) : null}
-          {!catalog.capabilities.canSync ? (
-            <p className="text-xs text-muted-foreground">
-              Necesitas permiso de gestión para actualizar resultados.
-            </p>
-          ) : !syncAllowed ? (
-            <p className="text-xs text-muted-foreground">
-              Elige una cuenta activa en Conexiones para actualizar resultados.
-            </p>
           ) : null}
           {catalog.rows.length === 0 ? (
             <Card>
@@ -487,105 +469,134 @@ export function AdvertisingMetaCatalogPanel({
           ) : (
             <Card>
               <CardContent className="min-w-0 pt-4">
-                <Table aria-label={TITLES[props.level]}>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>
-                        {props.level === "campaign"
-                          ? "Campaña"
-                          : props.level === "adset"
-                            ? "Conjunto"
-                            : "Anuncio"}
-                      </TableHead>
-                      <TableHead className="text-right">Costo por resultado</TableHead>
-                      <TableHead className="text-right">Resultados</TableHead>
-                      <TableHead>Conversión</TableHead>
-                      <TableHead className="text-right">Gasto Meta</TableHead>
-                      <TableHead>Último estado registrado</TableHead>
-                      <TableHead className="text-right">Impresiones</TableHead>
-                      <TableHead className="text-right">Clics</TableHead>
-                      <TableHead>Datos</TableHead>
-                      <TableHead>
-                        <span className="sr-only">Consultar</span>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {catalog.rows.map((row) => (
-                      <TableRow key={`${row.accountId}:${row.id}`}>
-                        <TableCell className="min-w-44">
-                          <p className="font-medium">{row.name}</p>
-                          <p className="text-xs text-muted-foreground">
-                            ID {row.id} · {row.currency}
-                          </p>
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-right font-mono font-semibold tabular-nums">
-                          {formatMetaCostPerResult(
-                            row.insights.resultMetrics?.[resultType],
-                            row.currency,
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-semibold tabular-nums">
-                          {formatMetaResultCount(row.insights.resultMetrics?.[resultType])}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap">
-                          {metaResultLabel(resultType)}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap text-right font-mono tabular-nums">
-                          {formatMetaSpend(row.insights.spend, row.currency)}
-                        </TableCell>
-                        <TableCell>{metaStatusLabel(row.effectiveStatus)}</TableCell>
-                        <TableCell className="text-right font-mono tabular-nums">
-                          {formatMetaNumber(row.insights.impressions)}
-                        </TableCell>
-                        <TableCell className="text-right font-mono tabular-nums">
-                          {formatMetaNumber(row.insights.clicks)}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline">
-                            {metaCoverageLabel(row.insights.coverage)}
-                          </Badge>
-                          {row.insights.coverage.provisionalDays ? (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Incluye días provisionales
-                            </p>
-                          ) : null}
-                        </TableCell>
-                        <TableCell>
-                          {props.level === "ad" ? (
-                            <Button size="sm" variant="outline" onClick={() => setSelected(row)}>
-                              Ver detalle
-                            </Button>
-                          ) : (
-                            <Button size="sm" variant="outline" asChild>
-                              <Link
-                                href={advertisingSectionHref(
-                                  props.level === "campaign"
-                                    ? "/publicidad/campanas"
-                                    : "/publicidad/anuncios",
-                                  props.from,
-                                  props.to,
-                                  {
-                                    accountId: row.accountId,
-                                    campaignId:
-                                      props.level === "campaign" ? row.id : row.campaignId,
-                                    adsetId: props.level === "adset" ? row.id : undefined,
-                                    resultType,
-                                  },
-                                )}
-                              >
-                                {props.level === "campaign" ? "Ver conjuntos" : "Ver anuncios"}
-                              </Link>
-                            </Button>
-                          )}
-                        </TableCell>
+                <div className="hidden md:block">
+                  <Table aria-label={TITLES[props.level]}>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>
+                          {props.level === "campaign"
+                            ? "Campaña"
+                            : props.level === "adset"
+                              ? "Conjunto"
+                              : "Anuncio"}
+                        </TableHead>
+                        <TableHead className="text-right">
+                          {metaResultCostLabel(resultType)}
+                        </TableHead>
+                        <TableHead className="text-right">
+                          {metaResultCountLabel(resultType)}
+                        </TableHead>
+                        <TableHead className="text-right">Gasto</TableHead>
+                        <TableHead>Disponibilidad</TableHead>
+                        <TableHead>
+                          <span className="sr-only">Consultar</span>
+                        </TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {catalog.rows.map((row) => (
+                        <TableRow key={`${row.accountId}:${row.id}`}>
+                          <TableCell className="max-w-72 whitespace-normal">
+                            <p className="font-medium break-words">{row.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {
+                                catalog.accounts.find((account) => account.id === row.accountId)
+                                  ?.name
+                              }{" "}
+                              · {row.currency}
+                            </p>
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
+                            {formatMetaCostPerResult(
+                              row.insights.resultMetrics?.[resultType],
+                              row.currency,
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold tabular-nums">
+                            {formatMetaResultCount(row.insights.resultMetrics?.[resultType])}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-right tabular-nums">
+                            {formatMetaSpend(row.insights.spend, row.currency)}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {metaResultAvailabilityLabel(
+                                row.insights.resultMetrics?.[resultType],
+                              )}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <CatalogRowAction
+                              row={row}
+                              level={props.level}
+                              from={props.from}
+                              to={props.to}
+                              resultType={resultType}
+                              onSelect={setSelected}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <ul aria-label={`${TITLES[props.level]} en móvil`} className="space-y-3 md:hidden">
+                  {catalog.rows.map((row) => (
+                    <li
+                      key={`${row.accountId}:${row.id}`}
+                      className="min-w-0 space-y-3 border-b border-border pb-3 last:border-0"
+                    >
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium break-words">{row.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {catalog.accounts.find((account) => account.id === row.accountId)?.name} ·{" "}
+                          {row.currency}
+                        </p>
+                      </div>
+                      <dl className="grid min-w-0 grid-cols-2 gap-3">
+                        <div className="min-w-0">
+                          <dt className="min-h-8 text-xs text-muted-foreground">
+                            {metaResultCostLabel(resultType)}
+                          </dt>
+                          <dd className="break-words text-base font-semibold tabular-nums">
+                            {formatMetaCostPerResult(
+                              row.insights.resultMetrics?.[resultType],
+                              row.currency,
+                            )}
+                          </dd>
+                        </div>
+                        <div className="min-w-0">
+                          <dt className="min-h-8 text-xs text-muted-foreground">
+                            {metaResultCountLabel(resultType)}
+                          </dt>
+                          <dd className="break-words text-base font-semibold tabular-nums">
+                            {formatMetaResultCount(row.insights.resultMetrics?.[resultType])}
+                          </dd>
+                        </div>
+                      </dl>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          Gasto: {formatMetaSpend(row.insights.spend, row.currency)}
+                        </span>
+                        <Badge variant="outline">
+                          {metaResultAvailabilityLabel(row.insights.resultMetrics?.[resultType])}
+                        </Badge>
+                        <CatalogRowAction
+                          row={row}
+                          level={props.level}
+                          from={props.from}
+                          to={props.to}
+                          resultType={resultType}
+                          onSelect={setSelected}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
                   <p className="text-xs text-muted-foreground">
-                    {catalog.pagination.total} resultados · Página {catalog.pagination.page}
+                    {catalog.pagination.total} {TITLES[props.level].toLowerCase()} · Página{" "}
+                    {catalog.pagination.page}
                   </p>
                   <div className="flex gap-2">
                     <Button
@@ -609,15 +620,41 @@ export function AdvertisingMetaCatalogPanel({
               </CardContent>
             </Card>
           )}
-          <p className="text-xs text-muted-foreground">
-            Costo por resultado = gasto ÷{" "}
-            {resultType === "messages" ? "conversaciones iniciadas" : "compras por web"}. Solo se
-            muestra con datos completos. Sin resultados: —.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Fuente: Meta · Atribución de 7 días por clic y 1 día por vista · Zona de cada cuenta.
-            Sin conversión de moneda.
-          </p>
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer font-medium text-foreground">
+              Cómo leer estos datos
+            </summary>
+            <div className="mt-2 space-y-2">
+              <p>
+                {metaResultCostLabel(resultType)} = gasto ÷{" "}
+                {resultType === "messages" ? "conversaciones iniciadas" : "compras por web"}. Sin
+                resultados: —.
+              </p>
+              <p>
+                Parcial: el costo aún no está confirmado. No disponible: no hay datos suficientes
+                para mostrar este resultado.
+              </p>
+              <p>
+                Estos resultados no equivalen a pedidos, entregas o cobros de Powip. El gasto de
+                anuncios no se suma otra vez al Resumen.
+              </p>
+              <p>
+                Fuente: Meta · Atribución de 7 días por clic y 1 día por vista · Zona de cada
+                cuenta. Sin conversión de moneda.
+              </p>
+              {catalog.accounts
+                .filter(
+                  (account) =>
+                    (accountId === "all" || account.id === accountId) &&
+                    (currency === "all" || account.currency === currency),
+                )
+                .map((account) => (
+                  <p key={account.id}>
+                    {account.name} · Gasto: {metaCoverageLabel(account.coverage)}
+                  </p>
+                ))}
+            </div>
+          </details>
         </>
       )}
       {detailRow ? (
@@ -632,5 +669,47 @@ export function AdvertisingMetaCatalogPanel({
         />
       ) : null}
     </section>
+  );
+}
+
+function CatalogRowAction({
+  row,
+  level,
+  from,
+  to,
+  resultType,
+  onSelect,
+}: {
+  row: MetaCatalogRow;
+  level: MetaCatalogLevel;
+  from: string;
+  to: string;
+  resultType: MetaResultType;
+  onSelect: (row: MetaCatalogRow) => void;
+}) {
+  if (level === "ad")
+    return (
+      <Button size="sm" variant="outline" onClick={() => onSelect(row)}>
+        Ver detalle
+      </Button>
+    );
+  return (
+    <Button size="sm" variant="outline" asChild>
+      <Link
+        href={advertisingSectionHref(
+          level === "campaign" ? "/publicidad/campanas" : "/publicidad/anuncios",
+          from,
+          to,
+          {
+            accountId: row.accountId,
+            campaignId: level === "campaign" ? row.id : row.campaignId,
+            adsetId: level === "adset" ? row.id : undefined,
+            resultType,
+          },
+        )}
+      >
+        {level === "campaign" ? "Ver conjuntos" : "Ver anuncios"}
+      </Link>
+    </Button>
   );
 }

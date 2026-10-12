@@ -1,5 +1,7 @@
 "use client";
 
+import { format, parseISO } from "date-fns";
+import { es } from "date-fns/locale";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { type ReactNode, useEffect, useRef } from "react";
@@ -13,6 +15,21 @@ import {
   advertisingQuickRange,
 } from "./AdvertisingQuickPeriodButtons";
 import { ADVERTISING_SECTIONS, advertisingSectionActive } from "./advertising-sections";
+
+function periodSummary(from: string, to: string) {
+  const start = parseISO(from);
+  const end = parseISO(to);
+  const currentYear = new Date().getFullYear();
+  const showYear = start.getFullYear() !== currentYear || end.getFullYear() !== currentYear;
+  const endLabel = format(end, showYear ? "d MMM yyyy" : "d MMM", { locale: es });
+  if (from === to) return endLabel;
+  const sameMonth =
+    start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
+  const startLabel = format(start, sameMonth ? "d" : showYear ? "d MMM yyyy" : "d MMM", {
+    locale: es,
+  });
+  return `${startLabel}–${endLabel}`;
+}
 
 function AdvertisingShell({ children }: { children: ReactNode }) {
   const { auth, loading, hasPermission } = useAuth();
@@ -43,47 +60,54 @@ function AdvertisingShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full min-w-0 flex-col bg-background">
       <Header />
-      <div className="space-y-4 border-b border-border bg-card px-4 py-5 sm:px-6 lg:px-8">
-        <div className="space-y-1">
-          <h1 className="text-xl font-bold tracking-tight">Publicidad</h1>
-          <p className="text-sm text-muted-foreground">
-            {connections
-              ? "Conecta tus cuentas y consulta su historial."
-              : "Consulta la publicidad de tu empresa."}
-          </p>
-        </div>
+      <div className="shrink-0 border-b border-border bg-card">
+        <h1 className="sr-only">Publicidad</h1>
+        <nav
+          ref={navigationRef}
+          aria-label="Secciones de publicidad"
+          className="flex min-w-0 gap-1 overflow-x-auto px-4 sm:px-6 lg:px-8"
+        >
+          {ADVERTISING_SECTIONS.map(({ label, href }) => (
+            <Link
+              key={href}
+              href={href}
+              aria-current={advertisingSectionActive(pathname, href) ? "page" : undefined}
+              className={cn(
+                "inline-flex min-h-11 shrink-0 items-center border-b-2 px-3 py-2 text-sm whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
+                advertisingSectionActive(pathname, href)
+                  ? "border-primary font-semibold text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
         {!connections && (
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-            <AdvertisingQuickPeriodButtons />
-            <PeriodSelector
-              className="w-full min-w-0 sm:w-auto"
-              value={{ from: fromDate, to: toDate }}
-              onPeriodChange={setPeriod}
-            />
+          <div className="flex min-w-0 items-center justify-between gap-3 border-t border-border px-4 py-2 sm:px-6 lg:px-8">
+            <div className="min-w-0 overflow-x-auto [&>fieldset]:w-max [&>fieldset]:flex-nowrap [&_button]:shrink-0">
+              <AdvertisingQuickPeriodButtons />
+            </div>
+            <fieldset
+              aria-label="Periodo seleccionado"
+              className="flex shrink-0 items-center gap-2"
+            >
+              <span
+                aria-hidden="true"
+                className="max-w-36 truncate text-xs whitespace-nowrap text-muted-foreground sm:max-w-none sm:text-sm"
+                title={`${fromDate} / ${toDate}`}
+              >
+                {periodSummary(fromDate, toDate)}
+              </span>
+              <PeriodSelector
+                className="w-10 shrink-0 [&>button]:h-10 [&>button]:w-10 [&>button]:justify-center [&>button]:p-0 [&>button>span]:sr-only [&>button>svg:first-child]:mr-0 [&>button>svg:last-child]:hidden"
+                value={{ from: fromDate, to: toDate }}
+                onPeriodChange={setPeriod}
+              />
+            </fieldset>
           </div>
         )}
       </div>
-      <nav
-        ref={navigationRef}
-        aria-label="Secciones de publicidad"
-        className="flex shrink-0 gap-1 overflow-x-auto border-b border-border px-4 sm:px-6 lg:px-8"
-      >
-        {ADVERTISING_SECTIONS.map(({ label, href }) => (
-          <Link
-            key={href}
-            href={href}
-            aria-current={advertisingSectionActive(pathname, href) ? "page" : undefined}
-            className={cn(
-              "border-b-2 px-4 py-3 text-sm whitespace-nowrap transition-colors",
-              advertisingSectionActive(pathname, href)
-                ? "border-primary font-semibold text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {label}
-          </Link>
-        ))}
-      </nav>
       <div className="min-w-0 flex-1 overflow-auto">{children}</div>
     </div>
   );
