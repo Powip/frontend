@@ -389,6 +389,8 @@ it("requires one currency before comparing costs and allows conversion counts ac
   await user.keyboard("{Escape}");
   await user.click(screen.getByRole("combobox", { name: "Moneda" }));
   await user.click(screen.getByRole("option", { name: "USD" }));
+  expect(screen.getByText(/^Cuenta USD ·/)).toBeVisible();
+  expect(screen.queryByText(/^Cuenta ·/)).not.toBeInTheDocument();
   await user.click(screen.getByRole("combobox", { name: "Ordenar por" }));
   await user.click(screen.getByRole("option", { name: "Menor costo por resultado" }));
   expect(query).toHaveBeenLastCalledWith(

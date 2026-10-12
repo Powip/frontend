@@ -448,7 +448,11 @@ export function AdvertisingMetaCatalogPanel({
           {catalog.accounts.length ? (
             <div className="flex flex-wrap gap-2">
               {catalog.accounts
-                .filter((account) => accountId === "all" || account.id === accountId)
+                .filter(
+                  (account) =>
+                    (accountId === "all" || account.id === accountId) &&
+                    (currency === "all" || account.currency === currency),
+                )
                 .map((account) => (
                   <Badge key={account.id} variant="outline">
                     {account.name} · {metaCoverageLabel(account.coverage)}
