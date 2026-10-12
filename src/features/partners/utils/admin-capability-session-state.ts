@@ -1,6 +1,12 @@
 "use client";
 
-export type AdminCapabilityFamily = "policy" | "resources" | "partners" | "payout" | "reviews";
+export type AdminCapabilityFamily =
+  | "policy"
+  | "resources"
+  | "partners"
+  | "payout"
+  | "reviews"
+  | "invitations";
 interface Denial {
   userId: string;
   epoch: number;
@@ -12,6 +18,7 @@ const denials: Record<AdminCapabilityFamily, Denial | null> = {
   partners: null,
   payout: null,
   reviews: null,
+  invitations: null,
 };
 let revision = 0;
 const listeners = new Set<() => void>();
@@ -57,6 +64,7 @@ export function clearAdminCapabilityDenials() {
   denials.partners = null;
   denials.payout = null;
   denials.reviews = null;
+  denials.invitations = null;
   revision += 1;
   listeners.forEach((listener) => {
     listener();

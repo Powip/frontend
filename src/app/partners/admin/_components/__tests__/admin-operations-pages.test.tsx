@@ -5,6 +5,7 @@ import { tokenStore } from "@/lib/tokenStore";
 import { adminCommissionPolicyClient } from "@/features/partners/api/admin-commission-policy.api";
 import { adminResourcesClient } from "@/features/partners/api/admin-resources.api";
 import { adminPartnersClient } from "@/features/partners/api/admin-partners.api";
+import { adminInvitationsClient } from "@/features/partners/api/admin-invitations.api";
 import { policyDraft, adminResource, WRITE_USER_A, POLICY_COMMAND } from "@/features/partners/test-utils/admin-writes.fixture";
 import { buildAxiosError } from "@/features/partners/test-utils/axios-error";
 import { clearAdminCapabilityDenials } from "@/features/partners/utils/admin-capability-session-state";
@@ -22,6 +23,7 @@ function mount(component: React.ReactNode) { client = new QueryClient({ defaultO
 beforeEach(() => {
   mockAuth = { user: { id: WRITE_USER_A, permissions: ["PARTNERS_VIEW", "PARTNERS_CONFIGURE_POLICY", "PARTNERS_MANAGE_RESOURCES"] }, accessToken: "UI-private-bearer" };
   tokenStore.set(mockAuth.accessToken); clearAdminReadDenial(); clearAdminCapabilityDenials();
+  jest.spyOn(adminInvitationsClient, "get").mockResolvedValue({ data: { items: [], nextCursor: null } });
 });
 afterEach(() => { cleanup(); client?.clear(); jest.restoreAllMocks(); tokenStore.set(null); clearAdminReadDenial(); clearAdminCapabilityDenials(); });
 

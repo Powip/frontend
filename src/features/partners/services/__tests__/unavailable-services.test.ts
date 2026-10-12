@@ -10,12 +10,10 @@ import { getAdminCommissionSettingsFromStore } from "../../mocks/admin-commissio
 import { listReviewQueue } from "../../mocks/review-queue.store";
 import { PartnersFeatureUnavailableError } from "../../utils/unavailable-partners-feature";
 import { getPendingPaymentConfirmations } from "../get-pending-payment-confirmations";
-import { getUnopenedInvitations } from "../get-unopened-invitations";
 import { confirmPendingPayment } from "../confirm-pending-payment";
 import { getAdminLiquidations } from "../get-admin-liquidations";
 import { getAdminCommissionSettings } from "../get-admin-commission-settings";
 import { getCommissionLines } from "../get-commission-lines";
-import { inviteAdminPartner } from "../invite-admin-partner";
 import { getReviewQueue } from "../get-review-queue";
 import { getAdminClawbacks } from "../get-admin-clawbacks";
 import { getPartnerLink } from "../get-partner-link";
@@ -40,21 +38,10 @@ jest.mock("../../api/partners-mutations.client", () => ({
 
 const operations: ReadonlyArray<readonly [string, () => Promise<unknown>]> = [
   ["get-pending-payment-confirmations", () => getPendingPaymentConfirmations()],
-  ["get-unopened-invitations", () => getUnopenedInvitations()],
   ["confirm-pending-payment", () => confirmPendingPayment("fixture-id")],
   ["get-admin-liquidations", () => getAdminLiquidations()],
   ["get-admin-commission-settings", () => getAdminCommissionSettings()],
   ["get-commission-lines", () => getCommissionLines()],
-  [
-    "invite-admin-partner",
-    () =>
-      inviteAdminPartner({
-        name: "Fixture partner",
-        email: "fixture@example.test",
-        profile: "dev",
-        suggestedOptionCode: "A",
-      }),
-  ],
   ["get-review-queue", () => getReviewQueue()],
   ["get-admin-clawbacks", () => getAdminClawbacks()],
   ["get-partner-link", () => getPartnerLink()],

@@ -6,15 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAdminReadAccess } from "@/features/partners/hooks/use-admin-read-session";
 import { useAdminPartners } from "@/features/partners/hooks/use-admin-partners";
+import { useAdminCapabilitySession } from "@/features/partners/hooks/use-admin-capability-session";
 import type { PartnerApprovalStatus } from "@/features/partners/models/admin-partner";
 import { adminPartnerStatusSchema } from "@/features/partners/schemas/admin-partners-response.schema";
 import { AdminReadAccessDenied, AdminReadError } from "../../_components/admin-read-error";
 import { AdminPartnersTable } from "./admin-partners-table";
+import { InvitePartnerDialog } from "./invite-partner-dialog";
 
 export function PartnersListPageContent() {
   const access = useAdminReadAccess();
   const [status, setStatus] = useState<PartnerApprovalStatus | null>(null);
   const partnersQuery = useAdminPartners(status);
+  const invitations = useAdminCapabilitySession("PARTNERS_APPROVE", "invitations");
+  const [inviteOpen, setInviteOpen] = useState(false);
   if (access.denied)
     return (
       <div className="p-6">
@@ -40,7 +44,7 @@ export function PartnersListPageContent() {
             <Button asChild variant="outline">
               <Link href="/partners/admin/solicitudes">Revisar solicitudes</Link>
             </Button>
-            <Button disabled title="Las invitaciones todavía no están implementadas.">
+            <Button disabled={!invitations.enabled} title={!invitations.enabled ? "Requiere PARTNERS_APPROVE vigente." : undefined} onClick={() => setInviteOpen(true)}>
               + Invitar partner
             </Button>
           </div>
@@ -91,6 +95,7 @@ export function PartnersListPageContent() {
           )}
         </CardContent>
       </Card>
+      {inviteOpen ? <InvitePartnerDialog key={`${invitations.userId}:${invitations.epoch}`} isOpen={inviteOpen} onClose={() => setInviteOpen(false)} /> : null}
     </div>
   );
 }

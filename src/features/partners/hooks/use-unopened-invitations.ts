@@ -1,12 +1,20 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { partnersKeys } from "../keys/partners.keys";
-import type { UnopenedInvitation } from "../models/unopened-invitation";
 import { getUnopenedInvitations } from "../services/get-unopened-invitations";
+import { useAdminReadSession } from "./use-admin-read-session";
+import type { InvitationStateFilter } from "../schemas/admin-invitations.schema";
 
-export function useUnopenedInvitations() {
-  return useQuery<UnopenedInvitation[], Error>({
-    queryKey: [...partnersKeys.unopenedInvitations(), "permanent-unavailable-v1"],
-    queryFn: getUnopenedInvitations,
+export function useUnopenedInvitations(limit = 20, state: InvitationStateFilter = "ALL") {
+  const session = useAdminReadSession();
+  return useInfiniteQuery({
+    queryKey: partnersKeys.adminInvitations(session.userId, session.epoch, limit, state),
+    queryFn: ({ pageParam, signal }) =>
+      session.read(signal, (accessToken) =>
+        getUnopenedInvitations({ accessToken, cursor: pageParam, limit, signal, state }),
+      ),
+    enabled: session.enabled,
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.nextCursor,
     retry: false,
   });
 }

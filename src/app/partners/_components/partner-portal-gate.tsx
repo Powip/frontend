@@ -54,7 +54,7 @@ function PartnerPortalAccess({ children }: PartnerPortalGateProps) {
 export function PartnerPortalGate({ children }: PartnerPortalGateProps) {
   const pathname = usePathname() ?? "";
 
-  if (isPartnerAdminPath(pathname) || isPartnerApplicationPath(pathname)) {
+  if (isPartnerAdminPath(pathname) || isPartnerApplicationPath(pathname) || pathname === "/partners/invitacion") {
     return <div className="flex-1 overflow-auto">{children}</div>;
   }
 

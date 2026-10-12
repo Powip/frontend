@@ -9,6 +9,7 @@ import {
   commissionEvaluationsPageSchema,
   commissionItemsPageSchema,
   commissionMoneySchema,
+  commissionNetMoneySchema,
   commissionPageParamsSchema,
   commissionRateSchema,
 } from "../commission-read.schema";
@@ -25,6 +26,22 @@ it.each(["0", "0.00000000", "99999999999999999999.99999999"])(
   "accepts exact bounded money %s",
   (value) => {
     expect(commissionMoneySchema.parse(value)).toBe(value);
+  },
+);
+it.each(["-0.01", "-100.00", "-99999999999999999999.99999999", "0.00", "12.34"])(
+  "preserves signed net without clamp or Number conversion: %s",
+  (value) => {
+    expect(commissionNetMoneySchema.parse(value)).toBe(value);
+    expect(
+      commissionCalculationItemSchema.parse({ ...commissionItemFixture, netAmount: value })
+        .netAmount,
+    ).toBe(value);
+  },
+);
+it.each(["-0", "-0.00", "+1", "-01", "-1e2", "-1.123456789", -1])(
+  "rejects invalid signed net: %#",
+  (value) => {
+    expect(commissionNetMoneySchema.safeParse(value).success).toBe(false);
   },
 );
 it.each([0, null, "", "-1", "+1", "1e2", "01", "1.123456789", "100000000000000000000", " 1", "1."])(

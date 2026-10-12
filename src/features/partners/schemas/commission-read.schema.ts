@@ -19,6 +19,10 @@ const utcInstant = z.iso.datetime().refine((value) => {
   );
 });
 export const commissionMoneySchema = z.string().regex(/^(?:0|[1-9]\d{0,19})(?:\.\d{1,8})?$/);
+export const commissionNetMoneySchema = z
+  .string()
+  .regex(/^-?(?:0|[1-9]\d{0,19})(?:\.\d{1,8})?$/)
+  .refine((value) => !/^-0(?:\.0+)?$/.test(value));
 export const commissionRateSchema = z.string().regex(/^(?:0(?:\.\d{1,10})?|1(?:\.0{1,10})?)$/);
 const residualRate = commissionRateSchema.refine((value) => {
   const [whole, fraction = ""] = value.split(".");
@@ -56,7 +60,7 @@ export const commissionCalculationItemSchema = z
     residualRate,
     grossAmount: commissionMoneySchema,
     partnerFundedAmount: commissionMoneySchema,
-    netAmount: commissionMoneySchema,
+    netAmount: commissionNetMoneySchema,
     approvalId: uuid,
     createdAt: utcInstant,
   })

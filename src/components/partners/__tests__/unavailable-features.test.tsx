@@ -12,6 +12,7 @@ import { LiquidacionesPageContent } from "@/app/partners/admin/liquidaciones/_co
 import { PartnerSectionError } from "@/components/partners/partner-section-error";
 import { partnersKeys } from "@/features/partners/keys/partners.keys";
 import { PartnersFeatureUnavailableError } from "@/features/partners/utils/unavailable-partners-feature";
+import { UNOPENED_INVITATIONS_MOCK } from "@/features/partners/mocks/unopened-invitations.mock";
 
 jest.mock("sonner", () => ({ toast: { success: jest.fn(), error: jest.fn() } }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: () => ({ auth: { accessToken: "fixture-unavailable", user: { id: "fixture", permissions: ["PARTNERS_VIEW"] } } }) }));
@@ -79,21 +80,19 @@ describe("Partners pending UI functions fail closed", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(/todavía no están implementadas/);
   });
 
-  it("cannot resend an invitation or announce that a mail was sent", async () => {
-    render(
+  it("cannot resend with VIEW alone or announce that a mail was sent", async () => {
+    renderWithQuery(
       <UnopenedInvitationsTable
-        invitations={[{ id: "test-invite", businessName: "Test only", sentDaysAgo: 1 }]}
+        invitations={UNOPENED_INVITATIONS_MOCK}
         isLoading={false}
       />,
     );
-    const resend = screen.getByRole("button", { name: "Reenviar" });
-    expect(resend).toBeDisabled();
-    expect(resend).toHaveAttribute("title", expect.stringMatching(/no está implementado/));
-    await userEvent.click(resend);
+    expect(screen.queryByRole("button", { name: /reenvío/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/requiere PARTNERS_APPROVE/)).toBeInTheDocument();
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it("blocks partner invitations while preserving the real applications link", async () => {
+  it("blocks partner invitations without APPROVE while preserving the real applications link", async () => {
     renderWithQuery(<PartnersListPageContent />);
     expect(screen.getByRole("button", { name: /Invitar partner/ })).toBeDisabled();
     expect(screen.getByRole("link", { name: /Revisar solicitudes/ })).toHaveAttribute(

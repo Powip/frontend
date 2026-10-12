@@ -22,6 +22,7 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { AdminReadError } from "../../_components/admin-read-error";
 import {
   Select,
   SelectContent,
@@ -36,12 +37,6 @@ import {
   type InviteAdminPartnerFormValues,
 } from "@/features/partners/schemas/invite-admin-partner.schema";
 
-const COMMISSION_OPTION_CHOICES = [
-  { value: "A", label: "A · 40% 1er mes + 6% recurrente" },
-  { value: "C", label: "C · 50% 1er mes + 8% recurrente" },
-  { value: "B", label: "B · 70% 1er mes + 3% recurrente" },
-] as const;
-
 interface InvitePartnerDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -49,29 +44,29 @@ interface InvitePartnerDialogProps {
 
 export function InvitePartnerDialog({ isOpen, onClose }: InvitePartnerDialogProps) {
   const inviteAdminPartner = useInviteAdminPartner();
+  const { session, mutation, mutationForSession } = inviteAdminPartner;
+  const pending = mutationForSession && mutation.isPending;
+  const uncertain = mutationForSession && mutation.isError;
+  const locked = pending || uncertain || !session.enabled;
 
   const form = useForm<InviteAdminPartnerFormValues>({
     resolver: zodResolver(inviteAdminPartnerSchema),
-    defaultValues: { name: "", email: "", profile: "agencia", suggestedOptionCode: "A" },
+    defaultValues: { name: "", email: "", profile: "agencia" },
   });
 
   useEffect(() => {
     if (!isOpen) return;
-    form.reset({ name: "", email: "", profile: "agencia", suggestedOptionCode: "A" });
+    form.reset({ name: "", email: "", profile: "agencia" });
   }, [isOpen, form]);
 
   function handleSubmit(values: InviteAdminPartnerFormValues) {
-    inviteAdminPartner.mutate(values, {
-      onSuccess: () => {
-        form.reset();
-        onClose();
-      },
-    });
+    if (!locked) inviteAdminPartner.write({ operation: "create", form: values });
   }
 
   function handleClose() {
-    if (inviteAdminPartner.isPending) return;
+    if (pending) return;
     form.reset();
+    mutation.reset();
     onClose();
   }
 
@@ -81,12 +76,33 @@ export function InvitePartnerDialog({ isOpen, onClose }: InvitePartnerDialogProp
         <DialogHeader>
           <DialogTitle>Invitar partner</DialogTitle>
           <DialogDescription>
-            Le llega un correo para activar su cuenta, link y código.
+            Guarda una invitación y la encola para correo. No activa un partner ni asigna
+            condiciones financieras.
           </DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+            {!session.canAccess ? (
+              <p role="alert">Necesitás PARTNERS_APPROVE para invitar.</p>
+            ) : null}
+            {session.denied ? (
+              <AdminReadError
+                error={session.denied}
+                message="Tu autorización actual no permite invitar."
+              />
+            ) : null}
+            {uncertain && !session.denied ? (
+              <AdminReadError
+                error={mutation.error}
+                message="No pudimos confirmar la invitación. Conservamos la misma solicitud para reintentar."
+              />
+            ) : null}
+            {mutationForSession && mutation.isSuccess && session.enabled ? (
+              <p role="status">
+                Invitación encolada. No es confirmación de entrega ni de aprobación del partner.
+              </p>
+            ) : null}
             <FormField
               control={form.control}
               name="name"
@@ -94,7 +110,12 @@ export function InvitePartnerDialog({ isOpen, onClose }: InvitePartnerDialogProp
                 <FormItem>
                   <FormLabel>Nombre / marca</FormLabel>
                   <FormControl>
-                    <Input placeholder="Ej. Laura Pérez / @laura.ecom" {...field} />
+                    <Input
+                      disabled={locked}
+                      maxLength={160}
+                      placeholder="Nombre o marca"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -108,7 +129,13 @@ export function InvitePartnerDialog({ isOpen, onClose }: InvitePartnerDialogProp
                 <FormItem>
                   <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input inputMode="email" placeholder="correo@ejemplo.com" {...field} />
+                    <Input
+                      disabled={locked}
+                      maxLength={320}
+                      inputMode="email"
+                      placeholder="correo@ejemplo.com"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -121,7 +148,7 @@ export function InvitePartnerDialog({ isOpen, onClose }: InvitePartnerDialogProp
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Perfil</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
+                  <Select disabled={locked} onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger className="w-full">
                         <SelectValue />
@@ -140,50 +167,36 @@ export function InvitePartnerDialog({ isOpen, onClose }: InvitePartnerDialogProp
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="suggestedOptionCode"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Opción sugerida</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {COMMISSION_OPTION_CHOICES.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <DialogFooter>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={handleClose}
-                disabled={inviteAdminPartner.isPending}
-              >
-                Cancelar
+              <Button type="button" variant="ghost" onClick={handleClose} disabled={pending}>
+                Cerrar
               </Button>
-              <Button type="submit" disabled={inviteAdminPartner.isPending}>
-                {inviteAdminPartner.isPending ? (
-                  <>
-                    <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
-                    Enviando...
-                  </>
-                ) : (
-                  "Enviar invitación"
-                )}
-              </Button>
+              {uncertain ? (
+                <Button
+                  type="button"
+                  disabled={!session.enabled || pending}
+                  onClick={() => {
+                    const original = mutation.variables;
+                    if (original && mutationForSession) mutation.mutate(original);
+                  }}
+                >
+                  Reintentar misma invitación
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  disabled={locked || (mutationForSession && mutation.isSuccess)}
+                >
+                  {pending ? (
+                    <>
+                      <Loader2 aria-hidden="true" className="mr-2 h-4 w-4 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    "Encolar invitación"
+                  )}
+                </Button>
+              )}
             </DialogFooter>
           </form>
         </Form>
