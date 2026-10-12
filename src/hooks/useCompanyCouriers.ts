@@ -19,7 +19,8 @@ export function useCompanyCouriers(enabled = true) {
     }),
     enabled: canFetch,
     retry: false,
-    staleTime: 30_000,
+    // Reopening a sale/guide must see a courier just provisioned in Integrations.
+    staleTime: 0,
   });
 
   return {

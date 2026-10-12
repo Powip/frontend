@@ -72,3 +72,15 @@ it("does not request company data without a session or when the modal is closed"
   rerender({ enabled: false });
   expect(axiosAuth.get).not.toHaveBeenCalled();
 });
+
+it("refreshes an empty cached catalogue when the guide reopens after Shalom configuration", async () => {
+  const courier = { id: "provisioned-shalom", name: "Shalom", companyId: "perspective" };
+  jest.mocked(axiosAuth.get).mockResolvedValueOnce({ data: [] }).mockResolvedValueOnce({ data: [courier] });
+  const { result, rerender } = renderHook(({ enabled }) => useCompanyCouriers(enabled), { ...setup(), initialProps: { enabled: true } });
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(result.current.couriers).toEqual([]);
+  rerender({ enabled: false });
+  rerender({ enabled: true });
+  await waitFor(() => expect(result.current.couriers).toEqual([courier]));
+  expect(axiosAuth.get).toHaveBeenCalledTimes(2);
+});
