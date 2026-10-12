@@ -22,6 +22,7 @@ import {
   selectAdvertisingAccounts,
   startAdvertisingAuthorization,
 } from "@/services/advertisingService";
+import { AdvertisingConnectedAccountStore } from "./AdvertisingConnectedAccountStore";
 import { AdvertisingConnections, AdvertisingDashboard } from "./AdvertisingDashboard";
 import { AdvertisingDisconnectAccountDialog } from "./AdvertisingDisconnectAccountDialog";
 import { AdvertisingEffectiveSpend } from "./AdvertisingEffectiveSpend";
@@ -42,6 +43,7 @@ interface Props {
   connectionsOnly?: boolean;
   storeIds?: string[];
   presentation?: "legacy" | "module";
+  onAccountsSelected?: () => void;
 }
 
 const EMPTY_STORE_IDS: string[] = [];
@@ -75,6 +77,7 @@ export function AdvertisingLivePanel({
   connectionsOnly = false,
   storeIds = EMPTY_STORE_IDS,
   presentation = "legacy",
+  onAccountsSelected,
 }: Props) {
   const queryClient = useQueryClient();
   const query = useAdvertisingSnapshot({ token, actorId, companyId, from, to });
@@ -211,6 +214,7 @@ export function AdvertisingLivePanel({
             ? advertisingHistoryNotice(result.imports)
             : "Cuentas guardadas.",
         );
+        if (result.selectedCount > 0) onAccountsSelected?.();
       }
     } catch (failure: unknown) {
       if (mounted.current) {
@@ -454,10 +458,25 @@ export function AdvertisingLivePanel({
           showAccounts={presentation === "module"}
           from={from}
           to={to}
+          renderStore={
+            presentation === "module"
+              ? (accountId) =>
+                  operationalSnapshot.accounts.find((account) => account.id === accountId)
+                    ?.provider === "meta" ? (
+                    <AdvertisingConnectedAccountStore
+                      accountId={accountId}
+                      identity={{ token, actorId, companyId, from, to }}
+                    />
+                  ) : null
+              : undefined
+          }
           {...actions}
         />
       ) : presentation === "module" ? (
         <AdvertisingModuleSummary
+          companyId={companyId}
+          actorId={actorId}
+          token={token}
           companyName={companyName}
           from={from}
           to={to}

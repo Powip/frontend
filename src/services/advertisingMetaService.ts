@@ -9,7 +9,9 @@ export interface MetaResultMetric {
   costPerResult: string | null;
   status: "complete" | "partial" | "unknown";
 }
-export type MetaResultMetrics = Record<MetaResultType, MetaResultMetric>;
+export type MetaResultMetrics = Record<MetaResultType, MetaResultMetric> & {
+  leads?: MetaResultMetric;
+};
 export interface MetaCoverage {
   status: "complete" | "partial" | "pending";
   coveredDays: number;
@@ -37,6 +39,20 @@ export interface MetaInsights {
   clicks: string | null;
   actions: MetaAction[] | null;
   resultMetrics?: MetaResultMetrics;
+  inlineLinkClicks?: string | null;
+  ctr?: string | null;
+  reach?: string | null;
+  frequency?: string | null;
+  frequencyApproximate?: boolean;
+  results?: {
+    type: string;
+    label: string;
+    value: string | null;
+    resultType?: string | null;
+    source?: "reported-action" | "reported-field" | "unknown";
+    limitation?: "optimization-event-unconfirmed" | "goal-result-unavailable" | null;
+  } | null;
+  costPerResult?: string | null;
   coverage: MetaCoverage;
 }
 export interface MetaCatalogRow {
@@ -52,6 +68,9 @@ export interface MetaCatalogRow {
   currency: string;
   timeZone: string;
   insights: MetaInsights;
+  store?: { id: string; name: string } | null;
+  storeStatus?: "assigned" | "unassigned" | "mixed";
+  mode?: "single" | "multi";
 }
 export interface MetaModuleCapabilities {
   canRead: boolean;
@@ -107,6 +126,7 @@ export interface MetaCatalogFilters {
   adsetId?: string;
   adId?: string;
   currency?: string;
+  storeId?: string;
   resultType?: MetaResultType;
   sortBy?: MetaCatalogSort;
   sortOrder?: "asc" | "desc";

@@ -1,16 +1,31 @@
+import {
+  BarChart3,
+  Bell,
+  CalendarDays,
+  CheckCheck,
+  CircleDollarSign,
+  Layers,
+  Link2,
+  MapPin,
+  Megaphone,
+  Package,
+  Store,
+  Target,
+} from "lucide-react";
+
 export const ADVERTISING_SECTIONS = [
-  { label: "Resumen", href: "/publicidad" },
-  { label: "Campañas", href: "/publicidad/campanas" },
-  { label: "Anuncios", href: "/publicidad/anuncios" },
-  { label: "Resultados", href: "/publicidad/resultados" },
-  { label: "Calidad", href: "/publicidad/calidad" },
-  { label: "Productos", href: "/publicidad/productos" },
-  { label: "Zonas", href: "/publicidad/zonas" },
-  { label: "Asignaciones", href: "/publicidad/asignaciones" },
-  { label: "Atribución", href: "/publicidad/atribucion" },
-  { label: "Alertas", href: "/publicidad/alertas" },
-  { label: "Planificador", href: "/publicidad/planificador" },
-  { label: "Conexiones", href: "/publicidad/conexiones" },
+  { label: "Resumen", icon: BarChart3, href: "/publicidad" },
+  { label: "Campañas", icon: Megaphone, href: "/publicidad/campanas" },
+  { label: "Asignaciones", icon: Store, href: "/publicidad/asignaciones" },
+  { label: "Anuncios", icon: Layers, href: "/publicidad/anuncios" },
+  { label: "Resultados", icon: CircleDollarSign, href: "/publicidad/resultados" },
+  { label: "Calidad", icon: CheckCheck, href: "/publicidad/calidad" },
+  { label: "Productos", icon: Package, href: "/publicidad/productos" },
+  { label: "Zonas", icon: MapPin, href: "/publicidad/zonas" },
+  { label: "Atribución", icon: Target, href: "/publicidad/atribucion" },
+  { label: "Alertas", icon: Bell, href: "/publicidad/alertas" },
+  { label: "Planificador", icon: CalendarDays, href: "/publicidad/planificador" },
+  { label: "Conexiones", icon: Link2, href: "/publicidad/conexiones" },
 ] as const;
 
 export function advertisingSectionActive(pathname: string, href: string) {

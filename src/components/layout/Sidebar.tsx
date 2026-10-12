@@ -293,7 +293,7 @@ export function Sidebar({ className }: SidebarProps) {
         children: ADVERTISING_SECTIONS.map((section) => ({
           name: section.label,
           href: section.href,
-          icon: section.href === "/publicidad/conexiones" ? Plug : BarChart,
+          icon: section.icon,
         })),
       },
       {

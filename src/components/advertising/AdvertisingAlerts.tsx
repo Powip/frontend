@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useId, useState } from "react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +21,9 @@ import type {
   AdvertisingRulePayload,
   AdvertisingWorkspace,
 } from "@/services/advertisingWorkspaceService";
+import { useAdvertisingStoreFilter } from "./AdvertisingStoreFilterContext";
 import { formatMetaSpend } from "./advertising-meta-model";
+import { advertisingSectionHref } from "./advertising-sections";
 import { advertisingInputDecimal } from "./advertising-workspace-model";
 
 interface Props {
@@ -31,6 +34,7 @@ interface Props {
 }
 export function AdvertisingAlerts({ workspace, busy, onSave, onEvaluate }: Props) {
   const id = useId();
+  const { storeId } = useAdvertisingStoreFilter();
   const [ruleId, setRuleId] = useState<string | null>(null);
   const [version, setVersion] = useState(0);
   const [name, setName] = useState("");
@@ -99,8 +103,23 @@ export function AdvertisingAlerts({ workspace, busy, onSave, onEvaluate }: Props
                 {item.message}
                 {item.amount !== null && item.currency ? (
                   <p className="mt-2 font-mono tabular-nums">
+                    {item.amountSource === "meta-imported" ? "Gasto importado de Meta: " : ""}
                     {formatMetaSpend(item.amount, item.currency)}
                   </p>
+                ) : null}
+                {item.kind === "unassigned-store" ? (
+                  <Button size="sm" variant="outline" asChild className="mt-2">
+                    <Link
+                      href={advertisingSectionHref(
+                        "/publicidad/asignaciones",
+                        workspace.from,
+                        workspace.to,
+                        { accountId: item.accountId, storeId },
+                      )}
+                    >
+                      Asignar tienda
+                    </Link>
+                  </Button>
                 ) : null}
               </AlertDescription>
             </Alert>

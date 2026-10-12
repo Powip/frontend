@@ -6,7 +6,6 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -18,15 +17,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useAdvertisingMetaCatalog } from "@/hooks/useAdvertisingMeta";
+import { useAdvertisingBusinessAnalytics } from "@/hooks/useAdvertisingOrders";
+import { useAdvertisingTablePreferences } from "@/hooks/useAdvertisingTablePreferences";
 import {
   type MetaCatalogLevel,
   type MetaCatalogRow,
@@ -35,16 +28,15 @@ import {
   syncMetaModule,
 } from "@/services/advertisingMetaService";
 import { advertisingErrorMessage, advertisingErrorStatus } from "@/services/advertisingService";
+import { AdvertisingMetaMetricsTable } from "./AdvertisingMetaMetricsTable";
+import { useAdvertisingStoreFilter } from "./AdvertisingStoreFilterContext";
+import { businessResult } from "./advertising-business-results";
+import { metaCoverageLabel, metaResultCostLabel, validMetaPeriod } from "./advertising-meta-model";
 import {
-  formatMetaCostPerResult,
-  formatMetaResultCount,
-  formatMetaSpend,
-  metaCoverageLabel,
-  metaResultAvailabilityLabel,
-  metaResultCostLabel,
-  metaResultCountLabel,
-  validMetaPeriod,
-} from "./advertising-meta-model";
+  advertisingMetaBusinessValues,
+  advertisingMetaTableCsv,
+  advertisingMetaTableValues,
+} from "./advertising-meta-table-model";
 import { advertisingSectionHref } from "./advertising-sections";
 
 const AdDetail = dynamic(() =>
@@ -79,6 +71,10 @@ export function AdvertisingMetaCatalogPanel({
 }: Props) {
   const id = useId();
   const queryClient = useQueryClient();
+  const { storeId } = useAdvertisingStoreFilter();
+  const { more: moreMetrics, setMore: setMoreMetrics } = useAdvertisingTablePreferences(
+    props.actorId,
+  );
   const [accountId, setAccountId] = useState(initialAccountId ?? "all");
   const [focusedAdId, setFocusedAdId] = useState(initialAdId);
   const [focusedDetailClosed, setFocusedDetailClosed] = useState(false);
@@ -110,8 +106,119 @@ export function AdvertisingMetaCatalogPanel({
     sortOrder: sortBy === "costPerResult" ? "asc" : "desc",
     page,
     pageSize: 50,
+    storeId,
   });
   const catalog = query.data;
+  const scopedTimeZones = [
+    ...new Set(
+      catalog?.accounts
+        .filter((account) => accountId === "all" || account.id === accountId)
+        .map((account) => account.timeZone) ?? [],
+    ),
+  ];
+  const business = useAdvertisingBusinessAnalytics(
+    {
+      ...props,
+      enabled:
+        validPeriod &&
+        (props.level === "ad" || props.level === "campaign") &&
+        !!catalog &&
+        storeId !== "none",
+    },
+    {
+      from: props.from,
+      to: props.to,
+      basis: "delivered",
+      timeZone: scopedTimeZones.length === 1 ? scopedTimeZones[0] : "America/Lima",
+      groupBy: props.level === "campaign" ? "campaign" : "ad",
+      storeId,
+      channelId: "all",
+    },
+  );
+  const extraBusinessEnabled =
+    validPeriod &&
+    (props.level === "ad" || props.level === "campaign") &&
+    !!catalog &&
+    storeId !== "none" &&
+    moreMetrics;
+  const salesBusiness = useAdvertisingBusinessAnalytics(
+    { ...props, enabled: extraBusinessEnabled },
+    {
+      from: props.from,
+      to: props.to,
+      basis: "created",
+      timeZone: scopedTimeZones.length === 1 ? scopedTimeZones[0] : "America/Lima",
+      groupBy: props.level === "campaign" ? "campaign" : "ad",
+      storeId,
+      channelId: "all",
+    },
+  );
+  const paidBusiness = useAdvertisingBusinessAnalytics(
+    { ...props, enabled: extraBusinessEnabled },
+    {
+      from: props.from,
+      to: props.to,
+      basis: "paid",
+      timeZone: scopedTimeZones.length === 1 ? scopedTimeZones[0] : "America/Lima",
+      groupBy: props.level === "campaign" ? "campaign" : "ad",
+      storeId,
+      channelId: "all",
+    },
+  );
+  const observedStore = useRef(storeId);
+  useEffect(() => {
+    if (observedStore.current === storeId) return;
+    observedStore.current = storeId;
+    setPage(1);
+    setSelected(null);
+    setFocusedAdId(undefined);
+  }, [storeId]);
+  function valuesFor(row: MetaCatalogRow) {
+    const analytics = business.data;
+    const match = analytics?.rows.find(
+      (item) =>
+        item.id === row.id && item.accountId === row.accountId && item.currency === row.currency,
+    );
+    const compatibleScope =
+      (analytics?.storeId ?? "all") === storeId && (analytics?.channelId ?? "all") === "all";
+    let cpe: string | null = null;
+    if (match && analytics && compatibleScope && storeId !== "none") {
+      try {
+        cpe = businessResult(match, analytics, catalog ?? null).cpe;
+      } catch {
+        cpe = null;
+      }
+    }
+    const extraValues = advertisingMetaBusinessValues(
+      row,
+      catalog ?? null,
+      {
+        sales: salesBusiness.data,
+        delivered: business.data,
+        paid: paidBusiness.data,
+      },
+      storeId,
+    );
+    return advertisingMetaTableValues(row, resultType, cpe, match?.deliveredCount, extraValues);
+  }
+  function exportCsv() {
+    if (!catalog || query.isAccessDenied) return;
+    const csv = advertisingMetaTableCsv(
+      catalog.rows.map((row) => ({ row, values: valuesFor(row) })),
+      moreMetrics,
+      props.level,
+    );
+    const downloadUrl = URL.createObjectURL(
+      new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }),
+    );
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = `publicidad-${props.level}-${props.from}-${props.to}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(downloadUrl);
+  }
   const detailRow =
     selected ??
     (!focusedDetailClosed && focusedAdId && props.level === "ad"
@@ -211,7 +318,7 @@ export function AdvertisingMetaCatalogPanel({
         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Link
             className="text-primary underline-offset-4 hover:underline"
-            href={advertisingSectionHref("/publicidad/campanas", props.from, props.to)}
+            href={advertisingSectionHref("/publicidad/campanas", props.from, props.to, { storeId })}
           >
             Todas las campañas
           </Link>
@@ -416,7 +523,9 @@ export function AdvertisingMetaCatalogPanel({
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" variant="outline" asChild>
                   <Link
-                    href={advertisingSectionHref("/publicidad/conexiones", props.from, props.to)}
+                    href={advertisingSectionHref("/publicidad/conexiones", props.from, props.to, {
+                      storeId,
+                    })}
                   >
                     Ver conexiones
                   </Link>
@@ -469,130 +578,50 @@ export function AdvertisingMetaCatalogPanel({
           ) : (
             <Card>
               <CardContent className="min-w-0 pt-4">
-                <div className="hidden md:block">
-                  <Table aria-label={TITLES[props.level]}>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>
-                          {props.level === "campaign"
-                            ? "Campaña"
-                            : props.level === "adset"
-                              ? "Conjunto"
-                              : "Anuncio"}
-                        </TableHead>
-                        <TableHead className="text-right">
-                          {metaResultCostLabel(resultType)}
-                        </TableHead>
-                        <TableHead className="text-right">
-                          {metaResultCountLabel(resultType)}
-                        </TableHead>
-                        <TableHead className="text-right">Gasto</TableHead>
-                        <TableHead>Disponibilidad</TableHead>
-                        <TableHead>
-                          <span className="sr-only">Consultar</span>
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {catalog.rows.map((row) => (
-                        <TableRow key={`${row.accountId}:${row.id}`}>
-                          <TableCell className="max-w-72 whitespace-normal">
-                            <p className="font-medium break-words">{row.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {
-                                catalog.accounts.find((account) => account.id === row.accountId)
-                                  ?.name
-                              }{" "}
-                              · {row.currency}
-                            </p>
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">
-                            {formatMetaCostPerResult(
-                              row.insights.resultMetrics?.[resultType],
-                              row.currency,
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right font-semibold tabular-nums">
-                            {formatMetaResultCount(row.insights.resultMetrics?.[resultType])}
-                          </TableCell>
-                          <TableCell className="whitespace-nowrap text-right tabular-nums">
-                            {formatMetaSpend(row.insights.spend, row.currency)}
-                          </TableCell>
-                          <TableCell>
-                            <Badge variant="outline">
-                              {metaResultAvailabilityLabel(
-                                row.insights.resultMetrics?.[resultType],
-                              )}
-                            </Badge>
-                          </TableCell>
-                          <TableCell>
-                            <CatalogRowAction
-                              row={row}
-                              level={props.level}
-                              from={props.from}
-                              to={props.to}
-                              resultType={resultType}
-                              onSelect={setSelected}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-pressed={moreMetrics}
+                    onClick={() => setMoreMetrics(!moreMetrics)}
+                  >
+                    {moreMetrics ? "Menos métricas" : "Más métricas"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={exportCsv}>
+                    Exportar página CSV
+                  </Button>
                 </div>
-                <ul aria-label={`${TITLES[props.level]} en móvil`} className="space-y-3 md:hidden">
-                  {catalog.rows.map((row) => (
-                    <li
-                      key={`${row.accountId}:${row.id}`}
-                      className="min-w-0 space-y-3 border-b border-border pb-3 last:border-0"
-                    >
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium break-words">{row.name}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {catalog.accounts.find((account) => account.id === row.accountId)?.name} ·{" "}
-                          {row.currency}
-                        </p>
-                      </div>
-                      <dl className="grid min-w-0 grid-cols-2 gap-3">
-                        <div className="min-w-0">
-                          <dt className="min-h-8 text-xs text-muted-foreground">
-                            {metaResultCostLabel(resultType)}
-                          </dt>
-                          <dd className="break-words text-base font-semibold tabular-nums">
-                            {formatMetaCostPerResult(
-                              row.insights.resultMetrics?.[resultType],
-                              row.currency,
-                            )}
-                          </dd>
-                        </div>
-                        <div className="min-w-0">
-                          <dt className="min-h-8 text-xs text-muted-foreground">
-                            {metaResultCountLabel(resultType)}
-                          </dt>
-                          <dd className="break-words text-base font-semibold tabular-nums">
-                            {formatMetaResultCount(row.insights.resultMetrics?.[resultType])}
-                          </dd>
-                        </div>
-                      </dl>
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          Gasto: {formatMetaSpend(row.insights.spend, row.currency)}
-                        </span>
-                        <Badge variant="outline">
-                          {metaResultAvailabilityLabel(row.insights.resultMetrics?.[resultType])}
-                        </Badge>
-                        <CatalogRowAction
-                          row={row}
-                          level={props.level}
-                          from={props.from}
-                          to={props.to}
-                          resultType={resultType}
-                          onSelect={setSelected}
-                        />
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                {moreMetrics ? (
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    {props.level === "ad"
+                      ? "Ventas: fecha de registro. Entregados: fecha de entrega. ROAS: fecha de cobro. Solo pedidos con anuncio confirmado. Meta dice: compras reportadas por Meta."
+                      : "CPA plataforma: costo por compra reportada por Meta. Las métricas de ventas por campaña aún están pendientes."}{" "}
+                    Leads: reportados por Meta. Devueltos y reparto de pedidos sin anuncio:
+                    pendientes.
+                  </p>
+                ) : null}
+                <AdvertisingMetaMetricsTable
+                  rows={catalog.rows}
+                  level={props.level}
+                  title={TITLES[props.level]}
+                  resultType={resultType}
+                  more={moreMetrics}
+                  accountName={(row) =>
+                    catalog.accounts.find((account) => account.id === row.accountId)?.name ??
+                    "Cuenta Meta"
+                  }
+                  valuesFor={valuesFor}
+                  action={(row) => (
+                    <CatalogRowAction
+                      row={row}
+                      level={props.level}
+                      from={props.from}
+                      to={props.to}
+                      resultType={resultType}
+                      onSelect={setSelected}
+                    />
+                  )}
+                />
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
                   <p className="text-xs text-muted-foreground">
                     {catalog.pagination.total} {TITLES[props.level].toLowerCase()} · Página{" "}
@@ -687,6 +716,7 @@ function CatalogRowAction({
   resultType: MetaResultType;
   onSelect: (row: MetaCatalogRow) => void;
 }) {
+  const { storeId } = useAdvertisingStoreFilter();
   if (level === "ad")
     return (
       <Button size="sm" variant="outline" onClick={() => onSelect(row)}>
@@ -705,6 +735,7 @@ function CatalogRowAction({
             campaignId: level === "campaign" ? row.id : row.campaignId,
             adsetId: level === "adset" ? row.id : undefined,
             resultType,
+            storeId,
           },
         )}
       >

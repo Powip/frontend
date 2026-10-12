@@ -1,14 +1,16 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAdminPeriod } from "@/contexts/AdminPeriodContext";
 import { useAuth } from "@/contexts/AuthContext";
 import { AdvertisingLivePanel } from "./AdvertisingLivePanel";
+import { useAdvertisingStoreFilter } from "./AdvertisingStoreFilterContext";
 import { advertisingPeriodFromParams } from "./advertising-period";
+import { advertisingSectionHref } from "./advertising-sections";
 
 const ManualAdvertisingPage = dynamic(
   () => import("@/app/administracion/pauta/ManualAdvertisingPage"),
@@ -54,7 +56,9 @@ interface PageProps {
 
 function AdvertisingPageContent({ connectionsOnly = false, view }: PageProps) {
   const { auth } = useAuth();
+  const router = useRouter();
   const { fromDate, toDate, setPeriod } = useAdminPeriod();
+  const { storeId, setStoreId, defaultStoreId } = useAdvertisingStoreFilter();
   const queryString = useSearchParams().toString();
   const [readyQuery, setReadyQuery] = useState<string | null>(null);
   const storeIds = useMemo(
@@ -65,8 +69,9 @@ function AdvertisingPageContent({ connectionsOnly = false, view }: PageProps) {
   useEffect(() => {
     const period = advertisingPeriodFromParams(new URLSearchParams(queryString));
     if (period) setPeriod(period.from, period.to);
+    setStoreId(new URLSearchParams(queryString).get("storeId") ?? defaultStoreId);
     setReadyQuery(queryString);
-  }, [queryString, setPeriod]);
+  }, [queryString, setPeriod, setStoreId, defaultStoreId]);
 
   if (readyQuery !== queryString)
     return <Skeleton className="m-4 h-48" aria-label="Cargando periodo de publicidad" />;
@@ -188,6 +193,14 @@ function AdvertisingPageContent({ connectionsOnly = false, view }: PageProps) {
         storeIds={storeIds}
         presentation="module"
         connectionsOnly={connectionsOnly}
+        onAccountsSelected={() =>
+          router.push(
+            advertisingSectionHref("/publicidad/asignaciones", fromDate, toDate, {
+              storeId,
+              step: "store",
+            }),
+          )
+        }
         manualContent={!connectionsOnly ? <ManualAdvertisingPage /> : undefined}
       />
     </div>

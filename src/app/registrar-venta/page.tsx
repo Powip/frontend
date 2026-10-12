@@ -1,37 +1,44 @@
 "use client";
 
-import {
-  Suspense,
-  useEffect,
-  useState,
-  useRef,
-  useMemo,
-  useCallback,
-} from "react";
-import Link from "next/link";
-import Image from "next/image";
 import { useQuery } from "@tanstack/react-query";
 import {
+  AlertTriangle,
   ArrowLeft,
-  Plus,
-  Trash2,
-  Search,
-  User,
-  Package,
-  ShoppingCart,
+  Check,
+  ChevronDown,
   ClipboardList,
   CreditCard,
-  ChevronDown,
-  Check,
-  AlertTriangle,
   type LucideIcon,
+  Package,
+  Plus,
+  Search,
+  ShoppingCart,
+  Trash2,
+  User,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
+import Image from "next/image";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { HeaderConfig } from "@/components/header/HeaderConfig";
+import OrderReceiptModal from "@/components/modals/orderReceiptModal";
+import CartLines from "@/components/registrar-venta/CartLines";
+import ProductSearchMatrix from "@/components/registrar-venta/ProductSearchMatrix";
+import {
+  hasSaleChannelSelection,
+  SaleChannelField,
+} from "@/components/registrar-venta/SaleChannelField";
+import { SaleOriginField } from "@/components/registrar-venta/SaleOriginField";
+import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
+import { useSaleOrigin } from "@/components/registrar-venta/useSaleOrigin";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Combobox } from "@/components/ui/combobox";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -39,48 +46,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Combobox } from "@/components/ui/combobox";
-import { Badge } from "@/components/ui/badge";
-import { HeaderConfig } from "@/components/header/HeaderConfig";
-import {
-  createClient,
-  fetchClientByPhone,
-  updateClient,
-} from "@/services/clients.service";
+import { Textarea } from "@/components/ui/textarea";
+import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
 import { useAuth } from "@/contexts/AuthContext";
-import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
-import { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
-import { searchInventoryItems } from "@/services/inventoryItems.service";
-import {
-  bumpProductFrequency,
-  getProductFrequencies,
-} from "@/utils/productFrequency";
-import { InventoryItemForSale } from "@/interfaces/IProduct";
-import { CartItem, OrderHeader } from "@/interfaces/IOrder";
-import { DeliveryType, OrderType, SalesChannel } from "@/enum/Order.enum";
+import { PacksProvider, usePacks } from "@/contexts/PacksContext";
+import { DeliveryType, OrderType, type SalesChannel } from "@/enum/Order.enum";
+import { usePacksEngine } from "@/hooks/usePacksEngine";
+import type { Client, ClientType, DocumentType } from "@/interfaces/ICliente";
+import type { CartItem, OrderHeader } from "@/interfaces/IOrder";
+import type { GiftOption, Pack, VolumePack } from "@/interfaces/IPack";
+import type { InventoryItemForSale } from "@/interfaces/IProduct";
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
-import { toast } from "sonner";
-import OrderReceiptModal from "@/components/modals/orderReceiptModal";
-import { useRouter, useSearchParams } from "next/navigation";
-import { Checkbox } from "@/components/ui/checkbox";
-import ubigeos from "@/utils/json/ubigeos.json";
-import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
-import { PacksProvider, usePacks } from "@/contexts/PacksContext";
-import { usePacksEngine } from "@/hooks/usePacksEngine";
-import ProductSearchMatrix from "@/components/registrar-venta/ProductSearchMatrix";
-import CartLines from "@/components/registrar-venta/CartLines";
-import SuggestionsPanel from "@/components/registrar-venta/SuggestionsPanel";
-import { GiftOption, Pack, VolumePack } from "@/interfaces/IPack";
+import { cn } from "@/lib/utils";
+import { createClient, fetchClientByPhone, updateClient } from "@/services/clients.service";
+import { searchInventoryItems } from "@/services/inventoryItems.service";
 import { fetchSaleContext } from "@/services/saleContextService";
-import { SaleOriginField } from "@/components/registrar-venta/SaleOriginField";
-import { useSaleOrigin } from "@/components/registrar-venta/useSaleOrigin";
+import ubigeos from "@/utils/json/ubigeos.json";
+import { bumpProductFrequency, getProductFrequencies } from "@/utils/productFrequency";
+import { DEFAULT_SALES_CHANNELS } from "@/utils/salesChannels";
 
 type ClientSearchState = "idle" | "found" | "not_found" | "error";
 
 const TONE_CLASSES = {
-  violet:
-    "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300",
+  violet: "bg-violet-100 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300",
   green: "bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300",
   amber: "bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300",
 } as const;
@@ -105,23 +94,13 @@ function SectionTitle({
       </span>
       <div>
         <div className="font-bold">{children}</div>
-        {hint && (
-          <div className="text-xs font-normal text-muted-foreground">
-            {hint}
-          </div>
-        )}
+        {hint && <div className="text-xs font-normal text-muted-foreground">{hint}</div>}
       </div>
     </div>
   );
 }
 
-function Disclosure({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function Disclosure({ label, children }: { label: string; children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="mt-3 border-t border-dashed pt-3">
@@ -130,23 +109,17 @@ function Disclosure({
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-1.5 text-xs font-bold text-violet-600 dark:text-violet-300"
       >
-        <ChevronDown
-          className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`}
-        />
+        <ChevronDown className={`h-3 w-3 transition-transform ${open ? "rotate-180" : ""}`} />
         {label}
       </button>
       {open && (
-        <div className="mt-3.5 space-y-3.5 animate-in fade-in slide-in-from-top-1">
-          {children}
-        </div>
+        <div className="mt-3.5 space-y-3.5 animate-in fade-in slide-in-from-top-1">{children}</div>
       )}
     </div>
   );
 }
 
-function extractLatLngFromGoogleMapsUrl(
-  url: string,
-): { lat: number; lng: number } | null {
+function extractLatLngFromGoogleMapsUrl(url: string): { lat: number; lng: number } | null {
   const patterns = [
     /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, // pin exacto en links "place/.../data="
     /@(-?\d+\.\d+),(-?\d+\.\d+)/, // centro del mapa "@lat,lng,zoom"
@@ -256,9 +229,7 @@ function RegistrarVentaContent() {
     setClientForm((prev) => ({
       ...prev,
       googleMapsUrl: value,
-      ...(coords
-        ? { latitude: String(coords.lat), longitude: String(coords.lng) }
-        : {}),
+      ...(coords ? { latitude: String(coords.lat), longitude: String(coords.lng) } : {}),
     }));
   };
 
@@ -272,15 +243,14 @@ function RegistrarVentaContent() {
     totalPages: number;
   } | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [productFrequencies, setProductFrequencies] = useState<
-    Record<string, number>
-  >({});
+  const [productFrequencies, setProductFrequencies] = useState<Record<string, number>>({});
 
   /* ---------------- Detalles ---------------- */
 
   const [orderDetails, setOrderDetails] = useState({
     orderType: OrderType.VENTA as OrderType | undefined,
     salesChannel: undefined as SalesChannel | undefined,
+    salesChannelId: undefined as string | undefined,
     closingChannel: undefined as SalesChannel | undefined,
     deliveryType: DeliveryType.DOMICILIO as DeliveryType | undefined,
     entregaEn: "DOMICILIO" as "DOMICILIO" | "SUCURSAL" | undefined,
@@ -308,9 +278,7 @@ function RegistrarVentaContent() {
   }, []);
 
   const provinceOptions = useMemo(() => {
-    const dept = (ubigeos[0] as any).departments.find(
-      (d: any) => d.name === clientForm.department,
-    );
+    const dept = (ubigeos[0] as any).departments.find((d: any) => d.name === clientForm.department);
     return (dept?.provinces || []).map((p: any) => ({
       value: p.name,
       label: p.name,
@@ -318,12 +286,8 @@ function RegistrarVentaContent() {
   }, [clientForm.department]);
 
   const districtOptions = useMemo(() => {
-    const dept = (ubigeos[0] as any).departments.find(
-      (d: any) => d.name === clientForm.department,
-    );
-    const prov = dept?.provinces.find(
-      (p: any) => p.name === clientForm.province,
-    );
+    const dept = (ubigeos[0] as any).departments.find((d: any) => d.name === clientForm.department);
+    const prov = dept?.provinces.find((p: any) => p.name === clientForm.province);
     return (prov?.districts || []).map((dist: any) => ({
       value: dist,
       label: dist,
@@ -352,9 +316,7 @@ function RegistrarVentaContent() {
 
   const [taxMode, setTaxMode] = useState<"AUTOMATICO" | "INCLUIDO">("INCLUIDO");
   const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
-  const [paymentProofPreview, setPaymentProofPreview] = useState<string | null>(
-    null,
-  );
+  const [paymentProofPreview, setPaymentProofPreview] = useState<string | null>(null);
   const paymentProofInputRef = useRef<HTMLInputElement>(null);
 
   /* ---------------- Modal ---------------- */
@@ -405,6 +367,20 @@ function RegistrarVentaContent() {
     : DEFAULT_SALES_CHANNELS;
   // Los canales de cierre usan la misma lista que los canales de venta
   const closingChannels = salesChannels;
+  const storeChannels = useMemo(
+    () =>
+      (saleContext.data?.channels ?? []).filter(
+        (channel) => channel.storeId === origin.storeId && channel.isActive !== false,
+      ),
+    [saleContext.data?.channels, origin.storeId],
+  );
+  const hasValidSalesChannel = hasSaleChannelSelection({
+    channels: storeChannels,
+    selectedId: orderDetails.salesChannelId,
+    legacyType: orderDetails.salesChannel,
+    editing: Boolean(orderId),
+    fixedId: orderData?.salesChannelId,
+  });
 
   /* ---------------- Couriers ---------------- */
   const [couriers, setCouriers] = useState<{ id: string; name: string }[]>([]);
@@ -438,10 +414,9 @@ function RegistrarVentaContent() {
     orderRequest.current = request;
     setOrderLoading(true);
     try {
-      const response = await axiosAuth.get(
-        `${GATEWAY.ventas}/order-header/manual/${orderId}`,
-        { signal: request.signal },
-      );
+      const response = await axiosAuth.get(`${GATEWAY.ventas}/order-header/manual/${orderId}`, {
+        signal: request.signal,
+      });
       if (!request.signal.aborted) setOrderData(response.data);
     } catch {
       if (!request.signal.aborted) setOrderLoadError(true);
@@ -469,10 +444,10 @@ function RegistrarVentaContent() {
     setOrderDetails({
       orderType: orderData.orderType as OrderType,
       salesChannel: orderData.salesChannel as SalesChannel,
+      salesChannelId: orderData.salesChannelId ?? undefined,
       closingChannel: orderData.closingChannel as SalesChannel,
       deliveryType: orderData.deliveryType as DeliveryType,
-      entregaEn:
-        orderData.deliveryType === "RETIRO_TIENDA" ? "SUCURSAL" : "DOMICILIO",
+      entregaEn: orderData.deliveryType === "RETIRO_TIENDA" ? "SUCURSAL" : "DOMICILIO",
       enviaPor: orderData.courier ?? undefined,
       notes: orderData.notes ?? "",
     });
@@ -499,11 +474,7 @@ function RegistrarVentaContent() {
       const totalDiscount = Number(item.discountAmount) || 0;
       const netUnit =
         item.quantity > 0
-          ? Math.max(
-              0,
-              Math.round((grossUnit - totalDiscount / item.quantity) * 100) /
-                100,
-            )
+          ? Math.max(0, Math.round((grossUnit - totalDiscount / item.quantity) * 100) / 100)
           : grossUnit;
 
       return {
@@ -534,8 +505,7 @@ function RegistrarVentaContent() {
       // updateFull §6.5 opera sobre el pago PENDING más antiguo, así que la
       // precarga del método debe seguir el mismo criterio.
       const paymentsByDate = [...orderData.payments].sort(
-        (a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
       );
 
       // Monto ya aprobado (PAID): informativo, no editable desde este form.
@@ -546,17 +516,12 @@ function RegistrarVentaContent() {
       // Monto pendiente de aprobación (PENDING): es lo único que el campo
       // editable "Adelanto de Pago" representa.
       const pendientes = paymentsByDate.filter((p) => p.status === "PENDING");
-      const montoPendiente = pendientes.reduce(
-        (sum, p) => sum + Number(p.amount),
-        0,
-      );
+      const montoPendiente = pendientes.reduce((sum, p) => sum + Number(p.amount), 0);
 
       setMontoYaAprobado(montoAprobado);
       setPendingPaymentsCount(pendientes.length);
       setAdvancePayment(montoPendiente);
-      setAdvancePaymentDisplay(
-        montoPendiente === 0 ? "" : String(montoPendiente),
-      );
+      setAdvancePaymentDisplay(montoPendiente === 0 ? "" : String(montoPendiente));
 
       // Método de referencia: el del pago PENDING más antiguo; si no hay, el
       // del primer pago registrado.
@@ -612,13 +577,16 @@ function RegistrarVentaContent() {
       try {
         setProductsLoading(true);
 
-        const res = await searchInventoryItems({
-          inventoryId: selectedInventory,
-          companyId,
-          q: productQuery || undefined,
-          page,
-          limit: 12,
-        }, request.signal);
+        const res = await searchInventoryItems(
+          {
+            inventoryId: selectedInventory,
+            companyId,
+            q: productQuery || undefined,
+            page,
+            limit: 12,
+          },
+          request.signal,
+        );
         if (request.signal.aborted) return;
 
         if (page === 1) {
@@ -646,18 +614,12 @@ function RegistrarVentaContent() {
   );
 
   const handleLoadMore = () => {
-    if (
-      productsLoading ||
-      !productsMeta ||
-      productsPage >= productsMeta.totalPages
-    )
-      return;
+    if (productsLoading || !productsMeta || productsPage >= productsMeta.totalPages) return;
     searchProducts(productsPage + 1);
   };
 
   /* ---------------- Packs & Promos (solo UI) ---------------- */
-  const isAdmin =
-    isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
+  const isAdmin = isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
   const { packs } = usePacks();
 
   const getVariantsForProduct = useCallback(
@@ -693,8 +655,7 @@ function RegistrarVentaContent() {
 
   const handleAutoFillVolume = async (pack: Pack) => {
     if (pack.type !== "VOLUME") return;
-    const falta =
-      pack.minQty - packsEngine.modelQtyInCart(pack.product.productKey);
+    const falta = pack.minQty - packsEngine.modelQtyInCart(pack.product.productKey);
     if (falta <= 0) return;
     const variants = await getVariantsForProduct(pack.product.productKey);
     const best = variants.reduce<InventoryItemForSale | null>(
@@ -806,6 +767,7 @@ function RegistrarVentaContent() {
     setOrderDetails({
       orderType: undefined,
       salesChannel: undefined,
+      salesChannelId: undefined,
       closingChannel: undefined,
       deliveryType: undefined,
       entregaEn: undefined,
@@ -839,8 +801,7 @@ function RegistrarVentaContent() {
   // Auto-calcular salesRegion basándose en el departamento del cliente
   useEffect(() => {
     if (clientForm.department) {
-      const autoRegion =
-        clientForm.department.toUpperCase() === "LIMA" ? "LIMA" : "PROVINCIA";
+      const autoRegion = clientForm.department.toUpperCase() === "LIMA" ? "LIMA" : "PROVINCIA";
       setSalesRegion(autoRegion);
     }
   }, [clientForm.department]);
@@ -874,16 +835,11 @@ function RegistrarVentaContent() {
 
   const validateClientForm = () => {
     const errors: Partial<Record<keyof typeof emptyClientForm, string>> = {};
-    if (!clientForm.fullName.trim())
-      errors.fullName = "Debes completar este dato.";
-    if (!clientForm.province.trim())
-      errors.province = "Debes completar este dato.";
-    if (!clientForm.department.trim())
-      errors.department = "Debes completar este dato.";
-    if (!clientForm.district.trim())
-      errors.district = "Debes completar este dato.";
-    if (!clientForm.address.trim())
-      errors.address = "Debes completar este dato.";
+    if (!clientForm.fullName.trim()) errors.fullName = "Debes completar este dato.";
+    if (!clientForm.province.trim()) errors.province = "Debes completar este dato.";
+    if (!clientForm.department.trim()) errors.department = "Debes completar este dato.";
+    if (!clientForm.district.trim()) errors.district = "Debes completar este dato.";
+    if (!clientForm.address.trim()) errors.address = "Debes completar este dato.";
 
     if (salesRegion === "PROVINCIA") {
       // Fuera de Lima el DNI es obligatorio (requisito de couriers de
@@ -923,9 +879,7 @@ function RegistrarVentaContent() {
         fullName: clientForm.fullName,
         phoneNumber: clientForm.phoneNumber || undefined, // Evita "" que falla en backend
         documentType: clientForm.documentType,
-        documentNumber: clientForm.documentType
-          ? clientForm.documentNumber
-          : undefined,
+        documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
         clientType: clientForm.clientType,
         province: clientForm.province,
         city: clientForm.department,
@@ -933,9 +887,7 @@ function RegistrarVentaContent() {
         address: clientForm.address,
         reference: clientForm.reference || undefined, // Evita "" que falla en backend
         latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
-        longitude: clientForm.longitude
-          ? Number(clientForm.longitude)
-          : undefined,
+        longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
         googleMapsUrl: clientForm.googleMapsUrl || undefined,
       });
       setClientFound(createdClient);
@@ -952,11 +904,17 @@ function RegistrarVentaContent() {
     e.preventDefault();
 
     if (!saleContext.data || saleContext.isError || !origin.hasStore || !origin.hasInventory) {
-      toast.error(!origin.hasStore ? "Selecciona la tienda de la venta." : "Selecciona el almacén de salida.");
+      toast.error(
+        !origin.hasStore ? "Selecciona la tienda de la venta." : "Selecciona el almacén de salida.",
+      );
       return;
     }
     if (orderId && !orderData) {
       toast.error("La venta aún no se ha cargado.");
+      return;
+    }
+    if (!hasValidSalesChannel) {
+      toast.error("Selecciona el canal de venta de esta tienda.");
       return;
     }
 
@@ -976,9 +934,7 @@ function RegistrarVentaContent() {
       if (isNotFound || isSearchError) {
         if (!auth?.company?.id) return;
         if (!validateClientForm()) {
-          toast.error(
-            "Por favor completa los campos del cliente correctamente.",
-          );
+          toast.error("Por favor completa los campos del cliente correctamente.");
           return;
         }
         try {
@@ -987,21 +943,15 @@ function RegistrarVentaContent() {
             fullName: clientForm.fullName,
             phoneNumber: clientForm.phoneNumber || undefined,
             documentType: clientForm.documentType,
-            documentNumber: clientForm.documentType
-              ? clientForm.documentNumber
-              : undefined,
+            documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
             clientType: clientForm.clientType,
             province: clientForm.province,
             city: clientForm.department,
             district: clientForm.district,
             address: clientForm.address,
             reference: clientForm.reference || undefined,
-            latitude: clientForm.latitude
-              ? Number(clientForm.latitude)
-              : undefined,
-            longitude: clientForm.longitude
-              ? Number(clientForm.longitude)
-              : undefined,
+            latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
+            longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
             googleMapsUrl: clientForm.googleMapsUrl || undefined,
           });
           setClientFound(createdClient);
@@ -1022,21 +972,15 @@ function RegistrarVentaContent() {
             fullName: clientForm.fullName,
             phoneNumber: clientForm.phoneNumber,
             documentType: clientForm.documentType,
-            documentNumber: clientForm.documentType
-              ? clientForm.documentNumber
-              : undefined,
+            documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
             clientType: clientForm.clientType,
             province: clientForm.province,
             city: clientForm.department,
             district: clientForm.district,
             address: clientForm.address,
             reference: clientForm.reference || undefined,
-            latitude: clientForm.latitude
-              ? Number(clientForm.latitude)
-              : undefined,
-            longitude: clientForm.longitude
-              ? Number(clientForm.longitude)
-              : undefined,
+            latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
+            longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
             googleMapsUrl: clientForm.googleMapsUrl || undefined,
           });
           setClientFound(updated);
@@ -1064,9 +1008,7 @@ function RegistrarVentaContent() {
         return;
       }
 
-      const sellerDisplayName = `${auth?.user?.name || ""} ${
-        auth?.user?.surname || ""
-      }`.trim();
+      const sellerDisplayName = `${auth?.user?.name || ""} ${auth?.user?.surname || ""}`.trim();
 
       // El precio de cierre (item.price) ya refleja cualquier descuento manual,
       // % o pack aplicado — acá solo reconstruimos el monto de descuento en
@@ -1108,6 +1050,8 @@ function RegistrarVentaContent() {
 
         // --- Canales ---
         salesChannel: orderDetails.salesChannel,
+        ...(orderDetails.salesChannelId ? { salesChannelId: orderDetails.salesChannelId } : {}),
+        currency: "PEN",
         closingChannel: orderDetails.closingChannel,
         deliveryType: orderDetails.deliveryType,
         salesRegion: salesRegion,
@@ -1163,10 +1107,7 @@ function RegistrarVentaContent() {
 
       try {
         if (!orderId) {
-          const response = await axiosAuth.post(
-            `${GATEWAY.ventas}/order-header/manual`,
-            payload,
-          );
+          const response = await axiosAuth.post(`${GATEWAY.ventas}/order-header/manual`, payload);
 
           const createdOrderId = response.data.id;
 
@@ -1179,21 +1120,15 @@ function RegistrarVentaContent() {
             // El POST de order-header no siempre devuelve payments hidratado.
             // Se relee la orden (el GET sí trae relations: ['payments']) para
             // obtener el id del pago del adelanto.
-            let firstPaymentId: string | undefined =
-              response.data?.payments?.[0]?.id;
+            let firstPaymentId: string | undefined = response.data?.payments?.[0]?.id;
             if (!firstPaymentId) {
               try {
                 const fresh = await axiosAuth.get<{
                   payments?: { id: string }[];
-                }>(
-                  `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${createdOrderId}`,
-                );
+                }>(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${createdOrderId}`);
                 firstPaymentId = fresh.data?.payments?.[0]?.id;
               } catch (err) {
-                console.error(
-                  "Error releyendo la orden para adjuntar el comprobante",
-                  err,
-                );
+                console.error("Error releyendo la orden para adjuntar el comprobante", err);
               }
             }
 
@@ -1234,17 +1169,15 @@ function RegistrarVentaContent() {
 
           if (scheduledCallbackAt) {
             try {
-              await axiosAuth.patch(
-                `${GATEWAY.ventas}/order-header/${createdOrderId}`,
-                { callbackAt: scheduledCallbackAt, callStatus: "SCHEDULED" },
-              );
+              await axiosAuth.patch(`${GATEWAY.ventas}/order-header/${createdOrderId}`, {
+                callbackAt: scheduledCallbackAt,
+                callStatus: "SCHEDULED",
+              });
               toast.success(
                 `Venta registrada y reprogramada para el ${new Date(scheduledCallbackAt).toLocaleDateString("es-PE")}`,
               );
             } catch {
-              toast.warning(
-                "Venta registrada, pero no se pudo programar la fecha de envío",
-              );
+              toast.warning("Venta registrada, pero no se pudo programar la fecha de envío");
             }
           } else if (!proofFailed) {
             toast.success(
@@ -1261,9 +1194,7 @@ function RegistrarVentaContent() {
           // Actualizar orden existente
           // El status solo se resetea a PENDIENTE si el usuario seleccionó manualmente el tipo CAMBIO
           const newStatus =
-            orderDetails.orderType === OrderType.CAMBIO
-              ? "PENDIENTE"
-              : orderData.status;
+            orderDetails.orderType === OrderType.CAMBIO ? "PENDIENTE" : orderData.status;
 
           // Solo se mandan paymentMethod/paymentAmount si el usuario tocó el
           // pago respecto a lo precargado. Si no cambió, se omiten para no
@@ -1288,6 +1219,9 @@ function RegistrarVentaContent() {
             orderType: orderDetails.orderType,
             status: newStatus,
             salesChannel: orderDetails.salesChannel,
+            ...(!orderData.salesChannelId && orderDetails.salesChannelId
+              ? { salesChannelId: orderDetails.salesChannelId }
+              : {}),
             closingChannel: orderDetails.closingChannel,
             deliveryType: orderDetails.deliveryType,
             salesRegion: salesRegion,
@@ -1333,9 +1267,7 @@ function RegistrarVentaContent() {
             // `updated` solo se agrega acá, tras guardar con éxito: el
             // "Volver" del header usa el returnTo pelado y no anuncia nada.
             const sep = returnTo.includes("?") ? "&" : "?";
-            router.replace(
-              `${returnTo}${sep}updated=${encodeURIComponent(updatedId)}`,
-            );
+            router.replace(`${returnTo}${sep}updated=${encodeURIComponent(updatedId)}`);
             return;
           }
           setReceiptOrderId(updatedId);
@@ -1344,12 +1276,9 @@ function RegistrarVentaContent() {
       } catch (error) {
         if (orderData) {
           // El form no se resetea en error: lo editado sigue cargado.
-          const apiMessage = (
-            error as { response?: { data?: { message?: string | string[] } } }
-          )?.response?.data?.message;
-          const detail = Array.isArray(apiMessage)
-            ? apiMessage.join(", ")
-            : apiMessage;
+          const apiMessage = (error as { response?: { data?: { message?: string | string[] } } })
+            ?.response?.data?.message;
+          const detail = Array.isArray(apiMessage) ? apiMessage.join(", ") : apiMessage;
           toast.error(
             `No se pudo actualizar la venta${detail ? `: ${detail}` : ""}. Tus cambios siguen en el formulario; podés reintentar.`,
           );
@@ -1380,9 +1309,7 @@ function RegistrarVentaContent() {
       );
 
       if (existing) {
-        return prev.map((p) =>
-          p.id === existing.id ? { ...p, quantity: p.quantity + 1 } : p,
-        );
+        return prev.map((p) => (p.id === existing.id ? { ...p, quantity: p.quantity + 1 } : p));
       }
 
       return [
@@ -1415,9 +1342,7 @@ function RegistrarVentaContent() {
           !p.isGift,
       );
       if (existing) {
-        return prev.map((p) =>
-          p.id === existing.id ? { ...p, quantity: p.quantity + qty } : p,
-        );
+        return prev.map((p) => (p.id === existing.id ? { ...p, quantity: p.quantity + qty } : p));
       }
       return [
         ...prev,
@@ -1446,9 +1371,7 @@ function RegistrarVentaContent() {
   const handleCartQtyChange = (cartItemId: string, delta: number) => {
     setCart((prev) =>
       prev
-        .map((p) =>
-          p.id === cartItemId ? { ...p, quantity: p.quantity + delta } : p,
-        )
+        .map((p) => (p.id === cartItemId ? { ...p, quantity: p.quantity + delta } : p))
         .filter((p) => p.quantity > 0),
     );
   };
@@ -1457,18 +1380,12 @@ function RegistrarVentaContent() {
     const net = Math.round(price * 100) / 100;
     setCart((prev) =>
       prev.map((p) =>
-        p.id === cartItemId
-          ? { ...p, price: net, discMode: "man", discValue: net }
-          : p,
+        p.id === cartItemId ? { ...p, price: net, discMode: "man", discValue: net } : p,
       ),
     );
   };
 
-  const handleApplyDiscount = (
-    cartItemId: string,
-    mode: "pct" | "amt",
-    value: number,
-  ) => {
+  const handleApplyDiscount = (cartItemId: string, mode: "pct" | "amt", value: number) => {
     setCart((prev) =>
       prev.map((p) => {
         if (p.id !== cartItemId) return p;
@@ -1500,15 +1417,9 @@ function RegistrarVentaContent() {
     const ids = new Set(editableCartLines().map((l) => l.id));
     const net = Math.round(price * 100) / 100;
     setCart((prev) =>
-      prev.map((p) =>
-        ids.has(p.id)
-          ? { ...p, price: net, discMode: "man", discValue: net }
-          : p,
-      ),
+      prev.map((p) => (ids.has(p.id) ? { ...p, price: net, discMode: "man", discValue: net } : p)),
     );
-    toast.success(
-      `Precio S/ ${price.toFixed(2)} aplicado a ${ids.size} ítem(s)`,
-    );
+    toast.success(`Precio S/ ${price.toFixed(2)} aplicado a ${ids.size} ítem(s)`);
   };
 
   const handleBulkDiscount = (pct: number) => {
@@ -1518,10 +1429,7 @@ function RegistrarVentaContent() {
         ids.has(p.id)
           ? {
               ...p,
-              price: Math.max(
-                0,
-                Math.round((p.pvp ?? p.price) * (1 - pct / 100) * 100) / 100,
-              ),
+              price: Math.max(0, Math.round((p.pvp ?? p.price) * (1 - pct / 100) * 100) / 100),
               discMode: "pct",
               discValue: pct,
             }
@@ -1535,9 +1443,7 @@ function RegistrarVentaContent() {
     const ids = new Set(editableCartLines().map((l) => l.id));
     setCart((prev) =>
       prev.map((p) =>
-        ids.has(p.id)
-          ? { ...p, price: p.pvp ?? p.price, discMode: null, discValue: null }
-          : p,
+        ids.has(p.id) ? { ...p, price: p.pvp ?? p.price, discMode: null, discValue: null } : p,
       ),
     );
     toast.success("Precios restaurados a PVP");
@@ -1552,9 +1458,7 @@ function RegistrarVentaContent() {
         fullName: clientForm.fullName,
         phoneNumber: clientForm.phoneNumber,
         documentType: clientForm.documentType,
-        documentNumber: clientForm.documentType
-          ? clientForm.documentNumber
-          : undefined,
+        documentNumber: clientForm.documentType ? clientForm.documentNumber : undefined,
         clientType: clientForm.clientType,
         province: clientForm.province,
         city: clientForm.department, // Mapear department a city
@@ -1562,9 +1466,7 @@ function RegistrarVentaContent() {
         address: clientForm.address,
         reference: clientForm.reference || undefined,
         latitude: clientForm.latitude ? Number(clientForm.latitude) : undefined,
-        longitude: clientForm.longitude
-          ? Number(clientForm.longitude)
-          : undefined,
+        longitude: clientForm.longitude ? Number(clientForm.longitude) : undefined,
         googleMapsUrl: clientForm.googleMapsUrl || undefined,
       });
 
@@ -1582,10 +1484,7 @@ function RegistrarVentaContent() {
   // item.discount, un campo que el editor de precios/packs nunca actualiza.
   // Eso hacía que "Total descuentos" nunca se mostrara aunque la línea sí
   // tuviera descuento o pack aplicado.
-  const subtotalBruto = cart.reduce(
-    (acc, p) => acc + (p.pvp ?? p.price) * p.quantity,
-    0,
-  );
+  const subtotalBruto = cart.reduce((acc, p) => acc + (p.pvp ?? p.price) * p.quantity, 0);
   // Subtotal neto (precio de cierre real, después de descuentos/packs)
   const subtotal = cart.reduce((acc, p) => acc + p.price * p.quantity, 0);
   // Total de descuentos por item, derivado (bruto - neto)
@@ -1595,16 +1494,12 @@ function RegistrarVentaContent() {
 
   const grandTotal = subtotal + taxes + shippingTotal;
 
-  const pendingPayment = Math.max(
-    grandTotal - montoYaAprobado - advancePayment,
-    0,
-  );
+  const pendingPayment = Math.max(grandTotal - montoYaAprobado - advancePayment, 0);
 
   /* ---------------- Validaciones ---------------- */
 
   const hasValidCart =
-    cart.length > 0 &&
-    cart.every((item) => item.quantity > 0 && item.price >= 0);
+    cart.length > 0 && cart.every((item) => item.quantity > 0 && item.price >= 0);
 
   const hasValidDelivery =
     orderDetails.deliveryType === DeliveryType.RETIRO_TIENDA ||
@@ -1616,8 +1511,7 @@ function RegistrarVentaContent() {
   // ya que clientForm refleja los datos que realmente se van a enviar).
   const hasValidDocumentForRegion =
     salesRegion !== "PROVINCIA" ||
-    (clientForm.documentType === "DNI" &&
-      /^\d{7,8}$/.test(clientForm.documentNumber.trim()));
+    (clientForm.documentType === "DNI" && /^\d{7,8}$/.test(clientForm.documentNumber.trim()));
 
   // Cliente válido: ya encontrado/creado, o nuevo con los datos mínimos requeridos
   const hasValidClientForNew =
@@ -1639,7 +1533,7 @@ function RegistrarVentaContent() {
     hasValidDocumentForRegion &&
     hasValidCart &&
     !!orderDetails.orderType &&
-    !!orderDetails.salesChannel &&
+    hasValidSalesChannel &&
     !!orderDetails.closingChannel &&
     hasValidDelivery &&
     hasValidPayments &&
@@ -1658,7 +1552,7 @@ function RegistrarVentaContent() {
       msg: "Completa el DNI del cliente (obligatorio para ventas de provincia)",
     },
     { ok: !!orderDetails.orderType, msg: "Selecciona el tipo de orden" },
-    { ok: !!orderDetails.salesChannel, msg: "Selecciona el canal de venta" },
+    { ok: hasValidSalesChannel, msg: "Selecciona el canal de venta de esta tienda" },
     { ok: !!orderDetails.closingChannel, msg: "Selecciona el canal de cierre" },
     { ok: hasValidDelivery, msg: "Configura el método de entrega" },
     { ok: hasValidPayments, msg: "Selecciona el método de pago" },
@@ -1668,8 +1562,7 @@ function RegistrarVentaContent() {
 
   const hasClientChanges =
     originalClient &&
-    JSON.stringify(clientForm) !==
-      JSON.stringify(clientToFormFields(originalClient));
+    JSON.stringify(clientForm) !== JSON.stringify(clientToFormFields(originalClient));
 
   if (!auth) return null;
 
@@ -1685,29 +1578,34 @@ function RegistrarVentaContent() {
                 Volver
               </Button>
             </Link>
-            <HeaderConfig
-              title="Registrar venta"
-              description="Carga completa de una venta"
-            />
+            <HeaderConfig title="Registrar venta" description="Carga completa de una venta" />
           </div>
 
           {returnTo && (
             <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-400">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>
-                Editá el <b>tipo de entrega</b> en &quot;Detalles de la venta&quot; y
-                guardá con &quot;Actualizar venta&quot;. Al guardar volverás a
-                Por Despachar con tu selección para revisar la generación de
-                guía; la guía no se genera automáticamente. Si tocás
+                Editá el <b>tipo de entrega</b> en &quot;Detalles de la venta&quot; y guardá con
+                &quot;Actualizar venta&quot;. Al guardar volverás a Por Despachar con tu selección
+                para revisar la generación de guía; la guía no se genera automáticamente. Si tocás
                 &quot;Volver&quot; sin guardar, no se aplica ningún cambio.
               </span>
             </div>
           )}
 
           {orderId && orderLoadError && (
-            <div role="alert" className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 p-3 text-sm">
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 rounded-lg border border-destructive/30 p-3 text-sm"
+            >
               <span>No se pudo cargar la venta.</span>
-              <Button type="button" variant="outline" size="sm" onClick={() => void loadOrder()} disabled={orderLoading}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void loadOrder()}
+                disabled={orderLoading}
+              >
                 Reintentar
               </Button>
             </div>
@@ -1719,10 +1617,7 @@ function RegistrarVentaContent() {
               <Card>
                 <CardHeader>
                   <CardTitle>
-                    <SectionTitle
-                      icon={User}
-                      hint="Busca por teléfono o crea uno nuevo"
-                    >
+                    <SectionTitle icon={User} hint="Busca por teléfono o crea uno nuevo">
                       Cliente
                     </SectionTitle>
                   </CardTitle>
@@ -1738,8 +1633,7 @@ function RegistrarVentaContent() {
                         placeholder="Número de teléfono"
                         value={clientForm.phoneNumber}
                         className={cn(
-                          isFound &&
-                            "border-green-500 focus-visible:ring-green-500",
+                          isFound && "border-green-500 focus-visible:ring-green-500",
                           (isNotFound || isSearchError) &&
                             "border-amber-400 focus-visible:ring-amber-400",
                         )}
@@ -1764,11 +1658,7 @@ function RegistrarVentaContent() {
                       </Button>
 
                       {(isFound || isNotFound || isSearchError) && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={clearClient}
-                        >
+                        <Button variant="ghost" size="icon" onClick={clearClient}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       )}
@@ -1788,14 +1678,13 @@ function RegistrarVentaContent() {
                     )}
                     {!loadingClient && isNotFound && (
                       <p className="text-xs text-amber-700 dark:text-amber-400">
-                        Cliente no encontrado. Completa los datos para crear uno
-                        nuevo.
+                        Cliente no encontrado. Completa los datos para crear uno nuevo.
                       </p>
                     )}
                     {!loadingClient && isSearchError && (
                       <p className="text-xs text-destructive">
-                        No se pudo buscar el cliente. Intenta de nuevo o
-                        completa los datos manualmente.
+                        No se pudo buscar el cliente. Intenta de nuevo o completa los datos
+                        manualmente.
                       </p>
                     )}
                   </div>
@@ -1804,19 +1693,13 @@ function RegistrarVentaContent() {
                   <div className="p-4 space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <Label
-                          className={
-                            clientErrors.fullName ? "text-destructive" : ""
-                          }
-                        >
+                        <Label className={clientErrors.fullName ? "text-destructive" : ""}>
                           Nombre completo
                         </Label>
                         <Input
                           disabled={!formEnabled}
                           value={clientForm.fullName}
-                          className={
-                            clientErrors.fullName ? "border-destructive" : ""
-                          }
+                          className={clientErrors.fullName ? "border-destructive" : ""}
                           onChange={(e) => {
                             setClientForm({
                               ...clientForm,
@@ -1831,9 +1714,7 @@ function RegistrarVentaContent() {
                           }}
                         />
                         {clientErrors.fullName && (
-                          <p className="text-xs text-destructive">
-                            {clientErrors.fullName}
-                          </p>
+                          <p className="text-xs text-destructive">{clientErrors.fullName}</p>
                         )}
                       </div>
 
@@ -1853,9 +1734,7 @@ function RegistrarVentaContent() {
                             <SelectValue placeholder="Seleccionar tipo de cliente" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="TRADICIONAL">
-                              Tradicional
-                            </SelectItem>
+                            <SelectItem value="TRADICIONAL">Tradicional</SelectItem>
                             <SelectItem value="MAYORISTA">Mayorista</SelectItem>
                           </SelectContent>
                         </Select>
@@ -1879,11 +1758,7 @@ function RegistrarVentaContent() {
                       </div>
 
                       <div className="space-y-1">
-                        <Label
-                          className={
-                            clientErrors.documentType ? "text-destructive" : ""
-                          }
-                        >
+                        <Label className={clientErrors.documentType ? "text-destructive" : ""}>
                           Tipo de documento
                           {salesRegion === "PROVINCIA" && (
                             <span className="text-destructive"> *</span>
@@ -1914,20 +1789,14 @@ function RegistrarVentaContent() {
                           }}
                         >
                           <SelectTrigger
-                            className={
-                              clientErrors.documentType
-                                ? "border-destructive"
-                                : ""
-                            }
+                            className={clientErrors.documentType ? "border-destructive" : ""}
                           >
                             <SelectValue placeholder="Tipo de documento" />
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="NONE">No aplica</SelectItem>
                             <SelectItem value="DNI">DNI</SelectItem>
-                            <SelectItem value="CARNET">
-                              Carnet de Extranjería
-                            </SelectItem>
+                            <SelectItem value="CARNET">Carnet de Extranjería</SelectItem>
                             <SelectItem value="PASAPORTE">Pasaporte</SelectItem>
                           </SelectContent>
                         </Select>
@@ -1939,13 +1808,7 @@ function RegistrarVentaContent() {
                       </div>
 
                       <div className="space-y-1">
-                        <Label
-                          className={
-                            clientErrors.documentNumber
-                              ? "text-destructive"
-                              : ""
-                          }
-                        >
+                        <Label className={clientErrors.documentNumber ? "text-destructive" : ""}>
                           N° Documento
                           {salesRegion === "PROVINCIA" && (
                             <span className="text-destructive"> *</span>
@@ -1955,11 +1818,7 @@ function RegistrarVentaContent() {
                           disabled={!formEnabled || !clientForm.documentType}
                           placeholder="Número"
                           value={clientForm.documentNumber}
-                          className={
-                            clientErrors.documentNumber
-                              ? "border-destructive"
-                              : ""
-                          }
+                          className={clientErrors.documentNumber ? "border-destructive" : ""}
                           onChange={(e) => {
                             setClientForm({
                               ...clientForm,
@@ -2017,11 +1876,7 @@ function RegistrarVentaContent() {
                             options={departmentOptions}
                             placeholder="Departamento"
                             searchPlaceholder="Buscar departamento..."
-                            className={
-                              clientErrors.department
-                                ? "border-destructive"
-                                : ""
-                            }
+                            className={clientErrors.department ? "border-destructive" : ""}
                           />
                           {clientErrors.department && (
                             <p className="text-[10px] text-destructive mt-1">
@@ -2032,11 +1887,7 @@ function RegistrarVentaContent() {
 
                         <div>
                           <Combobox
-                            disabled={
-                              !formEnabled ||
-                              !clientForm.department ||
-                              isSubmitting
-                            }
+                            disabled={!formEnabled || !clientForm.department || isSubmitting}
                             value={clientForm.province}
                             onValueChange={(value) => {
                               setClientForm({
@@ -2054,9 +1905,7 @@ function RegistrarVentaContent() {
                             options={provinceOptions}
                             placeholder="Provincia"
                             searchPlaceholder="Buscar provincia..."
-                            className={
-                              clientErrors.province ? "border-destructive" : ""
-                            }
+                            className={clientErrors.province ? "border-destructive" : ""}
                           />
                           {clientErrors.province && (
                             <p className="text-[10px] text-destructive mt-1">
@@ -2067,11 +1916,7 @@ function RegistrarVentaContent() {
 
                         <div>
                           <Combobox
-                            disabled={
-                              !formEnabled ||
-                              !clientForm.province ||
-                              isSubmitting
-                            }
+                            disabled={!formEnabled || !clientForm.province || isSubmitting}
                             value={clientForm.district}
                             onValueChange={(value) => {
                               setClientForm({ ...clientForm, district: value });
@@ -2085,9 +1930,7 @@ function RegistrarVentaContent() {
                             options={districtOptions}
                             placeholder="Distrito"
                             searchPlaceholder="Buscar distrito..."
-                            className={
-                              clientErrors.district ? "border-destructive" : ""
-                            }
+                            className={clientErrors.district ? "border-destructive" : ""}
                           />
                           {clientErrors.district && (
                             <p className="text-[10px] text-destructive mt-1">
@@ -2102,9 +1945,7 @@ function RegistrarVentaContent() {
                           disabled={!formEnabled}
                           placeholder="Dirección exacta"
                           value={clientForm.address}
-                          className={
-                            clientErrors.address ? "border-destructive" : ""
-                          }
+                          className={clientErrors.address ? "border-destructive" : ""}
                           onChange={(e) => {
                             setClientForm({
                               ...clientForm,
@@ -2119,9 +1960,7 @@ function RegistrarVentaContent() {
                           }}
                         />
                         {clientErrors.address && (
-                          <p className="text-xs text-destructive mt-1">
-                            {clientErrors.address}
-                          </p>
+                          <p className="text-xs text-destructive mt-1">{clientErrors.address}</p>
                         )}
                       </div>
                     </div>
@@ -2154,15 +1993,15 @@ function RegistrarVentaContent() {
                         </button>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Se calcula automáticamente según el departamento, pero
-                        puedes cambiarlo manualmente.
+                        Se calcula automáticamente según el departamento, pero puedes cambiarlo
+                        manualmente.
                       </p>
                       {salesRegion === "PROVINCIA" && (
                         <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-400">
                           <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
                           <p className="text-xs font-medium">
-                            Venta de provincia detectada. El DNI es
-                            obligatorio para poder despachar el pedido.
+                            Venta de provincia detectada. El DNI es obligatorio para poder despachar
+                            el pedido.
                           </p>
                         </div>
                       )}
@@ -2172,9 +2011,7 @@ function RegistrarVentaContent() {
                       <div className="space-y-1">
                         <Label>
                           Referencia{" "}
-                          <span className="text-muted-foreground font-normal">
-                            (opcional)
-                          </span>
+                          <span className="text-muted-foreground font-normal">(opcional)</span>
                         </Label>
                         <Textarea
                           disabled={!formEnabled}
@@ -2192,9 +2029,7 @@ function RegistrarVentaContent() {
                       <div className="space-y-1">
                         <Label>
                           Link de Google Maps{" "}
-                          <span className="text-muted-foreground font-normal">
-                            (opcional)
-                          </span>
+                          <span className="text-muted-foreground font-normal">(opcional)</span>
                         </Label>
                         <Input
                           disabled={!formEnabled}
@@ -2210,15 +2045,13 @@ function RegistrarVentaContent() {
                         )}
                         {mapsLinkStatus === "unrecognized" && (
                           <p className="text-xs text-amber-600 dark:text-amber-400">
-                            No pudimos leer coordenadas en este link. Abre el
-                            link, copia la URL completa (con “@lat,lng”) o
-                            completa Latitud/Longitud a mano.
+                            No pudimos leer coordenadas en este link. Abre el link, copia la URL
+                            completa (con “@lat,lng”) o completa Latitud/Longitud a mano.
                           </p>
                         )}
                         {!mapsLinkStatus && (
                           <p className="text-xs text-muted-foreground">
-                            Pega el link para completar Latitud y Longitud
-                            automáticamente.
+                            Pega el link para completar Latitud y Longitud automáticamente.
                           </p>
                         )}
                       </div>
@@ -2267,22 +2100,19 @@ function RegistrarVentaContent() {
                     </Disclosure>
 
                     {/* Acciones */}
-                    {(isNotFound || isSearchError) &&
-                      clientForm.fullName.trim() && (
-                        <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-500/10 dark:text-blue-300">
-                          <span>ℹ️</span>
-                          <span>
-                            Se creará un nuevo cliente al confirmar la venta.
-                          </span>
-                        </div>
-                      )}
+                    {(isNotFound || isSearchError) && clientForm.fullName.trim() && (
+                      <div className="flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-700 dark:border-blue-800 dark:bg-blue-500/10 dark:text-blue-300">
+                        <span>ℹ️</span>
+                        <span>Se creará un nuevo cliente al confirmar la venta.</span>
+                      </div>
+                    )}
 
                     {isFound && hasClientChanges && (
                       <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
                         <span>⚠️</span>
                         <span>
-                          Los datos del cliente se actualizarán automáticamente
-                          al confirmar la venta.
+                          Los datos del cliente se actualizarán automáticamente al confirmar la
+                          venta.
                         </span>
                       </div>
                     )}
@@ -2294,10 +2124,7 @@ function RegistrarVentaContent() {
               <Card>
                 <CardHeader>
                   <CardTitle>
-                    <SectionTitle
-                      icon={Package}
-                      hint="Elige el almacén y busca modelos"
-                    >
+                    <SectionTitle icon={Package} hint="Elige el almacén y busca modelos">
                       Productos
                     </SectionTitle>
                   </CardTitle>
@@ -2312,9 +2139,11 @@ function RegistrarVentaContent() {
                       readOnly={Boolean(orderId)}
                       disabled={isSubmitting || cart.length > 0 || saleContext.isError}
                       loading={saleContext.isLoading}
-                      hint={!orderId && cart.length > 0 && inventories.length > 1
-                        ? "Vacía el carrito para cambiar de almacén."
-                        : undefined}
+                      hint={
+                        !orderId && cart.length > 0 && inventories.length > 1
+                          ? "Vacía el carrito para cambiar de almacén."
+                          : undefined
+                      }
                     />
                   </div>
 
@@ -2371,11 +2200,7 @@ function RegistrarVentaContent() {
                       activePacksForProduct={packsEngine.activePacksForProduct}
                       frequencies={productFrequencies}
                       onLoadMore={handleLoadMore}
-                      hasMore={
-                        productsMeta
-                          ? products.length < productsMeta.total
-                          : false
-                      }
+                      hasMore={productsMeta ? products.length < productsMeta.total : false}
                     />
                   </div>
                 </CardContent>
@@ -2401,9 +2226,7 @@ function RegistrarVentaContent() {
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center justify-between">
-                    <SectionTitle icon={ShoppingCart}>
-                      Detalle de la venta
-                    </SectionTitle>
+                    <SectionTitle icon={ShoppingCart}>Detalle de la venta</SectionTitle>
                     <Badge variant="outline">
                       {cart.reduce((a, l) => a + l.quantity, 0)} ítems
                     </Badge>
@@ -2465,20 +2288,12 @@ function RegistrarVentaContent() {
                       <SelectContent>
                         <SelectItem value="YAPE">Yape</SelectItem>
                         <SelectItem value="PLIN">Plin</SelectItem>
-                        <SelectItem value="TRANSFERENCIA">
-                          Transferencia
-                        </SelectItem>
+                        <SelectItem value="TRANSFERENCIA">Transferencia</SelectItem>
                         <SelectItem value="EFECTIVO">Efectivo</SelectItem>
-                        <SelectItem value="CONTRA_ENTREGA">
-                          Contraentrega
-                        </SelectItem>
+                        <SelectItem value="CONTRA_ENTREGA">Contraentrega</SelectItem>
                         <SelectItem value="BCP">BCP</SelectItem>
-                        <SelectItem value="BANCO_NACION">
-                          Banco de la Nación
-                        </SelectItem>
-                        <SelectItem value="MERCADO_PAGO">
-                          Pago link - Mercado Pago
-                        </SelectItem>
+                        <SelectItem value="BANCO_NACION">Banco de la Nación</SelectItem>
+                        <SelectItem value="MERCADO_PAGO">Pago link - Mercado Pago</SelectItem>
                         <SelectItem value="POS">POS</SelectItem>
                       </SelectContent>
                     </Select>
@@ -2508,9 +2323,7 @@ function RegistrarVentaContent() {
                           const val = e.target.value;
                           const numVal = parseFloat(val) || 0;
                           setShippingTotal(numVal);
-                          setShippingTotalDisplay(
-                            numVal === 0 ? "" : String(numVal),
-                          );
+                          setShippingTotalDisplay(numVal === 0 ? "" : String(numVal));
                         }}
                       />
                     </div>
@@ -2537,15 +2350,13 @@ function RegistrarVentaContent() {
                         const val = e.target.value;
                         const numVal = parseFloat(val) || 0;
                         setAdvancePayment(numVal);
-                        setAdvancePaymentDisplay(
-                          numVal === 0 ? "" : String(numVal),
-                        );
+                        setAdvancePaymentDisplay(numVal === 0 ? "" : String(numVal));
                       }}
                     />
                     {pendingPaymentsCount > 1 && (
                       <p className="text-xs text-muted-foreground">
-                        Esta venta tiene varios pagos pendientes. Gestionalos
-                        desde Finanzas › Gestionar Pagos.
+                        Esta venta tiene varios pagos pendientes. Gestionalos desde Finanzas ›
+                        Gestionar Pagos.
                       </p>
                     )}
                   </div>
@@ -2573,16 +2384,12 @@ function RegistrarVentaContent() {
                             "application/pdf",
                           ];
                           if (!allowedTypes.includes(file.type)) {
-                            toast.error(
-                              "Tipo de archivo no permitido. Use JPG, PNG, WEBP o PDF.",
-                            );
+                            toast.error("Tipo de archivo no permitido. Use JPG, PNG, WEBP o PDF.");
                             return;
                           }
 
                           if (file.size > 5 * 1024 * 1024) {
-                            toast.error(
-                              "El archivo es muy grande. Máximo 5MB.",
-                            );
+                            toast.error("El archivo es muy grande. Máximo 5MB.");
                             return;
                           }
 
@@ -2603,12 +2410,8 @@ function RegistrarVentaContent() {
 
                       {!paymentProofFile ? (
                         <div className="space-y-1">
-                          <p className="text-sm text-gray-600">
-                            Clic para seleccionar comprobante
-                          </p>
-                          <p className="text-xs text-gray-400">
-                            JPG, PNG, WEBP o PDF (máx. 5MB)
-                          </p>
+                          <p className="text-sm text-gray-600">Clic para seleccionar comprobante</p>
+                          <p className="text-xs text-gray-400">JPG, PNG, WEBP o PDF (máx. 5MB)</p>
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -2621,13 +2424,9 @@ function RegistrarVentaContent() {
                               className="max-h-24 mx-auto rounded-md object-contain"
                             />
                           ) : (
-                            <p className="text-sm text-violet-600 font-medium">
-                              PDF seleccionado
-                            </p>
+                            <p className="text-sm text-violet-600 font-medium">PDF seleccionado</p>
                           )}
-                          <p className="text-xs text-gray-600 truncate">
-                            {paymentProofFile.name}
-                          </p>
+                          <p className="text-xs text-gray-600 truncate">{paymentProofFile.name}</p>
                           <Button
                             variant="destructive"
                             size="sm"
@@ -2655,20 +2454,14 @@ function RegistrarVentaContent() {
                     <Select
                       disabled={isSubmitting}
                       value={taxMode}
-                      onValueChange={(v) =>
-                        setTaxMode(v as "AUTOMATICO" | "INCLUIDO")
-                      }
+                      onValueChange={(v) => setTaxMode(v as "AUTOMATICO" | "INCLUIDO")}
                     >
                       <SelectTrigger>
                         <SelectValue placeholder="Seleccionar modo" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="AUTOMATICO">
-                          Cálculo automático (+18% IGV)
-                        </SelectItem>
-                        <SelectItem value="INCLUIDO">
-                          Impuestos incluidos en precio
-                        </SelectItem>
+                        <SelectItem value="AUTOMATICO">Cálculo automático (+18% IGV)</SelectItem>
+                        <SelectItem value="INCLUIDO">Impuestos incluidos en precio</SelectItem>
                       </SelectContent>
                     </Select>
                     <p className="text-xs text-muted-foreground">
@@ -2684,33 +2477,58 @@ function RegistrarVentaContent() {
               <Card>
                 <CardHeader>
                   <CardTitle>
-                    <SectionTitle icon={ClipboardList}>
-                      Detalles de la venta
-                    </SectionTitle>
+                    <SectionTitle icon={ClipboardList}>Detalles de la venta</SectionTitle>
                   </CardTitle>
                 </CardHeader>
 
                 <CardContent className="space-y-4">
                   {saleContext.isError && (
-                    <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm">
+                    <div
+                      role="alert"
+                      className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm"
+                    >
                       <span>No se pudieron cargar las tiendas y los almacenes.</span>
-                      <Button type="button" size="sm" variant="outline" onClick={() => void saleContext.refetch()} disabled={saleContext.isFetching}>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void saleContext.refetch()}
+                        disabled={saleContext.isFetching}
+                      >
                         Reintentar
                       </Button>
                     </div>
                   )}
                   {saleContext.data && !stores.length && !orderId && (
-                    <p role="alert" className="text-sm text-destructive">La empresa no tiene tiendas activas.</p>
+                    <div role="alert" className="space-y-2 text-sm">
+                      <p>
+                        Crea una tienda comercial para registrar la venta. Puedes usar el almacén
+                        actual.
+                      </p>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/configuracion/tiendas">Crear tienda comercial</Link>
+                      </Button>
+                    </div>
                   )}
                   {saleContext.data && !inventories.length && !orderId && (
-                    <p role="alert" className="text-sm text-destructive">La empresa no tiene almacenes activos.</p>
+                    <p role="alert" className="text-sm text-destructive">
+                      La empresa no tiene almacenes activos.
+                    </p>
                   )}
                   <div className="grid md:grid-cols-2 gap-4">
                     <SaleOriginField
                       label="Tienda de la venta"
                       options={stores}
                       value={origin.storeId}
-                      onChange={origin.chooseStore}
+                      onChange={(storeId) => {
+                        origin.chooseStore(storeId);
+                        if (storeId !== origin.storeId)
+                          setOrderDetails((current) => ({
+                            ...current,
+                            salesChannelId: undefined,
+                            salesChannel: undefined,
+                          }));
+                      }}
                       readOnly={Boolean(orderId)}
                       disabled={isSubmitting || saleContext.isError}
                       loading={saleContext.isLoading}
@@ -2718,8 +2536,7 @@ function RegistrarVentaContent() {
                     {/* Tipo de orden */}
                     <div className="space-y-1">
                       <Label>
-                        Tipo de orden{" "}
-                        <span className="text-destructive">*</span>
+                        Tipo de orden <span className="text-destructive">*</span>
                       </Label>
                       <Select
                         disabled={isSubmitting}
@@ -2736,53 +2553,31 @@ function RegistrarVentaContent() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value={OrderType.VENTA}>Venta</SelectItem>
-                          <SelectItem value={OrderType.CAMBIO}>
-                            Cambio
-                          </SelectItem>
-                          <SelectItem value={OrderType.RESERVA}>
-                            Reserva
-                          </SelectItem>
-                          <SelectItem value={OrderType.PREVENTA}>
-                            Preventa
-                          </SelectItem>
+                          <SelectItem value={OrderType.CAMBIO}>Cambio</SelectItem>
+                          <SelectItem value={OrderType.RESERVA}>Reserva</SelectItem>
+                          <SelectItem value={OrderType.PREVENTA}>Preventa</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
                     {/* Canal de venta */}
-                    <div className="space-y-1">
-                      <Label>
-                        Canal de venta{" "}
-                        <span className="text-destructive">*</span>
-                      </Label>
-                      <Select
-                        disabled={isSubmitting}
-                        value={orderDetails.salesChannel ?? ""}
-                        onValueChange={(v) =>
-                          setOrderDetails({
-                            ...orderDetails,
-                            salesChannel: v as any,
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Seleccionar canal de venta" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {salesChannels.map((channel: string) => (
-                            <SelectItem key={channel} value={channel}>
-                              {channel.replace(/_/g, " ")}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    <SaleChannelField
+                      channels={storeChannels}
+                      legacyChannels={salesChannels}
+                      valueId={orderDetails.salesChannelId}
+                      valueType={orderDetails.salesChannel}
+                      fixedId={orderData?.salesChannelId}
+                      editing={Boolean(orderId)}
+                      disabled={isSubmitting || !origin.hasStore || saleContext.isError}
+                      onChange={(salesChannelId, salesChannel) =>
+                        setOrderDetails((current) => ({ ...current, salesChannelId, salesChannel }))
+                      }
+                    />
 
                     {/* Canal de cierre */}
                     <div className="space-y-1">
                       <Label>
-                        Canal de cierre{" "}
-                        <span className="text-destructive">*</span>
+                        Canal de cierre <span className="text-destructive">*</span>
                       </Label>
                       <Select
                         disabled={isSubmitting}
@@ -2810,8 +2605,7 @@ function RegistrarVentaContent() {
                     {/* Tipo de entrega */}
                     <div className="space-y-1">
                       <Label>
-                        Tipo de entrega{" "}
-                        <span className="text-destructive">*</span>
+                        Tipo de entrega <span className="text-destructive">*</span>
                       </Label>
                       <Select
                         disabled={isSubmitting}
@@ -2831,9 +2625,7 @@ function RegistrarVentaContent() {
                           <SelectItem value={DeliveryType.RETIRO_TIENDA}>
                             Retiro en tienda
                           </SelectItem>
-                          <SelectItem value={DeliveryType.DOMICILIO}>
-                            Envío a domicilio
-                          </SelectItem>
+                          <SelectItem value={DeliveryType.DOMICILIO}>Envío a domicilio</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -2842,8 +2634,7 @@ function RegistrarVentaContent() {
                     {orderDetails.deliveryType === DeliveryType.DOMICILIO && (
                       <div className="md:col-span-2 space-y-1">
                         <Label>
-                          Método de envío{" "}
-                          <span className="text-destructive">*</span>
+                          Método de envío <span className="text-destructive">*</span>
                         </Label>
                         <Select
                           disabled={isSubmitting || isLoadingCouriers}
@@ -2858,9 +2649,7 @@ function RegistrarVentaContent() {
                           <SelectTrigger>
                             <SelectValue
                               placeholder={
-                                isLoadingCouriers
-                                  ? "Cargando..."
-                                  : "Seleccionar método de envío"
+                                isLoadingCouriers ? "Cargando..." : "Seleccionar método de envío"
                               }
                             />
                           </SelectTrigger>
@@ -2887,9 +2676,7 @@ function RegistrarVentaContent() {
                           const checked = !!v;
                           setScheduleDelivery(checked);
                           if (checked && !scheduledDeliveryDate) {
-                            setScheduledDeliveryDate(
-                              defaultScheduledDateValue(),
-                            );
+                            setScheduledDeliveryDate(defaultScheduledDateValue());
                           }
                         }}
                       />
@@ -2897,10 +2684,7 @@ function RegistrarVentaContent() {
                     </label>
                     {scheduleDelivery && (
                       <div className="space-y-1 pl-6">
-                        <Label
-                          htmlFor="scheduled-delivery-date"
-                          className="text-xs"
-                        >
+                        <Label htmlFor="scheduled-delivery-date" className="text-xs">
                           Fecha
                         </Label>
                         <Input
@@ -2909,9 +2693,7 @@ function RegistrarVentaContent() {
                           className="h-9 max-w-xs"
                           disabled={isSubmitting}
                           value={scheduledDeliveryDate}
-                          onChange={(e) =>
-                            setScheduledDeliveryDate(e.target.value)
-                          }
+                          onChange={(e) => setScheduledDeliveryDate(e.target.value)}
                         />
                       </div>
                     )}
@@ -2950,9 +2732,7 @@ function RegistrarVentaContent() {
                 <CardContent className="pt-6 text-sm space-y-1">
                   <div className="flex justify-between py-0.5 text-muted-foreground">
                     <span>Importe productos</span>
-                    <span className="text-foreground">
-                      S/ {subtotalBruto.toFixed(2)}
-                    </span>
+                    <span className="text-foreground">S/ {subtotalBruto.toFixed(2)}</span>
                   </div>
                   {totalItemDiscounts > 0 && (
                     <div className="flex justify-between py-0.5 text-emerald-600 dark:text-emerald-400">
@@ -2962,23 +2742,17 @@ function RegistrarVentaContent() {
                   )}
                   <div className="flex justify-between py-0.5 text-muted-foreground">
                     <span>Sub total</span>
-                    <span className="text-foreground">
-                      S/ {subtotal.toFixed(2)}
-                    </span>
+                    <span className="text-foreground">S/ {subtotal.toFixed(2)}</span>
                   </div>
                   {taxMode === "AUTOMATICO" && (
                     <div className="flex justify-between py-0.5 text-muted-foreground">
                       <span>IGV 18%</span>
-                      <span className="text-foreground">
-                        S/ {taxes.toFixed(2)}
-                      </span>
+                      <span className="text-foreground">S/ {taxes.toFixed(2)}</span>
                     </div>
                   )}
                   <div className="flex justify-between py-0.5 text-muted-foreground">
                     <span>Costo de envío</span>
-                    <span className="text-foreground">
-                      S/ {shippingTotal.toFixed(2)}
-                    </span>
+                    <span className="text-foreground">S/ {shippingTotal.toFixed(2)}</span>
                   </div>
                   {montoYaAprobado > 0 && (
                     <div className="flex justify-between py-0.5 text-emerald-600 dark:text-emerald-400">
@@ -2989,9 +2763,7 @@ function RegistrarVentaContent() {
                   {advancePayment > 0 && (
                     <div className="flex justify-between py-0.5 text-muted-foreground">
                       <span>Adelanto de pago</span>
-                      <span className="text-foreground">
-                        S/ {advancePayment.toFixed(2)}
-                      </span>
+                      <span className="text-foreground">S/ {advancePayment.toFixed(2)}</span>
                     </div>
                   )}
 
@@ -3038,9 +2810,7 @@ function RegistrarVentaContent() {
                               : "border-border bg-muted/40"
                           }`}
                         >
-                          {ok && (
-                            <Check className="h-2.5 w-2.5" strokeWidth={4} />
-                          )}
+                          {ok && <Check className="h-2.5 w-2.5" strokeWidth={4} />}
                         </span>
                         {msg}
                       </li>
@@ -3090,11 +2860,7 @@ function RegistrarVentaContent() {
 export default function RegistrarVentaPage() {
   return (
     <Suspense
-      fallback={
-        <div className="flex items-center justify-center h-screen">
-          Cargando...
-        </div>
-      }
+      fallback={<div className="flex items-center justify-center h-screen">Cargando...</div>}
     >
       <PacksProvider>
         <RegistrarVentaContent />

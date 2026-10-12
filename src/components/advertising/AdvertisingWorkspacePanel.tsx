@@ -9,13 +9,12 @@ import { useAdvertisingWorkspace } from "@/hooks/useAdvertisingWorkspace";
 import { advertisingErrorMessage, advertisingErrorStatus } from "@/services/advertisingService";
 import {
   evaluateAdvertisingAlerts,
-  saveAdvertisingAssignment,
   saveAdvertisingPlan,
   saveAdvertisingRule,
 } from "@/services/advertisingWorkspaceService";
 import { AdvertisingAlerts } from "./AdvertisingAlerts";
-import { AdvertisingAssignments } from "./AdvertisingAssignments";
 import { AdvertisingPlanner } from "./AdvertisingPlanner";
+import { AdvertisingStoreAssignmentsPanel } from "./AdvertisingStoreAssignmentsPanel";
 import { validMetaPeriod } from "./advertising-meta-model";
 
 export type AdvertisingWorkspaceView = "assignments" | "alerts" | "planner";
@@ -25,7 +24,10 @@ export function AdvertisingWorkspacePanel({
   ...identity
 }: AdvertisingSnapshotOptions & { view: AdvertisingWorkspaceView }) {
   const validPeriod = validMetaPeriod(identity.from, identity.to);
-  const query = useAdvertisingWorkspace({ ...identity, enabled: validPeriod });
+  const query = useAdvertisingWorkspace({
+    ...identity,
+    enabled: validPeriod && view !== "assignments",
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -74,6 +76,7 @@ export function AdvertisingWorkspacePanel({
       if (mounted.current) setBusy(false);
     }
   }
+  if (view === "assignments") return <AdvertisingStoreAssignmentsPanel {...identity} />;
   if (!validPeriod)
     return (
       <Alert className="m-4 max-w-xl">
@@ -115,17 +118,6 @@ export function AdvertisingWorkspacePanel({
         </div>
       ) : !workspace ? (
         <Skeleton className="h-64" aria-label="Cargando publicidad" />
-      ) : view === "assignments" ? (
-        <AdvertisingAssignments
-          workspace={workspace}
-          busy={busy}
-          onSave={(accountId, payload) =>
-            run(
-              (token, companyId) => saveAdvertisingAssignment(token, companyId, accountId, payload),
-              "Asignación guardada.",
-            )
-          }
-        />
       ) : view === "alerts" ? (
         <AdvertisingAlerts
           workspace={workspace}

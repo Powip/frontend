@@ -35,6 +35,7 @@ import type {
 import { advertisingErrorMessage, advertisingErrorStatus } from "@/services/advertisingService";
 import { AdvertisingOrderDateBasis } from "./AdvertisingOrderDateBasis";
 import type { AdvertisingOrdersPanelProps } from "./AdvertisingOrdersPanel";
+import { useAdvertisingStoreFilter } from "./AdvertisingStoreFilterContext";
 import { businessResult } from "./advertising-business-results";
 import { formatAdvertisingDate } from "./advertising-model";
 import { formatOrderAmount } from "./advertising-orders-model";
@@ -73,6 +74,7 @@ export function AdvertisingBusinessAnalyticsPanel(
   props: AdvertisingOrdersPanelProps & { view: View },
 ) {
   const id = useId();
+  const { storeId } = useAdvertisingStoreFilter();
   const queryClient = useQueryClient();
   const [basis, setBasis] = useState<AdvertisingOrderBasis>(
     props.view === "results" ? "paid" : "created",
@@ -81,18 +83,36 @@ export function AdvertisingBusinessAnalyticsPanel(
   const [currency, setCurrency] = useState("all");
   const [page, setPage] = useState(1);
   const groupBy = props.view === "products" ? "product" : props.view === "zones" ? "zone" : "ad";
-  const query = useAdvertisingBusinessAnalytics(props, {
-    from: props.from,
-    to: props.to,
-    basis: props.view === "quality" ? "created" : basis,
-    timeZone,
-    groupBy,
-  });
+  const observedStore = useRef(storeId);
+  useEffect(() => {
+    if (observedStore.current === storeId) return;
+    observedStore.current = storeId;
+    setPage(1);
+  }, [storeId]);
+  const query = useAdvertisingBusinessAnalytics(
+    { ...props, enabled: props.enabled !== false && storeId !== "none" },
+    {
+      from: props.from,
+      to: props.to,
+      basis: props.view === "quality" ? "created" : basis,
+      timeZone,
+      groupBy,
+      storeId,
+      channelId: "all",
+    },
+  );
   const data = query.data;
   const rows = (data?.rows ?? []).filter(
     (row) => currency === "all" || (row.currency ?? "unknown") === currency,
   );
   const visible = rows.slice((page - 1) * 25, page * 25);
+  if (storeId === "none")
+    return (
+      <p className="p-4 text-sm text-muted-foreground">
+        El gasto sin asignar no identifica una tienda de venta. Elige una tienda para consultar sus
+        resultados.
+      </p>
+    );
   return (
     <section className="space-y-5 p-4 sm:p-6 lg:p-8">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -214,7 +234,11 @@ export function AdvertisingBusinessAnalyticsPanel(
               ))}
             </div>
             <Button asChild variant="outline">
-              <Link href={advertisingSectionHref("/publicidad/atribucion", props.from, props.to)}>
+              <Link
+                href={advertisingSectionHref("/publicidad/atribucion", props.from, props.to, {
+                  storeId,
+                })}
+              >
                 Revisar pedidos
               </Link>
             </Button>
@@ -342,6 +366,7 @@ function BusinessResultsTable(
     rows: AdvertisingBusinessRow[];
   },
 ) {
+  const { storeId } = useAdvertisingStoreFilter();
   const groupKeys = props.rows.map((row) => `${row.accountId ?? ""}/${row.id ?? ""}`).join(",");
   const enabled = Boolean(props.token && props.companyId && props.actorId && props.rows.length);
   const meta = useQuery({
@@ -352,6 +377,7 @@ function BusinessResultsTable(
       props.from,
       props.to,
       groupKeys,
+      storeId,
     ],
     enabled,
     staleTime: 0,
@@ -377,6 +403,7 @@ function BusinessResultsTable(
                 adId: row.id,
                 page: 1,
                 pageSize: 1,
+                storeId,
               },
               signal,
             );
@@ -458,7 +485,7 @@ function BusinessResultsTable(
                             "/publicidad/anuncios",
                             props.from,
                             props.to,
-                            { accountId: row.accountId, adId: row.id },
+                            { accountId: row.accountId, adId: row.id, storeId },
                           )}
                         >
                           Ver anuncio

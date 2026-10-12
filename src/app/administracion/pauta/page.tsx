@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
+import { AdvertisingAssignedSpendV11 } from "@/components/advertising/AdvertisingAssignedSpendV11";
 import { AdvertisingLivePanel } from "@/components/advertising/AdvertisingLivePanel";
 import { advertisingPeriodFromParams } from "@/components/advertising/advertising-period";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -34,17 +35,20 @@ function AdvertisingPageContent() {
     return <Skeleton className="h-48 w-full" aria-label="Cargando periodo de inversión" />;
 
   return (
-    <AdvertisingLivePanel
-      key={`${auth?.user.id}:${auth?.company?.id}`}
-      companyId={auth?.company?.id}
-      actorId={auth?.user.id}
-      token={auth?.accessToken}
-      companyName={auth?.company?.name ?? "Mi empresa"}
-      from={fromDate}
-      to={toDate}
-      storeIds={storeIds}
-      manualContent={<ManualAdvertisingPage />}
-    />
+    <div className="space-y-5">
+      <AdvertisingAssignedSpendV11 from={fromDate} to={toDate} />
+      <AdvertisingLivePanel
+        key={`${auth?.user.id}:${auth?.company?.id}`}
+        companyId={auth?.company?.id}
+        actorId={auth?.user.id}
+        token={auth?.accessToken}
+        companyName={auth?.company?.name ?? "Mi empresa"}
+        from={fromDate}
+        to={toDate}
+        storeIds={storeIds}
+        manualContent={<ManualAdvertisingPage />}
+      />
+    </div>
   );
 }
 

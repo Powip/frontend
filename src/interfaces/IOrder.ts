@@ -1,4 +1,4 @@
-import { Client } from "./ICliente";
+import type { Client } from "./ICliente";
 
 export interface IOrder {
   id: string;
@@ -160,6 +160,8 @@ export interface OrderHeader {
   stockVersion?: number;
   customer: Client;
   salesChannel: SalesChannel;
+  salesChannelId?: string | null;
+  salesChannelType?: string | null;
   closingChannel: SalesChannel;
   deliveryType: DeliveryType;
   courierId: string | null;
@@ -369,40 +371,40 @@ export interface CcUpsellResponse {
 }
 
 export interface CcKpisFunnelDistribucionBucket {
-  count:      number;
+  count: number;
   percentage: number;
 }
 
 export interface CcKpisFunnelDistribucion {
-  total:       number;
-  pendiente:   CcKpisFunnelDistribucionBucket;
-  confirmado:  CcKpisFunnelDistribucionBucket;
-  noContesta:  CcKpisFunnelDistribucionBucket;
-  anulado:     CcKpisFunnelDistribucionBucket;
+  total: number;
+  pendiente: CcKpisFunnelDistribucionBucket;
+  confirmado: CcKpisFunnelDistribucionBucket;
+  noContesta: CcKpisFunnelDistribucionBucket;
+  anulado: CcKpisFunnelDistribucionBucket;
 }
 
 export interface CcKpisFunnelSubBreakdown {
   despachado: CcKpisFunnelDistribucionBucket; // % sobre confirmado
-  entregado:  CcKpisFunnelDistribucionBucket; // % sobre confirmado
+  entregado: CcKpisFunnelDistribucionBucket; // % sobre confirmado
 }
 
 export interface CcKpisFunnelResponse {
-  ingresados:      { count: number };
-  gestionados:     { count: number; percentage: number };
-  confirmados:     { count: number; percentage: number };
-  despachados:     { count: number; percentage: number };
-  entregados:      { count: number; percentage: number };
+  ingresados: { count: number };
+  gestionados: { count: number; percentage: number };
+  confirmados: { count: number; percentage: number };
+  despachados: { count: number; percentage: number };
+  entregados: { count: number; percentage: number };
   conversionFinal: { percentage: number };
   // Campos opcionales — agregados aditivamente por el backend (Fase 5)
-  distribucion?:   CcKpisFunnelDistribucion;
-  subBreakdown?:   CcKpisFunnelSubBreakdown;
+  distribucion?: CcKpisFunnelDistribucion;
+  subBreakdown?: CcKpisFunnelSubBreakdown;
 }
 
 export interface CcStorePerformanceItem {
-  shop:            string | null;
-  ingresados:      number;
-  confirmados:     number;
-  tasaConversion:  number;
+  shop: string | null;
+  ingresados: number;
+  confirmados: number;
+  tasaConversion: number;
 }
 
 /* -----------------------------------------
@@ -419,7 +421,7 @@ export interface CcAgingDiasBuckets {
 }
 
 export interface CcAgingEstadoRow {
-  estado: 'PENDIENTE' | 'NO_CONTESTA' | 'DESPACHADO';
+  estado: "PENDIENTE" | "NO_CONTESTA" | "DESPACHADO";
   dias: CcAgingDiasBuckets;
   total: number;
 }
@@ -433,7 +435,7 @@ export interface CcAgingResponse {
    Fase 7 — Análisis de intentos
 ----------------------------------------- */
 export interface CcIntentoBucket {
-  etiqueta: '1' | '2' | '3' | '3+';
+  etiqueta: "1" | "2" | "3" | "3+";
   totalLlamadas: number;
   confirmados: number;
   noContesta: number;
@@ -456,10 +458,10 @@ export interface CcUpsellRecordItem {
   quantity: number;
   unitPrice: number;
   subtotal: number;
-  addedByName: string | null;  // quien hizo el upsell
-  sellerName: string | null;   // vendedor atribuido al pedido
+  addedByName: string | null; // quien hizo el upsell
+  sellerName: string | null; // vendedor atribuido al pedido
   shop: string | null;
-  createdAt: string;           // ISO
+  createdAt: string; // ISO
 }
 
 export interface CcUpsellRecordsResponse {

@@ -71,6 +71,7 @@ jest.mock("@/components/modals/orderReceiptModal", () => ({ __esModule: true, de
 import axiosAuth from "@/lib/axiosAuth";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchClientByPhone, updateClient } from "@/services/clients.service";
+import type { SaleSalesChannel } from "@/services/saleContextService";
 import { searchInventoryItems } from "@/services/inventoryItems.service";
 import RegistrarVentaPage from "../page";
 
@@ -95,7 +96,7 @@ const existingOrder = {
     quantity: 1, unitPrice: 100, discountAmount: 0, imageUrl: null }],
   payments: [{ id: "payment-1", status: "PAID", paymentMethod: "EFECTIVO", amount: 100, created_at: "2026-10-01T10:00:00.000Z" }],
 };
-let responseContext: typeof context;
+let responseContext: typeof context & { channels?: SaleSalesChannel[]; inventoryStoreIds?: string[] };
 let responseOrder: typeof existingOrder | (Omit<typeof existingOrder, "inventoryId" | "stockStoreId"> & { inventoryId: null; stockStoreId: null });
 let contextFails: boolean;
 let orderFails: boolean;
@@ -135,13 +136,13 @@ function field(label: RegExp) {
   const element = screen.getByText((_text, node) => node?.tagName === "LABEL" && label.test(node.textContent ?? ""));
   return within(element.parentElement!);
 }
-async function fillRequired() {
+async function fillRequired(channelChoice = "WHATSAPP") {
   const user = userEvent.setup();
   await user.type(screen.getByPlaceholderText("Número de teléfono"), `${client.phoneNumber}{Enter}`);
   await screen.findByText(/cliente encontrado/i);
   await user.click(screen.getByRole("button", { name: /agregar producto ficticio/i }));
   await user.selectOptions(field(/método de pago/i).getByRole("combobox"), "EFECTIVO");
-  await user.selectOptions(field(/canal de venta/i).getByRole("combobox"), "WHATSAPP");
+  await user.selectOptions(field(/canal de venta/i).getByRole("combobox"), channelChoice);
   await user.selectOptions(field(/canal de cierre/i).getByRole("combobox"), "WHATSAPP");
   await user.selectOptions(field(/tipo de entrega/i).getByRole("combobox"), "RETIRO_TIENDA");
   return user;
@@ -157,16 +158,40 @@ describe("Registrar venta — tienda comercial y almacén independientes", () =>
     expect(field(/tienda de la venta/i).getByRole("combobox")).toHaveValue("");
     const user = await fillRequired();
     await user.selectOptions(field(/tienda de la venta/i).getByRole("combobox"), "store-b");
+    expect(screen.getByRole("button", { name: /confirmar venta/i })).toBeDisabled();
+    await user.selectOptions(field(/canal de venta/i).getByRole("combobox"), "legacy:WHATSAPP");
     expect(screen.getByDisplayValue("Almacén compartido A")).toHaveAttribute("readonly");
     const submit = screen.getByRole("button", { name: /confirmar venta/i });
     await waitFor(() => expect(submit).toBeEnabled());
     await user.click(submit);
     await waitFor(() => expect(http.post).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/manual$/),
-      expect.objectContaining({ storeId: "store-b", inventoryId: "warehouse-a", items: [expect.objectContaining({ productVariantId: "variant-1", quantity: 1 })] })));
+      expect.objectContaining({ storeId: "store-b", inventoryId: "warehouse-a", currency: "PEN", items: [expect.objectContaining({ productVariantId: "variant-1", quantity: 1 })] })));
     expect(http.post.mock.calls[0][1]).not.toHaveProperty("companyId");
     expect(mockSetNavigationStore).not.toHaveBeenCalled();
     expect(jest.mocked(searchInventoryItems).mock.calls[0][0]).toEqual(expect.objectContaining({ inventoryId: "warehouse-a", companyId: "company-1" }));
   }, 15000);
+
+  it("envía el canal identificado de la tienda y moneda PEN explícita con el almacén existente", async () => {
+    responseContext = { ...context, channels: [{ id: "channel-b", storeId: "store-b", type: "WHATSAPP", label: "WhatsApp Marca B", identifier: "+51999888777", externalId: null }] };
+    mountPage();
+    await waitContext();
+    const user = userEvent.setup();
+    await user.selectOptions(field(/tienda de la venta/i).getByRole("combobox"), "store-b");
+    await fillRequired("channel-b");
+    const submit = screen.getByRole("button", { name: /confirmar venta/i });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await user.click(submit);
+    await waitFor(() => expect(http.post).toHaveBeenCalledWith(expect.stringMatching(/\/order-header\/manual$/), expect.objectContaining({ storeId: "store-b", inventoryId: "warehouse-a", salesChannelId: "channel-b", currency: "PEN" })));
+  }, 15000);
+
+  it("ofrece crear una tienda comercial sin ocultar el almacén de la tienda anterior", async () => {
+    responseContext = { ...context, stores: [], inventoryStoreIds: ["store-a"], channels: [] };
+    mountPage();
+    await waitContext();
+    expect(screen.getByRole("link", { name: "Crear tienda comercial" })).toHaveAttribute("href", "/configuracion/tiendas");
+    expect(screen.getByDisplayValue("Almacén compartido A")).toHaveAttribute("readonly");
+    expect(screen.getByRole("button", { name: /confirmar venta/i })).toBeDisabled();
+  });
 
   it("con varias tiendas no adopta navbar A; falta elegir tienda y bloquea una venta válida en lo demás", async () => {
     mountPage();

@@ -34,3 +34,15 @@ describe("Contexto de venta autorizado", () => {
     }
   });
 });
+
+it("conserva un almacén de tienda anterior sin ofrecer esa tienda para nuevas ventas", async()=>{
+ const data={companyId:"company-a",stores:[],inventoryStoreIds:["legacy-store"],inventories:[{id:"warehouse",name:"Almacén actual",storeId:"legacy-store"}],channels:[]};
+ jest.mocked(axiosAuth.get).mockResolvedValue({data});
+ await expect(fetchSaleContext("company-a")).resolves.toEqual(data);
+});
+it("rechaza canales ajenos y stores malformados",async()=>{
+ for(const data of [{companyId:"company-a",stores:{id:"x"},inventories:[]},{companyId:"company-a",stores:[{id:"store-a",name:"Centro"}],inventories:[],channels:[{id:"channel",storeId:"foreign",label:"Otro",type:"WHATSAPP"}]}]){
+  jest.mocked(axiosAuth.get).mockResolvedValue({data});
+  await expect(fetchSaleContext("company-a")).rejects.toThrow("No se pudo cargar");
+ }
+});
