@@ -3,7 +3,9 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -134,7 +136,9 @@ export default function RegistrarCompraPage() {
   const searchParams = useSearchParams();
   const editPurchaseId = searchParams.get("edit");
 
-  const { auth, selectedStoreId, inventories } = useAuth();
+  const { auth } = useAuth();
+  const warehouseQuery = useBusinessInventories();
+  const inventories = warehouseQuery.inventories;
 
   const companyId = auth?.company?.id;
 
@@ -189,8 +193,8 @@ export default function RegistrarCompraPage() {
     setIsLoadingPurchase(true);
     setIsEditMode(true);
     try {
-      const res = await axios.get<PurchaseData>(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase/${purchaseId}`,
+      const res = await axiosAuth.get<PurchaseData>(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/purchase/${purchaseId}`,
       );
 
       const purchase = res.data;
@@ -215,8 +219,8 @@ export default function RegistrarCompraPage() {
         let currentStock = 0;
         let brandName = "";
         try {
-          const stockRes = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
+          const stockRes = await axiosAuth.get(
+            `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/inventory-item/search`,
             {
               params: {
                 inventoryId: purchase.inventoryId,
@@ -275,17 +279,17 @@ export default function RegistrarCompraPage() {
 
   // Set default inventory
   useEffect(() => {
-    if (inventories.length > 0 && !selectedInventoryId && !isEditMode) {
+    if (inventories.length === 1 && !selectedInventoryId && !editPurchaseId) {
       setSelectedInventoryId(inventories[0].id);
     }
-  }, [inventories, selectedInventoryId, isEditMode]);
+  }, [inventories, selectedInventoryId, editPurchaseId]);
 
   const fetchSuppliers = useCallback(async () => {
     if (!companyId) return;
     setSuppliersLoading(true);
     try {
-      const res = await axios.get<Supplier[]>(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/company/${companyId}`,
+      const res = await axiosAuth.get<Supplier[]>(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers/company/${companyId}`,
       );
       setSuppliers(res.data.filter((s) => s.isActive));
     } catch (error) {
@@ -311,8 +315,8 @@ export default function RegistrarCompraPage() {
 
     setIsCreatingSupplier(true);
     try {
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
+      const res = await axiosAuth.post(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers`,
         { name: newSupplierName.trim(), companyId },
       );
 
@@ -340,11 +344,12 @@ export default function RegistrarCompraPage() {
 
     setProductsLoading(true);
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory-item/search`,
+      const res = await axiosAuth.get(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/inventory-item/search`,
         {
           params: {
             inventoryId: selectedInventoryId,
+            companyId,
             q: productQuery || undefined,
             page,
             limit: 10,
@@ -364,7 +369,7 @@ export default function RegistrarCompraPage() {
     } finally {
       setProductsLoading(false);
     }
-  }, [selectedInventoryId, productQuery]);
+  }, [selectedInventoryId, productQuery, companyId]);
 
   // Auto-search when entering step 2
   useEffect(() => {
@@ -428,7 +433,7 @@ export default function RegistrarCompraPage() {
   const canProceedToStep2 = () => {
     return (
       selectedSupplierId &&
-      selectedInventoryId &&
+      inventories.some((inv) => inv.id === selectedInventoryId) &&
       receiptType &&
       paymentMethod &&
       purchaseDate
@@ -437,7 +442,7 @@ export default function RegistrarCompraPage() {
 
   const canSubmit = () => {
     if (cart.length === 0) return false;
-    if (!selectedInventoryId) return false;
+    if (!inventories.some((inv) => inv.id === selectedInventoryId)) return false;
     return cart.every((item) => item.quantity > 0 && item.unitCost >= 0);
   };
 
@@ -455,7 +460,7 @@ export default function RegistrarCompraPage() {
 
       const payload = {
         companyId,
-        storeId: selectedStoreId,
+        storeId: inventories.find((inv) => inv.id === selectedInventoryId)?.storeId,
         inventoryId: selectedInventoryId,
         notes: notes || null,
         userEmail: auth?.user?.email || null,
@@ -477,14 +482,14 @@ export default function RegistrarCompraPage() {
       };
 
       if (isEditMode && editPurchaseData) {
-        await axios.put(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase/${editPurchaseData.id}`,
+        await axiosAuth.put(
+          `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/purchase/${editPurchaseData.id}`,
           payload,
         );
         toast.success("Compra actualizada correctamente");
       } else {
-        await axios.post(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase`,
+        await axiosAuth.post(
+          `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/purchase`,
           payload,
         );
         toast.success("Compra registrada correctamente");
@@ -689,9 +694,12 @@ export default function RegistrarCompraPage() {
                     <Package className="h-4 w-4" />
                     Almacén *
                   </Label>
+                  {warehouseQuery.isPending ? <p>Cargando almacenes del negocio...</p> : warehouseQuery.isError ? <p role="alert">No se pudieron cargar los almacenes. <Button variant="outline" onClick={() => void warehouseQuery.refetch()}>Reintentar</Button></p> : null}
+                  {editPurchaseId ? <p className="text-xs text-muted-foreground">La compra conserva su almacén original.</p> : null}
                   <Select
                     value={selectedInventoryId}
                     onValueChange={setSelectedInventoryId}
+                    disabled={Boolean(editPurchaseId) || warehouseQuery.isPending || warehouseQuery.isError}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Seleccionar almacén" />
@@ -699,7 +707,7 @@ export default function RegistrarCompraPage() {
                     <SelectContent>
                       {inventories.map((inv) => (
                         <SelectItem key={inv.id} value={inv.id}>
-                          {inv.name}
+                          {inv.name}{inv.storeName ? ` · ${inv.storeName}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>

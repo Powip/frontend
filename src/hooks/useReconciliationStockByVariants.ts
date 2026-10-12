@@ -1,6 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   VariantStock,
   getStockByVariants,
@@ -15,12 +16,13 @@ import {
  * innecesario cuando el mismo conjunto llega en otro orden.
  */
 export function useReconciliationStockByVariants(variantIds: string[]) {
+  const { auth } = useAuth();
   const sortedIds = [...variantIds].sort();
 
   return useQuery<VariantStock[], Error>({
-    queryKey: ["reconciliation-stock-by-variants", sortedIds],
+    queryKey: ["reconciliation-stock-by-variants", auth?.company?.id, auth?.user?.id, sortedIds],
     queryFn: () => getStockByVariants(variantIds),
-    enabled: variantIds.length > 0,
+    enabled: variantIds.length > 0 && Boolean(auth?.company?.id && auth?.user?.id && auth?.accessToken),
     staleTime: 30 * 1000,
     retry: false,
   });

@@ -24,6 +24,11 @@ export interface GuiaPorLiquidar {
   id: string;
   /** OrderHeader.id, para llamar a otros endpoints (BACKEND GAP: no hay endpoint de liquidación aún). */
   orderId: string;
+  storeId?: string;
+  storeName?: string;
+  stockStoreName?: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
   cliente: string;
   ciudad: string;
   courier: string;

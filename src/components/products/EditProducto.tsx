@@ -14,12 +14,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 import { getProductById, updateProduct } from "@/services/productService";
-import { getCategories } from "@/services/categoryService";
 
-import { getProvidersByCompany } from "@/services/providerService";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 import { getBrandsBySupplier } from "@/services/brandService";
 import { uploadImage } from "@/services/uploadService";
-import { getAttributesBySubcategory } from "@/services/attributeService";
 import { groupAttributesByType } from "../../utils/groupAttributes";
 
 import { Category, Subcategory } from "@/interfaces/ICategory";
@@ -32,11 +31,13 @@ const EditProducto = () => {
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
-  const companyId = "5d5b824c-2b81-4b17-960f-855bfc7806e2";
   const { auth } = useAuth();
+  const companyId = auth?.company?.id ?? "";
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [validatedProductId, setValidatedProductId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Listas para selects
   const [categories, setCategories] = useState<Category[]>([]);
@@ -66,20 +67,23 @@ const EditProducto = () => {
   });
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || !companyId) return;
 
     const fetchData = async () => {
+      setValidatedProductId(null); setLoadError(null);
       try {
         const prod = await getProductById(id);
+        if (prod.companyId !== companyId) throw new Error("El producto no pertenece al negocio activo.");
 
         const [cats, provs, brs] = await Promise.all([
-          getCategories(),
-          getProvidersByCompany(companyId),
+          axiosAuth.get<Category[]>(`${process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products}/categories`).then((response) => response.data),
+          axiosAuth.get<Provider[]>(`${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/suppliers/company/${companyId}`).then((response) => response.data),
           getBrandsBySupplier(prod.supplierId),
         ]);
 
         // 🟢 Buscar la categoría correspondiente al producto
-        const selectedCat = cats.find((c) => c.id === prod.category.id);
+        const categoryId = prod.subcategory?.category?.id || prod.category?.id || prod.categoryId || "";
+        const selectedCat = cats.find((c) => c.id === categoryId);
 
         // 🟢 Extraer las subcategorías activas de esa categoría
         const activeSubs =
@@ -91,14 +95,15 @@ const EditProducto = () => {
         setProviders(provs);
 
         // 🟢 Cargar el producto con los valores actuales
+        setValidatedProductId(id);
         setProduct({
           name: prod.name,
           description: prod.description || "",
-          priceBase: String(prod.priceBase),
-          priceVta: String(prod.priceVta),
+          priceBase: String(prod.priceBase ?? 0),
+          priceVta: String(prod.priceVta ?? 0),
           sku: prod.sku,
-          categoryId: prod.category.id,
-          subcategoryId: prod.subcategory.id, // ✅ ahora coincide con una opción válida
+          categoryId,
+          subcategoryId: prod.subcategory?.id || prod.subcategoryId || "", // ✅ ahora coincide con una opción válida
           companyId,
           supplierId: prod.supplierId,
           brandId: prod.brandId,
@@ -106,7 +111,7 @@ const EditProducto = () => {
           images: prod.images || [],
         });
       } catch (error) {
-        console.error("Error cargando producto", error);
+        setLoadError(error instanceof Error ? error.message : "Error al cargar producto");
         toast.error("Error al cargar producto");
       } finally {
         setLoading(false);
@@ -114,27 +119,17 @@ const EditProducto = () => {
     };
 
     fetchData();
-  }, [id]);
-  // === Actualizar subcategorías si cambia la categoría manualmente ===
+  }, [id, companyId]);
+  // The current category list does not embed its subcategories.
   useEffect(() => {
-    if (!product.categoryId) {
-      setSubcategories([]);
-      handleChange("subcategoryId", "");
-      return;
-    }
-
-    // Buscar la categoría seleccionada en el listado
-    const selected = categories.find((cat) => cat.id === product.categoryId);
-
-    // Filtrar solo subcategorías activas
-    const activeSubs = selected?.subcategories?.filter((s) => s.status) || [];
-
-    setSubcategories(activeSubs);
-
-    // Si la subcategoría previa no pertenece a la nueva categoría, limpiarla
-    const stillValid = activeSubs.some((s) => s.id === product.subcategoryId);
-    if (!stillValid) handleChange("subcategoryId", "");
-  }, [product.categoryId, categories, product.subcategoryId]);
+    if (!product.categoryId) { setSubcategories([]); return; }
+    const controller = new AbortController();
+    axiosAuth.get<Subcategory[]>(`${process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products}/subcategories/category/${product.categoryId}`, { signal: controller.signal })
+      .then(({ data }) => {
+        setSubcategories(data.filter((subcategory) => subcategory.status !== false));
+      }).catch(() => { if (!controller.signal.aborted) toast.error("No se pudieron cargar las subcategorías"); });
+    return () => controller.abort();
+  }, [product.categoryId]);
 
   // === Cargar marcas cuando cambia proveedor ===
   useEffect(() => {
@@ -150,7 +145,7 @@ const EditProducto = () => {
 
     const fetchAttributes = async () => {
       try {
-        const data = await getAttributesBySubcategory(product.subcategoryId);
+        const { data } = await axiosAuth.get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products}/products/attributes-by-subcategory/${product.subcategoryId}`);
         const grouped = groupAttributesByType(data.attributes);
         setAttributesByType(grouped);
       } catch (error) {
@@ -187,6 +182,7 @@ const EditProducto = () => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (!companyId || validatedProductId !== id || product.companyId !== companyId) { toast.error("El producto no pertenece al negocio activo."); return; }
     const payload: IProductRequest = {
       name: product.name,
       description: product.description,
@@ -218,6 +214,7 @@ const EditProducto = () => {
   };
 
   if (loading) return <p className="text-center mt-6">Cargando...</p>;
+  if (loadError) return <div role="alert" className="p-6">{loadError}<Button onClick={() => router.push("/productos")}>Volver al catálogo</Button></div>;
 
   return (
     <Container>
@@ -407,7 +404,7 @@ const EditProducto = () => {
           >
             Cancelar
           </Button>
-          <Button variant="default" type="submit">
+          <Button variant="default" type="submit" disabled={saving || validatedProductId !== id}>
             Guardar Cambios
           </Button>
         </div>

@@ -5,6 +5,10 @@ import { saveAs } from "file-saver";
  * Interface for sale data to export
  */
 export interface SaleExportData {
+  storeId?: string;
+  storeName?: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
   orderNumber: string;
   clientName: string;
   phoneNumber: string;
@@ -74,11 +78,13 @@ export function exportSalesToExcel(
 
   // La columna de unidades aparece solo si el export viene con filtro por
   // producto (todas las filas traen el campo); el Total sigue siendo el de la orden.
+  const withOrigin = sales.some((sale) => sale.storeId);
   const withUnits = sales.some((s) => s.filteredProductUnits !== undefined);
 
   const exportData = sales.map((s, index) => ({
     "N°": index + 1,
     Orden: s.orderNumber,
+    ...(withOrigin && { Tienda: s.storeName || s.storeId || "-", "ID tienda": s.storeId || "-", "ID almacén": s.inventoryId || "-", "ID tienda de stock": s.stockStoreId || "-" }),
     Cliente: s.clientName,
     Teléfono: s.phoneNumber,
     "Tipo Doc": s.documentType || "-",

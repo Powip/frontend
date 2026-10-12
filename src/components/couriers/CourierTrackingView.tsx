@@ -1,5 +1,11 @@
 "use client";
 
+import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
+
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessGuides } from "@/hooks/useBusinessGuides";
+
 import { useEffect, useState, useCallback, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -57,7 +63,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import {
   getShalomConfig,
@@ -316,9 +322,16 @@ interface TrackingGuide {
 }
 
 export default function CourierTrackingView() {
-  const { auth, selectedStoreId } = useAuth();
-  const [guides, setGuides] = useState<TrackingGuide[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { auth } = useAuth();
+  const guideQuery = useBusinessGuides<TrackingGuide>();
+  const orderQuery = useBusinessOrders();
+  const { guides } = guideQuery;
+  const [quoteLoading, setQuoteLoading] = useState(false);
+  const loading = guideQuery.loading || quoteLoading;
+  const ordersLoading = orderQuery.loading;
+  const error = guideQuery.error || orderQuery.error;
+  const fetchGuides = guideQuery.refetch;
+  const fetchOrders = orderQuery.refetch;
   const [search, setSearch] = useState("");
   const [activeCarrierTab, setActiveCarrierTab] = useState("todos");
 
@@ -330,8 +343,8 @@ export default function CourierTrackingView() {
 
   // Pedidos (ms-ventas) para la pestaña "Todos" — trae los datos de cliente,
   // saldo y costo de envío que la guía de ms-courier no tiene.
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [trackingPatches, setTrackingPatches] = useState<Record<string, Partial<OrderHeader>>>({});
+  const orders = useMemo(() => orderQuery.orders.map((order) => ({ ...order, ...trackingPatches[order.id] })), [orderQuery.orders, trackingPatches]);
   // Comprobante REAL del courier (boleta de Shalom, traída por API) —
   // distinto de shippingProofUrl (foto de prueba de entrega, que casi nunca
   // existe todavía cuando el pedido recién se despacha). Se guarda la orden
@@ -354,54 +367,9 @@ export default function CourierTrackingView() {
   const [trackLoading, setTrackLoading] = useState(false);
   const [selectedGuide, setSelectedGuide] = useState<TrackingGuide | null>(null);
 
-  const fetchGuides = useCallback(async () => {
-    if (!selectedStoreId || !auth?.accessToken) return;
-    setLoading(true);
-    try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
-        {
-          headers: { Authorization: `Bearer ${auth.accessToken}` }
-        }
-      );
-      setGuides(res.data);
-    } catch {
-      toast.error("No se pudieron cargar las guías de envío");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId, auth]);
-
-  const fetchOrders = useCallback(async () => {
-    if (!selectedStoreId) return;
-    setOrdersLoading(true);
-    try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-      setOrders(res.data ?? []);
-    } catch {
-      setOrders([]);
-    } finally {
-      setOrdersLoading(false);
-    }
-  }, [selectedStoreId]);
-
-  // Aplica el resultado de un autoguardado de tracking sin refetchear toda
-  // la lista (evita el parpadeo de loading en la tabla completa).
-  const applyTrackingPatch = useCallback(
-    (orderId: string, patch: Partial<Record<TrackingFieldKey, string | null>>) => {
-      setOrders((prev) =>
-        prev.map((o) => (o.id === orderId ? { ...o, ...patch } : o)),
-      );
-    },
-    [],
-  );
-
-  useEffect(() => {
-    fetchGuides();
-    fetchOrders();
-  }, [fetchGuides, fetchOrders]);
+  const applyTrackingPatch = useCallback((orderId: string, patch: Partial<Record<TrackingFieldKey, string | null>>) => {
+    setTrackingPatches((prev) => ({ ...prev, [orderId]: { ...prev[orderId], ...patch } }));
+  }, []);
 
   useEffect(() => {
     if (!auth?.company?.id) return;
@@ -680,12 +648,12 @@ export default function CourierTrackingView() {
   };
 
   const handleQuoteDirectly = async (guide: TrackingGuide) => {
-    if (!auth?.accessToken || !selectedStoreId) return;
+    if (!auth?.accessToken) return;
 
     // Para cotizar necesitamos los detalles de la guía (agencia origen, destino, paquetes)
     // Pero el usuario dice que "la cotización debería de poderse calcular" si ya existe.
     // Vamos a obtener los detalles de la guía para tener los bultos reales.
-    setLoading(true);
+    setQuoteLoading(true);
     try {
       const res = await axios.get(
         `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/${guide.id}`,
@@ -739,7 +707,7 @@ export default function CourierTrackingView() {
     } catch {
       toast.error("No se pudo calcular la cotización automáticamente");
     } finally {
-      setLoading(false);
+      setQuoteLoading(false);
     }
   };
 
@@ -752,6 +720,8 @@ export default function CourierTrackingView() {
       const despachoAt = dispatchDateFor(o, dispatchDateByOrderId);
       return {
         "N° Pedido": o.orderNumber,
+        Tienda: o.storeName || o.storeId || "",
+        Almacén: o.stockStoreName || o.inventoryId || o.stockStoreId || "",
         "Fecha de venta": new Date(o.created_at).toLocaleDateString("es-PE"),
         Despacho: despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-",
         Vendedora: o.sellerName || "-",
@@ -786,6 +756,8 @@ export default function CourierTrackingView() {
 
   // "Ver" de la pestaña "Todos" y de los tabs genéricos por courier: abre el
   // modal del pedido directo en Seguimiento.
+  if (error) return <OperationsDataError retry={() => Promise.all([fetchGuides(), fetchOrders()])} />;
+
   return (
     <OrderDetailModalProvider
       onOrderUpdated={fetchOrders}
@@ -1144,7 +1116,7 @@ export default function CourierTrackingView() {
                           return (
                             <TableRow key={order.id} className="hover:bg-muted/40 transition-colors">
                               <TableCell className={`${STICKY_LEFT_BODY} left-0 w-28 min-w-28 font-medium px-4 py-3 text-xs whitespace-nowrap`}>
-                                {order.orderNumber}
+                                <span>{order.orderNumber}</span><OrderOriginLabel {...order} />
                               </TableCell>
                               <TableCell className={`${STICKY_LEFT_BODY} left-28 w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
                                 {new Date(order.created_at).toLocaleDateString("es-PE")}
@@ -1487,6 +1459,8 @@ function CourierOrdersTab({
       const despachoAt = dispatchDateFor(o, dispatchDateByOrderId);
       return {
         "N° Pedido": o.orderNumber,
+        Tienda: o.storeName || o.storeId || "",
+        Almacén: o.stockStoreName || o.inventoryId || o.stockStoreId || "",
         "Fecha de venta": new Date(o.created_at).toLocaleDateString("es-PE"),
         Despacho: despachoAt ? new Date(despachoAt).toLocaleDateString("es-PE") : "-",
         Vendedora: o.sellerName || "-",
@@ -1651,7 +1625,7 @@ function CourierOrdersTab({
                   return (
                     <TableRow key={order.id} className="hover:bg-muted/40 transition-colors">
                       <TableCell className={`${STICKY_LEFT_BODY} left-0 w-28 min-w-28 font-medium px-4 py-3 text-xs whitespace-nowrap`}>
-                        {order.orderNumber}
+                        <span>{order.orderNumber}</span><OrderOriginLabel {...order} />
                       </TableCell>
                       <TableCell className={`${STICKY_LEFT_BODY} left-28 w-24 min-w-24 px-4 py-3 text-[10px] text-center whitespace-nowrap`}>
                         {new Date(order.created_at).toLocaleDateString("es-PE")}

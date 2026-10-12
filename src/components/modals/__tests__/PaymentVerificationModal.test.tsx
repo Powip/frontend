@@ -214,7 +214,7 @@ describe('PaymentVerificationModal — aprobación de pagos', () => {
   });
 
   it('pago CON comprobante: aprobar NO muestra confirm() y llama al endpoint de aprobación', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData('https://proof.example.com/1.jpg') });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData('https://proof.example.com/1.jpg') });
     mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
 
     renderModal();
@@ -231,7 +231,7 @@ describe('PaymentVerificationModal — aprobación de pagos', () => {
   });
 
   it('pago SIN comprobante: "Aprobar" está habilitado y aprueba sin confirm() (comprobante opcional)', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
     mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
 
     const onPaymentUpdated = jest.fn();
@@ -259,8 +259,8 @@ describe('PaymentVerificationModal — corregir monto de un pago PENDING', () =>
   });
 
   it('"Corregir monto" abre el input; "Guardar" hace PATCH con { amount } y luego refetch + onPaymentUpdated', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
-    mockedAxios.patch.mockResolvedValue({ data: {} });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.patch.mockResolvedValue({ data: {} });
 
     const onPaymentUpdated = jest.fn();
     renderModal({ onPaymentUpdated });
@@ -276,20 +276,20 @@ describe('PaymentVerificationModal — corregir monto de un pago PENDING', () =>
     await userEvent.click(screen.getByRole('button', { name: /guardar/i }));
 
     await waitFor(() =>
-      expect(mockedAxios.patch).toHaveBeenCalledWith(
+      expect(mockedAxiosAuth.patch).toHaveBeenCalledWith(
         'http://ventas/payments/payments/payment-1',
         { amount: 150 },
       ),
     );
     await waitFor(() => expect(onPaymentUpdated).toHaveBeenCalled());
     // 1 GET al montar + 1 GET de refetch tras guardar.
-    expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    expect(mockedAxiosAuth.get).toHaveBeenCalledTimes(2);
     expect(mockToast.success).toHaveBeenCalled();
   });
 
   it('si el PATCH del monto responde 400 muestra toast.error y hace refetch igual', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
-    mockedAxios.patch.mockRejectedValue({
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.patch.mockRejectedValue({
       isAxiosError: true,
       response: { status: 400 },
     });
@@ -312,11 +312,11 @@ describe('PaymentVerificationModal — corregir monto de un pago PENDING', () =>
       ),
     );
     // Refetch en el catch para reflejar el estado real del pago.
-    expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    expect(mockedAxiosAuth.get).toHaveBeenCalledTimes(2);
   });
 
   it('mientras el input de "Corregir monto" está abierto se ocultan "Aprobar" y "Rechazar" de esa fila', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
 
     renderModal();
 
@@ -339,7 +339,7 @@ describe('PaymentVerificationModal — corregir monto de un pago PENDING', () =>
   });
 
   it('"Corregir monto" NO se muestra si canApprove es false', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
 
     renderModal({ canApprove: false });
 
@@ -360,7 +360,7 @@ describe('PaymentVerificationModal — formulario "Registrar Nuevo Pago"', () =>
   });
 
   it('el uploader de comprobante está rotulado "Comprobante (opcional)"', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
 
     renderModal();
 
@@ -384,7 +384,7 @@ describe('PaymentVerificationModal — restricción de Aprobar/Rechazar a /finan
   });
 
   it('en /finanzas con canApprove=true SÍ muestra los botones Aprobar/Rechazar', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
 
     renderModal({ canApprove: true });
 
@@ -400,7 +400,7 @@ describe('PaymentVerificationModal — restricción de Aprobar/Rechazar a /finan
     'en %s con canApprove=true YA NO muestra Aprobar/Rechazar/Corregir monto (antes sí lo permitía)',
     async (route) => {
       mockUsePathname.mockReturnValue(route);
-      mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+      mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
 
       renderModal({ canApprove: true });
 
@@ -428,7 +428,7 @@ describe('PaymentVerificationModal — 403 al aprobar/rechazar (guard VIEW_FINAN
   });
 
   it('si el PATCH de aprobar responde 403, muestra "No tenés permiso para aprobar pagos" (no el error genérico)', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
     mockedAxiosAuth.patch.mockRejectedValue({
       isAxiosError: true,
       response: { status: 403 },
@@ -449,7 +449,7 @@ describe('PaymentVerificationModal — 403 al aprobar/rechazar (guard VIEW_FINAN
   });
 
   it('si el PATCH de rechazar responde 403, muestra "No tenés permiso para rechazar pagos" (no el error genérico)', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
     mockedAxiosAuth.patch.mockRejectedValue({
       isAxiosError: true,
       response: { status: 403 },
@@ -471,7 +471,7 @@ describe('PaymentVerificationModal — 403 al aprobar/rechazar (guard VIEW_FINAN
   });
 
   it('si el PATCH de aprobar falla con otro status (no 403), mantiene el mensaje de error genérico', async () => {
-    mockedAxios.get.mockResolvedValue({ data: makeOrderData(null) });
+    mockedAxiosAuth.get.mockResolvedValue({ data: makeOrderData(null) });
     mockedAxiosAuth.patch.mockRejectedValue({
       isAxiosError: true,
       response: { status: 500 },

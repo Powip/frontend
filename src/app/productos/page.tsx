@@ -1,5 +1,8 @@
 "use client";
 
+import BusinessProductCatalog from "@/components/products/BusinessProductCatalog";
+import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import ProductCreateForm from "./create-product/create-product";
@@ -12,14 +15,17 @@ import ShopifySyncWizard from "./shopify-sync-wizard";
 function ProductosContent() {
   const searchParams = useSearchParams();
   const editVariantId = searchParams.get("edit");
-  const [mode, setMode] = useState<"select" | "manual" | "excel" | "shopify">(
-    editVariantId ? "manual" : "select",
+  const [mode, setMode] = useState<"list" | "select" | "manual" | "excel" | "shopify">(
+    editVariantId ? "manual" : "list",
   );
+
+  if (mode === "list" && !editVariantId) return <BusinessProductCatalog onCreate={() => setMode("select")} />;
 
   /* If editing, go straight to manual form */
   if (mode === "manual" || editVariantId) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
+        <div className="w-full p-6"><Link href="/productos"><Button type="button" variant="outline" onClick={() => setMode("list")}>Volver al catálogo</Button></Link></div>
         <ProductCreateForm editVariantId={editVariantId} />
       </div>
     );
@@ -28,7 +34,7 @@ function ProductosContent() {
   if (mode === "excel") {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
-        <ExcelImportWizard onBack={() => setMode("select")} />
+        <ExcelImportWizard onBack={() => setMode("list")} />
       </div>
     );
   }
@@ -36,7 +42,7 @@ function ProductosContent() {
   if (mode === "shopify") {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen">
-        <ShopifySyncWizard onBack={() => setMode("select")} />
+        <ShopifySyncWizard onBack={() => setMode("list")} />
       </div>
     );
   }
@@ -49,6 +55,7 @@ function ProductosContent() {
         description="Elegí cómo querés cargar tus productos"
       />
 
+      <Button variant="outline" onClick={() => setMode("list")}>Volver al catálogo</Button>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-2xl w-full mt-4">
         {/* Manual */}
         <Card

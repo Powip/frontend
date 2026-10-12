@@ -120,6 +120,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
+jest.mock('@/hooks/useBusinessInventories', () => ({ useBusinessInventories: () => {
+  const { auth, inventories } = require('@/contexts/AuthContext').useAuth();
+  return { inventories: inventories.map((inv: { id: string; name: string }) => ({ ...inv, storeId: 'owner-store' })), isPending: false, isError: false, refetch: jest.fn() };
+} }));
+
 jest.mock('sonner', () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() },
 }));

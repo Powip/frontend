@@ -1,5 +1,8 @@
 "use client";
 
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessGuides } from "@/hooks/useBusinessGuides";
+
 import { useEffect, useState, useCallback, useMemo } from "react";
 import {
   Truck,
@@ -16,7 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { 
   getShalomLabelPdfUrl, 
@@ -41,9 +44,9 @@ interface TrackingGuide {
 }
 
 export default function GuidesSummaryView() {
-  const { auth, selectedStoreId } = useAuth();
-  const [guides, setGuides] = useState<TrackingGuide[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { auth } = useAuth();
+  const { guides: businessGuides, loading, error, retry, refetch: fetchGuides } = useBusinessGuides<TrackingGuide>();
+  const guides = useMemo(() => [...businessGuides].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [businessGuides]);
   const [search, setSearch] = useState("");
 
   // Tracking State
@@ -54,31 +57,6 @@ export default function GuidesSummaryView() {
   // Details State
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [guideForDetails, setGuideForDetails] = useState<string | null>(null);
-
-  const fetchGuides = useCallback(async () => {
-    if (!selectedStoreId || !auth?.accessToken) return;
-    setLoading(true);
-    try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
-        { headers: { Authorization: `Bearer ${auth.accessToken}` } }
-      );
-      // Sort DESC by created_at
-      const sorted = res.data.sort((a: any, b: any) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      );
-      setGuides(sorted);
-    } catch (error) {
-      console.error("Error fetching guides", error);
-      toast.error("No se pudieron cargar las guías");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId, auth]);
-
-  useEffect(() => {
-    fetchGuides();
-  }, [fetchGuides]);
 
   const filteredGuides = useMemo(() => {
     return guides.filter(g => 
@@ -107,6 +85,8 @@ export default function GuidesSummaryView() {
     setDetailsModalOpen(true);
   };
 
+  if (error) return <OperationsDataError retry={retry} message="No se pudieron cargar las guías." />;
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -119,7 +99,7 @@ export default function GuidesSummaryView() {
             className="pl-9 h-10"
           />
         </div>
-        <Button onClick={fetchGuides} variant="outline" size="icon" className="h-10 w-10">
+        <Button onClick={() => void fetchGuides()} variant="outline" size="icon" className="h-10 w-10">
           <RefreshCw className={loading ? "animate-spin h-4 w-4" : "h-4 w-4"} />
         </Button>
       </div>

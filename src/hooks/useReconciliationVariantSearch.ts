@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   VariantSearchResult,
   searchReconciliationVariants,
@@ -31,6 +32,7 @@ export interface UseReconciliationVariantSearchResult {
 export function useReconciliationVariantSearch(
   query: string,
 ): UseReconciliationVariantSearchResult {
+  const { auth } = useAuth();
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   useEffect(() => {
@@ -45,9 +47,9 @@ export function useReconciliationVariantSearch(
     VariantSearchResult[],
     Error
   >({
-    queryKey: ["reconciliation-variant-search", trimmedQuery],
+    queryKey: ["reconciliation-variant-search", auth?.company?.id, auth?.user?.id, trimmedQuery],
     queryFn: () => searchReconciliationVariants(trimmedQuery),
-    enabled: isSearchable,
+    enabled: isSearchable && Boolean(auth?.company?.id && auth?.user?.id && auth?.accessToken),
     staleTime: 30 * 1000,
   });
 

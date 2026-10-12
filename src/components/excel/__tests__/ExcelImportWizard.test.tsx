@@ -63,6 +63,12 @@ import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
+jest.mock('@/hooks/useBusinessInventories', () => ({ useBusinessInventories: () => {
+  const { inventories } = require('@/contexts/AuthContext').useAuth();
+  return { inventories, isPending: false, isError: false, refetch: jest.fn() };
+} }));
+jest.mock('@/lib/axiosAuth', () => ({ __esModule: true, default: require('axios') }));
+
 jest.mock('sonner', () => ({
   toast: {
     success: jest.fn(),

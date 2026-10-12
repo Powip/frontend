@@ -30,7 +30,7 @@
  */
 
 import React from 'react';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as renderRTL, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
@@ -358,6 +358,7 @@ describe('AliclikOrderTrackingView', () => {
       await waitFor(() => {
         expect(mockAxiosGet).toHaveBeenCalledWith(
           'http://api-ventas/order-header/store/store-1',
+          expect.objectContaining({ headers: { Authorization: 'Bearer fake-token' }, signal: expect.any(AbortSignal) }),
         );
       });
     });
@@ -541,6 +542,7 @@ describe('AliclikOrderTrackingView', () => {
         expect(mockAxiosGet).toHaveBeenNthCalledWith(
           2,
           'http://api-ventas/order-header/store/store-1',
+          expect.objectContaining({ headers: { Authorization: 'Bearer fake-token' }, signal: expect.any(AbortSignal) }),
         );
       });
     });
@@ -671,9 +673,7 @@ describe('AliclikOrderTrackingView', () => {
       mockAxiosGet.mockRejectedValue(new Error('Network error'));
       renderView();
       await waitFor(() => {
-        expect(mockToast.error).toHaveBeenCalledWith(
-          expect.stringMatching(/error al cargar pedidos de aliclik/i),
-        );
+        expect(screen.getByRole("alert")).toHaveTextContent("No se pudieron cargar los pedidos.");
       });
     });
 
@@ -681,10 +681,10 @@ describe('AliclikOrderTrackingView', () => {
       mockAxiosGet.mockRejectedValue(new Error('500'));
       renderView();
       await waitFor(() => {
-        expect(mockToast.error).toHaveBeenCalled();
+        expect(screen.getByRole("alert")).toHaveTextContent("No se pudieron cargar los pedidos.");
       });
       // El componente sigue en pie — la tabla vacía se muestra
-      expect(screen.getByText('No hay pedidos enviados a Aliclik')).toBeInTheDocument();
+      expect(screen.queryByText('No hay pedidos enviados a Aliclik')).not.toBeInTheDocument();
     });
   });
 
@@ -747,3 +747,19 @@ describe('AliclikOrderTrackingView', () => {
     });
   });
 });
+
+// Exercise the shared business query with an isolated cache per render.
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
+jest.mock("@/lib/axiosAuth", () => { const mod = require("axios"); return { __esModule: true, default: mod.__esModule ? mod.default : mod }; });
+jest.mock("@/contexts/BusinessScopeContext", () => ({
+  useBusinessScope: () => {
+    const { auth, selectedStoreId } = require("@/contexts/AuthContext").useAuth();
+    const storeIds = auth?.company?.stores?.length ? auth.company.stores.map((store: { id: string }) => store.id) : selectedStoreId ? [selectedStoreId] : [];
+    return { storeIds, scope: "business", canFetch: !!auth?.accessToken && storeIds.length > 0 };
+  },
+}));
+function render(node: ReactNode) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  return renderRTL(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+}

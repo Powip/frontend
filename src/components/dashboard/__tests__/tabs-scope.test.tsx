@@ -87,7 +87,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   scope = {
     scope: "business", setScope: jest.fn(), storeIds: ["store-a", "store-b"],
-    scopeParams: { storeIds: "store-a,store-b" }, canFetch: true,
+    scopeParams: { storeIds: "store-a,store-b" }, canFetch: true, canViewBusiness: true, scopeKey: "business:store-a,store-b",
   };
   auth = {
     auth: {

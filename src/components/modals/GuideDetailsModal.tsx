@@ -1,5 +1,7 @@
 "use client";
 
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+
 import { useEffect, useState, useCallback } from "react";
 import Image from "next/image";
 import {
@@ -41,7 +43,7 @@ import { GoogleMapsUrlField } from "@/components/shared/GoogleMapsUrlField";
 import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { generateQR, generateBarcode } from "@/utils/printOrderLabel";
 import { ZONE_LABELS } from "@/constants/operationsDomain";
@@ -243,6 +245,7 @@ export default function GuideDetailsModal({
   onGuideUpdated,
   isCourierView = false,
 }: GuideDetailsModalProps) {
+  const invalidateBusinessData = useInvalidateBusinessData();
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
 
@@ -367,6 +370,7 @@ export default function GuideDetailsModal({
         },
       );
       toast.success("Datos de tracking guardados");
+      void invalidateBusinessData();
       onGuideUpdated?.();
     } catch (error: any) {
       toast.error(
@@ -413,6 +417,7 @@ export default function GuideDetailsModal({
 
       toast.success(`Courier ${selectedCourier} asignado a la guía`);
       fetchGuide();
+      void invalidateBusinessData();
       onGuideUpdated?.();
     } catch (error: any) {
       const message =
@@ -459,6 +464,7 @@ export default function GuideDetailsModal({
         `Guía aprobada y ${guide.orderIds.length} pedido(s) despachados`,
       );
       fetchGuide();
+      void invalidateBusinessData();
       onGuideUpdated?.();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Error al aprobar guía");
@@ -511,6 +517,7 @@ export default function GuideDetailsModal({
 
       toast.success("Prueba de entrega subida correctamente");
       fetchGuide(); // Recargar datos para mostrar la imagen/link
+      void invalidateBusinessData();
       onGuideUpdated?.();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Error al subir la prueba");
@@ -533,6 +540,7 @@ export default function GuideDetailsModal({
 
         toast.success("Pedido desvinculado correctamente");
         fetchGuide();
+        void invalidateBusinessData();
         onGuideUpdated?.();
       } catch (error: unknown) {
         const axiosError = error as { response?: { data?: { message?: string } } };
@@ -2174,6 +2182,7 @@ export default function GuideDetailsModal({
         orderNumber={selectedPaymentOrder?.number || ""}
         onPaymentUpdated={() => {
           fetchGuide();
+          void invalidateBusinessData();
           onGuideUpdated?.();
         }}
         canApprove={true}
@@ -2193,6 +2202,7 @@ export default function GuideDetailsModal({
         }
         onSuccess={() => {
           fetchGuide();
+          void invalidateBusinessData();
           onGuideUpdated?.();
         }}
       />
@@ -2210,6 +2220,7 @@ export default function GuideDetailsModal({
         onClose={() => setAliclikModalOpen(false)}
         onSuccess={() => {
           fetchGuide();
+          void invalidateBusinessData();
           onGuideUpdated?.();
         }}
       />
@@ -2227,6 +2238,7 @@ export default function GuideDetailsModal({
         onClose={() => setEvaModalOpen(false)}
         onSuccess={() => {
           fetchGuide();
+          void invalidateBusinessData();
           onGuideUpdated?.();
         }}
       />

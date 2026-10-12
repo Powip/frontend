@@ -1,5 +1,7 @@
 "use client";
 
+import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
+
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -135,7 +137,7 @@ export function AnuladosTab({
             {paged.map((sale) => (
               <TableRow key={sale.id}>
                 <TableCell className="font-medium">
-                  {sale.orderNumber}
+                  {sale.orderNumber}<OrderOriginLabel {...sale} />
                 </TableCell>
                 <TableCell>
                   <div className="font-medium">{sale.clientName}</div>

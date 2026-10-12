@@ -102,6 +102,7 @@ export default function FacturacionPage() {
         </Button>
       </div>
 
+      {taxDocuments.error && <div role="alert" className="rounded border border-red-200 p-4 space-y-2"><p>No se pudieron cargar las ventas o sus comprobantes. Reintenta antes de emitir.</p><Button onClick={refreshAll}>Reintentar</Button></div>}
       {/* SUNAT profile / certificate warning */}
       {!profilesLoading && !hasCertificate && (
         <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">

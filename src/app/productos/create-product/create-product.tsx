@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { toast } from "sonner";
 import Image from "next/image";
 import { Loader2, Plus, Image as ImageIcon, X as XIcon } from "lucide-react";
@@ -108,7 +110,10 @@ interface ProductCreateFormProps {
 export default function ProductCreateForm({
   editVariantId,
 }: ProductCreateFormProps) {
-  const { auth, inventories } = useAuth();
+  const { auth } = useAuth();
+  const warehouseQuery = useBusinessInventories();
+  const inventories = warehouseQuery.inventories;
+  const companyId = auth?.company?.id ?? "";
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isLoadingProduct, setIsLoadingProduct] = useState(false);
@@ -163,29 +168,30 @@ export default function ProductCreateForm({
   // Cargar categorías
   // =========================
   useEffect(() => {
-    axios
-      .get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/categories`)
+    if (!auth?.company?.id) return;
+    axiosAuth
+      .get(`${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/categories`)
       .then((res) => setCategories(res.data))
       .catch((err) => console.error("Error al cargar categorías", err));
 
     // Cargar proveedores
-    axios
-      .get(`${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`)
+    axiosAuth
+      .get(`${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers/company/${auth?.company?.id}`)
       .then((res) => setSuppliers(res.data))
       .catch((err) => console.error("Error al cargar proveedores", err));
 
     // Cargar marcas
-    axios
-      .get(`${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`)
+    axiosAuth
+      .get(`${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/brands`)
       .then((res) => setBrands(res.data))
       .catch((err) => console.error("Error al cargar marcas", err));
-  }, []);
+  }, [auth?.company?.id]);
 
   // =========================
   // Cargar datos del producto si está en modo edición
   // =========================
   useEffect(() => {
-    if (!editVariantId) return;
+    if (!editVariantId || !companyId) return;
 
     const loadProductForEdit = async () => {
       setIsLoadingProduct(true);
@@ -193,8 +199,8 @@ export default function ProductCreateForm({
 
       try {
         // Obtener la variante y su producto
-        const { data: variants } = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/multiple/by-ids`,
+        const { data: variants } = await axiosAuth.post(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/product-variant/multiple/by-ids`,
           { ids: [editVariantId] },
         );
 
@@ -205,11 +211,12 @@ export default function ProductCreateForm({
 
         const variant = variants[0];
         const product = variant.product;
+        if (product?.companyId !== companyId) throw new Error("El producto no pertenece al negocio activo.");
         setEditProductId(product.id);
 
         // Obtener detalles completos del producto CON relaciones (subcategory, etc.)
-        const { data: productDetailsArray } = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/details`,
+        const { data: productDetailsArray } = await axiosAuth.post(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/products/details`,
           { productIds: [product.id] },
         );
 
@@ -238,14 +245,14 @@ export default function ProductCreateForm({
         const categoryId = productDetails.subcategory?.category?.id;
 
         // Cargar subcategorías de la categoría para el select
-        const { data: subcategoriesData } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${categoryId}`,
+        const { data: subcategoriesData } = await axiosAuth.get(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/category/${categoryId}`,
         );
         setSubcategories(subcategoriesData);
 
         // Obtener atributos default de la subcategoría
-        const { data: subcategoryData } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${subcategoryId}`,
+        const { data: subcategoryData } = await axiosAuth.get(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/${subcategoryId}`,
         );
 
         // Cargar atributos default de la subcategoría
@@ -269,8 +276,8 @@ export default function ProductCreateForm({
         setCompanySku(product.companySku || "");
 
         // Obtener TODAS las variantes del producto para mostrarlas
-        const { data: allVariants } = await axios.get(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/by-product/${product.id}`,
+        const { data: allVariants } = await axiosAuth.get(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/product-variant/by-product/${product.id}`,
         );
 
         // Llenar las variantes con sus valores
@@ -330,7 +337,7 @@ export default function ProductCreateForm({
     };
 
     loadProductForEdit();
-  }, [editVariantId]);
+  }, [editVariantId, companyId]);
 
   // Auto-seleccionar inventario si solo hay uno
   useEffect(() => {
@@ -360,9 +367,9 @@ export default function ProductCreateForm({
 
     if (!form.categoryId) return;
 
-    axios
+    axiosAuth
       .get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/category/${form.categoryId}`,
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/category/${form.categoryId}`,
       )
       .then((res) => setSubcategories(res.data))
       .catch((err) => console.error("Error al cargar subcategorías", err));
@@ -381,9 +388,9 @@ export default function ProductCreateForm({
 
     if (!form.subcategoryId) return;
 
-    axios
+    axiosAuth
       .get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/subcategories/${form.subcategoryId}`,
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/subcategories/${form.subcategoryId}`,
       )
       .then((res) => {
         const attrs: DefaultAttribute[] = res.data.defaultAttributes || [];
@@ -580,16 +587,16 @@ export default function ProductCreateForm({
 
     setIsCreatingSupplier(true);
     try {
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
+      const res = await axiosAuth.post(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers`,
         { name: quickSupplierName.trim(), companyId: auth?.company?.id },
       );
 
       toast.success("Proveedor creado exitosamente");
 
       // Recargar proveedores
-      const suppliersRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
+      const suppliersRes = await axiosAuth.get(
+        `${(process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics)}/suppliers`,
       );
       setSuppliers(suppliersRes.data);
 
@@ -620,8 +627,8 @@ export default function ProductCreateForm({
 
     setIsCreatingBrand(true);
     try {
-      const res = await axios.post(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`,
+      const res = await axiosAuth.post(
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/brands`,
         {
           name: quickBrandName.trim(),
           supplierId: form.supplierId,
@@ -631,8 +638,8 @@ export default function ProductCreateForm({
       toast.success("Marca creada exitosamente");
 
       // Recargar marcas
-      const brandsRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`,
+      const brandsRes = await axiosAuth.get(
+        `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/brands`,
       );
       setBrands(brandsRes.data);
 
@@ -687,8 +694,10 @@ export default function ProductCreateForm({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setMessage("");
+    if (!companyId || !auth?.accessToken) { toast.error("Selecciona un negocio e inicia sesión antes de guardar."); return; }
+    if (isEditMode && !editProductId) { toast.error("No se pudo validar el producto a editar."); return; }
 
-    if (!form.inventory_id) {
+    if (!isEditMode && !inventories.some((inv) => inv.id === form.inventory_id)) {
       toast.error("Debe seleccionar un inventario.");
       return;
     }
@@ -789,8 +798,8 @@ export default function ProductCreateForm({
           description: form.description,
         };
 
-        await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/${editProductId}`,
+        await axiosAuth.patch(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/products/${editProductId}`,
           productPayload,
         );
 
@@ -803,13 +812,13 @@ export default function ProductCreateForm({
             };
 
             if (v.id) {
-              return axios.patch(
-                `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant/${v.id}`,
+              return axiosAuth.patch(
+                `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/product-variant/${v.id}`,
                 variantPayload,
               );
             } else {
-              return axios.post(
-                `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/product-variant`,
+              return axiosAuth.post(
+                `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/product-variant`,
                 { ...variantPayload, productId: editProductId },
               );
             }
@@ -820,8 +829,8 @@ export default function ProductCreateForm({
         window.history.back();
       } else {
         // Modo creación
-        const res = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/products/with-variants`,
+        const res = await axiosAuth.post(
+          `${(process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products)}/products/with-variants`,
           payload,
         );
 
@@ -869,13 +878,14 @@ export default function ProductCreateForm({
               {/* Row: Inventario + Categoría */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="inventory_id">Almacén</Label>
+                  <Label htmlFor="inventory_id">Almacén destino</Label>
+                  {warehouseQuery.isPending ? <p>Cargando almacenes...</p> : warehouseQuery.isError ? <p role="alert">No se pudieron cargar los almacenes. <Button type="button" variant="outline" onClick={() => void warehouseQuery.refetch()}>Reintentar</Button></p> : null}
                   <Select
                     value={form.inventory_id || undefined}
                     onValueChange={(value) =>
                       setForm((prev) => ({ ...prev, inventory_id: value }))
                     }
-                    disabled={inventories.length === 1}
+                    disabled={isEditMode || warehouseQuery.isPending || warehouseQuery.isError || inventories.length === 1}
                   >
                     <SelectTrigger id="inventory_id">
                       <SelectValue placeholder="Seleccionar almacén..." />
@@ -883,7 +893,7 @@ export default function ProductCreateForm({
                     <SelectContent>
                       {inventories.map((inv) => (
                         <SelectItem key={inv.id} value={inv.id}>
-                          {inv.name}
+                          {inv.name}{inv.storeName ? ` · ${inv.storeName}` : ""}
                         </SelectItem>
                       ))}
                     </SelectContent>

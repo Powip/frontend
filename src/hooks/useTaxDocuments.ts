@@ -1,32 +1,52 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { useListSunatDocuments } from "@/features/sunat/sunat-document/hooks/use-list-sunat-documents";
+import { useQuery } from "@tanstack/react-query";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
+import axiosAuth from "@/lib/axiosAuth";
+import { API } from "@/lib/api";
+import type { ListSunatDocumentsResponseDto } from "@/features/sunat/sunat-document/dto/list-sunat-documents-response.dto";
+import { toListSunatDocumentsResult } from "@/features/sunat/sunat-document/mappers/to-list-sunat-documents.mapper";
 import type { SunatDocument } from "@/features/sunat/sunat-document/models/sunat-document.model";
-import { useSalesByStore } from "../features/sales/hooks/use-sales-by-store";
+import { useBusinessSales } from "@/features/sales/hooks/use-business-sales";
 import { EMPTY_DOCUMENTS, EMPTY_SALES } from "@/features/sunat/shared/constants/sunat.constants";
 import { TaxDocumentRow } from "@/features/sunat/sunat-document/types/tax-document-row";
 
 export function useTaxDocuments() {
-  const { selectedStoreId } = useAuth();
+  const { auth } = useAuth();
+  const { scopeKey, canFetch } = useBusinessScope();
 
   const {
     data: sales = EMPTY_SALES,
     isLoading: loadingSales,
     refetch: refreshSales,
-  } = useSalesByStore(selectedStoreId ?? "");
+    isError: salesError,
+  } = useBusinessSales();
 
-  const {
-    data: documentResponse,
-    isLoading: loadingListDocuments,
-    refetch: refreshListDocuments,
-  } = useListSunatDocuments({
-    limit: 100,
-    offset: 0,
+  const documentsQuery = useQuery({
+    queryKey: ["business-tax-documents", auth?.company?.id, auth?.user?.id],
+    enabled: canFetch,
+    queryFn: async ({ signal }) => {
+      const byId = new Map<string, SunatDocument>();
+      let offset = 0;
+      while (true) {
+        const response = await axiosAuth.get<ListSunatDocumentsResponseDto>(`${API.sunat}/api/v1/sunat-documents`, { params: { limit: 100, offset }, signal });
+        const page = toListSunatDocumentsResult(response.data);
+        page.documents.forEach((document) => byId.set(document.id, document));
+        offset += page.documents.length;
+        if (offset >= page.total) break;
+        if (page.documents.length === 0) throw new Error("Respuesta incompleta de comprobantes");
+      }
+      return [...byId.values()];
+    },
+    retry: false,
+    refetchInterval: (query) => query.state.data?.some((document) => document.cdrStatus === "PENDING") ? 4000 : false,
   });
-
-  const documents = documentResponse?.documents ?? EMPTY_DOCUMENTS;
+  const loadingListDocuments = documentsQuery.isPending;
+  const refreshListDocuments = documentsQuery.refetch;
+  const error = salesError || documentsQuery.isError;
+  const documents = documentsQuery.data ?? EMPTY_DOCUMENTS;
 
   /**
    * The backend returns SUNAT documents ordered from newest to oldest.
@@ -53,6 +73,7 @@ export function useTaxDocuments() {
    * Only delivered sales participate in the SUNAT document workflow.
    */
   const rows = useMemo<TaxDocumentRow[]>(() => {
+    if (error) return [];
     return sales
       .filter((sale) => sale.status === "ENTREGADO")
       .map((sale) => ({
@@ -64,11 +85,13 @@ export function useTaxDocuments() {
           new Date(b.sale.createdAt).getTime() -
           new Date(a.sale.createdAt).getTime(),
       );
-  }, [sales, documentByOrderId]);
+  }, [sales, documentByOrderId, error]);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     () => new Set(),
   );
+
+  useEffect(() => { setSelectedIds(new Set()); }, [scopeKey]);
 
   const toggleSelected = useCallback((id: string, checked: boolean) => {
     setSelectedIds((previous) => {
@@ -194,6 +217,7 @@ export function useTaxDocuments() {
   return {
     rows,
     loading: loadingSales || loadingListDocuments,
+    error,
 
     kpis,
 

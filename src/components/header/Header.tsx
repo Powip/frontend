@@ -4,14 +4,17 @@ import { StoreSwitcher } from "../selector/store-switcher";
 import { Button } from "../ui/button";
 import { useRouter } from "next/navigation";
 import { Settings } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { isBusinessScopeRoute } from "@/lib/businessScopeRoutes";
 
 export default function Header() {
   const router = useRouter();
+  const pathname = usePathname();
 
   return (
     <div className="flex items-center justify-between px-8 py-3 bg-background border-b border-border shadow-sm">
       <div className="flex items-center gap-4">
-        <StoreSwitcher />
+        {!isBusinessScopeRoute(pathname) && <StoreSwitcher />}
       </div>
 
       <div className="flex items-center gap-4">

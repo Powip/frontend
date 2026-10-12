@@ -1,5 +1,6 @@
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
+import { fetchScopeInventories } from "./inventoryCatalogService";
 
 export interface InventoryMetricItem {
   inventoryItemId: string;
@@ -13,13 +14,6 @@ export interface InventoryMetricItem {
   min_stock?: number;
   attributes?: Record<string, string>;
   category?: string;
-}
-
-interface InventoryCatalog {
-  companyId: string;
-  stores: Array<{ id: string }>;
-  inventoryStoreIds?: string[];
-  inventories: Array<{ id: string; name: string; storeId: string }>;
 }
 
 interface MetricsRequest {
@@ -57,60 +51,8 @@ export async function fetchInventoryMetrics({
     throw new Error("Selecciona un negocio y una tienda para consultar el inventario.");
   }
   const headers = { Authorization: `Bearer ${accessToken}` };
-  const { data: catalog } = await axiosAuth.get<InventoryCatalog>(
-    `${process.env.NEXT_PUBLIC_API_VENTAS || GATEWAY.ventas}/order-header/sale-context`,
-    { headers, signal },
-  );
-  const ownedStoreIds =
-    catalog?.inventoryStoreIds ??
-    (Array.isArray(catalog?.stores) ? catalog.stores.map((store) => store?.id) : undefined);
-  if (
-    catalog?.companyId !== companyId ||
-    !Array.isArray(ownedStoreIds) ||
-    !ownedStoreIds.every((id) => typeof id === "string" && id.length > 0) ||
-    !Array.isArray(catalog.inventories) ||
-    catalog.inventories.some(
-      (inventory) =>
-        !inventory ||
-        typeof inventory.id !== "string" ||
-        !inventory.id ||
-        typeof inventory.name !== "string" ||
-        !ownedStoreIds.includes(inventory.storeId),
-    )
-  ) {
-    throw new Error("Los almacenes no corresponden al negocio activo.");
-  }
-  const warehouses = new Map(catalog.inventories.map((inventory) => [inventory.id, inventory]));
-  let inventoryIds = [...warehouses.keys()];
-
-  if (scope === "store") {
-    if (storeIds.length !== 1 || !ownedStoreIds.includes(storeIds[0])) {
-      throw new Error("La tienda no corresponde al negocio activo.");
-    }
-    const storeId = storeIds[0];
-    const selectedIds = new Set(
-      catalog.inventories
-        .filter((inventory) => inventory.storeId === storeId)
-        .map((inventory) => inventory.id),
-    );
-    const { data: shops } = await axiosAuth.get<
-      Array<{ isConnected: boolean; store_id?: string | null; inventory_id?: string | null }>
-    >(
-      `${process.env.NEXT_PUBLIC_API_INTEGRATIONS || GATEWAY.integrations}/shopify/status/${companyId}`,
-      { headers, signal },
-    );
-    if (!Array.isArray(shops)) throw new Error(INVALID_RESPONSE);
-    for (const shop of shops) {
-      if (!shop || typeof shop.isConnected !== "boolean") throw new Error(INVALID_RESPONSE);
-      if (shop.isConnected && shop.store_id === storeId && shop.inventory_id) {
-        if (!warehouses.has(shop.inventory_id)) {
-          throw new Error("El almacén vinculado a la tienda no pertenece al negocio activo.");
-        }
-        selectedIds.add(shop.inventory_id);
-      }
-    }
-    inventoryIds = [...selectedIds];
-  }
+  const warehouses = await fetchScopeInventories({ companyId, accessToken, scope, storeIds, signal });
+  const inventoryIds = warehouses.map((inventory) => inventory.id);
 
   const results = await Promise.all(
     inventoryIds.map(async (inventoryId) => {

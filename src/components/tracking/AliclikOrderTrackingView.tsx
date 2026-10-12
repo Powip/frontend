@@ -1,5 +1,10 @@
 "use client";
 
+import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
+
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+
 import { useEffect, useMemo, useState, useCallback } from "react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -37,7 +42,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
 import AliclikStatusBadge from "@/components/aliclik/AliclikStatusBadge";
@@ -121,10 +126,10 @@ const ALICLIK_STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
 // ─── COMPONENTE PRINCIPAL ───────────────────────────────────────────────────
 
 export default function AliclikOrderTrackingView() {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
 
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { orders: businessOrders, loading, error, retry, refetch: fetchOrders } = useBusinessOrders();
+  const orders = useMemo(() => businessOrders.filter((o) => o.aliclikDispatchStatus !== null && o.aliclikDispatchStatus !== undefined).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [businessOrders]);
   const [search, setSearch] = useState("");
   const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [activeFilter, setActiveFilter] = useState<AliclikFilter>("all");
@@ -132,33 +137,6 @@ export default function AliclikOrderTrackingView() {
   const [page, setPage] = useState(1);
 
   // ── Fetch ────────────────────────────────────────────────────────────────
-
-  const fetchOrders = useCallback(async () => {
-    if (!selectedStoreId) return;
-    setLoading(true);
-    try {
-      const res = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-
-      const aliclikOnly = res.data
-        .filter((o) => o.aliclikDispatchStatus !== null && o.aliclikDispatchStatus !== undefined)
-        .sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        );
-
-      setOrders(aliclikOnly);
-    } catch {
-      toast.error("Error al cargar pedidos de Aliclik");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId]);
-
-  useEffect(() => {
-    fetchOrders();
-  }, [fetchOrders]);
 
   // ── Filtrado ─────────────────────────────────────────────────────────────
 
@@ -241,6 +219,8 @@ export default function AliclikOrderTrackingView() {
     }
     const rows = filteredOrders.map((o) => ({
       "N° Pedido": o.orderNumber,
+        Tienda: o.storeName || o.storeId || "",
+        Almacén: o.stockStoreName || o.inventoryId || o.stockStoreId || "",
       Cliente: o.customer?.fullName || "-",
       "Estado Aliclik": ALICLIK_STATUS_LABELS[o.aliclikDispatchStatus ?? ""] ?? o.aliclikDispatchStatus ?? "-",
       Sincronizado: o.aliclikSyncedAt ? formatSyncedAt(o.aliclikSyncedAt) : "-",
@@ -264,6 +244,8 @@ export default function AliclikOrderTrackingView() {
   };
 
   // ─── RENDER ───────────────────────────────────────────────────────────────
+
+  if (error) return <OperationsDataError retry={retry} />;
 
   return (
     <OrderDetailModalProvider
@@ -426,7 +408,7 @@ export default function AliclikOrderTrackingView() {
           <Button
             size="sm"
             variant="outline"
-            onClick={fetchOrders}
+            onClick={() => void fetchOrders()}
             disabled={loading}
             className="gap-2"
           >
@@ -517,7 +499,7 @@ export default function AliclikOrderTrackingView() {
                   >
                     {/* N° Pedido */}
                     <TableCell className="px-4 py-3 text-xs font-bold font-mono">
-                      {order.orderNumber}
+                      <span>{order.orderNumber}</span><OrderOriginLabel {...order} />
                     </TableCell>
 
                     {/* Cliente */}

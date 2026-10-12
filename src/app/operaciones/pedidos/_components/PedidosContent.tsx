@@ -1,7 +1,10 @@
 "use client";
 
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -62,7 +65,7 @@ const TAB_ICON: Record<PedidosTabKey, React.ElementType> = {
 type RescheduleTarget = { saleIds: string[] } | null;
 
 export function PedidosContent() {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
   const { can } = useOperationsRole();
   const getUserInfo = useUserAuditInfo();
   const searchParams = useSearchParams();
@@ -76,8 +79,8 @@ export function PedidosContent() {
   const initialQ = searchParams.get("q") ?? undefined;
 
   const [activeTab, setActiveTab] = useState<PedidosTabKey>(initialTab);
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { orders: businessOrders, loading, error, retry, refetch: fetchOrders } = useBusinessOrders();
+  const orders = useMemo(() => [...businessOrders].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [businessOrders]);
   const [apiCouriers, setApiCouriers] = useState<string[]>([]);
   const [isBulkLoading, setIsBulkLoading] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -96,29 +99,6 @@ export function PedidosContent() {
   const [reassignSale, setReassignSale] = useState<Sale | null>(null);
   const [isReassigning, setIsReassigning] = useState(false);
   const [rescheduleTarget, setRescheduleTarget] = useState<RescheduleTarget>(null);
-
-  const fetchOrders = useCallback(async () => {
-    if (!selectedStoreId) return;
-    try {
-      const res = await axios.get<OrderHeader[]>(
-        `${API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-      res.data.sort(
-        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-      );
-      setOrders(res.data ?? []);
-    } catch (error) {
-      console.error("Error cargando pedidos", error);
-      toast.error("No se pudieron cargar los pedidos");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId]);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchOrders();
-  }, [fetchOrders]);
 
   useEffect(() => {
     if (!auth?.company?.id) return;
@@ -451,6 +431,7 @@ export function PedidosContent() {
         if (firstOrder) setGuideSale(firstOrder);
       } catch (error: any) {
         toast.error(error?.response?.data?.message || "Error creando guía");
+        return false;
       } finally {
         setIsCreatingGuide(false);
       }
@@ -520,6 +501,7 @@ export function PedidosContent() {
         setGuideSale(selected[0]);
       } catch (error: any) {
         toast.error(error?.response?.data?.message || "Error al agregar a la guía");
+        return false;
       } finally {
         setIsAddingToGuide(false);
       }
@@ -765,6 +747,8 @@ export function PedidosContent() {
     companyId: auth?.company?.id,
   };
 
+  if (error) return <OperationsDataError retry={retry} />;
+
   if (loading) {
     return <PowipPulseLoader label="Cargando pedidos..." />;
   }
@@ -877,7 +861,7 @@ export function PedidosContent() {
             open={!!createGuideOrders}
             onClose={() => setCreateGuideOrders(null)}
             selectedOrders={createGuideOrders}
-            storeId={selectedStoreId || ""}
+            storeId={createGuideOrders?.[0]?.storeId || ""}
             onConfirm={handleCreateGuideConfirm}
             isLoading={isCreatingGuide}
           />
@@ -888,7 +872,7 @@ export function PedidosContent() {
             open={!!addToGuideOrders}
             onClose={() => setAddToGuideOrders(null)}
             selectedOrders={addToGuideOrders}
-            storeId={selectedStoreId || ""}
+            storeId={addToGuideOrders?.[0]?.storeId || ""}
             onConfirm={handleAddToGuideConfirm}
             isLoading={isAddingToGuide}
           />

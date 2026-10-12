@@ -50,6 +50,8 @@ import React from 'react';
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { company: { id: 'company-a' }, user: { id: 'user-a' }, accessToken: 'test-token' } }) }));
+
 jest.mock('sonner', () => ({
   toast: {
     success: jest.fn(),

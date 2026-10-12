@@ -1,5 +1,7 @@
 "use client";
 
+import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
+
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -335,7 +337,7 @@ export function AtencionTab({
                     </TableCell>
                   )}
                   <TableCell className="font-medium">
-                    {sale.orderNumber}
+                    {sale.orderNumber}<OrderOriginLabel {...sale} />
                   </TableCell>
                   <TableCell>
                     <div className="font-medium">{sale.clientName}</div>

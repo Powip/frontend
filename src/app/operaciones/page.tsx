@@ -1,7 +1,10 @@
 "use client";
 
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { useRouter } from "next/navigation";
@@ -67,31 +70,9 @@ function guessFailureReason(order: OrderHeader): string {
 }
 
 export default function OperacionesTableroPage() {
-  const { selectedStoreId } = useAuth();
   const router = useRouter();
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { orders, loading, error, retry, refetch: load } = useBusinessOrders();
   const [scannerOpen, setScannerOpen] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!selectedStoreId) return;
-    setLoading(true);
-    try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-      setOrders(res.data ?? []);
-    } catch {
-      // silencioso: el tablero no es la pantalla de trabajo, si falla se
-      // ve vacío y el usuario puede refrescar
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
 
   const shippingOrders = useMemo(
     () => orders.filter((o) => o.deliveryType === "DOMICILIO" && SHIPPING_STATUSES.includes(o.status)),
@@ -245,6 +226,8 @@ export default function OperacionesTableroPage() {
   if (loading) {
     return <PowipPulseLoader label="Cargando..." />;
   }
+
+  if (error) return <OperationsDataError retry={retry} />;
 
   return (
     <div className="space-y-6">

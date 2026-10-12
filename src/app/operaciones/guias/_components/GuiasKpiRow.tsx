@@ -1,7 +1,11 @@
 "use client";
 
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessGuides } from "@/hooks/useBusinessGuides";
+
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { ClipboardList, Clock3, CheckCircle2, Wallet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { OrderHeader } from "@/interfaces/IOrder";
@@ -28,38 +32,13 @@ function isThisMonth(dateStr?: string | null): boolean {
 }
 
 export default function GuiasKpiRow() {
-  const { auth, selectedStoreId } = useAuth();
-  const [guides, setGuides] = useState<ShippingGuide[]>([]);
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    let cancelled = false;
-    setLoading(true);
-    Promise.all([
-      axios
-        .get<ShippingGuide[]>(
-          `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
-          auth?.accessToken ? { headers: { Authorization: `Bearer ${auth.accessToken}` } } : undefined,
-        )
-        .then((r) => r.data)
-        .catch(() => []),
-      axios
-        .get<OrderHeader[]>(`${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`)
-        .then((r) => r.data)
-        .catch(() => []),
-    ]).then(([g, o]) => {
-      if (cancelled) return;
-      setGuides(g ?? []);
-      setOrders(o ?? []);
-      setLoading(false);
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStoreId]);
+  const orderQuery = useBusinessOrders();
+  const guideQuery = useBusinessGuides<ShippingGuide>();
+  const { orders } = orderQuery;
+  const { guides } = guideQuery;
+  const loading = orderQuery.loading || guideQuery.loading;
+  const error = orderQuery.error || guideQuery.error;
+  const retry = () => Promise.all([orderQuery.retry(), guideQuery.retry()]);
 
   const kpis = useMemo(() => {
     const activas = guides.filter((g) => !CLOSED_STATUSES.has(g.status)).length;
@@ -70,6 +49,8 @@ export default function GuiasKpiRow() {
       .reduce((sum, o) => sum + Number(o.carrierShippingCost || 0), 0);
     return { activas, sinAprobar, cerradasEsteMes, costoEnvioMes, totalGuias: guides.length };
   }, [guides, orders]);
+
+  if (error) return <OperationsDataError retry={retry} message="No se pudieron cargar las estadísticas de guías." />;
 
   if (loading) {
     return (

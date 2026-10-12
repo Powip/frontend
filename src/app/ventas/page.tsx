@@ -49,7 +49,12 @@ import {
 
 import { OrderHeader, OrderStatus, OrderItem } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
+import { PowipPulseLoader } from "@/components/shared/PowipPulseLoader";
+import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
 import ImportSalesModal from "@/components/modals/ImportSalesModal";
 import {
   OrderDetailButton,
@@ -106,7 +111,6 @@ import { BulkStatusSelect } from "@/components/ventas/BulkStatusSelect";
 import type { BulkExtraAction } from "@/components/ventas/BulkStatusSelect";
 import { processBulkStatusChange } from "@/utils/bulkStatusUtils";
 import { RescheduleDialog } from "@/components/ventas/RescheduleDialog";
-import { useOrdersByStore } from "@/hooks/useOrdersByStore";
 import {
   enviarPedidoALima,
   reassignSeller,
@@ -147,6 +151,9 @@ const ALL_STATUSES: OrderStatus[] = [
 
 export interface Sale {
   id: string;
+  storeId: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
   customerId: string;
   orderNumber: string;
   clientName: string;
@@ -222,6 +229,9 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    storeId: order.storeId,
+    inventoryId: order.inventoryId,
+    stockStoreId: order.stockStoreId,
     customerId: order.customer.id,
     orderNumber: order.orderNumber,
     clientName: order.customer.fullName,
@@ -288,6 +298,10 @@ export default function VentasPage() {
 
   // Paginación para Todas las Ventas
   const [pageAll, setPageAll] = useState(1);
+  const [pagePendientes, setPagePendientes] = useState(1);
+  const [pageAnulados, setPageAnulados] = useState(1);
+  useEffect(() => { setPagePendientes(1); }, [filtersPendiente]);
+  useEffect(() => { setPageAnulados(1); }, [filtersAnulado]);
   const ITEMS_PER_PAGE = 10;
 
   // Estado para modal de cancelación
@@ -390,8 +404,23 @@ export default function VentasPage() {
   const { auth, selectedStoreId } = useAuth();
   const router = useRouter();
 
-  const { data: ordersData, refetch: refetchOrders } =
-    useOrdersByStore(selectedStoreId);
+  const { scopeKey } = useBusinessScope();
+  const { orders: ordersData, loading: ordersLoading, error: ordersError, retry: retryOrders, refetch: refetchScopedOrders } = useBusinessOrders();
+  const invalidateBusinessData = useInvalidateBusinessData();
+  const refetchOrders = useCallback(() => { void refetchScopedOrders(); void invalidateBusinessData(); }, [refetchScopedOrders, invalidateBusinessData]);
+  const importStore = auth?.company?.stores?.find((store) => store.id === selectedStoreId);
+  const canExport = isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
+
+  useEffect(() => {
+    setSelectedPendientesIds(new Set());
+    setSelectedAnuladosIds(new Set());
+    setSelectedTodasIds(new Set());
+    setPageAll(1);
+    setPagePendientes(1);
+    setPageAnulados(1);
+    setCreateGuideOrder(null);
+    setImportModalOpen(false);
+  }, [scopeKey]);
 
   // Calcular estados disponibles comunes para la selección de la pestaña activa
   const bulkAvailableStatuses = useMemo(() => {
@@ -472,7 +501,7 @@ export default function VentasPage() {
     orderId: string,
     payload: Record<string, unknown>,
   ) => {
-    await axios.patch(
+    await axiosAuth.patch(
       `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
       { ...payload, ...getUserInfo() },
     );
@@ -482,7 +511,7 @@ export default function VentasPage() {
     setIsCreatingGuide(true);
     try {
       for (const guideData of guidesData) {
-        const guideResponse = await axios.post(
+        const guideResponse = await axiosAuth.post(
           `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides`,
           guideData,
         );
@@ -501,6 +530,7 @@ export default function VentasPage() {
       refetchOrders();
     } catch (error: any) {
       toast.error(error?.response?.data?.message || "Error creando guía");
+      return false;
     } finally {
       setIsCreatingGuide(false);
     }
@@ -530,7 +560,7 @@ export default function VentasPage() {
         payload.cancellationReason = cancellationReason;
       }
 
-      await axios.patch(
+      await axiosAuth.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
         payload,
       );
@@ -550,7 +580,7 @@ export default function VentasPage() {
 
     setIsCancelling(true);
     try {
-      await axios.patch(
+      await axiosAuth.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
         {
           status: "ANULADO",
@@ -583,7 +613,7 @@ export default function VentasPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      await axios.delete(
+      await axiosAuth.delete(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${id}`,
       );
       toast.success("Venta eliminada");
@@ -637,6 +667,10 @@ Estado: ${sale.status}
 
     const exportData: SaleExportData[] = salesList.map((s) => ({
       orderNumber: s.orderNumber,
+      storeId: s.storeId,
+      storeName: auth?.company?.stores?.find((store) => store.id === s.storeId)?.name,
+      inventoryId: s.inventoryId,
+      stockStoreId: s.stockStoreId,
       clientName: s.clientName,
       phoneNumber: s.phoneNumber,
       documentType: s.documentType,
@@ -681,7 +715,7 @@ Estado: ${sale.status}
   };
 
   const fetchPrintReceipt = useCallback(async (sale: { id: string }) => {
-    const res = await axios.get<ReceiptData>(
+    const res = await axiosAuth.get<ReceiptData>(
       `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
     );
     return res.data;
@@ -702,7 +736,7 @@ Estado: ${sale.status}
     for (const sale of pendingPrintSales) {
       const newStatus = "PREPARADO";
       try {
-        await axios.patch(
+        await axiosAuth.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}`,
           { status: newStatus, ...getUserInfo() },
         );
@@ -761,7 +795,7 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          const res = await axios.get<ReceiptData>(
+          const res = await axiosAuth.get<ReceiptData>(
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
           );
           return res.data;
@@ -877,7 +911,7 @@ Estado: ${sale.status}
     callbackAt: Date,
   ) => {
     try {
-      await axios.patch(
+      await axiosAuth.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
         {
           callStatus: "SCHEDULED",
@@ -982,7 +1016,7 @@ Estado: ${sale.status}
 
     setSavingOrderId(orderId);
     try {
-      await axios.patch(
+      await axiosAuth.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
         {
           externalTrackingNumber: data.externalTrackingNumber,
@@ -1671,11 +1705,17 @@ Estado: ${sale.status}
     };
   }, [sales, kpiDateFrom, kpiDateTo]);
 
+  const pendientesPage = Math.min(pagePendientes, Math.max(1, Math.ceil(pendientes.length / ITEMS_PER_PAGE)));
+  const anuladosPage = Math.min(pageAnulados, Math.max(1, Math.ceil(anulados.length / ITEMS_PER_PAGE)));
+  const todasPage = Math.min(pageAll, Math.max(1, Math.ceil(todasLasVentas.length / ITEMS_PER_PAGE)));
+
   const selectedPendientesCount = pendientes.filter((s) =>
     selectedSaleIds.has(s.id),
   ).length;
 
   if (!auth) return null;
+  if (ordersLoading) return <main className="p-6"><PowipPulseLoader label="Cargando ventas..." /></main>;
+  if (ordersError) return <main className="p-6 space-y-4"><HeaderConfig title="Ventas" description="Gestión de ventas" /><div role="alert">No se pudieron cargar las ventas del alcance seleccionado.</div><Button onClick={retryOrders}>Reintentar</Button></main>;
 
   return (
     <OrderDetailModalProvider
@@ -1692,10 +1732,11 @@ Estado: ${sale.status}
             <Button
               variant="outline"
               className="w-full lg:w-auto"
-              onClick={() => setImportModalOpen(true)}
+              disabled={!importStore}
+              onClick={() => { if (importStore) setImportModalOpen(true); }}
             >
               <UploadCloud className="h-4 w-4 mr-2" />
-              Importar Excel
+              {importStore ? `Importar Excel a ${importStore.name}` : "Selecciona una tienda para importar"}
             </Button>
             <Link href="/registrar-venta" className="w-full lg:w-auto">
               <Button
@@ -1861,7 +1902,7 @@ Estado: ${sale.status}
                       <Copy className="h-4 w-4 mr-2" />
                       Copiar seleccionados ({selectedPendientesCount})
                     </Button>
-                    {auth?.user?.role === "ADMIN" && (
+                    {canExport && (
                       <Button
                         variant="outline"
                         className="w-full lg:w-auto"
@@ -1886,14 +1927,14 @@ Estado: ${sale.status}
                     showProductFilter
                     availableProducts={productOptionsPendientes}
                   />
-                  {renderPendientesTable(pendientes, activeTab === "todas")}
+                  {renderPendientesTable(pendientes.slice((pendientesPage - 1) * ITEMS_PER_PAGE, pendientesPage * ITEMS_PER_PAGE), activeTab === "todas")}
                 </CardContent>
                 <Pagination
-                  currentPage={1}
+                  currentPage={pendientesPage}
                   totalPages={Math.ceil(pendientes.length / 10) || 1}
                   totalItems={pendientes.length}
                   itemsPerPage={10}
-                  onPageChange={() => {}}
+                  onPageChange={setPagePendientes}
                   itemName="ventas"
                 />
               </Card>
@@ -1954,7 +1995,7 @@ Estado: ${sale.status}
                       Copiar seleccionados (
                       {anulados.filter((s) => selectedSaleIds.has(s.id)).length})
                     </Button>
-                    {auth?.user?.role === "ADMIN" && (
+                    {canExport && (
                       <Button
                         variant="outline"
                         className="w-full lg:w-auto"
@@ -1979,14 +2020,14 @@ Estado: ${sale.status}
                     showProductFilter
                     availableProducts={productOptionsAnulados}
                   />
-                  {renderAnuladosTable(anulados, activeTab === "todas")}
+                  {renderAnuladosTable(anulados.slice((anuladosPage - 1) * ITEMS_PER_PAGE, anuladosPage * ITEMS_PER_PAGE), activeTab === "todas")}
                 </CardContent>
                 <Pagination
-                  currentPage={1}
+                  currentPage={anuladosPage}
                   totalPages={Math.ceil(anulados.length / 10) || 1}
                   totalItems={anulados.length}
                   itemsPerPage={10}
-                  onPageChange={() => {}}
+                  onPageChange={setPageAnulados}
                   itemName="ventas"
                 />
               </Card>
@@ -2059,7 +2100,7 @@ Estado: ${sale.status}
                       }
                       )
                     </Button>
-                    {auth?.user?.role === "ADMIN" && (
+                    {canExport && (
                       <Button
                         variant="outline"
                         className="w-full lg:w-auto"
@@ -2089,14 +2130,14 @@ Estado: ${sale.status}
                   />
                   {renderPendientesTable(
                     todasLasVentas.slice(
-                      (pageAll - 1) * ITEMS_PER_PAGE,
-                      pageAll * ITEMS_PER_PAGE,
+                      (todasPage - 1) * ITEMS_PER_PAGE,
+                      todasPage * ITEMS_PER_PAGE,
                     ),
                     activeTab === "todas",
                   )}
                 </CardContent>
                 <Pagination
-                  currentPage={pageAll}
+                  currentPage={todasPage}
                   totalPages={
                     Math.ceil(todasLasVentas.length / ITEMS_PER_PAGE) || 1
                   }
@@ -2114,11 +2155,14 @@ Estado: ${sale.status}
           <CreateGuideModal
             open={!!createGuideOrder}
             onClose={() => setCreateGuideOrder(null)}
-            storeId={selectedStoreId || ""}
+            storeId={createGuideOrder.storeId}
             isLoading={isCreatingGuide}
             selectedOrders={[
               {
                 id: createGuideOrder.id,
+                storeId: createGuideOrder.storeId,
+                inventoryId: createGuideOrder.inventoryId,
+                stockStoreId: createGuideOrder.stockStoreId,
                 orderNumber: createGuideOrder.orderNumber,
                 clientName: createGuideOrder.customer.fullName,
                 address: createGuideOrder.customer.address,
@@ -2231,21 +2275,21 @@ Estado: ${sale.status}
           </AlertDialogContent>
         </AlertDialog>
 
-        <ImportSalesModal
+        {importStore && <ImportSalesModal
           isOpen={importModalOpen}
           onClose={() => setImportModalOpen(false)}
           onSuccess={() => {
             refetchOrders();
             setImportModalOpen(false);
           }}
-          storeId={selectedStoreId || ""}
+          storeId={importStore.id}
           userId={auth.user?.id}
           sellerName={
             auth.user
               ? `${auth.user.name || ""} ${auth.user.surname || ""}`.trim()
               : undefined
           }
-        />
+        />}
 
         <RescheduleDialog
           open={rescheduleDialogSaleId !== null}

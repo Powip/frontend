@@ -14,6 +14,11 @@ import { formatGoogleMapsClipboardLine } from "@/components/shared/MapsLink";
 ------------------------------------------------------------------------ */
 export interface Sale {
   id: string;
+  storeId?: string;
+  storeName?: string;
+  stockStoreName?: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
   customerId: string;
   orderNumber: string;
   clientName: string;
@@ -91,6 +96,11 @@ export function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    storeId: order.storeId,
+    storeName: order.storeName,
+    stockStoreName: order.stockStoreName,
+    inventoryId: order.inventoryId,
+    stockStoreId: order.stockStoreId,
     customerId: order.customer?.id,
     orderNumber: order.orderNumber,
     clientName: order.customer?.fullName ?? "—",
@@ -159,6 +169,10 @@ export function mapOrderToSale(order: OrderHeader): Sale {
 export function buildPedidosExportRows(sales: Sale[], productFilter?: string): SaleExportData[] {
   return sales.map((s) => ({
     orderNumber: s.orderNumber,
+    storeId: s.storeId,
+    storeName: s.storeName,
+    inventoryId: s.inventoryId,
+    stockStoreId: s.stockStoreId,
     clientName: s.clientName,
     phoneNumber: s.phoneNumber,
     documentType: s.documentType,

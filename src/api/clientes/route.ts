@@ -1,4 +1,8 @@
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import type { Client } from "@/interfaces/ICliente";
+import { GATEWAY } from "@/lib/gateway";
+
+const VENTAS_API = process.env.NEXT_PUBLIC_API_VENTAS || GATEWAY.ventas;
 
 interface CreateClientDto {
   companyId: string;
@@ -16,54 +20,22 @@ interface CreateClientDto {
 interface UpdateClientDto extends Partial<CreateClientDto> {
   id: string;
 }
-export async function createClient(data: CreateClientDto) {
-  try {
-    const res = await axios.post(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/clients`,
-      data
-    );
-    return res;
-  } catch (error) {
-    console.log("Hemos tenido un error al crear el usuario", error);
-  }
+export function createClient(data: CreateClientDto) {
+  return axiosAuth.post(`${VENTAS_API}/clients`, data);
 }
 
-export async function updateClient(id: string, data: UpdateClientDto) {
-  try {
-    const res = await axios.patch(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/clients/${id}`,
-      data
-    );
-    return res;
-  } catch (error) {
-    console.log("Error al actualizar el cliente", error);
-  }
+export function updateClient(id: string, data: UpdateClientDto) {
+  return axiosAuth.patch(`${VENTAS_API}/clients/${id}`, data);
 }
 
-export async function findByCompany(
+export function findByCompany(
   id: string,
-  filters?: { brandId?: string; categoryId?: string }
+  filters?: { brandId?: string; categoryId?: string },
+  signal?: AbortSignal,
 ) {
-  try {
-    const res = await axios.get(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/clients/company/${id}`,
-      {
-        params: filters,
-      }
-    );
-    return res;
-  } catch (error) {
-    console.log("Error al obtener clientes", error);
-  }
+  return axiosAuth.get<Client[]>(`${VENTAS_API}/clients/company/${id}`, { params: filters, signal });
 }
 
-export async function toggleClienteActivo(id: string) {
-  try {
-    const res = await axios.patch(
-      `${process.env.NEXT_PUBLIC_API_VENTAS}/clients/${id}/toggle`
-    );
-    return res;
-  } catch (error) {
-    console.log("Error al activar/desactivar cliente", error);
-  }
+export function toggleClienteActivo(id: string) {
+  return axiosAuth.patch(`${VENTAS_API}/clients/${id}/toggle`);
 }

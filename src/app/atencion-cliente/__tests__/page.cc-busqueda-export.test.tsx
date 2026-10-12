@@ -16,9 +16,18 @@
  * 8. Aviso de resultados incompletos cuando el conjunto viene truncado.
  * 9. Exportar solo aparece en Contactado / No contesta / Anulados.
  */
-import { render, screen, within, act } from '@testing-library/react';
+import { render as rtlRender, screen, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { OrderHeader, SubEstadoCc } from '@/interfaces/IOrder';
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
+jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({ storeIds: ['store-1'], scope: 'business', scopeKey: 'company-1:business:store-1', canFetch: true }) }));
+jest.mock('@/hooks/useBusinessOrders', () => ({ useBusinessOrders: () => ({ orders: [], loading: false, error: false, refetch: jest.fn() }) }));
 
 /* ---------------- Backend en memoria ---------------- */
 type Filters = {

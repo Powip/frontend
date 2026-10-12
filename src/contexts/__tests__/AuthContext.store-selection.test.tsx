@@ -71,6 +71,17 @@ beforeEach(() => {
 });
 
 describe("selección de tienda del negocio", () => {
+  it("normaliza almacenes store_id del API y excluye los de otra tienda", async () => {
+    mockAxios.get.mockResolvedValue({ data: [
+      { id: "physical", name: "Almacén", store_id: "store-kunca" },
+      { id: "camel", name: "Otro almacén", storeId: "store-kunca" },
+      { id: "foreign", name: "Ajeno", store_id: "store-other-business" },
+    ] });
+    const { result } = await restoreSession();
+    await waitFor(() => expect(result.current.inventories).toHaveLength(2));
+    expect(result.current.inventories.map((inventory) => inventory.storeId)).toEqual(["store-kunca", "store-kunca"]);
+  });
+
   it("reemplaza una preferencia ajena y alinea el selector con las consultas", async () => {
     localStorage.setItem("selectedStoreId", "store-other-business");
 
@@ -81,6 +92,7 @@ describe("selección de tienda del negocio", () => {
     expect(localStorage.getItem("selectedStoreId")).toBe("store-kunca");
     expect(mockAxios.get).toHaveBeenCalledWith(
       expect.stringContaining("/inventory/store/store-kunca"),
+      expect.objectContaining({ headers: { Authorization: "Bearer session-token" }, signal: expect.any(AbortSignal) }),
     );
     expect(
       mockAxios.get.mock.calls.every(

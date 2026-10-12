@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   getShopifyStatus,
@@ -31,6 +32,7 @@ interface ShopifySyncWizardProps {
 
 export default function ShopifySyncWizard({ onBack }: ShopifySyncWizardProps) {
   const { auth } = useAuth();
+  const warehouseQuery = useBusinessInventories();
   const [shops, setShops] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState<string | null>(null);
@@ -53,15 +55,18 @@ export default function ShopifySyncWizard({ onBack }: ShopifySyncWizardProps) {
 
   const handleSync = async (shopUrl: string) => {
     if (!auth?.company?.id) return;
+    const shop = shops.find((item) => item.shop_url === shopUrl);
+    if (!shop?.store_id || !auth.company.stores?.some((store) => store.id === shop.store_id) || !warehouseQuery.inventories.some((inv) => inv.id === shop.inventory_id)) {
+      toast.error("Configura un almacén válido del negocio para esta tienda antes de sincronizar.");
+      return;
+    }
     setSyncing(shopUrl);
     try {
       await syncShopifyProducts(
         shopUrl,
         auth.company.id,
-        shops.find((s) => s.shop_url === shopUrl)?.inventory_id ||
-          auth.company.stores?.[0]?.id, // Fallback a store id si no hay inventory_id mapeado aún
-        shops.find((s) => s.shop_url === shopUrl)?.store_id ||
-          auth.company.stores?.[0]?.id,
+        shop.inventory_id,
+        shop.store_id,
       );
       toast.success(
         "Sincronización iniciada en segundo plano. Los productos aparecerán en tu inventario a medida que se procesen (esto puede tardar hasta 3 minutos).",
@@ -152,7 +157,7 @@ export default function ShopifySyncWizard({ onBack }: ShopifySyncWizardProps) {
                 <div className="flex items-center gap-3">
                   <Button
                     onClick={() => handleSync(shop.shop_url)}
-                    disabled={!!syncing}
+                    disabled={!!syncing || warehouseQuery.isPending || warehouseQuery.isError}
                     className="bg-teal-600 hover:bg-teal-700 text-white min-w-[150px]"
                   >
                     {syncing === shop.shop_url ? (

@@ -51,7 +51,7 @@ export function AgentPerformanceCard({
       } else {
         await toggleAgenteCcStatus(accessToken, agente.id, { ccActivo: checked });
       }
-      await queryClient.invalidateQueries({ queryKey: ["cc-agentes-kpis", storeId] });
+      await queryClient.invalidateQueries({ queryKey: ["cc-agentes-kpis"] });
       toast.success(`Agente ${checked ? "activado" : "desactivado"}`);
     } catch {
       toast.error("No se pudo cambiar el estado del agente");

@@ -1,7 +1,8 @@
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 const API_INTEGRATIONS =
-  process.env.NEXT_PUBLIC_API_INTEGRATIONS || "http://localhost:3007";
+  process.env.NEXT_PUBLIC_API_INTEGRATIONS || GATEWAY.integrations;
 
 export interface ShopifyShopStatus {
   isConnected: boolean;
@@ -13,7 +14,7 @@ export interface ShopifyShopStatus {
 export const getShopifyStatus = async (
   companyId: string,
 ): Promise<ShopifyShopStatus[]> => {
-  const response = await axios.get(
+  const response = await axiosAuth.get(
     `${API_INTEGRATIONS}/shopify/status/${companyId}`,
   );
   return response.data;
@@ -25,7 +26,7 @@ export const syncShopifyProducts = async (
   inventoryId?: string,
   storeId?: string,
 ): Promise<any> => {
-  const response = await axios.post(`${API_INTEGRATIONS}/shopify/sync`, {
+  const response = await axiosAuth.post(`${API_INTEGRATIONS}/shopify/sync`, {
     shopUrl,
     companyId,
     inventoryId,
@@ -35,7 +36,7 @@ export const syncShopifyProducts = async (
 };
 
 export const getShopifyProducts = async (shopUrl: string): Promise<any[]> => {
-  const response = await axios.get(
+  const response = await axiosAuth.get(
     `${API_INTEGRATIONS}/shopify/products/${shopUrl}`,
   );
   return response.data;

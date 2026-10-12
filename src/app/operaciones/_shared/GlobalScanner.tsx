@@ -1,7 +1,11 @@
 "use client";
 
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+
 import { useState, useCallback } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import ScannerSheet from "@/app/centro-envios/components/ScannerSheet";
 import { OrderHeader } from "@/interfaces/IOrder";
@@ -24,24 +28,10 @@ export function GlobalScanner({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
   const getUserInfo = useUserAuditInfo();
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-
-  const loadOrders = useCallback(async () => {
-    if (!selectedStoreId) return;
-    try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-      const shippable = (res.data as OrderHeader[]).filter(
-        (o) => o.deliveryType === "DOMICILIO" && SHIPPING_STATUSES.includes(o.status),
-      );
-      setOrders(shippable);
-    } catch {
-      toast.error("No se pudieron cargar los pedidos para escanear");
-    }
-  }, [selectedStoreId]);
+  const { orders: allOrders, loading, error, retry, refetch: loadOrders } = useBusinessOrders(undefined, undefined, { enabled: open });
+  const orders = allOrders.filter((o) => o.deliveryType === "DOMICILIO" && SHIPPING_STATUSES.includes(o.status));
 
   // Recarga siempre al abrir — un pedido puede haber cambiado de estado (p.ej.
   // recién pasó a PREPARADO) o de tienda seleccionada desde la última vez que
@@ -61,17 +51,23 @@ export function GlobalScanner({
 
   const handleDispatch = async (order: OrderHeader) => {
     await patchOrder(order.id, { status: "EN_ENVIO" });
-    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: "EN_ENVIO" } : o)));
+    await loadOrders();
   };
 
   const handleConfirmDelivery = async (order: OrderHeader) => {
     await patchOrder(order.id, { status: "ENTREGADO" });
-    setOrders((prev) =>
-      prev.filter((o) => o.id !== order.id), // ya no aplica a "por confirmar en escáner"
-    );
+    await loadOrders();
   };
 
   if (!auth) return null;
+
+  if (open && (loading || error)) return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent><DialogHeader><DialogTitle>Escanear pedidos</DialogTitle></DialogHeader>
+        {error ? <OperationsDataError retry={retry} /> : <p role="status">Cargando pedidos…</p>}
+      </DialogContent>
+    </Dialog>
+  );
 
   return (
     <ScannerSheet

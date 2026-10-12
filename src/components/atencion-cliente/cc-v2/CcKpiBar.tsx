@@ -37,7 +37,7 @@ interface Props {
 }
 
 function StatCard({ item, value, loading }: { item: StatItem; value: number; loading: boolean }) {
-  const display = loading ? "—" : item.isPercent ? `${value}%` : String(value);
+  const display = loading || !Number.isFinite(value) ? "—" : item.isPercent ? `${value}%` : String(value);
   return (
     <div className="bg-white border border-gray-200 rounded-lg px-3.5 py-3">
       <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wide mb-1">{item.label}</p>

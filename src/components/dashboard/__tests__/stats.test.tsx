@@ -179,6 +179,8 @@ beforeEach(() => {
     storeIds: ["current", "sister"],
     scopeParams: { storeIds: "current,sister" },
     canFetch: true,
+    canViewBusiness: true,
+    scopeKey: "business:current,sister",
   };
   mockUseAuth.mockImplementation(() => context);
   mockUseDashboardScope.mockImplementation(() => dashboardScope);

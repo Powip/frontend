@@ -1,5 +1,7 @@
 "use client";
 
+import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
+
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -348,7 +350,7 @@ export function EnCaminoTab({
                       <TableCell className="sticky left-0 z-10 w-8 min-w-8 bg-gray-100 dark:bg-gray-900">
                         <Checkbox checked={selectedIds.has(sale.id)} onCheckedChange={() => toggle(sale.id)} />
                       </TableCell>
-                      <TableCell className="sticky left-8 z-10 w-32 min-w-32 bg-gray-100 font-medium dark:bg-gray-900">{sale.orderNumber}</TableCell>
+                      <TableCell className="sticky left-8 z-10 w-32 min-w-32 bg-gray-100 font-medium dark:bg-gray-900">{sale.orderNumber}<OrderOriginLabel {...sale} /></TableCell>
                       <TableCell className="sticky left-40 z-10 w-28 min-w-28 bg-gray-100 text-sm dark:bg-gray-900">{formatDateTime(sale.createdAt)}</TableCell>
                       <TableCell className="sticky left-[272px] z-10 w-28 min-w-28 border-r bg-gray-100 text-sm dark:bg-gray-900">{formatDateTime(sale.updatedAt)}</TableCell>
                       <TableCell>

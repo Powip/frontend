@@ -114,7 +114,7 @@ export default function PaymentVerificationModal({
 
     setIsLoading(true);
     try {
-      const res = await axios.get(
+      const res = await axiosAuth.get(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
       );
       setOrderData({
@@ -173,7 +173,7 @@ export default function PaymentVerificationModal({
         formData.append("file", file);
       }
 
-      await axios.post(
+      await axiosAuth.post(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/orders/${orderId}/payments/with-proof`,
         formData,
         {
@@ -272,7 +272,7 @@ export default function PaymentVerificationModal({
 
     setSavingAmountForId(paymentId);
     try {
-      await axios.patch(
+      await axiosAuth.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}`,
         { amount: numericAmount },
       );
@@ -308,7 +308,7 @@ export default function PaymentVerificationModal({
       const formData = new FormData();
       formData.append("file", proofFile);
 
-      await axios.patch(
+      await axiosAuth.patch(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/payments/payments/${paymentId}/upload-proof`,
         formData,
         {

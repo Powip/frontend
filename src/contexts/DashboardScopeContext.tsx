@@ -23,6 +23,8 @@ interface DashboardScopeValue {
   storeIds: string[];
   scopeParams: DashboardScopeParams;
   canFetch: boolean;
+  canViewBusiness: boolean;
+  scopeKey: string;
 }
 
 interface ScopeChoice {
@@ -78,10 +80,11 @@ export function DashboardScopeProvider({ children }: { children: ReactNode }) {
     [scope, storeIds],
   );
   const canFetch = Boolean(auth?.accessToken && userId && storeIds.length > 0);
+  const scopeKey = JSON.stringify([companyId, userId, scope, storeIds]);
 
   const value = useMemo(
-    () => ({ scope, setScope, storeIds, scopeParams, canFetch }),
-    [scope, setScope, storeIds, scopeParams, canFetch],
+    () => ({ scope, setScope, storeIds, scopeParams, canFetch, canViewBusiness, scopeKey }),
+    [scope, setScope, storeIds, scopeParams, canFetch, canViewBusiness, scopeKey],
   );
 
   return (
