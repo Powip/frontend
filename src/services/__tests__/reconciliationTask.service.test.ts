@@ -195,6 +195,50 @@ describe('reconciliationTask.service', () => {
     });
   });
 
+  describe('resolveReconciliationMerge con opciones de stock y costo', () => {
+    it('resolveReconciliationMerge sin opciones manda el body de siempre', async () => {
+      mockPost.mockResolvedValueOnce({ data: {} });
+
+      await resolveReconciliationMerge('task-1', 'win', ['lose']);
+
+      expect(mockPost).toHaveBeenCalledWith(expect.stringContaining('/task-1/resolve-merge'), {
+        winner_variant_id: 'win',
+        loser_variant_ids: ['lose'],
+      });
+    });
+
+    it('resolveReconciliationMerge con stock winner manda stock_mode y price_base sin counted_quantity', async () => {
+      mockPost.mockResolvedValueOnce({ data: {} });
+
+      await resolveReconciliationMerge('task-1', 'win', ['lose'], { stockMode: 'winner', priceBase: 30 });
+
+      expect(mockPost).toHaveBeenCalledWith(expect.stringContaining('/task-1/resolve-merge'), {
+        winner_variant_id: 'win',
+        loser_variant_ids: ['lose'],
+        stock_mode: 'winner',
+        price_base: 30,
+      });
+    });
+
+    it('resolveReconciliationMerge con conteo manda counted_quantity', async () => {
+      mockPost.mockResolvedValueOnce({ data: {} });
+
+      await resolveReconciliationMerge('task-1', 'win', ['lose'], {
+        stockMode: 'count',
+        countedQuantity: 12,
+        priceBase: 20.5,
+      });
+
+      expect(mockPost).toHaveBeenCalledWith(expect.stringContaining('/task-1/resolve-merge'), {
+        winner_variant_id: 'win',
+        loser_variant_ids: ['lose'],
+        stock_mode: 'count',
+        counted_quantity: 12,
+        price_base: 20.5,
+      });
+    });
+  });
+
   describe('confirmReconciliationProvisional', () => {
     it('hace POST a /:id/confirm-provisional sin body y devuelve res.data', async () => {
       const updatedTask = makeTask({ id: 'task-1', status: 'confirmed' });

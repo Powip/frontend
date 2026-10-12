@@ -179,6 +179,17 @@ export async function resolveReconciliationLink(
   return res.data;
 }
 
+// FEAT-17 Anexo E — paso 3 del modal de Unificar (solo pares).
+export type MergeStockMode = "winner" | "sum" | "count";
+
+export interface ResolveMergeOptions {
+  stockMode: MergeStockMode;
+  // Solo con `stockMode: "count"`.
+  countedQuantity?: number;
+  // Costo final de la madre (`priceBase`).
+  priceBase: number;
+}
+
 /**
  * Solo aplica a tareas `type: 'duplicate_cluster'`. Ambos ids deben salir
  * de `task.items` — lo valida el backend (requiere cargar la tarea), no
@@ -188,12 +199,22 @@ export async function resolveReconciliationMerge(
   id: string,
   winnerVariantId: string,
   loserVariantIds: string[],
+  options?: ResolveMergeOptions,
 ): Promise<ReconciliationTask> {
   const res = await axiosAuth.post<ReconciliationTask>(
     `${BASE_URL}/${id}/resolve-merge`,
     {
       winner_variant_id: winnerVariantId,
       loser_variant_ids: loserVariantIds,
+      ...(options
+        ? {
+            stock_mode: options.stockMode,
+            ...(options.stockMode === "count"
+              ? { counted_quantity: options.countedQuantity }
+              : {}),
+            price_base: options.priceBase,
+          }
+        : {}),
     },
   );
   return res.data;
@@ -296,6 +317,9 @@ export interface ReconciliationTaskDetailProductVariant {
   company_sku: string | null;
   attribute_values: Record<string, string>;
   price: number;
+  // Costo (`priceBase`). FEAT-17 Anexo E; opcional por compatibilidad con un
+  // backend que todavía no lo manda.
+  cost?: number | null;
   is_active: boolean;
 }
 
