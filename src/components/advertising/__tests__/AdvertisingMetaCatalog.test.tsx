@@ -124,16 +124,17 @@ beforeEach(() => {
   mockCatalog();
 });
 
-it("preserves missing values, explicit zero, exact counts and platform coverage without auto-sync", () => {
+it("keeps unavailable results honest and secondary data out of the comparison without auto-sync", () => {
   mount();
-  expect(screen.getAllByText("No disponible")).toHaveLength(3);
-  expect(screen.getByText("0")).toBeVisible();
-  expect(screen.getByText("1,000,000,000,000,000,000")).toBeVisible();
-  expect(screen.getByText("Estado no disponible")).toBeVisible();
-  expect(screen.getByRole("columnheader", { name: "Último estado registrado" })).toBeVisible();
-  expect(screen.queryByRole("columnheader", { name: "Estado Meta" })).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Importar historial" })).toBeDisabled();
-  expect(screen.getByText(/no equivalen a pedidos/)).toBeVisible();
+  const table = screen.getByRole("table", { name: "Anuncios" });
+  expect(within(table).getAllByText("No disponible")).toHaveLength(4);
+  expect(
+    screen.queryByRole("columnheader", { name: "Último estado registrado" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByRole("columnheader", { name: "Impresiones" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Importar historial" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Filtros" })).toHaveAttribute("aria-expanded", "false");
+  expect(screen.getByText("51 anuncios · Página 1")).toBeVisible();
   expect(sync).not.toHaveBeenCalled();
 });
 
@@ -176,7 +177,7 @@ it("shows a spend mismatch as review instead of complete data despite every day 
   catalog.rows[0].insights.coverage = mismatched;
   mockCatalog(catalog);
   mount();
-  expect(screen.getAllByText("Gasto por revisar").length).toBeGreaterThan(0);
+  expect(screen.getAllByText(/Gasto por revisar/).length).toBeGreaterThan(0);
   expect(screen.queryByText("Datos completos")).not.toBeInTheDocument();
   expect(sync).not.toHaveBeenCalled();
 });
@@ -215,7 +216,7 @@ it("focuses the linked real ad and detail in the same account and period without
   expect(sync).not.toHaveBeenCalled();
 });
 
-it("shows a failed durable history import while preserving existing results and allowing explicit retry", () => {
+it("shows a failed durable history import while preserving existing results and allowing explicit retry", async () => {
   const catalog = data();
   catalog.capabilities.canSync = true;
   catalog.accounts[0].historyImport = {
@@ -233,8 +234,11 @@ it("shows a failed durable history import while preserving existing results and 
   mockCatalog(catalog);
   mount();
   expect(screen.getByText(/No se completó. Los datos guardados se conservan./)).toBeVisible();
+  await userEvent.setup().click(screen.getByRole("button", { name: "Filtros" }));
   expect(screen.getByRole("button", { name: "Importar historial" })).toBeEnabled();
-  expect(screen.getByText("Anuncio real")).toBeVisible();
+  expect(
+    within(screen.getByRole("table", { name: "Anuncios" })).getByText("Anuncio real"),
+  ).toBeVisible();
   expect(sync).not.toHaveBeenCalled();
 });
 
@@ -243,7 +247,11 @@ it("keeps campaign drill-down tied to the same account and period", () => {
   catalog.rows[0].level = "campaign";
   mockCatalog(catalog);
   mount("campaign");
-  expect(screen.getByRole("link", { name: "Ver conjuntos" })).toHaveAttribute(
+  expect(
+    within(screen.getByRole("table", { name: "Campañas" })).getByRole("link", {
+      name: "Ver conjuntos",
+    }),
+  ).toHaveAttribute(
     "href",
     "/publicidad/campanas?from=2026-10-01&to=2026-10-02&accountId=account&campaignId=456&resultType=messages",
   );
@@ -258,7 +266,9 @@ it("updates only with server permission and reports a partial failure honestly",
     runs: [{ accountId: "account", from: catalog.from, to: catalog.to, status: "failed" }],
   });
   mount();
-  await userEvent.setup().click(screen.getByRole("button", { name: "Importar historial" }));
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Filtros" }));
+  await user.click(screen.getByRole("button", { name: "Importar historial" }));
   await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("No se completó"));
   expect(sync).toHaveBeenCalledWith("token", "company", {
     from: "2026-10-01",
@@ -291,7 +301,9 @@ it("shows durable import progress without presenting an enqueued job as imported
   mockCatalog(catalog);
   sync.mockResolvedValue({ jobs: [job], runs: [] });
   mount();
-  await userEvent.setup().click(screen.getByRole("button", { name: "Importar historial" }));
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Filtros" }));
+  await user.click(screen.getByRole("button", { name: "Importar historial" }));
   await waitFor(() =>
     expect(screen.getByRole("status")).toHaveTextContent("Importación del historial en curso"),
   );
@@ -334,13 +346,13 @@ it("prioritizes server costs and switches conversion without mixing message and 
       .getAllByRole("columnheader")
       .slice(1, 4)
       .map((cell) => cell.textContent),
-  ).toEqual(["Costo por resultado", "Resultados", "Conversión"]);
+  ).toEqual(["Costo por conversación", "Conversaciones", "Gasto"]);
   expect(within(table).getByText(/3\.25/)).toBeVisible();
   expect(within(table).getByText("20")).toBeVisible();
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Siguiente" }));
-  await user.click(screen.getByRole("combobox", { name: "Conversión" }));
-  await user.click(screen.getByRole("option", { name: "Compras por web" }));
+  await user.click(screen.getByRole("button", { name: "Compras por web" }));
+  expect(within(table).getByRole("columnheader", { name: "Costo por compra" })).toBeVisible();
   expect(within(table).getByText(/32\.50/)).toBeVisible();
   expect(within(table).getByText("2")).toBeVisible();
   expect(within(table).queryByText("99")).not.toBeInTheDocument();
@@ -354,6 +366,8 @@ it("requests lower costs first for one explicit currency and resets paging when 
   mount();
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Siguiente" }));
+  if (!screen.queryByRole("combobox", { name: "Ordenar por" }))
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
   await user.click(screen.getByRole("combobox", { name: "Ordenar por" }));
   await user.click(screen.getByRole("option", { name: "Menor costo por resultado" }));
   expect(query).toHaveBeenLastCalledWith(
@@ -381,6 +395,8 @@ it("requires one currency before comparing costs and allows conversion counts ac
     expect.objectContaining({ sortBy: "results", currency: undefined }),
   );
   const user = userEvent.setup();
+  if (!screen.queryByRole("combobox", { name: "Ordenar por" }))
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
   await user.click(screen.getByRole("combobox", { name: "Ordenar por" }));
   expect(screen.getByRole("option", { name: "Menor costo por resultado" })).toHaveAttribute(
     "aria-disabled",
@@ -389,8 +405,12 @@ it("requires one currency before comparing costs and allows conversion counts ac
   await user.keyboard("{Escape}");
   await user.click(screen.getByRole("combobox", { name: "Moneda" }));
   await user.click(screen.getByRole("option", { name: "USD" }));
-  expect(screen.getByText(/^Cuenta USD ·/)).toBeVisible();
-  expect(screen.queryByText(/^Cuenta ·/)).not.toBeInTheDocument();
+  const help = screen.getByText("Cómo leer estos datos").closest("details");
+  if (!help) throw new Error("Missing data help");
+  expect(within(help).getByText(/^Cuenta USD · Gasto:/)).toBeInTheDocument();
+  expect(within(help).queryByText(/^Cuenta · Gasto:/)).not.toBeInTheDocument();
+  if (!screen.queryByRole("combobox", { name: "Ordenar por" }))
+    await user.click(screen.getByRole("button", { name: /^Filtros/ }));
   await user.click(screen.getByRole("combobox", { name: "Ordenar por" }));
   await user.click(screen.getByRole("option", { name: "Menor costo por resultado" }));
   expect(query).toHaveBeenLastCalledWith(
@@ -415,4 +435,63 @@ it("never invents cost from raw actions, partial metrics or zero results", () =>
       "PEN",
     ),
   ).toContain("1,000,000,000,000,000,000.01");
+});
+
+it("uses conversion availability even when all spending is reconciled, and keeps mobile cost and quantity together", async () => {
+  const catalog = data();
+  catalog.rows[0].insights.coverage = {
+    ...coverage,
+    status: "complete",
+    coveredDays: 2,
+    reconciliation: {
+      status: "matched",
+      comparedDays: 2,
+      mismatchedDays: 0,
+      missingLedgerDays: 0,
+      provisionalDays: 0,
+      totalDays: 2,
+    },
+  };
+  catalog.rows[0].insights.resultMetrics = {
+    messages: { count: "15", costPerResult: null, status: "partial" },
+    webPurchases: { count: null, costPerResult: null, status: "unknown" },
+  };
+  mockCatalog(catalog);
+  mount();
+  const table = screen.getByRole("table", { name: "Anuncios" });
+  expect(within(table).getByText("Parcial")).toBeVisible();
+  expect(within(table).queryByText("Completo")).not.toBeInTheDocument();
+  const mobile = screen.getByRole("list", { name: "Anuncios en móvil" });
+  expect(within(mobile).getByText("Costo por conversación")).toBeVisible();
+  expect(within(mobile).getByText("Conversaciones")).toBeVisible();
+  expect(within(mobile).getByText("15")).toBeVisible();
+  await userEvent.setup().click(screen.getByRole("button", { name: "Compras por web" }));
+  expect(within(table).getAllByText("No disponible")).toHaveLength(4);
+  expect(within(table).queryByText("Completo")).not.toBeInTheDocument();
+});
+
+it("distinguishes explicit zero from unavailable results and preserves filters when collapsed", async () => {
+  const catalog = data();
+  catalog.rows[0].insights.resultMetrics = {
+    messages: { count: "0", costPerResult: null, status: "complete" },
+    webPurchases: { count: "1", costPerResult: "0", status: "complete" },
+  };
+  mockCatalog(catalog);
+  mount();
+  const table = screen.getByRole("table", { name: "Anuncios" });
+  expect(within(table).getByText("—")).toBeVisible();
+  expect(within(table).getByText("Sin resultados")).toBeVisible();
+  expect(within(table).getByText("0")).toBeVisible();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+  await user.click(screen.getByRole("combobox", { name: "Moneda" }));
+  await user.click(screen.getByRole("option", { name: "PEN" }));
+  await user.click(screen.getByRole("button", { name: /^Filtros/ }));
+  expect(screen.queryByRole("combobox", { name: "Moneda" })).not.toBeInTheDocument();
+  expect(query).toHaveBeenLastCalledWith(expect.objectContaining({ currency: "PEN" }));
+  await user.click(screen.getByRole("button", { name: "Compras por web" }));
+  expect(query).toHaveBeenLastCalledWith(
+    expect.objectContaining({ currency: "PEN", resultType: "webPurchases", page: 1 }),
+  );
+  expect(within(table).getByText(/0\.00/)).toBeVisible();
 });

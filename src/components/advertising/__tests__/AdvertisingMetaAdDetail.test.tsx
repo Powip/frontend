@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useAdvertisingMetaAd } from "@/hooks/useAdvertisingMeta";
 import type { MetaAdDetailResponse } from "@/services/advertisingMetaService";
 import { AdvertisingMetaAdDetail } from "../AdvertisingMetaAdDetail";
@@ -56,6 +56,7 @@ function data(): MetaAdDetailResponse {
         actions: [
           { actionType: "purchase", value: "1" },
           { actionType: "omni_purchase", value: "1" },
+          { actionType: "unmapped_technical_event", value: "99" },
         ],
         coverage,
       },
@@ -89,7 +90,7 @@ function mockDetail(detail: MetaAdDetailResponse) {
   >);
 }
 
-it("shows Meta events independently, preserves daily unknown/zero and keeps mutations disabled", () => {
+it("prioritizes conversion metrics and keeps human secondary information collapsed", () => {
   const detail = data();
   mockDetail(detail);
   render(
@@ -111,19 +112,28 @@ it("shows Meta events independently, preserves daily unknown/zero and keeps muta
       companyId: "company",
     }),
   );
-  expect(screen.getByText("Compras")).toBeVisible();
-  expect(screen.getByText("Último estado registrado:")).toBeVisible();
-  expect(screen.getByText("Compras omnicanal")).toBeVisible();
-  expect(screen.getByText(/no son pedidos entregados ni cobros de Powip/)).toBeVisible();
-  expect(screen.getAllByText("No disponible")).toHaveLength(10);
-  expect(screen.getByText("Pendientes")).toBeVisible();
-  expect(screen.getByText("Provisionales")).toBeVisible();
-  expect(screen.getByRole("button", { name: "Pausar anuncio" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Cambiar presupuesto" })).toBeDisabled();
+  const metrics = within(screen.getByLabelText("Resultados del anuncio"));
+  expect(metrics.getByText("Costo por conversación")).toBeVisible();
+  expect(metrics.getByText("Conversaciones")).toBeVisible();
+  expect(metrics.getAllByText("No disponible")).toHaveLength(2);
+  expect(metrics.getByText(/0\.00/)).toBeVisible();
+  expect(screen.getByText("Impresiones")).not.toBeVisible();
+  expect(screen.getByText("Compras")).not.toBeVisible();
+  expect(screen.queryByText("unmapped_technical_event")).not.toBeInTheDocument();
+  expect(screen.queryByText(/ID 456|Campaña 789|Conjunto 987/)).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Pausar anuncio" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Cambiar presupuesto" })).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: /Abrir Meta Ads Manager/ })).toHaveAttribute(
     "href",
     "https://adsmanager.facebook.com/adsmanager/manage/ads?act=123",
   );
+  expect(screen.getByText(/Atribución de 7 días por clic y 1 día por vista/)).toBeVisible();
+  fireEvent.click(screen.getByText("Más información"));
+  expect(screen.getByText("Compras")).toBeVisible();
+  expect(screen.getByText("Compras omnicanal")).toBeVisible();
+  expect(screen.getByText(/no son pedidos entregados ni cobros de Powip/)).toBeVisible();
+  expect(screen.getByText("Último estado registrado")).toBeVisible();
+  expect(screen.queryByText("omni_purchase")).not.toBeInTheDocument();
 });
 
 it("keeps the selected web conversion and its daily cost separate from message and general purchase events", () => {
@@ -153,13 +163,91 @@ it("keeps the selected web conversion and its daily cost separate from message a
       onClose={jest.fn()}
     />,
   );
-  expect(screen.getAllByText(/32\.50/)).toHaveLength(2);
+  const metrics = within(screen.getByLabelText("Resultados del anuncio"));
+  expect(metrics.getByText("Costo por compra")).toBeVisible();
+  expect(metrics.getByText(/32\.50/)).toBeVisible();
+  expect(metrics.getByText("2")).toBeVisible();
+  expect(metrics.getByText(/0\.00/)).toBeVisible();
+  expect(screen.getAllByText("Completo")[0]).toBeVisible();
   expect(screen.queryByText(/3\.25/)).not.toBeInTheDocument();
-  expect(screen.getByText("Compras en el sitio web")).toBeVisible();
+  expect(screen.getByText(/Compras en el sitio web/)).toBeVisible();
   const table = screen.getByRole("table", { name: "Resultados diarios del anuncio" });
+  expect(within(table).getByRole("columnheader", { name: "Costo por compra" })).toBeVisible();
   expect(within(table).getByRole("columnheader", { name: "Compras por web" })).toBeVisible();
   expect(within(table).getByText("—")).toBeVisible();
+  expect(within(table).getByText("Sin resultados")).toBeVisible();
+  expect(
+    within(table).queryByRole("columnheader", { name: "Impresiones" }),
+  ).not.toBeInTheDocument();
+  const mobile = within(screen.getByRole("list", { name: "Resultados diarios en móvil" }));
+  expect(mobile.getByText(/32\.50/)).toBeVisible();
+  expect(mobile.getByText("—")).toBeVisible();
+  expect(mobile.getByText("Sin resultados")).toBeVisible();
+  expect(
+    screen
+      .getByText("Detalle diario")
+      .compareDocumentPosition(screen.getByText("Más información")) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
   expect(read).toHaveBeenLastCalledWith(
     expect.objectContaining({ accountId: "account", adId: "456" }),
   );
+});
+
+it("shows a known partial count without presenting a complete cost or a guessed reason", () => {
+  const detail = data();
+  detail.row.insights.resultMetrics = {
+    messages: { count: "2", costPerResult: null, status: "partial" },
+    webPurchases: { count: null, costPerResult: null, status: "unknown" },
+  };
+  detail.daily[0].resultMetrics = {
+    messages: { count: "2", costPerResult: null, status: "partial" },
+    webPurchases: { count: null, costPerResult: null, status: "unknown" },
+  };
+  mockDetail(detail);
+  render(
+    <AdvertisingMetaAdDetail
+      token="token"
+      actorId="actor"
+      companyId="company"
+      from={detail.from}
+      to={detail.to}
+      selected={detail.row}
+      onClose={jest.fn()}
+    />,
+  );
+  const metrics = within(screen.getByLabelText("Resultados del anuncio"));
+  expect(metrics.getByText("2")).toBeVisible();
+  expect(metrics.getByText("No disponible")).toBeVisible();
+  const daily = within(screen.getByRole("table", { name: "Resultados diarios del anuncio" }));
+  expect(daily.getByText("Parcial")).toBeVisible();
+  expect(daily.getByText("2")).toBeVisible();
+  expect(screen.queryByText("Meta no reportó conversaciones")).not.toBeInTheDocument();
+});
+
+it("distinguishes confirmed zero results from unknown conversion data", () => {
+  const detail = data();
+  detail.row.insights.resultMetrics = {
+    messages: { count: "0", costPerResult: null, status: "complete" },
+    webPurchases: { count: null, costPerResult: null, status: "unknown" },
+  };
+  mockDetail(detail);
+  const props = {
+    token: "token",
+    actorId: "actor",
+    companyId: "company",
+    from: detail.from,
+    to: detail.to,
+    selected: detail.row,
+    onClose: jest.fn(),
+  };
+  const { rerender } = render(<AdvertisingMetaAdDetail {...props} />);
+  const metrics = within(screen.getByLabelText("Resultados del anuncio"));
+  expect(metrics.getByText("—")).toBeVisible();
+  expect(metrics.getByText("0")).toBeVisible();
+  expect(screen.getByText("Sin resultados")).toBeVisible();
+  rerender(<AdvertisingMetaAdDetail {...props} resultType="webPurchases" />);
+  expect(metrics.getAllByText("No disponible")).toHaveLength(2);
+  expect(screen.queryByText("Sin resultados")).not.toBeInTheDocument();
+  expect(metrics.queryByText("—")).not.toBeInTheDocument();
 });
