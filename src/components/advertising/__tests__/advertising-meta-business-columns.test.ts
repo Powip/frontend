@@ -1,4 +1,8 @@
-import type { MetaCatalogResponse, MetaCatalogRow } from "@/services/advertisingMetaService";
+import type {
+  MetaCatalogResponse,
+  MetaCatalogRow,
+  MetaResultMetrics,
+} from "@/services/advertisingMetaService";
 import type { AdvertisingBusinessAnalytics } from "@/services/advertisingOrdersService";
 import {
   advertisingMetaBusinessValues,
@@ -7,6 +11,10 @@ import {
   advertisingMetaTableValues,
 } from "../advertising-meta-table-model";
 
+const resultMetrics: MetaResultMetrics = {
+  messages: { status: "unknown", count: null, costPerResult: null },
+  webPurchases: { status: "complete", count: "8", costPerResult: "2.5" },
+};
 const ad = {
   id: "ad",
   accountId: "account",
@@ -33,9 +41,7 @@ const ad = {
         totalDays: 2,
       },
     },
-    resultMetrics: {
-      webPurchases: { status: "complete", count: "8", costPerResult: "2.5" },
-    },
+    resultMetrics,
   },
 } as MetaCatalogRow;
 const meta = {
@@ -168,7 +174,7 @@ it("does not infer zero or campaign sales from missing ad attribution", () => {
     insights: {
       ...ad.insights,
       resultMetrics: {
-        ...ad.insights.resultMetrics,
+        ...resultMetrics,
         webPurchases: {
           status: "partial" as const,
           count: "8",
@@ -217,7 +223,9 @@ it("exports the specified business extras with the same headers and values as th
     true,
     "ad",
   );
-  const [headers, values] = csv.split("\r\n").map((line) => line.match(/"(?:[^"]|"")*"/g) ?? []);
+  const [headers, values] = csv
+    .split("\r\n")
+    .map((line): string[] => line.match(/"(?:[^"]|"")*"/g) ?? []);
   expect(values[headers.indexOf('"Ventas"')]).toBe('"6"');
   expect(values[headers.indexOf('"Devueltos"')]).toBe('"Pendiente"');
   expect(values[headers.indexOf('"ROAS"')]).toBe('"5.00×"');
@@ -291,7 +299,7 @@ it("usa sólo leads confirmados por Meta y conserva desconocidos si la métrica 
     insights: {
       ...ad.insights,
       resultMetrics: {
-        ...ad.insights.resultMetrics,
+        ...resultMetrics,
         leads: { count: "7", costPerResult: "2.85", status: "complete" as const },
       },
     },
