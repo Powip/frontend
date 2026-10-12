@@ -1,4 +1,9 @@
-import type { MetaAction, MetaCoverage } from "@/services/advertisingMetaService";
+import type {
+  MetaAction,
+  MetaCoverage,
+  MetaResultMetric,
+  MetaResultType,
+} from "@/services/advertisingMetaService";
 import { formatAdvertisingDecimal } from "./advertising-decimal";
 
 const ACTION_LABELS: Record<string, string> = {
@@ -44,6 +49,25 @@ export function formatMetaSpend(value: string | null, currency: string) {
   } catch {
     return "No disponible";
   }
+}
+
+export function metaResultLabel(type: MetaResultType) {
+  return type === "messages" ? "Mensajes" : "Compras por web";
+}
+
+export function metaResultDescription(type: MetaResultType) {
+  return type === "messages" ? "Conversaciones iniciadas" : "Compras en el sitio web";
+}
+
+/** Only server metrics preserve the completeness of each imported ad/day. */
+export function formatMetaResultCount(metric: MetaResultMetric | undefined) {
+  return formatMetaNumber(metric?.count ?? null);
+}
+
+export function formatMetaCostPerResult(metric: MetaResultMetric | undefined, currency: string) {
+  if (metric?.status !== "complete" || !validDecimal(metric.count)) return "No disponible";
+  if (/^0+(?:\.0+)?$/.test(metric.count)) return "—";
+  return formatMetaSpend(metric.costPerResult, currency);
 }
 
 export function metaSpendReconciled(coverage: MetaCoverage): boolean {

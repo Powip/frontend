@@ -2,7 +2,7 @@ export const ADVERTISING_SECTIONS = [
   { label: "Resumen", href: "/publicidad" },
   { label: "Campañas", href: "/publicidad/campanas" },
   { label: "Anuncios", href: "/publicidad/anuncios" },
-  { label: "Resultados Powip", href: "/publicidad/resultados" },
+  { label: "Resultados", href: "/publicidad/resultados" },
   { label: "Calidad", href: "/publicidad/calidad" },
   { label: "Productos", href: "/publicidad/productos" },
   { label: "Zonas", href: "/publicidad/zonas" },

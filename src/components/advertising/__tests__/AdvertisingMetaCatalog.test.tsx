@@ -1,10 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useAdvertisingMetaCatalog } from "@/hooks/useAdvertisingMeta";
 import { type MetaCatalogResponse, syncMetaModule } from "@/services/advertisingMetaService";
 import { AdvertisingMetaCatalogPanel } from "../AdvertisingMetaCatalogPanel";
 import {
+  formatMetaCostPerResult,
   formatMetaNumber,
   formatMetaSpend,
   metaActionValue,
@@ -24,6 +25,13 @@ jest.mock("next/dynamic", () => ({
 }));
 const query = jest.mocked(useAdvertisingMetaCatalog);
 const sync = jest.mocked(syncMetaModule);
+beforeAll(() => {
+  // jsdom does not implement the browser pointer/scroll APIs used by the Powip Select.
+  HTMLElement.prototype.hasPointerCapture = () => false;
+  HTMLElement.prototype.setPointerCapture = () => {};
+  HTMLElement.prototype.releasePointerCapture = () => {};
+  HTMLElement.prototype.scrollIntoView = () => {};
+});
 const coverage = {
   status: "partial" as const,
   coveredDays: 1,
@@ -118,7 +126,7 @@ beforeEach(() => {
 
 it("preserves missing values, explicit zero, exact counts and platform coverage without auto-sync", () => {
   mount();
-  expect(screen.getByText("No disponible")).toBeVisible();
+  expect(screen.getAllByText("No disponible")).toHaveLength(3);
   expect(screen.getByText("0")).toBeVisible();
   expect(screen.getByText("1,000,000,000,000,000,000")).toBeVisible();
   expect(screen.getByText("Estado no disponible")).toBeVisible();
@@ -182,7 +190,8 @@ it("uses server paging and desc ordering within the current actor and company", 
       companyId: "company",
       page: 2,
       pageSize: 50,
-      sortBy: "impressions",
+      sortBy: "results",
+      resultType: "messages",
       sortOrder: "desc",
     }),
   );
@@ -236,7 +245,7 @@ it("keeps campaign drill-down tied to the same account and period", () => {
   mount("campaign");
   expect(screen.getByRole("link", { name: "Ver conjuntos" })).toHaveAttribute(
     "href",
-    "/publicidad/campanas?from=2026-10-01&to=2026-10-02&accountId=account&campaignId=456",
+    "/publicidad/campanas?from=2026-10-01&to=2026-10-02&accountId=account&campaignId=456&resultType=messages",
   );
 });
 
@@ -305,4 +314,103 @@ it("does not merge different Meta action types or turn absent actions into zero"
   );
   expect(formatMetaNumber(null)).toBe("No disponible");
   expect(validMetaPeriod("2026-02-30", "2026-03-01")).toBe(false);
+});
+
+it("prioritizes server costs and switches conversion without mixing message and purchase aliases", async () => {
+  const catalog = data();
+  catalog.rows[0].insights.actions = [
+    { actionType: "purchase", value: "99" },
+    { actionType: "omni_purchase", value: "99" },
+  ];
+  catalog.rows[0].insights.resultMetrics = {
+    messages: { count: "20", costPerResult: "3.25", status: "complete" },
+    webPurchases: { count: "2", costPerResult: "32.50", status: "complete" },
+  };
+  mockCatalog(catalog);
+  mount();
+  const table = screen.getByRole("table", { name: "Anuncios" });
+  expect(
+    within(table)
+      .getAllByRole("columnheader")
+      .slice(1, 4)
+      .map((cell) => cell.textContent),
+  ).toEqual(["Costo por resultado", "Resultados", "Conversión"]);
+  expect(within(table).getByText(/3\.25/)).toBeVisible();
+  expect(within(table).getByText("20")).toBeVisible();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Siguiente" }));
+  await user.click(screen.getByRole("combobox", { name: "Conversión" }));
+  await user.click(screen.getByRole("option", { name: "Compras por web" }));
+  expect(within(table).getByText(/32\.50/)).toBeVisible();
+  expect(within(table).getByText("2")).toBeVisible();
+  expect(within(table).queryByText("99")).not.toBeInTheDocument();
+  expect(query).toHaveBeenLastCalledWith(
+    expect.objectContaining({ resultType: "webPurchases", sortBy: "results", page: 1 }),
+  );
+  expect(sync).not.toHaveBeenCalled();
+});
+
+it("requests lower costs first for one explicit currency and resets paging when the scope changes", async () => {
+  mount();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("button", { name: "Siguiente" }));
+  await user.click(screen.getByRole("combobox", { name: "Ordenar por" }));
+  await user.click(screen.getByRole("option", { name: "Menor costo por resultado" }));
+  expect(query).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      resultType: "messages",
+      sortBy: "costPerResult",
+      sortOrder: "asc",
+      currency: "PEN",
+      page: 1,
+    }),
+  );
+  await user.click(screen.getByRole("combobox", { name: "Moneda" }));
+  await user.click(screen.getByRole("option", { name: "Todas las monedas" }));
+  expect(query).toHaveBeenLastCalledWith(
+    expect.objectContaining({ currency: undefined, sortBy: "results", sortOrder: "desc", page: 1 }),
+  );
+});
+
+it("requires one currency before comparing costs and allows conversion counts across currencies", async () => {
+  const catalog = data();
+  catalog.accounts.push({ ...catalog.accounts[0], id: "usd", name: "Cuenta USD", currency: "USD" });
+  mockCatalog(catalog);
+  mount();
+  expect(query).toHaveBeenCalledWith(
+    expect.objectContaining({ sortBy: "results", currency: undefined }),
+  );
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: "Ordenar por" }));
+  expect(screen.getByRole("option", { name: "Menor costo por resultado" })).toHaveAttribute(
+    "aria-disabled",
+    "true",
+  );
+  await user.keyboard("{Escape}");
+  await user.click(screen.getByRole("combobox", { name: "Moneda" }));
+  await user.click(screen.getByRole("option", { name: "USD" }));
+  await user.click(screen.getByRole("combobox", { name: "Ordenar por" }));
+  await user.click(screen.getByRole("option", { name: "Menor costo por resultado" }));
+  expect(query).toHaveBeenLastCalledWith(
+    expect.objectContaining({ currency: "USD", sortBy: "costPerResult", sortOrder: "asc" }),
+  );
+});
+
+it("never invents cost from raw actions, partial metrics or zero results", () => {
+  expect(formatMetaCostPerResult(undefined, "PEN")).toBe("No disponible");
+  expect(
+    formatMetaCostPerResult({ count: "2", costPerResult: "3", status: "partial" }, "PEN"),
+  ).toBe("No disponible");
+  expect(
+    formatMetaCostPerResult({ count: null, costPerResult: "3", status: "unknown" }, "PEN"),
+  ).toBe("No disponible");
+  expect(
+    formatMetaCostPerResult({ count: "0.00", costPerResult: null, status: "complete" }, "PEN"),
+  ).toBe("—");
+  expect(
+    formatMetaCostPerResult(
+      { count: "2", costPerResult: "1000000000000000000.01", status: "complete" },
+      "PEN",
+    ),
+  ).toContain("1,000,000,000,000,000,000.01");
 });

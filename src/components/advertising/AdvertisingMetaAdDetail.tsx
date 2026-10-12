@@ -21,14 +21,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAdvertisingMetaAd } from "@/hooks/useAdvertisingMeta";
-import type { MetaCatalogRow } from "@/services/advertisingMetaService";
+import type { MetaCatalogRow, MetaResultType } from "@/services/advertisingMetaService";
 import { advertisingErrorMessage } from "@/services/advertisingService";
 import {
+  formatMetaCostPerResult,
   formatMetaNumber,
+  formatMetaResultCount,
   formatMetaSpend,
   metaActionLabel,
   metaAdsManagerUrl,
   metaCoverageLabel,
+  metaResultDescription,
+  metaResultLabel,
   metaStatusLabel,
 } from "./advertising-meta-model";
 import { formatAdvertisingDate } from "./advertising-model";
@@ -41,9 +45,15 @@ interface Props {
   to: string;
   selected: MetaCatalogRow | null;
   onClose: () => void;
+  resultType?: MetaResultType;
 }
 
-export function AdvertisingMetaAdDetail({ selected, onClose, ...identity }: Props) {
+export function AdvertisingMetaAdDetail({
+  selected,
+  onClose,
+  resultType = "messages",
+  ...identity
+}: Props) {
   const query = useAdvertisingMetaAd({
     ...identity,
     adId: selected?.id ?? null,
@@ -93,6 +103,34 @@ export function AdvertisingMetaAdDetail({ selected, onClose, ...identity }: Prop
             </p>
             <div className="grid gap-3 sm:grid-cols-3">
               {[
+                [
+                  "Costo por resultado",
+                  formatMetaCostPerResult(
+                    detail.row.insights.resultMetrics?.[resultType],
+                    detail.row.currency,
+                  ),
+                ],
+                [
+                  "Resultados",
+                  formatMetaResultCount(detail.row.insights.resultMetrics?.[resultType]),
+                ],
+                ["Conversión", metaResultLabel(resultType)],
+              ].map(([label, value]) => (
+                <Card key={label}>
+                  <CardContent className="space-y-2 pt-4">
+                    <p className="text-xs text-muted-foreground">{label}</p>
+                    <p className="text-xl font-semibold tabular-nums">{value}</p>
+                    {label === "Conversión" ? (
+                      <p className="text-xs text-muted-foreground">
+                        {metaResultDescription(resultType)}
+                      </p>
+                    ) : null}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
                 ["Gasto Meta", formatMetaSpend(detail.row.insights.spend, detail.row.currency)],
                 ["Impresiones Meta", formatMetaNumber(detail.row.insights.impressions)],
                 ["Clics Meta", formatMetaNumber(detail.row.insights.clicks)],
@@ -139,6 +177,8 @@ export function AdvertisingMetaAdDetail({ selected, onClose, ...identity }: Prop
                 <TableHeader>
                   <TableRow>
                     <TableHead>Fecha</TableHead>
+                    <TableHead className="text-right">Costo por resultado</TableHead>
+                    <TableHead className="text-right">{metaResultLabel(resultType)}</TableHead>
                     <TableHead className="text-right">Gasto Meta</TableHead>
                     <TableHead className="text-right">Impresiones</TableHead>
                     <TableHead className="text-right">Clics</TableHead>
@@ -150,6 +190,15 @@ export function AdvertisingMetaAdDetail({ selected, onClose, ...identity }: Prop
                     <TableRow key={day.date}>
                       <TableCell className="whitespace-nowrap">
                         {formatAdvertisingDate(day.date)} {day.date.slice(0, 4)}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-semibold tabular-nums">
+                        {formatMetaCostPerResult(
+                          day.resultMetrics?.[resultType],
+                          detail.row.currency,
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-mono font-semibold tabular-nums">
+                        {formatMetaResultCount(day.resultMetrics?.[resultType])}
                       </TableCell>
                       <TableCell className="text-right font-mono tabular-nums">
                         {formatMetaSpend(day.spend, detail.row.currency)}
