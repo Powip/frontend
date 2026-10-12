@@ -25,8 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { resolveGuideOrigin } from "./guideOrigin";
-import { useAuth } from "@/contexts/AuthContext";
-import { fetchCouriers, Courier } from "@/services/courierService";
+import { useCompanyCouriers } from "@/hooks/useCompanyCouriers";
 
 interface SelectedOrder {
   id: string;
@@ -112,9 +111,8 @@ export default function CreateGuideModal({
   defaultCourierName,
 }: CreateGuideModalProps) {
   const invalidateBusinessData = useInvalidateBusinessData();
-  const { auth } = useAuth();
   const origin = useMemo(() => resolveGuideOrigin(selectedOrders), [selectedOrders]);
-  const [couriers, setCouriers] = useState<Courier[]>([]);
+  const { couriers, loading: couriersLoading, error: couriersError, retry: retryCouriers } = useCompanyCouriers(open);
   const [selectedCourierId, setSelectedCourierId] = useState<string>("");
   const [deliveryType, setDeliveryType] = useState<"MOTO" | "COURIER">(
     "COURIER",
@@ -125,6 +123,8 @@ export default function CreateGuideModal({
   >("CONTRA_ENTREGA");
   const [notes, setNotes] = useState("");
   const [carrierCosts, setCarrierCosts] = useState<Record<string, string>>({}); // Almacenar como string para el input
+  const hasSelectedCourier = selectedCourierId === "MOTORIZADO_PROPIO" ||
+    selectedCourierId === "OTROS" || couriers.some((courier) => courier.id === selectedCourierId);
 
   // Fecha de hoy formateada
   const todayFormatted = new Date().toLocaleDateString("es-PE", {
@@ -134,16 +134,16 @@ export default function CreateGuideModal({
     day: "numeric",
   });
 
-  // Cargar couriers
-  useEffect(() => {
-    if (open && auth?.company?.id) {
-      fetchCouriers(auth.company.id).then(setCouriers).catch(console.error);
-    }
-  }, [open, auth?.company?.id]);
-
   // Pre-seleccionar courier del pedido una vez que los couriers carguen
   useEffect(() => {
-    if (!open || couriers.length === 0 || selectedCourierId) return;
+    if (!open || selectedCourierId) return;
+
+    const defaultName = defaultCourierName?.trim().toLowerCase();
+    if (defaultName === "otros") {
+      setSelectedCourierId("OTROS");
+      return;
+    }
+    if (couriers.length === 0) return;
 
     if (defaultCourierId) {
       const match = couriers.find((c) => c.id === defaultCourierId);
@@ -153,27 +153,18 @@ export default function CreateGuideModal({
       }
     }
 
-    if (defaultCourierName) {
-      const match = couriers.find((c) => c.name === defaultCourierName);
-      if (match) {
-        setSelectedCourierId(match.id);
-        return;
-      }
-      if (
-        defaultCourierName.toUpperCase() === "OTROS" ||
-        defaultCourierName === "Otros"
-      ) {
-        setSelectedCourierId("OTROS");
-      }
+    if (defaultName) {
+      const matches = couriers.filter((c) => c.name.trim().toLowerCase() === defaultName);
+      if (matches.length === 1) setSelectedCourierId(matches[0].id);
     }
-  }, [open, couriers, defaultCourierId, defaultCourierName]);
+  }, [open, couriers, defaultCourierId, defaultCourierName, selectedCourierId]);
 
   const totalAmount = useMemo(() => {
     return selectedOrders.reduce((acc, o) => acc + o.pendingPayment, 0);
   }, [selectedOrders]);
 
   const handleSubmit = async () => {
-    if (origin.error || !origin.storeId) return;
+    if (origin.error || !origin.storeId || couriersLoading || !hasSelectedCourier) return;
     let courierId: string | undefined = undefined;
     let courierName: string | undefined = undefined;
 
@@ -221,7 +212,6 @@ export default function CreateGuideModal({
     setNotes("");
     setSelectedCourierId("");
     setCarrierCosts({});
-    setCouriers([]);
     onClose();
   };
 
@@ -245,6 +235,7 @@ export default function CreateGuideModal({
             <div className="space-y-2">
               <Label>Courier / Método de Envío</Label>
               <Select
+                disabled={couriersLoading || isLoading}
                 value={selectedCourierId}
                 onValueChange={(v) => {
                   setSelectedCourierId(v);
@@ -256,7 +247,7 @@ export default function CreateGuideModal({
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar courier" />
+                  <SelectValue placeholder={couriersLoading ? "Cargando couriers…" : "Seleccionar courier"} />
                 </SelectTrigger>
                 <SelectContent>
                   {couriers.map((courier) => (
@@ -270,6 +261,14 @@ export default function CreateGuideModal({
                   <SelectItem value="OTROS">Otros</SelectItem>
                 </SelectContent>
               </Select>
+              {couriersError && (
+                <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
+                  <span>No se pudieron cargar los couriers.</span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void retryCouriers()}>
+                    Reintentar
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -378,7 +377,7 @@ export default function CreateGuideModal({
           <Button
             onClick={handleSubmit}
             disabled={
-              isLoading || !!origin.error || selectedOrders.length === 0 || !selectedCourierId
+              isLoading || couriersLoading || !!origin.error || selectedOrders.length === 0 || !hasSelectedCourier
             }
             className="bg-teal-600 hover:bg-teal-700"
           >

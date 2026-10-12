@@ -115,12 +115,12 @@ export function SaleChannelField({
       </Select>
       {channels.length === 0 ? (
         <p className="text-xs text-muted-foreground">
-          Canal sin identificar.{" "}
+          Puedes usar estos canales de venta o{" "}
           <Link
             href="/configuracion/tiendas"
             className="text-primary underline-offset-4 hover:underline"
           >
-            Configura el canal de esta tienda.
+            personalizarlos para esta tienda.
           </Link>
         </p>
       ) : editing && !valueId ? (
