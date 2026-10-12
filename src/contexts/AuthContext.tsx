@@ -106,11 +106,19 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 // Solo guardamos preferencias no sensibles
 const STORE_PREFERENCE_KEY = "selectedStoreId";
 
+const resolveSelectedStoreId = (
+  stores: Store[] | undefined,
+  preferredStoreId: string | null,
+): string | null =>
+  stores?.find((store) => store.id === preferredStoreId)?.id ||
+  stores?.[0]?.id ||
+  null;
+
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const queryClient = useQueryClient();
   const [auth, setAuth] = useState<AuthData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedStoreId, setSelectedStore] = useState<string | null>(null);
+  const [preferredStoreId, setPreferredStoreId] = useState<string | null>(null);
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const currentUserId = useRef<string | null>(null);
   const sessionVersion = useRef(0);
@@ -130,6 +138,35 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     tokenStore.set(nextAuth?.accessToken ?? null);
     setAuth(nextAuth);
   }, [queryClient]);
+
+  // Todos los consumidores consultan la misma tienda válida del negocio actual.
+  const selectedStoreId = resolveSelectedStoreId(
+    auth?.company?.stores,
+    preferredStoreId,
+  );
+
+  const setSelectedStore = useCallback(
+    (storeId: string) => {
+      if (auth?.company?.stores?.some((store) => store.id === storeId)) {
+        setPreferredStoreId(storeId);
+      }
+    },
+    [auth?.company?.stores],
+  );
+
+  useEffect(() => {
+    if (!auth) return;
+
+    // También corrige preferencias de tiendas eliminadas o de otro negocio.
+    if (preferredStoreId !== selectedStoreId) {
+      setPreferredStoreId(selectedStoreId);
+    }
+    if (selectedStoreId) {
+      localStorage.setItem(STORE_PREFERENCE_KEY, selectedStoreId);
+    } else {
+      localStorage.removeItem(STORE_PREFERENCE_KEY);
+    }
+  }, [auth, preferredStoreId, selectedStoreId]);
 
   // ---- SILENT REFRESH: Intenta recuperar sesión usando httpOnly cookie ----
   const silentRefresh = useCallback(async (): Promise<boolean> => {
@@ -175,8 +212,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           response.data.accessToken,
         );
 
-        const defaultStore = company?.stores?.[0]?.id || null;
-
         if (refreshingSession !== sessionVersion.current) return false;
 
         setSession({
@@ -189,7 +224,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
         // Solo guardamos preferencia de tienda (no sensible)
         const storedStore = localStorage.getItem(STORE_PREFERENCE_KEY);
-        setSelectedStore(storedStore || defaultStore);
+        setPreferredStoreId(
+          resolveSelectedStoreId(company?.stores, storedStore),
+        );
 
         return true;
       }
@@ -273,7 +310,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (loggingInSession !== sessionVersion.current) return null;
 
     setSession(newAuth, true);
-    setSelectedStore(defaultStore);
+    setPreferredStoreId(defaultStore);
 
     // Solo guardamos preferencia de tienda (no sensible)
     if (defaultStore) {
@@ -294,7 +331,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = async () => {
     ++sessionVersion.current;
     setSession(null, true);
-    setSelectedStore(null);
+    setPreferredStoreId(null);
     setInventories([]);
     try {
       localStorage.removeItem(STORE_PREFERENCE_KEY);

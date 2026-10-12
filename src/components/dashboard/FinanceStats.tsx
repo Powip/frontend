@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import {
   LineChart,
   Line,
@@ -28,9 +28,10 @@ import {
   PieChart,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { useDashboardScope } from "@/contexts/DashboardScopeContext";
 import { DashboardCard } from "./DashboardCard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { hasAdminAccess } from "@/config/permissions.config";
+import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
 import { Loader2 } from "lucide-react";
 import {
   Dialog,
@@ -92,8 +93,11 @@ interface FinanceStatsProps {
 }
 
 export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) => {
-  const { selectedStoreId, auth } = useAuth();
+  const { auth } = useAuth();
+  const { scopeParams, storeIds, canFetch } = useDashboardScope();
+  const isAdmin = hasAdminAccess(auth?.user?.role) || isSuperadmin(auth?.user?.email);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [billing, setBilling] = useState<BillingStats[]>([]);
   const [inventoryValue, setInventoryValue] = useState(0);
   const [dailyIncome, setDailyIncome] = useState<any[]>([]);
@@ -128,12 +132,12 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
   >([]);
 
   const fetchData = useCallback(async (from?: string, to?: string) => {
-    if (!selectedStoreId) return;
+    if (!canFetch) return;
     setLoading(true);
+    setLoadError(false);
     try {
-      const isAdmin = hasAdminAccess(auth?.user?.role);
-      const params: Record<string, string> = { 
-        storeId: selectedStoreId,
+      const params: Record<string, string | undefined> = {
+        ...scopeParams,
         ...(!isAdmin && { sellerId: auth?.user?.id })
       };
       if (from) params.fromDate = from;
@@ -149,40 +153,27 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
           axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/billing`, {
             params: billingParams,
           }),
-          axios.get(
-            `${process.env.NEXT_PUBLIC_API_INVENTORY}/stats/inventory-value`,
-            {
-              params: {
-                storeId: selectedStoreId,
-              },
-            },
-          ),
+          // El backend valoriza cada almacén por su tienda propietaria, aunque
+          // otros canales de venta compartan su inventory_id.
+          Promise.all(storeIds.map((storeId) =>
+            axios.get(`${process.env.NEXT_PUBLIC_API_INVENTORY}/stats/inventory-value`, {
+              params: { storeId },
+            }),
+          )).then((responses) => ({
+            data: { totalValue: responses.reduce((total, response) => total + Number(response.data?.totalValue || 0), 0) },
+          })),
           // Fetch receivables (pending payments)
-          axios
-            .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/receivables`, {
-              params,
-            })
-            .catch(() => ({
-              data: {
-                pendingTotal: 0,
-                limaCount: 0,
-                provinciaCount: 0,
-                avgTicket: 0,
-                pendingOrders: [],
-              },
-            })),
+          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/receivables`, {
+            params,
+          }),
           // Fetch courier stats
-          axios
-            .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-courier`, {
-              params,
-            })
-            .catch(() => ({ data: [] })),
+          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/by-courier`, {
+            params,
+          }),
           // Fetch daily income
-          axios
-            .get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/daily-income`, {
-              params,
-            })
-            .catch(() => ({ data: [] })),
+          axios.get(`${process.env.NEXT_PUBLIC_API_VENTAS}/stats/daily-income`, {
+            params,
+          }),
         ]);
 
       setBilling(billingRes.data || []);
@@ -209,10 +200,11 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
       setDailyIncome(dailyIncomeRes.data || []);
     } catch (error) {
       console.error("Error fetching finance stats:", error);
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
-  }, [selectedStoreId, auth?.user?.id, auth?.user?.role]);
+  }, [scopeParams, storeIds, canFetch, auth?.user?.id, isAdmin]);
 
   useEffect(() => {
     if (fromDate && toDate) {
@@ -246,6 +238,10 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
       : 0;
 
   const totalPaid = dailyIncome.reduce((sum, d) => sum + d.amount, 0);
+
+  if (loadError) {
+    return <div role="alert" className="p-8 text-destructive">No se pudieron cargar los datos financieros. Intenta nuevamente.</div>;
+  }
 
   return (
     <div className="flex flex-col h-full w-full overflow-auto bg-background">
@@ -758,7 +754,6 @@ export const FinanceStats: React.FC<FinanceStatsProps> = ({ fromDate, toDate }) 
       <PaymentDetailsModal
         open={paymentsModalOpen}
         onOpenChange={setPaymentsModalOpen}
-        storeId={selectedStoreId || ""}
         fromDate={fromDate}
         toDate={toDate}
       />

@@ -1,7 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
+import { useDashboardScope } from "@/contexts/DashboardScopeContext";
 import {
   Dialog,
   DialogContent,
@@ -29,7 +30,6 @@ import { Loader2 } from "lucide-react";
 interface PaymentDetailsModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  storeId: string;
   fromDate: string;
   toDate: string;
 }
@@ -37,39 +37,46 @@ interface PaymentDetailsModalProps {
 export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
   open,
   onOpenChange,
-  storeId,
   fromDate,
   toDate,
 }) => {
+  const { scopeParams, canFetch } = useDashboardScope();
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [payments, setPayments] = useState<any[]>([]);
   const [statusFilter, setStatusFilter] = useState("ALL");
 
-  const fetchPaymentDetails = useCallback(async () => {
-    if (!storeId || !open) return;
+  const fetchPaymentDetails = useCallback(async (signal: AbortSignal) => {
+    if (!canFetch || !open) return;
     setLoading(true);
+    setLoadError(false);
     try {
       const response = await axios.get(
         `${process.env.NEXT_PUBLIC_API_VENTAS}/stats/payment-details`,
         {
+          signal,
           params: {
-            storeId,
+            ...scopeParams,
             fromDate,
             toDate,
             status: statusFilter,
           },
         },
       );
-      setPayments(response.data || []);
+      if (!signal.aborted) setPayments(response.data || []);
     } catch (error) {
+      if (signal.aborted) return;
       console.error("Error fetching payment details:", error);
+      setLoadError(true);
     } finally {
-      setLoading(false);
+      if (!signal.aborted) setLoading(false);
     }
-  }, [open, storeId, fromDate, toDate, statusFilter]);
+  }, [open, scopeParams, canFetch, fromDate, toDate, statusFilter]);
 
   useEffect(() => {
-    fetchPaymentDetails();
+    const controller = new AbortController();
+    fetchPaymentDetails(controller.signal);
+    return () => controller.abort();
   }, [fetchPaymentDetails]);
 
   const getStatusBadge = (status: string) => {
@@ -118,6 +125,10 @@ export const PaymentDetailsModal: React.FC<PaymentDetailsModalProps> = ({
           {loading ? (
             <div className="flex items-center justify-center p-20">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : loadError ? (
+            <div role="alert" className="text-center py-20 text-destructive">
+              No se pudieron cargar los pagos. Intenta nuevamente.
             </div>
           ) : payments.length === 0 ? (
             <div className="text-center py-20 text-muted-foreground">
