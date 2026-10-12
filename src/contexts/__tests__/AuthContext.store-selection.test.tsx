@@ -33,7 +33,7 @@ const company = {
   ],
 };
 
-const wrapper = ({ children }: { children: ReactNode }) => {
+const Wrapper = ({ children }: { children: ReactNode }) => {
   const [queryClient] = React.useState(() => new QueryClient());
   return (
     <QueryClientProvider client={queryClient}>
@@ -46,7 +46,7 @@ const wrapper = ({ children }: { children: ReactNode }) => {
 };
 
 const restoreSession = async () => {
-  const hook = renderHook(() => useAuth(), { wrapper });
+  const hook = renderHook(() => useAuth(), { wrapper: Wrapper });
   await waitFor(() => expect(hook.result.current.loading).toBe(false));
   expect(hook.result.current.auth?.company?.id).toBe(company.id);
   return hook;
