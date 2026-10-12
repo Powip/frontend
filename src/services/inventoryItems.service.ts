@@ -1,7 +1,8 @@
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
-const API_INVENTORY = process.env.NEXT_PUBLIC_API_INVENTORY;
+const API_INVENTORY = process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics;
 
 interface SearchInventoryItemsResponse {
   data: InventoryItemForSale[];

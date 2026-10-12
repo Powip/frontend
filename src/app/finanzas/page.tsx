@@ -24,7 +24,12 @@ import { Label } from "@/components/ui/label";
 
 import { OrderHeader, OrderStatus, SubEstadoCc } from "@/interfaces/IOrder";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
+import { useQuery } from "@tanstack/react-query";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessGuides } from "@/hooks/useBusinessGuides";
 import {
   OrderDetailButton,
   OrderDetailModalProvider,
@@ -87,6 +92,9 @@ const CC_CONFIRMED_SUBESTADOS: SubEstadoCc[] = ["confirmado", "reprogramado"];
 
 export interface Sale {
   id: string;
+  storeId: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
   orderNumber: string;
   clientName: string;
   phoneNumber: string;
@@ -124,6 +132,7 @@ export interface Sale {
 
 /** Forma mínima de una guía de ms-courier usada solo para enriquecer la tabla. */
 interface ShippingGuideLite {
+  id: string;
   orderIds?: string[];
   deliveryType?: string;
   courierName?: string;
@@ -152,6 +161,9 @@ function mapOrderToSale(order: OrderHeader): Sale {
 
   return {
     id: order.id,
+    storeId: order.storeId,
+    inventoryId: order.inventoryId,
+    stockStoreId: order.stockStoreId,
     orderNumber: order.orderNumber,
     clientName: customer?.fullName ?? "—",
     phoneNumber: customer?.phoneNumber ?? "999",
@@ -193,8 +205,6 @@ function mapOrderToSale(order: OrderHeader): Sale {
 ----------------------------------------- */
 
 export default function FinanzasPage() {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [loading, setLoading] = useState(true);
 
   // Filtros avanzados
   const [filtersPagosPendientes, setFiltersPagosPendientes] =
@@ -222,96 +232,53 @@ export default function FinanzasPage() {
   const [selectedSaleForPayment, setSelectedSaleForPayment] =
     useState<Sale | null>(null);
 
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
   const router = useRouter();
 
-  const fetchOrders = useCallback(async () => {
-    try {
-      // Las guías (llamada #3) son solo enriquecimiento: si cae ms-courier, el
-      // resto de Finanzas debe seguir disponible. Por eso allSettled y no all.
-      const [ordersResult, leadsCodResult, guidesResult] =
-        await Promise.allSettled([
-          axios.get<OrderHeader[]>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-          ),
-          axios.get<OrderHeader[]>(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}/leads-cod`,
-          ),
-          axios.get<ShippingGuideLite[]>(
-            `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
-          ),
-        ]);
-
-      // Fuentes de verdad de la tabla: si falla cualquiera, no hay nada que mostrar.
-      if (
-        ordersResult.status === "rejected" ||
-        leadsCodResult.status === "rejected"
-      ) {
-        console.error(
-          "Error fetching orders",
-          ordersResult.status === "rejected" ? ordersResult.reason : undefined,
-          leadsCodResult.status === "rejected"
-            ? leadsCodResult.reason
-            : undefined,
-        );
-        toast.error("No se pudieron cargar los datos de Finanzas. Reintentá.");
-        setSales([]);
-        return;
-      }
-
-      const ordersById = new Map<string, OrderHeader>();
-      (ordersResult.value.data ?? []).forEach((order) =>
-        ordersById.set(order.id, order),
-      );
-      (leadsCodResult.value.data ?? []).forEach((order) =>
-        ordersById.set(order.id, order),
-      );
-      const allOrders = Array.from(ordersById.values());
-
-      const mappedSales = allOrders.map(mapOrderToSale);
-
-      // Enriquecimiento con guías: opcional. Si falló, se omite y se avisa.
-      const guideMap = new Map<string, ShippingGuideLite>();
-      if (guidesResult.status === "fulfilled") {
-        const allGuides: ShippingGuideLite[] = guidesResult.value.data ?? [];
-        allGuides.forEach((g) => {
-          if (Array.isArray(g.orderIds)) {
-            g.orderIds.forEach((oid) => guideMap.set(oid, g));
-          }
-        });
-      } else {
-        console.error("Error fetching shipping guides", guidesResult.reason);
-        toast.warning(
-          "No se pudo cargar info de couriers; el resto de Finanzas está disponible.",
-        );
-      }
-
-      // Enriquecer ventas con info de courier
-      const enrichedSales = mappedSales.map((sale) => {
-        const guide = guideMap.get(sale.id);
-        if (guide) {
-          return {
-            ...sale,
-            shippingDeliveryType: guide.deliveryType || undefined,
-            shippingCourierName: guide.courierName || undefined,
-          };
-        }
-        return sale;
-      });
-
-      // Excluir pedidos anulados: no corresponde revisarlos en ninguna vista de Finanzas
-      const activeSales = enrichedSales.filter(
-        (sale) => sale.status !== ORDER_STATUS.ANULADO,
-      );
-
-      setSales(activeSales);
-    } catch (error) {
-      console.error("Error fetching orders", error);
-      toast.error("No se pudieron cargar los datos de Finanzas. Reintentá.");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId]);
+  const { storeIds, canFetch, scopeKey } = useBusinessScope();
+  const ordersQuery = useBusinessOrders();
+  const invalidateBusinessData = useInvalidateBusinessData();
+  const guidesQuery = useBusinessGuides<ShippingGuideLite>();
+  // Los leads COD confirmados/reprogramados siguen participando en revisión de pagos.
+  const leadsQuery = useQuery({
+    queryKey: ["business-finance-cod-leads", scopeKey],
+    enabled: canFetch,
+    queryFn: async ({ signal }) => {
+      const responses = await Promise.all(storeIds.map((storeId) => axiosAuth.get<OrderHeader[]>(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${storeId}/leads-cod`, { signal },
+      )));
+      return responses.flatMap((response) => response.data ?? []);
+    },
+    retry: false,
+  });
+  const loading = ordersQuery.loading || (canFetch && leadsQuery.isPending) || guidesQuery.loading;
+  const loadError = ordersQuery.error || leadsQuery.isError;
+  const sales = useMemo(() => {
+    if (loadError) return [];
+    const ordersById = new Map<string, OrderHeader>();
+    ordersQuery.orders.forEach((order) => ordersById.set(order.id, order));
+    (leadsQuery.data ?? []).forEach((order) => ordersById.set(order.id, order));
+    const guideMap = new Map<string, ShippingGuideLite>();
+    guidesQuery.guides.forEach((guide) => guide.orderIds?.forEach((id) => guideMap.set(id, guide)));
+    return Array.from(ordersById.values()).map(mapOrderToSale).filter((sale) => sale.status !== "ANULADO").map((sale) => {
+      const guide = guideMap.get(sale.id);
+      return { ...sale, shippingDeliveryType: guide?.deliveryType, shippingCourierName: guide?.courierName };
+    });
+  }, [ordersQuery.orders, leadsQuery.data, guidesQuery.guides, loadError]);
+  const refetchOrders = ordersQuery.refetch;
+  const refetchGuides = guidesQuery.refetch;
+  const refetchLeads = leadsQuery.refetch;
+  const fetchOrders = useCallback(() => {
+    void refetchOrders();
+    void refetchGuides();
+    void refetchLeads();
+    void invalidateBusinessData();
+  }, [refetchOrders, refetchGuides, refetchLeads, invalidateBusinessData]);
+  useEffect(() => { setSelectedSaleIds(new Set()); }, [scopeKey]);
+  useEffect(() => { if (loadError) toast.error("No se pudieron cargar los datos de Finanzas. Reintentá."); }, [loadError]);
+  useEffect(() => {
+    if (guidesQuery.error) toast.warning("No se pudo cargar info de couriers; el resto de Finanzas está disponible.");
+  }, [guidesQuery.error]);
 
   // Helper: info del usuario actual para trazabilidad
   const getUserInfo = useCallback(
@@ -349,7 +316,7 @@ export default function FinanzasPage() {
           payload.cancellationReason = cancellationReason;
         }
 
-        await axios.patch(
+        await axiosAuth.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleId}`,
           payload,
         );
@@ -369,7 +336,7 @@ export default function FinanzasPage() {
 
       setIsCancelling(true);
       try {
-        await axios.patch(
+        await axiosAuth.patch(
           `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${saleToCancel.id}`,
           {
             status: "ANULADO",
@@ -402,12 +369,6 @@ export default function FinanzasPage() {
       return next;
     });
   }, []);
-
-  useEffect(() => {
-    if (!selectedStoreId) return;
-    setLoading(true);
-    fetchOrders();
-  }, [selectedStoreId, fetchOrders]);
 
   const handleWhatsApp = (
     phoneNumber: string,
@@ -504,6 +465,10 @@ Estado: ${sale.status}
 
     const exportData: SaleExportData[] = salesList.map((s) => ({
       orderNumber: s.orderNumber,
+      storeId: s.storeId,
+      storeName: auth?.company?.stores?.find((store) => store.id === s.storeId)?.name,
+      inventoryId: s.inventoryId,
+      stockStoreId: s.stockStoreId,
       clientName: s.clientName,
       phoneNumber: s.phoneNumber,
       documentType: s.documentType,
@@ -552,7 +517,7 @@ Estado: ${sale.status}
     try {
       const receipts = await Promise.all(
         selectedSales.map(async (sale) => {
-          const res = await axios.get<ReceiptData>(
+          const res = await axiosAuth.get<ReceiptData>(
             `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${sale.id}/receipt`,
           );
           return res.data;
@@ -964,6 +929,8 @@ Estado: ${sale.status}
           {/* Tabs para Finanzas */}
           {loading ? (
             <PowipPulseLoader label="Cargando finanzas..." />
+          ) : loadError ? (
+            <div role="alert" className="space-y-3"><p>No se pudieron cargar los datos de Finanzas del alcance seleccionado.</p><Button onClick={fetchOrders}>Reintentar</Button></div>
           ) : (
           <Tabs defaultValue="pagosPendientes" className="w-full">
             <TabsList className="mb-4">

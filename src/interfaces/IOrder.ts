@@ -155,6 +155,8 @@ export interface OrderHeader {
   orderType: OrderType;
   orderNumber: string;
   storeId: string;
+  storeName?: string;
+  stockStoreName?: string;
   inventoryId?: string | null;
   stockStoreId?: string | null;
   stockVersion?: number;

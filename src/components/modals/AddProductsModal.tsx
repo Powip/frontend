@@ -1,6 +1,11 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
-import axios from "axios";
+import { useState, useEffect } from "react";
+import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
+import { useQuery } from "@tanstack/react-query";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
+import { fetchBusinessInventoryItems, filterBusinessInventoryItems } from "@/services/businessInventoryItemsService";
+import { resolveOrderInventory } from "@/services/orderInventoryService";
 import { toast } from "sonner";
 import {
   Search,
@@ -22,7 +27,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/contexts/AuthContext";
-import { searchInventoryItems } from "@/services/inventoryItems.service";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 
 interface CartItem {
@@ -50,68 +54,38 @@ export default function AddProductsModal({
   onClose,
   onProductsAdded,
 }: Props) {
-  const { auth, inventories } = useAuth();
+  const { auth } = useAuth();
+  const warehouses = useBusinessInventories();
   const [query, setQuery] = useState("");
-  const [products, setProducts] = useState<InventoryItemForSale[]>([]);
-  const [loading, setLoading] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [page, setPage] = useState(1);
-  const [meta, setMeta] = useState<{ total: number; totalPages: number } | null>(null);
-
-  const inventoryId = inventories?.[0]?.id || "";
-  const companyId = auth?.company?.id;
-
-  const searchProducts = useCallback(
-    async (pageToLoad: number) => {
-      if (!open || !inventoryId) return;
-      setLoading(true);
-      try {
-        const res = await searchInventoryItems({
-          inventoryId,
-          companyId,
-          q: query || undefined,
-          page: pageToLoad,
-          limit: 20,
-        });
-        setProducts((prev) =>
-          pageToLoad === 1 ? res.data : [...prev, ...res.data],
-        );
-        setMeta({ total: res.meta.total, totalPages: res.meta.totalPages });
-        setPage(pageToLoad);
-      } catch (err) {
-        console.error("Error fetching products", err);
-        toast.error("Error al cargar productos");
-      } finally {
-        setLoading(false);
-      }
+  const companyId = auth?.company?.id ?? "";
+  const api = process.env.NEXT_PUBLIC_API_VENTAS || GATEWAY.ventas;
+  const origin = useQuery({
+    queryKey: ["order-stock-origin", companyId, auth?.user?.id, orderId],
+    queryFn: async ({ signal }) => {
+      const { data } = await axiosAuth.get(`${api}/order-header/${orderId}`, { signal });
+      return resolveOrderInventory(data, companyId, warehouses.inventories);
     },
-    [open, inventoryId, companyId, query],
-  );
-
-  // Carga inicial al abrir el modal o cambiar de inventario (sin debounce).
-  useEffect(() => {
-    if (open && inventoryId) {
-      searchProducts(1);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, inventoryId]);
-
-  // Búsqueda server-side debounced: el listado inicial trae solo una página,
-  // así que filtrar en el cliente ocultaba productos fuera de esa página.
-  useEffect(() => {
-    if (!open || !inventoryId) return;
-    const timer = setTimeout(() => {
-      searchProducts(1);
-    }, 400);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
-
-  const handleLoadMore = () => {
-    if (loading || !meta || page >= meta.totalPages) return;
-    searchProducts(page + 1);
-  };
+    enabled: open && Boolean(orderId && auth?.accessToken && companyId) && warehouses.isSuccess,
+    retry: false,
+    staleTime: 0,
+  });
+  const inventoryId = origin.data?.id;
+  const stock = useQuery({
+    queryKey: ["order-stock-products", companyId, auth?.user?.id, orderId, inventoryId],
+    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: origin.data ? [origin.data] : [], companyId, accessToken: auth?.accessToken ?? "", signal }),
+    enabled: open && Boolean(inventoryId) && origin.isSuccess, retry: false,
+  });
+  const allProducts = filterBusinessInventoryItems(stock.data ?? [], "all", query);
+  const products = allProducts.slice(0, page * 20);
+  const meta = { total: allProducts.length, totalPages: Math.ceil(allProducts.length / 20) };
+  const loading = warehouses.isPending || (warehouses.isSuccess && origin.isPending) || (origin.isSuccess && stock.isPending);
+  const loadError = warehouses.error || origin.error || stock.error;
+  useEffect(() => { setCart([]); setQuery(""); setPage(1); }, [open, orderId, companyId, auth?.user?.id]);
+  useEffect(() => { setPage(1); }, [query]);
+  const handleLoadMore = () => setPage((previous) => previous + 1);
 
   const addToCart = (product: InventoryItemForSale) => {
     setCart((prev) => {
@@ -192,7 +166,7 @@ export default function AddProductsModal({
   };
 
   const handleSubmit = async () => {
-    if (cart.length === 0) {
+    if (!inventoryId || loadError || cart.length === 0) {
       toast.error("Agrega al menos un producto");
       return;
     }
@@ -200,10 +174,12 @@ export default function AddProductsModal({
     setSubmitting(true);
     try {
       // Primero obtener el pedido actual para tener los items existentes
-      const orderRes = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      const orderRes = await axiosAuth.get(
+        `${api}/order-header/${orderId}`,
       );
       const currentOrder = orderRes.data;
+      const currentInventory = resolveOrderInventory(currentOrder, companyId, warehouses.inventories);
+      if (currentInventory.id !== inventoryId) throw new Error("El origen del pedido cambió. Vuelve a cargarlo antes de agregar productos.");
 
       // Preparar los items existentes (sin modificar)
       const existingItems = currentOrder.items.map((item: any) => ({
@@ -241,8 +217,8 @@ export default function AddProductsModal({
       const allItems = [...existingItems, ...newItems];
 
       // Actualizar el pedido
-      await axios.put(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${orderId}`,
+      await axiosAuth.put(
+        `${api}/order-header/${orderId}`,
         {
           items: allItems,
           userId: auth?.user?.id || undefined,
@@ -253,14 +229,11 @@ export default function AddProductsModal({
 
       toast.success("Productos agregados correctamente");
       setCart([]);
-      setProducts([]);
-      setMeta(null);
       setQuery("");
       onProductsAdded?.();
       onClose();
     } catch (err) {
-      console.error("Error adding products", err);
-      toast.error("Error al agregar productos");
+      toast.error(err instanceof Error ? err.message : "Error al agregar productos");
     } finally {
       setSubmitting(false);
     }
@@ -268,8 +241,6 @@ export default function AddProductsModal({
 
   const handleClose = () => {
     setCart([]);
-    setProducts([]);
-    setMeta(null);
     setQuery("");
     onClose();
   };
@@ -298,6 +269,7 @@ export default function AddProductsModal({
             Agrega productos adicionales a esta orden. Puedes ajustar cantidades y precios.
           </DialogDescription>
         </DialogHeader>
+        {loadError ? <div role="alert" className="rounded border border-destructive p-3">{loadError instanceof Error ? loadError.message : "No se pudo cargar el almacén del pedido."} <Button variant="outline" onClick={() => { void warehouses.refetch(); if (warehouses.isSuccess) void origin.refetch(); if (origin.isSuccess) void stock.refetch(); }}>Reintentar</Button></div> : origin.data ? <p className="text-sm text-muted-foreground">Almacén de origen: {origin.data.name}{origin.data.storeName ? ` · ${origin.data.storeName}` : ""}</p> : null}
         <div className="flex-1 overflow-auto space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -492,7 +464,7 @@ export default function AddProductsModal({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={cart.length === 0 || submitting}
+            disabled={cart.length === 0 || submitting || loading || Boolean(loadError)}
           >
             {submitting ? "Agregando..." : "Confirmar"}
           </Button>

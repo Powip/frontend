@@ -44,7 +44,18 @@
  *   prueba.
  */
 
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, screen, waitFor } from '@testing-library/react';
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
+
+let scopedStoreIds = ['store-1'];
+jest.mock('@/contexts/BusinessScopeContext', () => ({ useBusinessScope: () => ({ storeIds: scopedStoreIds, canFetch: true, scopeKey: `company-1:business:${scopedStoreIds.join(',')}` }) }));
+jest.mock('@/lib/axiosAuth', () => ({ __esModule: true, default: jest.requireMock('axios') }));
+function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return rtlRender(ui, { wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> });
+}
 
 // ── Mocks de infraestructura ─────────────────────────────────────────────────
 
@@ -207,6 +218,7 @@ function mockFetchOrdersEndpoints({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  scopedStoreIds = ['store-1'];
   mockUseAuth.mockReturnValue(MOCK_AUTH as unknown as ReturnType<typeof useAuth>);
 });
 
@@ -218,9 +230,9 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
 
     await waitFor(() => expect(mockedAxios.get).toHaveBeenCalledTimes(3));
 
-    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1');
-    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1/leads-cod');
-    expect(mockedAxios.get).toHaveBeenCalledWith('http://courier/shipping-guides/store/store-1');
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://ventas/order-header/store/store-1/leads-cod', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(mockedAxios.get).toHaveBeenCalledWith('http://courier/shipping-guides/store/store-1', expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it('mergea pedidos de order-header y leads-cod sin duplicar por id (leads-cod tiene precedencia)', async () => {
@@ -290,7 +302,8 @@ describe('FinanzasPage — fetchOrders (merge con leads-cod)', () => {
       ),
     );
     // La tabla queda vacía: no se pudo mergear ninguna fuente.
-    expect(screen.getByText('Pagos Pendientes (0)')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('No se pudieron cargar');
+    expect(screen.queryByText('Pagos Pendientes (0)')).not.toBeInTheDocument();
 
     consoleErrorSpy.mockRestore();
   });
@@ -598,5 +611,37 @@ describe('FinanzasPage — leads COD del endpoint /leads-cod', () => {
     expect(screen.getByText('Lead Reprogramado')).toBeInTheDocument();
     expect(screen.queryByText('Lead Contactado')).not.toBeInTheDocument();
     expect(screen.queryByText('Lead Por Confirmar')).not.toBeInTheDocument();
+  });
+});
+
+
+describe('Finanzas — alcance del negocio', () => {
+  it('incluye pagos de WEB aunque KUNCA esté vacía y conserva guías compartidas por pedido', async () => {
+    scopedStoreIds = ['KUNCA', 'WEB'];
+    mockedAxios.get.mockImplementation(async (url: string) => {
+      if (url.includes('/leads-cod')) return { data: [] };
+      if (url.includes('/shipping-guides/')) return { data: [] };
+      return { data: url.endsWith('/WEB') ? [makeOrderHeader({ storeId: 'WEB' })] : [] };
+    });
+    const view = render(<FinanzasPage />);
+    expect(await screen.findByText('Pagos Pendientes (1)')).toBeInTheDocument();
+    expect(screen.getByText('Juan Pérez')).toBeInTheDocument();
+    scopedStoreIds = ['KUNCA'];
+    view.rerender(<FinanzasPage />);
+    expect(await screen.findByText('Pagos Pendientes (0)')).toBeInTheDocument();
+    expect(screen.queryByText('Juan Pérez')).not.toBeInTheDocument();
+  });
+
+  it('una falla de autorización en la segunda tienda muestra reintento y oculta totales parciales', async () => {
+    scopedStoreIds = ['KUNCA', 'WEB'];
+    mockedAxios.get.mockImplementation(async (url: string) => {
+      if (url.includes('/leads-cod') || url.includes('/shipping-guides/')) return { data: [] };
+      if (url.endsWith('/WEB')) throw new Error('Unauthorized');
+      return { data: [makeOrderHeader()] };
+    });
+    render(<FinanzasPage />);
+    expect(await screen.findByRole('alert')).toHaveTextContent('No se pudieron cargar');
+    expect(screen.getByRole('button', { name: 'Reintentar' })).toBeInTheDocument();
+    expect(screen.queryByText('Pagos Pendientes (1)')).not.toBeInTheDocument();
   });
 });

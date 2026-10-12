@@ -1,5 +1,11 @@
 "use client";
 
+import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
+
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessGuides } from "@/hooks/useBusinessGuides";
+
 import { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Search,
@@ -39,7 +45,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { useAuth } from "@/contexts/AuthContext";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { OrderHeader } from "@/interfaces/IOrder";
 import type { ShippingGuideData } from "@/components/modals/CustomerServiceModal";
@@ -62,6 +68,7 @@ interface ShippingGuide {
   guideNumber: string;
   notes?: string | null;
   created_at: string;
+  orderIds?: string[];
 }
 
 interface EnvioItem {
@@ -105,9 +112,16 @@ const SHALOM_STATUS_FILTER_OPTIONS: {
 ];
 
 export default function ShalomOrderTrackingView() {
-  const { auth, selectedStoreId } = useAuth();
-  const [shalomOrders, setShalomOrders] = useState<EnvioItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { auth } = useAuth();
+  const orderQuery = useBusinessOrders();
+  const guideQuery = useBusinessGuides<ShippingGuide>();
+  const loading = orderQuery.loading || guideQuery.loading;
+  const error = orderQuery.error || guideQuery.error;
+  const fetchShalomOrders = useCallback(() => Promise.all([orderQuery.refetch(), guideQuery.refetch()]), [orderQuery.refetch, guideQuery.refetch]);
+  const shalomOrders = useMemo<EnvioItem[]>(() => orderQuery.orders
+    .filter((o) => isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice))
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .map((order) => ({ order, guide: guideQuery.guides.find((g) => g.orderIds?.includes(order.id)) ?? null })), [orderQuery.orders, guideQuery.guides]);
   const [guideSearch, setGuideSearch] = useState("");
   const [guideStatusFilters, setGuideStatusFilters] = useState<string[]>([]);
   const [pendingFilter, setPendingFilter] = useState<"all" | "pending" | "paid">("all");
@@ -145,61 +159,6 @@ export default function ShalomOrderTrackingView() {
   const [premiumModalOpen, setPremiumModalOpen] = useState(false);
   const [copiedOrderId, setCopiedOrderId] = useState<string | null>(null);
   const [selectedEnvio, setSelectedEnvio] = useState<EnvioItem | null>(null);
-
-  const fetchShalomOrders = useCallback(async () => {
-    if (!selectedStoreId) return;
-    setLoading(true);
-    try {
-      const ordersRes = await axios.get<OrderHeader[]>(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-
-      // BUG: exigir shalomStatus no-nulo además del courier dejaba afuera
-      // pedidos realmente despachados por Shalom (courier se setea en el
-      // mismo PATCH que guideNumber al crear la guía, ver NuevaGuiaDialog)
-      // cuyo shalomStatus todavía no se sincronizó/registró contra la API
-      // de Shalom — la tabla ya tiene un badge "Sin registrar" para ese
-      // caso (más abajo), pero nunca llegaba a mostrarse porque el filtro
-      // los descartaba antes. courier/shippingOffice ya son suficientes
-      // para saber que el pedido se despachó por Shalom.
-      const shalomOnly = ordersRes.data
-        .filter(
-          (o) => isShalomCourier(o.courier) || isShalomCourier(o.shippingOffice),
-        )
-        .sort(
-          (a, b) =>
-            new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-        );
-
-      const processed = await Promise.all(
-        shalomOnly.map(async (order) => {
-          let guide: ShippingGuide | null = null;
-          if (order.guideNumber) {
-            try {
-              const guideRes = await axios.get<ShippingGuide>(
-                `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/order/${order.id}`,
-              );
-              guide = guideRes.data;
-            } catch (e) {
-              console.error("Error fetching guide", e);
-            }
-          }
-          return { order, guide };
-        }),
-      );
-
-      setShalomOrders(processed);
-    } catch (error) {
-      console.error("Error fetching shalom orders", error);
-      toast.error("Error al cargar pedidos de Shalom");
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedStoreId]);
-
-  useEffect(() => {
-    fetchShalomOrders();
-  }, [fetchShalomOrders]);
 
   // Pedidos Shalom con tracking+código, sobre TODA la lista (no solo la
   // página visible) — para que el filtro de estados pueda preferir el
@@ -519,6 +478,8 @@ export default function ShalomOrderTrackingView() {
     window.URL.revokeObjectURL(url);
     toast.success(`${filteredOrders.length} registros exportados`);
   };
+
+  if (error) return <OperationsDataError retry={fetchShalomOrders} />;
 
   return (
     <OrderDetailModalProvider onOrderUpdated={fetchShalomOrders} hideCallManagement>
@@ -928,7 +889,7 @@ export default function ShalomOrderTrackingView() {
                         </div>
                       </TableCell>
                       <TableCell className="text-xs font-bold">
-                        {order.orderNumber}
+                        <span>{order.orderNumber}</span><OrderOriginLabel {...order} />
                       </TableCell>
                       <TableCell className="text-xs max-w-[120px] truncate">
                         {order.customer?.fullName}

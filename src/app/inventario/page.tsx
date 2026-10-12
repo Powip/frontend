@@ -43,7 +43,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
@@ -52,10 +52,10 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import Image from "next/image";
 import { isAxiosError } from "axios";
-import {
-  exportInventoryItems,
-  searchInventoryItems,
-} from "@/services/inventoryItems.service";
+import { useQuery } from "@tanstack/react-query";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
+import { fetchBusinessInventoryItems, filterBusinessInventoryItems } from "@/services/businessInventoryItemsService";
 import { InventoryItemForSale } from "@/interfaces/IProduct";
 
 import AddStockModal from "@/components/modals/AddStockModal";
@@ -70,27 +70,32 @@ import { ReconciliationTab } from "@/components/inventory/ReconciliationTab";
 const ITEMS_PER_PAGE = 10;
 
 export default function AlmacenPage() {
-  const { auth, selectedStoreId, inventories: storeInventories } = useAuth();
-
+  const { auth } = useAuth();
+  const { scope, storeIds, canFetch } = useBusinessScope();
+  const warehouses = useBusinessInventories({ scope, storeIds });
+  const storeInventories = warehouses.inventories;
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(
-    null,
-  );
-  const [productsWithDetails, setProductsWithDetails] = useState<
-    InventoryItemForSale[]
-  >([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLoadingInventories, setIsLoadingInventories] = useState(true);
+  const [selectedInventoryId, setSelectedInventoryId] = useState("all");
   const [isExporting, setIsExporting] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(0);
-  const [totalItems, setTotalItems] = useState(0);
   const [mode, setMode] = useState<"table" | "shopify">("table");
-
-  const stores = auth?.company?.stores || [];
-  const currentStore =
-    stores.find((s) => s.id === selectedStoreId) || stores[0];
+  const companyId = auth?.company?.id ?? "";
+  const inventoryQuery = useQuery({
+    queryKey: ["business-inventory-items", companyId, auth?.user?.id, scope, storeIds, storeInventories.map((inv) => inv.id).sort()],
+    queryFn: ({ signal }) => fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth?.accessToken ?? "", signal }),
+    enabled: canFetch && warehouses.isSuccess,
+    retry: false,
+  });
+  const filteredItems = useMemo(() => filterBusinessInventoryItems(inventoryQuery.data ?? [], selectedInventoryId, searchQuery), [inventoryQuery.data, selectedInventoryId, searchQuery]);
+  const totalItems = filteredItems.length;
+  const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+  const productsWithDetails = filteredItems.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const isLoadingInventories = warehouses.isPending;
+  const isLoading = warehouses.isPending || (warehouses.isSuccess && inventoryQuery.isPending);
+  const loadError = warehouses.error || inventoryQuery.error;
+  const refreshItems = async () => { await inventoryQuery.refetch(); };
+  const totals = filteredItems.reduce((sum, row) => ({ physical: sum.physical + row.physicalStock, available: sum.available + row.availableStock }), { physical: 0, available: 0 });
 
   const router = useRouter();
 
@@ -100,98 +105,21 @@ export default function AlmacenPage() {
     null,
   );
 
+  useEffect(() => { setCurrentPage(1); }, [searchQuery, selectedInventoryId]);
   useEffect(() => {
-    if (!auth?.company) return;
-
-    setIsLoadingInventories(false);
-
-    if (storeInventories.length > 0) {
-      if (!selectedInventoryId) {
-        setSelectedInventoryId(storeInventories[0].id);
-      } else {
-        const exists = storeInventories.some(
-          (inv) => inv.id === selectedInventoryId,
-        );
-        if (!exists) {
-          setSelectedInventoryId(storeInventories[0].id);
-        }
-      }
-    } else {
-      setSelectedInventoryId(null);
-    }
-  }, [storeInventories, selectedInventoryId, auth?.company]);
-
-  useEffect(() => {
-    if (!selectedInventoryId) return;
-
-    const loadInventoryItems = async () => {
-      setIsLoading(true);
-
-      try {
-        const response = await searchInventoryItems({
-          inventoryId: selectedInventoryId,
-          q: searchQuery || undefined,
-          page: currentPage,
-          limit: ITEMS_PER_PAGE,
-        });
-
-        setProductsWithDetails(response.data);
-        setTotalPages(response.meta.totalPages);
-        setTotalItems(response.meta.total);
-      } catch (err) {
-        console.error("Error loading inventory items:", err);
-        toast.error("Error al cargar los productos del inventario");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    const timer = setTimeout(() => {
-      loadInventoryItems();
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [selectedInventoryId, currentPage, searchQuery]);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, selectedInventoryId]);
-
-  const refreshItems = useCallback(async () => {
-    if (!selectedInventoryId) return;
-    setIsLoading(true);
-    try {
-      const response = await searchInventoryItems({
-        inventoryId: selectedInventoryId,
-        q: searchQuery || undefined,
-        page: currentPage,
-        limit: ITEMS_PER_PAGE,
-      });
-      setProductsWithDetails(response.data);
-      setTotalPages(response.meta.totalPages);
-      setTotalItems(response.meta.total);
-    } catch (err) {
-      console.error("Error refreshing items:", err);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedInventoryId, searchQuery, currentPage]);
+    if (selectedInventoryId !== "all" && warehouses.isSuccess && !storeInventories.some((inv) => inv.id === selectedInventoryId)) setSelectedInventoryId("all");
+  }, [selectedInventoryId, storeInventories, warehouses.isSuccess]);
 
   if (!auth) return null;
 
   const handleExportExcel = async () => {
-    if (!selectedInventoryId) {
-      toast.warning("Seleccione un almacén para exportar");
-      return;
-    }
+    if (loadError || isLoading) { toast.error("Espera a que el inventario termine de cargar correctamente."); return; }
 
     setIsExporting(true);
 
     try {
-      const items = await exportInventoryItems({
-        inventoryId: selectedInventoryId,
-        q: searchQuery || undefined,
-      });
+      const fresh = await fetchBusinessInventoryItems({ inventories: storeInventories, companyId, accessToken: auth.accessToken });
+      const items = filterBusinessInventoryItems(fresh, selectedInventoryId, searchQuery);
 
       if (items.length === 0) {
         toast.warning("No hay productos para exportar");
@@ -205,6 +133,8 @@ export default function AlmacenPage() {
         { header: "SKU Empresa", key: "companySku", width: 20 },
         { header: "SKU POWIP", key: "sku", width: 20 },
         { header: "Nombre", key: "name", width: 30 },
+        { header: "Tienda", key: "store", width: 25 },
+        { header: "Almacén", key: "inventory", width: 25 },
         { header: "Stock", key: "stock", width: 12 },
         { header: "Reservado", key: "reservado", width: 12 },
         { header: "Disponible", key: "disponible", width: 12 },
@@ -224,6 +154,8 @@ export default function AlmacenPage() {
           companySku: prod.companySku ?? "",
           sku: prod.sku,
           name: prod.productName,
+          store: prod.storeName || prod.storeId,
+          inventory: prod.inventoryName,
           stock: prod.physicalStock,
           reservado: prod.reservedStock,
           disponible: prod.availableStock,
@@ -238,7 +170,7 @@ export default function AlmacenPage() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `Almacen_${currentStore?.name || "Tienda"}.xlsx`;
+      a.download = `Almacen_${scope === "business" ? "Negocio" : "Tienda"}.xlsx`;
       a.click();
       window.URL.revokeObjectURL(url);
 
@@ -269,7 +201,7 @@ export default function AlmacenPage() {
     <div className="h-screen flex flex-col px-6">
       <HeaderConfig
         title="Almacén"
-        description="Gestión de productos y control de stock por tienda"
+        description="Control de stock por tienda y almacén"
       />
 
       {mode === "shopify" ? (
@@ -334,15 +266,16 @@ export default function AlmacenPage() {
                       <Select
                         value={selectedInventoryId || undefined}
                         onValueChange={(value) => setSelectedInventoryId(value)}
-                        disabled={storeInventories.length <= 1}
+                        disabled={storeInventories.length === 0}
                       >
                         <SelectTrigger>
                           <SelectValue placeholder="Seleccionar almacén" />
                         </SelectTrigger>
                         <SelectContent>
+                          <SelectItem value="all">Todos los almacenes del alcance</SelectItem>
                           {storeInventories.map((inv) => (
                             <SelectItem key={inv.id} value={inv.id}>
-                              {inv.name}
+                              {inv.name} {inv.storeName ? `· ${inv.storeName}` : ""}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -354,7 +287,7 @@ export default function AlmacenPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Tienda:</p>
                       <p className="font-medium">
-                        {currentStore?.name ?? "Sin tienda"}
+                        {scope === "business" ? "Todo el negocio" : auth.company?.stores?.find((store) => store.id === storeIds[0])?.name || "Tienda seleccionada"}
                       </p>
                     </div>
                   </div>
@@ -384,7 +317,7 @@ export default function AlmacenPage() {
                       variant="outline"
                       size="sm"
                       onClick={handleExportExcel}
-                      disabled={isExporting}
+                      disabled={isExporting || isLoading || Boolean(loadError)}
                     >
                       {isExporting ? (
                         <>
@@ -401,6 +334,12 @@ export default function AlmacenPage() {
                   </div>
                 </div>
 
+                {loadError ? (
+                  <div role="alert" className="mb-4 rounded border border-destructive p-4">
+                    No se pudo cargar el inventario. {loadError instanceof Error ? loadError.message : "Verifica la sesión."}
+                    <Button variant="outline" className="ml-3" onClick={() => { void warehouses.refetch(); if (warehouses.isSuccess) void inventoryQuery.refetch(); }}>Reintentar</Button>
+                  </div>
+                ) : !isLoading ? <p className="mb-3 text-sm text-muted-foreground">{totalItems} posiciones · Stock físico: {totals.physical} · Disponible: {totals.available}</p> : null}
                 <div className="rounded-md border flex-1 overflow-auto">
                   <Table>
                     <TableHeader>
@@ -501,7 +440,7 @@ export default function AlmacenPage() {
                             colSpan={10}
                             className="text-center py-6 text-muted-foreground"
                           >
-                            No hay productos en este almacén
+                            {loadError ? "No se pudo consultar el stock" : "No hay productos en este alcance"}
                           </TableCell>
                         </TableRow>
                       ) : (
@@ -533,7 +472,8 @@ export default function AlmacenPage() {
                               )}
                             </TableCell>
                             <TableCell className="border-r text-sm max-w-[250px] truncate" title={prod.productName}>
-                              {prod.productName}
+                              <div>{prod.productName}</div>
+                              <div className="text-xs text-muted-foreground">{prod.storeName || "Tienda"} · {prod.inventoryName}</div>
                             </TableCell>
                             <TableCell className="border-r text-sm">
                               {Object.entries(prod.attributes || {})
@@ -623,7 +563,7 @@ export default function AlmacenPage() {
           <TabsContent value="history" className="flex-1 flex flex-col mt-0">
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
-                <MovementHistoryTable companyId={auth?.company?.id} />
+                <MovementHistoryTable companyId={auth?.company?.id} scope={scope} inventories={storeInventories} scopeReady={warehouses.isSuccess} scopeError={scope === "store" ? warehouses.error : undefined} onRetryScope={() => void warehouses.refetch()} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -634,6 +574,7 @@ export default function AlmacenPage() {
           >
             <Card className="flex-1 flex flex-col">
               <CardContent className="p-6 overflow-auto">
+                <p className="mb-3 text-sm text-muted-foreground">Reconciliación del catálogo de todo el negocio.</p>
                 <ReconciliationTab companyId={auth?.company?.id} />
               </CardContent>
             </Card>
@@ -644,7 +585,7 @@ export default function AlmacenPage() {
       <ImportExcelModal
         open={importOpen}
         onClose={() => setImportOpen(false)}
-        inventoryId={selectedInventoryId || ""}
+        inventoryId={selectedInventoryId === "all" ? "" : selectedInventoryId}
         onSuccess={refreshItems}
       />
 

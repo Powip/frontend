@@ -3,8 +3,10 @@
 import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { DateRange } from "react-day-picker";
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrdersByStore } from "@/hooks/useOrdersByStore";
-import { useIncompleteOrders } from "@/hooks/useIncompleteOrders";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessScope } from "@/contexts/BusinessScopeContext";
+import { useQuery } from "@tanstack/react-query";
 import { useCcPedidos } from "@/hooks/useCcPedidos";
 import { useCcPedidosAll } from "@/hooks/useCcPedidosAll";
 import { useCcKpis } from "@/hooks/useCcKpis";
@@ -18,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Gift, FileDown, MessageCircle, Copy } from "lucide-react";
 import { toast } from "sonner";
 import { exportSalesToExcel } from "@/utils/exportSalesExcel";
-import axios from "axios";
+import axiosAuth from "@/lib/axiosAuth";
 import { confirmOrder } from "@/services/incompleteOrdersService";
 
 import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
@@ -92,7 +94,9 @@ const CC_EXPORT_TABS: Partial<Record<SubEstadoCc, string>> = {
    Page
 ------------------------------------------------------- */
 export default function AtencionClientePage() {
-  const { auth, selectedStoreId } = useAuth();
+  const { auth } = useAuth();
+  const { storeIds, scope, scopeKey, canFetch } = useBusinessScope();
+  const invalidateBusinessData = useInvalidateBusinessData();
 
 
   /* ── CC v2 state ─────────────────────────────────────── */
@@ -113,10 +117,10 @@ export default function AtencionClientePage() {
     isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
 
   /* ── CC v2 data ──────────────────────────────────────── */
-  const { data: agentes = [], isLoading: agentesLoading } = useAgentes(selectedStoreId);
+  const { data: agentes = [], isLoading: agentesLoading, isError: agentesError, refetch: refetchAgentes } = useAgentes(storeIds, auth?.company?.id);
 
   const ccFilters = {
-    storeId: selectedStoreId ?? undefined,
+    storeIds,
     tipoGestion: l1,
     subEstado: l2,
     canalOrigen: canalFiltro || undefined,
@@ -126,7 +130,7 @@ export default function AtencionClientePage() {
     endDate: dateFiltro?.to?.toISOString(),
   };
 
-  const { data: ccResult, isLoading: ccPageLoading, refetch: refetchCcPage } = useCcPedidos({
+  const { data: ccResult, isLoading: ccPageLoading, isError: ccPageError, refetch: refetchCcPage } = useCcPedidos({
     ...ccFilters,
     page: pageCc,
     limit: CC_PAGE_SIZE,
@@ -168,12 +172,13 @@ export default function AtencionClientePage() {
   function refetchCc() {
     refetchCcPage();
     if (isSearching) refetchCcAll();
+    void invalidateBusinessData();
   }
 
   // Resetear página cuando cambia cualquier filtro (excepto la propia página)
   useEffect(() => {
     setPageCc(1);
-  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro, search]);
+  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro, search, scopeKey]);
 
   function handleSearchChange(value: string) {
     setSearch(value);
@@ -189,14 +194,17 @@ export default function AtencionClientePage() {
   useEffect(() => {
     setSelectedCcIds(new Set());
     selectedOrdersCache.current = new Map();
-  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro, search]);
+  }, [l1, l2, canalFiltro, agenteFiltro, dateFiltro, search, scopeKey]);
 
   // KPIs por tab para contadores globales (independiente de la tab activa)
-  const { data: kpisCod }     = useCcKpis("cod",     selectedStoreId);
-  const { data: kpisLima }    = useCcKpis("lima",    selectedStoreId);
-  const { data: kpisCarrito } = useCcKpis("carrito", selectedStoreId);
+  const codQuery = useCcKpis("cod", storeIds);
+  const limaQuery = useCcKpis("lima", storeIds);
+  const carritoQuery = useCcKpis("carrito", storeIds);
+  const kpisCod = codQuery.data;
+  const kpisLima = limaQuery.data;
+  const kpisCarrito = carritoQuery.data;
   // KPIs de la tab activa para KpiBar y L2 sub-tabs
-  const { data: ccKpis, isLoading: kpisLoading } = useCcKpis(l1, selectedStoreId);
+  const { data: ccKpis, isLoading: kpisLoading, isError: kpisError, refetch: refetchKpis } = useCcKpis(l1, storeIds);
 
   // Contadores globales: cada tab muestra su total real sin importar dónde estés
   const l1Counts = useMemo(() => ({
@@ -224,11 +232,10 @@ export default function AtencionClientePage() {
   );
 
   /* ── Legacy orders ───────────────────────────────────── */
-  const { data: ordersData, isLoading: legacyLoading, refetch: refetchOrders } =
-    useOrdersByStore(selectedStoreId);
-
-  const { data: incompleteOrders = [], isLoading: incompleteLoading, refetch: refetchIncomplete } =
-    useIncompleteOrders(selectedStoreId);
+  const { orders: ordersData, loading: legacyLoading, error: legacyError, refetch: refetchOrders } = useBusinessOrders(undefined, undefined, { includeCcLeads: true });
+  const incompleteOrders = useMemo(() => ordersData.filter((order) => order.status === "INCOMPLETE"), [ordersData]);
+  const incompleteLoading = legacyLoading;
+  const refetchIncomplete = refetchOrders;
 
   const legacySales = useMemo(() => {
     if (!ordersData) return [];
@@ -243,28 +250,24 @@ export default function AtencionClientePage() {
   );
 
   /* ── Promos ──────────────────────────────────────────── */
-  const [promoItems, setPromoItems] = useState<any[]>([]);
-  const [promoLoading, setPromoLoading] = useState(false);
   const [promoFromDate, setPromoFromDate] = useState("");
   const [promoToDate, setPromoToDate] = useState("");
-
-  const fetchPromoItems = useCallback(async () => {
-    if (!selectedStoreId) return;
-    try {
-      setPromoLoading(true);
-      const params = new URLSearchParams({ storeId: selectedStoreId });
-      if (promoFromDate) params.append("fromDate", promoFromDate);
-      if (promoToDate) params.append("toDate", promoToDate);
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-items/promo-items?${params}`,
-      );
-      setPromoItems(res.data);
-    } catch {
-      toast.error("Error al cargar promos vendidas");
-    } finally {
-      setPromoLoading(false);
-    }
-  }, [selectedStoreId, promoFromDate, promoToDate]);
+  const promosQuery = useQuery<any[]>({
+    queryKey: ["business-sold-promos", scopeKey, promoFromDate, promoToDate],
+    enabled: false,
+    queryFn: async ({ signal }) => {
+      const responses = await Promise.all(storeIds.map((storeId) => axiosAuth.get(
+        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-items/promo-items`,
+        { params: { storeId, fromDate: promoFromDate || undefined, toDate: promoToDate || undefined }, signal },
+      )));
+      return responses.flatMap((response) => response.data);
+    },
+    retry: false,
+  });
+  const promoItems = promosQuery.data ?? [];
+  const promoLoading = promosQuery.isFetching;
+  const refetchPromos = promosQuery.refetch;
+  const fetchPromoItems = useCallback(() => { if (canFetch) void refetchPromos(); }, [canFetch, refetchPromos]);
 
   /* ── Modals ──────────────────────────────────────────── */
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
@@ -432,7 +435,9 @@ export default function AtencionClientePage() {
     setCierreDiaActive(false);
   }
 
+  const scopeError = ccPageError || ccAllError || kpisError || legacyError || agentesError || codQuery.isError || limaQuery.isError || carritoQuery.isError;
   if (!auth) return null;
+  if (scopeError) return <main className="p-6 space-y-4"><HeaderConfig title="Atención al Cliente" description="Gestión de pedidos" /><div role="alert">No se pudieron cargar todos los datos de Atención al cliente.</div><Button onClick={() => { refetchCc(); void refetchKpis(); void refetchOrders(); void refetchAgentes(); void codQuery.refetch(); void limaQuery.refetch(); void carritoQuery.refetch(); }}>Reintentar</Button></main>;
 
   return (
     <OrderDetailModalProvider onOrderUpdated={refetchCc}>
@@ -500,9 +505,15 @@ export default function AtencionClientePage() {
               {/* Content */}
               <div className="p-6 space-y-4 bg-gray-50 dark:bg-slate-900 min-h-screen">
                 {cierreDiaActive ? (
-                  <CcCierreDiaTab storeId={selectedStoreId ?? ""} />
+                  storeIds.map((storeId) => <section key={storeId} className="space-y-3">
+                    {scope === "business" && <h2 className="font-semibold">{auth.company?.stores?.find((store) => store.id === storeId)?.name ?? storeId}</h2>}
+                    <CcCierreDiaTab storeId={storeId} />
+                  </section>)
                 ) : movimientosActive ? (
-                  <CcMovimientosTab storeId={selectedStoreId ?? ""} />
+                  storeIds.map((storeId) => <section key={storeId} className="space-y-3">
+                    {scope === "business" && <h2 className="font-semibold">{auth.company?.stores?.find((store) => store.id === storeId)?.name ?? storeId}</h2>}
+                    <CcMovimientosTab storeId={storeId} />
+                  </section>)
                 ) : (
                   <>
                     <CcKpiBar tipoGestion={l1} kpis={ccKpis} loading={kpisLoading} />
@@ -666,10 +677,11 @@ export default function AtencionClientePage() {
                       <Label>Hasta</Label>
                       <Input type="date" value={promoToDate} onChange={(e) => setPromoToDate(e.target.value)} className="w-40" />
                     </div>
-                    <Button onClick={fetchPromoItems} disabled={promoLoading}>
+                    <Button onClick={fetchPromoItems} disabled={promoLoading || !canFetch}>
                       {promoLoading ? "Cargando..." : "Buscar"}
                     </Button>
                   </div>
+                  {promosQuery.isError && <p role="alert">No se pudieron cargar las promociones vendidas. Vuelve a buscar para reintentar.</p>}
                   <Table>
                     <TableHeader>
                       <TableRow>

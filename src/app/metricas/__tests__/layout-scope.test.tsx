@@ -2,8 +2,9 @@ import React, { useState, type ReactNode } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
-import { useDashboardScope } from "@/contexts/DashboardScopeContext";
+import { DashboardScopeProvider, useDashboardScope } from "@/contexts/DashboardScopeContext";
 import MetricsLayout from "../layout";
+import { BusinessScopeBar } from "@/components/header/BusinessScopeBar";
 
 jest.mock("next/navigation", () => ({ usePathname: jest.fn() }));
 jest.mock("@/contexts/AuthContext", () => ({ useAuth: jest.fn() }));
@@ -11,7 +12,7 @@ jest.mock("@/components/ui/select", () => {
   const Container = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
   return {
     Select: ({ value, onValueChange }: { value: string; onValueChange: (value: string) => void }) => (
-      <button aria-label="Alcance del reporte" onClick={() => onValueChange(value === "business" ? "store" : "business")}>{value}</button>
+      <button aria-label="Ver datos de" onClick={() => onValueChange(value === "business" ? "empty" : "business")}>{value}</button>
     ),
     SelectContent: Container, SelectItem: Container, SelectTrigger: Container, SelectValue: Container,
   };
@@ -42,41 +43,48 @@ beforeEach(() => {
 });
 
 it("comparte el negocio por defecto y permite elegir la tienda vacía", () => {
-  render(<MetricsLayout><Report /></MetricsLayout>);
+  render(<DashboardScopeProvider><BusinessScopeBar /><MetricsLayout><Report /></MetricsLayout></DashboardScopeProvider>);
   expect(screen.getByText("business:empty,web")).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Alcance del reporte" }));
+  fireEvent.click(screen.getByRole("button", { name: "Ver datos de" }));
   expect(screen.getByText("store:empty")).toBeInTheDocument();
 });
 
 it("conserva la elección entre reportes y limpia los detalles al cambiar de reporte", () => {
-  const view = render(<MetricsLayout><Report /></MetricsLayout>);
-  fireEvent.click(screen.getByRole("button", { name: "Alcance del reporte" }));
+  const view = render(<DashboardScopeProvider><BusinessScopeBar /><MetricsLayout><Report /></MetricsLayout></DashboardScopeProvider>);
+  fireEvent.click(screen.getByRole("button", { name: "Ver datos de" }));
   fireEvent.click(screen.getByRole("button", { name: "Abrir detalle" }));
   expect(screen.getByText("Detalle abierto")).toBeInTheDocument();
   session = { ...session, selectedStoreId: "web" };
   mockPathname.mockReturnValue("/metricas/operaciones");
-  view.rerender(<MetricsLayout><Report /></MetricsLayout>);
+  view.rerender(<DashboardScopeProvider><BusinessScopeBar /><MetricsLayout><Report /></MetricsLayout></DashboardScopeProvider>);
   expect(screen.getByText("store:web")).toBeInTheDocument();
   expect(screen.queryByText("Detalle abierto")).not.toBeInTheDocument();
 });
 
 it("mantiene vendedores en su tienda sin selector de negocio", () => {
   session.auth!.user.role = "VENTAS";
-  render(<MetricsLayout><Report /></MetricsLayout>);
+  render(<DashboardScopeProvider><BusinessScopeBar /><MetricsLayout><Report /></MetricsLayout></DashboardScopeProvider>);
   expect(screen.getByText("store:empty")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Alcance del reporte" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Ver datos de" })).toHaveTextContent("empty");
 });
 
 it("espera una sesión válida antes de montar el reporte", () => {
   session = { ...session, auth: null, loading: true };
-  render(<MetricsLayout><Report /></MetricsLayout>);
+  render(<DashboardScopeProvider><BusinessScopeBar /><MetricsLayout><Report /></MetricsLayout></DashboardScopeProvider>);
   expect(screen.getByRole("status")).toHaveTextContent("Cargando sesión");
   expect(screen.queryByRole("button", { name: "Abrir detalle" })).not.toBeInTheDocument();
 });
 
 it("deja las métricas globales de superadministrador fuera del filtro por negocio", () => {
   mockPathname.mockReturnValue("/metricas/superadmin");
-  render(<MetricsLayout><p>Métricas globales</p></MetricsLayout>);
+  render(<DashboardScopeProvider><MetricsLayout><p>Métricas globales</p></MetricsLayout></DashboardScopeProvider>);
   expect(screen.getByText("Métricas globales")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Alcance del reporte" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Ver datos de" })).not.toBeInTheDocument();
+});
+
+it("identifica los catálogos empresariales sin ofrecer un filtro por tienda", () => {
+  mockPathname.mockReturnValue("/clientes");
+  render(<DashboardScopeProvider><BusinessScopeBar /></DashboardScopeProvider>);
+  expect(screen.getByText("Datos de todo el negocio")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Ver datos de" })).not.toBeInTheDocument();
 });

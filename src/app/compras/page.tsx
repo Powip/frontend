@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
-import axios from "axios";
+import { useState } from "react";
+import axios from "@/lib/axiosAuth";
+import { useQuery } from "@tanstack/react-query";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -52,6 +54,8 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
+const INVENTORY_API = process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics;
+
 interface PurchaseItem {
     id: string;
     variantId: string;
@@ -83,10 +87,7 @@ export default function ComprasPage() {
     const router = useRouter();
     const companyId = auth?.company?.id;
 
-    const [purchases, setPurchases] = useState<Purchase[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [currentPage, setCurrentPage] = useState(1);
-    const [totalItems, setTotalItems] = useState(0);
 
     // Modal states
     const [detailsOpen, setDetailsOpen] = useState(false);
@@ -95,31 +96,23 @@ export default function ComprasPage() {
     const [purchaseToDelete, setPurchaseToDelete] = useState<Purchase | null>(null);
     const [isDeleting, setIsDeleting] = useState<boolean>(false);
 
-    const fetchPurchases = useCallback(async () => {
-        if (!companyId) return;
-        setIsLoading(true);
-        try {
-            const res = await axios.get(
-                `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase/company/${companyId}`,
-                {
-                    params: { page: currentPage, limit: ITEMS_PER_PAGE },
-                }
+    const purchasesQuery = useQuery({
+        queryKey: ["company-purchases", companyId, auth?.user?.id, currentPage],
+        enabled: !!auth?.accessToken && !!companyId,
+        queryFn: async ({ signal }) => {
+            const response = await axios.get<{ data: Purchase[]; meta: { total: number } }>(
+                `${INVENTORY_API}/purchase/company/${companyId}`,
+                { params: { page: currentPage, limit: ITEMS_PER_PAGE }, signal },
             );
-            setPurchases(res.data.data);
-            setTotalItems(res.data.meta.total);
-        } catch (error) {
-            console.error("Error fetching purchases", error);
-            toast.error("Error al cargar compras");
-        } finally {
-            setIsLoading(false);
-        }
-    }, [companyId, currentPage]);
-
-    useEffect(() => {
-        if (companyId) {
-            fetchPurchases();
-        }
-    }, [companyId, fetchPurchases]);
+            if (!Array.isArray(response.data.data) || typeof response.data.meta?.total !== "number") throw new Error("Respuesta de compras inválida");
+            return response.data;
+        },
+        retry: false,
+    });
+    const purchases = purchasesQuery.data?.data ?? [];
+    const totalItems = purchasesQuery.data?.meta.total ?? 0;
+    const isLoading = purchasesQuery.isLoading;
+    const fetchPurchases = purchasesQuery.refetch;
 
     const handleViewDetails = (purchase: Purchase) => {
         setSelectedPurchase(purchase);
@@ -142,7 +135,7 @@ export default function ComprasPage() {
         setIsDeleting(true);
         try {
             await axios.delete(
-                `${process.env.NEXT_PUBLIC_API_INVENTORY}/purchase/${purchaseToDelete.id}`
+                `${INVENTORY_API}/purchase/${purchaseToDelete.id}`
             );
 
             toast.success("Compra eliminada y stock revertido");
@@ -175,6 +168,8 @@ export default function ComprasPage() {
     };
 
     const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+
+    if (purchasesQuery.isError) return <main className="p-6 space-y-4"><HeaderConfig title="Compras" description="Gestión de compras y reposición de inventario" /><div role="alert">No se pudieron cargar las compras del negocio.</div><Button onClick={() => void fetchPurchases()} disabled={purchasesQuery.isFetching}>Reintentar</Button></main>;
 
     return (
         <div className="w-full px-6 pb-6">

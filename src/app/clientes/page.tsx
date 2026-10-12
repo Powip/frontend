@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +30,6 @@ import { Client } from "@/interfaces/ICliente";
 import { toast } from "sonner";
 import { findByCompany, toggleClienteActivo } from "@/api/clientes/route";
 import { getBrands, getCategories } from "@/api/Productos";
-import { IGetBrand, IGetCategory } from "@/api/Interfaces";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pagination } from "@/components/ui/pagination";
 import { useRouter } from "next/navigation";
@@ -45,55 +45,42 @@ const ITEMS_PER_PAGE = 10;
 
 export default function ClientesPage() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
   const [openModal, setOpenModal] = useState(false);
   const [selectedCliente, setSelectedCliente] = useState<Client | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [brands, setBrands] = useState<IGetBrand[]>([]);
-  const [categories, setCategories] = useState<IGetCategory[]>([]);
   const [selectedBrand, setSelectedBrand] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const { auth } = useAuth();
 
-  const fetchClients = useCallback(async (companyId: string) => {
-    setLoading(true);
-    try {
-      const filters = {
+  const companyId = auth?.company?.id;
+  const canFetch = !!auth?.accessToken && !!companyId;
+  const clientsQuery = useQuery({
+    queryKey: ["company-clients", companyId, auth?.user?.id, selectedBrand, selectedCategory],
+    enabled: canFetch,
+    queryFn: async ({ signal }) => {
+      const response = await findByCompany(companyId!, {
         brandId: selectedBrand !== "all" ? selectedBrand : undefined,
         categoryId: selectedCategory !== "all" ? selectedCategory : undefined,
-      };
-      const res = await findByCompany(companyId, filters);
-      if (res) setClients(res.data);
-    } catch (error) {
-      console.log("Error cargando clientes:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedBrand, selectedCategory]);
-
-  const loadFilters = useCallback(async () => {
-    try {
-      const [brandsRes, categoriesRes] = await Promise.all([
-        getBrands(),
-        getCategories(),
-      ]);
-      setBrands(brandsRes);
-      setCategories(categoriesRes);
-    } catch (error) {
-      console.error("Error cargando filtros:", error);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (auth?.company?.id) {
-      fetchClients(auth?.company?.id);
-    }
-  }, [auth?.company?.id, fetchClients]);
-
-  useEffect(() => {
-    loadFilters();
-  }, [loadFilters]);
+      }, signal);
+      if (!Array.isArray(response.data)) throw new Error("Respuesta de clientes inválida");
+      return response.data;
+    },
+    retry: false,
+  });
+  const filtersQuery = useQuery({
+    queryKey: ["company-client-filters", companyId, auth?.user?.id],
+    enabled: canFetch,
+    queryFn: async () => {
+      const [brands, categories] = await Promise.all([getBrands(), getCategories()]);
+      return { brands, categories };
+    },
+    retry: false,
+  });
+  const clients = clientsQuery.data ?? [];
+  const loading = clientsQuery.isLoading;
+  const brands = filtersQuery.data?.brands ?? [];
+  const categories = filtersQuery.data?.categories ?? [];
+  const fetchClients = clientsQuery.refetch;
 
   const filtered = clients.filter((c) => {
     const q = searchQuery.toLowerCase();
@@ -115,14 +102,15 @@ export default function ClientesPage() {
   // Reset to page 1 when search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery]);
+  }, [searchQuery, selectedBrand, selectedCategory, companyId]);
 
   if (!auth) return null;
+  if (clientsQuery.isError) return <main className="p-6 space-y-4"><HeaderConfig title="Clientes" description="Gestión de clientes y contactos" /><div role="alert">No se pudieron cargar los clientes del negocio.</div><Button onClick={() => void fetchClients()} disabled={clientsQuery.isFetching}>Reintentar</Button></main>;
 
   const handleClienteSaved = async () => {
     setOpenModal(false);
     setSelectedCliente(null);
-    await fetchClients(auth!.company!.id);
+    await fetchClients();
   };
 
   const handleToggleActivo = async (cliente: Client) => {
@@ -131,7 +119,7 @@ export default function ClientesPage() {
       const res = await toggleClienteActivo(cliente.id);
 
       toast.success("Cliente actualizado correctamente");
-      fetchClients(auth!.company!.id);
+      fetchClients();
     } catch (error) {
       toast.error("Error al actualizar cliente");
       console.error(error);
@@ -223,6 +211,7 @@ export default function ClientesPage() {
   return (
     <div className="flex h-screen  w-full overflow-hidden">
       <main className="flex-1 p-4 md:p-6 flex flex-col overflow-hidden">
+        {filtersQuery.isError && <div role="alert" className="mb-4 space-y-2"><p>No se pudieron cargar los filtros de clientes.</p><Button onClick={() => void filtersQuery.refetch()}>Reintentar filtros</Button></div>}
         {/* Header with centered title and button on right */}
         <div className="relative mb-4">
           <div className="text-center">

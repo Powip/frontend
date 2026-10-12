@@ -9,20 +9,14 @@ import { Geography } from "@/components/dashboard/geography";
 import { TeamManagement } from "@/components/dashboard/TeamManagement";
 import { FinanceStats } from "@/components/dashboard/FinanceStats";
 import { PeriodSelector } from "@/components/dashboard/PeriodSelector";
-import { DashboardScopeProvider, useDashboardScope, type DashboardScope } from "@/contexts/DashboardScopeContext";
-import { useAuth } from "@/contexts/AuthContext";
-import { hasAdminAccess, isSuperadmin } from "@/config/permissions.config";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useDashboardScope } from "@/contexts/DashboardScopeContext";
 
 export default function DashboardPage() {
-  return <DashboardScopeProvider><DashboardContent /></DashboardScopeProvider>;
+  return <DashboardContent />;
 }
 
 function DashboardContent() {
-  const { auth, selectedStoreId } = useAuth();
-  const { scope, setScope, scopeParams } = useDashboardScope();
-  const canViewBusiness = hasAdminAccess(auth?.user.role) || isSuperadmin(auth?.user.email);
-  const selectedStore = auth?.company?.stores?.find((store) => store.id === selectedStoreId);
+  const { scope, scopeParams } = useDashboardScope();
   const [fromDate, setFromDate] = useState<string>(
     format(startOfMonth(new Date()), "yyyy-MM-dd")
   );
@@ -51,17 +45,6 @@ function DashboardContent() {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          {canViewBusiness && (
-            <Select value={scope} onValueChange={(value) => setScope(value as DashboardScope)}>
-              <SelectTrigger aria-label="Alcance del dashboard" className="w-[240px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="business">Todo el negocio</SelectItem>
-                <SelectItem value="store">{selectedStore?.name ?? "Tienda seleccionada"}</SelectItem>
-              </SelectContent>
-            </Select>
-          )}
           <PeriodSelector onPeriodChange={handlePeriodChange} />
         </div>
       </div>

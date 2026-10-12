@@ -14,6 +14,7 @@ import { decodeToken, isExpired } from "@/lib/jwt";
 import { fetchUserCompany, fetchCompanyById } from "@/services/companyService";
 import { fetchUserSubscription } from "@/services/fetchUserSubscription";
 import axios from "axios";
+import { GATEWAY } from "@/lib/gateway";
 import { isSuperadmin } from "@/config/permissions.config";
 import { tokenStore } from "@/lib/tokenStore";
 import { partnersKeys } from "@/features/partners/keys/partners.keys";
@@ -44,6 +45,8 @@ interface Inventory {
   name: string;
   storeId: string;
 }
+
+type InventoryResponse = Omit<Inventory, "storeId"> & { storeId?: string; store_id?: string };
 
 interface Company {
   id: string;
@@ -122,6 +125,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [inventories, setInventories] = useState<Inventory[]>([]);
   const currentUserId = useRef<string | null>(null);
   const sessionVersion = useRef(0);
+  const inventoryRequestVersion = useRef(0);
 
   const setSession = useCallback((nextAuth: AuthData | null, clearPartners = false) => {
     const nextUserId = nextAuth?.user.id ?? null;
@@ -248,15 +252,27 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [silentRefresh]);
 
   // ---- INVENTORIES ----
-  const fetchInventories = useCallback(async () => {
-    if (!auth?.accessToken || !selectedStoreId) return;
+  const fetchInventories = useCallback(async (signal?: AbortSignal) => {
+    const requestVersion = ++inventoryRequestVersion.current;
+    const requestingSession = sessionVersion.current;
+    if (!auth?.accessToken || !selectedStoreId) {
+      setInventories([]);
+      return;
+    }
 
     try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/inventory/store/${selectedStoreId}`,
+      const res = await axios.get<InventoryResponse[]>(
+        `${process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics}/inventory/store/${selectedStoreId}`,
+        { headers: { Authorization: `Bearer ${auth.accessToken}` }, signal },
       );
-      setInventories(res.data);
+      if (requestVersion === inventoryRequestVersion.current && requestingSession === sessionVersion.current && !signal?.aborted) {
+        setInventories(Array.isArray(res.data) ? res.data
+          .map((inventory) => ({ ...inventory, storeId: inventory.storeId ?? inventory.store_id ?? "" }))
+          .filter((inventory) => inventory.storeId === selectedStoreId) : []);
+      }
     } catch (err) {
+      if (signal?.aborted || requestVersion !== inventoryRequestVersion.current || requestingSession !== sessionVersion.current) return;
+      setInventories([]);
       console.error("Error loading inventories", err);
     }
   }, [auth?.accessToken, selectedStoreId]);
@@ -266,7 +282,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   }, [fetchInventories]);
 
   useEffect(() => {
-    fetchInventories();
+    const controller = new AbortController();
+    setInventories([]);
+    void fetchInventories(controller.signal);
+    return () => controller.abort();
   }, [fetchInventories]);
 
   // ---- LOGIN ----

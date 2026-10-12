@@ -10,6 +10,7 @@ export interface PedidosCcFilters {
   unassigned?: boolean;
   canalOrigen?: string;
   storeId?: string;
+  storeIds?: string[];
   startDate?: string;
   endDate?: string;
   page?: number;
@@ -27,6 +28,13 @@ export async function getPedidosCC(
   filters: PedidosCcFilters,
   signal?: AbortSignal,
 ): Promise<PaginatedCcResult> {
+  if (filters.storeIds) {
+    const result = await getAllPedidosCC(filters, signal);
+    if (result.truncated) throw new Error("No se pudieron cargar todos los pedidos del negocio");
+    const page = filters.page ?? 1;
+    const limit = filters.limit ?? 50;
+    return { data: result.data.slice((page - 1) * limit, page * limit), total: result.total, page, totalPages: Math.max(1, Math.ceil(result.total / limit)) };
+  }
   const params = new URLSearchParams();
   if (filters.tipoGestion)     params.set("tipoGestion", filters.tipoGestion);
   if (filters.subEstado)       params.set("subEstado", filters.subEstado);
@@ -73,6 +81,12 @@ export async function getAllPedidosCC(
   filters: Omit<PedidosCcFilters, "page" | "limit">,
   signal?: AbortSignal,
 ): Promise<AllPedidosCcResult> {
+  if (filters.storeIds) {
+    const results = await Promise.all([...new Set(filters.storeIds)].map((storeId) => getAllPedidosCC({ ...filters, storeIds: undefined, storeId }, signal)));
+    const data = Array.from(new Map(results.flatMap((result) => result.data).map((order) => [order.id, order])).values())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime() || a.id.localeCompare(b.id));
+    return { data, total: results.reduce((sum, result) => sum + result.total, 0), truncated: results.some((result) => result.truncated) };
+  }
   const byId = new Map<string, OrderHeader>();
   let total: number | undefined;
   let totalPages = 1;
@@ -102,11 +116,22 @@ export async function getAllPedidosCC(
   };
 }
 
-export async function getKpisCC(tipoGestion: TipoGestionCC, storeId: string): Promise<KpisCC> {
-  const res = await axiosAuth.get<KpisCC>(
-    `${BASE}/atencion-al-cliente/kpis?tipoGestion=${tipoGestion}&storeId=${storeId}`,
-  );
-  return res.data;
+export async function getKpisCC(tipoGestion: TipoGestionCC, scope: string | string[], signal?: AbortSignal): Promise<KpisCC> {
+  const storeIds = typeof scope === "string" ? [scope] : [...new Set(scope)];
+  const results = await Promise.all(storeIds.map(async (storeId) => {
+    const res = await axiosAuth.get<KpisCC>(`${BASE}/atencion-al-cliente/kpis`, { params: { tipoGestion, storeId }, signal });
+    return res.data;
+  }));
+  if (results.length === 1) return results[0];
+  const merged: KpisCC = { efectividadHoy: 0, confirmadosMes: 0, gestionadosMes: 0, efectividadMes: 0, upsellHoy: 0, upsellMensual: 0 };
+  for (const result of results) for (const [key, value] of Object.entries(result)) {
+    if (key !== "efectividadHoy" && key !== "efectividadMes") merged[key] = (merged[key] ?? 0) + Number(value || 0);
+  }
+  merged.efectividadMes = merged.gestionadosMes > 0 ? Math.round(100 * merged.confirmadosMes / merged.gestionadosMes) : 0;
+  // Versiones anteriores del API no proporcionan bases diarias: evitar promediar porcentajes.
+  merged.efectividadHoy = results.every((result) => typeof result.confirmadosHoy === "number" && typeof result.gestionadosHoy === "number")
+    ? (merged.gestionadosHoy > 0 ? Math.round(100 * merged.confirmadosHoy / merged.gestionadosHoy) : 0) : Number.NaN;
+  return merged;
 }
 
 export async function updateSubEstadoCC(

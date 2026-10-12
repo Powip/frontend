@@ -1,7 +1,10 @@
 "use client";
 
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -30,32 +33,11 @@ import { buildGuiasPorLiquidar } from "./_components/utils";
 
 export default function LiquidacionesPage() {
   const { can } = useOperationsRole();
-  const { selectedStoreId } = useAuth();
 
   const hasAccess = can(OPS_PERMISSIONS.MANAGE_LIQUIDACIONES);
 
-  const [orders, setOrders] = useState<OrderHeader[]>([]);
-  const [loadingOrders, setLoadingOrders] = useState(true);
+  const { orders, loading: loadingOrders, error, retry } = useBusinessOrders(undefined, undefined, { enabled: hasAccess });
   const [liquidaciones, setLiquidaciones] = useState<PagoLiquidacion[]>([]);
-
-  const loadOrders = useCallback(async () => {
-    if (!selectedStoreId || !hasAccess) return;
-    setLoadingOrders(true);
-    try {
-      const res = await axios.get(
-        `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/store/${selectedStoreId}`,
-      );
-      setOrders(res.data ?? []);
-    } catch {
-      toast.error("No se pudieron cargar los pedidos para Liquidaciones");
-    } finally {
-      setLoadingOrders(false);
-    }
-  }, [selectedStoreId, hasAccess]);
-
-  useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
 
   // orderNumbers ya cubiertos por alguna liquidación registrada en esta sesión.
   const coveredOrderNumbers = useMemo(() => {
@@ -96,6 +78,8 @@ export default function LiquidacionesPage() {
       </div>
     );
   }
+
+  if (error) return <div className="space-y-4"><PageHeader /><OperationsDataError retry={retry} /></div>;
 
   return (
     <div className="space-y-4">

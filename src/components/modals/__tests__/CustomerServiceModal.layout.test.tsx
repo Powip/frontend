@@ -19,6 +19,8 @@ jest.mock('axios', () => {
   };
 });
 
+jest.mock('@/lib/axiosAuth', () => ({ __esModule: true, default: jest.requireMock('axios') }));
+
 jest.mock('sonner', () => ({
   toast: { success: jest.fn(), error: jest.fn(), warning: jest.fn() },
 }));

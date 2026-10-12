@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 
 const API_URL = process.env.NEXT_PUBLIC_API_COURIER; // ms-courier base URL
 

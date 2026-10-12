@@ -1,5 +1,7 @@
 "use client";
 
+import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
+
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -138,7 +140,7 @@ export function HistorialTab({
             )}
             {paged.map((sale) => (
               <TableRow key={sale.id}>
-                <TableCell className="font-medium">{sale.orderNumber}</TableCell>
+                <TableCell className="font-medium">{sale.orderNumber}<OrderOriginLabel {...sale} /></TableCell>
                 <TableCell className="text-sm">{formatDateTime(sale.createdAt)}</TableCell>
                 <TableCell className="text-sm">{formatDateTime(sale.updatedAt)}</TableCell>
                 <TableCell>

@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { MessageSquare, Send, Clock, User, Settings, MessageCircle } from "lucide-react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import { shouldDisplayNote } from "@/lib/logFilters";

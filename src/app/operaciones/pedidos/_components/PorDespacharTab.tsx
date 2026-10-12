@@ -1,5 +1,7 @@
 "use client";
 
+import { OrderOriginLabel } from "../../_shared/OrderOriginLabel";
+
 import { useEffect, useMemo, useState } from "react";
 import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
@@ -909,7 +911,7 @@ export function PorDespacharTab({
                   <TableCell className="sticky left-8 z-10 w-32 min-w-32 bg-gray-100 font-medium dark:bg-gray-900">
                     <div className="flex items-center gap-1.5">
                       <StockIssueIcon show={sale.hasStockIssue} />
-                      {sale.orderNumber}
+                      {sale.orderNumber}<OrderOriginLabel {...sale} />
                     </div>
                   </TableCell>
                   <TableCell className="sticky left-40 z-10 w-28 min-w-28 bg-gray-100 text-sm dark:bg-gray-900">

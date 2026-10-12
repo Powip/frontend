@@ -2,16 +2,16 @@ import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
 import type { OrderResponseDto } from "@/features/sales/dto/order.dto";
 
-export async function getDashboardOrders(
+export async function getDashboardOrders<T extends { id: string } = OrderResponseDto>(
   storeIds: string[],
   fromDate: string | undefined,
   toDate: string | undefined,
   accessToken: string,
   options: { signal?: AbortSignal; includeCcLeads?: boolean } = {},
-): Promise<OrderResponseDto[]> {
+): Promise<T[]> {
   const responses = await Promise.all(
     [...new Set(storeIds)].map((storeId) =>
-      axiosAuth.get<OrderResponseDto[]>(
+      axiosAuth.get<T[]>(
         `${process.env.NEXT_PUBLIC_API_VENTAS || GATEWAY.ventas}/order-header/store/${storeId}`,
         {
           params: { fromDate, toDate, ...(options.includeCcLeads ? { includeCcLeads: true } : {}) },
@@ -21,5 +21,6 @@ export async function getDashboardOrders(
       ),
     ),
   );
+  if (responses.some((response) => !Array.isArray(response.data))) throw new Error("Respuesta de pedidos inválida");
   return Array.from(new Map(responses.flatMap((response) => response.data).map((order) => [order.id, order])).values());
 }

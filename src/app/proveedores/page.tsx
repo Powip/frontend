@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useState, Fragment, useCallback } from "react";
-import axios from "axios";
+import { useState, Fragment } from "react";
+import axios from "@/lib/axiosAuth";
+import { useQuery } from "@tanstack/react-query";
+import { GATEWAY } from "@/lib/gateway";
 import { toast } from "sonner";
 import {
   Plus,
@@ -36,6 +38,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useRouter } from "next/navigation";
 
+const INVENTORY_API = process.env.NEXT_PUBLIC_API_INVENTORY || GATEWAY.logistics;
+const PRODUCTS_API = process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products;
+
 interface Supplier {
   id: string;
   name: string;
@@ -57,11 +62,9 @@ export default function ProveedoresPage() {
   const { auth } = useAuth();
   const companyId = auth?.company?.id;
 
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [expandedSuppliers, setExpandedSuppliers] = useState<Set<string>>(
     new Set()
   );
-  const [isLoading, setIsLoading] = useState(true);
 
   // Modals
   const [supplierModalOpen, setSupplierModalOpen] = useState(false);
@@ -88,27 +91,20 @@ export default function ProveedoresPage() {
     supplierId: "",
   });
 
-  const fetchSuppliers = useCallback(async () => {
-    if (!companyId) return;
-    setIsLoading(true);
-    try {
-      const res = await axios.get<Supplier[]>(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/company/${companyId}`
-      );
-      setSuppliers(res.data);
-    } catch (error) {
-      console.error("Error fetching suppliers", error);
-      toast.error("Error al cargar proveedores");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [companyId]);
+  const suppliersQuery = useQuery({
+    queryKey: ["company-suppliers", companyId, auth?.user?.id],
+    enabled: !!auth?.accessToken && !!companyId,
+    queryFn: async ({ signal }) => {
+      const response = await axios.get<Supplier[]>(`${INVENTORY_API}/suppliers/company/${companyId}`, { signal });
+      if (!Array.isArray(response.data)) throw new Error("Respuesta de proveedores inválida");
+      return response.data;
+    },
+    retry: false,
+  });
+  const suppliers = suppliersQuery.data ?? [];
+  const isLoading = suppliersQuery.isLoading;
+  const fetchSuppliers = suppliersQuery.refetch;
 
-  useEffect(() => {
-    if (companyId) {
-      fetchSuppliers();
-    }
-  }, [companyId, fetchSuppliers]);
   const toggleExpand = (supplierId: string) => {
     const newExpanded = new Set(expandedSuppliers);
     if (newExpanded.has(supplierId)) {
@@ -146,13 +142,13 @@ export default function ProveedoresPage() {
     try {
       if (editingSupplier) {
         await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/${editingSupplier.id}`,
+          `${INVENTORY_API}/suppliers/${editingSupplier.id}`,
           supplierForm
         );
         toast.success("Proveedor actualizado");
       } else {
         await axios.post(
-          `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers`,
+          `${INVENTORY_API}/suppliers`,
           { ...supplierForm, companyId }
         );
         toast.success("Proveedor creado");
@@ -172,7 +168,7 @@ export default function ProveedoresPage() {
 
     try {
       await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_INVENTORY}/suppliers/${supplier.id}`
+        `${INVENTORY_API}/suppliers/${supplier.id}`
       );
       toast.success("Proveedor eliminado");
       fetchSuppliers();
@@ -212,13 +208,13 @@ export default function ProveedoresPage() {
     try {
       if (editingBrand) {
         await axios.patch(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands/${editingBrand.id}`,
+          `${PRODUCTS_API}/brands/${editingBrand.id}`,
           brandForm
         );
         toast.success("Marca actualizada");
       } else {
         await axios.post(
-          `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands`,
+          `${PRODUCTS_API}/brands`,
           brandForm
         );
         toast.success("Marca creada");
@@ -238,7 +234,7 @@ export default function ProveedoresPage() {
 
     try {
       await axios.delete(
-        `${process.env.NEXT_PUBLIC_API_PRODUCTOS}/brands/${brand.id}`
+        `${PRODUCTS_API}/brands/${brand.id}`
       );
       toast.success("Marca eliminada");
       fetchSuppliers();
@@ -247,6 +243,8 @@ export default function ProveedoresPage() {
       toast.error("Error al eliminar marca");
     }
   };
+
+  if (suppliersQuery.isError) return <main className="p-6 space-y-4"><HeaderConfig title="Proveedores" description="Gestiona proveedores y sus marcas" /><div role="alert">No se pudieron cargar los proveedores del negocio.</div><Button onClick={() => void fetchSuppliers()} disabled={suppliersQuery.isFetching}>Reintentar</Button></main>;
 
   return (
     <div className="w-full px-6 pb-6">

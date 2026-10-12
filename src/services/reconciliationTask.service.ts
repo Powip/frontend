@@ -1,8 +1,9 @@
 import axios from "axios";
 import axiosAuth from "@/lib/axiosAuth";
+import { GATEWAY } from "@/lib/gateway";
 
 const API_PRODUCTS =
-  process.env.NEXT_PUBLIC_API_PRODUCTOS || "http://localhost:3005";
+  process.env.NEXT_PUBLIC_API_PRODUCTOS || GATEWAY.products;
 
 const BASE_URL = `${API_PRODUCTS}/reconciliation-tasks`;
 

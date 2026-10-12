@@ -92,7 +92,7 @@ function Th({ children, active, dir, className = "" }: ThProps) {
 
 /* ── componente principal ────────────────────────────── */
 interface Props {
-  storeId: string;
+  storeId: string | string[];
   companyId: string;
   range: DateRange;
 }

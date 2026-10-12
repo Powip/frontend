@@ -1,7 +1,11 @@
 "use client";
 
+import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useBusinessGuides } from "@/hooks/useBusinessGuides";
+
 import { useEffect, useMemo, useState } from "react";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { toast } from "sonner";
 import { AlertTriangle, Eye, Loader2, RefreshCw, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -47,65 +51,27 @@ function hoursSince(dateStr: string): number {
 }
 
 export default function GuiasActivasTab() {
-  const { auth, selectedStoreId } = useAuth();
   const { can } = useOperationsRole();
   const canManageGuides = can(OPS_PERMISSIONS.MANAGE_GUIDES);
 
-  const [guides, setGuides] = useState<ShippingGuide[]>([]);
-  const [loading, setLoading] = useState(true);
+  const guideQuery = useBusinessGuides<ShippingGuide>();
+  const orderQuery = useBusinessOrders();
+  const guides = useMemo(() => [...guideQuery.guides].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()), [guideQuery.guides]);
+  const loading = guideQuery.loading || orderQuery.loading;
+  const error = guideQuery.error || orderQuery.error;
+  const load = () => Promise.all([guideQuery.refetch(), orderQuery.refetch()]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [courierFilter, setCourierFilter] = useState<string>("ALL");
   const [page, setPage] = useState(1);
-  // Fecha de venta = created_at del primer pedido de cada guía. No viene en
-  // /shipping-guides (solo trae orderIds), así que se resuelve aparte con un
-  // GET liviano por guía en paralelo — mismo patrón que ya usa
-  // GuideDetailsModal para traer el detalle de los pedidos de una guía.
-  const [saleDates, setSaleDates] = useState<Record<string, string | null>>({});
+  // La fecha de venta se resuelve desde los pedidos del mismo alcance.
+  const saleDates = useMemo(() => {
+    const dates = new Map(orderQuery.orders.map((order) => [order.id, order.created_at]));
+    return Object.fromEntries(guides.map((guide) => [guide.id, dates.get(guide.orderIds?.[0]) ?? null]));
+  }, [guides, orderQuery.orders]);
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsGuideId, setDetailsGuideId] = useState<string | null>(null);
-
-  const loadSaleDates = async (list: ShippingGuide[]) => {
-    const entries = await Promise.all(
-      list.map(async (g) => {
-        const firstOrderId = g.orderIds?.[0];
-        if (!firstOrderId) return [g.id, null] as const;
-        try {
-          const res = await axios.get(
-            `${process.env.NEXT_PUBLIC_API_VENTAS}/order-header/${firstOrderId}`,
-          );
-          return [g.id, res.data?.created_at ?? null] as const;
-        } catch {
-          return [g.id, null] as const;
-        }
-      }),
-    );
-    setSaleDates(Object.fromEntries(entries));
-  };
-
-  const load = async () => {
-    if (!selectedStoreId) return;
-    setLoading(true);
-    try {
-      const res = await axios.get<ShippingGuide[]>(
-        `${process.env.NEXT_PUBLIC_API_COURIER}/shipping-guides/store/${selectedStoreId}`,
-        auth?.accessToken ? { headers: { Authorization: `Bearer ${auth.accessToken}` } } : undefined,
-      );
-      const list = res.data ?? [];
-      setGuides(list);
-      loadSaleDates(list);
-    } catch {
-      toast.error("No se pudieron cargar las guías");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStoreId]);
 
   const courierOptions = useMemo(() => {
     const names = new Set<string>();
@@ -147,6 +113,8 @@ export default function GuiasActivasTab() {
     setDetailsGuideId(guideId);
     setDetailsOpen(true);
   };
+
+  if (error) return <OperationsDataError retry={load} message="No se pudieron cargar las guías." />;
 
   if (loading) {
     return (

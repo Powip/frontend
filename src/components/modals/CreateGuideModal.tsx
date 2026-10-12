@@ -1,5 +1,7 @@
 "use client";
 
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
+
 import { useState, useMemo, useEffect } from "react";
 import {
   Dialog,
@@ -22,11 +24,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { resolveGuideOrigin } from "./guideOrigin";
 import { useAuth } from "@/contexts/AuthContext";
 import { fetchCouriers, Courier } from "@/services/courierService";
 
 interface SelectedOrder {
   id: string;
+  storeId?: string;
+  inventoryId?: string | null;
+  stockStoreId?: string | null;
   orderNumber: string;
   clientName: string;
   address: string;
@@ -41,7 +47,7 @@ interface CreateGuideModalProps {
   onClose: () => void;
   selectedOrders: SelectedOrder[];
   storeId: string;
-  onConfirm: (guidesData: CreateGuideData[]) => Promise<void>;
+  onConfirm: (guidesData: CreateGuideData[]) => Promise<void | boolean>;
   isLoading?: boolean;
   defaultCourierId?: string | null;
   defaultCourierName?: string | null;
@@ -99,13 +105,15 @@ export default function CreateGuideModal({
   open,
   onClose,
   selectedOrders,
-  storeId,
+  storeId: _legacyStoreId,
   onConfirm,
   isLoading = false,
   defaultCourierId,
   defaultCourierName,
 }: CreateGuideModalProps) {
+  const invalidateBusinessData = useInvalidateBusinessData();
   const { auth } = useAuth();
+  const origin = useMemo(() => resolveGuideOrigin(selectedOrders), [selectedOrders]);
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [selectedCourierId, setSelectedCourierId] = useState<string>("");
   const [deliveryType, setDeliveryType] = useState<"MOTO" | "COURIER">(
@@ -165,6 +173,7 @@ export default function CreateGuideModal({
   }, [selectedOrders]);
 
   const handleSubmit = async () => {
+    if (origin.error || !origin.storeId) return;
     let courierId: string | undefined = undefined;
     let courierName: string | undefined = undefined;
 
@@ -181,7 +190,7 @@ export default function CreateGuideModal({
     }
 
     const guideData: CreateGuideData = {
-      storeId,
+      storeId: origin.storeId,
       orderIds: selectedOrders.map((o) => o.id),
       deliveryZones: Array.from(
         new Set(selectedOrders.map((o) => o.zone || "SIN_ZONA")),
@@ -203,7 +212,8 @@ export default function CreateGuideModal({
       ),
     };
 
-    await onConfirm([guideData]);
+    const confirmed = await onConfirm([guideData]);
+    if (confirmed !== false) await invalidateBusinessData();
   };
 
   const handleClose = () => {
@@ -218,6 +228,7 @@ export default function CreateGuideModal({
   return (
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        {origin.error && <p role="alert" className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm">{origin.error}</p>}
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <PackagePlus className="h-5 w-5" />
@@ -367,7 +378,7 @@ export default function CreateGuideModal({
           <Button
             onClick={handleSubmit}
             disabled={
-              isLoading || selectedOrders.length === 0 || !selectedCourierId
+              isLoading || !!origin.error || selectedOrders.length === 0 || !selectedCourierId
             }
             className="bg-teal-600 hover:bg-teal-700"
           >

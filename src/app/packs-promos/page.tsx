@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
 import { HeaderConfig } from "@/components/header/HeaderConfig";
+import { useBusinessInventories } from "@/hooks/useBusinessInventories";
 import { useAuth } from "@/contexts/AuthContext";
 import { isSuperadmin, hasAdminAccess } from "@/config/permissions.config";
 import { PacksProvider, usePacks } from "@/contexts/PacksContext";
@@ -51,7 +52,9 @@ const PACK_TYPE_LABEL: Record<PackType, string> = {
 const isDev = process.env.NODE_ENV === "development";
 
 function PacksPromosContent() {
-  const { auth, selectedStoreId, inventories } = useAuth();
+  const { auth } = useAuth();
+  const warehouseQuery = useBusinessInventories();
+  const inventories = warehouseQuery.inventories;
   const realIsAdmin =
     isSuperadmin(auth?.user?.email) || hasAdminAccess(auth?.user?.role);
   const [devRole, setDevRole] = useState<"admin" | "vendedor" | null>(null);
@@ -60,8 +63,9 @@ function PacksPromosContent() {
 
   const [selectedInventory, setSelectedInventory] = useState("");
   useEffect(() => {
-    setSelectedInventory(inventories[0]?.id || "");
-  }, [selectedStoreId, inventories]);
+    if (selectedInventory && inventories.some((inv) => inv.id === selectedInventory)) return;
+    setSelectedInventory(inventories.length === 1 ? inventories[0].id : "");
+  }, [selectedInventory, inventories]);
 
   const { packs, addPack, updatePack, togglePack, deletePack } = usePacks();
 
@@ -122,6 +126,14 @@ function PacksPromosContent() {
           </div>
         </div>
 
+        <div className="max-w-md space-y-2">
+          <Label htmlFor="pack-inventory">Almacén de regalos</Label>
+          {warehouseQuery.isError ? <p role="alert">No se pudieron cargar los almacenes. <Button variant="outline" onClick={() => void warehouseQuery.refetch()}>Reintentar</Button></p> : null}
+          <select id="pack-inventory" className="w-full rounded border p-2 bg-background" value={selectedInventory} onChange={(event) => setSelectedInventory(event.target.value)} disabled={warehouseQuery.isPending || warehouseQuery.isError}>
+            <option value="">{warehouseQuery.isPending ? "Cargando almacenes..." : "Seleccionar almacén del negocio"}</option>
+            {inventories.map((inv) => <option key={inv.id} value={inv.id}>{inv.name}{inv.storeName ? ` · ${inv.storeName}` : ""}</option>)}
+          </select>
+        </div>
         {!isAdmin && (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-500/10 dark:text-amber-300">
             👁 Estás como <b>Vendedor</b>: ves los packs en modo solo lectura. La
@@ -326,6 +338,7 @@ function PackCard({
  *  dispara la query, por lo que `products` cae al default `[]`, `loading` queda
  *  `false`, `isError` queda `false` y `errorReason` queda `null`. */
 function useProductCatalog(options?: { enabled?: boolean }) {
+  const { auth } = useAuth();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -340,12 +353,12 @@ function useProductCatalog(options?: { enabled?: boolean }) {
     isError,
     error,
   } = useQuery({
-    queryKey: ["packs-catalog", debouncedQuery],
+    queryKey: ["packs-catalog", auth?.company?.id, auth?.user?.id, debouncedQuery],
     queryFn: () =>
       getProducts({ status: true, name: debouncedQuery || undefined }),
     staleTime: 30_000,
     placeholderData: (prev) => prev, // evita el flicker a lista vacía entre búsquedas
-    enabled: options?.enabled ?? true,
+    enabled: (options?.enabled ?? true) && Boolean(auth?.user?.id && auth?.accessToken),
     // No reintentar 4xx de axios (incl. el 403 "sin empresa"): reintento inútil
     // que sólo demora el feedback. 1 reintento para el resto (5xx, errores JS).
     retry: (n, e) =>
@@ -950,6 +963,7 @@ function useGiftInventorySearch({
   inventoryId: string;
   companyId?: string;
 }) {
+  const { auth } = useAuth();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
 
@@ -959,7 +973,7 @@ function useGiftInventorySearch({
   }, [query]);
 
   const { data, isFetching, isError } = useQuery({
-    queryKey: ["gift-inventory", inventoryId, companyId ?? null, debouncedQuery],
+    queryKey: ["gift-inventory", auth?.user?.id, inventoryId, companyId ?? null, debouncedQuery],
     queryFn: () =>
       searchInventoryItems({
         inventoryId,
@@ -968,7 +982,7 @@ function useGiftInventorySearch({
         page: 1,
         limit: 20,
       }),
-    enabled: !!inventoryId,
+    enabled: !!inventoryId && Boolean(auth?.accessToken && auth?.user?.id && companyId),
     staleTime: 30_000,
     placeholderData: (prev) => prev, // evita el flicker a lista vacía entre búsquedas
   });

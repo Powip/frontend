@@ -1,5 +1,5 @@
 ﻿"use client";
-import axios from "axios";
+import axios from "@/lib/axiosAuth";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";

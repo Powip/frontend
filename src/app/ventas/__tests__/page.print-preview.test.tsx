@@ -7,6 +7,9 @@ jest.mock("axios", () => ({
   post: jest.fn(),
 }));
 
+jest.mock("@/lib/axiosAuth", () => ({ __esModule: true, default: jest.requireMock("axios") }));
+jest.mock("@/contexts/BusinessScopeContext", () => ({ useBusinessScope: () => ({ scopeKey: "company-1:business:store-1" }) }));
+jest.mock("@/hooks/useInvalidateBusinessData", () => ({ useInvalidateBusinessData: () => jest.fn() }));
 jest.mock("sonner", () => ({
   toast: {
     success: jest.fn(),
@@ -30,8 +33,8 @@ jest.mock("@/services/atencionClienteService", () => ({
   reassignSeller: jest.fn(),
 }));
 
-jest.mock("@/hooks/useOrdersByStore", () => ({
-  useOrdersByStore: jest.fn(),
+jest.mock("@/hooks/useBusinessOrders", () => ({
+  useBusinessOrders: jest.fn(),
 }));
 
 jest.mock("@/utils/bulk-receipt-printer", () => ({
@@ -70,13 +73,13 @@ jest.mock("@/components/modals/ReassignSellerModal", () => ({
 
 import axios from "axios";
 import { useAuth } from "@/contexts/AuthContext";
-import { useOrdersByStore } from "@/hooks/useOrdersByStore";
+import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import type { OrderHeader } from "@/interfaces/IOrder";
 import VentasPage from "../page";
 
 const mockedAxios = axios as unknown as { get: jest.Mock; patch: jest.Mock; post: jest.Mock };
 const mockUseAuth = jest.mocked(useAuth);
-const mockUseOrdersByStore = jest.mocked(useOrdersByStore);
+const mockUseOrdersByStore = jest.mocked(useBusinessOrders);
 const refetch = jest.fn();
 
 process.env.NEXT_PUBLIC_API_VENTAS = "http://ventas";
@@ -143,9 +146,12 @@ beforeEach(() => {
     hasPermission: jest.fn().mockReturnValue(true),
   } as unknown as ReturnType<typeof useAuth>);
   mockUseOrdersByStore.mockReturnValue({
-    data: ORDERS,
+    orders: ORDERS,
+    loading: false,
+    error: false,
+    retry: jest.fn(),
     refetch,
-  } as unknown as ReturnType<typeof useOrdersByStore>);
+  } as unknown as ReturnType<typeof useBusinessOrders>);
   mockedAxios.get.mockImplementation(async (url: string) => {
     const match = url.match(/order-header\/(.+)\/receipt$/);
     if (match) {

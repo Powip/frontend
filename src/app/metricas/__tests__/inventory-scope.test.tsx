@@ -69,6 +69,8 @@ function setScope(scope: "business" | "store" = "business", storeIds = ["store-a
     scope,
     storeIds,
     canFetch: true,
+    canViewBusiness: true,
+    scopeKey: JSON.stringify([scope, storeIds]),
     setScope: jest.fn(),
     scopeParams: scope === "business" ? { storeIds: storeIds.join(",") } : { storeId: storeIds[0] },
   });
