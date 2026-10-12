@@ -8,6 +8,20 @@ export type AdvertisingConnectionStatusWire =
   | "needs-auth"
   | "paused";
 
+export interface AdvertisingHistoryImportState {
+  id: string;
+  status: "queued" | "running" | "succeeded" | "failed" | "paused";
+  availableFrom: string | null;
+  availableTo: string | null;
+  completedWindows: number;
+  totalWindows: number | null;
+  errorCode: string | null;
+}
+
+export interface AdvertisingHistoryImport extends AdvertisingHistoryImportState {
+  accountId: string;
+}
+
 export type AdvertisingManualStatusWire =
   | "pending"
   | "represented"
@@ -29,6 +43,8 @@ export interface AdvertisingAccountWire {
   lastAttemptAt: string | null;
   lastSuccessfulAt: string | null;
   updatedAt: string | null;
+  historyImport?: AdvertisingHistoryImportState | null;
+  disconnectedAt?: string | null;
 }
 
 export interface AdvertisingDayWire {
@@ -114,7 +130,7 @@ export interface AdvertisingSnapshotWire {
       status: AdvertisingConnectionStatusWire;
     }
   >;
-  capabilities: { canManage: boolean; canReconcile: boolean };
+  capabilities: { canManage: boolean; canReconcile: boolean; canDisconnect?: boolean };
   today: string;
   effective?: EffectiveAdvertisingSpendWire;
 }
@@ -134,11 +150,43 @@ export interface AdvertisingDiscoveredAccount {
   currency: string;
   timeZone: string;
   enabled?: boolean;
+  selectable?: boolean;
+  selectionBlockedReason?: "linked-other-company" | "metadata-changed" | null;
+}
+
+export function advertisingAccountSelectable(account: AdvertisingDiscoveredAccount): boolean {
+  return (
+    account.selectable !== false &&
+    account.selectionBlockedReason !== "linked-other-company" &&
+    account.selectionBlockedReason !== "metadata-changed"
+  );
 }
 
 export interface AdvertisingSelectionPayload {
   externalIds: string[];
-  syncFrom?: string;
+}
+
+export interface AdvertisingDisconnectCounts {
+  ledgerDays: number;
+  metaObjects: number;
+  metaAdDays: number;
+  metaCoverageDays: number;
+  metaCatalogStates: number;
+}
+
+export interface AdvertisingDisconnectPreview {
+  account: { id: string; name: string; provider: AdvertisingProviderWire };
+  alreadyDisconnected: boolean;
+  deleteCounts: AdvertisingDisconnectCounts;
+  preservedManualRecords: number;
+  previewVersion: string | null;
+  expiresAt: string | null;
+}
+
+export interface AdvertisingDisconnectResult {
+  disconnected: true;
+  alreadyDisconnected: boolean;
+  deletedCounts: AdvertisingDisconnectCounts | null;
 }
 
 export interface AdvertisingSyncRun {
@@ -258,15 +306,83 @@ export async function discoverAdvertisingAccounts(
   return response.data;
 }
 
+export async function previewAdvertisingAccountDisconnect(
+  token: string,
+  companyId: string,
+  accountId: string,
+  signal?: AbortSignal,
+): Promise<AdvertisingDisconnectPreview> {
+  const response = await axios.post<AdvertisingDisconnectPreview>(
+    `${companyUrl(companyId)}/accounts/${encodeURIComponent(accountId)}/disconnect-preview`,
+    {},
+    requestOptions(token, signal),
+  );
+  return response.data;
+}
+
+export async function disconnectAdvertisingAccount(
+  token: string,
+  companyId: string,
+  accountId: string,
+  previewVersion: string,
+  signal?: AbortSignal,
+): Promise<AdvertisingDisconnectResult> {
+  const response = await axios.post<AdvertisingDisconnectResult>(
+    `${companyUrl(companyId)}/accounts/${encodeURIComponent(accountId)}/disconnect`,
+    { previewVersion, confirmed: true },
+    requestOptions(token, signal, 60_000),
+  );
+  return response.data;
+}
+
+export function advertisingDisconnectErrorMessage(failure: unknown): string {
+  switch (advertisingErrorStatus(failure)) {
+    case 401:
+      return "Vuelve a iniciar sesión para continuar.";
+    case 403:
+      return "No tienes permiso para desconectar esta cuenta.";
+    case 404:
+      return "Esta cuenta no está disponible en la empresa seleccionada.";
+    case 409: {
+      const data: unknown = axios.isAxiosError(failure) ? failure.response?.data : undefined;
+      if (
+        data &&
+        typeof data === "object" &&
+        "errorCode" in data &&
+        data.errorCode === "ACCOUNT_BUSY"
+      )
+        return "Esta cuenta se está actualizando. Espera y vuelve a revisar.";
+      return "Los datos cambiaron. Vuelve a revisar antes de desconectar.";
+    }
+    case 400:
+      return "Vuelve a revisar la cuenta y confirma la desconexión.";
+    default:
+      return "No pudimos desconectar la cuenta. Vuelve a revisar e inténtalo de nuevo.";
+  }
+}
+
 export async function selectAdvertisingAccounts(
   token: string,
   companyId: string,
   provider: AdvertisingProviderWire,
   payload: AdvertisingSelectionPayload,
-): Promise<{ selectedCount: number }> {
-  const response = await axios.put<{ selectedCount: number }>(
+): Promise<{ selectedCount: number; imports: AdvertisingHistoryImport[] }> {
+  const response = await axios.put<{ selectedCount: number; imports: AdvertisingHistoryImport[] }>(
     `${providerUrl(companyId, provider)}/accounts`,
-    payload,
+    { externalIds: payload.externalIds },
+    requestOptions(token),
+  );
+  return response.data;
+}
+
+export async function importAdvertisingHistory(
+  token: string,
+  companyId: string,
+  provider: AdvertisingProviderWire,
+): Promise<{ imports: AdvertisingHistoryImport[] }> {
+  const response = await axios.post<{ imports: AdvertisingHistoryImport[] }>(
+    `${providerUrl(companyId, provider)}/history-import`,
+    {},
     requestOptions(token),
   );
   return response.data;
@@ -419,6 +535,28 @@ export function advertisingErrorStatus(failure: unknown): number | undefined {
   return axios.isAxiosError(failure) ? failure.response?.status : undefined;
 }
 
+const SELECTION_CONFLICT_MESSAGES = {
+  ACCOUNT_ALREADY_LINKED:
+    "Esta cuenta ya está vinculada a otra empresa. Revisa la empresa seleccionada en Powip.",
+  ACCOUNT_METADATA_CHANGED:
+    "La moneda o la zona horaria de una cuenta cambió. Revisa las cuentas antes de guardar.",
+  CONNECTION_CHANGED: "La conexión cambió. Revisa la conexión y vuelve a elegir las cuentas.",
+  ACCOUNT_SELECTION_CHANGED: "Las cuentas cambiaron. Vuelve a elegirlas antes de guardar.",
+  PROVIDER_AUTH: "Vuelve a conectar Meta para elegir las cuentas.",
+} as const;
+
+export function advertisingSelectionConflictCode(
+  failure: unknown,
+): keyof typeof SELECTION_CONFLICT_MESSAGES | undefined {
+  if (advertisingErrorStatus(failure) !== 409 || !axios.isAxiosError(failure)) return undefined;
+  const data: unknown = failure.response?.data;
+  if (!data || typeof data !== "object" || !("errorCode" in data)) return undefined;
+  const code = data.errorCode;
+  return typeof code === "string" && Object.hasOwn(SELECTION_CONFLICT_MESSAGES, code)
+    ? (code as keyof typeof SELECTION_CONFLICT_MESSAGES)
+    : undefined;
+}
+
 export function advertisingErrorMessage(failure: unknown): string {
   if (failure instanceof AdvertisingApiError) return failure.message;
   switch (advertisingErrorStatus(failure)) {
@@ -426,8 +564,12 @@ export function advertisingErrorMessage(failure: unknown): string {
       return "Vuelve a iniciar sesión para continuar.";
     case 403:
       return "No tienes permiso para continuar.";
-    case 409:
-      return "La configuración cambió. Actualiza e inténtalo de nuevo.";
+    case 409: {
+      const code = advertisingSelectionConflictCode(failure);
+      return code
+        ? SELECTION_CONFLICT_MESSAGES[code]
+        : "La configuración cambió. Actualiza e inténtalo de nuevo.";
+    }
     case 429:
       return "Espera un momento e inténtalo de nuevo.";
     case 503:

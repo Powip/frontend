@@ -9,6 +9,8 @@ export interface AdvertisingAccount {
   timeZone: string;
   enabled: boolean;
   updatedAt: string | null;
+  historyImport?: AdvertisingHistoryImportState | null;
+  disconnectedAt?: string | null;
 }
 
 export interface AdvertisingDay {
@@ -123,6 +125,7 @@ export function getAdvertisingSummary(
   // change whether an already imported amount exists.
   const selectedAccounts = snapshot.accounts.filter(
     (account) =>
+      !account.disconnectedAt &&
       (filters.provider === "all" || account.provider === filters.provider) &&
       (filters.accountId === "all" || account.id === filters.accountId) &&
       (filters.currency === "all" || account.currency === filters.currency),
@@ -243,6 +246,13 @@ export function formatAdvertisingMoney(
 }
 
 export function snapshotFromWire(wire: AdvertisingSnapshotWire): AdvertisingSnapshot {
+  if (
+    wire.accounts.some(
+      (account) =>
+        account.historyImport != null && !isAdvertisingHistoryImport(account.historyImport),
+    )
+  )
+    throw new Error("No pudimos leer el estado de importación.");
   const currencies = new Map(wire.accounts.map((account) => [account.id, account.currency]));
   return {
     accounts: wire.accounts,
@@ -324,6 +334,7 @@ export const EMPTY_ADVERTISING_SNAPSHOT: AdvertisingSnapshot = {
 };
 
 import type {
+  AdvertisingHistoryImportState,
   AdvertisingManualRecordWire,
   AdvertisingSnapshotWire,
 } from "@/services/advertisingService";
@@ -332,3 +343,4 @@ import {
   formatAdvertisingDecimal,
   sumAdvertisingDecimals,
 } from "./advertising-decimal";
+import { isAdvertisingHistoryImport } from "./advertising-history";

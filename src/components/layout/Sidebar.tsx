@@ -42,6 +42,7 @@ import {
   CalendarRange,
   Handshake,
   LayoutList,
+  Plug,
 } from "lucide-react";
 
 import { Button } from "../ui/button";
@@ -71,6 +72,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import PowipLogoMini from "./logo-mini";
 import PowipLogo from "./logo";
+import { ADVERTISING_SECTIONS } from "@/components/advertising/advertising-sections";
 
 interface SidebarProps {
   className?: string;
@@ -284,6 +286,15 @@ export function Sidebar({ className }: SidebarProps) {
           { name: "Capital & ROI", href: "/administracion/capital", icon: PiggyBank },
           { name: "Resumen Anual", href: "/administracion/anual", icon: CalendarRange },
         ],
+      },
+      {
+        name: "Publicidad",
+        icon: Megaphone,
+        children: ADVERTISING_SECTIONS.map((section) => ({
+          name: section.label,
+          href: section.href,
+          icon: section.href === "/publicidad/conexiones" ? Plug : BarChart,
+        })),
       },
       {
         name: "Partners",

@@ -64,6 +64,17 @@ describe("Sidebar · Partners with current main", () => {
       .toHaveAttribute("href", "/partners");
   });
 
+  it("shows Publicidad as a main section only with financial access", () => {
+    mockPathname = "/publicidad/conexiones";
+    const view = render(<Sidebar />);
+    expect(screen.queryByRole("button", { name: "Publicidad" })).not.toBeInTheDocument();
+    mockUser = { ...mockUser, permissions: ["VIEW_FINANCES"] };
+    view.rerender(<Sidebar />);
+    expect(screen.getByRole("button", { name: "Publicidad" })).toBeVisible();
+    expect(screen.getByRole("link", { name: "Conexiones" })).toHaveAttribute("href", "/publicidad/conexiones");
+    expect(screen.getByRole("link", { name: "Resumen" })).toHaveAttribute("href", "/publicidad");
+  });
+
   it("an administrative role alone does not show Partners staff navigation", () => {
     render(<Sidebar />);
 

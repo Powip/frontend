@@ -46,6 +46,16 @@ export function useAdvertisingSnapshot({
     staleTime: 0,
     gcTime: 0,
     retry: false,
+    refetchInterval: (query) => {
+      if (!enabled || query.state.error) return false;
+      return query.state.data?.accounts.some(
+        (account) =>
+          account.historyImport?.status === "queued" || account.historyImport?.status === "running",
+      )
+        ? 5_000
+        : false;
+    },
+    refetchIntervalInBackground: false,
   });
   const status = advertisingErrorStatus(query.error);
   const isAccessDenied = status === 401 || status === 403;
