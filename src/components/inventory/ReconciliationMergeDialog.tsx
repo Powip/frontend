@@ -24,6 +24,7 @@ import {
   ReconciliationTaskItem,
   getReconciliationTaskErrorMessage,
   resolveReconciliationMerge,
+  type MergeStockMode,
 } from "@/services/reconciliationTask.service";
 import { VariantStock } from "@/services/inventoryItems.service";
 import { useReconciliationTaskDetails } from "@/hooks/useReconciliationTaskDetails";
@@ -39,7 +40,6 @@ import { ReconciliationMergeCompare } from "./ReconciliationMergeCompare";
 import { ReconciliationMergeStockCostStep } from "./ReconciliationMergeStockCostStep";
 import { ReconciliationSiblingVariantsTable } from "./ReconciliationSiblingVariantsTable";
 import { ReconciliationSourceChip } from "./ReconciliationSourceChip";
-import type { MergeStockMode } from "@/services/reconciliationTask.service";
 
 type MergeStep = "select" | "review" | "final";
 
@@ -434,8 +434,14 @@ export function ReconciliationMergeDialog({
   };
   const winnerCost = Number(winnerDetail?.variant.cost) || 0;
   const loserCost = Number(loserDetail?.variant.cost) || 0;
-  const pairDataReady = hasFullStock && detailsQuery.isSuccess;
-  const pairDataFailed = stockQuery.isError || detailsQuery.isError;
+  const pairDataReady =
+    hasFullStock && detailsQuery.isSuccess && !!winnerDetail && !!loserDetail;
+  // Datos cargados pero falta algún candidato: sin su costo no se puede
+  // unificar (caería a 0), se trata igual que una carga fallida.
+  const pairDetailsMissing =
+    hasFullStock && detailsQuery.isSuccess && (!winnerDetail || !loserDetail);
+  const pairDataFailed =
+    stockQuery.isError || detailsQuery.isError || pairDetailsMissing;
   const stockValidation = validateMergeStock(stockMode, pairSides, countedRaw);
   const costResolution = resolveMergeCost(costChoice, winnerCost, loserCost, customCostRaw);
   const showShopifyNotice = task.items.some((item) => item.source === "shopify");
@@ -448,6 +454,8 @@ export function ReconciliationMergeDialog({
 
   const handleConfirm = async () => {
     if (!selectedWinnerId) return;
+    // Nunca caer al body legacy (suma) en un par sin datos válidos.
+    if (isPair && !canApplyPair) return;
 
     const loserVariantIds = task.items
       .map((item) => item.variant_id)

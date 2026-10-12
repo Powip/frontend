@@ -492,7 +492,7 @@ describe('ReconciliationMergeDialog', () => {
   });
 
   describe('"← Volver" (paso 3)', () => {
-    it('vuelve al paso 1 sin cerrar el diálogo ni aplicar el merge', async () => {
+    it('vuelve al paso 2 sin cerrar el diálogo ni aplicar el merge', async () => {
       const onClose = jest.fn();
       renderDialog(makeClusterTask(), onClose);
       await screen.findAllByRole('radio');
@@ -841,6 +841,39 @@ describe('ReconciliationMergeDialog', () => {
       expect(screen.getByRole('button', { name: /aplicar unificación/i })).toBeDisabled();
     });
 
+    it('tras cambiar la madre a "Producto A" (costo 20), "Usar stock de la madre" manda winner con el costo de A', async () => {
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await user.click(screen.getByRole('radio', { name: /elegir "producto a"/i }));
+      await goToFinalStep(user);
+
+      await user.click(await screen.findByRole('radio', { name: /usar stock de la madre/i }));
+      await user.click(screen.getByRole('button', { name: /aplicar unificación/i }));
+
+      await waitFor(() =>
+        expect(mockResolveMerge).toHaveBeenCalledWith('task-pair-1', 'variant-a', ['variant-b'], {
+          stockMode: 'winner',
+          priceBase: 20,
+        }),
+      );
+    });
+
+    it('si el detalle llega sin una de las candidatas, el paso 3 muestra el error y no deja aplicar', async () => {
+      mockGetTaskDetails.mockResolvedValue({
+        task_id: 'task-pair-1',
+        candidates: [makeCandidateB()],
+      });
+      renderDialog(makePairTask());
+      await screen.findAllByRole('radio');
+      const user = userEvent.setup();
+      await goToFinalStep(user);
+
+      expect(await screen.findByText(/no se pudieron cargar el stock o el costo/i)).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /aplicar unificación/i })).toBeDisabled();
+    });
+
     it('si falla el stock en un par, el paso 3 no deja aplicar y ofrece reintentar', async () => {
       mockGetStock.mockRejectedValueOnce(new Error('stock down'));
       renderDialog(makePairTask());
@@ -852,4 +885,5 @@ describe('ReconciliationMergeDialog', () => {
       expect(screen.getByRole('button', { name: /reintentar/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /aplicar unificación/i })).toBeDisabled();
     });
-  });});
+  });
+});
