@@ -4,17 +4,21 @@ export interface GuideOrderOrigin {
   stockStoreId?: string | null;
 }
 
-export function resolveGuideOrigin(orders: readonly GuideOrderOrigin[]) {
+export function resolveGuideOrigin(
+  orders: readonly GuideOrderOrigin[],
+  companyStoreIds: readonly string[],
+) {
   if (!orders.length || orders.some((order) => !order.storeId)) {
     return { storeId: null, error: "No se pudo identificar la tienda de los pedidos seleccionados." };
   }
-  const stores = new Set(orders.map((order) => order.storeId!));
-  if (stores.size !== 1) {
-    return { storeId: null, error: "Selecciona pedidos de una sola tienda para crear o añadir a una guía." };
+  if (!companyStoreIds.length) {
+    return { storeId: null, error: "No se pudieron identificar las tiendas del negocio activo." };
   }
-  const warehouses = new Set(orders.map((order) => `${order.inventoryId ?? "legacy"}:${order.stockStoreId ?? "legacy"}`));
-  if (warehouses.size !== 1) {
-    return { storeId: null, error: "Selecciona pedidos del mismo almacén para crear o añadir a una guía." };
+  const stores = new Set(companyStoreIds);
+  if (orders.some((order) => !stores.has(order.storeId!))) {
+    return { storeId: null, error: "Los pedidos seleccionados deben pertenecer al mismo negocio." };
   }
-  return { storeId: [...stores][0], error: null };
+  // La guía conserva un propietario operativo por compatibilidad con la API.
+  // Cada pedido mantiene su tienda comercial y su almacén, sin agruparlos.
+  return { storeId: orders[0].storeId!, error: null };
 }

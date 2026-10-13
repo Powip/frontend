@@ -3,10 +3,10 @@
 import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
 
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
-import { useBusinessOrders } from "@/hooks/useBusinessOrders";
 import { useBusinessGuides } from "@/hooks/useBusinessGuides";
+import { useAuth } from "@/contexts/AuthContext";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -84,18 +84,18 @@ export default function AddToExistingGuideModal({
   isLoading = false,
 }: AddToExistingGuideModalProps) {
   const invalidateBusinessData = useInvalidateBusinessData();
-  const origin = useMemo(() => resolveGuideOrigin(selectedOrders), [selectedOrders]);
-  const guideQuery = useBusinessGuides<ShippingGuide>();
-  const orderQuery = useBusinessOrders(undefined, undefined, { enabled: open });
-  const loadingGuides = guideQuery.loading || orderQuery.loading;
-  const error = guideQuery.error || orderQuery.error;
-  const retry = () => Promise.all([guideQuery.retry(), orderQuery.retry()]);
+  const { auth } = useAuth();
+  const stores = auth?.company?.stores;
+  const companyStoreIds = useMemo(() => stores?.map((store) => store.id) ?? [], [stores]);
+  const origin = useMemo(() => resolveGuideOrigin(selectedOrders, companyStoreIds), [selectedOrders, companyStoreIds]);
+  const guideQuery = useBusinessGuides<ShippingGuide>({ includeAllStores: true });
+  const loadingGuides = guideQuery.loading;
+  const error = guideQuery.error;
+  const retry = guideQuery.retry;
   const guides = useMemo(() => guideQuery.guides.filter((guide) => {
-    if (guide.storeId !== origin.storeId || !["CREADA", "ASIGNADA", "EN_RUTA"].includes(guide.status)) return false;
-    const existingOrders = orderQuery.orders.filter((order) => guide.orderIds?.includes(order.id));
-    if (existingOrders.length !== (guide.orderIds?.length ?? 0)) return false;
-    return !resolveGuideOrigin([...selectedOrders, ...existingOrders]).error;
-  }), [guideQuery.guides, orderQuery.orders, origin.storeId, selectedOrders]);
+    return !origin.error && companyStoreIds.includes(guide.storeId) &&
+      ["CREADA", "ASIGNADA", "EN_RUTA"].includes(guide.status);
+  }), [guideQuery.guides, companyStoreIds, origin.error]);
   const [search, setSearch] = useState("");
   const [selectedGuideId, setSelectedGuideId] = useState<string | null>(null);
 
@@ -126,8 +126,8 @@ export default function AddToExistingGuideModal({
   }, [guides, ordersDispatchType, search]);
 
   const handleConfirm = async () => {
-    if (!selectedGuideId || origin.error || error) return;
-    const guide = guides.find((g) => g.id === selectedGuideId);
+    if (isLoading || loadingGuides || !selectedGuideId || origin.error || error) return;
+    const guide = filteredGuides.find((g) => g.id === selectedGuideId);
     if (guide) {
       const confirmed = await onConfirm(guide.id, guide.guideNumber, guide.status, guide.courierName);
       if (confirmed !== false) await invalidateBusinessData();
@@ -268,7 +268,7 @@ export default function AddToExistingGuideModal({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={isLoading || !!origin.error || error || !selectedGuideId || isMixed}
+            disabled={isLoading || loadingGuides || !!origin.error || error || !filteredGuides.some((guide) => guide.id === selectedGuideId) || isMixed}
             className="bg-teal-600 hover:bg-teal-700"
           >
             {isLoading ? (

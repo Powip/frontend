@@ -5,20 +5,17 @@ import userEvent from '@testing-library/user-event';
 import CreateGuideModal from '../CreateGuideModal';
 import AddToExistingGuideModal from '../AddToExistingGuideModal';
 import { useBusinessGuides } from '@/hooks/useBusinessGuides';
-import { useBusinessOrders } from '@/hooks/useBusinessOrders';
 import { fetchCouriers } from '@/services/courierService';
 
-jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { company: { id: 'company' }, accessToken: 'token' } }) }));
+jest.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ auth: { company: { id: 'company', stores: [{ id: 'web' }, { id: 'livii' }, { id: 'kunca' }] }, accessToken: 'token' } }) }));
 jest.mock('@/services/courierService', () => ({ fetchCouriers: jest.fn().mockResolvedValue([{ id: 'courier-one', name: 'Courier One' }]) }));
 jest.mock('@/hooks/useBusinessGuides', () => ({ useBusinessGuides: jest.fn() }));
-jest.mock('@/hooks/useBusinessOrders', () => ({ useBusinessOrders: jest.fn() }));
 const selected = { id: 'selected-web-order', storeId: 'web', inventoryId: 'shared-inventory', stockStoreId: 'kunca', orderNumber: 'WEB-ONE', clientName: 'Cliente', address: 'Dirección', district: 'Distrito', total: 20, pendingPayment: 20, zone: 'PROVINCIAS' };
 let queryClient: QueryClient;
 function render(element: ReactElement) {
   return renderRTL(<QueryClientProvider client={queryClient}>{element}</QueryClientProvider>);
 }
 const retryGuides = jest.fn();
-const retryOrders = jest.fn();
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -26,7 +23,6 @@ beforeEach(() => {
   queryClient.setQueryData(["business-orders", "company", "user", ["web"]], []);
   queryClient.setQueryData(["business-guides", "company", "user", ["web"]], []);
   jest.mocked(useBusinessGuides).mockReturnValue({ guides: [], loading: false, error: false, retry: retryGuides, refetch: retryGuides });
-  jest.mocked(useBusinessOrders).mockReturnValue({ orders: [], loading: false, error: false, retry: retryOrders, refetch: retryOrders });
 });
 
 describe('guide actions keep the selected orders source', () => {
@@ -81,29 +77,87 @@ describe('guide actions keep the selected orders source', () => {
     expect(queryClient.getQueriesData({ queryKey: ['business-guides'] }).every(([key]) => !queryClient.getQueryState(key)?.isInvalidated)).toBe(true);
   });
 
-  it('blocks mixed business stores sharing an inventory with an explicit explanation', async () => {
-    const confirm = jest.fn();
+  it('creates one joint guide for 11 orders across stores and warehouses', async () => {
+    const orders = Array.from({ length: 11 }, (_, index) => ({
+      ...selected,
+      id: `order-${index}`,
+      storeId: index < 6 ? 'web' : 'livii',
+      inventoryId: index < 9 ? 'shared-inventory' : 'other-inventory',
+      pendingPayment: index + 1,
+      zone: index < 6 ? 'PROVINCIAS' : 'LIMA_NORTE',
+    }));
+    const confirm = jest.fn().mockResolvedValue(undefined);
+    render(<CreateGuideModal open onClose={jest.fn()} selectedOrders={orders} storeId="kunca" onConfirm={confirm} defaultCourierId="courier-one" />);
+    const submit = screen.getByRole('button', { name: 'Generar Guía' });
+    await waitFor(() => expect(submit).toBeEnabled());
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('Se creará una guía para 11 pedido(s)')).toBeInTheDocument();
+    const costs = screen.getAllByPlaceholderText('0.00');
+    await userEvent.type(costs[0], '12.50');
+    await userEvent.type(costs[6], '8');
+    await userEvent.type(costs[10], '3.25');
+    await userEvent.click(submit);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm).toHaveBeenCalledWith([
+      expect.objectContaining({
+        storeId: 'web', orderIds: orders.map((order) => order.id),
+        amountToCollect: 66, deliveryZones: ['PROVINCIAS', 'LIMA_NORTE'],
+        orderCarrierCosts: { 'order-0': 12.5, 'order-6': 8, 'order-10': 3.25 },
+        courierId: 'courier-one',
+      }),
+    ]);
+  });
+
+  it('does not collect pending balances again for prepaid guides across stores', async () => {
+    const confirm = jest.fn().mockResolvedValue(undefined);
     render(<CreateGuideModal open onClose={jest.fn()} selectedOrders={[selected, { ...selected, id: 'livii-order', storeId: 'livii' }]} storeId="kunca" onConfirm={confirm} defaultCourierId="courier-one" />);
+    const submit = screen.getByRole('button', { name: 'Generar Guía' });
+    await waitFor(() => expect(submit).toBeEnabled());
+    await userEvent.selectOptions(screen.getByLabelText('Tipo de cobro'), 'PREPAGADO');
+    await userEvent.click(submit);
+    expect(confirm).toHaveBeenCalledWith([
+      expect.objectContaining({ chargeType: 'PREPAGADO', amountToCollect: undefined }),
+    ]);
+  });
+
+  it('still blocks a selection missing the order store', async () => {
+    const confirm = jest.fn();
+    render(<CreateGuideModal open onClose={jest.fn()} selectedOrders={[selected, { ...selected, id: 'unknown', storeId: undefined }]} storeId="kunca" onConfirm={confirm} defaultCourierId="courier-one" />);
     await screen.findByText('Courier One');
-    expect(screen.getByRole('alert')).toHaveTextContent('una sola tienda');
+    expect(screen.getByRole('alert')).toHaveTextContent('identificar la tienda');
     expect(screen.getByRole('button', { name: /generar guía/i })).toBeDisabled();
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it('offers only guides matching both the commercial shop and the stored warehouse', async () => {
+  it('blocks orders from another business when creating or adding to a guide', async () => {
+    const confirm = jest.fn();
+    const orders = [selected, { ...selected, id: 'foreign-order', storeId: 'foreign' }];
+    const view = render(<CreateGuideModal open onClose={jest.fn()} selectedOrders={orders} storeId="kunca" onConfirm={confirm} defaultCourierId="courier-one" />);
+    await screen.findByText('Courier One');
+    expect(screen.getByRole('alert')).toHaveTextContent('mismo negocio');
+    expect(screen.getByRole('button', { name: 'Generar Guía' })).toBeDisabled();
+    view.unmount();
+    render(<AddToExistingGuideModal open onClose={jest.fn()} selectedOrders={orders} storeId="kunca" onConfirm={confirm} />);
+    expect(screen.getByRole('alert')).toHaveTextContent('mismo negocio');
+    expect(screen.getByRole('button', { name: /agregar/i })).toBeDisabled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it('adds mixed stores to a compatible guide of the same business regardless of warehouse', async () => {
     jest.mocked(useBusinessGuides).mockReturnValue({ guides: [
+      { id: 'foreign-guide', storeId: 'foreign', guideNumber: 'G-FOREIGN', status: 'CREADA', deliveryType: 'COURIER', deliveryZones: [], created_at: '2026-10-12T12:00:00Z', orderIds: [] },
       { id: 'guide-kunca', storeId: 'kunca', guideNumber: 'G-KUNCA', status: 'CREADA', deliveryType: 'COURIER', deliveryZones: [], created_at: '2026-10-12T12:00:00Z', orderIds: ['old-kunca'] },
       { id: 'guide-web', storeId: 'web', guideNumber: 'G-WEB', status: 'CREADA', deliveryType: 'COURIER', deliveryZones: [], created_at: '2026-10-12T12:00:00Z', orderIds: ['old-web'], courierName: 'Courier One' },
       { id: 'guide-other-warehouse', storeId: 'web', guideNumber: 'G-OTHER-WAREHOUSE', status: 'CREADA', deliveryType: 'COURIER', deliveryZones: [], created_at: '2026-10-12T12:00:00Z', orderIds: ['old-other'] },
     ] as unknown as ReturnType<typeof useBusinessGuides>["guides"], loading: false, error: false, retry: retryGuides, refetch: retryGuides });
-    jest.mocked(useBusinessOrders).mockReturnValue({ orders: [
-      { ...selected, id: 'old-web' }, { ...selected, id: 'old-other', inventoryId: 'other-inventory' }, { ...selected, id: 'old-kunca', storeId: 'kunca' },
-    ] as unknown as ReturnType<typeof useBusinessOrders>['orders'], loading: false, error: false, retry: retryOrders, refetch: retryOrders });
     const confirm = jest.fn().mockResolvedValue(undefined);
-    render(<AddToExistingGuideModal open onClose={jest.fn()} selectedOrders={[selected]} storeId="kunca" onConfirm={confirm} />);
+    render(<AddToExistingGuideModal open onClose={jest.fn()} selectedOrders={[selected, { ...selected, id: "livii-order", storeId: "livii", inventoryId: "other-inventory" }]} storeId="kunca" onConfirm={confirm} />);
     expect(screen.getByText('G-WEB')).toBeInTheDocument();
-    expect(screen.queryByText('G-KUNCA')).not.toBeInTheDocument();
-    expect(screen.queryByText('G-OTHER-WAREHOUSE')).not.toBeInTheDocument();
+    expect(screen.getByText('G-KUNCA')).toBeInTheDocument();
+    expect(screen.getByText('G-OTHER-WAREHOUSE')).toBeInTheDocument();
+    expect(screen.queryByText('G-FOREIGN')).not.toBeInTheDocument();
+    expect(useBusinessGuides).toHaveBeenCalledWith({ includeAllStores: true });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await userEvent.click(screen.getByText('G-WEB'));
     await userEvent.click(screen.getByRole('button', { name: /agregar/i }));
     expect(confirm).toHaveBeenCalledWith('guide-web', 'G-WEB', 'CREADA', 'Courier One');
@@ -117,6 +171,5 @@ describe('guide actions keep the selected orders source', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('No se pudieron cargar las guías.');
     await userEvent.click(screen.getByRole('button', { name: /reintentar/i }));
     expect(retryGuides).toHaveBeenCalledTimes(1);
-    expect(retryOrders).toHaveBeenCalledTimes(1);
   });
 });

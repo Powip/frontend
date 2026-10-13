@@ -25,6 +25,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { resolveGuideOrigin } from "./guideOrigin";
+import { useAuth } from "@/contexts/AuthContext";
 import { useCompanyCouriers } from "@/hooks/useCompanyCouriers";
 
 interface SelectedOrder {
@@ -111,7 +112,12 @@ export default function CreateGuideModal({
   defaultCourierName,
 }: CreateGuideModalProps) {
   const invalidateBusinessData = useInvalidateBusinessData();
-  const origin = useMemo(() => resolveGuideOrigin(selectedOrders), [selectedOrders]);
+  const { auth } = useAuth();
+  const stores = auth?.company?.stores;
+  const origin = useMemo(
+    () => resolveGuideOrigin(selectedOrders, stores?.map((store) => store.id) ?? []),
+    [selectedOrders, stores],
+  );
   const { couriers, loading: couriersLoading, error: couriersError, retry: retryCouriers } = useCompanyCouriers(open);
   const [selectedCourierId, setSelectedCourierId] = useState<string>("");
   const [deliveryType, setDeliveryType] = useState<"MOTO" | "COURIER">(
@@ -164,7 +170,7 @@ export default function CreateGuideModal({
   }, [selectedOrders]);
 
   const handleSubmit = async () => {
-    if (origin.error || !origin.storeId || couriersLoading || !hasSelectedCourier) return;
+    if (isLoading || origin.error || !origin.storeId || couriersLoading || !hasSelectedCourier) return;
     let courierId: string | undefined = undefined;
     let courierName: string | undefined = undefined;
 
@@ -193,10 +199,10 @@ export default function CreateGuideModal({
       notes: notes || undefined,
       courierId,
       courierName,
-      orderCarrierCosts: Object.entries(carrierCosts).reduce(
-        (acc, [id, val]) => {
-          const num = parseFloat(val);
-          if (!isNaN(num)) acc[id] = num;
+      orderCarrierCosts: selectedOrders.reduce(
+        (acc, order) => {
+          const num = parseFloat(carrierCosts[order.id]);
+          if (!isNaN(num)) acc[order.id] = num;
           return acc;
         },
         {} as Record<string, number>,
