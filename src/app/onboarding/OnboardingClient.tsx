@@ -8,13 +8,11 @@ import {
   CreditCard,
   Loader2,
   Shield,
-  Users,
-  Zap,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import AuthLayout from "@/components/auth/AuthLayout";
 import AuthPanel from "@/components/auth/AuthPanel";
 import RegisterForm from "@/components/forms/RegisterForm";
@@ -34,6 +32,7 @@ import {
   type SubscriptionSummary,
   summarizeSubscription,
 } from "@/types/onboarding";
+import styles from "../../components/onboarding/onboarding-layout.module.css";
 import {
   DEMO_ADD_ONS,
   DEMO_PLANS,
@@ -82,34 +81,35 @@ const STEPS = [
   { num: 4, name: "¡Listo!" },
 ];
 
-const BRAND_PANEL_CONTENT: Record<number, { headline: string; sub: string; mascot: string }> = {
+const BRAND_PANEL_CONTENT: Record<
+  number,
+  { headline: string; sub: string; mascot: string; viewBox: string }
+> = {
   1: {
     headline: "Bienvenido a Powip",
     sub: "Crea tu cuenta en segundos y accede inmediatamente a todas las herramientas de tu plan.",
     mascot: "/mascota-saludando.svg",
+    viewBox: "426 240 592 970",
   },
   2: {
     headline: "Elige tu plan",
-    sub: "Elige el plan que mejor se adapta a tu negocio y sumá los add-ons que necesites. Podés activar más add-ons después.",
+    sub: "Selecciona tu plan y las integraciones que necesitas para gestionar tu negocio.",
     mascot: "/mascota-idea.svg",
+    viewBox: "467 234 515 962",
   },
   3: {
     headline: "¡Casi listo!",
-    sub: "Revisa tu suscripción y activa tu cuenta. Tu primer mes comienza hoy.",
+    sub: "Revisa el total de tu suscripción y registra tu tarjeta con Flow.",
     mascot: "/mascota-pc-2.svg",
+    viewBox: "413 267 701 931",
   },
   4: {
     headline: "¡Todo listo!",
-    sub: "Tu cuenta está activa. Ahora podés configurar tu empresa y empezar a gestionar tus pedidos.",
+    sub: "Configura tu empresa para empezar a gestionar tus pedidos.",
     mascot: "/mascota-silla.svg",
+    viewBox: "425 263 646 964",
   },
 };
-
-const TRUST_SIGNALS = [
-  { icon: Shield, text: "Pago 100% seguro" },
-  { icon: Zap, text: "Acceso inmediato al activar" },
-  { icon: Users, text: "+1,200 negocios confían en Powip" },
-];
 
 // ---------------------------------------------------------------------------
 // BrandPanel
@@ -146,135 +146,65 @@ function BrandPanel({ currentStep, planName, price, isAnnual, summary }: BrandPa
   const showSummary = currentStep === 3 && planName !== "";
 
   return (
-    <div
-      className="relative h-screen flex flex-col justify-between px-10 py-12 overflow-hidden"
-      style={{
-        background: "linear-gradient(160deg, #3d2d78 0%, #4F3A96 55%, #6a4fc4 100%)",
-      }}
-    >
-      {/* Decorative circles */}
-      <div
-        className="absolute -top-20 -right-20 w-64 h-64 rounded-full opacity-10"
-        style={{ background: "rgba(255,255,255,0.3)" }}
+    <aside className={styles.brand} aria-label="Tu suscripción en Powip">
+      <Image
+        src="/logo-powip-text.svg"
+        alt="Powip"
+        width={160}
+        height={52}
+        priority
+        className={styles.brandLogo}
       />
-      <div
-        className="absolute -bottom-20 -left-20 w-48 h-48 rounded-full opacity-10"
-        style={{ background: "rgba(255,255,255,0.2)" }}
-      />
-
-      {/* Logo */}
-      <div className="flex justify-start items-center w-full z-10">
-        <Image
-          src="/logo-powip-text.svg"
-          alt="Logo Powip"
-          width={320}
-          height={100}
-          priority
-          className="w-auto h-10 brightness-0 invert"
-        />
+      <div>
+        <h2 className={styles.brandTitle}>{content.headline}</h2>
+        <p className={styles.brandDescription}>{content.sub}</p>
       </div>
-
-      {/* Main content */}
-      <div className="mt-12 flex-1 flex flex-col justify-start gap-8 z-10">
-        <div>
-          <h2 className="text-white font-black text-4xl leading-tight mb-4">{content.headline}</h2>
-          <p className="text-white/70 text-base leading-relaxed max-w-md">{content.sub}</p>
-        </div>
-
+      <div>
         {showSummary ? (
-          /* Resumen del pedido (paso Pago): mismo cálculo que el resumen principal */
-          <section
-            aria-label="Resumen de tu suscripción"
-            className="w-full max-w-sm rounded-2xl px-5 py-4 backdrop-blur-sm"
-            style={{ background: "rgba(255,255,255,0.12)" }}
-          >
-            <dl className="flex flex-col gap-2 text-sm">
-              <div className="flex items-center justify-between gap-4">
-                <dt className="text-white/90 font-medium">Plan {basePlanName(planName)}</dt>
-                <dd className="text-white font-semibold whitespace-nowrap">
+          <section aria-label="Resumen de tu suscripción" className={styles.brandSummary}>
+            <dl>
+              <div>
+                <dt>Plan {basePlanName(planName)}</dt>
+                <dd>
                   S/ {price}/{period}
                 </dd>
               </div>
               {summary.addOns.map(({ addOn, price: addOnAmount }) => {
                 const { name, icon } = addOnDisplay(addOn);
                 return (
-                  <div key={addOn.id} className="flex items-center justify-between gap-4">
-                    <dt className="text-white/75">
+                  <div key={addOn.id}>
+                    <dt>
                       <span aria-hidden="true">{icon}</span> {name}
                     </dt>
-                    <dd className="text-white/90 whitespace-nowrap">
+                    <dd>
                       +S/ {addOnAmount}/{period}
                     </dd>
                   </div>
                 );
               })}
-              <div
-                className="flex items-center justify-between gap-4 pt-2 mt-1"
-                style={{ borderTop: "1px solid rgba(255,255,255,0.2)" }}
-              >
-                <dt className="text-white font-bold">
-                  Total {period === "año" ? "anual" : "mensual"}
-                </dt>
-                <dd className="text-white font-black text-lg whitespace-nowrap">
+              <div className={styles.brandTotal}>
+                <dt>Total {period === "año" ? "anual" : "mensual"}</dt>
+                <dd>
                   S/ {summary.total}/{period}
                 </dd>
               </div>
             </dl>
           </section>
-        ) : (
-          /* Plan badge */
-          <div
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full self-start"
-            style={{ background: "rgba(255,255,255,0.12)" }}
-          >
-            <div className="w-2 h-2 rounded-full bg-white/80" />
-            <span className="text-white/90 text-sm font-medium">
-              {planLabel(planName, price, isAnnual)}
-            </span>
-          </div>
-        )}
-
-        {/* Trust signals */}
-        <div className="flex flex-col gap-3">
-          {TRUST_SIGNALS.map(({ icon: Icon, text }) => (
-            <div key={text} className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
-                <Icon className="w-4 h-4 text-white/80" />
-              </div>
-              <span className="text-white/75 text-sm">{text}</span>
-            </div>
-          ))}
-        </div>
+        ) : planName ? (
+          <p className={styles.brandPlan}>{planLabel(planName, price, isAnnual)}</p>
+        ) : null}
       </div>
-
-      {/* Mascot */}
-      <Image
-        src={content.mascot}
-        alt=""
-        aria-hidden="true"
-        width={800}
-        height={800}
-        priority
-        className="absolute -bottom-[80px] right-0 w-[500px] h-auto pointer-events-none select-none"
-      />
-
-      {/* Step dots */}
-      <div className="flex items-center gap-2 z-10">
-        {STEPS.map((step) => {
-          const isActive = step.num === currentStep;
-          return (
-            <div
-              key={step.num}
-              className="h-2 rounded-full transition-all duration-300"
-              style={{
-                width: isActive ? 24 : 8,
-                background: isActive ? "white" : "rgba(255,255,255,0.3)",
-              }}
-            />
-          );
-        })}
+      <div className={styles.brandArt} aria-hidden="true">
+        <svg
+          viewBox={content.viewBox}
+          className={styles.mascot}
+          focusable="false"
+          aria-hidden="true"
+        >
+          <image href={content.mascot} width={1500} height={1500} />
+        </svg>
       </div>
-    </div>
+    </aside>
   );
 }
 
@@ -284,49 +214,29 @@ function BrandPanel({ currentStep, planName, price, isAnnual, summary }: BrandPa
 
 function OnboardingProgress({ currentStep }: { currentStep: number }) {
   return (
-    <div className="flex items-center gap-0">
-      {STEPS.map((step, idx) => {
-        const isCompleted = step.num < currentStep;
-        const isCurrent = step.num === currentStep;
-
-        return (
-          <div key={step.num} className="flex items-center flex-1 last:flex-none">
-            {/* Step circle */}
-            <div className="flex flex-col items-center gap-1.5">
-              <div
-                className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300"
-                style={{
-                  background: isCompleted ? "#e9f5f3" : isCurrent ? "#4F3A96" : "#f3f4f6",
-                  color: isCompleted ? "#008a7b" : isCurrent ? "white" : "#9ca3af",
-                  boxShadow: isCurrent ? "0 0 0 4px rgba(79,58,150,0.12)" : "none",
-                }}
-              >
-                {isCompleted ? <Check className="w-4 h-4" /> : step.num}
-              </div>
-              <span
-                className="text-xs font-medium whitespace-nowrap"
-                style={{
-                  color: isCompleted ? "#008a7b" : isCurrent ? "#4F3A96" : "#9ca3af",
-                }}
-              >
-                {step.name}
+    <nav aria-label="Progreso de la suscripción">
+      <ol className={styles.progress}>
+        {STEPS.map((step) => {
+          const isCompleted = step.num < currentStep;
+          const isCurrent = step.num === currentStep;
+          return (
+            <li
+              key={step.num}
+              className={`${styles.progressStep} ${isCurrent ? styles.progressCurrent : ""} ${isCompleted ? styles.progressComplete : ""}`}
+              aria-current={isCurrent ? "step" : undefined}
+            >
+              <span className={styles.progressIndex} aria-hidden="true">
+                {isCompleted ? <Check size={15} aria-hidden="true" /> : step.num}
               </span>
-            </div>
-
-            {/* Connector */}
-            {idx < STEPS.length - 1 && (
-              <div
-                className="flex-1 h-0.5 mb-5 mx-1 transition-all duration-300"
-                style={{
-                  background:
-                    step.num < currentStep ? "linear-gradient(90deg, #008a7b, #4F3A96)" : "#e5e7eb",
-                }}
-              />
-            )}
-          </div>
-        );
-      })}
-    </div>
+              <span>
+                {step.name}
+                <span className="sr-only">{isCompleted ? ", completado" : ""}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
   );
 }
 
@@ -345,6 +255,13 @@ interface Step2Props {
   selectedAddons: string[];
   onToggleAddon: (id: string) => void;
   onNext: () => void;
+  onSkipAddOns: () => void;
+  plansLoading: boolean;
+  plansError: string | null;
+  onRetryPlans: () => void;
+  addOnsLoading: boolean;
+  addOnsError: string | null;
+  onRetryAddOns: () => void;
   addOns: BackendAddOn[];
   summary: SubscriptionSummary;
 }
@@ -360,10 +277,21 @@ function Step2({
   selectedAddons,
   onToggleAddon,
   onNext,
+  onSkipAddOns,
+  plansLoading,
+  plansError,
+  onRetryPlans,
+  addOnsLoading,
+  addOnsError,
+  onRetryAddOns,
   addOns,
   summary,
 }: Step2Props) {
-  const hasPlan = planId !== "";
+  const hasPlan = !plansLoading && !plansError && plans.some((plan) => plan.id === planId);
+  const canContinue =
+    hasPlan &&
+    !addOnsLoading &&
+    !selectedAddons.some((id) => !addOns.some((addOn) => addOn.id === id));
   const period = isAnnual ? "año" : "mes";
   const addOnPrices = addOns.map((a) => addOnPrice(a, isAnnual));
   const minAddOnPrice = Math.min(...addOnPrices);
@@ -378,6 +306,9 @@ function Step2({
         onSelect={onSelectPlan}
         onCycleChange={onCycleChange}
         onEnterprise={onEnterprise}
+        isLoading={plansLoading}
+        error={plansError}
+        onRetry={onRetryPlans}
       />
 
       {/* Header */}
@@ -393,6 +324,22 @@ function Step2({
       </div>
 
       {/* Add-on grid */}
+      {addOnsLoading && (
+        <p role="status" className="text-sm text-gray-500">
+          Cargando add-ons...
+        </p>
+      )}
+      {addOnsError && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
+        >
+          <p>{addOnsError} Puedes omitirlos y activarlos después.</p>
+          <button type="button" onClick={onRetryAddOns} className="mt-2 font-semibold underline">
+            Reintentar carga de add-ons
+          </button>
+        </div>
+      )}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {addOns.map((addon) => {
           const config = ADDON_MODAL_CONFIG[addon.code] ?? {
@@ -492,7 +439,7 @@ function Step2({
         <button
           type="button"
           onClick={onNext}
-          disabled={!hasPlan}
+          disabled={!canContinue}
           className="w-full h-12 text-base rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ background: "#4F3A96" }}
         >
@@ -505,7 +452,7 @@ function Step2({
         </button>
         <button
           type="button"
-          onClick={onNext}
+          onClick={onSkipAddOns}
           disabled={!hasPlan}
           className="text-sm text-gray-400 hover:text-gray-600 font-medium py-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
@@ -811,6 +758,9 @@ function StepSuccess({
     });
 
   const isPaid = subscription?.status === "ACTIVE";
+  const receiptPlanName = subscription?.plan.name ?? planName;
+  const receiptPrice = subscription?.plan.price ?? price;
+  const receiptIsAnnual = subscription ? subscription.plan.durationInDays >= 300 : isAnnual;
 
   return (
     <div className="flex flex-col gap-6">
@@ -843,9 +793,9 @@ function StepSuccess({
             <>
               {/* Plan & price */}
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-600">Plan {planName}</span>
+                <span className="text-sm text-gray-600">Plan {receiptPlanName}</span>
                 <span className="text-sm font-bold" style={{ color: "#4F3A96" }}>
-                  S/ {price}/{isAnnual ? "año" : "mes"}
+                  S/ {receiptPrice}/{receiptIsAnnual ? "año" : "mes"}
                 </span>
               </div>
 
@@ -876,7 +826,11 @@ function StepSuccess({
                     color: isPaid ? "#166534" : "#854d0e",
                   }}
                 >
-                  {isPaid ? "Pagado" : "Pendiente"}
+                  {isPaid
+                    ? "Pagado"
+                    : subscription.status === "PENDING_RENEWAL"
+                      ? "Renovación pendiente"
+                      : "Pendiente"}
                 </span>
               </div>
             </>
@@ -964,6 +918,12 @@ export default function OnboardingClient({
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [addOns, setAddOns] = useState<BackendAddOn[]>([]);
   const [plans, setPlans] = useState<BackendPlan[]>([]);
+  const [plansLoading, setPlansLoading] = useState(false);
+  const [plansError, setPlansError] = useState<string | null>(null);
+  const [plansRevision, setPlansRevision] = useState(0);
+  const [addOnsLoading, setAddOnsLoading] = useState(false);
+  const [addOnsError, setAddOnsError] = useState<string | null>(null);
+  const [addOnsRevision, setAddOnsRevision] = useState(0);
   const [enterpriseOpen, setEnterpriseOpen] = useState(false);
 
   const {
@@ -983,9 +943,7 @@ export default function OnboardingClient({
     login,
     // Al pagar, ms-subscription pasa al usuario a ADMINISTRADOR en ms-auth: hace
     // falta un token nuevo con ese rol (y la suscripción ACTIVE en el contexto).
-    async () => {
-      await refreshSession();
-    },
+    () => refreshSession(),
   );
 
   // Refresh can finish after this public page mounts. An existing account
@@ -1035,10 +993,18 @@ export default function OnboardingClient({
           isAnnual,
         )
       : null);
+  const completedPlan = flowState.step === "DONE" ? subscription?.plan : null;
+  const displayPlanName = completedPlan?.name ?? flowState.planName;
+  const displayPrice = completedPlan?.price ?? flowState.price;
+  const displayAnnual = completedPlan ? completedPlan.durationInDays >= 300 : isAnnual;
 
   const loadDevDemo = () => {
     setPlans(DEMO_PLANS);
     setAddOns(DEMO_ADD_ONS);
+    setPlansLoading(false);
+    setPlansError(null);
+    setAddOnsLoading(false);
+    setAddOnsError(null);
     if (!flowState.planId) setPlan(DEMO_PLANS.find((p) => p.name === "Medium") ?? DEMO_PLANS[0]);
     setDevDemoLoaded(true);
   };
@@ -1053,34 +1019,60 @@ export default function OnboardingClient({
   // Catálogo y plan se leen con el JWT (el gateway lo exige): recién hay sesión
   // después del registro, o de entrada si viene de /sin-plan.
   const accessToken = auth?.accessToken;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The revision reloads the same catalog after an explicit retry.
   useEffect(() => {
     if (!accessToken) return;
     const controller = new AbortController();
+    setAddOnsLoading(true);
+    setAddOnsError(null);
     fetchAddOns(controller.signal)
-      .then(setAddOns)
-      .catch((err: unknown) => {
-        if ((err as { code?: string })?.code === "ERR_CANCELED") return;
-        toast.error("No pudimos cargar los add-ons. Podés continuar sin ellos.");
+      .then((catalog) => {
+        if (!controller.signal.aborted) setAddOns(catalog);
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setAddOns([]);
+        setAddOnsError("No pudimos cargar los add-ons.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setAddOnsLoading(false);
       });
     return () => controller.abort();
-  }, [accessToken]);
+  }, [accessToken, addOnsRevision]);
 
   // Catálogo de planes para el paso 2. Si la landing mandó un plan (?plan=Basic),
   // queda preseleccionado con su id y precio reales; si no existe, no se elige nada.
   const hintAppliedRef = useRef(false);
+  const latestFlow = useRef(flowState);
+  latestFlow.current = flowState;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The revision reloads the same catalog after an explicit retry.
   useEffect(() => {
     if (!accessToken) return;
-    fetchPlans()
+    const controller = new AbortController();
+    setPlansLoading(true);
+    setPlansError(null);
+    fetchPlans(controller.signal)
       .then((catalog) => {
+        if (controller.signal.aborted) return;
         setPlans(catalog);
         if (hintAppliedRef.current) return;
         hintAppliedRef.current = true;
+        const current = latestFlow.current;
+        if (current.planId || (current.step !== "ADDONS" && current.step !== "REGISTRATION"))
+          return;
         const hint = planName.toLowerCase();
         const match = hint && catalog.find((p) => p.name.toLowerCase() === hint);
         if (match) setPlan(match);
       })
-      .catch(() => setError("No pudimos cargar los planes. Intentá nuevamente."));
-  }, [accessToken, planName, setPlan, setError]);
+      .catch(() => {
+        if (!controller.signal.aborted)
+          setPlansError("No pudimos cargar los planes. Intenta nuevamente.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPlansLoading(false);
+      });
+    return () => controller.abort();
+  }, [accessToken, planName, setPlan, plansRevision]);
 
   const handleCycleChange = (annual: boolean) => {
     setAnnualView(annual);
@@ -1095,6 +1087,12 @@ export default function OnboardingClient({
     if (!flowState.planId) return;
     resetDev();
     selectAddOns(selectedAddons);
+  };
+  const handleSkipAddOns = () => {
+    if (!flowState.planId) return;
+    resetDev();
+    setSelectedAddons([]);
+    selectAddOns([]);
   };
 
   const handleGoBack = () => {
@@ -1126,6 +1124,19 @@ export default function OnboardingClient({
     />
   ) : null;
 
+  const pageRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const screenKey = `${currentStep}:${paymentStep}`;
+  const previousScreenRef = useRef<string | null>(null);
+  useEffect(() => {
+    const page = pageRef.current;
+    if (!page || previousScreenRef.current === screenKey) return;
+    previousScreenRef.current = screenKey;
+    const scroller = page.closest("main");
+    if (typeof scroller?.scrollTo === "function") scroller.scrollTo({ top: 0, left: 0 });
+    headingRef.current?.focus({ preventScroll: true });
+  }, [screenKey]);
+
   if (currentStep === 1 && !initialAuth) {
     return (
       <>
@@ -1146,109 +1157,101 @@ export default function OnboardingClient({
   }
 
   return (
-    <div
-      className="min-h-screen lg:h-screen flex flex-col lg:overflow-hidden"
-      style={{ background: "#f7f5ff" }}
-    >
-      {/* Mobile header */}
-      <div
-        className="lg:hidden flex items-center gap-3 px-5 py-4"
-        style={{ background: "#4F3A96" }}
-      >
-        <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-          <span className="text-white font-black text-sm">P</span>
-        </div>
-        <span className="text-white font-black tracking-widest text-base">POWIP</span>
-        <div className="ml-auto min-w-0 truncate text-white/70 text-xs">
-          {currentStep === 3
-            ? summaryLabel(flowState.planName, summary, isAnnual)
-            : planLabel(flowState.planName, flowState.price, isAnnual)}
-        </div>
-      </div>
+    <div ref={pageRef} className={styles.page} data-onboarding-layout="subscription">
+      <header className={styles.mobileHeader}>
+        <Link
+          href="https://powip.lat"
+          className={styles.back}
+          aria-label="Volver a la página principal"
+        >
+          <ArrowLeft size={18} aria-hidden="true" />
+        </Link>
+        <Image
+          src="/logo-powip-text.svg"
+          alt="Powip"
+          width={150}
+          height={48}
+          className={styles.mobileLogo}
+        />
+      </header>
+      <div className={styles.layout}>
+        <BrandPanel
+          currentStep={currentStep}
+          planName={displayPlanName}
+          price={displayPrice}
+          isAnnual={displayAnnual}
+          summary={summary}
+        />
+        <div className={styles.content}>
+          <header className={styles.flowHeader}>
+            <h1 ref={headingRef} tabIndex={-1} className={styles.heading}>
+              Configura tu cuenta
+            </h1>
+            <p className={styles.stepCaption}>
+              {currentStep === 3
+                ? summaryLabel(flowState.planName, summary, isAnnual)
+                : planLabel(displayPlanName, displayPrice, displayAnnual)}
+            </p>
+            <OnboardingProgress currentStep={currentStep} />
+          </header>
+          <div className={styles.stepCard}>
+            {currentStep === 2 && (
+              <Step2
+                plans={plans}
+                planId={flowState.planId}
+                onSelectPlan={setPlan}
+                onCycleChange={handleCycleChange}
+                onEnterprise={() => setEnterpriseOpen(true)}
+                price={flowState.price}
+                isAnnual={isAnnual}
+                selectedAddons={selectedAddons}
+                onToggleAddon={toggleAddon}
+                onNext={handleStep2Next}
+                onSkipAddOns={handleSkipAddOns}
+                plansLoading={plansLoading}
+                plansError={plansError}
+                onRetryPlans={() => setPlansRevision((revision) => revision + 1)}
+                addOnsLoading={addOnsLoading}
+                addOnsError={addOnsError}
+                onRetryAddOns={() => setAddOnsRevision((revision) => revision + 1)}
+                addOns={addOns}
+                summary={summary}
+              />
+            )}
 
-      <div className="grid lg:grid-cols-2 flex-1 lg:overflow-hidden">
-        {/* Brand panel — desktop only */}
-        <div className="hidden lg:block">
-          <BrandPanel
-            currentStep={currentStep}
-            planName={flowState.planName}
-            price={flowState.price}
-            isAnnual={isAnnual}
-            summary={summary}
-          />
-        </div>
+            {currentStep === 3 && (
+              <Step3
+                planName={flowState.planName}
+                price={flowState.price}
+                isAnnual={isAnnual}
+                summary={summary}
+                isLoading={flowState.isLoading}
+                step={paymentStep}
+                error={flowState.error}
+                cardToken={flowState.cardToken}
+                redirectUrl={flowState.redirectUrl}
+                onBack={handleGoBack}
+                onInitiate={initiateCardRegistration}
+                onSubscribe={confirmPayment}
+                onCheckAgain={checkPaymentAgain}
+                onRetry={retry}
+                onError={setError}
+              />
+            )}
 
-        {/* Content panel */}
-        <div className="flex flex-col items-center justify-start lg:justify-center px-5 py-8 lg:py-12 overflow-y-auto lg:h-full lg:min-h-0">
-          <div className="w-full max-w-3xl">
-            {/* Plan pill — desktop only */}
-            <div
-              className="hidden lg:inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-medium mb-6"
-              style={{ background: "#ede9ff", color: "#4F3A96" }}
-            >
-              <div className="w-2 h-2 rounded-full" style={{ background: "#4F3A96" }} />
-              {planLabel(flowState.planName, flowState.price, isAnnual)}
-            </div>
-
-            {/* Progress */}
-            <div className="mb-8">
-              <OnboardingProgress currentStep={currentStep} />
-            </div>
-
-            {/* Step content card */}
-            <div className="p-6 sm:p-8" style={{ borderColor: "rgba(79,58,150,0.08)" }}>
-              {currentStep === 2 && (
-                <Step2
-                  plans={plans}
-                  planId={flowState.planId}
-                  onSelectPlan={setPlan}
-                  onCycleChange={handleCycleChange}
-                  onEnterprise={() => setEnterpriseOpen(true)}
-                  price={flowState.price}
-                  isAnnual={isAnnual}
-                  selectedAddons={selectedAddons}
-                  onToggleAddon={toggleAddon}
-                  onNext={handleStep2Next}
-                  addOns={addOns}
-                  summary={summary}
-                />
-              )}
-
-              {currentStep === 3 && (
-                <Step3
-                  planName={flowState.planName}
-                  price={flowState.price}
-                  isAnnual={isAnnual}
-                  summary={summary}
-                  isLoading={flowState.isLoading}
-                  step={paymentStep}
-                  error={flowState.error}
-                  cardToken={flowState.cardToken}
-                  redirectUrl={flowState.redirectUrl}
-                  onBack={handleGoBack}
-                  onInitiate={initiateCardRegistration}
-                  onSubscribe={confirmPayment}
-                  onCheckAgain={checkPaymentAgain}
-                  onRetry={retry}
-                  onError={setError}
-                />
-              )}
-
-              {(currentStep === 4 || flowState.step === "DONE") && (
-                <StepSuccess
-                  planName={flowState.planName}
-                  price={flowState.price}
-                  isAnnual={isAnnual}
-                  subscription={subscription}
-                  onGoToDashboard={handleGoToDashboard}
-                />
-              )}
-            </div>
+            {(currentStep === 4 || flowState.step === "DONE") && (
+              <StepSuccess
+                planName={flowState.planName}
+                price={flowState.price}
+                isAnnual={isAnnual}
+                subscription={subscription}
+                onGoToDashboard={handleGoToDashboard}
+              />
+            )}
           </div>
         </div>
       </div>
       <EnterpriseContactModal open={enterpriseOpen} onClose={() => setEnterpriseOpen(false)} />
-
       {devPanel}
     </div>
   );

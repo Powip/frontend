@@ -1,22 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { toast } from "sonner";
+import { Building2, Check } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Check, Building2, ArrowLeft } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import EnterpriseContactModal from "@/components/modals/EnterpriseContactModal";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/contexts/AuthContext";
 import axiosAuth from "@/lib/axiosAuth";
 import { GATEWAY } from "@/lib/gateway";
-import OnboardingClient from "@/app/onboarding/OnboardingClient";
-import EnterpriseContactModal from "@/components/modals/EnterpriseContactModal";
 import { adaptPlans, type PlanMarketing } from "@/lib/planCatalog";
 
 interface Plan {
@@ -30,70 +23,49 @@ interface Plan {
 type FrontPlan = Plan & PlanMarketing;
 
 export default function SinPlanPage() {
-  const { auth, logout, refreshSession } = useAuth();
+  const { auth, logout } = useAuth();
   const router = useRouter();
 
   const [plans, setPlans] = useState<FrontPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState(true);
   const [plansError, setPlansError] = useState<string | null>(null);
-  const [selectedPlan, setSelectedPlan] = useState<FrontPlan | null>(null);
+  const [catalogRevision, setCatalogRevision] = useState(0);
   const [isEnterpriseModalOpen, setIsEnterpriseModalOpen] = useState(false);
 
+  const accessToken = auth?.accessToken;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The revision retries the same catalog after a failed request.
   useEffect(() => {
+    if (!accessToken) return;
+    const controller = new AbortController();
+    setLoadingPlans(true);
+    setPlansError(null);
     axiosAuth
-      .get(`${GATEWAY.subscription}/plans`)
-      .then((r) => setPlans(adaptPlans(r.data as Plan[])))
-      .catch(() => {
-        setPlansError("No se pudieron cargar los planes.");
-        toast.error("No se pudieron cargar los planes. Recargá la página para intentar nuevamente.");
+      .get(`${GATEWAY.subscription}/plans`, { signal: controller.signal })
+      .then((r) => {
+        if (!controller.signal.aborted)
+          setPlans(adaptPlans(Array.isArray(r.data) ? (r.data as Plan[]) : []));
       })
-      .finally(() => setLoadingPlans(false));
-  }, []);
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setPlansError("No se pudieron cargar los planes.");
+        toast.error("No se pudieron cargar los planes. Intenta nuevamente.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingPlans(false);
+      });
+    return () => controller.abort();
+  }, [accessToken, catalogRevision]);
 
   if (!auth) return null;
-
-  const initialAuth = { userId: auth.user.id };
-
-  // Pago confirmado: el guard ya deja pasar a /new-company (sin empresa todavía).
-  const handleSubscriptionComplete = async () => {
-    await refreshSession();
-    router.push("/new-company");
-  };
-
-  // — Vista del flujo de suscripción (plan seleccionado) —
-  if (selectedPlan) {
-    return (
-      <div className="min-h-screen" style={{ background: "#f7f5ff" }}>
-        <div className="px-4 py-3 flex items-center gap-2" style={{ background: "#4F3A96" }}>
-          <button
-            onClick={() => setSelectedPlan(null)}
-            className="flex items-center gap-1.5 text-white/80 hover:text-white text-sm transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Ver otros planes
-          </button>
-        </div>
-        <OnboardingClient
-          planId={selectedPlan.id}
-          planName={selectedPlan.name}
-          price={selectedPlan.price}
-          initialAuth={initialAuth}
-          onGoToDashboard={handleSubscriptionComplete}
-        />
-      </div>
-    );
-  }
 
   // — Vista de selección de planes —
   return (
     <div className="min-h-screen bg-background py-12">
       <div className="container mx-auto px-4">
         <div className="mb-10 text-center">
-          <h1 className="text-3xl font-bold text-foreground">
-            Elegí tu plan para continuar
-          </h1>
+          <h1 className="text-3xl font-bold text-foreground">Elige tu plan para continuar</h1>
           <p className="mt-2 text-muted-foreground">
-            Tu cuenta no tiene un plan activo. Seleccioná uno para acceder al panel de Powip.
+            Tu cuenta no tiene un plan activo. Selecciona uno para acceder al panel de Powip.
           </p>
         </div>
 
@@ -104,8 +76,17 @@ export default function SinPlanPage() {
         )}
 
         {plansError && (
-          <div className="flex items-center justify-center py-20 text-red-500">
-            {plansError}
+          <div
+            className="flex flex-col items-center justify-center gap-4 py-20 text-red-700"
+            role="alert"
+          >
+            <p>{plansError}</p>
+            <Button
+              variant="outline"
+              onClick={() => setCatalogRevision((revision) => revision + 1)}
+            >
+              Reintentar carga de planes
+            </Button>
           </div>
         )}
 
@@ -115,9 +96,7 @@ export default function SinPlanPage() {
               <Card
                 key={plan.id}
                 className={`relative shadow-sm transition-all hover:shadow-lg flex flex-col ${
-                  plan.popular
-                    ? "border-2 border-primary shadow-md lg:scale-105 z-10"
-                    : ""
+                  plan.popular ? "border-2 border-primary shadow-md lg:scale-105 z-10" : ""
                 }`}
               >
                 {plan.popular && (
@@ -131,9 +110,7 @@ export default function SinPlanPage() {
                   <CardTitle className="text-2xl font-bold uppercase tracking-tight">
                     PLAN {plan.name}
                   </CardTitle>
-                  <CardDescription className="min-h-[40px]">
-                    {plan.description}
-                  </CardDescription>
+                  <CardDescription className="min-h-[40px]">{plan.description}</CardDescription>
 
                   {plan.name.toUpperCase().includes("ENTERPRISE") ? (
                     <div className="mt-4 flex items-center justify-center p-4 bg-muted rounded-lg">
@@ -141,10 +118,10 @@ export default function SinPlanPage() {
                     </div>
                   ) : (
                     <div className="mt-4 flex items-baseline gap-1">
-                      <span className="text-3xl font-bold text-foreground">
-                        S/ {plan.price}
+                      <span className="text-3xl font-bold text-foreground">S/ {plan.price}</span>
+                      <span className="text-sm text-muted-foreground">
+                        / {plan.durationInDays >= 300 ? "año" : "mes"}
                       </span>
-                      <span className="text-sm text-muted-foreground">/ mes</span>
                     </div>
                   )}
 
@@ -166,9 +143,7 @@ export default function SinPlanPage() {
                       {plan.features.map((feature) => (
                         <li key={feature} className="flex items-start gap-2">
                           <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                          <span className="text-sm text-muted-foreground">
-                            {feature}
-                          </span>
+                          <span className="text-sm text-muted-foreground">{feature}</span>
                         </li>
                       ))}
                     </ul>
@@ -181,9 +156,7 @@ export default function SinPlanPage() {
                         <ul className="space-y-3">
                           {plan.limits.map((limit) => (
                             <li key={limit} className="flex items-start gap-2">
-                              <span className="text-sm text-muted-foreground">
-                                {limit}
-                              </span>
+                              <span className="text-sm text-muted-foreground">{limit}</span>
                             </li>
                           ))}
                         </ul>
@@ -203,7 +176,9 @@ export default function SinPlanPage() {
                     <Button
                       className="w-full mt-auto"
                       variant={plan.popular ? "default" : "outline"}
-                      onClick={() => setSelectedPlan(plan)}
+                      onClick={() =>
+                        router.push(`/onboarding?planName=${encodeURIComponent(plan.name)}`)
+                      }
                     >
                       Contratar
                     </Button>
@@ -216,6 +191,7 @@ export default function SinPlanPage() {
 
         <div className="mt-10 text-center">
           <button
+            type="button"
             onClick={logout}
             className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
           >

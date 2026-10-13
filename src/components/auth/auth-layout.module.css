@@ -90,6 +90,10 @@
   min-width: 0;
 }
 
+.sessionNotice {
+  margin-bottom: 16px;
+}
+
 .loginBody {
   display: flex;
   min-height: 0;

@@ -1,109 +1,165 @@
-'use client';
+"use client";
 
-import { useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import { Loader2 } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useOnboardingFlow } from '@/hooks/useOnboardingFlow';
-import { getStoredOnboardingState } from '@/lib/onboardingStorage';
-import SubscriptionSuccess from '@/components/onboarding/SubscriptionSuccess';
+import { Loader2 } from "lucide-react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import AuthLayout from "@/components/auth/AuthLayout";
+import AuthPanel from "@/components/auth/AuthPanel";
+import { AuthErrorNotice } from "@/components/forms/AuthFeedback";
+import SubscriptionSuccess from "@/components/onboarding/SubscriptionSuccess";
+import { useAuth } from "@/contexts/AuthContext";
+import { useOnboardingFlow } from "@/hooks/useOnboardingFlow";
+import { getStoredOnboardingState } from "@/lib/onboardingStorage";
 
-type InitStatus = 'loading' | 'no-session' | 'ready';
+type InitStatus = "loading" | "no-session" | "missing-checkout" | "ready";
 
-/**
- * Vuelta desde el formulario de Flow (flujo por redirección, FEAT-11).
- * Flow hace POST al url_return de ms-integrations, que redirige (303) acá con
- * ?token=<token del registro de tarjeta>. Con la sesión recuperada por la cookie
- * de refresh, se confirma el pago igual que desde el widget embebido.
- */
+/** Flow returns through ms-integrations with a card token, never card details. */
 export default function CallbackClient() {
   const { auth, loading, login, refreshSession } = useAuth();
   const searchParams = useSearchParams();
-  const [initStatus, setInitStatus] = useState<InitStatus>('loading');
-  const started = useRef(false);
+  const userId = auth?.user.id ?? null;
+  const queryToken = searchParams.get("token")?.trim() || null;
+  const hasPlan =
+    auth?.subscription?.status === "ACTIVE" || auth?.subscription?.status === "PENDING_RENEWAL";
+  const [initStatus, setInitStatus] = useState<InitStatus>("loading");
+  const [intent, setIntent] = useState<{ key: string; token: string | null } | null>(null);
+  const initialized = useRef<string | null>(null);
+  const started = useRef<string | null>(null);
 
   const { state, confirmPayment, checkPaymentAgain, restoreFromStorage } = useOnboardingFlow(
-    { planId: '', planName: '', price: 0 },
+    { planId: "", planName: "", price: 0, initialUserId: userId },
     login,
-    // Al pagar, ms-subscription pasa al usuario a ADMINISTRADOR en ms-auth: hace
-    // falta un token nuevo con ese rol (y la suscripción ACTIVE en el contexto).
-    async () => {
-      await refreshSession();
-    },
+    () => refreshSession(),
   );
 
-  // 1) Recuperar el contexto del checkout: token de la URL (o del storage) + plan.
   useEffect(() => {
-    if (loading || initStatus !== 'loading') return;
-    const stored = getStoredOnboardingState();
-    const token = searchParams.get('token') ?? stored?.cardToken ?? null;
-    if (!auth || !token) {
-      setInitStatus('no-session');
+    if (loading) return;
+    if (!userId) {
+      initialized.current = null;
+      started.current = null;
+      setIntent(null);
+      setInitStatus("no-session");
       return;
     }
-    restoreFromStorage({
-      planId: stored?.planId ?? '',
-      planName: stored?.planName ?? '',
-      price: stored?.price ?? 0,
-      addOnIds: stored?.addOnIds ?? [],
-      userId: stored?.userId ?? auth.user.id,
-      cardToken: token,
-    });
-    setInitStatus('ready');
-  }, [auth, loading, initStatus, searchParams, restoreFromStorage]);
-
-  // 2) Confirmar una sola vez, ya con el token en el estado.
-  useEffect(() => {
-    if (initStatus === 'ready' && state.cardToken && !started.current) {
-      started.current = true;
-      void confirmPayment();
+    const stored = getStoredOnboardingState(userId);
+    const token = queryToken ?? stored?.cardToken ?? null;
+    const key = `${userId}:${queryToken ?? "stored"}`;
+    if (initialized.current === key && !(initStatus === "missing-checkout" && hasPlan)) return;
+    initialized.current = key;
+    started.current = null;
+    if (!token && !hasPlan) {
+      setIntent(null);
+      setInitStatus("missing-checkout");
+      return;
     }
-  }, [initStatus, state.cardToken, confirmPayment]);
+    if (token) {
+      // Do not pair a new URL token with metadata from an older checkout.
+      const matching = stored?.cardToken === token && stored.userId === userId ? stored : null;
+      restoreFromStorage({
+        planId: matching?.planId ?? "",
+        planName: matching?.planName ?? "",
+        price: matching?.price ?? 0,
+        addOnIds: matching?.addOnIds ?? [],
+        userId,
+        cardToken: token,
+      });
+    }
+    setIntent({ key, token });
+    setInitStatus("ready");
+  }, [loading, userId, queryToken, hasPlan, initStatus, restoreFromStorage]);
 
-  if (initStatus === 'loading') {
+  useEffect(() => {
+    if (
+      loading ||
+      initStatus !== "ready" ||
+      !intent ||
+      !userId ||
+      !intent.key.startsWith(`${userId}:`)
+    )
+      return;
+    if (started.current === intent.key) return;
+    if (intent.token && (state.cardToken !== intent.token || state.userId !== userId)) return;
+    started.current = intent.key;
+    if (intent.token) void confirmPayment();
+    else void checkPaymentAgain();
+  }, [
+    loading,
+    userId,
+    initStatus,
+    intent,
+    state.cardToken,
+    state.userId,
+    confirmPayment,
+    checkPaymentAgain,
+  ]);
+
+  if (loading || initStatus === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-[#4F3A96]" />
+      <div
+        className="min-h-screen flex items-center justify-center"
+        role="status"
+        aria-label="Recuperando tu sesión"
+      >
+        <Loader2 className="h-8 w-8 animate-spin text-[#4F3A96]" aria-hidden="true" />
       </div>
     );
   }
 
-  if (initStatus === 'no-session') {
+  if (!userId || initStatus === "no-session") {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-6 px-4">
-        <div className="text-4xl">⏱️</div>
-        <div className="text-center">
-          <h2 className="text-xl font-bold text-gray-900">Sesión expirada</h2>
-          <p className="text-sm text-gray-500 mt-2">
-            Iniciá sesión para terminar de activar tu suscripción.
-          </p>
-        </div>
-        <a href="/login" className="text-[#4F3A96] underline text-sm font-medium hover:opacity-80">
-          Iniciar sesión
-        </a>
-      </div>
+      <AuthLayout>
+        <AuthPanel
+          onAuthenticated={() => undefined}
+          notice={
+            <AuthErrorNotice
+              title="Retoma la activación de tu plan"
+              message="Ingresa con la cuenta que usaste para elegir tu plan. Conservaremos el pago que estás verificando."
+            />
+          }
+        />
+      </AuthLayout>
     );
   }
 
-  if (state.step === 'DONE') {
+  if (state.step === "DONE" && initStatus === "ready") {
     return (
-      <div className="min-h-screen flex items-center justify-center px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
+      <div className="min-h-screen flex items-center justify-center px-4 bg-[#f8f7fc]">
+        <div className="w-full max-w-md bg-white rounded-2xl border border-gray-200 p-8">
           <SubscriptionSuccess />
         </div>
       </div>
     );
   }
 
+  const activeSubscription =
+    state.subscription?.status === "ACTIVE" || state.subscription?.status === "PENDING_RENEWAL";
+  const canRetry = Boolean(state.cardToken || activeSubscription);
+
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-gray-50">
-      <div className="w-full max-w-sm bg-white rounded-2xl border border-gray-200 shadow-sm p-8 text-center space-y-4">
-        {state.step === 'PAYMENT_PENDING' ? (
+    <div className="min-h-screen flex items-center justify-center px-4 bg-[#f8f7fc]">
+      <section
+        className="w-full max-w-md bg-white rounded-2xl border border-gray-200 p-8 text-center space-y-4"
+        aria-live="polite"
+      >
+        {initStatus === "missing-checkout" ? (
           <>
-            <div className="text-4xl">⏳</div>
-            <p className="font-semibold text-gray-900">Tu pago está en proceso</p>
+            <h1 className="text-xl font-bold text-gray-900">
+              No encontramos un pago para continuar
+            </h1>
             <p className="text-sm text-gray-500">
-              Flow todavía no confirmó el primer cobro. Apenas se confirme vas a poder entrar a Powip.
+              Tu cuenta sigue creada. Puedes retomar la elección de tu plan.
+            </p>
+            <Link href="/onboarding" className="text-[#4F3A96] underline text-sm font-medium">
+              Elegir mi plan
+            </Link>
+          </>
+        ) : state.step === "PAYMENT_PENDING" ? (
+          <>
+            <h1 className="text-xl font-bold text-gray-900">Tu pago está en proceso</h1>
+            <p className="text-sm text-gray-500">
+              Estamos esperando la confirmación de Flow. Puedes verificar otra vez sin iniciar un
+              nuevo pago.
             </p>
             <button
               type="button"
@@ -114,22 +170,38 @@ export default function CallbackClient() {
               Volver a verificar
             </button>
           </>
-        ) : state.step === 'ERROR' ? (
+        ) : state.step === "ERROR" ? (
           <>
-            <div className="text-4xl">❌</div>
-            <p className="text-sm text-gray-700">{state.error}</p>
-            <a href="/sin-plan" className="text-[#4F3A96] underline text-sm font-medium">
-              Volver a intentar
-            </a>
+            <AuthErrorNotice
+              title="No pudimos completar la activación"
+              message={state.error ?? "Intenta nuevamente."}
+            />
+            {canRetry && (
+              <button
+                type="button"
+                disabled={state.isLoading}
+                onClick={() => void (activeSubscription ? checkPaymentAgain() : confirmPayment())}
+                className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white bg-[#4F3A96] disabled:opacity-70"
+              >
+                {activeSubscription ? "Volver a verificar" : "Reintentar confirmación"}
+              </button>
+            )}
+            {!canRetry && (
+              <Link href="/onboarding" className="text-[#4F3A96] underline text-sm font-medium">
+                Elegir mi plan
+              </Link>
+            )}
           </>
         ) : (
           <>
-            <Loader2 className="h-10 w-10 animate-spin text-[#4F3A96] mx-auto" />
-            <p className="font-semibold text-gray-900">Confirmando tu pago...</p>
-            <p className="text-sm text-gray-500">Estamos verificando tu tarjeta y activando tu suscripción.</p>
+            <Loader2 className="h-10 w-10 animate-spin text-[#4F3A96] mx-auto" aria-hidden="true" />
+            <h1 className="text-xl font-bold text-gray-900">Confirmando tu pago</h1>
+            <p className="text-sm text-gray-500">
+              Estamos verificando tu tarjeta y activando tu suscripción.
+            </p>
           </>
         )}
-      </div>
+      </section>
     </div>
   );
 }

@@ -5,7 +5,15 @@ import type { ReactNode } from "react";
 import LoginForm from "@/components/forms/LoginForm";
 import styles from "./auth-layout.module.css";
 
-export default function AuthPanel({ registration }: { registration?: ReactNode }) {
+export default function AuthPanel({
+  registration,
+  onAuthenticated,
+  notice,
+}: {
+  registration?: ReactNode;
+  onAuthenticated?: () => void;
+  notice?: ReactNode;
+}) {
   const isRegister = Boolean(registration);
 
   return (
@@ -46,7 +54,8 @@ export default function AuthPanel({ registration }: { registration?: ReactNode }
             </p>
           </header>
           <div className={isRegister ? styles.registerBody : styles.loginBody}>
-            {isRegister ? registration : <LoginForm />}
+            {notice && <div className={styles.sessionNotice}>{notice}</div>}
+            {isRegister ? registration : <LoginForm onAuthenticated={onAuthenticated} />}
           </div>
           {!isRegister && (
             <p className={styles.secureNote}>
