@@ -1,0 +1,395 @@
+.page {
+  min-height: 100dvh;
+  font-family: var(--next-font-manrope), Arial, Helvetica, sans-serif;
+  background: #f8f7fc;
+  color: #302645;
+  color-scheme: light;
+}
+
+.mobileHeader {
+  display: grid;
+  align-items: center;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  height: 56px;
+  border-bottom: 1px solid #edeaf3;
+  background: #fff;
+  padding: 6px 16px;
+}
+
+.mobileLogo {
+  grid-column: 2;
+  grid-row: 1;
+  width: 118px;
+  height: auto;
+  justify-self: center;
+}
+
+.mobileBack {
+  display: flex;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #4f3a96;
+}
+
+.mobileBack:focus-visible {
+  outline: 3px solid #baa7e1;
+  outline-offset: 2px;
+}
+
+.brand {
+  display: none;
+}
+
+.content {
+  display: flex;
+  height: calc(100dvh - 56px);
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  padding: 12px 16px;
+}
+
+.card {
+  width: 100%;
+  max-width: 660px;
+  height: min(650px, calc(100dvh - 80px));
+  flex-shrink: 0;
+  border: 1px solid #ece8f3;
+  border-radius: 24px;
+  background: #fff;
+  padding: 24px 32px;
+  box-shadow: 0 12px 48px rgb(47 30 85 / 4%);
+}
+
+.tabs {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  gap: 0;
+}
+
+.tabContent {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.tabContent[data-state="active"] {
+  display: flex;
+  flex-direction: column;
+}
+
+.loginBody,
+.registerBody {
+  min-width: 0;
+}
+
+.loginBody {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.registerBody {
+  min-height: 0;
+  flex: 1;
+}
+
+.tabList {
+  display: grid;
+  width: 100%;
+  height: 48px;
+  flex-shrink: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid #eeeaf5;
+  border-radius: 12px;
+  background: #f5f3fa;
+  padding: 4px;
+}
+
+.tabTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  border: 0;
+  border-radius: 8px;
+  color: #72657f;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tabTrigger[data-state="active"] {
+  background: #fff;
+  color: #4f3a96;
+  box-shadow: 0 2px 8px rgb(56 36 99 / 8%);
+}
+
+.tabTrigger:focus-visible {
+  outline: 2px solid #9b83cc;
+  outline-offset: 2px;
+}
+
+.formHeader {
+  margin: 16px 0;
+  flex-shrink: 0;
+}
+
+.formTitle {
+  font-family: var(--next-font-manrope), Arial, Helvetica, sans-serif;
+  color: #302645;
+  font-size: clamp(24px, 2.2vw, 30px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1.25;
+  text-wrap: balance;
+}
+
+.formDescription {
+  margin-top: 10px;
+  color: #7b7289;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.secureNote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 24px;
+  color: #7b7289;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.backLink {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 4px;
+  color: #7b7289;
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: center;
+}
+
+.backLink:hover {
+  color: #4f3a96;
+}
+
+.backLink:focus-visible {
+  outline: 3px solid #baa7e1;
+  outline-offset: 4px;
+}
+
+@media (min-width: 640px) {
+  .tabTrigger {
+    font-size: 14px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page {
+    display: grid;
+    grid-template-columns: minmax(0, 0.85fr) minmax(0, 1.15fr);
+    align-items: start;
+  }
+
+  .mobileHeader {
+    display: none;
+  }
+
+  .brand {
+    position: sticky;
+    top: 0;
+    display: grid;
+    height: 100dvh;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    gap: 28px;
+    overflow: hidden;
+    background: linear-gradient(165deg, #382769 0%, #4c358c 58%, #6546aa 100%);
+    padding: 36px clamp(32px, 3.5vw, 56px);
+    color: #fff;
+  }
+
+  .brandLogo {
+    z-index: 1;
+    width: 136px;
+    height: auto;
+    flex-shrink: 0;
+    filter: brightness(0) invert(1);
+  }
+
+  .brandIntro {
+    z-index: 1;
+    min-width: 0;
+  }
+
+  .brandTitle {
+    font-family: var(--next-font-manrope), Arial, Helvetica, sans-serif;
+    font-size: clamp(34px, 3vw, 44px);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1.12;
+  }
+
+  .brandDescription {
+    max-width: 330px;
+    margin-top: 14px;
+    color: #ddd3ef;
+    font-size: 15px;
+    line-height: 1.65;
+    text-wrap: pretty;
+  }
+
+  .illustration {
+    position: relative;
+    display: grid;
+    place-items: center;
+    min-height: 0;
+    min-width: 0;
+  }
+
+  .mascot {
+    /* Frame the artwork without its transparent margins so it fits its grid row. */
+    display: block;
+    width: 100%;
+    height: 100%;
+    max-height: 460px;
+  }
+
+  .content {
+    height: 100dvh;
+    gap: 8px;
+    padding: 12px clamp(28px, 4vw, 64px);
+  }
+
+  .card {
+    height: min(650px, calc(100dvh - 56px));
+  }
+
+  .backLink {
+    display: inline-flex;
+  }
+}
+
+@media (max-height: 740px), (max-width: 639px) {
+  .page {
+    --auth-control-height: 44px;
+    --auth-control-pad: 8px;
+    --auth-register-gap: 12px;
+    --auth-grid-gap: 10px;
+    --auth-label-gap: 4px;
+    --auth-legend-gap: 8px;
+    --auth-step-height: 48px;
+    --auth-button-height: 44px;
+    --auth-button-pad: 10px;
+    --auth-error-gap: 4px;
+    --auth-error-leading: 1.4;
+    --auth-hint-gap: 4px;
+    --auth-hint-leading: 1.4;
+    --auth-terms-gap: 12px;
+  }
+
+  .card {
+    padding: 16px 24px;
+  }
+
+  .formHeader {
+    margin: 12px 0;
+  }
+
+  .formTitle {
+    font-size: 26px;
+    line-height: 1.2;
+  }
+
+  .formDescription {
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .tabList {
+    height: 44px;
+  }
+
+  .secureNote {
+    margin-top: 16px;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 740px) {
+  .brand {
+    gap: 20px;
+    padding-top: 28px;
+    padding-bottom: 28px;
+  }
+
+  .brandLogo {
+    width: 126px;
+  }
+
+  .brandTitle {
+    font-size: 34px;
+  }
+
+  .brandDescription {
+    margin-top: 12px;
+    font-size: 14px;
+  }
+}
+
+@media (max-width: 479px) {
+  .page {
+    --auth-register-gap: 10px;
+    --auth-grid-gap: 8px;
+  }
+
+  .content {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .card {
+    height: min(780px, calc(100dvh - 80px));
+    padding: 16px;
+  }
+
+  .formHeader {
+    margin: 10px 0;
+  }
+
+  .formTitle {
+    font-size: 22px;
+  }
+
+  .formDescription {
+    display: none;
+  }
+
+  .tabList {
+    height: 40px;
+  }
+
+  .secureNote {
+    font-size: 11px;
+  }
+}
+
+@media (max-height: 640px) {
+  .formDescription {
+    display: none;
+  }
+}

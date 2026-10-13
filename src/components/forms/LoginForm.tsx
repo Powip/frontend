@@ -1,13 +1,11 @@
 "use client";
 
 import axios from "axios";
+import { ArrowRight, Eye, EyeOff } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { PAYWALL_ROUTE, postLoginRoute } from "@/lib/subscriptionGate";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Eye, EyeOff, ArrowRight } from "lucide-react";
-
-import { Input } from "../ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { API } from "@/lib/api";
 import {
@@ -15,7 +13,9 @@ import {
   type PartnerLoginStatus,
 } from "@/features/partners/services/get-partner-login-status";
 import ForgotPassword from "../modals/forgotPasswortModal";
+import { Input } from "../ui/input";
 import { Label } from "../ui/label";
+import styles from "./auth-form.module.css";
 
 interface LoginData {
   email: string;
@@ -53,9 +53,7 @@ export default function LoginForm({ onAuthenticated }: LoginFormProps = {}) {
     email: "",
     password: "",
   });
-  const [errors, setErrors] = useState<{ email?: string; password?: string }>(
-    {},
-  );
+  const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [open, setOpen] = useState<boolean>(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -118,8 +116,7 @@ export default function LoginForm({ onAuthenticated }: LoginFormProps = {}) {
     } catch (error: any) {
       console.error("Login Error:", error.response?.data || error.message);
       const errorMessage =
-        error.response?.data?.message ||
-        "El usuario y/o la contraseña son incorrectos";
+        error.response?.data?.message || "El usuario y/o la contraseña son incorrectos";
       toast.error(errorMessage);
     } finally {
       setIsLoading(false);
@@ -128,79 +125,83 @@ export default function LoginForm({ onAuthenticated }: LoginFormProps = {}) {
 
   return (
     <div>
-      <form className="flex flex-col gap-5" onSubmit={handleOnLogin}>
-        <div>
-          <Label htmlFor="email">Correo electrónico</Label>
+      <form className={styles.form} onSubmit={handleOnLogin} noValidate>
+        <div className={styles.field}>
+          <Label htmlFor="email" className={styles.label}>
+            Correo electrónico
+          </Label>
           <Input
             value={loginData.email}
-            onChange={(e) =>
-              setLoginData({ ...loginData, email: e.target.value })
-            }
+            onChange={(e) => setLoginData({ ...loginData, email: e.target.value })}
             id="email"
             type="email"
+            autoComplete="email"
             placeholder="tu@negocio.com"
             required
-            className={`mt-1.5 rounded-xl ${errors.email ? "border-red-400" : ""}`}
+            disabled={isLoading}
+            aria-invalid={Boolean(errors.email)}
+            aria-describedby={errors.email ? "login-email-error" : undefined}
+            className={styles.input}
           />
           {errors.email && (
-            <p className="text-xs text-red-500 mt-1">{errors.email}</p>
+            <p id="login-email-error" className={styles.error}>
+              {errors.email}
+            </p>
           )}
         </div>
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <Label htmlFor="password">Contraseña</Label>
-            <button
-              type="button"
-              onClick={() => setOpen(true)}
-              className="text-xs font-medium hover:opacity-80 transition-opacity"
-              style={{ color: "#4F3A96" }}
-            >
-              ¿Olvidaste tu contraseña?
-            </button>
-          </div>
-          <div className="relative">
+        <div className={styles.field}>
+          <Label htmlFor="password" className={styles.label}>
+            Contraseña
+          </Label>
+          <div className={styles.password}>
             <Input
               value={loginData.password}
-              onChange={(e) =>
-                setLoginData({ ...loginData, password: e.target.value })
-              }
+              onChange={(e) => setLoginData({ ...loginData, password: e.target.value })}
               id="password"
               type={showPassword ? "text" : "password"}
+              autoComplete="current-password"
               placeholder="••••••••"
               required
-              className={`rounded-xl pr-10 ${errors.password ? "border-red-400" : ""}`}
+              disabled={isLoading}
+              aria-invalid={Boolean(errors.password)}
+              aria-describedby={errors.password ? "login-password-error" : undefined}
+              className={styles.passwordInput}
             />
             <button
               type="button"
-              className="absolute inset-y-0 right-3 flex items-center text-gray-400 hover:text-gray-600"
+              className={styles.passwordToggle}
               onClick={() => setShowPassword(!showPassword)}
-              tabIndex={-1}
+              disabled={isLoading}
+              aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+              aria-pressed={showPassword}
             >
               {showPassword ? (
-                <EyeOff className="w-4 h-4" />
+                <EyeOff size={18} aria-hidden="true" />
               ) : (
-                <Eye className="w-4 h-4" />
+                <Eye size={18} aria-hidden="true" />
               )}
             </button>
           </div>
           {errors.password && (
-            <p className="text-xs text-red-500 mt-1">{errors.password}</p>
+            <p id="login-password-error" className={styles.error}>
+              {errors.password}
+            </p>
           )}
+          <div className={styles.recovery}>
+            <button type="button" onClick={() => setOpen(true)} className={styles.link}>
+              ¿Olvidaste tu contraseña?
+            </button>
+          </div>
         </div>
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="w-full h-12 rounded-xl font-semibold text-white flex items-center justify-center gap-2 transition-opacity disabled:opacity-70 mt-1"
-          style={{ background: "#4F3A96" }}
-        >
+        <button type="submit" disabled={isLoading} className={styles.submit}>
           {isLoading ? (
             <>
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span className={styles.spinner} aria-hidden="true" />
               Iniciando sesión...
             </>
           ) : (
             <>
-              Ingresar <ArrowRight className="w-4 h-4" />
+              Ingresar <ArrowRight size={17} aria-hidden="true" />
             </>
           )}
         </button>

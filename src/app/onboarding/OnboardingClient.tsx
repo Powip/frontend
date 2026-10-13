@@ -1,47 +1,45 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useForm } from "react-hook-form";
-import { useRouter } from "next/navigation";
 import {
-  Check,
-  Zap,
-  ArrowRight,
   ArrowLeft,
-  Lock,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  CreditCard,
+  Loader2,
   Shield,
   Users,
-  CreditCard,
-  CheckCircle2,
-  Loader2,
+  Zap,
 } from "lucide-react";
-import { useAuth } from "@/contexts/AuthContext";
-import { useOnboardingFlow, type RegisterData } from "@/hooks/useOnboardingFlow";
-import { fetchAddOns, fetchPlans } from "@/services/onboardingService";
-import PlanPicker from "@/components/onboarding/PlanPicker";
+import Image from "next/image";
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import AuthLayout from "@/components/auth/AuthLayout";
+import AuthPanel from "@/components/auth/AuthPanel";
+import RegisterForm from "@/components/forms/RegisterForm";
 import EnterpriseContactModal from "@/components/modals/EnterpriseContactModal";
-import { basePlanName, counterpartPlan, isAnnualPlanName } from "@/lib/onboardingPlan";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import FlowWidgetStep from "@/components/onboarding/FlowWidgetStep";
+import PlanPicker from "@/components/onboarding/PlanPicker";
+import { useAuth } from "@/contexts/AuthContext";
+import { type RegisterData, useOnboardingFlow } from "@/hooks/useOnboardingFlow";
+import { basePlanName, counterpartPlan, isAnnualPlanName } from "@/lib/onboardingPlan";
+import { fetchAddOns, fetchPlans } from "@/services/onboardingService";
 import {
   addOnPrice,
-  summarizeSubscription,
   type BackendAddOn,
   type BackendPlan,
   type OnboardingStep,
   type SubscriptionMe,
   type SubscriptionSummary,
+  summarizeSubscription,
 } from "@/types/onboarding";
 import {
   DEMO_ADD_ONS,
   DEMO_PLANS,
-  OnboardingDevPanel,
   demoSubscription,
+  OnboardingDevPanel,
 } from "./_components/OnboardingDevPanel";
-import Image from "next/image";
-import { toast } from "sonner";
 
 interface OnboardingClientProps {
   /** Plan preseleccionado (desde la landing o /sin-plan); se cambia en el paso 2. */
@@ -142,13 +140,7 @@ interface BrandPanelProps {
   summary: SubscriptionSummary;
 }
 
-function BrandPanel({
-  currentStep,
-  planName,
-  price,
-  isAnnual,
-  summary,
-}: BrandPanelProps) {
+function BrandPanel({ currentStep, planName, price, isAnnual, summary }: BrandPanelProps) {
   const content = BRAND_PANEL_CONTENT[currentStep] ?? BRAND_PANEL_CONTENT[1];
   const period = isAnnual ? "año" : "mes";
   const showSummary = currentStep === 3 && planName !== "";
@@ -157,8 +149,7 @@ function BrandPanel({
     <div
       className="relative h-screen flex flex-col justify-between px-10 py-12 overflow-hidden"
       style={{
-        background:
-          "linear-gradient(160deg, #3d2d78 0%, #4F3A96 55%, #6a4fc4 100%)",
+        background: "linear-gradient(160deg, #3d2d78 0%, #4F3A96 55%, #6a4fc4 100%)",
       }}
     >
       {/* Decorative circles */}
@@ -186,12 +177,8 @@ function BrandPanel({
       {/* Main content */}
       <div className="mt-12 flex-1 flex flex-col justify-start gap-8 z-10">
         <div>
-          <h2 className="text-white font-black text-4xl leading-tight mb-4">
-            {content.headline}
-          </h2>
-          <p className="text-white/70 text-base leading-relaxed max-w-md">
-            {content.sub}
-          </p>
+          <h2 className="text-white font-black text-4xl leading-tight mb-4">{content.headline}</h2>
+          <p className="text-white/70 text-base leading-relaxed max-w-md">{content.sub}</p>
         </div>
 
         {showSummary ? (
@@ -225,7 +212,9 @@ function BrandPanel({
                 className="flex items-center justify-between gap-4 pt-2 mt-1"
                 style={{ borderTop: "1px solid rgba(255,255,255,0.2)" }}
               >
-                <dt className="text-white font-bold">Total {period === "año" ? "anual" : "mensual"}</dt>
+                <dt className="text-white font-bold">
+                  Total {period === "año" ? "anual" : "mensual"}
+                </dt>
                 <dd className="text-white font-black text-lg whitespace-nowrap">
                   S/ {summary.total}/{period}
                 </dd>
@@ -301,28 +290,15 @@ function OnboardingProgress({ currentStep }: { currentStep: number }) {
         const isCurrent = step.num === currentStep;
 
         return (
-          <div
-            key={step.num}
-            className="flex items-center flex-1 last:flex-none"
-          >
+          <div key={step.num} className="flex items-center flex-1 last:flex-none">
             {/* Step circle */}
             <div className="flex flex-col items-center gap-1.5">
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all duration-300"
                 style={{
-                  background: isCompleted
-                    ? "#e9f5f3"
-                    : isCurrent
-                      ? "#4F3A96"
-                      : "#f3f4f6",
-                  color: isCompleted
-                    ? "#008a7b"
-                    : isCurrent
-                      ? "white"
-                      : "#9ca3af",
-                  boxShadow: isCurrent
-                    ? "0 0 0 4px rgba(79,58,150,0.12)"
-                    : "none",
+                  background: isCompleted ? "#e9f5f3" : isCurrent ? "#4F3A96" : "#f3f4f6",
+                  color: isCompleted ? "#008a7b" : isCurrent ? "white" : "#9ca3af",
+                  boxShadow: isCurrent ? "0 0 0 4px rgba(79,58,150,0.12)" : "none",
                 }}
               >
                 {isCompleted ? <Check className="w-4 h-4" /> : step.num}
@@ -330,11 +306,7 @@ function OnboardingProgress({ currentStep }: { currentStep: number }) {
               <span
                 className="text-xs font-medium whitespace-nowrap"
                 style={{
-                  color: isCompleted
-                    ? "#008a7b"
-                    : isCurrent
-                      ? "#4F3A96"
-                      : "#9ca3af",
+                  color: isCompleted ? "#008a7b" : isCurrent ? "#4F3A96" : "#9ca3af",
                 }}
               >
                 {step.name}
@@ -347,9 +319,7 @@ function OnboardingProgress({ currentStep }: { currentStep: number }) {
                 className="flex-1 h-0.5 mb-5 mx-1 transition-all duration-300"
                 style={{
                   background:
-                    step.num < currentStep
-                      ? "linear-gradient(90deg, #008a7b, #4F3A96)"
-                      : "#e5e7eb",
+                    step.num < currentStep ? "linear-gradient(90deg, #008a7b, #4F3A96)" : "#e5e7eb",
                 }}
               />
             )}
@@ -357,253 +327,6 @@ function OnboardingProgress({ currentStep }: { currentStep: number }) {
         );
       })}
     </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Step1
-// ---------------------------------------------------------------------------
-
-type AccountFormValues = RegisterData;
-
-interface Step1Props {
-  isLoading: boolean;
-  error: string | null;
-  onNext: (data: AccountFormValues) => Promise<void>;
-}
-
-function Step1({ isLoading, error, onNext }: Step1Props) {
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<AccountFormValues>();
-
-  return (
-    <form onSubmit={handleSubmit(onNext)} className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="mb-1">
-        <h3 className="font-bold text-xl text-gray-900">Crea tu cuenta</h3>
-        <p className="text-sm text-gray-500 mt-1">
-          Completa los datos para empezar. Solo toma 1 minuto.
-        </p>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
-          <Label htmlFor="name">
-            Nombre <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="name"
-            placeholder="Juan"
-            className="mt-1.5"
-            {...register("name", {
-              required: "Requerido",
-              minLength: { value: 2, message: "Mínimo 2 caracteres" },
-            })}
-          />
-          {errors.name && (
-            <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>
-          )}
-        </div>
-        <div className="flex-1">
-          <Label htmlFor="surname">
-            Apellido <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="surname"
-            placeholder="Pérez"
-            className="mt-1.5"
-            {...register("surname", {
-              required: "Requerido",
-              minLength: { value: 2, message: "Mínimo 2 caracteres" },
-            })}
-          />
-          {errors.surname && (
-            <p className="text-xs text-red-500 mt-1">
-              {errors.surname.message}
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="email">
-          Email <span className="text-red-500">*</span>
-        </Label>
-        <Input
-          id="email"
-          type="email"
-          placeholder="tu@negocio.com"
-          className="mt-1.5"
-          {...register("email", {
-            required: "Requerido",
-            pattern: { value: /\S+@\S+\.\S+/, message: "Email inválido" },
-          })}
-        />
-        {errors.email && (
-          <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>
-        )}
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
-          <Label htmlFor="password">
-            Contraseña <span className="text-red-500">*</span>
-          </Label>
-          <div className="relative mt-1.5">
-            <Input
-              id="password"
-              type="password"
-              placeholder="Mínimo 6 caracteres"
-              className="pr-10"
-              {...register("password", {
-                required: "Requerido",
-                minLength: { value: 6, message: "Mínimo 6 caracteres" },
-                pattern: {
-                  value: /(?=.*[a-z])(?=.*\d)/,
-                  message: "Debe tener una letra minúscula y un número",
-                },
-              })}
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-              <Lock className="w-4 h-4" />
-            </span>
-          </div>
-          {errors.password && (
-            <p className="text-xs text-red-500 mt-1">
-              {errors.password.message}
-            </p>
-          )}
-        </div>
-
-        <div className="flex-1">
-          <Label htmlFor="phone">
-            WhatsApp <span className="text-red-500">*</span>
-          </Label>
-          <div className="flex mt-1.5">
-            <div className="bg-gray-50 border border-gray-300 border-r-0 px-3 py-1 rounded-l-xl text-gray-500 text-sm flex items-center whitespace-nowrap">
-              🇵🇪 +51
-            </div>
-            <Input
-              id="phone"
-              type="tel"
-              placeholder="987 654 321"
-              className="rounded-l-none"
-              {...register("phone", {
-                required: "Requerido",
-                minLength: { value: 9, message: "Mínimo 9 dígitos" },
-                maxLength: { value: 9, message: "Máximo 9 dígitos" },
-                pattern: { value: /^\d+$/, message: "Solo números" },
-              })}
-            />
-          </div>
-          {errors.phone && (
-            <p className="text-xs text-red-500 mt-1">{errors.phone.message}</p>
-          )}
-        </div>
-      </div>
-
-      {/* Datos que exige ms-auth (RegisterRequest): documento, dirección y distrito */}
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="flex-1">
-          <Label htmlFor="identityDocument">
-            DNI / RUC <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="identityDocument"
-            inputMode="numeric"
-            placeholder="12345678"
-            className="mt-1.5"
-            {...register("identityDocument", {
-              required: "Requerido",
-              pattern: { value: /^(\d{8}|\d{11})$/, message: "DNI (8 dígitos) o RUC (11 dígitos)" },
-            })}
-          />
-          {errors.identityDocument && (
-            <p className="text-xs text-red-500 mt-1">{errors.identityDocument.message}</p>
-          )}
-        </div>
-        <div className="flex-1">
-          <Label htmlFor="district">
-            Distrito <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="district"
-            placeholder="Miraflores"
-            className="mt-1.5"
-            {...register("district", { required: "Requerido" })}
-          />
-          {errors.district && (
-            <p className="text-xs text-red-500 mt-1">{errors.district.message}</p>
-          )}
-        </div>
-      </div>
-
-      <div>
-        <Label htmlFor="address">
-          Dirección <span className="text-red-500">*</span>
-        </Label>
-        <Input
-          id="address"
-          placeholder="Av. Larco 123"
-          className="mt-1.5"
-          {...register("address", {
-            required: "Requerido",
-            minLength: { value: 5, message: "Mínimo 5 caracteres" },
-          })}
-        />
-        {errors.address && (
-          <p className="text-xs text-red-500 mt-1">{errors.address.message}</p>
-        )}
-      </div>
-
-      {/* Trust banner */}
-      <div
-        className="rounded-xl p-4 flex items-center gap-3 mt-1 text-sm"
-        style={{
-          background: "#f0fdf9",
-          border: "1px solid #a7f3d0",
-          color: "#047857",
-        }}
-      >
-        <Lock className="w-4 h-4 shrink-0" />
-        <p>
-          <strong>Acceso inmediato</strong> al activar tu plan. Configura tu
-          empresa dentro de Powip.
-        </p>
-      </div>
-
-      {error && (
-        <p className="text-sm text-red-500 text-center bg-red-50 rounded-xl p-3">
-          {error}
-        </p>
-      )}
-
-      <button
-        type="submit"
-        disabled={isLoading}
-        className="w-full h-12 text-base rounded-xl font-semibold text-white flex items-center justify-center gap-2 mt-2 transition-opacity disabled:opacity-70"
-        style={{ background: "#4F3A96" }}
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            Creando cuenta...
-          </>
-        ) : (
-          <>
-            Continuar
-            <ArrowRight className="w-4 h-4" />
-          </>
-        )}
-      </button>
-
-      <p className="text-center text-xs text-gray-400 flex items-center justify-center gap-1.5">
-        <Lock className="w-3 h-3" /> SSL · Datos protegidos
-      </p>
-    </form>
   );
 }
 
@@ -663,8 +386,9 @@ function Step2({
         <p className="text-sm text-gray-500 mt-1">
           {addOns.length > 0
             ? `${samePrice ? "" : "Desde "}S/ ${minAddOnPrice}/${period} cada uno`
-            : "Opcionales"} — actívalos ahora o después desde{" "}
-          <strong className="text-gray-700">Configuración</strong>.
+            : "Opcionales"}{" "}
+          — actívalos ahora o después desde <strong className="text-gray-700">Configuración</strong>
+          .
         </p>
       </div>
 
@@ -718,9 +442,7 @@ function Step2({
               <div className="text-2xl mb-2">{config.icon}</div>
 
               {/* Name & desc */}
-              <h4 className="font-bold text-gray-900 text-sm leading-tight">
-                {config.name}
-              </h4>
+              <h4 className="font-bold text-gray-900 text-sm leading-tight">{config.name}</h4>
               <p className="text-xs text-gray-500 mt-1 leading-relaxed line-clamp-3">
                 {config.desc}
               </p>
@@ -739,10 +461,7 @@ function Step2({
               </div>
 
               {/* Price */}
-              <div
-                className="font-bold text-sm mt-3"
-                style={{ color: "#4F3A96" }}
-              >
+              <div className="font-bold text-sm mt-3" style={{ color: "#4F3A96" }}>
                 + S/ {addOnPrice(addon, isAnnual)}/{period}
               </div>
             </button>
@@ -911,9 +630,7 @@ function Step3({
     <div className="flex flex-col gap-4">
       {/* Header */}
       <div className="mb-1">
-        <h3 className="font-bold text-xl text-gray-900">
-          Resumen de tu suscripción
-        </h3>
+        <h3 className="font-bold text-xl text-gray-900">Resumen de tu suscripción</h3>
         <p className="text-sm text-gray-500 mt-1">
           Revisa los detalles antes de registrar tu tarjeta.
         </p>
@@ -926,9 +643,7 @@ function Step3({
       >
         {/* Plan row */}
         <div className="flex items-center justify-between mb-2">
-          <span className="font-semibold text-gray-800 text-sm">
-            Plan {planName}
-          </span>
+          <span className="font-semibold text-gray-800 text-sm">Plan {planName}</span>
           <span className="font-bold text-sm" style={{ color: "#4F3A96" }}>
             S/ {price}/{period}
           </span>
@@ -938,10 +653,7 @@ function Step3({
         {summary.addOns.map(({ addOn: addon, price: addOnAmount }) => {
           const { name, icon } = addOnDisplay(addon);
           return (
-            <div
-              key={addon.id}
-              className="flex items-center justify-between mb-2"
-            >
+            <div key={addon.id} className="flex items-center justify-between mb-2">
               <span className="text-gray-600 text-sm flex items-center gap-1.5">
                 {icon} {name}
               </span>
@@ -969,18 +681,12 @@ function Step3({
         className="rounded-xl p-4 flex items-start gap-3"
         style={{ background: "#f0fdf9", border: "1px solid #a7f3d0" }}
       >
-        <CheckCircle2
-          className="w-5 h-5 shrink-0 mt-0.5"
-          style={{ color: "#008a7b" }}
-        />
+        <CheckCircle2 className="w-5 h-5 shrink-0 mt-0.5" style={{ color: "#008a7b" }} />
         <div className="text-sm" style={{ color: "#065f46" }}>
           <p className="font-semibold">Qué incluye tu plan</p>
-          <p
-            className="mt-1 text-xs leading-relaxed"
-            style={{ color: "#047857" }}
-          >
-            Acceso inmediato al activar — todas las herramientas del plan{" "}
-            {planName} disponibles desde el primer día.
+          <p className="mt-1 text-xs leading-relaxed" style={{ color: "#047857" }}>
+            Acceso inmediato al activar — todas las herramientas del plan {planName} disponibles
+            desde el primer día.
           </p>
         </div>
       </div>
@@ -994,8 +700,8 @@ function Step3({
         <div className="text-sm text-indigo-900">
           <p className="font-semibold">Pago seguro con tarjeta</p>
           <p className="mt-1 text-xs leading-relaxed text-indigo-700">
-            Registrarás tu tarjeta de débito o crédito directamente en Flow.
-            Powip no almacena datos de tu tarjeta.
+            Registrarás tu tarjeta de débito o crédito directamente en Flow. Powip no almacena datos
+            de tu tarjeta.
           </p>
         </div>
       </div>
@@ -1061,8 +767,7 @@ function StepSuccess({
       const link = document.createElement("link");
       link.id = "gcal-css";
       link.rel = "stylesheet";
-      link.href =
-        "https://calendar.google.com/calendar/scheduling-button-script.css";
+      link.href = "https://calendar.google.com/calendar/scheduling-button-script.css";
       document.head.appendChild(link);
     }
 
@@ -1086,8 +791,7 @@ function StepSuccess({
     if (!document.getElementById("gcal-script")) {
       const script = document.createElement("script");
       script.id = "gcal-script";
-      script.src =
-        "https://calendar.google.com/calendar/scheduling-button-script.js";
+      script.src = "https://calendar.google.com/calendar/scheduling-button-script.js";
       script.async = true;
       script.onload = mountButton;
       document.head.appendChild(script);
@@ -1120,19 +824,14 @@ function StepSuccess({
         </div>
         <div>
           <h3 className="font-bold text-xl text-gray-900">¡Cuenta activada!</h3>
-          <p className="text-sm text-gray-500 mt-1">
-            Tu plan está activo. Bienvenido a Powip.
-          </p>
+          <p className="text-sm text-gray-500 mt-1">Tu plan está activo. Bienvenido a Powip.</p>
         </div>
       </div>
 
       {/* Receipt ticket */}
       <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 overflow-hidden">
         {/* Ticket header */}
-        <div
-          className="px-5 py-3 flex items-center gap-2"
-          style={{ background: "#f5f2ff" }}
-        >
+        <div className="px-5 py-3 flex items-center gap-2" style={{ background: "#f5f2ff" }}>
           <span className="text-base">🎫</span>
           <span className="text-sm font-semibold" style={{ color: "#4F3A96" }}>
             Comprobante de suscripción
@@ -1145,10 +844,7 @@ function StepSuccess({
               {/* Plan & price */}
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-600">Plan {planName}</span>
-                <span
-                  className="text-sm font-bold"
-                  style={{ color: "#4F3A96" }}
-                >
+                <span className="text-sm font-bold" style={{ color: "#4F3A96" }}>
                   S/ {price}/{isAnnual ? "año" : "mes"}
                 </span>
               </div>
@@ -1229,8 +925,8 @@ function StepSuccess({
               ¿Querés sacarle el máximo a Powip?
             </p>
             <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">
-              Agendá una reunión de onboarding gratuita — un especialista te
-              guiará por las funciones clave de tu plan.
+              Agendá una reunión de onboarding gratuita — un especialista te guiará por las
+              funciones clave de tu plan.
             </p>
           </div>
         </div>
@@ -1384,7 +1080,7 @@ export default function OnboardingClient({
     setPlan(counterpartPlan(plans, flowState.planName, annual) ?? { id: "", name: "", price: 0 });
   };
 
-  const handleStep1Next = async (data: AccountFormValues) => {
+  const handleStep1Next = async (data: RegisterData) => {
     await register(data);
   };
   const handleStep2Next = () => {
@@ -1400,10 +1096,46 @@ export default function OnboardingClient({
   };
 
   const toggleAddon = (id: string) => {
-    setSelectedAddons((prev) =>
-      prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id],
-    );
+    setSelectedAddons((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
   };
+
+  const devPanel = isDev ? (
+    <OnboardingDevPanel
+      currentStep={currentStep}
+      isOverriding={devStepOverride !== null || devPaymentStep !== null}
+      paymentStep={paymentStep}
+      demoLoaded={devDemoLoaded}
+      onStep={(step) => {
+        setDevStepOverride(step);
+        setDevPaymentStep(null);
+      }}
+      onPaymentStep={(step) => {
+        setDevStepOverride(3);
+        setDevPaymentStep(step);
+      }}
+      onLoadDemo={loadDevDemo}
+      onReset={resetDev}
+    />
+  ) : null;
+
+  if (currentStep === 1 && !initialAuth) {
+    return (
+      <>
+        <AuthLayout>
+          <AuthPanel
+            registration={
+              <RegisterForm
+                isLoading={flowState.isLoading}
+                error={flowState.error}
+                onNext={handleStep1Next}
+              />
+            }
+          />
+        </AuthLayout>
+        {devPanel}
+      </>
+    );
+  }
 
   return (
     <div
@@ -1418,9 +1150,7 @@ export default function OnboardingClient({
         <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
           <span className="text-white font-black text-sm">P</span>
         </div>
-        <span className="text-white font-black tracking-widest text-base">
-          POWIP
-        </span>
+        <span className="text-white font-black tracking-widest text-base">POWIP</span>
         <div className="ml-auto min-w-0 truncate text-white/70 text-xs">
           {currentStep === 3
             ? summaryLabel(flowState.planName, summary, isAnnual)
@@ -1448,10 +1178,7 @@ export default function OnboardingClient({
               className="hidden lg:inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-sm font-medium mb-6"
               style={{ background: "#ede9ff", color: "#4F3A96" }}
             >
-              <div
-                className="w-2 h-2 rounded-full"
-                style={{ background: "#4F3A96" }}
-              />
+              <div className="w-2 h-2 rounded-full" style={{ background: "#4F3A96" }} />
               {planLabel(flowState.planName, flowState.price, isAnnual)}
             </div>
 
@@ -1461,18 +1188,7 @@ export default function OnboardingClient({
             </div>
 
             {/* Step content card */}
-            <div
-              className="p-6 sm:p-8"
-              style={{ borderColor: "rgba(79,58,150,0.08)" }}
-            >
-              {currentStep === 1 && !initialAuth && (
-                <Step1
-                  isLoading={flowState.isLoading}
-                  error={flowState.error}
-                  onNext={handleStep1Next}
-                />
-              )}
-
+            <div className="p-6 sm:p-8" style={{ borderColor: "rgba(79,58,150,0.08)" }}>
               {currentStep === 2 && (
                 <Step2
                   plans={plans}
@@ -1525,24 +1241,7 @@ export default function OnboardingClient({
       </div>
       <EnterpriseContactModal open={enterpriseOpen} onClose={() => setEnterpriseOpen(false)} />
 
-      {isDev && (
-        <OnboardingDevPanel
-          currentStep={currentStep}
-          isOverriding={devStepOverride !== null || devPaymentStep !== null}
-          paymentStep={paymentStep}
-          demoLoaded={devDemoLoaded}
-          onStep={(step) => {
-            setDevStepOverride(step);
-            setDevPaymentStep(null);
-          }}
-          onPaymentStep={(step) => {
-            setDevStepOverride(3);
-            setDevPaymentStep(step);
-          }}
-          onLoadDemo={loadDevDemo}
-          onReset={resetDev}
-        />
-      )}
+      {devPanel}
     </div>
   );
 }
