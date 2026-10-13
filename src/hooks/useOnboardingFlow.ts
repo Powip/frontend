@@ -1,15 +1,9 @@
 "use client";
 
-import { useReducer, useCallback, useRef, useEffect } from "react";
 import axios from "axios";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import { toast } from "sonner";
-import type {
-  OnboardingState,
-  OnboardingStep,
-  StoredOnboardingState,
-  SubscriptionMe,
-} from "@/types/onboarding";
-import { saveOnboardingState, clearOnboardingState } from "@/lib/onboardingStorage";
+import { clearOnboardingState, saveOnboardingState } from "@/lib/onboardingStorage";
 import {
   apiErrorCode,
   confirmFlowCheckout,
@@ -18,6 +12,12 @@ import {
   registerAccount,
   startFlowCheckout,
 } from "@/services/onboardingService";
+import type {
+  OnboardingState,
+  OnboardingStep,
+  StoredOnboardingState,
+  SubscriptionMe,
+} from "@/types/onboarding";
 
 type OnboardingAction =
   | { type: "SET_LOADING"; isLoading: boolean }
@@ -51,11 +51,70 @@ export const POLL_DELAY_MS = 3000;
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const HAS_PLAN = new Set(["ACTIVE", "PENDING_RENEWAL"]);
 
+function serverErrorText(value: unknown): string | undefined {
+  if (typeof value === "string") return value.trim() || undefined;
+  if (Array.isArray(value)) {
+    const messages = value
+      .map(serverErrorText)
+      .filter((message): message is string => Boolean(message));
+    return messages.length > 0 ? messages.join(". ") : undefined;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const field of ["errors", "message", "error", "defaultMessage"]) {
+      const message = serverErrorText(record[field]);
+      if (message) return message;
+    }
+  }
+  return undefined;
+}
+
+function registrationErrorMessage(err: unknown): string {
+  const fallback = "No pudimos crear tu cuenta. Intenta nuevamente.";
+  if (!axios.isAxiosError(err)) return fallback;
+  const payload: unknown = err.response?.data;
+  const record =
+    payload && typeof payload === "object" && !Array.isArray(payload)
+      ? (payload as Record<string, unknown>)
+      : {};
+  const message = serverErrorText(payload);
+  const code = serverErrorText(record.code) ?? serverErrorText(record.errorCode) ?? "";
+  const details = `${code} ${message ?? ""}`
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[_-]/g, " ")
+    .toLowerCase();
+  const isDuplicate =
+    err.response?.status === 409 ||
+    (err.response?.status === 400 &&
+      /already\s*(?:exists|registered|used)|duplicate|duplicad|ya (?:existe|esta registrad|registrad|esta en uso)|(?:email|correo|identity document|dni|ruc)\s*(?:exists|registered|taken)/.test(
+        details,
+      ));
+  if (isDuplicate) {
+    const hasDocument = /identity\s*document|documento|\bdni\b|\bruc\b/.test(details);
+    const hasEmail = /email|correo/.test(details);
+    if (hasDocument && !hasEmail) {
+      return "El documento de identidad ya está registrado. Revisa tus datos o contacta a soporte.";
+    }
+    if (hasEmail && !hasDocument) {
+      return "Este email ya está registrado. Inicia sesión para continuar con tu suscripción.";
+    }
+    return "Estos datos ya están registrados. Si ya tienes una cuenta, inicia sesión para continuar.";
+  }
+  if (err.response?.status === 400) {
+    return message && message !== "Bad Request"
+      ? message
+      : "Datos inválidos. Revisa los campos e intenta nuevamente.";
+  }
+  return message ?? fallback;
+}
+
 export interface UseOnboardingFlowReturn {
   state: OnboardingState;
   setPlan: (plan: { id: string; name: string; price: number }) => void;
   selectAddOns: (ids: string[]) => void;
   register: (data: RegisterData) => Promise<void>;
+  resumeSession: (userId: string) => void;
   initiateCardRegistration: () => Promise<void>;
   confirmPayment: () => Promise<void>;
   checkPaymentAgain: () => Promise<void>;
@@ -68,7 +127,11 @@ export interface UseOnboardingFlowReturn {
 function reducer(state: OnboardingState, action: OnboardingAction): OnboardingState {
   switch (action.type) {
     case "SET_LOADING":
-      return { ...state, isLoading: action.isLoading, error: action.isLoading ? null : state.error };
+      return {
+        ...state,
+        isLoading: action.isLoading,
+        error: action.isLoading ? null : state.error,
+      };
     case "SET_STEP":
       return { ...state, step: action.step, isLoading: false, error: null };
     case "SET_PLAN":
@@ -129,6 +192,8 @@ export function useOnboardingFlow(
   const [state, dispatch] = useReducer(reducer, initialState);
 
   const mountedRef = useRef(true);
+  const registeredAccountsRef = useRef(new Map<string, string>());
+  const registrationInFlightRef = useRef(false);
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -149,53 +214,70 @@ export function useOnboardingFlow(
 
   const register = useCallback(
     async (data: RegisterData) => {
+      if (registrationInFlightRef.current) return;
+      registrationInFlightRef.current = true;
       dispatch({ type: "SET_LOADING", isLoading: true });
+      const email = data.email.trim().toLowerCase();
 
-      let userId: string;
       try {
-        const res = await registerAccount({
-          name: data.name.trim(),
-          surname: data.surname.trim(),
-          email: data.email.trim().toLowerCase(),
-          password: data.password,
-          phoneNumber: `+51${data.phone}`,
-          identityDocument: data.identityDocument.trim(),
-          address: data.address.trim(),
-          district: data.district.trim(),
-        });
-        userId = res.userId;
-      } catch (err: unknown) {
-        let message = "No pudimos crear tu cuenta. Intenta nuevamente.";
-        if (axios.isAxiosError(err)) {
-          const serverMsg = (err.response?.data as { message?: string; error?: string }) ?? {};
-          if (err.response?.status === 409) {
-            message = "Este email ya está registrado. Iniciá sesión para continuar con tu suscripción.";
-          } else if (err.response?.status === 400) {
-            message = serverMsg.message ?? serverMsg.error ?? "Datos inválidos. Revisá los campos e intentá nuevamente.";
-          } else if (serverMsg.message) {
-            message = serverMsg.message;
+        let userId = registeredAccountsRef.current.get(email);
+        if (!userId) {
+          try {
+            const res = await registerAccount({
+              name: data.name.trim(),
+              surname: data.surname.trim(),
+              email,
+              password: data.password,
+              phoneNumber: `+51${data.phone}`,
+              identityDocument: data.identityDocument.trim(),
+              address: data.address.trim(),
+              district: data.district.trim(),
+            });
+            userId = res.userId;
+            // Only remember successful account creation in this mounted flow.
+            // Credentials and tokens remain outside this ref and browser storage.
+            registeredAccountsRef.current.set(email, userId);
+          } catch (err: unknown) {
+            if (!mountedRef.current) return;
+            const message = registrationErrorMessage(err);
+            toast.error(message);
+            dispatch({ type: "SET_INLINE_ERROR", error: message });
+            return;
           }
         }
-        toast.error(message);
-        dispatch({ type: "SET_INLINE_ERROR", error: message });
-        return;
-      }
 
-      try {
-        // Login (no el token del registro) para que ms-auth deje la cookie de
-        // refresh: la sesión tiene que sobrevivir a la redirección a Flow.
-        const { accessToken } = await loginAccount(data.email.trim().toLowerCase(), data.password);
-        if (!mountedRef.current) return;
-        await loginFn({ accessToken });
-        dispatch({ type: "SET_USER", userId });
-        dispatch({ type: "SET_STEP", step: "ADDONS" });
-      } catch {
-        const message = "Tu cuenta fue creada. Iniciá sesión para continuar con tu suscripción.";
-        toast.error(message);
-        dispatch({ type: "SET_INLINE_ERROR", error: message });
+        try {
+          // Login establishes the refresh cookie on the auth service's domain.
+          // A retry for an account created here only retries this session step.
+          const { accessToken } = await loginAccount(email, data.password);
+          if (!mountedRef.current) return;
+          const session = await loginFn({ accessToken });
+          if (!mountedRef.current) return;
+          if (session == null) {
+            throw new Error("No se pudo cargar la sesión de la cuenta creada.");
+          }
+          dispatch({ type: "SET_USER", userId });
+          dispatch({ type: "SET_STEP", step: "ADDONS" });
+        } catch {
+          if (!mountedRef.current) return;
+          const message =
+            "Tu cuenta fue creada, pero no pudimos iniciar la sesión. Reintenta con tus credenciales o inicia sesión para continuar con tu suscripción.";
+          toast.error(message);
+          dispatch({ type: "SET_INLINE_ERROR", error: message });
+        }
+      } finally {
+        registrationInFlightRef.current = false;
       }
     },
     [loginFn],
+  );
+
+  const resumeSession = useCallback(
+    (userId: string) => {
+      if (state.step !== "REGISTRATION" || state.isLoading || state.userId) return;
+      dispatch({ type: "RESTORE", state: { step: "ADDONS", userId, error: null } });
+    },
+    [state.step, state.isLoading, state.userId],
   );
 
   const initiateCardRegistration = useCallback(async () => {
@@ -210,7 +292,11 @@ export function useOnboardingFlow(
         userId: state.userId ?? "",
         cardToken: checkout.cardToken,
       });
-      dispatch({ type: "SET_CHECKOUT", cardToken: checkout.cardToken, redirectUrl: checkout.redirectUrl });
+      dispatch({
+        type: "SET_CHECKOUT",
+        cardToken: checkout.cardToken,
+        redirectUrl: checkout.redirectUrl,
+      });
       dispatch({ type: "SET_STEP", step: "CARD_WIDGET" });
     } catch (err: unknown) {
       const code = apiErrorCode(err);
@@ -259,7 +345,10 @@ export function useOnboardingFlow(
   const confirmPayment = useCallback(async () => {
     const token = state.cardToken;
     if (!token) {
-      dispatch({ type: "SET_ERROR", error: "No encontramos el registro de tu tarjeta. Volvé a intentarlo." });
+      dispatch({
+        type: "SET_ERROR",
+        error: "No encontramos el registro de tu tarjeta. Volvé a intentarlo.",
+      });
       return;
     }
     dispatch({ type: "SET_STEP", step: "CONFIRMING" });
@@ -271,12 +360,17 @@ export function useOnboardingFlow(
         const result = await confirmFlowCheckout(token);
         if (!result.pending) {
           const activated = await waitForActivation(result.subscription);
-          if (!activated && mountedRef.current) dispatch({ type: "SET_STEP", step: "PAYMENT_PENDING" });
+          if (!activated && mountedRef.current)
+            dispatch({ type: "SET_STEP", step: "PAYMENT_PENDING" });
           return;
         }
       } catch (err: unknown) {
         const code = apiErrorCode(err);
-        if (code === "CARD_REJECTED" || code === "SUBSCRIPTION_NOT_FOUND" || code === "CHECKOUT_NOT_PENDING") {
+        if (
+          code === "CARD_REJECTED" ||
+          code === "SUBSCRIPTION_NOT_FOUND" ||
+          code === "CHECKOUT_NOT_PENDING"
+        ) {
           const message =
             code === "CARD_REJECTED"
               ? "Flow no pudo registrar tu tarjeta. Probá con otra tarjeta."
@@ -291,7 +385,8 @@ export function useOnboardingFlow(
     }
 
     if (mountedRef.current) {
-      const message = "No pudimos confirmar el registro de tu tarjeta. Volvé a intentarlo o contactá a soporte.";
+      const message =
+        "No pudimos confirmar el registro de tu tarjeta. Volvé a intentarlo o contactá a soporte.";
       toast.error(message);
       dispatch({ type: "SET_ERROR", error: message });
     }
@@ -330,6 +425,7 @@ export function useOnboardingFlow(
     setPlan,
     selectAddOns,
     register,
+    resumeSession,
     initiateCardRegistration,
     confirmPayment,
     checkPaymentAgain,

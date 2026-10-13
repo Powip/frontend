@@ -977,8 +977,9 @@ export default function OnboardingClient({
     retry,
     goBack,
     setError,
+    resumeSession,
   } = useOnboardingFlow(
-    { planId, planName, price, initialUserId: initialAuth?.userId ?? null },
+    { planId, planName, price, initialUserId: initialAuth?.userId ?? auth?.user?.id ?? null },
     login,
     // Al pagar, ms-subscription pasa al usuario a ADMINISTRADOR en ms-auth: hace
     // falta un token nuevo con ese rol (y la suscripción ACTIVE en el contexto).
@@ -986,6 +987,13 @@ export default function OnboardingClient({
       await refreshSession();
     },
   );
+
+  // Refresh can finish after this public page mounts. An existing account
+  // continues with its plan instead of being asked to register again.
+  const sessionUserId = auth?.user?.id;
+  useEffect(() => {
+    if (sessionUserId) resumeSession(sessionUserId);
+  }, [sessionUserId, resumeSession]);
 
   // El plan elegido manda; sin plan, el ciclo lo marca el toggle del paso 2.
   const [annualView, setAnnualView] = useState(isAnnualPlanName(planName));

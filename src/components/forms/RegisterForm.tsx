@@ -536,11 +536,23 @@ export default function RegisterForm({ isLoading, error, onNext }: RegisterFormP
       {step === REGISTER_STEPS.length - 1 && (
         <p className={styles.terms}>
           Al registrarte, aceptas nuestros{" "}
-          <Link href="/terminos" className={styles.link}>
+          <Link
+            href="https://www.powip.lat/terminos"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Términos de Servicio (se abre en una nueva pestaña)"
+            className={styles.link}
+          >
             Términos de Servicio
           </Link>{" "}
           y{" "}
-          <Link href="/privacidad" className={styles.link}>
+          <Link
+            href="https://www.powip.lat/privacidad"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="Política de Privacidad (se abre en una nueva pestaña)"
+            className={styles.link}
+          >
             Política de Privacidad
           </Link>
         </p>

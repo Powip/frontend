@@ -103,22 +103,44 @@ describe("RegisterForm — integración con onboarding", () => {
     expect(onNext.mock.calls[0][0]).not.toHaveProperty("phoneNumber");
   });
 
-  it("muestra el error del flujo y permite corregir el email para reintentar sin perder datos", async () => {
+  it.each([
+    { status: 409, error: "Este email ya está registrado." },
+    { status: 400, error: "El correo electrónico ya existe." },
+  ])(
+    "muestra el error de email duplicado ($status) y conserva los datos para reintentar",
+    async ({ error }) => {
+      const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
+      const { rerender } = render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
+      reachAccountStep();
+      fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
+      await waitFor(() => expect(onNext).toHaveBeenCalledTimes(1));
+
+      rerender(<RegisterForm isLoading={false} error={error} onNext={onNext} />);
+      expect(screen.getByRole("alert")).toHaveTextContent(error);
+      expect(screen.getByLabelText(/^Contraseña$/)).toHaveValue(account.password);
+      change(/^Correo electrónico$/, "nuevo@negocio.com");
+      fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
+
+      await waitFor(() => expect(onNext).toHaveBeenCalledTimes(2));
+      expect(onNext).toHaveBeenLastCalledWith({ ...account, email: "nuevo@negocio.com" });
+    },
+  );
+
+  it("abre los documentos legales oficiales sin abandonar el formulario ni crear una cuenta", () => {
     const onNext = jest.fn<Promise<void>, [RegisterData]>().mockResolvedValue(undefined);
-    const { rerender } = render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
+    render(<RegisterForm isLoading={false} error={null} onNext={onNext} />);
+    expect(screen.queryByRole("link", { name: /^Términos de Servicio/ })).not.toBeInTheDocument();
     reachAccountStep();
-    fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
-    await waitFor(() => expect(onNext).toHaveBeenCalledTimes(1));
 
-    rerender(
-      <RegisterForm isLoading={false} error="Este email ya está registrado." onNext={onNext} />,
-    );
-    expect(screen.getByRole("alert")).toHaveTextContent("Este email ya está registrado.");
-    expect(screen.getByLabelText(/^Contraseña$/)).toHaveValue(account.password);
-    change(/^Correo electrónico$/, "nuevo@negocio.com");
-    fireEvent.click(screen.getByRole("button", { name: "Crear cuenta" }));
-
-    await waitFor(() => expect(onNext).toHaveBeenCalledTimes(2));
-    expect(onNext).toHaveBeenLastCalledWith({ ...account, email: "nuevo@negocio.com" });
+    const terms = screen.getByRole("link", { name: /^Términos de Servicio/ });
+    const privacy = screen.getByRole("link", { name: /^Política de Privacidad/ });
+    expect(terms).toHaveAttribute("href", "https://www.powip.lat/terminos");
+    expect(privacy).toHaveAttribute("href", "https://www.powip.lat/privacidad");
+    for (const link of [terms, privacy]) {
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+      expect(link).toHaveAccessibleName(/se abre en una nueva pestaña/);
+    }
+    expect(onNext).not.toHaveBeenCalled();
   });
 });
