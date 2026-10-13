@@ -2277,7 +2277,11 @@ function RegistrarVentaContent() {
                       onValueChange={setPaymentMethod}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Seleccionar método de pago" />
+                        <SelectValue placeholder="Seleccionar método de pago">
+                          {paymentMethod === "MERCADO_PAGO"
+                            ? "Mercado Pago (registrado)"
+                            : undefined}
+                        </SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="YAPE">Yape</SelectItem>
@@ -2287,7 +2291,6 @@ function RegistrarVentaContent() {
                         <SelectItem value="CONTRA_ENTREGA">Contraentrega</SelectItem>
                         <SelectItem value="BCP">BCP</SelectItem>
                         <SelectItem value="BANCO_NACION">Banco de la Nación</SelectItem>
-                        <SelectItem value="MERCADO_PAGO">Pago link - Mercado Pago</SelectItem>
                         <SelectItem value="POS">POS</SelectItem>
                       </SelectContent>
                     </Select>
