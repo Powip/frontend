@@ -78,13 +78,21 @@ it("muestra frecuencia del periodo, aproximación y CTR de enlace con su fuente"
   expect(screen.getByText("Aproximada entre cuentas.")).toBeInTheDocument();
   expect(screen.getByText("Alta · más de 3")).toBeInTheDocument();
 });
-it("mantiene métricas no verificadas pendientes aunque lleguen números", () => {
+it("conserva el CTR conocido aunque alcance y frecuencia del periodo no estén disponibles", () => {
   const summary = summaryV11();
   summary.currencies[0].periodMetricsStatus = "unknown";
   render(<AdvertisingSummaryCards summary={summary} />);
-  expect(screen.queryByText("1.25 %")).not.toBeInTheDocument();
+  expect(screen.getByText("1.25 %")).toBeVisible();
   expect(screen.queryByText("3.20")).not.toBeInTheDocument();
   expect(screen.queryByText("Alta · más de 3")).not.toBeInTheDocument();
+});
+
+it("no inventa un CTR cuando Meta no devuelve su importe", () => {
+  const summary = summaryV11();
+  summary.currencies[0].ctr = null;
+  render(<AdvertisingSummaryCards summary={summary} />);
+  expect(screen.queryByText("1.25 %")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Costo por resultado · Meta" })).toBeVisible();
 });
 
 it("incluye porcentajes por moneda sobre los importes disponibles, sin convertir monedas", () => {

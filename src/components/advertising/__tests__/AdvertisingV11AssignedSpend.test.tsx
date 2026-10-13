@@ -12,6 +12,8 @@ jest.mock("@/hooks/useAdvertisingV11", () => ({
   useAdvertisingAssignmentsV11: jest.fn(),
   useAdvertisingSummaryV11: jest.fn(),
 }));
+// This suite verifies channel-spend coverage; business-order cost has its own suite.
+jest.mock("../AdvertisingSalesCostCard", () => ({ AdvertisingSalesCostCard: () => null }));
 it.each([
   { coverage: "partial" as const, provisional: false, label: "Parcial / pendiente" },
   { coverage: "complete" as const, provisional: true, label: "Provisional" },

@@ -2,7 +2,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useAdvertisingMetaCatalog } from "@/hooks/useAdvertisingMeta";
+import { useAdvertisingBusinessAnalytics } from "@/hooks/useAdvertisingOrders";
 import { type MetaCatalogResponse, syncMetaModule } from "@/services/advertisingMetaService";
+import type { AdvertisingBusinessAnalytics } from "@/services/advertisingOrdersService";
 import { AdvertisingMetaCatalogPanel } from "../AdvertisingMetaCatalogPanel";
 import {
   formatMetaCostPerResult,
@@ -13,6 +15,7 @@ import {
 } from "../advertising-meta-model";
 
 jest.mock("@/hooks/useAdvertisingMeta", () => ({ useAdvertisingMetaCatalog: jest.fn() }));
+jest.mock("@/hooks/useAdvertisingOrders", () => ({ useAdvertisingBusinessAnalytics: jest.fn() }));
 jest.mock("@/services/advertisingMetaService", () => ({ syncMetaModule: jest.fn() }));
 jest.mock("next/dynamic", () => ({
   __esModule: true,
@@ -25,6 +28,7 @@ jest.mock("next/dynamic", () => ({
 }));
 const query = jest.mocked(useAdvertisingMetaCatalog);
 const sync = jest.mocked(syncMetaModule);
+const businessQuery = jest.mocked(useAdvertisingBusinessAnalytics);
 beforeAll(() => {
   // jsdom does not implement the browser pointer/scroll APIs used by the Powip Select.
   HTMLElement.prototype.hasPointerCapture = () => false;
@@ -122,6 +126,133 @@ function mount(
 beforeEach(() => {
   jest.clearAllMocks();
   mockCatalog();
+  businessQuery.mockReturnValue({
+    data: undefined,
+    isError: false,
+    isPending: false,
+    isFetching: false,
+    isAccessDenied: false,
+    refetch: jest.fn(),
+  } as unknown as ReturnType<typeof useAdvertisingBusinessAnalytics>);
+});
+
+it.each([
+  [403, "No tienes permiso para continuar."],
+  [503, "Publicidad no está disponible. Inténtalo de nuevo."],
+] as const)(
+  "explica el error %s de Powip sin mostrar detalles privados ni reintentar consultas desactivadas",
+  async (status, message) => {
+    const refetch = jest.fn();
+    const inactiveRefetch = jest.fn();
+    businessQuery.mockImplementation(
+      (identity) =>
+        ({
+          data: undefined,
+          isError: true,
+          isPending: false,
+          isFetching: false,
+          isAccessDenied: status === 403,
+          error: {
+            isAxiosError: true,
+            response: { status, data: { message: "persona@example.test private-token OWNER" } },
+          },
+          refetch: identity.enabled ? refetch : inactiveRefetch,
+        }) as unknown as ReturnType<typeof useAdvertisingBusinessAnalytics>,
+    );
+    mount();
+    expect(within(screen.getByRole("alert")).getByText(message)).toBeVisible();
+    expect(document.body.textContent).not.toContain("persona@example.test");
+    expect(document.body.textContent).not.toContain("private-token");
+    expect(document.body.textContent).not.toContain("OWNER");
+    expect(
+      within(screen.getByRole("table", { name: "Anuncios" })).getByText(message),
+    ).toBeVisible();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "Reintentar datos de Powip" }));
+    expect(refetch).toHaveBeenCalledTimes(1);
+    expect(inactiveRefetch).not.toHaveBeenCalled();
+  },
+);
+
+it("muestra el motivo del costo pendiente cuando hay entregados confirmados y gasto sin completar", () => {
+  const catalog = data();
+  const analytics: AdvertisingBusinessAnalytics = {
+    source: "powip-orders",
+    from: catalog.from,
+    to: catalog.to,
+    basis: "delivered",
+    timeZone: "America/Lima",
+    groupBy: "ad",
+    storeId: "all",
+    channelId: "all",
+    currencies: ["PEN"],
+    totalGroups: 1,
+    truncated: false,
+    limitations: [],
+    netProfit: null,
+    roas: null,
+    rows: [
+      {
+        id: "456",
+        name: "Anuncio real",
+        accountId: "account",
+        currency: "PEN",
+        adCurrency: "PEN",
+        adTimeZone: "America/Lima",
+        orderCount: 4,
+        deliveredCount: 3,
+        cancelledCount: 1,
+        revenue: "90",
+        paidRevenue: null,
+        units: null,
+        incompleteCostCount: 0,
+        costTotal: null,
+        contributionBeforeAds: null,
+      },
+    ],
+    quality: {
+      basis: "created",
+      from: catalog.from,
+      to: catalog.to,
+      ordersCreated: 4,
+      unknownCurrencyCount: 0,
+      unattributedCount: 0,
+      missingDeliveredDateCount: 0,
+      missingPaidDateCount: 0,
+      partiallyPaidCount: 0,
+      incompleteCostCount: 0,
+    },
+    cohortCoverage: {
+      basis: "delivered",
+      complete: true,
+      reasons: [],
+      missingDeliveredDateCount: 0,
+      missingPaidDateCount: 0,
+    },
+  };
+  businessQuery.mockReturnValue({
+    data: analytics,
+    isError: false,
+    isPending: false,
+    isFetching: false,
+    isAccessDenied: false,
+    refetch: jest.fn(),
+  } as unknown as ReturnType<typeof useAdvertisingBusinessAnalytics>);
+  mount();
+  const table = screen.getByRole("table", { name: "Anuncios" });
+  expect(within(table).getByText("Gasto de Meta pendiente")).toBeVisible();
+  expect(within(table).getByText("Gasto de Meta pendiente").parentElement).toHaveTextContent(
+    "Pendiente",
+  );
+  expect(within(table).queryByText("Sin pedidos vinculados.")).not.toBeInTheDocument();
+});
+
+it("no inventa entregados ni costos cuando falta vinculación del anuncio", () => {
+  mount();
+  expect(
+    within(screen.getByRole("table", { name: "Anuncios" })).getByText("Sin pedidos vinculados."),
+  ).toBeVisible();
 });
 
 it("keeps unavailable results honest and secondary data out of the comparison without auto-sync", () => {
@@ -346,13 +477,15 @@ it("prioritizes server costs and switches conversion without mixing message and 
       .getAllByRole("columnheader")
       .slice(2, 5)
       .map((cell) => cell.textContent),
-  ).toEqual(["Tipo de resultado", "Resultados", "Costo por resultado"]);
+  ).toEqual(["Tipo de resultado", "Resultados", "Costo por resultado · Meta"]);
   expect(within(table).getByText(/3\.25/)).toBeVisible();
   expect(within(table).getByText("20")).toBeVisible();
   const user = userEvent.setup();
   await user.click(screen.getByRole("button", { name: "Siguiente" }));
   await user.click(screen.getByRole("button", { name: "Compras por web" }));
-  expect(within(table).getByRole("columnheader", { name: "Costo por resultado" })).toBeVisible();
+  expect(
+    within(table).getByRole("columnheader", { name: "Costo por resultado · Meta" }),
+  ).toBeVisible();
   expect(within(table).getByText(/32\.50/)).toBeVisible();
   expect(within(table).getByText("2")).toBeVisible();
   expect(within(table).queryByText("99")).not.toBeInTheDocument();
@@ -462,7 +595,7 @@ it("uses conversion availability even when all spending is reconciled, and keeps
   expect(within(table).getByText("Parcial")).toBeVisible();
   expect(within(table).queryByText("Completo")).not.toBeInTheDocument();
   const mobile = screen.getByRole("list", { name: "Anuncios en móvil" });
-  expect(within(mobile).getByText("Costo por resultado")).toBeVisible();
+  expect(within(mobile).getByText("Costo por resultado · Meta")).toBeVisible();
   expect(within(mobile).getByText("Resultados")).toBeVisible();
   expect(within(mobile).getByText("15")).toBeVisible();
   await userEvent.setup().click(screen.getByRole("button", { name: "Compras por web" }));

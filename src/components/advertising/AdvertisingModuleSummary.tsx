@@ -30,6 +30,7 @@ import { useAdvertisingSummaryV11 } from "@/hooks/useAdvertisingV11";
 import { advertisingErrorMessage, advertisingErrorStatus } from "@/services/advertisingService";
 import type { AdvertisingSeriesBy } from "@/services/advertisingV11Service";
 import { AdvertisingAccountHistory } from "./AdvertisingAccountHistory";
+import { AdvertisingSalesCostCard } from "./AdvertisingSalesCostCard";
 import { AdvertisingStackedSpendChart } from "./AdvertisingStackedSpendChart";
 import { useAdvertisingStoreFilter } from "./AdvertisingStoreFilterContext";
 import { AdvertisingSummaryCards } from "./AdvertisingSummaryCards";
@@ -559,6 +560,15 @@ function AdvertisingModuleSummaryV11({
           </Select>
         </div>
       </div>
+      {storeId !== "none" ? (
+        <AdvertisingSalesCostCard
+          identity={identity}
+          from={from}
+          to={to}
+          storeId={storeId}
+          summary={global.isError ? undefined : global.data}
+        />
+      ) : null}
       {query.isError ? (
         <Alert variant={query.isAccessDenied ? "destructive" : "default"}>
           <AlertDescription>
@@ -613,7 +623,8 @@ function AdvertisingModuleSummaryV11({
             <AdvertisingSummaryCards
               summary={summary}
               business={business.data}
-              accountSelected={accountId !== "all" || provider !== "all"}
+              businessError={business.isError ? business.error : undefined}
+              accountSelected={accountId !== "all" || provider !== "all" || currency !== "all"}
             />
           ) : (
             <Card>
@@ -665,7 +676,7 @@ function AdvertisingModuleSummaryV11({
                     <TableHead>Cuenta</TableHead>
                     <TableHead>Tienda</TableHead>
                     <TableHead className="text-right">Gasto</TableHead>
-                    <TableHead>Costo por resultado</TableHead>
+                    <TableHead>Costo por resultado · Meta</TableHead>
                     <TableHead className="text-right">CTR de enlace</TableHead>
                     <TableHead className="text-right">Frecuencia</TableHead>
                     <TableHead>Costo por entregado</TableHead>
@@ -725,19 +736,23 @@ function AdvertisingModuleSummaryV11({
               El gasto sin asignar se consulta aparte; no se compara con ventas de una tienda.
             </p>
           ) : business.isError || global.isError ? (
-            <p role="status" className="text-sm text-muted-foreground">
-              Los resultados del negocio están pendientes.{" "}
-              <Button
-                variant="link"
-                size="sm"
-                onClick={() => {
-                  void business.refetch();
-                  void global.refetch();
-                }}
-              >
-                Volver a consultar
-              </Button>
-            </p>
+            <Alert
+              variant={business.isAccessDenied || global.isAccessDenied ? "destructive" : "default"}
+            >
+              <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
+                <p>{advertisingErrorMessage(business.error ?? global.error)}</p>
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={() => {
+                    void business.refetch();
+                    void global.refetch();
+                  }}
+                >
+                  Volver a consultar
+                </Button>
+              </AlertDescription>
+            </Alert>
           ) : business.data && global.data ? (
             <AdvertisingWholeBusinessCard
               business={business.data}

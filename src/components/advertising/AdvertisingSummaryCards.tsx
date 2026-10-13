@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import type { AdvertisingBusinessMetrics } from "@/services/advertisingBusinessMetricsService";
+import { advertisingErrorMessage } from "@/services/advertisingService";
 import type { AdvertisingSummaryV11 } from "@/services/advertisingV11Service";
 import {
   compareAdvertisingBusinessCurrency,
@@ -13,10 +14,12 @@ export function AdvertisingSummaryCards({
   summary,
   business,
   accountSelected = false,
+  businessError,
 }: {
   summary: AdvertisingSummaryV11;
   business?: AdvertisingBusinessMetrics;
   accountSelected?: boolean;
+  businessError?: unknown;
 }) {
   return (
     <div className="space-y-5" aria-live="polite">
@@ -46,7 +49,7 @@ export function AdvertisingSummaryCards({
               </Metric>
               <Card>
                 <CardContent className="space-y-3 pt-5">
-                  <h3 className="text-sm font-medium">Costo por resultado</h3>
+                  <h3 className="text-sm font-medium">Costo por resultado · Meta</h3>
                   {total.costPerResult.length ? (
                     <dl className="space-y-2">
                       {total.costPerResult.map((result) => (
@@ -60,6 +63,16 @@ export function AdvertisingSummaryCards({
                               ? formatMetaSpend(result.costPerResult, total.currency)
                               : "Pendiente"}
                           </dd>
+                          {result.count !== null ? (
+                            <p className="text-xs text-muted-foreground">
+                              {formatAdvertisingMetric(result.count)} resultados
+                              {result.status === "partial" ? " · parcial" : ""}
+                            </p>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              Sin datos de este resultado en la importación.
+                            </p>
+                          )}
                           {result.limitation === "optimization-event-unconfirmed" ? (
                             <p className="text-xs text-muted-foreground">
                               Evento optimizado por confirmar.
@@ -74,14 +87,12 @@ export function AdvertisingSummaryCards({
                   <p className="text-xs text-muted-foreground">Resultados reportados por Meta.</p>
                 </CardContent>
               </Card>
-              <Metric
-                title="CTR de enlace · Meta"
-                value={formatAdvertisingMetric(
-                  total.periodMetricsStatus === "available" ? total.ctr : null,
-                  " %",
-                )}
-              >
-                <p className="text-xs text-muted-foreground">Clics en el enlace ÷ impresiones.</p>
+              <Metric title="CTR de enlace · Meta" value={formatAdvertisingMetric(total.ctr, " %")}>
+                <p className="text-xs text-muted-foreground">
+                  {total.ctr === null
+                    ? "Sin datos de clics de enlace en esta importación."
+                    : "Clics en el enlace ÷ impresiones."}
+                </p>
               </Metric>
               <Metric
                 title="Frecuencia · Meta"
@@ -90,9 +101,11 @@ export function AdvertisingSummaryCards({
                 )}
               >
                 <p className="text-xs text-muted-foreground">
-                  {total.frequencyApproximate
-                    ? "Aproximada entre cuentas."
-                    : "Veces por persona en el periodo."}
+                  {total.periodMetricsStatus !== "available" || total.frequency === null
+                    ? "Sin alcance confirmado para este periodo."
+                    : total.frequencyApproximate
+                      ? "Aproximada entre cuentas."
+                      : "Veces por persona en el periodo."}
                 </p>
                 {total.periodMetricsStatus === "available" &&
                 total.frequencyHigh &&
@@ -109,7 +122,9 @@ export function AdvertisingSummaryCards({
                 }
               >
                 <p className="text-xs text-muted-foreground">
-                  {comparison.reason ?? "Gasto ÷ entregados de Powip."}
+                  {businessError
+                    ? advertisingErrorMessage(businessError)
+                    : (comparison.reason ?? "Gasto ÷ entregados de Powip.")}
                 </p>
               </Metric>
             </div>

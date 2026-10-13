@@ -70,9 +70,22 @@ export function AdvertisingWholeBusinessCard({
                   }
                 />
               </dl>
+              {business.countCoverage &&
+              summary.currencies.length === 1 &&
+              orders.currency === summary.currencies[0].currency &&
+              orders.deliveredCount !== business.deliveredCount ? (
+                <p className="text-xs text-muted-foreground">
+                  El costo por entrega usa los {business.deliveredCount} entregados del negocio.
+                </p>
+              ) : null}
               {result.reason ? (
                 <p className="text-xs text-muted-foreground">
                   Comparación: {result.reason.toLowerCase()}.
+                </p>
+              ) : null}
+              {"revenueReason" in result && result.revenueReason ? (
+                <p className="text-xs text-muted-foreground">
+                  Venta ÷ publicidad: {result.revenueReason.toLowerCase()}.
                 </p>
               ) : null}
             </section>
