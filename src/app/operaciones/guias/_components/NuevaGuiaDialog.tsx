@@ -4,6 +4,7 @@ import { OrderOriginLabel } from "@/app/operaciones/_shared/OrderOriginLabel";
 
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
 
 import { useEffect, useMemo, useState } from "react";
 import axios from "@/lib/axiosAuth";
@@ -58,6 +59,7 @@ export default function NuevaGuiaDialog({
 }) {
   const { can } = useOperationsRole();
   const canDispatch = can(OPS_PERMISSIONS.DISPATCH);
+  const invalidateBusinessData = useInvalidateBusinessData();
 
   const { orders, loading, error, retry, refetch: load } = useBusinessOrders(undefined, undefined, { enabled: open });
   const [search, setSearch] = useState("");
@@ -141,6 +143,9 @@ export default function NuevaGuiaDialog({
 
   const handleCreateGuide = async (guidesData: CreateGuideData[]) => {
     setSubmitting(true);
+    const createdGuides: string[] = [];
+    const createdOrderIds = new Set<string>();
+    let updatingGuide: string | null = null;
     try {
       let lastGuideId: string | null = null;
       for (const guideData of guidesData) {
@@ -150,6 +155,11 @@ export default function NuevaGuiaDialog({
         );
         const guideNumber = res.data.guideNumber;
         lastGuideId = res.data.id;
+        createdGuides.push(guideNumber);
+        // El POST persiste todos los pedidos de la guía antes de los PATCH.
+        // Retirarlos de la selección ante un fallo evita crearla dos veces.
+        guideData.orderIds.forEach((id) => createdOrderIds.add(id));
+        updatingGuide = guideNumber;
         for (const orderId of guideData.orderIds) {
           // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO — si
           // el pedido viene de PREPARADO se encadenan los pasos intermedios
@@ -174,10 +184,18 @@ export default function NuevaGuiaDialog({
             status: "ASIGNADO_A_GUIA",
             courier: guideData.courierName,
             courierId: guideData.courierId || null,
+            ...(guideData.orderCarrierCosts?.[orderId] !== undefined
+              ? { carrierShippingCost: guideData.orderCarrierCosts[orderId] }
+              : {}),
           });
         }
+        updatingGuide = null;
       }
-      toast.success("Guía generada correctamente");
+      toast.success(
+        createdGuides.length === 1
+          ? `Guía ${createdGuides[0]} creada con ${createdOrderIds.size} pedido(s)`
+          : `${createdGuides.length} guías creadas con ${createdOrderIds.size} pedido(s). Revísalas en Guías & Courier para aprobarlas.`,
+      );
       setCreateModalOpen(false);
       setSelectedIds(new Set());
       await load();
@@ -187,7 +205,23 @@ export default function NuevaGuiaDialog({
       }
     } catch (error: unknown) {
       const axiosError = error as { response?: { data?: { message?: string } } };
-      toast.error(axiosError?.response?.data?.message || "Error generando la guía");
+      const message = axiosError?.response?.data?.message || "Error generando la guía";
+      if (createdGuides.length > 0) {
+        setSelectedIds((selected) => new Set([...selected].filter((id) => !createdOrderIds.has(id))));
+        if (guidesData.every((guide) => guide.orderIds.every((id) => createdOrderIds.has(id)))) {
+          setCreateModalOpen(false);
+        }
+        void invalidateBusinessData();
+        toast.error(
+          `Guías creadas: ${createdGuides.join(", ")}. ` +
+            (updatingGuide
+              ? `No se completó la actualización de los pedidos de ${updatingGuide}. Revísala en Guías & Courier. `
+              : "No se pudieron crear todas las guías. ") +
+            `Los pedidos con guía creada se retiraron de la selección. ${message}`,
+        );
+      } else {
+        toast.error(message);
+      }
       return false;
     } finally {
       setSubmitting(false);

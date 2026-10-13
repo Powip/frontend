@@ -1,22 +1,39 @@
 import { resolveGuideOrigin } from '../guideOrigin';
 
-describe('shipping guide source selection', () => {
-  it('uses the commercial origin even when the stock belongs to a sister store', () => {
-    expect(resolveGuideOrigin([{ storeId: 'web', inventoryId: 'shared-inventory', stockStoreId: 'warehouse' }])).toEqual({ storeId: 'web', error: null });
+const companyStores = ['web', 'livii', 'warehouse'];
+
+describe('shipping guides belong to one business, not one commercial store', () => {
+  it('uses an order store as the operational owner without substituting the warehouse', () => {
+    expect(resolveGuideOrigin([{ storeId: 'web', inventoryId: 'shared-inventory', stockStoreId: 'warehouse' }], companyStores)).toEqual({ storeId: 'web', error: null });
   });
-  it('accepts a batch from the same store and warehouse', () => {
-    expect(resolveGuideOrigin([{ storeId: 'web', inventoryId: 'inventory' }, { storeId: 'web', inventoryId: 'inventory' }]).storeId).toBe('web');
+
+  it('accepts different commercial stores and warehouses in one guide', () => {
+    const orders = [
+      { storeId: 'web', inventoryId: 'one', stockStoreId: 'warehouse' },
+      { storeId: 'livii', inventoryId: 'two', stockStoreId: 'livii' },
+    ];
+    const original = orders.map((order) => ({ ...order }));
+    expect(resolveGuideOrigin(orders, companyStores)).toEqual({ storeId: 'web', error: null });
+    expect(orders).toEqual(original);
   });
-  it('rejects a mixed commercial store batch even when it shares a warehouse', () => {
-    expect(resolveGuideOrigin([{ storeId: 'web', inventoryId: 'shared' }, { storeId: 'livii', inventoryId: 'shared' }])).toEqual({ storeId: null, error: expect.stringContaining('una sola tienda') });
+
+  it('accepts legacy orders without warehouse metadata', () => {
+    expect(resolveGuideOrigin([{ storeId: 'web' }, { storeId: 'livii' }], companyStores)).toEqual({ storeId: 'web', error: null });
   });
-  it('rejects mixed warehouses within one store', () => {
-    expect(resolveGuideOrigin([{ storeId: 'web', inventoryId: 'one' }, { storeId: 'web', inventoryId: 'two' }]).error).toContain('mismo almacén');
+
+  it('rejects a store belonging to another business', () => {
+    expect(resolveGuideOrigin([{ storeId: 'web' }, { storeId: 'foreign' }], companyStores)).toEqual({ storeId: null, error: expect.stringContaining('mismo negocio') });
   });
-  it('retains legacy orders with a known commercial store and no warehouse metadata', () => {
-    expect(resolveGuideOrigin([{ storeId: 'web' }, { storeId: 'web' }])).toEqual({ storeId: 'web', error: null });
+
+  it('does not guess business membership if the company catalogue is unavailable', () => {
+    expect(resolveGuideOrigin([{ storeId: 'web' }], [])).toEqual({ storeId: null, error: expect.stringContaining('negocio activo') });
   });
-  it('never fabricates the origin of an order missing its store', () => {
-    expect(resolveGuideOrigin([{ storeId: 'web' }, {}])).toEqual({ storeId: null, error: expect.stringContaining('identificar la tienda') });
+
+  it.each([
+    { orders: [] },
+    { orders: [{ storeId: 'web' }, {}] },
+    { orders: [{ storeId: '' }] },
+  ])('rejects incomplete selections: $orders', ({ orders }) => {
+    expect(resolveGuideOrigin(orders, companyStores)).toEqual({ storeId: null, error: expect.stringContaining('identificar la tienda') });
   });
 });

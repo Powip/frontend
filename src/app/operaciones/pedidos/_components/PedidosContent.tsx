@@ -2,6 +2,7 @@
 
 import { OperationsDataError } from "@/app/operaciones/_shared/OperationsDataError";
 import { useBusinessOrders } from "@/hooks/useBusinessOrders";
+import { useInvalidateBusinessData } from "@/hooks/useInvalidateBusinessData";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import axios from "@/lib/axiosAuth";
@@ -68,6 +69,7 @@ export function PedidosContent() {
   const { auth } = useAuth();
   const { can } = useOperationsRole();
   const getUserInfo = useUserAuditInfo();
+  const invalidateBusinessData = useInvalidateBusinessData();
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -377,16 +379,22 @@ export function PedidosContent() {
   const handleCreateGuideConfirm = useCallback(
     async (guidesData: CreateGuideData[]) => {
       setIsCreatingGuide(true);
+      const createdGuides: string[] = [];
+      const createdOrderIds = new Set<string>();
+      let updatingGuide: string | null = null;
       try {
-        const createdGuides: string[] = [];
         let totalOrders = 0;
         for (const guideData of guidesData) {
           const res = await axios.post(`${API_COURIER}/shipping-guides`, guideData);
           const guideNumber = res.data.guideNumber;
           createdGuides.push(guideNumber);
+          // El POST ya persistió la guía y sus pedidos, aunque falle un PATCH
+          // posterior. Esos pedidos no deben volver a enviarse al reintentar.
+          guideData.orderIds.forEach((id) => createdOrderIds.add(id));
+          updatingGuide = guideNumber;
           totalOrders += guideData.orderIds.length;
           for (const orderId of guideData.orderIds) {
-            const carrierCost = guideData.orderCarrierCosts?.[orderId] || 0;
+            const carrierCost = guideData.orderCarrierCosts?.[orderId];
             // ORDER_STATUS_FLOW solo permite ASIGNADO_A_GUIA desde LLAMADO —
             // si el pedido viene de PREPARADO se encadenan los pasos
             // intermedios hasta LLAMADO acá mismo, transparente para quien
@@ -413,15 +421,16 @@ export function PedidosContent() {
               status: "ASIGNADO_A_GUIA",
               courier: guideData.courierName,
               courierId: guideData.courierId || null,
-              carrierShippingCost: carrierCost,
+              ...(carrierCost !== undefined ? { carrierShippingCost: carrierCost } : {}),
               ...getUserInfo(),
             });
           }
+          updatingGuide = null;
         }
         toast.success(
           createdGuides.length === 1
             ? `Guía ${createdGuides[0]} creada con ${totalOrders} pedido(s)`
-            : `${createdGuides.length} guías creadas con ${totalOrders} pedido(s)`,
+            : `${createdGuides.length} guías creadas con ${totalOrders} pedido(s). Revísalas en Guías & Courier para aprobarlas.`,
         );
         // Abre el detalle de la guía recién creada para que "Aprobar Guía"
         // quede a la vista de una — no hay que ir a buscarlo.
@@ -430,13 +439,29 @@ export function PedidosContent() {
         fetchOrders();
         if (firstOrder) setGuideSale(firstOrder);
       } catch (error: any) {
-        toast.error(error?.response?.data?.message || "Error creando guía");
+        const message = error?.response?.data?.message || "Error creando guía";
+        if (createdGuides.length > 0) {
+          setCreateGuideOrders((selected) => {
+            const remaining = selected?.filter((order) => !createdOrderIds.has(order.id)) ?? [];
+            return remaining.length > 0 ? remaining : null;
+          });
+          void invalidateBusinessData();
+          toast.error(
+            `Guías creadas: ${createdGuides.join(", ")}. ` +
+              (updatingGuide
+                ? `No se completó la actualización de los pedidos de ${updatingGuide}. Revísala en Guías & Courier. `
+                : "No se pudieron crear todas las guías. ") +
+              `Los pedidos con guía creada se retiraron de la selección. ${message}`,
+          );
+        } else {
+          toast.error(message);
+        }
         return false;
       } finally {
         setIsCreatingGuide(false);
       }
     },
-    [getUserInfo, fetchOrders, createGuideOrders, salesById],
+    [getUserInfo, fetchOrders, invalidateBusinessData, createGuideOrders, salesById],
   );
 
   const handleAddToGuideConfirm = useCallback(
