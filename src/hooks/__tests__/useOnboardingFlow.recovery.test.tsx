@@ -245,8 +245,8 @@ it("PAYMENT_IN_PROGRESS recupera PENDING_PAYMENT y solo permite verificar el che
   expect(mocked.startFlowCheckout).toHaveBeenCalledTimes(1);
   mocked.fetchMySubscription.mockResolvedValue(active);
   await act(() => result.current.checkPaymentAgain());
-  expect(result.current.state.step).toBe("DONE");
-  expect(onActivated).toHaveBeenCalledTimes(1);
+  expect(result.current.state.step).toBe("EXISTING_SUBSCRIPTION");
+  expect(onActivated).not.toHaveBeenCalled();
   expect(mocked.confirmFlowCheckout).not.toHaveBeenCalled();
 });
 
@@ -256,8 +256,11 @@ it("PAYMENT_IN_PROGRESS recupera una suscripción ya activa sin otro checkout", 
   const onActivated = jest.fn().mockResolvedValue(true);
   const { result } = setup(onActivated);
   await act(() => result.current.initiateCardRegistration());
-  expect(result.current.state).toMatchObject({ step: "DONE", subscription: active });
-  expect(onActivated).toHaveBeenCalledTimes(1);
+  expect(result.current.state).toMatchObject({
+    step: "EXISTING_SUBSCRIPTION",
+    subscription: active,
+  });
+  expect(onActivated).not.toHaveBeenCalled();
   expect(mocked.startFlowCheckout).toHaveBeenCalledTimes(1);
 });
 
@@ -279,7 +282,7 @@ it("PAYMENT_IN_PROGRESS con /me null queda en ERROR y retry solo verifica", asyn
   await act(() => result.current.checkPaymentAgain());
   expect(mocked.startFlowCheckout).toHaveBeenCalledTimes(1);
   expect(mocked.confirmFlowCheckout).not.toHaveBeenCalled();
-  expect(result.current.state.step).toBe("DONE");
+  expect(result.current.state.step).toBe("EXISTING_SUBSCRIPTION");
 });
 
 it("restore de URL espera la primera sesión, rechaza otro usuario y confirma una sola vez", async () => {
@@ -429,6 +432,7 @@ it("dos verificaciones simultáneas consultan /me una sola vez", async () => {
   const request = deferred<SubscriptionMe | null>();
   mocked.fetchMySubscription.mockReturnValueOnce(request.promise);
   const { result } = setup();
+  await act(() => result.current.initiateCardRegistration());
   let first!: Promise<void>;
   let second!: Promise<void>;
   act(() => {
@@ -441,4 +445,144 @@ it("dos verificaciones simultáneas consultan /me una sola vez", async () => {
     await Promise.all([first, second]);
   });
   expect(result.current.state.step).toBe("DONE");
+});
+
+it.each([
+  ["ALREADY_SUBSCRIBED", { gateway: "MANUAL" as const }],
+  ["ALREADY_SUBSCRIBED", { plan: { ...active.plan, id: "old-plan", name: "Anterior" } }],
+  ["PAYMENT_IN_PROGRESS", { status: "PENDING_RENEWAL" as const }],
+  ["PAYMENT_IN_PROGRESS", { startDate: "2025-01-01", endDate: "2027-01-01" }],
+])("%s distingue una suscripción vigente de un cobro nuevo (%j)", async (code, changes) => {
+  const existing = { ...active, ...changes };
+  mocked.startFlowCheckout.mockRejectedValue(error(code, 409));
+  mocked.fetchMySubscription.mockResolvedValue(existing);
+  const onActivated = jest.fn();
+  const { result } = setup(onActivated);
+  await act(() => result.current.initiateCardRegistration());
+  expect(result.current.state).toMatchObject({
+    step: "EXISTING_SUBSCRIPTION",
+    subscription: existing,
+    checkoutSubscriptionId: null,
+  });
+  act(() => result.current.retry());
+  await act(() => result.current.initiateCardRegistration());
+  expect(result.current.state.step).toBe("EXISTING_SUBSCRIPTION");
+  expect(mocked.startFlowCheckout).toHaveBeenCalledTimes(1);
+  expect(mocked.confirmFlowCheckout).not.toHaveBeenCalled();
+  expect(onActivated).not.toHaveBeenCalled();
+});
+
+it("guarda y recupera el ID de la suscripción del checkout", async () => {
+  const { result, unmount } = setup();
+  await act(() => result.current.initiateCardRegistration());
+  expect(getStoredOnboardingState("u1")?.subscriptionId).toBe("s1");
+  unmount();
+  const recovered = setup();
+  expect(recovered.result.current.state.checkoutSubscriptionId).toBe("s1");
+  recovered.unmount();
+});
+
+it.each([
+  { id: "another-subscription" },
+  { gateway: "MANUAL" as const },
+  { plan: { ...active.plan, id: "another-plan" } },
+])("confirmación de una suscripción diferente no completa el pago (%j)", async (changes) => {
+  const onActivated = jest.fn();
+  const { result } = setup(onActivated);
+  await act(() => result.current.initiateCardRegistration());
+  mocked.confirmFlowCheckout.mockResolvedValue({
+    pending: false,
+    subscription: { ...active, ...changes },
+  });
+  await act(() => result.current.confirmPayment());
+  expect(result.current.state.step).toBe("ERROR");
+  expect(result.current.state.error).toMatch(/vincular/);
+  expect(result.current.state.checkoutSubscriptionId).toBe("s1");
+  expect(onActivated).not.toHaveBeenCalled();
+});
+
+it("polling no completa S1 con una suscripción S2 activa aunque tenga el mismo plan", async () => {
+  const onActivated = jest.fn();
+  const { result } = setup(onActivated);
+  await act(() => result.current.initiateCardRegistration());
+  mocked.confirmFlowCheckout.mockResolvedValue({ pending: false, subscription: pending });
+  mocked.fetchMySubscription.mockResolvedValue({ ...active, id: "s2" });
+  await act(async () => {
+    const task = result.current.confirmPayment();
+    await jest.advanceTimersByTimeAsync(POLL_DELAY_MS * PAYMENT_MAX_ATTEMPTS);
+    await task;
+  });
+  expect(result.current.state.step).toBe("PAYMENT_PENDING");
+  expect(result.current.state.subscription?.id).not.toBe("s2");
+  expect(onActivated).not.toHaveBeenCalled();
+});
+
+it("un confirm 404 sin ID legacy no convierte cualquier plan activo en pago confirmado", async () => {
+  saveOnboardingState(stored);
+  const onActivated = jest.fn();
+  const { result } = setup(onActivated);
+  mocked.confirmFlowCheckout.mockRejectedValue(error("SUBSCRIPTION_NOT_FOUND"));
+  mocked.fetchMySubscription.mockResolvedValue(active);
+  await act(() => result.current.confirmPayment());
+  expect(result.current.state.step).toBe("ERROR");
+  expect(result.current.state.checkoutSubscriptionId).toBeNull();
+  expect(onActivated).not.toHaveBeenCalled();
+});
+
+it("un confirm 404 con ID conocido rechaza otra suscripción activa", async () => {
+  const onActivated = jest.fn();
+  const { result } = setup(onActivated);
+  await act(() => result.current.initiateCardRegistration());
+  mocked.confirmFlowCheckout.mockRejectedValue(error("SUBSCRIPTION_NOT_FOUND"));
+  mocked.fetchMySubscription.mockResolvedValue({ ...active, id: "s2" });
+  await act(() => result.current.confirmPayment());
+  expect(result.current.state.step).toBe("ERROR");
+  expect(onActivated).not.toHaveBeenCalled();
+});
+
+it("confirm 200 enlaza el ID faltante de metadata legacy antes de verificar el cobro", async () => {
+  saveOnboardingState(stored);
+  const { result } = setup();
+  mocked.confirmFlowCheckout.mockResolvedValue({ pending: false, subscription: pending });
+  await act(async () => {
+    const task = result.current.confirmPayment();
+    await jest.advanceTimersByTimeAsync(POLL_DELAY_MS * PAYMENT_MAX_ATTEMPTS);
+    await task;
+  });
+  expect(result.current.state.checkoutSubscriptionId).toBe("s1");
+  expect(getStoredOnboardingState("u1")?.subscriptionId).toBe("s1");
+  mocked.fetchMySubscription.mockResolvedValue(active);
+  await act(() => result.current.checkPaymentAgain());
+  expect(result.current.state.step).toBe("DONE");
+});
+
+it("renovación pendiente no se anuncia como primer cobro confirmado", async () => {
+  const onActivated = jest.fn();
+  const { result } = setup(onActivated);
+  await act(() => result.current.initiateCardRegistration());
+  mocked.confirmFlowCheckout.mockResolvedValue({
+    pending: false,
+    subscription: { ...active, status: "PENDING_RENEWAL" },
+  });
+  await act(() => result.current.confirmPayment());
+  expect(result.current.state.step).toBe("EXISTING_SUBSCRIPTION");
+  expect(onActivated).not.toHaveBeenCalled();
+});
+
+it("recuperación pendiente sólo sigue la suscripción observada originalmente", async () => {
+  mocked.startFlowCheckout.mockRejectedValue(error("PAYMENT_IN_PROGRESS", 409));
+  mocked.fetchMySubscription.mockResolvedValue(pending);
+  const onActivated = jest.fn();
+  const { result } = setup(onActivated);
+  await act(() => result.current.initiateCardRegistration());
+  mocked.fetchMySubscription.mockResolvedValue({ ...active, id: "s2" });
+  await act(async () => {
+    const task = result.current.checkPaymentAgain();
+    await jest.advanceTimersByTimeAsync(POLL_DELAY_MS * PAYMENT_MAX_ATTEMPTS);
+    await task;
+  });
+  expect(result.current.state.step).toBe("PAYMENT_PENDING");
+  expect(result.current.state.subscription?.id).toBe("s1");
+  expect(onActivated).not.toHaveBeenCalled();
+  expect(mocked.startFlowCheckout).toHaveBeenCalledTimes(1);
 });

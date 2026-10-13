@@ -182,15 +182,15 @@ it("un catálogo tardío no sustituye el plan ni la tarjeta de un checkout recup
   expect(service.startFlowCheckout).not.toHaveBeenCalled();
 });
 
-it("el comprobante toma nombre, precio y período de la suscripción confirmada", async () => {
+it("el comprobante toma los datos confirmados del mismo checkout y plan", async () => {
   const subscription: SubscriptionMe = {
-    id: "confirmed-receipt",
+    id: "catalog-fixture-checkout",
     status: "ACTIVE",
     gateway: "FLOW",
     autoRenewal: true,
     startDate: "2026-10-13T12:00:00Z",
     endDate: "2027-10-13T12:00:00Z",
-    plan: { id: "premium-annual", name: "Premium Anual", price: 1425, durationInDays: 365 },
+    plan: { id: "basic", name: "Premium Anual", price: 1425, durationInDays: 365 },
     addOns: [{ code: "sunat", name: "SUNAT confirmada", amount: 348 }],
   };
   service.confirmFlowCheckout.mockResolvedValue({ pending: false, subscription });

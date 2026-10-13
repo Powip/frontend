@@ -17,6 +17,8 @@ export function validateStoredOnboardingState(value: unknown): StoredOnboardingS
     !record.userId.trim() ||
     typeof record.cardToken !== "string" ||
     !record.cardToken.trim() ||
+    (record.subscriptionId !== undefined &&
+      (typeof record.subscriptionId !== "string" || !record.subscriptionId.trim())) ||
     !Array.isArray(record.addOnIds) ||
     !record.addOnIds.every((id) => typeof id === "string" && id.trim())
   )
@@ -27,6 +29,7 @@ export function validateStoredOnboardingState(value: unknown): StoredOnboardingS
     price: record.price,
     userId: record.userId,
     cardToken: record.cardToken,
+    ...(typeof record.subscriptionId === "string" ? { subscriptionId: record.subscriptionId } : {}),
     addOnIds: [...new Set(record.addOnIds as string[])],
   };
 }
