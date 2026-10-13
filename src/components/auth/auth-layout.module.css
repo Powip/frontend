@@ -95,7 +95,7 @@
   min-height: 0;
   flex: 1;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
 }
 
 .registerBody {
@@ -140,7 +140,7 @@
 }
 
 .formHeader {
-  margin: 16px 0;
+  margin: 16px 0 28px;
   flex-shrink: 0;
 }
 
@@ -307,7 +307,7 @@
   }
 
   .formHeader {
-    margin: 12px 0;
+    margin: 12px 0 24px;
   }
 
   .formTitle {
@@ -368,7 +368,7 @@
   }
 
   .formHeader {
-    margin: 10px 0;
+    margin: 10px 0 12px;
   }
 
   .formTitle {
